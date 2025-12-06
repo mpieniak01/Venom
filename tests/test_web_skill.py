@@ -79,37 +79,39 @@ class TestWebSearchSkill:
         assert "Extracted clean text content" in result
         assert "https://example.com" in result
 
-    @patch("venom_core.execution.skills.web_skill.requests")
+    @patch("venom_core.execution.skills.web_skill.httpx")
     @patch("venom_core.execution.skills.web_skill.trafilatura")
     def test_scrape_text_fallback_beautifulsoup(
-        self, mock_trafilatura, mock_requests, web_skill
+        self, mock_trafilatura, mock_httpx, web_skill
     ):
         """Test fallbacku do BeautifulSoup gdy trafilatura zawodzi."""
         # Trafilatura zwraca None
         mock_trafilatura.fetch_url.return_value = None
 
-        # Mock requests
+        # Mock httpx
         mock_response = MagicMock()
         mock_response.content = b"<html><body><p>Test content</p></body></html>"
-        mock_requests.get.return_value = mock_response
+        mock_httpx.get.return_value = mock_response
 
         result = web_skill.scrape_text("https://example.com")
 
         assert "Test content" in result
 
     @patch("venom_core.execution.skills.web_skill.trafilatura")
-    def test_scrape_text_timeout(self, mock_trafilatura, web_skill):
+    @patch("venom_core.execution.skills.web_skill.httpx")
+    def test_scrape_text_timeout(self, mock_httpx, mock_trafilatura, web_skill):
         """Test obsługi timeoutu."""
         mock_trafilatura.fetch_url.return_value = None
 
-        with patch("venom_core.execution.skills.web_skill.requests.get") as mock_get:
-            from requests.exceptions import Timeout
+        # Mock httpx.TimeoutException
+        import httpx
 
-            mock_get.side_effect = Timeout("Timeout")
+        mock_httpx.TimeoutException = httpx.TimeoutException
+        mock_httpx.get.side_effect = httpx.TimeoutException("Timeout")
 
-            result = web_skill.scrape_text("https://example.com")
+        result = web_skill.scrape_text("https://example.com")
 
-            assert "Przekroczono limit czasu" in result
+        assert "Przekroczono limit czasu" in result
 
     @patch("venom_core.execution.skills.web_skill.DDGS")
     @patch.object(WebSearchSkill, "scrape_text")

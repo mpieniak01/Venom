@@ -125,9 +125,7 @@ class WebSearchSkill:
                 f"Trafilatura nie zwróciła wyników dla {url}, próbuję BeautifulSoup"
             )
 
-            import requests
-
-            response = requests.get(url, timeout=10)
+            response = httpx.get(url, timeout=10, follow_redirects=True)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, "html.parser")
@@ -155,10 +153,10 @@ class WebSearchSkill:
             )
             return f"Treść ze strony {url}:\n\n{text}"
 
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.error(f"Timeout podczas pobierania {url}")
             return f"Przekroczono limit czasu podczas pobierania {url}"
-        except requests.exceptions.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error(f"Błąd HTTP podczas pobierania {url}: {e}")
             return f"Błąd HTTP podczas pobierania {url}: {e.response.status_code}"
         except Exception as e:

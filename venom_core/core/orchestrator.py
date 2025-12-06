@@ -127,6 +127,11 @@ class Orchestrator:
             task_id: ID zadania do wykonania
             request: Oryginalne żądanie (z obrazami jeśli są)
         """
+        # Inicjalizuj zmienne dla error handling
+        context = request.content
+        intent = "UNKNOWN"
+        result = ""
+
         try:
             # Pobierz zadanie
             task = self.state_manager.get_task(task_id)
@@ -244,8 +249,8 @@ class Orchestrator:
             # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone)
             await self._save_task_lesson(
                 task_id=task_id,
-                context=context if "context" in locals() else request.content,
-                intent=intent if "intent" in locals() else "UNKNOWN",
+                context=context,
+                intent=intent,
                 result=f"Błąd: {str(e)}",
                 success=False,
                 error=str(e),

@@ -51,6 +51,7 @@ opencv-python-headless  # Wersja "headless" jest bezpieczniejsza dla WSL2/Server
 
 duckduckgo-search>=6.0  # Wyszukiwanie (wersja 6+ ma zmienione API, Venom musi to uwzględnić)
 beautifulsoup4          # Parsowanie HTML
+trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż BS4)
 
 
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---

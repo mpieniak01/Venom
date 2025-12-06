@@ -1,11 +1,28 @@
 """Testy dla modułu API - WebSocket i metryki."""
 
-import asyncio
-
 import pytest
 
 from venom_core.api.stream import ConnectionManager, Event, EventBroadcaster, EventType
 from venom_core.core.metrics import MetricsCollector
+
+
+class MockWebSocket:
+    """Mock WebSocket object for testing."""
+
+    def __init__(self, should_fail=False):
+        self.should_fail = should_fail
+        self.messages_sent = []
+        self.closed = False
+
+    async def accept(self):
+        """Mock accept method."""
+        pass
+
+    async def send_text(self, message):
+        """Mock send_text method."""
+        if self.should_fail:
+            raise Exception("WebSocket send failed")
+        self.messages_sent.append(message)
 
 
 class TestConnectionManager:
@@ -26,6 +43,78 @@ class TestConnectionManager:
         await manager.broadcast(event)
 
         assert len(manager.active_connections) == 0
+
+    @pytest.mark.asyncio
+    async def test_connect_websocket(self):
+        """Test dodawania połączenia WebSocket."""
+        manager = ConnectionManager()
+        mock_ws = MockWebSocket()
+
+        await manager.connect(mock_ws)
+
+        assert len(manager.active_connections) == 1
+        assert mock_ws in manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_disconnect_websocket(self):
+        """Test usuwania połączenia WebSocket."""
+        manager = ConnectionManager()
+        mock_ws = MockWebSocket()
+
+        await manager.connect(mock_ws)
+        assert len(manager.active_connections) == 1
+
+        await manager.disconnect(mock_ws)
+        assert len(manager.active_connections) == 0
+
+    @pytest.mark.asyncio
+    async def test_broadcast_to_connected_clients(self):
+        """Test broadcastu do podłączonych klientów."""
+        manager = ConnectionManager()
+        mock_ws1 = MockWebSocket()
+        mock_ws2 = MockWebSocket()
+
+        await manager.connect(mock_ws1)
+        await manager.connect(mock_ws2)
+
+        event = Event(
+            type=EventType.AGENT_ACTION,
+            message="Test broadcast",
+            timestamp="2023-01-01T00:00:00",
+        )
+
+        await manager.broadcast(event)
+
+        # Oba WebSockety powinny otrzymać wiadomość
+        assert len(mock_ws1.messages_sent) == 1
+        assert len(mock_ws2.messages_sent) == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_handles_failed_connections(self):
+        """Test obsługi błędów podczas broadcastu."""
+        manager = ConnectionManager()
+        mock_ws_good = MockWebSocket()
+        mock_ws_bad = MockWebSocket(should_fail=True)
+
+        await manager.connect(mock_ws_good)
+        await manager.connect(mock_ws_bad)
+
+        assert len(manager.active_connections) == 2
+
+        event = Event(
+            type=EventType.SYSTEM_LOG,
+            message="Test message",
+            timestamp="2023-01-01T00:00:00",
+        )
+
+        await manager.broadcast(event)
+
+        # Zepsute połączenie powinno zostać usunięte
+        assert len(manager.active_connections) == 1
+        assert mock_ws_bad not in manager.active_connections
+        assert mock_ws_good in manager.active_connections
+        # Dobre połączenie powinno otrzymać wiadomość
+        assert len(mock_ws_good.messages_sent) == 1
 
 
 class TestEventBroadcaster:

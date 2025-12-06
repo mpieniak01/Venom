@@ -15,6 +15,52 @@ class VenomDashboard {
         this.initWebSocket();
         this.initEventHandlers();
         this.startMetricsPolling();
+        this.initNotificationContainer();
+    }
+
+    initNotificationContainer() {
+        // Create notification container for toast messages
+        const container = document.createElement('div');
+        container.id = 'notification-container';
+        container.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        `;
+        document.body.appendChild(container);
+    }
+
+    showNotification(message, type = 'info') {
+        const container = document.getElementById('notification-container');
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.style.cssText = `
+            background-color: ${type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981'};
+            color: white;
+            padding: 12px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            min-width: 250px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease-out;
+        `;
+        notification.textContent = message;
+        
+        container.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.3s ease-out';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 5000);
     }
 
     initElements() {
@@ -97,7 +143,7 @@ class VenomDashboard {
     }
 
     handleWebSocketMessage(data) {
-        const { type, agent, message, timestamp, data: eventData } = data;
+        const { type, agent, message, data: eventData } = data;
         
         // Add to live feed
         const logLevel = this.getLogLevel(type);
@@ -190,7 +236,7 @@ class VenomDashboard {
         logEntry.className = `log-entry ${level}`;
         
         const now = new Date();
-        const timestamp = now.toLocaleTimeString('en-US');
+        const timestamp = now.toLocaleTimeString('pl-PL');
         
         const timestampSpan = document.createElement('span');
         timestampSpan.className = 'timestamp';
@@ -236,13 +282,17 @@ class VenomDashboard {
 
     updateTaskList() {
         if (this.tasks.size === 0) {
-            this.elements.taskList.innerHTML = '<p class="empty-state">No active tasks</p>';
+            // Brak aktywnych zadań
+            this.elements.taskList.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
             return;
         }
 
+        // Clear task list
+        this.elements.taskList.innerHTML = '';
+        
         const tasksArray = Array.from(this.tasks.values()).reverse();
         
-        this.elements.taskList.innerHTML = tasksArray.map(task => {
+        tasksArray.forEach(task => {
             const statusEmoji = {
                 'PENDING': '⏳',
                 'PROCESSING': '⚙️',
@@ -253,16 +303,24 @@ class VenomDashboard {
             const statusClass = task.status.toLowerCase();
             const truncatedContent = task.content.substring(0, this.TASK_CONTENT_TRUNCATE_LENGTH);
             
-            // Escape HTML for display
-            const escapedContent = this.escapeHtml(truncatedContent);
+            // Create task item using DOM methods
+            const taskItem = document.createElement('div');
+            taskItem.className = `task-item ${statusClass}`;
             
-            return `
-                <div class="task-item ${statusClass}">
-                    <div><strong>${statusEmoji} ${escapedContent}...</strong></div>
-                    <div class="task-status">Status: ${task.status}</div>
-                </div>
-            `;
-        }).join('');
+            const contentDiv = document.createElement('div');
+            const strong = document.createElement('strong');
+            strong.textContent = `${statusEmoji} ${truncatedContent}...`;
+            contentDiv.appendChild(strong);
+            
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'task-status';
+            statusDiv.textContent = `Status: ${task.status}`;
+            
+            taskItem.appendChild(contentDiv);
+            taskItem.appendChild(statusDiv);
+            
+            this.elements.taskList.appendChild(taskItem);
+        });
     }
 
     initEventHandlers() {
@@ -284,7 +342,7 @@ class VenomDashboard {
         const content = this.elements.taskInput.value.trim();
         
         if (!content) {
-            alert('Please enter task content');
+            this.showNotification('Wprowadź treść zadania', 'warning');
             return;
         }
 
@@ -314,11 +372,12 @@ class VenomDashboard {
             this.elements.taskInput.value = '';
             
             this.addLogEntry('info', `Task sent: ${result.task_id}`);
+            this.showNotification('Zadanie wysłane pomyślnie', 'success');
             
         } catch (error) {
             console.error('Error sending task:', error);
             this.addLogEntry('error', `Cannot send task: ${error.message}`);
-            alert('Error sending task. Check console.');
+            this.showNotification('Błąd wysyłania zadania. Sprawdź konsolę.', 'error');
         } finally {
             this.elements.sendButton.disabled = false;
         }

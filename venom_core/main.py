@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
-from venom_core.core.metrics import metrics_collector
+from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -33,6 +33,9 @@ async def lifespan(app: FastAPI):
     global vector_store
 
     # Startup
+    # Inicjalizuj MetricsCollector
+    init_metrics_collector()
+
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
     workspace_path.mkdir(parents=True, exist_ok=True)

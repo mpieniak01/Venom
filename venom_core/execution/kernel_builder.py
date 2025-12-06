@@ -47,7 +47,7 @@ class KernelBuilder:
 
             # Utwórz klienta OpenAI z customowym endpoint
             async_client = AsyncOpenAI(
-                api_key="venom-local",  # Dummy key dla lokalnych serwerów
+                api_key=self.settings.LLM_LOCAL_API_KEY,  # Konfigurowalny dummy key
                 base_url=self.settings.LLM_LOCAL_ENDPOINT,
             )
 

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure"
     LLM_LOCAL_ENDPOINT: str = "http://localhost:11434/v1"  # Ollama/vLLM
     LLM_MODEL_NAME: str = "phi3:latest"
+    LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
 
 

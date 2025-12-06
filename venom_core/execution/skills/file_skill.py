@@ -16,10 +16,10 @@ class FileSkill:
     """
     Skill do bezpiecznych operacji plikowych.
     Wszystkie operacje są ograniczone do WORKSPACE_ROOT.
-    
+
     UWAGA: Metody tego skill nie są thread-safe. System Venom jest zaprojektowany
     do sekwencyjnego przetwarzania zadań przez Orchestrator. Jeśli wiele agentów
-    próbowałoby jednocześnie zapisywać do tego samego pliku, może dojść do 
+    próbowałoby jednocześnie zapisywać do tego samego pliku, może dojść do
     race conditions. W przyszłości można dodać file locking używając fcntl/msvcrt.
     """
 
@@ -73,7 +73,9 @@ class FileSkill:
             try:
                 real_path.relative_to(self.workspace_root)
             except ValueError:
-                error_msg = f"Odmowa dostępu: symlink '{file_path}' wskazuje poza workspace"
+                error_msg = (
+                    f"Odmowa dostępu: symlink '{file_path}' wskazuje poza workspace"
+                )
                 logger.error(error_msg)
                 raise SecurityError(error_msg)
 
@@ -190,7 +192,7 @@ class FileSkill:
 
         Returns:
             Lista plików i katalogów w formacie tekstowym.
-            UWAGA: Listowanie jest płaskie (non-recursive) - pokazuje tylko 
+            UWAGA: Listowanie jest płaskie (non-recursive) - pokazuje tylko
             bezpośrednie elementy podanego katalogu, bez zagłębiania się w podkatalogi.
 
         Raises:

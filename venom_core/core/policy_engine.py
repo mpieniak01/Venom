@@ -115,7 +115,9 @@ class PolicyEngine:
 
         # Wykryj definicje funkcji/klas bez docstringów
         # Pattern: def/class następuje po nim brak """ lub '''
-        function_pattern = r"(def\s+\w+\s*\([^)]*\)\s*(?:->.*?)?\s*:(?!\s*(?:\"\"\"|''')))"
+        function_pattern = (
+            r"(def\s+\w+\s*\([^)]*\)\s*(?:->.*?)?\s*:(?!\s*(?:\"\"\"|''')))"
+        )
         class_pattern = r"(class\s+\w+.*?:(?!\s*(?:\"\"\"|''')))"
 
         for pattern, entity_type in [

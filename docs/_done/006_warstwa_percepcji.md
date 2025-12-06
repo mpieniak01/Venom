@@ -1,8 +1,8 @@
 # ZADANIE: 006_PERCEPTION_AND_QUALITY (Oczy i Krytyk) - ✅ COMPLETED
 
-**Status**: ✅ **ZAKOŃCZONE**  
-**Data zakończenia**: 2025-12-06  
-**Kontekst:** Warstwa Percepcji (Perception Layer) i Agentów (Agents Layer)  
+**Status**: ✅ **ZAKOŃCZONE**
+**Data zakończenia**: 2025-12-06
+**Kontekst:** Warstwa Percepcji (Perception Layer) i Agentów (Agents Layer)
 **Cel:** Przekształcenie Venoma z systemu tekstowego w system multimodalny (widzący) oraz wdrożenie pętli samokorekty kodu (Code Review).
 
 ---
@@ -51,20 +51,20 @@
 1. ✅ **Wizja:**
    - Eyes może analizować obrazy przez lokalne modele (Ollama/LLaVA) lub OpenAI GPT-4o
    - Przesłanie zrzutu ekranu z błędem skutkuje diagnozą problemu
-   
+
 2. ✅ **Code Review:**
    - PolicyEngine wykrywa hardcoded credentials (API keys, hasła)
    - CriticAgent ocenia kod i wymaga użycia zmiennych środowiskowych
-   
+
 3. ✅ **Samonaprawa:**
    - Pętla Coder-Critic działa z maksymalnie 2 próbami naprawy
    - Każda iteracja jest logowana w state_manager
    - Kod trafia do użytkownika tylko po zaakceptowaniu lub wyczerpaniu limitu
-   
+
 4. ✅ **Bezpieczeństwo:**
    - PolicyEngine blokuje niebezpieczne komendy
    - CodeQL: 0 alerts - brak wykrytych luk bezpieczeństwa
-   
+
 5. ✅ **Testy:**
    - 17 testów PolicyEngine (wykrywanie kluczy, komend, docstringów)
    - 12 testów CriticAgent (zatwierdzanie, odrzucanie, obsługa błędów)
@@ -86,7 +86,7 @@ pytest tests/test_policy_engine.py tests/test_critic_agent.py tests/test_coder_c
   - Wykrywanie niebezpiecznych komend (rm -rf, fork bomb, mkfs)
   - Sprawdzanie docstringów
   - Obsługa czystego kodu
-  
+
 - **CriticAgent**: 12 testów
   - Zatwierdzanie poprawnego kodu
   - Odrzucanie kodu z lukami
@@ -94,7 +94,7 @@ pytest tests/test_policy_engine.py tests/test_critic_agent.py tests/test_coder_c
   - Ekstrakcja kodu z kontekstu
   - Łączenie naruszeń PolicyEngine + LLM
   - Obsługa błędów LLM
-  
+
 - **Coder-Critic Loop**: 9 testów
   - Zatwierdzenie w pierwszej próbie
   - Odrzucenie, naprawa i zatwierdzenie
@@ -146,7 +146,7 @@ from venom_core.perception.eyes import Eyes
 
 eyes = Eyes()
 description = await eyes.analyze_image(
-    "screenshot.png", 
+    "screenshot.png",
     prompt="Co jest nie tak na tym obrazie?"
 )
 ```

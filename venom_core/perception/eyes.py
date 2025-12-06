@@ -14,15 +14,19 @@ logger = get_logger(__name__)
 class Eyes:
     """Warstwa percepcji wizualnej - analiza obrazów."""
 
+    # Nazwy modeli vision do wykrycia w lokalnych modelach
+    VISION_MODEL_NAMES = ["llava", "vision", "moondream", "bakllava"]
+
     def __init__(self):
         """Inicjalizacja Eyes z konfiguracją hybrid (local-first)."""
         self.use_openai = bool(SETTINGS.OPENAI_API_KEY)
         self.local_vision_available = self._check_local_vision()
+        self.local_vision_model = None  # Będzie ustawiony jeśli dostępny
 
         if self.use_openai:
             logger.info("Eyes: Używam OpenAI GPT-4o dla vision")
         elif self.local_vision_available:
-            logger.info("Eyes: Używam lokalnego modelu vision")
+            logger.info(f"Eyes: Używam lokalnego modelu vision: {self.local_vision_model}")
         else:
             logger.warning("Eyes: Brak dostępnych modeli vision (ani local, ani cloud)")
 
@@ -37,11 +41,13 @@ class Eyes:
             )
             if response.status_code == 200:
                 models = response.json().get("models", [])
-                # Szukaj modeli vision (llava, moondream, bakllava itp.)
-                vision_models = [
-                    m for m in models if any(v in m.get("name", "").lower() for v in ["llava", "vision", "moondream", "bakllava"])
-                ]
-                return len(vision_models) > 0
+                # Szukaj modeli vision
+                for model in models:
+                    model_name = model.get("name", "").lower()
+                    for vision_name in self.VISION_MODEL_NAMES:
+                        if vision_name in model_name:
+                            self.local_vision_model = model.get("name")
+                            return True
         except Exception as e:
             logger.debug(f"Nie można sprawdzić lokalnych modeli vision: {e}")
 
@@ -159,8 +165,11 @@ class Eyes:
             # Ollama API dla vision
             endpoint = f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/generate"
 
+            # Użyj wykrytego modelu lub fallback do llava
+            model_name = self.local_vision_model or "llava"
+
             payload = {
-                "model": "llava",  # lub inny lokalny model vision
+                "model": model_name,
                 "prompt": prompt,
                 "images": [image_base64],
                 "stream": False,
@@ -171,7 +180,7 @@ class Eyes:
                 response.raise_for_status()
                 result = response.json()
                 description = result.get("response", "")
-                logger.info("Lokalny vision model: analiza zakończona")
+                logger.info(f"Lokalny vision model ({model_name}): analiza zakończona")
                 return description
 
         except Exception as e:

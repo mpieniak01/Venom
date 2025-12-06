@@ -231,14 +231,16 @@ class Orchestrator:
                 self.state_manager.add_log(
                     task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
                 )
+                # Ogranicz długość poprzedniego kodu w promptcie dla wydajności
+                code_preview = generated_code[:500] + "..." if len(generated_code) > 500 else generated_code
                 repair_prompt = f"""FEEDBACK OD KRYTYKA:
-{critic_feedback}
+{critic_feedback[:500]}
 
 ORYGINALNE ŻĄDANIE UŻYTKOWNIKA:
-{user_request}
+{user_request[:500]}
 
-POPRZEDNI KOD:
-{generated_code}
+POPRZEDNI KOD (fragment):
+{code_preview}
 
 Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 generated_code = await coder.process(repair_prompt)
@@ -272,7 +274,9 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 logger.warning(
                     f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
                 )
-                return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{critic_feedback}\n\n---\n\n{generated_code}"
+                # Ogranicz rozmiar feedbacku w finalnej wiadomości
+                feedback_summary = critic_feedback[:500] + "..." if len(critic_feedback) > 500 else critic_feedback
+                return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa
         return generated_code or "Błąd: nie udało się wygenerować kodu"

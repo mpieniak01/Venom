@@ -7,6 +7,7 @@ from semantic_kernel import Kernel
 
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
+from venom_core.agents.librarian import LibrarianAgent
 from venom_core.core.dispatcher import TaskDispatcher
 
 
@@ -34,16 +35,28 @@ def mock_chat_agent():
 
 
 @pytest.fixture
-def dispatcher_with_mocked_agents(mock_kernel, mock_coder_agent, mock_chat_agent):
+def mock_librarian_agent():
+    """Fixture dla mockowego LibrarianAgent."""
+    agent = MagicMock(spec=LibrarianAgent)
+    agent.process = AsyncMock()
+    return agent
+
+
+@pytest.fixture
+def dispatcher_with_mocked_agents(
+    mock_kernel, mock_coder_agent, mock_chat_agent, mock_librarian_agent
+):
     """Fixture dla TaskDispatcher z zamockowanymi agentami."""
     dispatcher = TaskDispatcher(mock_kernel)
     # Zamień prawdziwe agenty na mocki
     dispatcher.coder_agent = mock_coder_agent
     dispatcher.chat_agent = mock_chat_agent
+    dispatcher.librarian_agent = mock_librarian_agent
     dispatcher.agent_map = {
         "CODE_GENERATION": mock_coder_agent,
         "GENERAL_CHAT": mock_chat_agent,
-        "KNOWLEDGE_SEARCH": mock_chat_agent,
+        "KNOWLEDGE_SEARCH": mock_librarian_agent,
+        "FILE_OPERATION": mock_librarian_agent,
     }
     return dispatcher
 
@@ -54,9 +67,11 @@ def test_dispatcher_initialization(mock_kernel):
     assert dispatcher.kernel == mock_kernel
     assert isinstance(dispatcher.coder_agent, CoderAgent)
     assert isinstance(dispatcher.chat_agent, ChatAgent)
+    assert isinstance(dispatcher.librarian_agent, LibrarianAgent)
     assert "CODE_GENERATION" in dispatcher.agent_map
     assert "GENERAL_CHAT" in dispatcher.agent_map
     assert "KNOWLEDGE_SEARCH" in dispatcher.agent_map
+    assert "FILE_OPERATION" in dispatcher.agent_map
 
 
 def test_dispatcher_agent_map_configuration(mock_kernel):
@@ -64,7 +79,8 @@ def test_dispatcher_agent_map_configuration(mock_kernel):
     dispatcher = TaskDispatcher(mock_kernel)
     assert dispatcher.agent_map["CODE_GENERATION"] == dispatcher.coder_agent
     assert dispatcher.agent_map["GENERAL_CHAT"] == dispatcher.chat_agent
-    assert dispatcher.agent_map["KNOWLEDGE_SEARCH"] == dispatcher.chat_agent
+    assert dispatcher.agent_map["KNOWLEDGE_SEARCH"] == dispatcher.librarian_agent
+    assert dispatcher.agent_map["FILE_OPERATION"] == dispatcher.librarian_agent
 
 
 @pytest.mark.asyncio
@@ -99,17 +115,32 @@ async def test_dispatcher_routes_general_chat(
 
 @pytest.mark.asyncio
 async def test_dispatcher_routes_knowledge_search(
-    dispatcher_with_mocked_agents, mock_chat_agent
+    dispatcher_with_mocked_agents, mock_librarian_agent
 ):
-    """Test kierowania zadań KNOWLEDGE_SEARCH do ChatAgent."""
-    mock_chat_agent.process.return_value = "GraphRAG to..."
+    """Test kierowania zadań KNOWLEDGE_SEARCH do LibrarianAgent."""
+    mock_librarian_agent.process.return_value = "Lista plików: test.py"
 
     result = await dispatcher_with_mocked_agents.dispatch(
-        "KNOWLEDGE_SEARCH", "Co to jest GraphRAG?"
+        "KNOWLEDGE_SEARCH", "Jakie mam pliki?"
     )
 
-    assert result == "GraphRAG to..."
-    mock_chat_agent.process.assert_called_once_with("Co to jest GraphRAG?")
+    assert result == "Lista plików: test.py"
+    mock_librarian_agent.process.assert_called_once_with("Jakie mam pliki?")
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_routes_file_operation(
+    dispatcher_with_mocked_agents, mock_librarian_agent
+):
+    """Test kierowania zadań FILE_OPERATION do LibrarianAgent."""
+    mock_librarian_agent.process.return_value = "Plik zapisany: test.py"
+
+    result = await dispatcher_with_mocked_agents.dispatch(
+        "FILE_OPERATION", "Zapisz plik test.py"
+    )
+
+    assert result == "Plik zapisany: test.py"
+    mock_librarian_agent.process.assert_called_once_with("Zapisz plik test.py")
 
 
 @pytest.mark.asyncio

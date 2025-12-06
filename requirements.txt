@@ -17,6 +17,7 @@ uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności
 semantic-kernel>=1.9.0  # Microsoft Semantic Kernel (Wersja 1.x stabilna)
 aiohttp                 # Async HTTP (wymagane przez wiele pluginów SK)
 httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)
+aiofiles                # Async file I/O (zapobiega blokowaniu event loopa FastAPI)
 
 
 # --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---

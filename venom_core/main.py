@@ -375,6 +375,33 @@ async def get_metrics():
 # --- Graph & Lessons API Endpoints ---
 
 
+def validate_file_path(file_path: str, workspace_root: Path) -> None:
+    """
+    Waliduje ścieżkę do pliku, zapobiegając path traversal attacks.
+
+    Args:
+        file_path: Ścieżka do walidacji
+        workspace_root: Katalog workspace
+
+    Raises:
+        HTTPException: Jeśli ścieżka jest nieprawidłowa
+    """
+    try:
+        # Normalizuj ścieżkę i sprawdź czy zawiera ..
+        if ".." in file_path or file_path.startswith("/"):
+            raise HTTPException(
+                status_code=400, detail="Nieprawidłowa ścieżka do pliku"
+            )
+
+        # Zweryfikuj że ścieżka jest w workspace
+        full_path = (workspace_root / file_path).resolve()
+
+        if not str(full_path).startswith(str(workspace_root)):
+            raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+
+
 @app.get("/api/v1/graph/summary")
 async def get_graph_summary():
     """
@@ -416,23 +443,8 @@ async def get_file_graph_info(file_path: str):
 
     try:
         # Walidacja ścieżki - zapobieganie path traversal
-        from pathlib import Path
-
-        try:
-            # Normalizuj ścieżkę i sprawdź czy zawiera ..
-            if ".." in file_path or file_path.startswith("/"):
-                raise HTTPException(
-                    status_code=400, detail="Nieprawidłowa ścieżka do pliku"
-                )
-
-            # Zweryfikuj że ścieżka jest w workspace
-            workspace_root = Path(graph_store.workspace_root).resolve()
-            full_path = (workspace_root / file_path).resolve()
-
-            if not str(full_path).startswith(str(workspace_root)):
-                raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+        workspace_root = Path(graph_store.workspace_root).resolve()
+        validate_file_path(file_path, workspace_root)
 
         info = graph_store.get_file_info(file_path)
 
@@ -468,23 +480,8 @@ async def get_impact_analysis(file_path: str):
 
     try:
         # Walidacja ścieżki - zapobieganie path traversal
-        from pathlib import Path
-
-        try:
-            # Normalizuj ścieżkę i sprawdź czy zawiera ..
-            if ".." in file_path or file_path.startswith("/"):
-                raise HTTPException(
-                    status_code=400, detail="Nieprawidłowa ścieżka do pliku"
-                )
-
-            # Zweryfikuj że ścieżka jest w workspace
-            workspace_root = Path(graph_store.workspace_root).resolve()
-            full_path = (workspace_root / file_path).resolve()
-
-            if not str(full_path).startswith(str(workspace_root)):
-                raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+        workspace_root = Path(graph_store.workspace_root).resolve()
+        validate_file_path(file_path, workspace_root)
 
         impact = graph_store.get_impact_analysis(file_path)
 

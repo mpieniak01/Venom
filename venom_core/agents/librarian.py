@@ -81,7 +81,7 @@ Akcja: Użyj read_file("config.json") i pokaż zawartość"""
 
             # Wywołaj model z możliwością auto-wywołania funkcji
             response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=None
+                chat_history=chat_history
             )
 
             result = str(response).strip()

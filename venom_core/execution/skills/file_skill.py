@@ -182,9 +182,10 @@ class FileSkill:
             # Zbierz pliki i katalogi
             items = []
             for item in sorted(safe_path.iterdir()):
+                stat_result = item.stat()
                 item_type = "katalog" if item.is_dir() else "plik"
                 relative_path = item.relative_to(self.workspace_root)
-                size = item.stat().st_size if item.is_file() else "-"
+                size = stat_result.st_size if item.is_file() else "-"
                 items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
             if not items:

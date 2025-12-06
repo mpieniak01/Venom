@@ -2,7 +2,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
-import re
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -179,16 +178,12 @@ async def ingest_to_memory(request: MemoryIngestRequest):
             chunk_text=True,
         )
 
-        # Wyciągnij liczbę fragmentów z wyniku
-        match = re.search(r"(\d+)", result)
-        chunks_count = int(match.group(1)) if match else 1
-
-        logger.info(f"Ingestion pomyślny: {chunks_count} fragmentów do '{request.collection}'")
+        logger.info(f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'")
 
         return MemoryIngestResponse(
             status="success",
-            message=result,
-            chunks_count=chunks_count,
+            message=result["message"],
+            chunks_count=result["chunks_count"],
         )
 
     except HTTPException:

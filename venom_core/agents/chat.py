@@ -83,7 +83,7 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
 
             # Włącz automatyczne wywoływanie funkcji (RAG)
             settings = OpenAIChatPromptExecutionSettings(
-                function_choice_behavior="auto"
+                function_choice_behavior=FunctionChoiceBehavior.Auto()
             )
 
             # Wywołaj model z możliwością auto-wywołania funkcji

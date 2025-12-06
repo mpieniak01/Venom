@@ -120,8 +120,15 @@ class Orchestrator:
             # Jeśli to CODE_GENERATION, użyj pętli Coder-Critic
             if intent == "CODE_GENERATION":
                 result = await self._code_generation_with_review(task_id, context)
+            # Jeśli to COMPLEX_PLANNING, deleguj do Architekta
+            elif intent == "COMPLEX_PLANNING":
+                self.state_manager.add_log(
+                    task_id,
+                    f"Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+                )
+                result = await self.task_dispatcher.dispatch(intent, context)
             else:
-                # Dla innych intencji - standardowy przepływ
+                # Dla innych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH) - standardowy przepływ
                 result = await self.task_dispatcher.dispatch(intent, context)
 
             # Zaloguj które agent przejął zadanie

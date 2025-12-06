@@ -64,7 +64,7 @@ app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 web_dir = Path(__file__).parent.parent / "web"
 if web_dir.exists():
     app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
-    logger.info(f"Pliki statyczne serwowane z: {web_dir / 'static'}")
+    logger.info(f"Static files served from: {web_dir / 'static'}")
 
 
 @app.get("/")
@@ -86,24 +86,24 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await connection_manager.connect(websocket)
     try:
-        # Wyślij welcome message
+        # Send welcome message
         await event_broadcaster.broadcast_event(
             event_type=EventType.SYSTEM_LOG,
-            message="Połączono z Venom Telemetry",
+            message="Connected to Venom Telemetry",
             data={"level": "INFO"},
         )
 
-        # Trzymaj połączenie otwarte i słuchaj wiadomości od klienta
+        # Keep connection open and listen for client messages
         while True:
-            # Odbieraj wiadomości od klienta (opcjonalnie)
+            # Receive messages from client (optional)
             data = await websocket.receive_text()
-            logger.debug(f"Otrzymano od klienta: {data}")
+            logger.debug(f"Received from client: {data}")
 
     except WebSocketDisconnect:
         await connection_manager.disconnect(websocket)
-        logger.info("Klient rozłączył WebSocket")
+        logger.info("Client disconnected WebSocket")
     except Exception as e:
-        logger.error(f"Błąd WebSocket: {e}")
+        logger.error(f"WebSocket error: {e}")
         await connection_manager.disconnect(websocket)
 
 

@@ -30,7 +30,7 @@ class VenomTask(BaseModel):
     logs: List[str] = Field(default_factory=list)
     context_history: Dict[str, Any] = Field(
         default_factory=dict
-    )  # Historia kontekstu dla przepływu między krokami
+    )  # Słownik kontekstu dla przekazywania danych między krokami wykonania
 
 
 class TaskRequest(BaseModel):

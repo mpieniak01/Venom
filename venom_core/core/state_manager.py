@@ -3,13 +3,16 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from uuid import UUID
 
 from venom_core.core.models import TaskStatus, VenomTask
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Maksymalny rozmiar pliku stanu w bajtach (10 MB)
+MAX_STATE_FILE_SIZE = 10 * 1024 * 1024
 
 
 class StateManager:
@@ -25,6 +28,7 @@ class StateManager:
         self._tasks: Dict[UUID, VenomTask] = {}
         self._state_file_path = Path(state_file_path)
         self._save_lock = asyncio.Lock()
+        self._pending_saves: Set[asyncio.Task] = set()
 
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -41,6 +45,15 @@ class StateManager:
             return
 
         try:
+            # Sprawdź rozmiar pliku przed ładowaniem
+            file_size = self._state_file_path.stat().st_size
+            if file_size > MAX_STATE_FILE_SIZE:
+                logger.error(
+                    f"Plik stanu jest zbyt duży ({file_size} bajtów, maksimum {MAX_STATE_FILE_SIZE}). "
+                    f"Rozpoczynanie z pustym stanem."
+                )
+                return
+
             with open(self._state_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
@@ -82,13 +95,24 @@ class StateManager:
             # Próbuj uzyskać aktywny event loop
             try:
                 asyncio.get_running_loop()
-                # Jeśli loop działa, zaplanuj zapis
-                asyncio.create_task(self._save())
+                # Jeśli loop działa, zaplanuj zapis i śledź zadanie
+                task = asyncio.create_task(self._save())
+                self._pending_saves.add(task)
+                task.add_done_callback(self._pending_saves.discard)
             except RuntimeError:
                 # Brak uruchomionego loop - pomiń automatyczny zapis
                 logger.debug("Brak event loop - pomijam automatyczny zapis stanu")
         except Exception as e:
             logger.error(f"Błąd podczas planowania zapisu: {e}")
+
+    async def shutdown(self) -> None:
+        """Czeka na zakończenie wszystkich oczekujących zapisów stanu."""
+        if self._pending_saves:
+            logger.info(
+                f"Oczekiwanie na zakończenie {len(self._pending_saves)} zapisów stanu..."
+            )
+            await asyncio.gather(*self._pending_saves, return_exceptions=True)
+            logger.info("Wszystkie zapisy stanu zakończone")
 
     def create_task(self, content: str) -> VenomTask:
         """

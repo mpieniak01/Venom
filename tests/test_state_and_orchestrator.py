@@ -153,6 +153,43 @@ def test_state_manager_load_nonexistent_file():
     assert state_manager._tasks == {}
 
 
+def test_state_manager_load_oversized_file():
+    """Test ładowania zbyt dużego pliku stanu."""
+    from venom_core.core.state_manager import MAX_STATE_FILE_SIZE
+
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
+        # Utwórz plik większy niż limit
+        large_data = "x" * (MAX_STATE_FILE_SIZE + 1000)
+        f.write(large_data)
+        temp_path = f.name
+
+    try:
+        # Powinien załadować pusty stan i zalogować błąd
+        state_manager = StateManager(state_file_path=temp_path)
+        assert state_manager._tasks == {}
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_state_manager_shutdown(temp_state_file):
+    """Test metody shutdown - oczekiwanie na zakończenie zapisów."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    # Utwórz kilka zadań, które zaplanują zapisy
+    state_manager.create_task("Task 1")
+    state_manager.create_task("Task 2")
+
+    # Wywołaj shutdown - powinien poczekać na zakończenie zapisów
+    await state_manager.shutdown()
+
+    # Sprawdź czy plik został zapisany
+    assert Path(temp_state_file).exists()
+    with open(temp_state_file, "r") as f:
+        data = json.load(f)
+    assert len(data["tasks"]) == 2
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_task_failure(temp_state_file):
     """Test obsługi błędów w Orchestrator."""

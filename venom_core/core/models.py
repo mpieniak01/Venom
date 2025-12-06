@@ -24,7 +24,7 @@ class VenomTask(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     content: str
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[str] = None
     logs: List[str] = Field(default_factory=list)

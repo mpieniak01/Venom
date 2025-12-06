@@ -161,7 +161,6 @@ class EmbeddingService:
 
     def clear_cache(self):
         """Czyści cache embeddingów."""
-        global _embedding_cache
         _embedding_cache.clear()
         logger.info("Cache embeddingów wyczyszczony")
 

@@ -8,6 +8,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,9 +23,13 @@ TWOJE NARZĘDZIA:
 - list_files: Lista plików i katalogów
 - file_exists: Sprawdzenie czy plik istnieje
 - read_file: Odczyt zawartości pliku
+- memorize: Zapisanie ważnych informacji do pamięci długoterminowej
+- recall: Przywołanie informacji z pamięci
 
 ZASADY:
 - Zawsze używaj dostępnych narzędzi do sprawdzania struktury plików
+- Gdy czytasz ważny plik (dokumentację, konfigurację), rozważ zapisanie jego treści do pamięci używając 'memorize'
+- Przed odpowiedzią możesz sprawdzić pamięć czy nie ma już informacji na ten temat
 - Odpowiadaj jasno i zwięźle
 - Jeśli użytkownik pyta o strukturę, użyj list_files
 - Jeśli użytkownik pyta o konkretny plik, użyj file_exists lub read_file
@@ -38,7 +43,7 @@ Akcja: Użyj list_files(".") i pokaż wynik
 Akcja: Użyj file_exists("test.py") i odpowiedz
 
 Żądanie: "Co jest w pliku config.json?"
-Akcja: Użyj read_file("config.json") i pokaż zawartość"""
+Akcja: Użyj read_file("config.json"), pokaż zawartość i rozważ zapisanie do pamięci jeśli to ważna konfiguracja"""
 
     def __init__(self, kernel: Kernel):
         """
@@ -53,7 +58,11 @@ Akcja: Użyj read_file("config.json") i pokaż zawartość"""
         file_skill = FileSkill()
         self.kernel.add_plugin(file_skill, plugin_name="FileSkill")
 
-        logger.info("LibrarianAgent zainicjalizowany z FileSkill")
+        # Zarejestruj MemorySkill
+        memory_skill = MemorySkill()
+        self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
+
+        logger.info("LibrarianAgent zainicjalizowany z FileSkill i MemorySkill")
 
     async def process(self, input_text: str) -> str:
         """

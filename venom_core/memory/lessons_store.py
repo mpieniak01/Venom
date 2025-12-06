@@ -115,6 +115,7 @@ class LessonsStore:
         self,
         storage_path: str = None,
         vector_store=None,
+        auto_save: bool = True,
     ):
         """
         Inicjalizacja LessonsStore.
@@ -122,12 +123,14 @@ class LessonsStore:
         Args:
             storage_path: Ścieżka do pliku z lekcjami (domyślnie data/memory/lessons.json)
             vector_store: Instancja VectorStore do indeksowania (opcjonalne)
+            auto_save: Czy automatycznie zapisywać po każdej zmianie (domyślnie True)
         """
         self.storage_path = Path(storage_path or f"{SETTINGS.MEMORY_ROOT}/lessons.json")
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.vector_store = vector_store
         self.lessons: Dict[str, Lesson] = {}
+        self.auto_save = auto_save
 
         # Ładuj istniejące lekcje
         self.load_lessons()
@@ -187,8 +190,9 @@ class LessonsStore:
             except Exception as e:
                 logger.warning(f"Nie udało się zaindeksować lekcji: {e}")
 
-        # Zapisz na dysku
-        self.save_lessons()
+        # Zapisz na dysku jeśli auto_save włączone
+        if self.auto_save:
+            self.save_lessons()
 
         logger.info(f"Dodano nową lekcję: {lesson.lesson_id}")
         return lesson
@@ -303,12 +307,21 @@ class LessonsStore:
         """
         if lesson_id in self.lessons:
             del self.lessons[lesson_id]
-            self.save_lessons()
+            if self.auto_save:
+                self.save_lessons()
             logger.info(f"Usunięto lekcję: {lesson_id}")
             return True
 
         logger.warning(f"Nie znaleziono lekcji do usunięcia: {lesson_id}")
         return False
+
+    def flush(self) -> None:
+        """
+        Wymusza zapis lekcji na dysku.
+        Użyteczne gdy auto_save=False i chcemy ręcznie zapisać zmiany.
+        """
+        self.save_lessons()
+        logger.info("Wymuszono zapis lekcji na dysku")
 
     def save_lessons(self) -> None:
         """Zapisuje lekcje do pliku JSON."""

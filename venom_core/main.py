@@ -415,6 +415,25 @@ async def get_file_graph_info(file_path: str):
         raise HTTPException(status_code=503, detail="GraphStore nie jest dostępny")
 
     try:
+        # Walidacja ścieżki - zapobieganie path traversal
+        from pathlib import Path
+
+        try:
+            # Normalizuj ścieżkę i sprawdź czy zawiera ..
+            if ".." in file_path or file_path.startswith("/"):
+                raise HTTPException(
+                    status_code=400, detail="Nieprawidłowa ścieżka do pliku"
+                )
+
+            # Zweryfikuj że ścieżka jest w workspace
+            workspace_root = Path(graph_store.workspace_root).resolve()
+            full_path = (workspace_root / file_path).resolve()
+
+            if not str(full_path).startswith(str(workspace_root)):
+                raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+
         info = graph_store.get_file_info(file_path)
 
         if not info:
@@ -448,6 +467,25 @@ async def get_impact_analysis(file_path: str):
         raise HTTPException(status_code=503, detail="GraphStore nie jest dostępny")
 
     try:
+        # Walidacja ścieżki - zapobieganie path traversal
+        from pathlib import Path
+
+        try:
+            # Normalizuj ścieżkę i sprawdź czy zawiera ..
+            if ".." in file_path or file_path.startswith("/"):
+                raise HTTPException(
+                    status_code=400, detail="Nieprawidłowa ścieżka do pliku"
+                )
+
+            # Zweryfikuj że ścieżka jest w workspace
+            workspace_root = Path(graph_store.workspace_root).resolve()
+            full_path = (workspace_root / file_path).resolve()
+
+            if not str(full_path).startswith(str(workspace_root)):
+                raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+
         impact = graph_store.get_impact_analysis(file_path)
 
         if "error" in impact:
@@ -476,7 +514,7 @@ async def trigger_graph_scan():
         raise HTTPException(status_code=503, detail="GardenerAgent nie jest dostępny")
 
     try:
-        stats = gardener_agent.trigger_manual_scan()
+        stats = await gardener_agent.trigger_manual_scan()
         return {"status": "success", "scan_stats": stats}
     except Exception as e:
         logger.exception("Błąd podczas manualnego skanowania")

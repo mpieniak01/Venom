@@ -1,0 +1,11 @@
+.venv/
+.vscode/
+__pycache__/
+*.py[cod]
+*.pyo
+
+logs/
+workspace/
+data/memory/lessons_learned.json
+
+.env

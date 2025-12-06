@@ -1,0 +1,1 @@
+"""Moduł: state_manager"""

@@ -1,0 +1,1 @@
+"""Moduł: lessons_store"""

@@ -1,0 +1,1 @@
+"""Moduł: git_skill"""

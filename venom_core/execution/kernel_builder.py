@@ -1,0 +1,1 @@
+"""Moduł: kernel_builder"""

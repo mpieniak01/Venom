@@ -1,0 +1,1 @@
+"""Moduł: intent_manager"""

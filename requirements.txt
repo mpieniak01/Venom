@@ -1,0 +1,80 @@
+# VENOM – requirements.txt (v1.1)
+# Zalecany Python: 3.10 lub 3.11 (GraphRAG bywa niestabilny na 3.12)
+# Użyj: pip install -r requirements.txt
+
+# --- VENOM CORE: SYSTEM NERWOWY (Orchestration) ---
+
+pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
+flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
+
+# API / orkiestracja zewnętrzna
+fastapi                 # API Orchestratora
+uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności na WSL2)
+
+
+# --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
+
+semantic-kernel>=1.9.0  # Microsoft Semantic Kernel (Wersja 1.x stabilna)
+aiohttp                 # Async HTTP (wymagane przez wiele pluginów SK)
+httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)
+
+
+# --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---
+
+# UWAGA: Upewnij się, że masz zainstalowane CUDA Toolkit w WSL2 dla wersji -gpu
+onnxruntime-gpu         # Silnik wykonawczy (zmień na 'onnxruntime', jeśli tylko CPU)
+onnx>=1.14.0            # Standard wymiany modeli
+optimum                 # Hugging Face Optimum (Interface do ONNX)
+accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
+protobuf>=3.20.2        # Kluczowe: zapobiega konfliktom między ONNX a innymi libami
+
+
+# --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
+
+graphrag                # Microsoft GraphRAG (Pamięć długotrwała)
+networkx                # Analiza grafów
+lancedb                 # Baza wektorowa (Local-first)
+# uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
+
+
+# --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
+
+transformers            # Obsługa modeli HF / Tokenizacja
+sentence-transformers   # Embeddingi do RAG
+pillow                  # Przetwarzanie obrazów
+timm                    # Modele wizyjne (zależność dla Florence-2)
+opencv-python-headless  # Wersja "headless" jest bezpieczniejsza dla WSL2/Server (brak zależności X11)
+
+
+# --- VENOM ANTENNA: DOSTĘP DO SIECI ---
+
+duckduckgo-search>=6.0  # Wyszukiwanie (wersja 6+ ma zmienione API, Venom musi to uwzględnić)
+beautifulsoup4          # Parsowanie HTML
+
+
+# --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
+
+openai                  # SDK OpenAI (Obsługuje też lokalne serwery zgodne z OpenAI API np. vLLM/Llama.cpp)
+google-generativeai     # Gemini API
+anthropic               # Claude API
+tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT)
+
+
+# --- VENOM INFRASTRUCTURE & UTILS ---
+
+python-dotenv           # Zmienne środowiskowe (.env)
+pydantic>=2.7,<3.0      # Walidacja (Kluczowe: v2 jest wymagane przez SK 1.x)
+numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
+pandas                  # Analiza danych
+colorama                # Kolory w terminalu
+rich                    # Piękne logi i paski postępu
+loguru                  # Nowoczesne logowanie błędów
+tqdm                    # Paski postępu
+
+
+# --- VENOM DEV TOOLS (Jakość Kodu) ---
+
+pytest                  # Testy
+pytest-asyncio          # Obsługa testów asynchronicznych
+ruff                    # Linter (zastępuje flake8/black)
+mypy                    # Statyczne typowanie

@@ -1,0 +1,1 @@
+"""Moduł: file_skill"""

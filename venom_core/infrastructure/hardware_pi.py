@@ -1,0 +1,1 @@
+"""Moduł: hardware_pi"""

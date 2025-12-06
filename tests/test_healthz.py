@@ -1,0 +1,1 @@
+"""Moduł: test_healthz"""

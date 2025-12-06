@@ -15,7 +15,9 @@ logger = get_logger(__name__)
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
 
-    def __init__(self, state_manager: StateManager, intent_manager: IntentManager = None):
+    def __init__(
+        self, state_manager: StateManager, intent_manager: IntentManager = None
+    ):
         """
         Inicjalizacja Orchestrator.
 

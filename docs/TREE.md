@@ -5,6 +5,8 @@
 ├── README.md                    # opis projektu (może być pusty na start)
 │
 ├── docs/                        # wizja, diagramy, notatki
+│   ├── _done/                   # Dokumentacja zadan programistycznych zrealizowanych
+│   ├── _to_do/                  # Dokumentacja zadan programistycznych do realizacji
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_v2.md
 │

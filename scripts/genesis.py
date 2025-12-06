@@ -1,5 +1,3 @@
-import os
-import sys
 from pathlib import Path
 
 # --- STRUKTURA VENOMA v2 ---
@@ -12,9 +10,9 @@ STRUCTURE = {
     "web/static/css": ["app.css"],
     "web/static/js": ["app.js"],
     "tests": ["test_healthz.py", "__init__.py"],
-    "logs": [],                  # katalog na logi Venoma
-    "workspace": [],             # root na workspace (zgodnie z config.WORKSPACE_ROOT)
-    "scripts": [],               # tu trzymamy genesis, migracje, narzędzia CLI
+    "logs": [],  # katalog na logi Venoma
+    "workspace": [],  # root na workspace (zgodnie z config.WORKSPACE_ROOT)
+    "scripts": [],  # tu trzymamy genesis, migracje, narzędzia CLI
     "venom_core": ["__init__.py", "main.py", "config.py"],
     "venom_core/core": [
         "__init__.py",

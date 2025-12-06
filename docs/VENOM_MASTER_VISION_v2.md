@@ -75,21 +75,21 @@ Venom używa jednego standardu modeli lokalnych – **ONNX Runtime**.
 GraphRAG – struktura repo, zależności, wiedza projektowa.
 
 ### 3.3. Warstwa agentów (Agent Services Layer)
-- planner.arch  
-- planner.repo  
-- code.autogen  
-- code.style  
-- test.pytest  
-- test.smoke  
-- git.integrator  
-- docs.writer  
+- planner.arch
+- planner.repo
+- code.autogen
+- code.style
+- test.pytest
+- test.smoke
+- git.integrator
+- docs.writer
 
 ### 3.4. Warstwa wykonawcza (Execution Layer)
 Semantic Kernel – pliki, shell, git, testy.
 
 ### 3.5. Warstwa percepcji (Vision Layer)
-- Florence-2 ONNX – UI vision  
-- YOLO ONNX – physical vision  
+- Florence-2 ONNX – UI vision
+- YOLO ONNX – physical vision
 
 ### 3.6. Warstwa metabolizmu (Performance Layer)
 ONNX Runtime – wykonanie modeli, optymalizacja GPU/CPU.
@@ -122,30 +122,30 @@ Ulepsza:
 - polityki.
 
 ## 6. Pipeline Venoma
-1. Intencja użytkownika  
-2. Orchestrator  
-3. GraphRAG  
-4. (opcjonalnie) Oracle/Web  
-5. planner.arch  
-6. planner.repo  
-7. AutoGen + ONNX  
-8. Phi-3 ONNX  
-9. Semantic Kernel  
-10. Testy  
-11. Git integrator  
-12. GraphRAG update  
-13. Self-Improvement update  
+1. Intencja użytkownika
+2. Orchestrator
+3. GraphRAG
+4. (opcjonalnie) Oracle/Web
+5. planner.arch
+6. planner.repo
+7. AutoGen + ONNX
+8. Phi-3 ONNX
+9. Semantic Kernel
+10. Testy
+11. Git integrator
+12. GraphRAG update
+13. Self-Improvement update
 
 ## 7. Polityki Venoma
-- polityka wiedzy  
-- polityka repo  
-- polityka autonomii  
-- user ethics  
-- polityki testów  
-- bezpieczeństwo  
+- polityka wiedzy
+- polityka repo
+- polityka autonomii
+- user ethics
+- polityki testów
+- bezpieczeństwo
 
 ## 8. Integracja z Rider-PC i Rider-Pi
-Rider-PC – centrum logiczne.  
+Rider-PC – centrum logiczne.
 Rider-Pi – ciało fizyczne.
 
 Venom koordynuje cały ekosystem.

@@ -53,9 +53,7 @@ async def test_orchestrator_executes_code_generation_task(
 
     # Mockuj klasyfikację i generowanie kodu
     mock_intent_manager.classify_intent.return_value = "CODE_GENERATION"
-    mock_dispatcher.dispatch.return_value = (
-        '```python\ndef hello_world():\n    """Wyświetla Hello World."""\n    print("Hello World")\n```'
-    )
+    mock_dispatcher.dispatch.return_value = '```python\ndef hello_world():\n    """Wyświetla Hello World."""\n    print("Hello World")\n```'
 
     orchestrator = Orchestrator(
         state_manager=state_manager,
@@ -130,7 +128,9 @@ async def test_orchestrator_executes_knowledge_search_task(
         task_dispatcher=mock_dispatcher,
     )
 
-    response = await orchestrator.submit_task(TaskRequest(content="Co to jest GraphRAG?"))
+    response = await orchestrator.submit_task(
+        TaskRequest(content="Co to jest GraphRAG?")
+    )
     await asyncio.sleep(1)
 
     task = state_manager.get_task(response.task_id)

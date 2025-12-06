@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Annotated
 
+import aiofiles
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
@@ -62,7 +63,7 @@ class FileSkill:
         name="write_file",
         description="Zapisuje treść do pliku w workspace. Tworzy katalogi jeśli nie istnieją.",
     )
-    def write_file(
+    async def write_file(
         self,
         file_path: Annotated[
             str,
@@ -71,7 +72,7 @@ class FileSkill:
         content: Annotated[str, "Treść do zapisania w pliku"],
     ) -> str:
         """
-        Zapisuje treść do pliku.
+        Zapisuje treść do pliku asynchronicznie.
 
         Args:
             file_path: Ścieżka do pliku względem workspace
@@ -90,8 +91,9 @@ class FileSkill:
             # Utwórz katalogi nadrzędne jeśli nie istnieją
             safe_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Zapisz plik
-            safe_path.write_text(content, encoding="utf-8")
+            # Zapisz plik asynchronicznie
+            async with aiofiles.open(safe_path, "w", encoding="utf-8") as f:
+                await f.write(content)
 
             logger.info(f"Zapisano plik: {safe_path}")
             return (
@@ -109,12 +111,12 @@ class FileSkill:
         name="read_file",
         description="Odczytuje treść pliku z workspace.",
     )
-    def read_file(
+    async def read_file(
         self,
         file_path: Annotated[str, "Ścieżka do pliku względem workspace"],
     ) -> str:
         """
-        Odczytuje treść pliku.
+        Odczytuje treść pliku asynchronicznie.
 
         Args:
             file_path: Ścieżka do pliku względem workspace
@@ -136,7 +138,10 @@ class FileSkill:
             if not safe_path.is_file():
                 raise IOError(f"'{file_path}' nie jest plikiem")
 
-            content = safe_path.read_text(encoding="utf-8")
+            # Odczytaj plik asynchronicznie
+            async with aiofiles.open(safe_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+
             logger.info(f"Odczytano plik: {safe_path} ({len(content)} znaków)")
             return content
 

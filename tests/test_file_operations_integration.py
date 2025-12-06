@@ -28,12 +28,13 @@ def temp_workspace():
         yield tmpdir
 
 
-def test_file_skill_direct_integration(temp_workspace):
+@pytest.mark.asyncio
+async def test_file_skill_direct_integration(temp_workspace):
     """Test bezpośredniej integracji FileSkill - zapis i odczyt."""
     skill = FileSkill(workspace_root=temp_workspace)
 
     # Test 1: Zapis pliku
-    write_result = skill.write_file("test.py", "print('Hello World')")
+    write_result = await skill.write_file("test.py", "print('Hello World')")
     assert "pomyślnie zapisany" in write_result
 
     # Weryfikacja fizycznego zapisu
@@ -42,7 +43,7 @@ def test_file_skill_direct_integration(temp_workspace):
     assert file_path.read_text() == "print('Hello World')"
 
     # Test 2: Odczyt pliku
-    read_result = skill.read_file("test.py")
+    read_result = await skill.read_file("test.py")
     assert read_result == "print('Hello World')"
 
     # Test 3: Lista plików

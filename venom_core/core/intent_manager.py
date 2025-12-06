@@ -1,1 +1,108 @@
-"""Moduł: intent_manager"""
+"""Moduł: intent_manager - klasyfikacja intencji użytkownika."""
+
+from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
+
+from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class IntentManager:
+    """Menedżer klasyfikacji intencji użytkownika za pomocą Semantic Kernel."""
+
+    # Prompt systemowy do klasyfikacji intencji
+    SYSTEM_PROMPT = """Jesteś systemem klasyfikacji intencji użytkownika. Twoim zadaniem jest przeczytać wejście użytkownika i sklasyfikować je do JEDNEJ z następujących kategorii:
+
+1. CODE_GENERATION - użytkownik prosi o kod, skrypt, refactoring, implementację funkcji, debugowanie kodu
+2. KNOWLEDGE_SEARCH - użytkownik zadaje pytanie o wiedzę, fakty, informacje, wyjaśnienia
+3. GENERAL_CHAT - rozmowa ogólna, powitanie, żarty, pytania o samopoczucie systemu
+
+ZASADY:
+- Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
+- Nie dodawaj żadnych innych słów ani wyjaśnień
+- W razie wątpliwości wybierz najbardziej prawdopodobną kategorię
+
+Przykłady:
+- "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION
+- "Jak zrefaktoryzować ten kod?" → CODE_GENERATION
+- "Co to jest GraphRAG?" → KNOWLEDGE_SEARCH
+- "Jaka jest stolica Francji?" → KNOWLEDGE_SEARCH
+- "Witaj Venom, jak się masz?" → GENERAL_CHAT
+- "Dzień dobry!" → GENERAL_CHAT"""
+
+    def __init__(self, kernel: Kernel = None):
+        """
+        Inicjalizacja IntentManager.
+
+        Args:
+            kernel: Opcjonalne jądro Semantic Kernel (jeśli None, zostanie utworzone przez KernelBuilder)
+        """
+        if kernel is None:
+            builder = KernelBuilder()
+            kernel = builder.build_kernel()
+
+        self.kernel = kernel
+        logger.info("IntentManager zainicjalizowany")
+
+    async def classify_intent(self, user_input: str) -> str:
+        """
+        Klasyfikuje intencję użytkownika.
+
+        Args:
+            user_input: Treść wejścia użytkownika
+
+        Returns:
+            Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT)
+        """
+        logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
+
+        # Przygotuj historię rozmowy
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+        )
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.USER,
+                content=f"Klasyfikuj intencję:\n\n{user_input}",
+            )
+        )
+
+        try:
+            # Pobierz serwis chat completion
+            chat_service = self.kernel.get_service()
+
+            # Wywołaj model
+            response = await chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=None
+            )
+
+            # Wyciągnij czystą odpowiedź (usuń whitespace)
+            intent = str(response).strip().upper()
+
+            # Walidacja odpowiedzi - upewnij się, że to jedna z dozwolonych kategorii
+            valid_intents = ["CODE_GENERATION", "KNOWLEDGE_SEARCH", "GENERAL_CHAT"]
+            if intent not in valid_intents:
+                # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie
+                for valid_intent in valid_intents:
+                    if valid_intent in intent:
+                        intent = valid_intent
+                        break
+                else:
+                    # Fallback - użyj GENERAL_CHAT jako domyślnego
+                    logger.warning(
+                        f"Nierozpoznana intencja: {intent}, używam GENERAL_CHAT jako fallback"
+                    )
+                    intent = "GENERAL_CHAT"
+
+            logger.info(f"Sklasyfikowana intencja: {intent}")
+            return intent
+
+        except Exception as e:
+            logger.error(f"Błąd podczas klasyfikacji intencji: {e}")
+            # W przypadku błędu zwróć GENERAL_CHAT jako bezpieczny fallback
+            return "GENERAL_CHAT"

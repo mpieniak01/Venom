@@ -20,11 +20,27 @@ class IntentManager:
 1. CODE_GENERATION - użytkownik prosi o kod, skrypt, refactoring, implementację funkcji, debugowanie kodu
 2. KNOWLEDGE_SEARCH - użytkownik zadaje pytanie o wiedzę, fakty, informacje, wyjaśnienia
 3. GENERAL_CHAT - rozmowa ogólna, powitanie, żarty, pytania o samopoczucie systemu
+4. RESEARCH - użytkownik potrzebuje aktualnych informacji z Internetu, dokumentacji, najnowszej wiedzy o technologii
+5. COMPLEX_PLANNING - użytkownik prosi o stworzenie złożonego projektu wymagającego wielu kroków i koordynacji
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
 - Nie dodawaj żadnych innych słów ani wyjaśnień
 - W razie wątpliwości wybierz najbardziej prawdopodobną kategorię
+
+KIEDY WYBIERAĆ RESEARCH:
+- "Jaka jest aktualna cena Bitcoina?"
+- "Kto jest obecnym prezydentem Francji?"
+- "Jak używać najnowszej wersji FastAPI?"
+- "Znajdź dokumentację dla biblioteki X"
+- Zapytania zawierające: "aktualne", "najnowsze", "obecny", "szukaj w internecie"
+
+KIEDY WYBIERAĆ COMPLEX_PLANNING:
+- "Stwórz grę Snake używając PyGame"
+- "Zbuduj aplikację webową z FastAPI i React"
+- "Napisz projekt z testami jednostkowymi i dokumentacją"
+- "Stwórz stronę HTML z CSS i JavaScript"
+- Zadania wymagające: wielu plików, integracji technologii, złożonej logiki
 
 Przykłady:
 - "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION
@@ -32,7 +48,11 @@ Przykłady:
 - "Co to jest GraphRAG?" → KNOWLEDGE_SEARCH
 - "Jaka jest stolica Francji?" → KNOWLEDGE_SEARCH
 - "Witaj Venom, jak się masz?" → GENERAL_CHAT
-- "Dzień dobry!" → GENERAL_CHAT"""
+- "Dzień dobry!" → GENERAL_CHAT
+- "Jaka jest aktualna cena Bitcoina?" → RESEARCH
+- "Znajdź dokumentację PyGame" → RESEARCH
+- "Stwórz grę Snake z PyGame" → COMPLEX_PLANNING
+- "Zbuduj stronę z zegarem (HTML + CSS + JS)" → COMPLEX_PLANNING"""
 
     def __init__(self, kernel: Kernel = None):
         """
@@ -56,7 +76,7 @@ Przykłady:
             user_input: Treść wejścia użytkownika
 
         Returns:
-            Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT)
+            Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING)
         """
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
 
@@ -85,7 +105,13 @@ Przykłady:
             intent = str(response).strip().upper()
 
             # Walidacja odpowiedzi - upewnij się, że to jedna z dozwolonych kategorii
-            valid_intents = ["CODE_GENERATION", "KNOWLEDGE_SEARCH", "GENERAL_CHAT"]
+            valid_intents = [
+                "CODE_GENERATION",
+                "KNOWLEDGE_SEARCH",
+                "GENERAL_CHAT",
+                "RESEARCH",
+                "COMPLEX_PLANNING",
+            ]
             if intent not in valid_intents:
                 # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie
                 for valid_intent in valid_intents:

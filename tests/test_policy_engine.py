@@ -46,7 +46,8 @@ def test_detect_github_token(policy_engine):
 
 def test_detect_google_api_key(policy_engine):
     """Test wykrywania klucza Google API."""
-    code = 'api_key = "AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe"'
+    # Using obviously fake test key that matches pattern (AIza + 35 chars) but won't trigger scanners
+    code = 'api_key = "AIzaFAKE_TEST_KEY_01234567890abcdefgh12"'
     violations = policy_engine.check_safety(code)
     assert len(violations) > 0
     assert any("Google" in v.message for v in violations)

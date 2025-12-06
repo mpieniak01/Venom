@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 from uuid import UUID
 
+from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
@@ -14,14 +15,18 @@ logger = get_logger(__name__)
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
 
-    def __init__(self, state_manager: StateManager):
+    def __init__(
+        self, state_manager: StateManager, intent_manager: IntentManager = None
+    ):
         """
         Inicjalizacja Orchestrator.
 
         Args:
             state_manager: Menedżer stanu zadań
+            intent_manager: Opcjonalny menedżer klasyfikacji intencji (jeśli None, zostanie utworzony)
         """
         self.state_manager = state_manager
+        self.intent_manager = intent_manager or IntentManager()
 
     async def submit_task(self, request: TaskRequest) -> TaskResponse:
         """
@@ -69,11 +74,17 @@ class Orchestrator:
 
             logger.info(f"Rozpoczynam przetwarzanie zadania {task_id}")
 
-            # Symuluj wykonanie zadania (MVP - prosty delay)
-            await asyncio.sleep(2)
+            # Klasyfikuj intencję użytkownika
+            intent = await self.intent_manager.classify_intent(task.content)
 
-            # Wygeneruj wynik (MVP - echo treści zadania)
-            result = f"Przetworzono: {task.content}"
+            # Zaloguj sklasyfikowaną intencję
+            self.state_manager.add_log(
+                task_id,
+                f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}",
+            )
+
+            # Wygeneruj wynik zawierający intencję
+            result = f"Intencja: {intent} | Treść: {task.content}"
 
             # Ustaw status COMPLETED i wynik
             await self.state_manager.update_status(

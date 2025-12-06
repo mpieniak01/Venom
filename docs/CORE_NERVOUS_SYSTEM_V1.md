@@ -117,7 +117,7 @@ curl http://localhost:8000/api/v1/tasks
 
 ## Persystencja
 
-System automatycznie zapisuje stan wszystkich zadań do pliku `data/memory/state_dump.json`. 
+System automatycznie zapisuje stan wszystkich zadań do pliku `data/memory/state_dump.json`.
 Po restarcie serwera, stan jest automatycznie przywracany z pliku.
 
 ### Konfiguracja

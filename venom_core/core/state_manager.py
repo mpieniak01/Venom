@@ -80,15 +80,15 @@ class StateManager:
         """Planuje zapis stanu, obsługując brak event loop."""
         try:
             # Próbuj uzyskać aktywny event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                asyncio.get_running_loop()
+                # Jeśli loop działa, zaplanuj zapis
                 asyncio.create_task(self._save())
-            else:
-                # Jeśli loop nie działa, uruchom synchronicznie
-                loop.run_until_complete(self._save())
-        except RuntimeError:
-            # Jeśli nie ma event loop (np. w testach sync), pomiń zapis
-            logger.debug("Brak event loop - pomijam automatyczny zapis stanu")
+            except RuntimeError:
+                # Brak uruchomionego loop - pomiń automatyczny zapis
+                logger.debug("Brak event loop - pomijam automatyczny zapis stanu")
+        except Exception as e:
+            logger.error(f"Błąd podczas planowania zapisu: {e}")
 
     def create_task(self, content: str) -> VenomTask:
         """

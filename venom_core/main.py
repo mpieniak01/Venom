@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
+from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -17,7 +21,7 @@ logger = get_logger(__name__)
 
 # Inicjalizacja StateManager i Orchestrator
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
-orchestrator = Orchestrator(state_manager)
+orchestrator = Orchestrator(state_manager, event_broadcaster=event_broadcaster)
 
 # Inicjalizacja VectorStore dla API
 vector_store = None
@@ -29,6 +33,9 @@ async def lifespan(app: FastAPI):
     global vector_store
 
     # Startup
+    # Inicjalizuj MetricsCollector
+    init_metrics_collector()
+
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
     workspace_path.mkdir(parents=True, exist_ok=True)
@@ -56,6 +63,52 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 
+# Montowanie plików statycznych
+web_dir = Path(__file__).parent.parent / "web"
+if web_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
+    logger.info(f"Static files served from: {web_dir / 'static'}")
+
+
+@app.get("/")
+async def serve_dashboard():
+    """Serwuje główny dashboard."""
+    index_path = web_dir / "templates" / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return {"message": "Dashboard niedostępny - brak pliku index.html"}
+
+
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    Endpoint WebSocket dla streamingu zdarzeń w czasie rzeczywistym.
+
+    Args:
+        websocket: Połączenie WebSocket
+    """
+    await connection_manager.connect(websocket)
+    try:
+        # Send welcome message
+        await event_broadcaster.broadcast_event(
+            event_type=EventType.SYSTEM_LOG,
+            message="Connected to Venom Telemetry",
+            data={"level": "INFO"},
+        )
+
+        # Keep connection open and listen for client messages
+        while True:
+            # Receive messages from client (optional)
+            data = await websocket.receive_text()
+            logger.debug(f"Received from client: {data}")
+
+    except WebSocketDisconnect:
+        await connection_manager.disconnect(websocket)
+        logger.info("Client disconnected WebSocket")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await connection_manager.disconnect(websocket)
+
 
 @app.get("/healthz")
 def healthz():
@@ -78,6 +131,10 @@ async def create_task(request: TaskRequest):
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
     try:
+        # Inkrementuj licznik zadań
+        if metrics_collector:
+            metrics_collector.increment_task_created()
+
         response = await orchestrator.submit_task(request)
         return response
     except Exception as e:
@@ -245,3 +302,22 @@ async def search_memory(request: MemorySearchRequest):
     except Exception as e:
         logger.exception("Błąd podczas wyszukiwania w pamięci")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# --- Metrics API Endpoint ---
+
+
+@app.get("/api/v1/metrics")
+async def get_metrics():
+    """
+    Zwraca metryki systemowe.
+
+    Returns:
+        Słownik z metrykami wydajności i użycia
+
+    Raises:
+        HTTPException: 503 jeśli MetricsCollector nie jest dostępny
+    """
+    if metrics_collector is None:
+        raise HTTPException(status_code=503, detail="Metrics collector not initialized")
+    return metrics_collector.get_metrics()

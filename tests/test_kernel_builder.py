@@ -12,6 +12,7 @@ class MockSettings(BaseSettings):
     LLM_SERVICE_TYPE: str = "local"
     LLM_LOCAL_ENDPOINT: str = "http://localhost:11434/v1"
     LLM_MODEL_NAME: str = "phi3:latest"
+    LLM_LOCAL_API_KEY: str = "venom-local"
     OPENAI_API_KEY: str = ""
 
 

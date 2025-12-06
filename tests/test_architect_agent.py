@@ -152,9 +152,7 @@ class TestArchitectAgent:
         assert "Brak dispatchera" in result
 
     @pytest.mark.asyncio
-    async def test_execute_plan_success(
-        self, architect_agent, mock_dispatcher
-    ):
+    async def test_execute_plan_success(self, architect_agent, mock_dispatcher):
         """Test udanego wykonania planu."""
         architect_agent.set_dispatcher(mock_dispatcher)
 

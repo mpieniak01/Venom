@@ -172,7 +172,8 @@ WAŻNE:
 
             # Ustawienia dla LLM
             settings = OpenAIChatPromptExecutionSettings(
-                max_tokens=1500, temperature=0.3  # Niższa temperatura dla bardziej deterministycznych planów
+                max_tokens=1500,
+                temperature=0.3,  # Niższa temperatura dla bardziej deterministycznych planów
             )
 
             # Wywołaj model
@@ -287,16 +288,16 @@ AKTUALNE ZADANIE:
                     "LIBRARIAN": "KNOWLEDGE_SEARCH",
                 }
 
-                intent = agent_type_to_intent.get(
-                    step.agent_type, "CODE_GENERATION"
-                )
+                intent = agent_type_to_intent.get(step.agent_type, "CODE_GENERATION")
                 result = await self.task_dispatcher.dispatch(intent, step_context)
 
                 # Zapisz wynik
                 step.result = result
                 context_history[step.step_number] = result
 
-                final_result += f"\n--- Krok {step.step_number}: {step.agent_type} ---\n"
+                final_result += (
+                    f"\n--- Krok {step.step_number}: {step.agent_type} ---\n"
+                )
                 final_result += f"Zadanie: {step.instruction}\n"
                 final_result += f"Wynik: {result[:500]}...\n\n"
 

@@ -102,9 +102,7 @@ class TestWebSearchSkill:
         """Test obsługi timeoutu."""
         mock_trafilatura.fetch_url.return_value = None
 
-        with patch(
-            "venom_core.execution.skills.web_skill.requests.get"
-        ) as mock_get:
+        with patch("venom_core.execution.skills.web_skill.requests.get") as mock_get:
             from requests.exceptions import Timeout
 
             mock_get.side_effect = Timeout("Timeout")
@@ -136,7 +134,9 @@ class TestWebSearchSkill:
         mock_ddgs.return_value.__enter__.return_value = mock_ddgs_instance
 
         # Mock scrapowania
-        mock_scrape.return_value = "Treść ze strony https://example.com/1:\n\nScraped content"
+        mock_scrape.return_value = (
+            "Treść ze strony https://example.com/1:\n\nScraped content"
+        )
 
         result = web_skill.search_and_scrape("test query", num_sources=2)
 

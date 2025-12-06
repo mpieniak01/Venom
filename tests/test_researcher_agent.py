@@ -51,12 +51,12 @@ class TestResearcherAgent:
         """Test udanego przetwarzania zapytania badawczego."""
         # Mock odpowiedzi LLM
         mock_response = MagicMock()
-        mock_response.__str__ = lambda x: "Znalazłem informacje o PyGame:\n\nKluczowe punkty:\n• pygame.rect.colliderect() do kolizji"
+        mock_response.__str__ = (
+            lambda x: "Znalazłem informacje o PyGame:\n\nKluczowe punkty:\n• pygame.rect.colliderect() do kolizji"
+        )
         mock_chat_service.get_chat_message_content.return_value = mock_response
 
-        result = await researcher_agent.process(
-            "Jak obsłużyć kolizje w PyGame?"
-        )
+        result = await researcher_agent.process("Jak obsłużyć kolizje w PyGame?")
 
         assert "PyGame" in result
         assert "colliderect" in result
@@ -65,9 +65,7 @@ class TestResearcherAgent:
     @pytest.mark.asyncio
     async def test_process_with_error(self, researcher_agent, mock_chat_service):
         """Test obsługi błędu podczas przetwarzania."""
-        mock_chat_service.get_chat_message_content.side_effect = Exception(
-            "LLM error"
-        )
+        mock_chat_service.get_chat_message_content.side_effect = Exception("LLM error")
 
         result = await researcher_agent.process("Test query")
 
@@ -94,9 +92,7 @@ class TestResearcherAgent:
         assert "Researcher" in str(chat_history.messages[0].content)
 
     @pytest.mark.asyncio
-    async def test_process_has_token_limit(
-        self, researcher_agent, mock_chat_service
-    ):
+    async def test_process_has_token_limit(self, researcher_agent, mock_chat_service):
         """Test czy ustawiony jest limit tokenów."""
         mock_response = MagicMock()
         mock_response.__str__ = lambda x: "Test response"

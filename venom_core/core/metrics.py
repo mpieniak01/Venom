@@ -66,6 +66,21 @@ class MetricsCollector:
             self.agent_usage[agent_name] = 0
         self.agent_usage[agent_name] += 1
 
+    def _calculate_success_rate(self) -> float:
+        """
+        Oblicza wskaźnik sukcesu zadań.
+
+        Returns:
+            Wskaźnik sukcesu w procentach (0-100)
+        """
+        if self.metrics["tasks_created"] == 0:
+            return 0.0
+
+        completed = self.metrics["tasks_completed"]
+        created = self.metrics["tasks_created"]
+        success_rate = (completed / created) * 100
+        return round(success_rate, 2)
+
     def get_metrics(self) -> dict:
         """
         Zwraca wszystkie metryki.
@@ -83,16 +98,7 @@ class MetricsCollector:
                 "created": self.metrics["tasks_created"],
                 "completed": self.metrics["tasks_completed"],
                 "failed": self.metrics["tasks_failed"],
-                "success_rate": (
-                    round(
-                        self.metrics["tasks_completed"]
-                        / max(1, self.metrics["tasks_created"])
-                        * 100,
-                        2,
-                    )
-                    if self.metrics["tasks_created"] > 0
-                    else 0
-                ),
+                "success_rate": self._calculate_success_rate(),
             },
             "tokens_used_session": self.metrics["tokens_used_session"],
             "tool_usage": self.tool_usage,

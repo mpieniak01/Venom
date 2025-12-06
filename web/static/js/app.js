@@ -7,6 +7,10 @@ class VenomDashboard {
         this.maxReconnectAttempts = 5;
         this.tasks = new Map();
         
+        // Constants
+        this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
+        this.LOG_ENTRY_MAX_COUNT = 100;
+        
         this.initElements();
         this.initWebSocket();
         this.initEventHandlers();
@@ -36,10 +40,10 @@ class VenomDashboard {
             this.ws = new WebSocket(wsUrl);
             
             this.ws.onopen = () => {
-                console.log('WebSocket połączony');
+                console.log('WebSocket connected');
                 this.updateConnectionStatus(true);
                 this.reconnectAttempts = 0;
-                this.addLogEntry('info', 'Połączono z Venom Telemetry');
+                this.addLogEntry('info', 'Connected to Venom Telemetry');
             };
 
             this.ws.onmessage = (event) => {
@@ -47,22 +51,22 @@ class VenomDashboard {
                     const data = JSON.parse(event.data);
                     this.handleWebSocketMessage(data);
                 } catch (error) {
-                    console.error('Błąd parsowania WebSocket message:', error);
+                    console.error('Error parsing WebSocket message:', error);
                 }
             };
 
             this.ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                this.addLogEntry('error', 'Błąd połączenia WebSocket');
+                this.addLogEntry('error', 'WebSocket connection error');
             };
 
             this.ws.onclose = () => {
-                console.log('WebSocket zamknięty');
+                console.log('WebSocket closed');
                 this.updateConnectionStatus(false);
                 this.attemptReconnect();
             };
         } catch (error) {
-            console.error('Nie można utworzyć WebSocket:', error);
+            console.error('Cannot create WebSocket:', error);
             this.updateConnectionStatus(false);
         }
     }
@@ -72,34 +76,34 @@ class VenomDashboard {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
             
-            this.addLogEntry('warning', `Ponowne łączenie za ${delay/1000}s... (próba ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            this.addLogEntry('warning', `Reconnecting in ${delay/1000}s... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
             
             setTimeout(() => {
                 this.initWebSocket();
             }, delay);
         } else {
-            this.addLogEntry('error', 'Nie można połączyć się z serwerem. Odśwież stronę.');
+            this.addLogEntry('error', 'Cannot connect to server. Please refresh the page.');
         }
     }
 
     updateConnectionStatus(connected) {
         if (connected) {
             this.elements.connectionStatus.classList.add('connected');
-            this.elements.statusText.textContent = 'Połączono';
+            this.elements.statusText.textContent = 'Connected';
         } else {
             this.elements.connectionStatus.classList.remove('connected');
-            this.elements.statusText.textContent = 'Rozłączono';
+            this.elements.statusText.textContent = 'Disconnected';
         }
     }
 
     handleWebSocketMessage(data) {
         const { type, agent, message, timestamp, data: eventData } = data;
         
-        // Dodaj do live feed
+        // Add to live feed
         const logLevel = this.getLogLevel(type);
         this.addLogEntry(logLevel, `[${type}] ${agent ? agent + ': ' : ''}${message}`);
 
-        // Obsługa specyficznych typów zdarzeń
+        // Handle specific event types
         switch (type) {
             case 'TASK_CREATED':
                 this.handleTaskCreated(eventData);
@@ -137,7 +141,7 @@ class VenomDashboard {
         if (data && data.task_id) {
             this.tasks.set(data.task_id, {
                 id: data.task_id,
-                content: data.content || 'Nowe zadanie',
+                content: data.content || 'New task',
                 status: 'PENDING',
                 created: new Date()
             });
@@ -177,8 +181,8 @@ class VenomDashboard {
     }
 
     handlePlanCreated(data) {
-        // Możesz tutaj dodać wizualizację planu
-        this.addChatMessage('assistant', 'Plan utworzony - szczegóły w Live Feed', 'Architect');
+        // Could add plan visualization here
+        this.addChatMessage('assistant', 'Plan created - details in Live Feed', 'Architect');
     }
 
     addLogEntry(level, message) {
@@ -186,20 +190,26 @@ class VenomDashboard {
         logEntry.className = `log-entry ${level}`;
         
         const now = new Date();
-        const timestamp = now.toLocaleTimeString('pl-PL');
+        const timestamp = now.toLocaleTimeString('en-US');
         
-        logEntry.innerHTML = `
-            <span class="timestamp">[${timestamp}]</span>
-            <span class="message">${this.escapeHtml(message)}</span>
-        `;
+        const timestampSpan = document.createElement('span');
+        timestampSpan.className = 'timestamp';
+        timestampSpan.textContent = `[${timestamp}]`;
+        
+        const messageSpan = document.createElement('span');
+        messageSpan.className = 'message';
+        messageSpan.textContent = message;
+        
+        logEntry.appendChild(timestampSpan);
+        logEntry.appendChild(messageSpan);
         
         this.elements.liveFeed.appendChild(logEntry);
         
         // Auto-scroll
         this.elements.liveFeed.scrollTop = this.elements.liveFeed.scrollHeight;
         
-        // Ogranicz liczbę logów
-        while (this.elements.liveFeed.children.length > 100) {
+        // Limit number of logs
+        while (this.elements.liveFeed.children.length > this.LOG_ENTRY_MAX_COUNT) {
             this.elements.liveFeed.removeChild(this.elements.liveFeed.firstChild);
         }
     }
@@ -208,12 +218,17 @@ class VenomDashboard {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
         
-        let displayContent = content;
         if (agent) {
-            displayContent = `<strong>${agent}:</strong> ${content}`;
+            const agentSpan = document.createElement('strong');
+            agentSpan.textContent = agent + ': ';
+            messageDiv.appendChild(agentSpan);
+            
+            const contentSpan = document.createElement('span');
+            contentSpan.textContent = content;
+            messageDiv.appendChild(contentSpan);
+        } else {
+            messageDiv.textContent = content;
         }
-        
-        messageDiv.innerHTML = this.escapeHtml(displayContent);
         
         this.elements.chatMessages.appendChild(messageDiv);
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
@@ -221,7 +236,7 @@ class VenomDashboard {
 
     updateTaskList() {
         if (this.tasks.size === 0) {
-            this.elements.taskList.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
+            this.elements.taskList.innerHTML = '<p class="empty-state">No active tasks</p>';
             return;
         }
 
@@ -236,10 +251,14 @@ class VenomDashboard {
             }[task.status] || '❓';
 
             const statusClass = task.status.toLowerCase();
+            const truncatedContent = task.content.substring(0, this.TASK_CONTENT_TRUNCATE_LENGTH);
+            
+            // Escape HTML for display
+            const escapedContent = this.escapeHtml(truncatedContent);
             
             return `
                 <div class="task-item ${statusClass}">
-                    <div><strong>${statusEmoji} ${this.escapeHtml(task.content.substring(0, 50))}...</strong></div>
+                    <div><strong>${statusEmoji} ${escapedContent}...</strong></div>
                     <div class="task-status">Status: ${task.status}</div>
                 </div>
             `;
@@ -247,12 +266,12 @@ class VenomDashboard {
     }
 
     initEventHandlers() {
-        // Wysyłanie zadania
+        // Send task
         this.elements.sendButton.addEventListener('click', () => {
             this.sendTask();
         });
 
-        // Ctrl+Enter w textarea
+        // Ctrl+Enter in textarea
         this.elements.taskInput.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -265,18 +284,18 @@ class VenomDashboard {
         const content = this.elements.taskInput.value.trim();
         
         if (!content) {
-            alert('Wprowadź treść zadania');
+            alert('Please enter task content');
             return;
         }
 
-        // Wyłącz przycisk
+        // Disable button
         this.elements.sendButton.disabled = true;
         
         try {
-            // Dodaj wiadomość użytkownika do chatu
+            // Add user message to chat
             this.addChatMessage('user', content);
             
-            // Wyślij przez API
+            // Send via API
             const response = await fetch('/api/v1/tasks', {
                 method: 'POST',
                 headers: {
@@ -291,15 +310,15 @@ class VenomDashboard {
 
             const result = await response.json();
             
-            // Wyczyść input
+            // Clear input
             this.elements.taskInput.value = '';
             
-            this.addLogEntry('info', `Zadanie wysłane: ${result.task_id}`);
+            this.addLogEntry('info', `Task sent: ${result.task_id}`);
             
         } catch (error) {
-            console.error('Błąd wysyłania zadania:', error);
-            this.addLogEntry('error', `Nie można wysłać zadania: ${error.message}`);
-            alert('Błąd wysyłania zadania. Sprawdź konsolę.');
+            console.error('Error sending task:', error);
+            this.addLogEntry('error', `Cannot send task: ${error.message}`);
+            alert('Error sending task. Check console.');
         } finally {
             this.elements.sendButton.disabled = false;
         }
@@ -317,7 +336,7 @@ class VenomDashboard {
             this.updateMetrics(metrics);
             
         } catch (error) {
-            console.error('Błąd pobierania metryk:', error);
+            console.error('Error fetching metrics:', error);
         }
     }
 
@@ -348,10 +367,10 @@ class VenomDashboard {
     }
 
     startMetricsPolling() {
-        // Pobierz metryki natychmiast
+        // Fetch metrics immediately
         this.fetchMetrics();
         
-        // Następnie co 5 sekund
+        // Then every 5 seconds
         setInterval(() => {
             this.fetchMetrics();
         }, 5000);
@@ -369,7 +388,7 @@ class VenomDashboard {
     }
 }
 
-// Inicjalizacja po załadowaniu DOM
+// Initialize after DOM loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard = new VenomDashboard();
 });

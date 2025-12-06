@@ -1,4 +1,5 @@
 # venom/main.py
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
@@ -11,11 +12,23 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="Venom Core", version="0.1.0")
-
 # Inicjalizacja StateManager i Orchestrator
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
 orchestrator = Orchestrator(state_manager)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Zarządzanie cyklem życia aplikacji."""
+    # Startup - już zainicjalizowane powyżej
+    yield
+    # Shutdown - czeka na zakończenie zapisów stanu
+    logger.info("Zamykanie aplikacji...")
+    await state_manager.shutdown()
+    logger.info("Aplikacja zamknięta")
+
+
+app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/healthz")
@@ -42,10 +55,10 @@ async def create_task(request: TaskRequest):
         response = await orchestrator.submit_task(request)
         return response
     except Exception as e:
-        logger.error(f"Błąd podczas tworzenia zadania: {e}")
+        logger.exception("Błąd podczas tworzenia zadania")
         raise HTTPException(
             status_code=500, detail="Błąd wewnętrzny podczas tworzenia zadania"
-        )
+        ) from e
 
 
 @app.get("/api/v1/tasks/{task_id}", response_model=VenomTask)

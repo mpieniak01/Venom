@@ -132,7 +132,8 @@ async def create_task(request: TaskRequest):
     """
     try:
         # Inkrementuj licznik zadań
-        metrics_collector.increment_task_created()
+        if metrics_collector:
+            metrics_collector.increment_task_created()
 
         response = await orchestrator.submit_task(request)
         return response
@@ -313,5 +314,10 @@ async def get_metrics():
 
     Returns:
         Słownik z metrykami wydajności i użycia
+
+    Raises:
+        HTTPException: 503 jeśli MetricsCollector nie jest dostępny
     """
+    if metrics_collector is None:
+        raise HTTPException(status_code=503, detail="Metrics collector not initialized")
     return metrics_collector.get_metrics()

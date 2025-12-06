@@ -190,7 +190,8 @@ class Orchestrator:
                     f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
                 )
                 # Inkrementuj licznik użycia agenta
-                metrics_collector.increment_agent_usage(agent_name)
+                if metrics_collector:
+                    metrics_collector.increment_agent_usage(agent_name)
             else:
                 logger.error(
                     f"Nie znaleziono agenta dla intencji '{intent}' podczas logowania zadania {task_id}"
@@ -205,7 +206,8 @@ class Orchestrator:
             )
 
             # Inkrementuj licznik ukończonych zadań
-            metrics_collector.increment_task_completed()
+            if metrics_collector:
+                metrics_collector.increment_task_completed()
 
             # Broadcast ukończenia zadania
             await self._broadcast_event(
@@ -221,7 +223,8 @@ class Orchestrator:
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
 
             # Inkrementuj licznik nieudanych zadań
-            metrics_collector.increment_task_failed()
+            if metrics_collector:
+                metrics_collector.increment_task_failed()
 
             # Broadcast błędu
             await self._broadcast_event(

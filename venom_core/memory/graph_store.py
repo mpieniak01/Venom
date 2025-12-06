@@ -104,8 +104,15 @@ class CodeGraphStore:
             logger.warning(f"Błąd składni w pliku {file_path}: {e}")
             return False
 
-        # Dodaj węzeł pliku
-        rel_path = file_path.relative_to(self.workspace_root)
+        # Dodaj węzeł pliku (z walidacją ścieżki)
+        try:
+            rel_path = file_path.relative_to(self.workspace_root)
+        except ValueError:
+            logger.warning(
+                f"Plik {file_path} jest poza workspace {self.workspace_root}, pomijam"
+            )
+            return False
+
         file_node = f"file:{rel_path}"
         self.graph.add_node(
             file_node, type="file", path=str(rel_path), full_path=str(file_path)
@@ -389,12 +396,14 @@ class CodeVisitor(ast.NodeVisitor):
         # Traktuj podobnie jak zwykłą funkcję
         self.visit_FunctionDef(node)
 
-    def _analyze_function_calls(self, func_node: ast.FunctionDef, node_id: str) -> None:
+    def _analyze_function_calls(
+        self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, node_id: str
+    ) -> None:
         """
         Analizuje wywołania funkcji wewnątrz funkcji.
 
         Args:
-            func_node: Węzeł AST funkcji
+            func_node: Węzeł AST funkcji (sync lub async)
             node_id: ID węzła funkcji w grafie
         """
         for child in ast.walk(func_node):

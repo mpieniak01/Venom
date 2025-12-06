@@ -1,4 +1,9 @@
-"""Moduł: gardener - Agent Ogrodnik do automatycznej re-indeksacji grafu wiedzy."""
+"""Moduł: gardener - Agent Ogrodnik do automatycznej re-indeksacji grafu wiedzy.
+
+UWAGA: GardenerAgent nie dziedziczy po BaseAgent, ponieważ jest usługą działającą
+w tle (background service), a nie agentem konwersacyjnym. Nie wymaga Semantic Kernel
+ani metody `process()`.
+"""
 
 import asyncio
 from datetime import datetime
@@ -16,6 +21,8 @@ class GardenerAgent:
     """
     Agent Ogrodnik (Gardener) - odpowiedzialny za utrzymanie aktualności grafu wiedzy.
     Działa w tle i monitoruje zmiany w plikach workspace.
+
+    NOTE: Ten agent nie dziedziczy po BaseAgent, bo jest background service, nie conversational agent.
     """
 
     def __init__(
@@ -118,8 +125,9 @@ class GardenerAgent:
                 try:
                     mtime = file_path.stat().st_mtime
                     current_mtimes[str(file_path)] = mtime
-                except Exception:
-                    # Plik mógł zostać usunięty w międzyczasie
+                except (OSError, PermissionError) as e:
+                    # Plik mógł zostać usunięty lub brak uprawnień
+                    logger.debug(f"Nie można odczytać {file_path}: {e}")
                     pass
 
             # Porównaj z poprzednim stanem

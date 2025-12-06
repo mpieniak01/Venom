@@ -1,6 +1,6 @@
 """Testy jednostkowe dla CriticAgent."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from semantic_kernel import Kernel
@@ -150,6 +150,7 @@ def read_file(path):
     result = await critic_agent.process(code_without_error_handling)
 
     assert mock_chat_service.get_chat_message_content.called
+    assert len(result) > 0  # Verify result is returned
 
 
 # --- Testy ekstrakcji kodu z kontekstu ---

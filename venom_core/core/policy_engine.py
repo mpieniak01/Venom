@@ -1,7 +1,7 @@
 """Moduł: policy_engine - silnik weryfikacji zgodności i bezpieczeństwa."""
 
 import re
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ class Violation(BaseModel):
     """Reprezentacja naruszenia zasad bezpieczeństwa lub jakości kodu."""
 
     rule: str  # Nazwa reguły
-    severity: str  # "critical", "high", "medium", "low"
+    severity: Literal["critical", "high", "medium", "low"]  # Poziom ważności
     message: str  # Opis naruszenia
     line_number: int | None = None  # Numer linii (jeśli możliwy do określenia)
 
@@ -29,7 +29,7 @@ class PolicyEngine:
         (r"AKIA[0-9A-Z]{16}", "AWS Access Key"),
         (r"ghp_[a-zA-Z0-9]{36}", "GitHub Personal Access Token"),
         (r"gho_[a-zA-Z0-9]{36}", "GitHub OAuth Token"),
-        (r"AIza[0-9A-Za-z\\-_]{35}", "Google API Key"),
+        (r"AIza[0-9A-Za-z_-]{35}", "Google API Key"),
         (r"[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com", "Google OAuth"),
     ]
 

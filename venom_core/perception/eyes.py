@@ -1,14 +1,16 @@
 """Moduł: eyes - warstwa percepcji wizualnej."""
 
 import base64
-import os
+import httpx
 from pathlib import Path
-from typing import Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Stała do rozróżnienia base64 od ścieżki pliku
+MIN_BASE64_LENGTH = 500
 
 
 class Eyes:
@@ -34,8 +36,6 @@ class Eyes:
         """Sprawdza czy lokalny model vision jest dostępny."""
         # Sprawdź czy Ollama działa i ma model vision
         try:
-            import httpx
-
             response = httpx.get(
                 f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/tags", timeout=2.0
             )
@@ -75,11 +75,11 @@ class Eyes:
         # Przygotuj base64
         image_base64 = self._prepare_image_base64(image_path_or_base64)
 
-        # Wybierz strategię
-        if self.use_openai:
-            return await self._analyze_with_openai(image_base64, prompt)
-        elif self.local_vision_available:
+        # Wybierz strategię (local-first dla prywatności)
+        if self.local_vision_available:
             return await self._analyze_with_local(image_base64, prompt)
+        elif self.use_openai:
+            return await self._analyze_with_openai(image_base64, prompt)
         else:
             raise RuntimeError(
                 "Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. llava w Ollama)."
@@ -99,8 +99,8 @@ class Eyes:
         if image_path_or_base64.startswith("data:image"):
             # Usuń prefix "data:image/png;base64,"
             return image_path_or_base64.split(",", 1)[1]
-        elif len(image_path_or_base64) > 500 and "/" not in image_path_or_base64:
-            # Prawdopodobnie czysty base64
+        elif len(image_path_or_base64) > MIN_BASE64_LENGTH and "/" not in image_path_or_base64:
+            # Prawdopodobnie czysty base64 (długi string bez slashów)
             return image_path_or_base64
 
         # W przeciwnym razie to ścieżka do pliku
@@ -114,13 +114,26 @@ class Eyes:
     async def _analyze_with_openai(self, image_base64: str, prompt: str) -> str:
         """Analiza obrazu przez OpenAI GPT-4o."""
         try:
-            import httpx
-
             api_key = SETTINGS.OPENAI_API_KEY
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
+
+            # Określ format MIME na podstawie pierwszych bajtów base64
+            # Prosta heurystyka: sprawdź sygnaturę pliku
+            mime_type = "image/jpeg"  # domyślny
+            try:
+                # Dekoduj pierwsze bajty aby sprawdzić sygnaturę
+                first_bytes = base64.b64decode(image_base64[:20])
+                if first_bytes.startswith(b'\x89PNG'):
+                    mime_type = "image/png"
+                elif first_bytes.startswith(b'GIF'):
+                    mime_type = "image/gif"
+                elif first_bytes.startswith(b'RIFF') and b'WEBP' in first_bytes:
+                    mime_type = "image/webp"
+            except Exception:
+                pass  # Użyj domyślnego
 
             payload = {
                 "model": "gpt-4o",
@@ -132,7 +145,7 @@ class Eyes:
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                    "url": f"data:{mime_type};base64,{image_base64}"
                                 },
                             },
                         ],
@@ -160,8 +173,6 @@ class Eyes:
     async def _analyze_with_local(self, image_base64: str, prompt: str) -> str:
         """Analiza obrazu przez lokalny model (Ollama)."""
         try:
-            import httpx
-
             # Ollama API dla vision
             endpoint = f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/generate"
 

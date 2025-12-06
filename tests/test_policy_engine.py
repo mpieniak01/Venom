@@ -2,7 +2,7 @@
 
 import pytest
 
-from venom_core.core.policy_engine import PolicyEngine, Violation
+from venom_core.core.policy_engine import PolicyEngine
 
 
 @pytest.fixture
@@ -42,6 +42,14 @@ def test_detect_github_token(policy_engine):
     violations = policy_engine.check_safety(code)
     assert len(violations) > 0
     assert any("GitHub" in v.message for v in violations)
+
+
+def test_detect_google_api_key(policy_engine):
+    """Test wykrywania klucza Google API."""
+    code = 'api_key = "AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe"'
+    violations = policy_engine.check_safety(code)
+    assert len(violations) > 0
+    assert any("Google" in v.message for v in violations)
 
 
 def test_no_api_keys_clean_code(policy_engine):

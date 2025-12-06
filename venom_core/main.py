@@ -27,7 +27,7 @@ vector_store = None
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
     global vector_store
-    
+
     # Startup
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
@@ -178,7 +178,9 @@ async def ingest_to_memory(request: MemoryIngestRequest):
             chunk_text=True,
         )
 
-        logger.info(f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'")
+        logger.info(
+            f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'"
+        )
 
         return MemoryIngestResponse(
             status="success",
@@ -192,9 +194,7 @@ async def ingest_to_memory(request: MemoryIngestRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("Błąd podczas ingestion do pamięci")
-        raise HTTPException(
-            status_code=500, detail=f"Błąd wewnętrzny: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
 @app.post("/api/v1/memory/search")
@@ -244,6 +244,4 @@ async def search_memory(request: MemorySearchRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("Błąd podczas wyszukiwania w pamięci")
-        raise HTTPException(
-            status_code=500, detail=f"Błąd wewnętrzny: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

@@ -1,7 +1,5 @@
 """Testy API dla endpointów pamięci wektorowej."""
 
-import tempfile
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -103,9 +101,7 @@ class TestMemoryIngestAPI:
 
     def test_ingest_missing_text_field(self, client):
         """Test próby ingestion bez pola text."""
-        response = client.post(
-            "/api/v1/memory/ingest", json={"category": "test"}
-        )
+        response = client.post("/api/v1/memory/ingest", json={"category": "test"})
 
         assert response.status_code == 422  # Validation error
 
@@ -151,7 +147,7 @@ class TestMemorySearchAPI:
         assert "results" in data
         assert "count" in data
         assert len(data["results"]) > 0
-        
+
         # Sprawdź czy wynik zawiera słowo "Python"
         results_text = " ".join([r["text"] for r in data["results"]])
         assert "Python" in results_text or "python" in results_text.lower()
@@ -208,9 +204,7 @@ class TestMemorySearchAPI:
 
     def test_search_default_limit(self, client):
         """Test wyszukiwania z domyślnym limitem."""
-        response = client.post(
-            "/api/v1/memory/search", json={"query": "test query"}
-        )
+        response = client.post("/api/v1/memory/search", json={"query": "test query"})
 
         assert response.status_code == 200
         data = response.json()
@@ -242,13 +236,13 @@ class TestMemorySearchAPI:
 
         assert response.status_code == 200
         data = response.json()
-        
+
         # Sprawdź strukturę odpowiedzi
         assert "status" in data
         assert "query" in data
         assert "results" in data
         assert "count" in data
-        
+
         # Jeśli są wyniki, sprawdź ich strukturę
         if len(data["results"]) > 0:
             result = data["results"][0]
@@ -263,45 +257,49 @@ class TestMemoryAPIIntegration:
     def test_full_workflow(self, client):
         """Test pełnego workflow: zapis → wyszukiwanie → weryfikacja."""
         collection = "integration_test"
-        
+
         # Krok 1: Zapisz kilka informacji
         texts = [
             "FastAPI jest frameworkiem webowym dla Pythona",
             "Venom używa LanceDB jako bazy wektorowej",
             "Semantic Kernel to framework dla AI agentów",
         ]
-        
+
         for text in texts:
             response = client.post(
                 "/api/v1/memory/ingest",
-                json={"text": text, "category": "documentation", "collection": collection},
+                json={
+                    "text": text,
+                    "category": "documentation",
+                    "collection": collection,
+                },
             )
             assert response.status_code == 201
-        
+
         # Krok 2: Wyszukaj informację o FastAPI
         response = client.post(
             "/api/v1/memory/search",
             json={"query": "framework webowy", "limit": 3, "collection": collection},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["count"] > 0
-        
+
         # Sprawdź czy znalazł informację o FastAPI
         results_text = " ".join([r["text"] for r in data["results"]])
         assert "FastAPI" in results_text
-        
+
         # Krok 3: Wyszukaj informację o bazie danych
         response = client.post(
             "/api/v1/memory/search",
             json={"query": "baza danych", "limit": 3, "collection": collection},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["count"] > 0
-        
+
         # Sprawdź czy znalazł informację o LanceDB
         results_text = " ".join([r["text"] for r in data["results"]])
         assert "LanceDB" in results_text
@@ -310,14 +308,14 @@ class TestMemoryAPIIntegration:
         """Test persystencji danych (symulowany restart przez nową kolekcję)."""
         collection = "persistence_test"
         test_text = "Informacja która powinna przetrwać"
-        
+
         # Zapisz
         response = client.post(
             "/api/v1/memory/ingest",
             json={"text": test_text, "collection": collection},
         )
         assert response.status_code == 201
-        
+
         # Wyszukaj natychmiast
         response = client.post(
             "/api/v1/memory/search",
@@ -325,7 +323,7 @@ class TestMemoryAPIIntegration:
         )
         assert response.status_code == 200
         assert response.json()["count"] > 0
-        
+
         # Wyszukaj ponownie (symulacja po "restarcie")
         response = client.post(
             "/api/v1/memory/search",

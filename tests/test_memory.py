@@ -159,9 +159,15 @@ class TestVectorStore:
     def test_search_basic(self, vector_store):
         """Test podstawowego wyszukiwania."""
         # Zapisz kilka tekstów
-        vector_store.upsert("Kot jest zwierzęciem domowym", metadata={"topic": "zwierzęta"})
-        vector_store.upsert("Pies to wierny przyjaciel człowieka", metadata={"topic": "zwierzęta"})
-        vector_store.upsert("Komputer to elektroniczne urządzenie", metadata={"topic": "technologia"})
+        vector_store.upsert(
+            "Kot jest zwierzęciem domowym", metadata={"topic": "zwierzęta"}
+        )
+        vector_store.upsert(
+            "Pies to wierny przyjaciel człowieka", metadata={"topic": "zwierzęta"}
+        )
+        vector_store.upsert(
+            "Komputer to elektroniczne urządzenie", metadata={"topic": "technologia"}
+        )
 
         # Wyszukaj coś związanego ze zwierzętami
         results = vector_store.search("zwierzęta domowe", limit=2)
@@ -238,7 +244,9 @@ class TestVectorStore:
     def test_chunking_with_overlap(self, vector_store):
         """Test chunking z overlapem."""
         # Utwórz tekst który będzie podzielony
-        text = "Pierwsze zdanie. " * 20 + "Drugie zdanie. " * 20 + "Trzecie zdanie. " * 20
+        text = (
+            "Pierwsze zdanie. " * 20 + "Drugie zdanie. " * 20 + "Trzecie zdanie. " * 20
+        )
 
         chunks = vector_store._chunk_text(text, chunk_size=100, overlap=20)
 

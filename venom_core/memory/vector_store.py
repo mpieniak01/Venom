@@ -62,7 +62,9 @@ class VectorStore:
             self._db = lancedb.connect(str(self.db_path))
             logger.info("Połączono z bazą LanceDB pomyślnie")
         except ImportError:
-            logger.error("lancedb nie jest zainstalowany. Zainstaluj: pip install lancedb")
+            logger.error(
+                "lancedb nie jest zainstalowany. Zainstaluj: pip install lancedb"
+            )
             raise
 
     def _get_or_create_table(self, collection_name: str = None):
@@ -85,10 +87,10 @@ class VectorStore:
 
         # Utwórz nową tabelę z przykładowym schematem
         logger.info(f"Tworzenie nowej tabeli: {col_name}")
-        
+
         # Pobierz wymiar embeddingu
         dim = self.embedding_service.embedding_dimension
-        
+
         # Utwórz tabelę z przykładowym rekordem (LanceDB wymaga danych do schematu)
         dummy_embedding = [0.0] * dim
         data = [
@@ -99,10 +101,10 @@ class VectorStore:
                 "metadata": "{}",
             }
         ]
-        
+
         table = self._db.create_table(col_name, data=data, mode="overwrite")
         logger.info(f"Tabela {col_name} utworzona pomyślnie")
-        
+
         return table
 
     def create_collection(self, name: str) -> str:
@@ -123,14 +125,17 @@ class VectorStore:
 
         # Walidacja nazwy (tylko litery, cyfry, _, -)
         if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-            raise ValueError(
-                "Nazwa kolekcji może zawierać tylko litery, cyfry, _ i -"
-            )
+            raise ValueError("Nazwa kolekcji może zawierać tylko litery, cyfry, _ i -")
 
         self._get_or_create_table(name)
         return f"Kolekcja '{name}' utworzona pomyślnie"
 
-    def _chunk_text(self, text: str, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap: int = DEFAULT_CHUNK_OVERLAP) -> List[str]:
+    def _chunk_text(
+        self,
+        text: str,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        overlap: int = DEFAULT_CHUNK_OVERLAP,
+    ) -> List[str]:
         """
         Dzieli tekst na mniejsze fragmenty z overlapem.
 
@@ -211,7 +216,7 @@ class VectorStore:
 
         # Przygotuj dane do zapisu
         table = self._get_or_create_table(col_name)
-        
+
         records = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             record = {
@@ -224,13 +229,11 @@ class VectorStore:
 
         # Dodaj do tabeli
         table.add(records)
-        
-        logger.info(
-            f"Zapisano {len(records)} fragmentów do kolekcji '{col_name}'"
-        )
+
+        logger.info(f"Zapisano {len(records)} fragmentów do kolekcji '{col_name}'")
         return {
             "message": f"Zapisano {len(records)} fragmentów do pamięci",
-            "chunks_count": len(records)
+            "chunks_count": len(records),
         }
 
     def search(
@@ -276,7 +279,7 @@ class VectorStore:
             # Pomiń rekord inicjalizacyjny
             if result.get("id") == "init":
                 continue
-                
+
             processed_results.append(
                 {
                     "text": result["text"],
@@ -312,7 +315,7 @@ class VectorStore:
             ValueError: Jeśli kolekcja nie istnieje
         """
         self._ensure_db_connected()
-        
+
         if collection_name not in self._db.table_names():
             raise ValueError(f"Kolekcja '{collection_name}' nie istnieje")
 

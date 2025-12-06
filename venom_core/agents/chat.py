@@ -1,7 +1,9 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
 from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+from semantic_kernel.connectors.ai.function_choice_behavior import (
+    FunctionChoiceBehavior,
+)
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
@@ -49,11 +51,11 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             kernel: Skonfigurowane jądro Semantic Kernel
         """
         super().__init__(kernel)
-        
+
         # Dodaj MemorySkill do kernela
         memory_skill = MemorySkill()
         self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
-        
+
         logger.info("ChatAgent zainicjalizowany z MemorySkill")
 
     async def process(self, input_text: str) -> str:

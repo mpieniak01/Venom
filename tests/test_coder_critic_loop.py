@@ -115,11 +115,11 @@ async def test_coder_critic_loop_rejection_then_approval(
     mock_intent_manager.classify_intent.return_value = "CODE_GENERATION"
 
     # Mock Coder - pierwsza próba (z hardcoded key)
-    bad_code = '''
+    bad_code = """
 def connect_api():
     api_key = "sk-proj-bad123456789012345678901234"
     return api_key
-'''
+"""
     # Mock Coder - druga próba (poprawiona)
     good_code = '''
 import os
@@ -139,9 +139,7 @@ def connect_api():
     ]
 
     # Execute
-    result = await orchestrator._code_generation_with_review(
-        task_id, mock_task.content
-    )
+    result = await orchestrator._code_generation_with_review(task_id, mock_task.content)
 
     # Assert
     assert "os.getenv" in result
@@ -184,9 +182,7 @@ async def test_coder_critic_loop_max_attempts_exceeded(
     )
 
     # Execute
-    result = await orchestrator._code_generation_with_review(
-        task_id, mock_task.content
-    )
+    result = await orchestrator._code_generation_with_review(task_id, mock_task.content)
 
     # Assert
     assert "OSTRZEŻENIE" in result

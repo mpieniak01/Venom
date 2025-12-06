@@ -19,7 +19,7 @@ CRITIC_TEMPERATURE = 0.3
 class CriticAgent(BaseAgent):
     """Agent krytykujący kod - Senior Developer / QA."""
 
-    SYSTEM_PROMPT = """Jesteś ekspertem w zakresie bezpieczeństwa i jakości kodu (Senior Developer / QA Expert). 
+    SYSTEM_PROMPT = """Jesteś ekspertem w zakresie bezpieczeństwa i jakości kodu (Senior Developer / QA Expert).
 Twoim zadaniem jest OCENA kodu, NIE jego pisanie.
 
 TWOJA ROLA:
@@ -35,7 +35,7 @@ ZASADY OCENY:
    - Opis problemu
    - Lokalizacja (numer linii jeśli możliwe)
    - Sugerowana poprawa
-   
+
 PRZYKŁADY PROBLEMÓW DO WYKRYCIA:
 ❌ Hardcoded API keys (np. api_key = "sk-...")
 ❌ Hasła w kodzie (np. password = "secret123")
@@ -92,7 +92,9 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
             # Jeśli PolicyEngine znalazł średnie/niskie naruszenia, dodaj je do raportu
             if violations:
                 policy_report = self._format_policy_violations(violations)
-                combined_review = f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{llm_review}"
+                combined_review = (
+                    f"{policy_report}\n\nDODATKOWE UWAGI LLM:\n{llm_review}"
+                )
                 return combined_review
 
             return llm_review

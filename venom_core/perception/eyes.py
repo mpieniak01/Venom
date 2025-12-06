@@ -1,8 +1,9 @@
 """Moduł: eyes - warstwa percepcji wizualnej."""
 
 import base64
-import httpx
 from pathlib import Path
+
+import httpx
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -28,7 +29,9 @@ class Eyes:
         if self.use_openai:
             logger.info("Eyes: Używam OpenAI GPT-4o dla vision")
         elif self.local_vision_available:
-            logger.info(f"Eyes: Używam lokalnego modelu vision: {self.local_vision_model}")
+            logger.info(
+                f"Eyes: Używam lokalnego modelu vision: {self.local_vision_model}"
+            )
         else:
             logger.warning("Eyes: Brak dostępnych modeli vision (ani local, ani cloud)")
 
@@ -99,7 +102,10 @@ class Eyes:
         if image_path_or_base64.startswith("data:image"):
             # Usuń prefix "data:image/png;base64,"
             return image_path_or_base64.split(",", 1)[1]
-        elif len(image_path_or_base64) > MIN_BASE64_LENGTH and "/" not in image_path_or_base64:
+        elif (
+            len(image_path_or_base64) > MIN_BASE64_LENGTH
+            and "/" not in image_path_or_base64
+        ):
             # Prawdopodobnie czysty base64 (długi string bez slashów)
             return image_path_or_base64
 
@@ -126,11 +132,11 @@ class Eyes:
             try:
                 # Dekoduj pierwsze bajty aby sprawdzić sygnaturę
                 first_bytes = base64.b64decode(image_base64[:20])
-                if first_bytes.startswith(b'\x89PNG'):
+                if first_bytes.startswith(b"\x89PNG"):
                     mime_type = "image/png"
-                elif first_bytes.startswith(b'GIF'):
+                elif first_bytes.startswith(b"GIF"):
                     mime_type = "image/gif"
-                elif first_bytes.startswith(b'RIFF') and b'WEBP' in first_bytes:
+                elif first_bytes.startswith(b"RIFF") and b"WEBP" in first_bytes:
                     mime_type = "image/webp"
             except Exception:
                 pass  # Użyj domyślnego

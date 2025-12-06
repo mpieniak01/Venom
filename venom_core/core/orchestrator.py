@@ -186,7 +186,8 @@ class Orchestrator:
             for i, image in enumerate(request.images, 1):
                 try:
                     description = await self.eyes.analyze_image(
-                        image, prompt="Opisz szczegółowo co widzisz na tym obrazie, szczególnie zwróć uwagę na tekst, błędy lub problemy."
+                        image,
+                        prompt="Opisz szczegółowo co widzisz na tym obrazie, szczególnie zwróć uwagę na tekst, błędy lub problemy.",
                     )
                     context += f"\n\n[OBRAZ {i}]: {description}"
                     self.state_manager.add_log(
@@ -200,7 +201,9 @@ class Orchestrator:
 
         return context
 
-    async def _code_generation_with_review(self, task_id: UUID, user_request: str) -> str:
+    async def _code_generation_with_review(
+        self, task_id: UUID, user_request: str
+    ) -> str:
         """
         Pętla generowania kodu z oceną przez CriticAgent.
 
@@ -228,7 +231,9 @@ class Orchestrator:
 
             # Krok 1: CoderAgent generuje kod
             if attempt == 1:
-                self.state_manager.add_log(task_id, f"Coder: Próba {attempt} - generowanie kodu")
+                self.state_manager.add_log(
+                    task_id, f"Coder: Próba {attempt} - generowanie kodu"
+                )
                 generated_code = await coder.process(user_request)
             else:
                 # Kolejne próby - przekaż feedback od Krytyka
@@ -236,7 +241,11 @@ class Orchestrator:
                     task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
                 )
                 # Ogranicz długość poprzedniego kodu w promptcie dla wydajności
-                code_preview = generated_code[:MAX_PROMPT_LENGTH] + "..." if len(generated_code) > MAX_PROMPT_LENGTH else generated_code
+                code_preview = (
+                    generated_code[:MAX_PROMPT_LENGTH] + "..."
+                    if len(generated_code) > MAX_PROMPT_LENGTH
+                    else generated_code
+                )
                 repair_prompt = f"""FEEDBACK OD KRYTYKA:
 {critic_feedback[:MAX_PROMPT_LENGTH]}
 
@@ -263,11 +272,15 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 self.state_manager.add_log(
                     task_id, f"✅ Critic ZAAKCEPTOWAŁ kod po {attempt} próbach"
                 )
-                logger.info(f"Zadanie {task_id}: Kod zaakceptowany po {attempt} próbach")
+                logger.info(
+                    f"Zadanie {task_id}: Kod zaakceptowany po {attempt} próbach"
+                )
                 return generated_code
 
             # Jeśli odrzucono
-            self.state_manager.add_log(task_id, f"❌ Critic ODRZUCIŁ kod: {critic_feedback[:100]}...")
+            self.state_manager.add_log(
+                task_id, f"❌ Critic ODRZUCIŁ kod: {critic_feedback[:100]}..."
+            )
 
             # Jeśli to była ostatnia próba
             if attempt > MAX_REPAIR_ATTEMPTS:
@@ -279,7 +292,11 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                     f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
                 )
                 # Ogranicz rozmiar feedbacku w finalnej wiadomości
-                feedback_summary = critic_feedback[:MAX_PROMPT_LENGTH] + "..." if len(critic_feedback) > MAX_PROMPT_LENGTH else critic_feedback
+                feedback_summary = (
+                    critic_feedback[:MAX_PROMPT_LENGTH] + "..."
+                    if len(critic_feedback) > MAX_PROMPT_LENGTH
+                    else critic_feedback
+                )
                 return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa

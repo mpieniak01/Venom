@@ -71,12 +71,14 @@ def get_api_key():
 
 
 @pytest.mark.asyncio
-async def test_critic_rejects_hardcoded_api_key(critic_agent, mock_kernel, mock_chat_service):
+async def test_critic_rejects_hardcoded_api_key(
+    critic_agent, mock_kernel, mock_chat_service
+):
     """Test odrzucania kodu z hardcoded API key."""
-    bad_code = '''
+    bad_code = """
 api_key = "sk-proj-test123456789012345678901234"
 client = openai.Client(api_key=api_key)
-'''
+"""
 
     # PolicyEngine powinien natychmiast odrzucić, więc LLM nie zostanie wywołany
     result = await critic_agent.process(bad_code)
@@ -88,7 +90,9 @@ client = openai.Client(api_key=api_key)
 
 
 @pytest.mark.asyncio
-async def test_critic_rejects_dangerous_command(critic_agent, mock_kernel, mock_chat_service):
+async def test_critic_rejects_dangerous_command(
+    critic_agent, mock_kernel, mock_chat_service
+):
     """Test odrzucania kodu z niebezpieczną komendą."""
     bad_code = '''
 import os
@@ -131,7 +135,9 @@ def calculate_average(numbers):
 
 
 @pytest.mark.asyncio
-async def test_critic_detects_missing_error_handling(critic_agent, mock_kernel, mock_chat_service):
+async def test_critic_detects_missing_error_handling(
+    critic_agent, mock_kernel, mock_chat_service
+):
     """Test wykrywania braku obsługi błędów przez LLM."""
     code_without_error_handling = """
 def read_file(path):
@@ -194,7 +200,9 @@ def hello():
 
 
 @pytest.mark.asyncio
-async def test_combine_policy_and_llm_violations(critic_agent, mock_kernel, mock_chat_service):
+async def test_combine_policy_and_llm_violations(
+    critic_agent, mock_kernel, mock_chat_service
+):
     """Test łączenia naruszeń z PolicyEngine i LLM."""
     code = """
 def risky_function():
@@ -228,7 +236,9 @@ def test():
     pass
 """
 
-    mock_chat_service.get_chat_message_content.side_effect = Exception("LLM unavailable")
+    mock_chat_service.get_chat_message_content.side_effect = Exception(
+        "LLM unavailable"
+    )
     mock_kernel.get_service.return_value = mock_chat_service
 
     result = await critic_agent.process(code)
@@ -236,9 +246,7 @@ def test():
     # Powinien zwrócić coś (APPROVED lub wyniki PolicyEngine)
     assert result is not None
     # W przypadku błędu LLM i braku naruszeń PolicyEngine, powinno być APPROVED
-    if not any(
-        keyword in result for keyword in ["ODRZUCONO", "naruszenia", "PROBLEM"]
-    ):
+    if not any(keyword in result for keyword in ["ODRZUCONO", "naruszenia", "PROBLEM"]):
         assert "APPROVED" in result
 
 

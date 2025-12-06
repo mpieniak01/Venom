@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Venom Cockpit - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🕷️ Venom Cockpit</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="connectionStatus"></span>
+                <span id="statusText">Łączenie...</span>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Left Panel: Task Monitor -->
+            <aside class="left-panel">
+                <div class="panel-header">
+                    <h2>📋 Task Monitor</h2>
+                </div>
+                <div class="task-list" id="taskList">
+                    <p class="empty-state">Brak aktywnych zadań</p>
+                </div>
+            </aside>
+
+            <!-- Center Panel: Chat Console -->
+            <main class="center-panel">
+                <div class="panel-header">
+                    <h2>💬 Chat Console</h2>
+                </div>
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="welcome-message">
+                            <h3>Witaj w Venom Cockpit</h3>
+                            <p>Wprowadź polecenie poniżej aby rozpocząć pracę.</p>
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <textarea 
+                            id="taskInput" 
+                            placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
+                            rows="3"
+                        ></textarea>
+                        <button id="sendButton" class="btn-primary">
+                            <span>Wyślij</span>
+                            <kbd>Ctrl+Enter</kbd>
+                        </button>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right Panel: Live Feed & Metrics -->
+            <aside class="right-panel">
+                <div class="panel-header">
+                    <h2>📡 Live Feed</h2>
+                </div>
+                <div class="live-feed" id="liveFeed">
+                    <div class="log-entry info">
+                        <span class="timestamp">[--:--:--]</span>
+                        <span class="message">Oczekiwanie na połączenie...</span>
+                    </div>
+                </div>
+
+                <div class="panel-header" style="margin-top: 20px;">
+                    <h2>📊 Metrics</h2>
+                </div>
+                <div class="metrics-container" id="metricsContainer">
+                    <div class="metric">
+                        <span class="metric-label">Zadania</span>
+                        <span class="metric-value" id="metricTasks">0</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Sukces</span>
+                        <span class="metric-value" id="metricSuccess">0%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Uptime</span>
+                        <span class="metric-value" id="metricUptime">0s</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

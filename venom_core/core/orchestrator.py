@@ -17,6 +17,9 @@ logger = get_logger(__name__)
 # Maksymalna liczba prób naprawy kodu przez pętlę Coder-Critic
 MAX_REPAIR_ATTEMPTS = 2
 
+# Maksymalna długość tekstu w promptach (zabezpieczenie przed prompt injection)
+MAX_PROMPT_LENGTH = 500
+
 
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
@@ -217,6 +220,7 @@ class Orchestrator:
         critic = self.task_dispatcher.critic_agent
 
         generated_code = None
+        critic_feedback = None  # Inicjalizacja zmiennej
         attempt = 0
 
         while attempt <= MAX_REPAIR_ATTEMPTS:
@@ -232,12 +236,12 @@ class Orchestrator:
                     task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
                 )
                 # Ogranicz długość poprzedniego kodu w promptcie dla wydajności
-                code_preview = generated_code[:500] + "..." if len(generated_code) > 500 else generated_code
+                code_preview = generated_code[:MAX_PROMPT_LENGTH] + "..." if len(generated_code) > MAX_PROMPT_LENGTH else generated_code
                 repair_prompt = f"""FEEDBACK OD KRYTYKA:
-{critic_feedback[:500]}
+{critic_feedback[:MAX_PROMPT_LENGTH]}
 
 ORYGINALNE ŻĄDANIE UŻYTKOWNIKA:
-{user_request[:500]}
+{user_request[:MAX_PROMPT_LENGTH]}
 
 POPRZEDNI KOD (fragment):
 {code_preview}
@@ -251,7 +255,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             # Krok 2: CriticAgent ocenia kod
             self.state_manager.add_log(task_id, "Critic: Ocena kodu...")
-            review_input = f"USER_REQUEST: {user_request}\n\nCODE:\n{generated_code}"
+            review_input = f"USER_REQUEST: {user_request[:MAX_PROMPT_LENGTH]}\n\nCODE:\n{generated_code}"
             critic_feedback = await critic.process(review_input)
 
             # Krok 3: Sprawdź czy zaakceptowano
@@ -275,7 +279,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                     f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
                 )
                 # Ogranicz rozmiar feedbacku w finalnej wiadomości
-                feedback_summary = critic_feedback[:500] + "..." if len(critic_feedback) > 500 else critic_feedback
+                feedback_summary = critic_feedback[:MAX_PROMPT_LENGTH] + "..." if len(critic_feedback) > MAX_PROMPT_LENGTH else critic_feedback
                 return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa

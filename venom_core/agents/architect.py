@@ -272,8 +272,18 @@ WAŻNE:
 
             if step.depends_on and step.depends_on in context_history:
                 dependent_result = context_history[step.depends_on]
-                step_context = f"""KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):
-{dependent_result[:1000]}...
+                # Ogranicz kontekst do 1000 znaków, dodając informację o obcięciu
+                if len(dependent_result) > 1000:
+                    truncated_result = dependent_result[:1000]
+                    step_context = f"""KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):
+{truncated_result}
+[...kontekst obcięty po 1000 znakach...]
+
+AKTUALNE ZADANIE:
+{step.instruction}"""
+                else:
+                    step_context = f"""KONTEKST Z POPRZEDNIEGO KROKU ({step.depends_on}):
+{dependent_result}
 
 AKTUALNE ZADANIE:
 {step.instruction}"""
@@ -298,7 +308,11 @@ AKTUALNE ZADANIE:
                     f"\n--- Krok {step.step_number}: {step.agent_type} ---\n"
                 )
                 final_result += f"Zadanie: {step.instruction}\n"
-                final_result += f"Wynik: {result[:500]}...\n\n"
+                # Ogranicz wynik do 500 znaków dla czytelności logu
+                if len(result) > 500:
+                    final_result += f"Wynik: {result[:500]}...\n[wynik obcięty, pełna wersja w context_history]\n\n"
+                else:
+                    final_result += f"Wynik: {result}\n\n"
 
                 logger.info(f"Krok {step.step_number} zakończony sukcesem")
 

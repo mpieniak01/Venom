@@ -12,7 +12,7 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 - 🧠 **Planowanie strategiczne** - Automatyczna dekompozycja złożonych projektów na kroki
 - 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł
 - 🤖 **Zarządzanie agentami** - Koordynacja wielu wyspecjalizowanych agentów
-- 💾 **Pamięć długotrwała** - Zapisywanie i wykorzystywanie zdobytej wiedzy
+- 💾 **Pamięć długoterminowa** - Zapisywanie i wykorzystywanie zdobytej wiedzy
 
 ### 🎯 Przykłady użycia
 
@@ -45,7 +45,7 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 #### 2. **Knowledge Expansion** (Ekspansja Wiedzy)
 - **ResearcherAgent** - Zbiera i syntetyzuje wiedzę z Internetu
 - **WebSearchSkill** - Wyszukiwanie (DuckDuckGo) i scraping (trafilatura)
-- **MemorySkill** - Pamięć długotrwała (LanceDB)
+- **MemorySkill** - Pamięć długoterminowa (LanceDB)
 
 #### 3. **Execution Layer** (Warstwa Wykonawcza)
 - **CoderAgent** - Generuje kod z wykorzystaniem wiedzy
@@ -203,7 +203,7 @@ mypy venom_core
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem
-- [x] Pamięć długotrwała
+- [x] Pamięć długoterminowa
 - [x] Comprehensive testing
 
 ### 🚧 v2.1 (Planned)

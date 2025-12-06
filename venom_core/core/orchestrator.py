@@ -124,11 +124,11 @@ class Orchestrator:
             elif intent == "COMPLEX_PLANNING":
                 self.state_manager.add_log(
                     task_id,
-                    f"Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+                    "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
                 )
                 result = await self.task_dispatcher.dispatch(intent, context)
             else:
-                # Dla innych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH) - standardowy przepływ
+                # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
                 result = await self.task_dispatcher.dispatch(intent, context)
 
             # Zaloguj które agent przejął zadanie

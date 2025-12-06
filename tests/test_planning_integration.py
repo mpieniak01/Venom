@@ -1,6 +1,6 @@
 """Testy integracyjne dla przepływu planowania."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -102,7 +102,6 @@ class TestPlanningIntegration:
             ]
         }
 
-        mock_response = MagicMock()
         # Pierwsze wywołanie zwraca plan, kolejne zwracają wyniki kroków
         mock_kernel.get_service.return_value.get_chat_message_content.side_effect = [
             MagicMock(__str__=lambda x: json.dumps(plan_json)),

@@ -116,9 +116,7 @@ async def test_dispatcher_routes_knowledge_search(
 async def test_dispatcher_raises_error_on_unknown_intent(dispatcher_with_mocked_agents):
     """Test rzucania wyjątku dla nieznanej intencji."""
     with pytest.raises(ValueError, match="Nieznana intencja: UNKNOWN_INTENT"):
-        await dispatcher_with_mocked_agents.dispatch(
-            "UNKNOWN_INTENT", "Jakieś zadanie"
-        )
+        await dispatcher_with_mocked_agents.dispatch("UNKNOWN_INTENT", "Jakieś zadanie")
 
 
 @pytest.mark.asyncio
@@ -129,9 +127,7 @@ async def test_dispatcher_propagates_agent_errors(
     mock_coder_agent.process.side_effect = Exception("Agent error")
 
     with pytest.raises(Exception, match="Agent error"):
-        await dispatcher_with_mocked_agents.dispatch(
-            "CODE_GENERATION", "Napisz kod"
-        )
+        await dispatcher_with_mocked_agents.dispatch("CODE_GENERATION", "Napisz kod")
 
 
 @pytest.mark.asyncio

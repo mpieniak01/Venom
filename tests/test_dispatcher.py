@@ -129,6 +129,21 @@ async def test_dispatcher_routes_knowledge_search(
 
 
 @pytest.mark.asyncio
+async def test_dispatcher_routes_file_operation(
+    dispatcher_with_mocked_agents, mock_librarian_agent
+):
+    """Test kierowania zadań FILE_OPERATION do LibrarianAgent."""
+    mock_librarian_agent.process.return_value = "Plik zapisany: test.py"
+
+    result = await dispatcher_with_mocked_agents.dispatch(
+        "FILE_OPERATION", "Zapisz plik test.py"
+    )
+
+    assert result == "Plik zapisany: test.py"
+    mock_librarian_agent.process.assert_called_once_with("Zapisz plik test.py")
+
+
+@pytest.mark.asyncio
 async def test_dispatcher_raises_error_on_unknown_intent(dispatcher_with_mocked_agents):
     """Test rzucania wyjątku dla nieznanej intencji."""
     with pytest.raises(ValueError, match="Nieznana intencja: UNKNOWN_INTENT"):

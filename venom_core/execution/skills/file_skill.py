@@ -16,6 +16,11 @@ class FileSkill:
     """
     Skill do bezpiecznych operacji plikowych.
     Wszystkie operacje są ograniczone do WORKSPACE_ROOT.
+    
+    UWAGA: Metody tego skill nie są thread-safe. System Venom jest zaprojektowany
+    do sekwencyjnego przetwarzania zadań przez Orchestrator. Jeśli wiele agentów
+    próbowałoby jednocześnie zapisywać do tego samego pliku, może dojść do 
+    race conditions. W przyszłości można dodać file locking używając fcntl/msvcrt.
     """
 
     def __init__(self, workspace_root: str = None):
@@ -43,7 +48,12 @@ class FileSkill:
 
         Raises:
             SecurityError: Jeśli ścieżka próbuje wyjść poza workspace
+            ValueError: Jeśli ścieżka jest pusta
         """
+        # Sprawdź czy ścieżka nie jest pusta
+        if not file_path or not file_path.strip():
+            raise ValueError("Ścieżka pliku nie może być pusta")
+
         # Połącz ze workspace root i rozwiąż
         safe_path = (self.workspace_root / file_path).resolve()
 
@@ -56,6 +66,16 @@ class FileSkill:
             )
             logger.error(error_msg)
             raise SecurityError(error_msg)
+
+        # Sprawdź symlinki - nie pozwalaj na operacje na symlinkach wskazujących poza workspace
+        if safe_path.is_symlink():
+            real_path = safe_path.resolve()
+            try:
+                real_path.relative_to(self.workspace_root)
+            except ValueError:
+                error_msg = f"Odmowa dostępu: symlink '{file_path}' wskazuje poza workspace"
+                logger.error(error_msg)
+                raise SecurityError(error_msg)
 
         return safe_path
 
@@ -154,7 +174,7 @@ class FileSkill:
 
     @kernel_function(
         name="list_files",
-        description="Listuje pliki i katalogi w workspace.",
+        description="Listuje pliki i katalogi w workspace (tylko bezpośrednie elementy, nie rekurencyjnie).",
     )
     def list_files(
         self,
@@ -163,13 +183,15 @@ class FileSkill:
         ] = ".",
     ) -> str:
         """
-        Listuje pliki i katalogi.
+        Listuje pliki i katalogi w podanym katalogu.
 
         Args:
             directory: Katalog względem workspace (domyślnie '.')
 
         Returns:
-            Lista plików i katalogów w formacie tekstowym
+            Lista plików i katalogów w formacie tekstowym.
+            UWAGA: Listowanie jest płaskie (non-recursive) - pokazuje tylko 
+            bezpośrednie elementy podanego katalogu, bez zagłębiania się w podkatalogi.
 
         Raises:
             SecurityError: Jeśli ścieżka jest nieprawidłowa
@@ -222,7 +244,9 @@ class FileSkill:
             file_path: Ścieżka do pliku względem workspace
 
         Returns:
-            "True" jeśli istnieje, "False" jeśli nie
+            String "True" jeśli istnieje, "False" jeśli nie.
+            UWAGA: Zwraca string zamiast boolean, ponieważ Semantic Kernel
+            wymaga serializowalnych typów dla function calling przez LLM.
 
         Raises:
             SecurityError: Jeśli ścieżka jest nieprawidłowa

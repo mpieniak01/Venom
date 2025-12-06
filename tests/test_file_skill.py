@@ -192,3 +192,42 @@ async def test_read_directory_as_file(temp_workspace):
         await skill.read_file("subdir")
 
     assert "nie jest plikiem" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_empty_path_validation(temp_workspace):
+    """Test walidacji pustych ścieżek."""
+    skill = FileSkill(workspace_root=temp_workspace)
+
+    # Test pustego stringa
+    with pytest.raises((ValueError, IOError)) as exc_info:
+        await skill.write_file("", "content")
+    assert "nie może być pusta" in str(exc_info.value).lower()
+
+    # Test stringa ze spacjami
+    with pytest.raises((ValueError, IOError)) as exc_info:
+        await skill.write_file("   ", "content")
+    assert "nie może być pusta" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_symlink_security(temp_workspace):
+    """Test ochrony przed symlinkami wskazującymi poza workspace."""
+    import os
+
+    skill = FileSkill(workspace_root=temp_workspace)
+
+    # Utwórz symlink wskazujący poza workspace
+    symlink_path = Path(temp_workspace) / "evil_link"
+    try:
+        os.symlink("/etc", str(symlink_path))
+
+        # Próba zapisu przez symlink powinna być zablokowana
+        with pytest.raises(SecurityError) as exc_info:
+            await skill.write_file("evil_link/passwd", "malicious")
+        assert "symlink" in str(exc_info.value).lower() or "poza workspace" in str(
+            exc_info.value
+        )
+    except OSError:
+        # Jeśli nie można utworzyć symlinku (np. brak uprawnień), pomiń test
+        pytest.skip("Nie można utworzyć symlinku w tym środowisku")

@@ -1,5 +1,6 @@
 # venom/main.py
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
@@ -20,7 +21,17 @@ orchestrator = Orchestrator(state_manager)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
-    # Startup - już zainicjalizowane powyżej
+    # Startup
+    # Utwórz katalog workspace jeśli nie istnieje
+    workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Workspace directory: {workspace_path.resolve()}")
+
+    # Utwórz katalog memory jeśli nie istnieje
+    memory_path = Path(SETTINGS.MEMORY_ROOT)
+    memory_path.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Memory directory: {memory_path.resolve()}")
+
     yield
     # Shutdown - czeka na zakończenie zapisów stanu
     logger.info("Zamykanie aplikacji...")

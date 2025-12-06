@@ -7,6 +7,7 @@ from semantic_kernel import Kernel
 from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
+from venom_core.agents.librarian import LibrarianAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,12 +28,14 @@ class TaskDispatcher:
         # Inicjalizuj agentów
         self.coder_agent = CoderAgent(kernel)
         self.chat_agent = ChatAgent(kernel)
+        self.librarian_agent = LibrarianAgent(kernel)
 
         # Mapa intencji do agentów
         self.agent_map: Dict[str, BaseAgent] = {
             "CODE_GENERATION": self.coder_agent,
             "GENERAL_CHAT": self.chat_agent,
-            "KNOWLEDGE_SEARCH": self.chat_agent,  # TODO: podpiąć GraphRAG w przyszłości
+            "KNOWLEDGE_SEARCH": self.librarian_agent,
+            "FILE_OPERATION": self.librarian_agent,
         }
 
         logger.info("TaskDispatcher zainicjalizowany z agentami")
@@ -42,7 +45,7 @@ class TaskDispatcher:
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
 
         Args:
-            intent: Sklasyfikowana intencja (CODE_GENERATION, GENERAL_CHAT, KNOWLEDGE_SEARCH)
+            intent: Sklasyfikowana intencja (CODE_GENERATION, GENERAL_CHAT, KNOWLEDGE_SEARCH, FILE_OPERATION)
             content: Treść zadania do wykonania
 
         Returns:

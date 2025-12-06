@@ -218,19 +218,22 @@ class CodeGraphStore:
         if file_node not in self.graph:
             return {"error": f"Plik {file_path} nie istnieje w grafie"}
 
-        # Znajdź wszystkie pliki, które importują ten plik
+        # Znajdź wszystkie pliki, które importują ten plik (bezpośredni importerzy)
         importers = []
-        for source, target, edge_data in self.graph.edges(data=True):
-            if target == file_node and edge_data.get("type") == "IMPORTS":
-                if source.startswith("file:"):
-                    importers.append(source.replace("file:", ""))
+        for predecessor in self.graph.predecessors(file_node):
+            edge_data = self.graph.get_edge_data(predecessor, file_node, default={})
+            if edge_data.get("type") == "IMPORTS" and predecessor.startswith("file:"):
+                importers.append(predecessor.replace("file:", ""))
 
-        # Znajdź wszystkie pliki w downstream (zależne pośrednio)
+        # Znajdź wszystkie pliki w downstream (zależne pośrednio) używając ancestors
         all_dependents = set()
-        for node in self.graph.nodes():
-            if node.startswith("file:") and node != file_node:
-                if nx.has_path(self.graph, node, file_node):
+        try:
+            for node in nx.ancestors(self.graph, file_node):
+                if node.startswith("file:"):
                     all_dependents.add(node.replace("file:", ""))
+        except nx.NetworkXError:
+            # Graf może nie być skierowany lub węzeł nie istnieje
+            pass
 
         return {
             "file": file_path,

@@ -515,8 +515,9 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
             else:
                 # Lekcja o błędzie - zawsze zapisuj
                 action = f"Próba wykonania zadania typu {intent}"
-                lesson_result = f"BŁĄD: {error[:200]}"
-                feedback = f"Unikaj powtórzenia tego błędu. Błąd: {error[:300]}"
+                error_msg = error if error else "Unknown error"
+                lesson_result = f"BŁĄD: {error_msg[:200]}"
+                feedback = f"Unikaj powtórzenia tego błędu. Błąd: {error_msg[:300]}"
                 tags = [intent, "błąd", "ostrzeżenie"]
 
             # Zapisz lekcję

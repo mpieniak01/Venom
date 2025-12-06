@@ -82,6 +82,7 @@ class GardenerAgent:
             try:
                 await self._task
             except asyncio.CancelledError:
+                # Expected when cancelling task - no action needed
                 pass
 
         logger.info("GardenerAgent zatrzymany")
@@ -186,9 +187,9 @@ class GardenerAgent:
             logger.error(f"Błąd podczas skanowania: {e}")
             return {"error": str(e)}
 
-    def trigger_manual_scan(self) -> dict:
+    async def trigger_manual_scan(self) -> dict:
         """
-        Wyzwala manualne skanowanie (synchroniczne).
+        Wyzwala manualne skanowanie (asynchroniczne).
 
         Returns:
             Statystyki skanowania
@@ -196,11 +197,18 @@ class GardenerAgent:
         logger.info("Manualne skanowanie wywołane")
 
         try:
-            # Załaduj graf
-            self.graph_store.load_graph()
+            # Uruchom operacje blokujące I/O w executor, aby nie blokować event loop
+            import asyncio
 
-            # Skanuj
-            stats = self.graph_store.scan_workspace(force_rescan=False)
+            loop = asyncio.get_event_loop()
+
+            # Załaduj graf w executor
+            await loop.run_in_executor(None, self.graph_store.load_graph)
+
+            # Skanuj w executor
+            stats = await loop.run_in_executor(
+                None, self.graph_store.scan_workspace, False
+            )
             self._last_scan_time = datetime.now()
 
             logger.info(f"Manualne skanowanie zakończone: {stats}")

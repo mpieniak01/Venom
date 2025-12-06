@@ -564,36 +564,50 @@ class VenomDashboard {
 
             if (data.status === 'success' && data.summary) {
                 const summary = data.summary;
-                graphSummary.innerHTML = `
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Węzły</span>
-                        <span class="graph-stat-value">${summary.total_nodes || 0}</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Krawędzie</span>
-                        <span class="graph-stat-value">${summary.total_edges || 0}</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Pliki</span>
-                        <span class="graph-stat-value">${summary.node_types?.file || 0}</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Klasy</span>
-                        <span class="graph-stat-value">${summary.node_types?.class || 0}</span>
-                    </div>
-                    <div class="graph-stat">
-                        <span class="graph-stat-label">Funkcje</span>
-                        <span class="graph-stat-value">${summary.node_types?.function || 0}</span>
-                    </div>
-                `;
+
+                // Wyczyść poprzednią zawartość
+                graphSummary.innerHTML = '';
+
+                // Helper do tworzenia statystyki - bezpieczne użycie textContent
+                const createStat = (label, value) => {
+                    const statDiv = document.createElement('div');
+                    statDiv.className = 'graph-stat';
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'graph-stat-label';
+                    labelSpan.textContent = label;
+
+                    const valueSpan = document.createElement('span');
+                    valueSpan.className = 'graph-stat-value';
+                    valueSpan.textContent = String(value);
+
+                    statDiv.appendChild(labelSpan);
+                    statDiv.appendChild(valueSpan);
+                    return statDiv;
+                };
+
+                // Dodaj statystyki używając bezpiecznego DOM manipulation
+                graphSummary.appendChild(createStat('Węzły', summary.total_nodes || 0));
+                graphSummary.appendChild(createStat('Krawędzie', summary.total_edges || 0));
+                graphSummary.appendChild(createStat('Pliki', (summary.node_types && summary.node_types.file) || 0));
+                graphSummary.appendChild(createStat('Klasy', (summary.node_types && summary.node_types.class) || 0));
+                graphSummary.appendChild(createStat('Funkcje', (summary.node_types && summary.node_types.function) || 0));
             } else {
-                graphSummary.innerHTML = '<p class="empty-state">Brak danych grafu</p>';
+                graphSummary.textContent = '';
+                const p = document.createElement('p');
+                p.className = 'empty-state';
+                p.textContent = 'Brak danych grafu';
+                graphSummary.appendChild(p);
             }
         } catch (error) {
             console.error('Error fetching graph summary:', error);
             const graphSummary = document.getElementById('graphSummary');
             if (graphSummary) {
-                graphSummary.innerHTML = '<p class="empty-state">Błąd ładowania grafu</p>';
+                graphSummary.textContent = '';
+                const p = document.createElement('p');
+                p.className = 'empty-state';
+                p.textContent = 'Błąd ładowania grafu';
+                graphSummary.appendChild(p);
             }
         }
     }

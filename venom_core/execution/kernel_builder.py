@@ -1,5 +1,6 @@
 """Moduł: kernel_builder - dynamiczne budowanie Semantic Kernel."""
 
+from openai import AsyncOpenAI
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
 
@@ -44,11 +45,16 @@ class KernelBuilder:
                 f"Konfiguracja lokalnego LLM: endpoint={self.settings.LLM_LOCAL_ENDPOINT}, model={model_name}"
             )
 
+            # Utwórz klienta OpenAI z customowym endpoint
+            async_client = AsyncOpenAI(
+                api_key="venom-local",  # Dummy key dla lokalnych serwerów
+                base_url=self.settings.LLM_LOCAL_ENDPOINT,
+            )
+
             chat_service = OpenAIChatCompletion(
                 service_id="local_llm",
                 ai_model_id=model_name,
-                api_key="venom-local",  # Dummy key dla lokalnych serwerów
-                base_url=self.settings.LLM_LOCAL_ENDPOINT,
+                async_client=async_client,
             )
 
             kernel.add_service(chat_service)

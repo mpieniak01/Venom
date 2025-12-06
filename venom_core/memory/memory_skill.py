@@ -101,8 +101,8 @@ class MemorySkill:
                 text=content, metadata=metadata, chunk_text=True
             )
 
-            logger.info(f"Memorize: {result}")
-            return f"Informacja została zapisana w pamięci ({result})"
+            logger.info(f"Memorize: {result['message']}")
+            return f"Informacja została zapisana w pamięci ({result['message']})"
 
         except Exception as e:
             logger.error(f"Błąd podczas memorize: {e}")

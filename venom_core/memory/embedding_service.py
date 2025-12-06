@@ -9,6 +9,10 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Cache na poziomie modułu, aby uniknąć problemów z lru_cache na metodach instancji
+_embedding_cache = {}
+
+
 class EmbeddingService:
     """
     Serwis do generowania embeddingów tekstowych.
@@ -67,31 +71,30 @@ class EmbeddingService:
                 f"Nieznany typ serwisu embeddingów: {self.service_type}. Dostępne: local, openai"
             )
 
-    @lru_cache(maxsize=1000)
-    def _get_embedding_cached(self, text: str) -> tuple:
+    def _get_embedding_impl(self, text: str) -> List[float]:
         """
-        Wewnętrzna metoda z cache'owaniem dla embeddingów.
+        Wewnętrzna implementacja generowania embeddingu (bez cache).
 
         Args:
             text: Tekst do zakodowania
 
         Returns:
-            Tuple z embeddingiem (dla kompatybilności z lru_cache)
+            Lista floatów reprezentująca embedding
         """
         self._ensure_model_loaded()
 
         if self.service_type == "local":
             embedding = self._model.encode(text, convert_to_numpy=True)
-            return tuple(embedding.tolist())
+            return embedding.tolist()
         elif self.service_type == "openai":
             response = self._client.embeddings.create(
                 model="text-embedding-3-small", input=text
             )
-            return tuple(response.data[0].embedding)
+            return response.data[0].embedding
 
     def get_embedding(self, text: str) -> List[float]:
         """
-        Generuje embedding dla podanego tekstu.
+        Generuje embedding dla podanego tekstu z cache'owaniem.
 
         Args:
             text: Tekst do zakodowania
@@ -105,9 +108,25 @@ class EmbeddingService:
         if not text or not text.strip():
             raise ValueError("Tekst nie może być pusty")
 
+        text_normalized = text.strip()
+        cache_key = (self.service_type, text_normalized)
+        
+        # Sprawdź cache
+        if cache_key in _embedding_cache:
+            logger.debug(f"Embedding z cache dla tekstu ({len(text)} znaków)")
+            return _embedding_cache[cache_key]
+        
+        # Generuj nowy embedding
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
-        embedding_tuple = self._get_embedding_cached(text.strip())
-        return list(embedding_tuple)
+        embedding = self._get_embedding_impl(text_normalized)
+        
+        # Zapisz do cache (ogranicz rozmiar cache do 1000 wpisów)
+        if len(_embedding_cache) >= 1000:
+            # Usuń najstarszy wpis (FIFO)
+            _embedding_cache.pop(next(iter(_embedding_cache)))
+        _embedding_cache[cache_key] = embedding
+        
+        return embedding
 
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -142,7 +161,8 @@ class EmbeddingService:
 
     def clear_cache(self):
         """Czyści cache embeddingów."""
-        self._get_embedding_cached.cache_clear()
+        global _embedding_cache
+        _embedding_cache.clear()
         logger.info("Cache embeddingów wyczyszczony")
 
     @property

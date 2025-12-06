@@ -12,6 +12,11 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Stałe dla chunkingu
+DEFAULT_CHUNK_SIZE = 500  # Domyślny rozmiar fragmentu tekstu w znakach
+DEFAULT_CHUNK_OVERLAP = 50  # Domyślne nakładanie się fragmentów w znakach
+MIN_CHUNK_RATIO = 0.5  # Minimalny stosunek długości fragmentu do rozmiaru, aby zaakceptować punkt łamania
+
 
 class VectorStore:
     """
@@ -125,7 +130,7 @@ class VectorStore:
         self._get_or_create_table(name)
         return f"Kolekcja '{name}' utworzona pomyślnie"
 
-    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap: int = DEFAULT_CHUNK_OVERLAP) -> List[str]:
         """
         Dzieli tekst na mniejsze fragmenty z overlapem.
 
@@ -155,7 +160,9 @@ class VectorStore:
                 last_space = chunk.rfind(" ")
 
                 best_break = max(last_period, last_newline, last_space)
-                if best_break > chunk_size * 0.5:  # Tylko jeśli nie za blisko początku
+                # Akceptuj punkt łamania tylko jeśli jest przynajmniej w połowie chunka
+                # (zapobiega tworzeniu zbyt małych fragmentów)
+                if best_break > chunk_size * MIN_CHUNK_RATIO:
                     chunk = chunk[: best_break + 1]
                     end = start + len(chunk)
 
@@ -170,7 +177,7 @@ class VectorStore:
         metadata: Optional[Dict[str, Any]] = None,
         collection_name: str = None,
         chunk_text: bool = True,
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
         Zapisuje lub aktualizuje tekst w bazie wektorowej.
 
@@ -181,7 +188,7 @@ class VectorStore:
             chunk_text: Czy podzielić tekst na fragmenty
 
         Returns:
-            Komunikat o sukcesie z liczbą zapisanych fragmentów
+            Dict z kluczami 'message' (str) i 'chunks_count' (int)
 
         Raises:
             ValueError: Jeśli tekst jest pusty
@@ -193,7 +200,7 @@ class VectorStore:
         col_name = collection_name or self.collection_name
 
         # Podziel tekst na fragmenty jeśli potrzeba
-        if chunk_text and len(text) > 500:
+        if chunk_text and len(text) > DEFAULT_CHUNK_SIZE:
             chunks = self._chunk_text(text)
             logger.info(f"Tekst podzielony na {len(chunks)} fragmentów")
         else:
@@ -221,7 +228,10 @@ class VectorStore:
         logger.info(
             f"Zapisano {len(records)} fragmentów do kolekcji '{col_name}'"
         )
-        return f"Zapisano {len(records)} fragmentów do pamięci"
+        return {
+            "message": f"Zapisano {len(records)} fragmentów do pamięci",
+            "chunks_count": len(records)
+        }
 
     def search(
         self, query: str, limit: int = 3, collection_name: str = None
@@ -271,7 +281,7 @@ class VectorStore:
                 {
                     "text": result["text"],
                     "metadata": json.loads(result.get("metadata", "{}")),
-                    "score": result.get("_distance", 0.0),
+                    "score": result.get("_distance", None),
                 }
             )
 

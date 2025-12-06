@@ -81,4 +81,4 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
-            return f"Błąd podczas generowania odpowiedzi: {str(e)}"
+            raise

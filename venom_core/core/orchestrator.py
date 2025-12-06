@@ -101,11 +101,17 @@ class Orchestrator:
             result = await self.task_dispatcher.dispatch(intent, task.content)
 
             # Zaloguj które agent przejął zadanie
-            agent_name = self.task_dispatcher.agent_map[intent].__class__.__name__
-            self.state_manager.add_log(
-                task_id,
-                f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
-            )
+            agent = self.task_dispatcher.agent_map.get(intent)
+            if agent is not None:
+                agent_name = agent.__class__.__name__
+                self.state_manager.add_log(
+                    task_id,
+                    f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
+                )
+            else:
+                logger.error(
+                    f"Nie znaleziono agenta dla intencji '{intent}' podczas logowania zadania {task_id}"
+                )
 
             # Ustaw status COMPLETED i wynik
             await self.state_manager.update_status(

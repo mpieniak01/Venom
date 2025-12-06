@@ -86,4 +86,4 @@ ls -la
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania kodu: {e}")
-            return f"Błąd podczas generowania kodu: {str(e)}"
+            raise

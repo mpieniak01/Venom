@@ -1,5 +1,6 @@
 """Moduł: metrics - zbieranie i raportowanie metryk systemowych."""
 
+import threading
 from datetime import datetime
 from typing import Dict
 
@@ -22,18 +23,22 @@ class MetricsCollector:
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
         self.start_time = datetime.now()
+        self._lock = threading.Lock()
 
     def increment_task_created(self):
         """Inkrementuje licznik utworzonych zadań."""
-        self.metrics["tasks_created"] += 1
+        with self._lock:
+            self.metrics["tasks_created"] += 1
 
     def increment_task_completed(self):
         """Inkrementuje licznik ukończonych zadań."""
-        self.metrics["tasks_completed"] += 1
+        with self._lock:
+            self.metrics["tasks_completed"] += 1
 
     def increment_task_failed(self):
         """Inkrementuje licznik nieudanych zadań."""
-        self.metrics["tasks_failed"] += 1
+        with self._lock:
+            self.metrics["tasks_failed"] += 1
 
     def add_tokens_used(self, count: int):
         """
@@ -42,7 +47,8 @@ class MetricsCollector:
         Args:
             count: Liczba użytych tokenów
         """
-        self.metrics["tokens_used_session"] += count
+        with self._lock:
+            self.metrics["tokens_used_session"] += count
 
     def increment_tool_usage(self, tool_name: str):
         """
@@ -51,9 +57,10 @@ class MetricsCollector:
         Args:
             tool_name: Nazwa użytego narzędzia
         """
-        if tool_name not in self.tool_usage:
-            self.tool_usage[tool_name] = 0
-        self.tool_usage[tool_name] += 1
+        with self._lock:
+            if tool_name not in self.tool_usage:
+                self.tool_usage[tool_name] = 0
+            self.tool_usage[tool_name] += 1
 
     def increment_agent_usage(self, agent_name: str):
         """
@@ -62,9 +69,10 @@ class MetricsCollector:
         Args:
             agent_name: Nazwa użytego agenta
         """
-        if agent_name not in self.agent_usage:
-            self.agent_usage[agent_name] = 0
-        self.agent_usage[agent_name] += 1
+        with self._lock:
+            if agent_name not in self.agent_usage:
+                self.agent_usage[agent_name] = 0
+            self.agent_usage[agent_name] += 1
 
     def _calculate_success_rate(self) -> float:
         """
@@ -88,23 +96,31 @@ class MetricsCollector:
         Returns:
             Słownik z metrykami
         """
-        uptime_seconds = (datetime.now() - self.start_time).total_seconds()
+        with self._lock:
+            uptime_seconds = (datetime.now() - self.start_time).total_seconds()
 
-        return {
-            "status": "ok",
-            "uptime_seconds": round(uptime_seconds, 2),
-            "start_time": self.start_time.isoformat(),
-            "tasks": {
-                "created": self.metrics["tasks_created"],
-                "completed": self.metrics["tasks_completed"],
-                "failed": self.metrics["tasks_failed"],
-                "success_rate": self._calculate_success_rate(),
-            },
-            "tokens_used_session": self.metrics["tokens_used_session"],
-            "tool_usage": self.tool_usage,
-            "agent_usage": self.agent_usage,
-        }
+            return {
+                "status": "ok",
+                "uptime_seconds": round(uptime_seconds, 2),
+                "start_time": self.start_time.isoformat(),
+                "tasks": {
+                    "created": self.metrics["tasks_created"],
+                    "completed": self.metrics["tasks_completed"],
+                    "failed": self.metrics["tasks_failed"],
+                    "success_rate": self._calculate_success_rate(),
+                },
+                "tokens_used_session": self.metrics["tokens_used_session"],
+                "tool_usage": self.tool_usage.copy(),
+                "agent_usage": self.agent_usage.copy(),
+            }
 
 
-# Globalna instancja (będzie inicjalizowana w main.py)
-metrics_collector = MetricsCollector()
+# Globalna instancja - inicjalizowana w main.py podczas startu aplikacji
+metrics_collector = None
+
+
+def init_metrics_collector():
+    """Inicjalizuje globalny collector metryk. Wywołać w hooku FastAPI startup."""
+    global metrics_collector
+    metrics_collector = MetricsCollector()
+    logger.info("MetricsCollector initialized")

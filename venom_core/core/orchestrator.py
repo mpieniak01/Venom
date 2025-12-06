@@ -4,9 +4,11 @@ import asyncio
 from datetime import datetime
 from uuid import UUID
 
+from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
+from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,7 +18,10 @@ class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
 
     def __init__(
-        self, state_manager: StateManager, intent_manager: IntentManager = None
+        self,
+        state_manager: StateManager,
+        intent_manager: IntentManager = None,
+        task_dispatcher: TaskDispatcher = None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -24,9 +29,18 @@ class Orchestrator:
         Args:
             state_manager: Menedżer stanu zadań
             intent_manager: Opcjonalny menedżer klasyfikacji intencji (jeśli None, zostanie utworzony)
+            task_dispatcher: Opcjonalny dispatcher zadań (jeśli None, zostanie utworzony)
         """
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
+
+        # Inicjalizuj dispatcher jeśli nie został przekazany
+        if task_dispatcher is None:
+            kernel_builder = KernelBuilder()
+            kernel = kernel_builder.build_kernel()
+            task_dispatcher = TaskDispatcher(kernel)
+
+        self.task_dispatcher = task_dispatcher
 
     async def submit_task(self, request: TaskRequest) -> TaskResponse:
         """
@@ -83,8 +97,15 @@ class Orchestrator:
                 f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}",
             )
 
-            # Wygeneruj wynik zawierający intencję
-            result = f"Intencja: {intent} | Treść: {task.content}"
+            # Przekaż zadanie do dispatchera
+            result = await self.task_dispatcher.dispatch(intent, task.content)
+
+            # Zaloguj które agent przejął zadanie
+            agent_name = self.task_dispatcher.agent_map[intent].__class__.__name__
+            self.state_manager.add_log(
+                task_id,
+                f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
+            )
 
             # Ustaw status COMPLETED i wynik
             await self.state_manager.update_status(

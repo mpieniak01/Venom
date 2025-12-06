@@ -1,6 +1,8 @@
 """Moduł: vector_store - Baza wektorowa oparta na LanceDB."""
 
+import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -201,9 +203,6 @@ class VectorStore:
         embeddings = self.embedding_service.get_embeddings_batch(chunks)
 
         # Przygotuj dane do zapisu
-        import json
-        import uuid
-
         table = self._get_or_create_table(col_name)
         
         records = []
@@ -262,8 +261,6 @@ class VectorStore:
         results = table.search(query_embedding).limit(limit).to_list()
 
         # Przetwórz wyniki
-        import json
-
         processed_results = []
         for result in results:
             # Pomiń rekord inicjalizacyjny

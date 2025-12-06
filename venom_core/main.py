@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
+import re
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -179,8 +180,6 @@ async def ingest_to_memory(request: MemoryIngestRequest):
         )
 
         # Wyciągnij liczbę fragmentów z wyniku
-        import re
-
         match = re.search(r"(\d+)", result)
         chunks_count = int(match.group(1)) if match else 1
 

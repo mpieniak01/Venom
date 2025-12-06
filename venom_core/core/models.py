@@ -34,6 +34,7 @@ class TaskRequest(BaseModel):
     """DTO dla żądania utworzenia zadania."""
 
     content: str
+    images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
 
 
 class TaskResponse(BaseModel):

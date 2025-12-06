@@ -3,10 +3,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
+from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -17,7 +21,7 @@ logger = get_logger(__name__)
 
 # Inicjalizacja StateManager i Orchestrator
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
-orchestrator = Orchestrator(state_manager)
+orchestrator = Orchestrator(state_manager, event_broadcaster=event_broadcaster)
 
 # Inicjalizacja VectorStore dla API
 vector_store = None
@@ -55,6 +59,52 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
+
+# Montowanie plików statycznych
+web_dir = Path(__file__).parent.parent / "web"
+if web_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
+    logger.info(f"Pliki statyczne serwowane z: {web_dir / 'static'}")
+
+
+@app.get("/")
+async def serve_dashboard():
+    """Serwuje główny dashboard."""
+    index_path = web_dir / "templates" / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    return {"message": "Dashboard niedostępny - brak pliku index.html"}
+
+
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    Endpoint WebSocket dla streamingu zdarzeń w czasie rzeczywistym.
+
+    Args:
+        websocket: Połączenie WebSocket
+    """
+    await connection_manager.connect(websocket)
+    try:
+        # Wyślij welcome message
+        await event_broadcaster.broadcast_event(
+            event_type=EventType.SYSTEM_LOG,
+            message="Połączono z Venom Telemetry",
+            data={"level": "INFO"},
+        )
+
+        # Trzymaj połączenie otwarte i słuchaj wiadomości od klienta
+        while True:
+            # Odbieraj wiadomości od klienta (opcjonalnie)
+            data = await websocket.receive_text()
+            logger.debug(f"Otrzymano od klienta: {data}")
+
+    except WebSocketDisconnect:
+        await connection_manager.disconnect(websocket)
+        logger.info("Klient rozłączył WebSocket")
+    except Exception as e:
+        logger.error(f"Błąd WebSocket: {e}")
+        await connection_manager.disconnect(websocket)
 
 
 @app.get("/healthz")
@@ -245,3 +295,17 @@ async def search_memory(request: MemorySearchRequest):
     except Exception as e:
         logger.exception("Błąd podczas wyszukiwania w pamięci")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# --- Metrics API Endpoint ---
+
+
+@app.get("/api/v1/metrics")
+async def get_metrics():
+    """
+    Zwraca metryki systemowe.
+
+    Returns:
+        Słownik z metrykami wydajności i użycia
+    """
+    return metrics_collector.get_metrics()

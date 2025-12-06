@@ -5,7 +5,10 @@ from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+
 from venom_core.agents.base import BaseAgent
+from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,12 +20,15 @@ class ChatAgent(BaseAgent):
     SYSTEM_PROMPT = """Jesteś przyjaznym asystentem AI o imieniu Venom. Odpowiadasz na pytania użytkownika w sposób pomocny, zwięzły i naturalny.
 
 ZASADY:
+- NAJPIERW sprawdź pamięć długoterminową (użyj funkcji 'recall') czy nie masz zapisanych informacji na ten temat
+- Jeśli znajdziesz coś w pamięci, wykorzystaj te informacje w odpowiedzi
 - Odpowiadaj bezpośrednio na pytanie użytkownika
 - Bądź zwięzły ale kompletny
 - Używaj naturalnego, przyjaznego języka
 - Jeśli użytkownik się wita, odpowiedz uprzejmie
-- Jeśli pytanie dotyczy wiedzy, odpowiedz na podstawie swojej wiedzy
+- Jeśli pytanie dotyczy wiedzy, odpowiedz na podstawie swojej wiedzy i pamięci
 - Jeśli nie wiesz odpowiedzi, szczerze to przyznaj
+- Możesz zapisywać ważne informacje do pamięci używając funkcji 'memorize'
 
 Przykłady:
 Pytanie: "Cześć Venom, jak się masz?"
@@ -43,7 +49,12 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             kernel: Skonfigurowane jądro Semantic Kernel
         """
         super().__init__(kernel)
-        logger.info("ChatAgent zainicjalizowany")
+        
+        # Dodaj MemorySkill do kernela
+        memory_skill = MemorySkill()
+        self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
+        
+        logger.info("ChatAgent zainicjalizowany z MemorySkill")
 
     async def process(self, input_text: str) -> str:
         """
@@ -70,9 +81,14 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             # Pobierz serwis chat completion
             chat_service = self.kernel.get_service()
 
-            # Wywołaj model
+            # Włącz automatyczne wywoływanie funkcji (RAG)
+            settings = OpenAIChatPromptExecutionSettings(
+                function_choice_behavior="auto"
+            )
+
+            # Wywołaj model z możliwością auto-wywołania funkcji
             response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=None
+                chat_history=chat_history, settings=settings
             )
 
             result = str(response).strip()

@@ -111,9 +111,7 @@ async def test_orchestrator_different_intents(temp_state_file, mock_intent_manag
 
     # Test KNOWLEDGE_SEARCH
     mock_intent_manager.classify_intent.return_value = "KNOWLEDGE_SEARCH"
-    response3 = await orchestrator.submit_task(
-        TaskRequest(content="Wyjaśnij GraphRAG")
-    )
+    response3 = await orchestrator.submit_task(TaskRequest(content="Wyjaśnij GraphRAG"))
     await asyncio.sleep(1)
 
     task3 = state_manager.get_task(response3.task_id)

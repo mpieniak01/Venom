@@ -3,7 +3,6 @@
 import pytest
 from pydantic_settings import BaseSettings
 
-from venom_core.config import Settings
 from venom_core.execution.kernel_builder import KernelBuilder
 
 

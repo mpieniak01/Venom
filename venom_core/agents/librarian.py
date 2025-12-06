@@ -1,6 +1,7 @@
 """Moduł: librarian - agent zarządzający wiedzą o strukturze projektu."""
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -79,9 +80,14 @@ Akcja: Użyj read_file("config.json") i pokaż zawartość"""
             # Pobierz serwis chat completion
             chat_service = self.kernel.get_service()
 
+            # Włącz automatyczne wywoływanie funkcji
+            settings = OpenAIChatPromptExecutionSettings(
+                function_choice_behavior="auto"
+            )
+
             # Wywołaj model z możliwością auto-wywołania funkcji
             response = await chat_service.get_chat_message_content(
-                chat_history=chat_history
+                chat_history=chat_history, settings=settings
             )
 
             result = str(response).strip()

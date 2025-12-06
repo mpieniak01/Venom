@@ -12,6 +12,9 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Temperatura dla LLM Krytyka - niska dla konsystencji ocen
+CRITIC_TEMPERATURE = 0.3
+
 
 class CriticAgent(BaseAgent):
     """Agent krytykujący kod - Senior Developer / QA."""
@@ -112,7 +115,7 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         )
 
         chat_service = self.kernel.get_service()
-        settings = OpenAIChatPromptExecutionSettings(temperature=0.3)  # Niska temp dla konsystencji
+        settings = OpenAIChatPromptExecutionSettings(temperature=CRITIC_TEMPERATURE)
 
         response = await chat_service.get_chat_message_content(
             chat_history=chat_history, settings=settings

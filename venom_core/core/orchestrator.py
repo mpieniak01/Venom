@@ -49,7 +49,9 @@ class Orchestrator:
         if task_dispatcher is None:
             kernel_builder = KernelBuilder()
             kernel = kernel_builder.build_kernel()
-            task_dispatcher = TaskDispatcher(kernel)
+            task_dispatcher = TaskDispatcher(
+                kernel, event_broadcaster=event_broadcaster
+            )
 
         self.task_dispatcher = task_dispatcher
 

@@ -17,3 +17,8 @@ logger.add(
 )
 
 logger.add(LOG_DIR / "venom.log", rotation="10 MB")
+
+
+def get_logger(name: str):
+    """Zwraca logger z podaną nazwą."""
+    return logger.bind(name=name)

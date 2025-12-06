@@ -6,6 +6,6 @@ __pycache__/
 
 logs/
 workspace/
-data/memory/lessons_learned.json
+data/memory/
 
 .env

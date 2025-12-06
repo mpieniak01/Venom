@@ -281,14 +281,17 @@ class VenomDashboard {
     }
 
     updateTaskList() {
-        if (this.tasks.size === 0) {
-            // Brak aktywnych zadań
-            this.elements.taskList.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
-            return;
-        }
-
         // Clear task list
         this.elements.taskList.innerHTML = '';
+        
+        if (this.tasks.size === 0) {
+            // Brak aktywnych zadań - use DOM methods for consistency
+            const emptyState = document.createElement('p');
+            emptyState.className = 'empty-state';
+            emptyState.textContent = 'Brak aktywnych zadań';
+            this.elements.taskList.appendChild(emptyState);
+            return;
+        }
         
         const tasksArray = Array.from(this.tasks.values()).reverse();
         
@@ -433,17 +436,6 @@ class VenomDashboard {
         setInterval(() => {
             this.fetchMetrics();
         }, 5000);
-    }
-
-    escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, (m) => map[m]);
     }
 }
 

@@ -45,7 +45,9 @@ class TestPlanningIntegration:
 
         # Mock odpowiedzi ResearcherAgent
         mock_response = MagicMock()
-        mock_response.__str__ = lambda x: "Znalazłem informacje o Bitcoin: aktualna cena to $50000"
+        mock_response.__str__ = (
+            lambda x: "Znalazłem informacje o Bitcoin: aktualna cena to $50000"
+        )
         mock_kernel.get_service.return_value.get_chat_message_content.return_value = (
             mock_response
         )
@@ -78,9 +80,7 @@ class TestPlanningIntegration:
         """Test czy intencja COMPLEX_PLANNING uruchamia ArchitectAgent."""
         # Mock IntentManager do zwrócenia COMPLEX_PLANNING
         intent_manager = MagicMock(spec=IntentManager)
-        intent_manager.classify_intent = AsyncMock(
-            return_value="COMPLEX_PLANNING"
-        )
+        intent_manager.classify_intent = AsyncMock(return_value="COMPLEX_PLANNING")
 
         # Mock odpowiedzi z planem JSON
         import json
@@ -119,9 +119,7 @@ class TestPlanningIntegration:
         )
 
         # Wykonaj zadanie
-        request = TaskRequest(
-            content="Stwórz prostą stronę HTML z zegarem cyfrowym"
-        )
+        request = TaskRequest(content="Stwórz prostą stronę HTML z zegarem cyfrowym")
         response = await orchestrator.submit_task(request)
 
         # Poczekaj na zakończenie
@@ -142,7 +140,9 @@ class TestPlanningIntegration:
         intent_manager.classify_intent = AsyncMock(return_value="RESEARCH")
 
         mock_response = MagicMock()
-        mock_response.__str__ = lambda x: "Dokumentacja FastAPI: use @app.get() decorator"
+        mock_response.__str__ = (
+            lambda x: "Dokumentacja FastAPI: use @app.get() decorator"
+        )
         mock_kernel.get_service.return_value.get_chat_message_content.return_value = (
             mock_response
         )
@@ -163,9 +163,7 @@ class TestPlanningIntegration:
         await asyncio.sleep(0.5)
 
         # Drugie zadanie - kod (może wykorzystać wiedzę z pamięci)
-        intent_manager.classify_intent = AsyncMock(
-            return_value="CODE_GENERATION"
-        )
+        intent_manager.classify_intent = AsyncMock(return_value="CODE_GENERATION")
         request2 = TaskRequest(content="Stwórz endpoint FastAPI")
         await orchestrator.submit_task(request2)
 

@@ -70,4 +70,6 @@ class ExecutionPlan(BaseModel):
     steps: List[ExecutionStep] = Field(
         default_factory=list, description="Lista kroków do wykonania"
     )
-    current_step: int = Field(default=0, description="Indeks aktualnie wykonywanego kroku")
+    current_step: int = Field(
+        default=0, description="Indeks aktualnie wykonywanego kroku"
+    )

@@ -1,6 +1,6 @@
 """Moduł: web_skill - Plugin Semantic Kernel do wyszukiwania w Internecie."""
 
-from typing import Annotated, List
+from typing import Annotated
 
 import trafilatura
 from bs4 import BeautifulSoup
@@ -48,7 +48,9 @@ class WebSearchSkill:
         Returns:
             Sformatowana lista wyników wyszukiwania
         """
-        logger.info(f"WebSearch: szukanie '{query[:100]}...' (max {max_results} wyników)")
+        logger.info(
+            f"WebSearch: szukanie '{query[:100]}...' (max {max_results} wyników)"
+        )
 
         try:
             # Użyj DuckDuckGo do wyszukiwania
@@ -109,7 +111,9 @@ class WebSearchSkill:
                 if text and len(text.strip()) > 100:
                     # Ogranicz długość
                     if len(text) > MAX_SCRAPED_TEXT_LENGTH:
-                        text = text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
+                        text = (
+                            text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
+                        )
 
                     logger.info(
                         f"WebScrape: pobrano {len(text)} znaków z {url} (trafilatura)"
@@ -146,7 +150,9 @@ class WebSearchSkill:
             if len(text.strip()) < 50:
                 return f"Strona {url} nie zawiera wystarczającej ilości tekstu lub jest niedostępna."
 
-            logger.info(f"WebScrape: pobrano {len(text)} znaków z {url} (BeautifulSoup)")
+            logger.info(
+                f"WebScrape: pobrano {len(text)} znaków z {url} (BeautifulSoup)"
+            )
             return f"Treść ze strony {url}:\n\n{text}"
 
         except requests.exceptions.Timeout:
@@ -166,9 +172,7 @@ class WebSearchSkill:
     def search_and_scrape(
         self,
         query: Annotated[str, "Zapytanie do wyszukiwarki"],
-        num_sources: Annotated[
-            int, "Liczba stron do pobrania (domyślnie 3)"
-        ] = 3,
+        num_sources: Annotated[int, "Liczba stron do pobrania (domyślnie 3)"] = 3,
     ) -> str:
         """
         Wyszukuje i pobiera treść z najlepszych wyników.
@@ -206,10 +210,10 @@ class WebSearchSkill:
                 if not url:
                     continue
 
-                consolidated += f"\n{'='*80}\n"
+                consolidated += f"\n{'=' * 80}\n"
                 consolidated += f"ŹRÓDŁO {i}: {title}\n"
                 consolidated += f"URL: {url}\n"
-                consolidated += f"{'='*80}\n\n"
+                consolidated += f"{'=' * 80}\n\n"
 
                 # Pobierz treść
                 content = self.scrape_text(url)
@@ -219,9 +223,7 @@ class WebSearchSkill:
                     logger.warning(
                         f"Osiągnięto limit całkowitej długości tekstu po {i} źródłach"
                     )
-                    consolidated += (
-                        "\n[...osiągnięto limit długości, pozostałe źródła pominięte...]\n"
-                    )
+                    consolidated += "\n[...osiągnięto limit długości, pozostałe źródła pominięte...]\n"
                     break
 
                 consolidated += content + "\n\n"

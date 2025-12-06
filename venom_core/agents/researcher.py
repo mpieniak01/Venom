@@ -128,9 +128,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             )
 
             result = str(response).strip()
-            logger.info(
-                f"ResearcherAgent wygenerował odpowiedź ({len(result)} znaków)"
-            )
+            logger.info(f"ResearcherAgent wygenerował odpowiedź ({len(result)} znaków)")
             return result
 
         except Exception as e:

@@ -173,8 +173,7 @@ async def test_orchestrator_task_failure(temp_state_file):
     from venom_core.core.models import TaskRequest
 
     # Utwórz zadanie
-    response = await orchestrator.submit_task(TaskRequest(content="Failing task"))
-    _ = response.task_id  # noqa: F841
+    await orchestrator.submit_task(TaskRequest(content="Failing task"))
 
     # Poczekaj na zakończenie
     await asyncio.sleep(1)

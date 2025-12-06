@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
 
+from venom_core.config import SETTINGS
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -13,7 +14,7 @@ logger = get_logger(__name__)
 app = FastAPI(title="Venom Core", version="0.1.0")
 
 # Inicjalizacja StateManager i Orchestrator
-state_manager = StateManager()
+state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
 orchestrator = Orchestrator(state_manager)
 
 
@@ -42,7 +43,9 @@ async def create_task(request: TaskRequest):
         return response
     except Exception as e:
         logger.error(f"Błąd podczas tworzenia zadania: {e}")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Błąd wewnętrzny podczas tworzenia zadania"
+        )
 
 
 @app.get("/api/v1/tasks/{task_id}", response_model=VenomTask)

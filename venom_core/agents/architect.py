@@ -1,5 +1,6 @@
 """Moduł: architect - agent architekta, planowanie złożonych projektów."""
 
+import json
 from typing import TYPE_CHECKING
 
 from semantic_kernel import Kernel
@@ -185,8 +186,6 @@ WAŻNE:
             logger.info(f"ArchitectAgent otrzymał plan: {plan_json[:200]}...")
 
             # Parsuj JSON
-            import json
-
             # Usuń potencjalne znaczniki markdown
             if plan_json.startswith("```"):
                 lines = plan_json.split("\n")

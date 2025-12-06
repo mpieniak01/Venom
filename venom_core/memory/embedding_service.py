@@ -1,6 +1,5 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
-from functools import lru_cache
 from typing import List
 
 from venom_core.config import SETTINGS
@@ -110,22 +109,22 @@ class EmbeddingService:
 
         text_normalized = text.strip()
         cache_key = (self.service_type, text_normalized)
-        
+
         # Sprawdź cache
         if cache_key in _embedding_cache:
             logger.debug(f"Embedding z cache dla tekstu ({len(text)} znaków)")
             return _embedding_cache[cache_key]
-        
+
         # Generuj nowy embedding
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
         embedding = self._get_embedding_impl(text_normalized)
-        
+
         # Zapisz do cache (ogranicz rozmiar cache do 1000 wpisów)
         if len(_embedding_cache) >= 1000:
             # Usuń najstarszy wpis (FIFO)
             _embedding_cache.pop(next(iter(_embedding_cache)))
         _embedding_cache[cache_key] = embedding
-        
+
         return embedding
 
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:

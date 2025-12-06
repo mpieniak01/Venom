@@ -19,14 +19,16 @@ logger = get_logger(__name__)
 class TaskDispatcher:
     """Dyspozytornia zadań - kieruje zadania do odpowiednich agentów."""
 
-    def __init__(self, kernel: Kernel):
+    def __init__(self, kernel: Kernel, event_broadcaster=None):
         """
         Inicjalizacja TaskDispatcher.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel dla agentów
+            event_broadcaster: Opcjonalny broadcaster zdarzeń
         """
         self.kernel = kernel
+        self.event_broadcaster = event_broadcaster
 
         # Inicjalizuj agentów
         self.coder_agent = CoderAgent(kernel)
@@ -34,7 +36,9 @@ class TaskDispatcher:
         self.librarian_agent = LibrarianAgent(kernel)
         self.critic_agent = CriticAgent(kernel)
         self.researcher_agent = ResearcherAgent(kernel)
-        self.architect_agent = ArchitectAgent(kernel)
+        self.architect_agent = ArchitectAgent(
+            kernel, event_broadcaster=event_broadcaster
+        )
 
         # Ustawienie referencji do dispatchera w Architect (circular dependency)
         self.architect_agent.set_dispatcher(self)

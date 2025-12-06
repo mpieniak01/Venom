@@ -6,6 +6,7 @@ from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.intent_manager import IntentManager
+from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.kernel_builder import KernelBuilder
@@ -29,6 +30,7 @@ class Orchestrator:
         state_manager: StateManager,
         intent_manager: IntentManager = None,
         task_dispatcher: TaskDispatcher = None,
+        event_broadcaster=None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -37,20 +39,41 @@ class Orchestrator:
             state_manager: Menedżer stanu zadań
             intent_manager: Opcjonalny menedżer klasyfikacji intencji (jeśli None, zostanie utworzony)
             task_dispatcher: Opcjonalny dispatcher zadań (jeśli None, zostanie utworzony)
+            event_broadcaster: Opcjonalny broadcaster zdarzeń do WebSocket
         """
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
+        self.event_broadcaster = event_broadcaster
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
         if task_dispatcher is None:
             kernel_builder = KernelBuilder()
             kernel = kernel_builder.build_kernel()
-            task_dispatcher = TaskDispatcher(kernel)
+            task_dispatcher = TaskDispatcher(
+                kernel, event_broadcaster=event_broadcaster
+            )
 
         self.task_dispatcher = task_dispatcher
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
+
+    async def _broadcast_event(
+        self, event_type: str, message: str, agent: str = None, data: dict = None
+    ):
+        """
+        Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
+
+        Args:
+            event_type: Typ zdarzenia
+            message: Treść wiadomości
+            agent: Opcjonalna nazwa agenta
+            data: Opcjonalne dodatkowe dane
+        """
+        if self.event_broadcaster:
+            await self.event_broadcaster.broadcast_event(
+                event_type=event_type, message=message, agent=agent, data=data
+            )
 
     async def submit_task(self, request: TaskRequest) -> TaskResponse:
         """
@@ -68,6 +91,13 @@ class Orchestrator:
         # Zaloguj event
         log_message = f"Zadanie uruchomione: {datetime.now().isoformat()}"
         self.state_manager.add_log(task.id, log_message)
+
+        # Broadcast zdarzenia utworzenia zadania
+        await self._broadcast_event(
+            event_type="TASK_CREATED",
+            message=f"Utworzono nowe zadanie: {request.content[:100]}...",
+            data={"task_id": str(task.id), "content": request.content},
+        )
 
         # Zapisz obrazy w kontekście zadania jeśli istnieją
         if request.images:
@@ -103,6 +133,13 @@ class Orchestrator:
                 task_id, f"Rozpoczęto przetwarzanie: {datetime.now().isoformat()}"
             )
 
+            # Broadcast rozpoczęcia zadania
+            await self._broadcast_event(
+                event_type="TASK_STARTED",
+                message=f"Rozpoczynam przetwarzanie zadania {task_id}",
+                data={"task_id": str(task_id)},
+            )
+
             logger.info(f"Rozpoczynam przetwarzanie zadania {task_id}")
 
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
@@ -117,6 +154,13 @@ class Orchestrator:
                 f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}",
             )
 
+            # Broadcast intencji
+            await self._broadcast_event(
+                event_type="AGENT_THOUGHT",
+                message=f"Rozpoznano intencję: {intent}",
+                data={"task_id": str(task_id), "intent": intent},
+            )
+
             # Jeśli to CODE_GENERATION, użyj pętli Coder-Critic
             if intent == "CODE_GENERATION":
                 result = await self._code_generation_with_review(task_id, context)
@@ -125,6 +169,12 @@ class Orchestrator:
                 self.state_manager.add_log(
                     task_id,
                     "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+                )
+                await self._broadcast_event(
+                    event_type="AGENT_ACTION",
+                    message="Przekazuję zadanie do Architekta (Complex Planning)",
+                    agent="Architect",
+                    data={"task_id": str(task_id)},
                 )
                 result = await self.task_dispatcher.dispatch(intent, context)
             else:
@@ -139,6 +189,9 @@ class Orchestrator:
                     task_id,
                     f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
                 )
+                # Inkrementuj licznik użycia agenta
+                if metrics_collector:
+                    metrics_collector.increment_agent_usage(agent_name)
             else:
                 logger.error(
                     f"Nie znaleziono agenta dla intencji '{intent}' podczas logowania zadania {task_id}"
@@ -152,11 +205,33 @@ class Orchestrator:
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
             )
 
+            # Inkrementuj licznik ukończonych zadań
+            if metrics_collector:
+                metrics_collector.increment_task_completed()
+
+            # Broadcast ukończenia zadania
+            await self._broadcast_event(
+                event_type="TASK_COMPLETED",
+                message=f"Zadanie {task_id} zakończone sukcesem",
+                data={"task_id": str(task_id), "result_length": len(result)},
+            )
+
             logger.info(f"Zadanie {task_id} zakończone sukcesem")
 
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
+
+            # Inkrementuj licznik nieudanych zadań
+            if metrics_collector:
+                metrics_collector.increment_task_failed()
+
+            # Broadcast błędu
+            await self._broadcast_event(
+                event_type="TASK_FAILED",
+                message=f"Zadanie {task_id} nie powiodło się: {str(e)}",
+                data={"task_id": str(task_id), "error": str(e)},
+            )
 
             try:
                 await self.state_manager.update_status(

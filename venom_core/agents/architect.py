@@ -122,16 +122,23 @@ WAŻNE:
 - NIE dodawaj komentarzy ani wyjaśnień poza JSONem
 - Upewnij się że JSON jest poprawny syntaktycznie"""
 
-    def __init__(self, kernel: Kernel, task_dispatcher: "TaskDispatcher" = None):
+    def __init__(
+        self,
+        kernel: Kernel,
+        task_dispatcher: "TaskDispatcher" = None,
+        event_broadcaster=None,
+    ):
         """
         Inicjalizacja ArchitectAgent.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel
             task_dispatcher: Dispatcher do wykonywania kroków planu (będzie ustawiony później)
+            event_broadcaster: Opcjonalny broadcaster zdarzeń
         """
         super().__init__(kernel)
         self.task_dispatcher = task_dispatcher
+        self.event_broadcaster = event_broadcaster
         logger.info("ArchitectAgent zainicjalizowany")
 
     def set_dispatcher(self, dispatcher: "TaskDispatcher"):
@@ -209,6 +216,27 @@ WAŻNE:
             plan = ExecutionPlan(goal=user_goal, steps=steps, current_step=0)
 
             logger.info(f"ArchitectAgent stworzył plan z {len(steps)} krokami")
+
+            # Broadcast utworzenia planu
+            if self.event_broadcaster:
+                await self.event_broadcaster.broadcast_event(
+                    event_type="PLAN_CREATED",
+                    message=f"Plan utworzony: {len(steps)} kroków",
+                    agent="Architect",
+                    data={
+                        "goal": user_goal,
+                        "steps_count": len(steps),
+                        "steps": [
+                            {
+                                "step": s.step_number,
+                                "agent": s.agent_type,
+                                "instruction": s.instruction[:100],
+                            }
+                            for s in steps
+                        ],
+                    },
+                )
+
             return plan
 
         except json.JSONDecodeError as e:
@@ -267,6 +295,19 @@ WAŻNE:
                 f"Wykonywanie kroku {step.step_number}: {step.agent_type} - {step.instruction[:50]}..."
             )
 
+            # Broadcast rozpoczęcia kroku
+            if self.event_broadcaster:
+                await self.event_broadcaster.broadcast_event(
+                    event_type="PLAN_STEP_STARTED",
+                    message=f"Krok {step.step_number}/{len(plan.steps)}: {step.agent_type}",
+                    agent="Architect",
+                    data={
+                        "step_number": step.step_number,
+                        "agent_type": step.agent_type,
+                        "instruction": step.instruction[:100],
+                    },
+                )
+
             # Przygotuj kontekst dla kroku (wyniki poprzednich kroków)
             step_context = step.instruction
 
@@ -315,6 +356,18 @@ AKTUALNE ZADANIE:
                     final_result += f"Wynik: {result}\n\n"
 
                 logger.info(f"Krok {step.step_number} zakończony sukcesem")
+
+                # Broadcast ukończenia kroku
+                if self.event_broadcaster:
+                    await self.event_broadcaster.broadcast_event(
+                        event_type="PLAN_STEP_COMPLETED",
+                        message=f"Krok {step.step_number}/{len(plan.steps)} ukończony",
+                        agent="Architect",
+                        data={
+                            "step_number": step.step_number,
+                            "result_length": len(result),
+                        },
+                    )
 
             except Exception as e:
                 logger.error(f"Błąd podczas wykonywania kroku {step.step_number}: {e}")

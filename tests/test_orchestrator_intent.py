@@ -31,18 +31,37 @@ def mock_intent_manager():
     return manager
 
 
+@pytest.fixture
+def mock_task_dispatcher():
+    """Fixture dla mockowego TaskDispatcher."""
+    from venom_core.core.dispatcher import TaskDispatcher
+
+    dispatcher = MagicMock(spec=TaskDispatcher)
+    dispatcher.dispatch = AsyncMock()
+    # Mock agent_map dla logging
+    dispatcher.agent_map = {
+        "CODE_GENERATION": MagicMock(__class__=MagicMock(__name__="CoderAgent")),
+        "GENERAL_CHAT": MagicMock(__class__=MagicMock(__name__="ChatAgent")),
+        "KNOWLEDGE_SEARCH": MagicMock(__class__=MagicMock(__name__="ChatAgent")),
+    }
+    return dispatcher
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_with_intent_classification(
-    temp_state_file, mock_intent_manager
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
 ):
     """Test że Orchestrator wywołuje klasyfikację intencji."""
     state_manager = StateManager(state_file_path=temp_state_file)
 
     # Mockuj odpowiedź klasyfikacji
     mock_intent_manager.classify_intent.return_value = "CODE_GENERATION"
+    mock_task_dispatcher.dispatch.return_value = "def hello(): pass"
 
     orchestrator = Orchestrator(
-        state_manager=state_manager, intent_manager=mock_intent_manager
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
     )
 
     # Utwórz zadanie
@@ -60,17 +79,22 @@ async def test_orchestrator_with_intent_classification(
     # Sprawdź status zadania
     task = state_manager.get_task(response.task_id)
     assert task.status == TaskStatus.COMPLETED
-    assert "CODE_GENERATION" in task.result
+    assert "def hello" in task.result or "CODE_GENERATION" in " ".join(task.logs)
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_intent_in_logs(temp_state_file, mock_intent_manager):
+async def test_orchestrator_intent_in_logs(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
     """Test że intencja jest zapisywana w logach zadania."""
     state_manager = StateManager(state_file_path=temp_state_file)
     mock_intent_manager.classify_intent.return_value = "KNOWLEDGE_SEARCH"
+    mock_task_dispatcher.dispatch.return_value = "RAG to..."
 
     orchestrator = Orchestrator(
-        state_manager=state_manager, intent_manager=mock_intent_manager
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
     )
 
     response = await orchestrator.submit_task(TaskRequest(content="Co to jest RAG?"))
@@ -83,14 +107,19 @@ async def test_orchestrator_intent_in_logs(temp_state_file, mock_intent_manager)
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_different_intents(temp_state_file, mock_intent_manager):
+async def test_orchestrator_different_intents(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
     """Test klasyfikacji różnych typów intencji."""
     state_manager = StateManager(state_file_path=temp_state_file)
 
     # Test CODE_GENERATION
     mock_intent_manager.classify_intent.return_value = "CODE_GENERATION"
+    mock_task_dispatcher.dispatch.return_value = "#!/bin/bash\nls"
     orchestrator = Orchestrator(
-        state_manager=state_manager, intent_manager=mock_intent_manager
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
     )
 
     response1 = await orchestrator.submit_task(
@@ -99,28 +128,33 @@ async def test_orchestrator_different_intents(temp_state_file, mock_intent_manag
     await asyncio.sleep(1)
 
     task1 = state_manager.get_task(response1.task_id)
-    assert "CODE_GENERATION" in task1.result
+    log_text1 = " ".join(task1.logs)
+    assert "CODE_GENERATION" in log_text1
 
     # Test GENERAL_CHAT
     mock_intent_manager.classify_intent.return_value = "GENERAL_CHAT"
+    mock_task_dispatcher.dispatch.return_value = "Cześć!"
     response2 = await orchestrator.submit_task(TaskRequest(content="Cześć!"))
     await asyncio.sleep(1)
 
     task2 = state_manager.get_task(response2.task_id)
-    assert "GENERAL_CHAT" in task2.result
+    log_text2 = " ".join(task2.logs)
+    assert "GENERAL_CHAT" in log_text2
 
     # Test KNOWLEDGE_SEARCH
     mock_intent_manager.classify_intent.return_value = "KNOWLEDGE_SEARCH"
+    mock_task_dispatcher.dispatch.return_value = "GraphRAG to..."
     response3 = await orchestrator.submit_task(TaskRequest(content="Wyjaśnij GraphRAG"))
     await asyncio.sleep(1)
 
     task3 = state_manager.get_task(response3.task_id)
-    assert "KNOWLEDGE_SEARCH" in task3.result
+    log_text3 = " ".join(task3.logs)
+    assert "KNOWLEDGE_SEARCH" in log_text3
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_intent_classification_error(
-    temp_state_file, mock_intent_manager
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
 ):
     """Test obsługi błędu podczas klasyfikacji intencji."""
     state_manager = StateManager(state_file_path=temp_state_file)
@@ -129,7 +163,9 @@ async def test_orchestrator_intent_classification_error(
     mock_intent_manager.classify_intent.side_effect = Exception("LLM error")
 
     orchestrator = Orchestrator(
-        state_manager=state_manager, intent_manager=mock_intent_manager
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
     )
 
     response = await orchestrator.submit_task(TaskRequest(content="Test content"))
@@ -155,14 +191,17 @@ async def test_orchestrator_creates_default_intent_manager(temp_state_file):
 
 @pytest.mark.asyncio
 async def test_orchestrator_result_contains_intent_and_content(
-    temp_state_file, mock_intent_manager
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
 ):
-    """Test że wynik zawiera zarówno intencję jak i oryginalną treść."""
+    """Test że wynik zawiera rzeczywistą pracę agenta."""
     state_manager = StateManager(state_file_path=temp_state_file)
     mock_intent_manager.classify_intent.return_value = "CODE_GENERATION"
+    mock_task_dispatcher.dispatch.return_value = "def sort_func(): pass"
 
     orchestrator = Orchestrator(
-        state_manager=state_manager, intent_manager=mock_intent_manager
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
     )
 
     test_content = "Napisz funkcję sortującą"
@@ -171,5 +210,8 @@ async def test_orchestrator_result_contains_intent_and_content(
 
     task = state_manager.get_task(response.task_id)
     assert task.status == TaskStatus.COMPLETED
-    assert "Intencja: CODE_GENERATION" in task.result
-    assert test_content in task.result
+    # Intencja powinna być w logach
+    log_text = " ".join(task.logs)
+    assert "Sklasyfikowana intencja: CODE_GENERATION" in log_text
+    # Wynik powinien zawierać pracę agenta
+    assert "sort_func" in task.result

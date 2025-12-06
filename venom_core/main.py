@@ -128,6 +128,9 @@ async def create_task(request: TaskRequest):
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
     try:
+        # Inkrementuj licznik zadań
+        metrics_collector.increment_task_created()
+
         response = await orchestrator.submit_task(request)
         return response
     except Exception as e:

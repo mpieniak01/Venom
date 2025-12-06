@@ -6,6 +6,7 @@ from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.intent_manager import IntentManager
+from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.kernel_builder import KernelBuilder
@@ -186,6 +187,8 @@ class Orchestrator:
                     task_id,
                     f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
                 )
+                # Inkrementuj licznik użycia agenta
+                metrics_collector.increment_agent_usage(agent_name)
             else:
                 logger.error(
                     f"Nie znaleziono agenta dla intencji '{intent}' podczas logowania zadania {task_id}"
@@ -199,6 +202,9 @@ class Orchestrator:
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
             )
 
+            # Inkrementuj licznik ukończonych zadań
+            metrics_collector.increment_task_completed()
+
             # Broadcast ukończenia zadania
             await self._broadcast_event(
                 event_type="TASK_COMPLETED",
@@ -211,6 +217,9 @@ class Orchestrator:
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
+
+            # Inkrementuj licznik nieudanych zadań
+            metrics_collector.increment_task_failed()
 
             # Broadcast błędu
             await self._broadcast_event(

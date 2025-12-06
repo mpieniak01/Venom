@@ -87,10 +87,9 @@ async def test_coder_agent_handles_error(mock_kernel, mock_chat_service):
     mock_kernel.get_service.return_value = mock_chat_service
 
     agent = CoderAgent(mock_kernel)
-    result = await agent.process("Napisz kod")
 
-    assert "Błąd" in result
-    assert "Connection error" in result
+    with pytest.raises(Exception, match="Connection error"):
+        await agent.process("Napisz kod")
 
 
 # --- Testy ChatAgent ---
@@ -159,7 +158,6 @@ async def test_chat_agent_handles_error(mock_kernel, mock_chat_service):
     mock_kernel.get_service.return_value = mock_chat_service
 
     agent = ChatAgent(mock_kernel)
-    result = await agent.process("Jakieś pytanie")
 
-    assert "Błąd" in result
-    assert "LLM error" in result
+    with pytest.raises(Exception, match="LLM error"):
+        await agent.process("Jakieś pytanie")

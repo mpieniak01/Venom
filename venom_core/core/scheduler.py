@@ -267,9 +267,20 @@ class BackgroundScheduler:
         Returns:
             Słownik ze statusem
         """
+        # Mapowanie stanu APSchedulera na uproszczony string
+        aps_state = self.scheduler.state
+        if aps_state == 1:  # STATE_RUNNING
+            state_str = "running"
+        elif aps_state == 2:  # STATE_PAUSED
+            state_str = "paused"
+        elif aps_state == 0:  # STATE_STOPPED
+            state_str = "stopped"
+        else:
+            state_str = "unknown"
+
         return {
             "is_running": self.is_running,
-            "paused": SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS,
+            "paused": aps_state == 2,  # Faktyczny stan paused schedulera
             "jobs_count": len(self.scheduler.get_jobs()),
-            "state": str(self.scheduler.state),
+            "state": state_str,
         }

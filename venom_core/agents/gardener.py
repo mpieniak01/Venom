@@ -258,12 +258,15 @@ class GardenerAgent:
             return
 
         # Sprawdź czas ostatniej aktywności
-        if not self.orchestrator.last_activity:
-            logger.debug("Brak informacji o ostatniej aktywności")
+        last_activity = getattr(self.orchestrator, "last_activity", None)
+        if not isinstance(last_activity, datetime):
+            logger.debug(
+                "Brak poprawnej informacji o ostatniej aktywności (None lub zły typ)"
+            )
             return
 
         now = datetime.now()
-        idle_time = (now - self.orchestrator.last_activity).total_seconds() / 60
+        idle_time = (now - last_activity).total_seconds() / 60
 
         idle_threshold = SETTINGS.IDLE_THRESHOLD_MINUTES
 
@@ -350,8 +353,16 @@ class GardenerAgent:
             python_files = list(self.workspace_root.rglob("*.py"))
 
             for file_path in python_files:
-                # Pomiń pliki testowe i migracje
-                if "test_" in file_path.name or "/tests/" in str(file_path):
+                # Pomiń pliki testowe (różne konwencje) i migracje
+                file_name = file_path.name
+                file_str = str(file_path)
+                if (
+                    file_name.startswith("test_")
+                    or file_name.endswith("_test.py")
+                    or file_name.startswith("test")
+                    or "/tests/" in file_str
+                    or "/__tests__/" in file_str
+                ):
                     continue
 
                 try:
@@ -366,8 +377,8 @@ class GardenerAgent:
                             f.complexity for f in visitor.functions
                         ) / len(visitor.functions)
 
-                        # Próg złożoności: 10 (wysoka złożoność)
-                        if avg_complexity > 10:
+                        # Próg złożoności z konfiguracji
+                        if avg_complexity > SETTINGS.GARDENER_COMPLEXITY_THRESHOLD:
                             complex_files.append(
                                 {
                                     "path": str(
@@ -414,12 +425,17 @@ class GardenerAgent:
                 logger.warning("Workspace nie jest repozytorium Git")
                 return False
 
-            branch_name = "refactor/auto-gardening"
+            base_branch_name = "refactor/auto-gardening"
+            branch_name = base_branch_name
 
-            # Sprawdź czy branch już istnieje
-            if branch_name in [b.name for b in repo.branches]:
-                logger.info(f"Branch {branch_name} już istnieje")
-                return False
+            # Sprawdź czy branch już istnieje, jeśli tak - dodaj timestamp
+            existing_branches = [b.name for b in repo.branches]
+            if branch_name in existing_branches:
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                branch_name = f"{base_branch_name}-{timestamp}"
+                logger.info(
+                    f"Branch {base_branch_name} już istnieje, tworzę nowy: {branch_name}"
+                )
 
             # Utwórz nowy branch
             repo.create_head(branch_name)

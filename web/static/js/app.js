@@ -977,7 +977,21 @@ class VenomDashboard {
             const jobsDiv = document.getElementById('jobsList');
             
             if (data.jobs && data.jobs.length > 0) {
-                jobsDiv.innerHTML = data.jobs.map(job => `
+                jobsDiv.innerHTML = data.jobs.map(job => {
+                    // Walidacja i formatowanie daty
+                    let nextRunText = 'N/A';
+                    if (job.next_run_time) {
+                        try {
+                            const date = new Date(job.next_run_time);
+                            if (!isNaN(date.getTime())) {
+                                nextRunText = date.toLocaleString();
+                            }
+                        } catch (e) {
+                            console.warn('Invalid date format:', job.next_run_time);
+                        }
+                    }
+                    
+                    return `
                     <div class="job-item">
                         <div class="job-header">
                             <span class="job-id">${job.id}</span>
@@ -985,10 +999,10 @@ class VenomDashboard {
                         </div>
                         <div class="job-description">${job.description || 'No description'}</div>
                         <div class="job-next-run">
-                            Next run: ${job.next_run_time ? new Date(job.next_run_time).toLocaleString() : 'N/A'}
+                            Next run: ${nextRunText}
                         </div>
                     </div>
-                `).join('');
+                `}).join('');
             } else {
                 jobsDiv.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
             }
@@ -1106,7 +1120,7 @@ class VenomDashboard {
             const response = await fetch('/api/v1/scheduler/pause', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to pause jobs');
             
-            this.showNotification('Background jobs paused', 'success');
+            this.showNotification('Zadania w tle wstrzymane', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
             console.error('Error pausing jobs:', error);
@@ -1119,7 +1133,7 @@ class VenomDashboard {
             const response = await fetch('/api/v1/scheduler/resume', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to resume jobs');
             
-            this.showNotification('Background jobs resumed', 'success');
+            this.showNotification('Zadania w tle wznowione', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
             console.error('Error resuming jobs:', error);

@@ -1,5 +1,6 @@
 """Moduł: docs_skill - umiejętność generowania dokumentacji."""
 
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated, Optional
@@ -220,8 +221,6 @@ class DocsSkill:
 
             # Wyczyść poprzednią wersję jeśli wymagane
             if clean and self.site_dir.exists():
-                import shutil
-
                 shutil.rmtree(self.site_dir)
                 logger.info("Wyczyszczono poprzednią wersję strony")
 
@@ -308,7 +307,7 @@ class DocsSkill:
 
     @kernel_function(
         name="check_docs_structure",
-        description="Sprawdza strukturę katalgu docs/ i raportuje co zostało znalezione. "
+        description="Sprawdza strukturę katalogu docs/ i raportuje co zostało znalezione. "
         "Użyj przed generowaniem dokumentacji.",
     )
     async def check_docs_structure(self) -> str:

@@ -15,6 +15,7 @@ from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
+from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
@@ -33,12 +34,13 @@ vector_store = None
 graph_store = None
 lessons_store = None
 gardener_agent = None
+git_skill = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
-    global vector_store, graph_store, lessons_store, gardener_agent
+    global vector_store, graph_store, lessons_store, gardener_agent, git_skill
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -94,6 +96,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Nie udało się uruchomić GardenerAgent: {e}")
         gardener_agent = None
+
+    # Inicjalizuj GitSkill dla API
+    try:
+        git_skill = GitSkill(workspace_root=str(workspace_path))
+        logger.info("GitSkill zainicjalizowany dla API")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować GitSkill: {e}")
+        git_skill = None
 
     yield
 
@@ -598,3 +608,133 @@ async def get_gardener_status():
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu Ogrodnika")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# --- Git & Repository API Endpoints ---
+
+
+@app.get("/api/v1/git/status")
+async def get_git_status():
+    """
+    Zwraca status repozytorium Git (aktualny branch, zmiany, liczba zmodyfikowanych plików).
+
+    Returns:
+        Status repozytorium Git
+
+    Raises:
+        HTTPException: 503 jeśli GitSkill nie jest dostępny lub workspace nie jest repozytorium Git
+    """
+    if git_skill is None:
+        raise HTTPException(
+            status_code=503,
+            detail="GitSkill nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+        )
+
+    try:
+        # Pobierz aktualny branch
+        branch = await git_skill.get_current_branch()
+
+        # Sprawdź czy to błąd
+        if branch.startswith("❌"):
+            return {
+                "status": "error",
+                "is_git_repo": False,
+                "message": "Workspace nie jest repozytorium Git",
+            }
+
+        # Pobierz status
+        status_output = await git_skill.get_status()
+
+        # Parsuj status aby określić czy są zmiany
+        has_changes = (
+            "nothing to commit" not in status_output
+            and "working tree clean" not in status_output
+        )
+
+        # Użyj GitPython do dokładniejszego liczenia zmian
+        modified_count = 0
+        if has_changes:
+            try:
+                # Pobierz obiekt Repo i policz zmiany
+                from git import Repo, GitCommandError
+
+                repo = Repo(git_skill.workspace_root)
+                # Sprawdź czy HEAD istnieje (czy repo ma commity)
+                if repo.head.is_valid():
+                    # Zmodyfikowane i staged pliki względem HEAD
+                    modified_count = len(repo.index.diff("HEAD"))
+                else:
+                    # Brak HEAD — policz tylko nieśledzone pliki
+                    modified_count = len(repo.untracked_files)
+                # Dodaj nieśledzone pliki (jeśli HEAD istnieje)
+                if repo.head.is_valid():
+                    modified_count += len(repo.untracked_files)
+            except (GitCommandError, ValueError):
+                # Fallback: proste parsowanie jeśli GitPython zawiedzie (np. HEAD nie istnieje)
+                lines = status_output.split("\n")
+                for line in lines:
+                    if (
+                        "modified:" in line
+                        or "new file:" in line
+                        or "deleted:" in line
+                        or "renamed:" in line
+                    ):
+                        modified_count += 1
+
+        return {
+            "status": "success",
+            "is_git_repo": True,
+            "branch": branch,
+            "has_changes": has_changes,
+            "modified_count": modified_count,
+            "status_output": status_output,
+        }
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu Git")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.post("/api/v1/git/sync")
+async def sync_repository():
+    """
+    Synchronizuje repozytorium (pull z remote).
+
+    Returns:
+        Wynik synchronizacji
+
+    Raises:
+        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
+    """
+    if git_skill is None:
+        raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
+
+    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody pull() do GitSkill
+    raise HTTPException(
+        status_code=501,
+        detail="Synchronizacja (git pull) nie jest jeszcze zaimplementowana. Użyj Integrator Agent lub wykonaj manualnie.",
+    )
+
+
+@app.post("/api/v1/git/undo")
+async def undo_changes():
+    """
+    Cofa wszystkie niezapisane zmiany (git reset --hard).
+
+    UWAGA: To jest destrukcyjna operacja!
+
+    Returns:
+        Wynik cofnięcia zmian
+
+    Raises:
+        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
+    """
+    if git_skill is None:
+        raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
+
+    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody reset() do GitSkill
+    raise HTTPException(
+        status_code=501,
+        detail="Cofnięcie zmian (git reset) nie jest jeszcze zaimplementowane. Użyj Integrator Agent z odpowiednim potwierdzeniem.",
+    )
+

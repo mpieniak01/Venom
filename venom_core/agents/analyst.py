@@ -1,7 +1,7 @@
 """Moduł: analyst - agent analityczny audytujący wydajność i koszty."""
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from semantic_kernel import Kernel
 
@@ -19,7 +19,7 @@ class TaskMetrics:
         self,
         task_id: str,
         complexity: ComplexityScore,
-        selected_service: ServiceId,
+        selected_service: Union[ServiceId, str],  # Accept both ServiceId and str
         success: bool,
         cost_usd: float = 0.0,
         duration_seconds: float = 0.0,
@@ -31,7 +31,7 @@ class TaskMetrics:
         Args:
             task_id: Identyfikator zadania
             complexity: Ocena złożoności
-            selected_service: Wybrany serwis
+            selected_service: Wybrany serwis (ServiceId lub string)
             success: Czy zadanie się udało
             cost_usd: Koszt w USD
             duration_seconds: Czas wykonania w sekundach
@@ -39,7 +39,15 @@ class TaskMetrics:
         """
         self.task_id = task_id
         self.complexity = complexity
-        self.selected_service = selected_service
+        # Normalize to ServiceId if string provided
+        if isinstance(selected_service, str):
+            try:
+                self.selected_service = ServiceId(selected_service)
+            except ValueError:
+                # If not a valid ServiceId, keep as string for flexibility
+                self.selected_service = selected_service
+        else:
+            self.selected_service = selected_service
         self.success = success
         self.cost_usd = cost_usd
         self.duration_seconds = duration_seconds
@@ -111,7 +119,12 @@ class AnalystAgent(BaseAgent):
         self.total_tokens += metrics.tokens_used
 
         # Aktualizuj statystyki per serwis
-        service_key = metrics.selected_service.value
+        # Handle both ServiceId enum and string
+        if isinstance(metrics.selected_service, ServiceId):
+            service_key = metrics.selected_service.value
+        else:
+            service_key = str(metrics.selected_service)
+
         if service_key not in self.service_stats:
             self.service_stats[service_key] = {
                 "tasks_count": 0,
@@ -165,7 +178,13 @@ class AnalystAgent(BaseAgent):
 
             success_rate = sum(1 for t in tasks if t.success) / len(tasks)
             avg_cost = sum(t.cost_usd for t in tasks) / len(tasks)
-            services_used = set(t.selected_service.value for t in tasks)
+            # Handle both ServiceId and string
+            services_used = set()
+            for t in tasks:
+                if isinstance(t.selected_service, ServiceId):
+                    services_used.add(t.selected_service.value)
+                else:
+                    services_used.add(str(t.selected_service))
 
             complexity_analysis[complexity.value] = {
                 "tasks_count": len(tasks),

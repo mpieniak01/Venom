@@ -72,6 +72,13 @@ class VenomAgent(ConversableAgent):
 
         kernel = self.venom_agent.kernel
 
+        # Sprawdź czy kernel ma wymagane atrybuty
+        if not hasattr(kernel, "plugins"):
+            logger.warning(
+                f"Kernel agenta {self.name} nie ma atrybutu 'plugins' - pomijam rejestrację"
+            )
+            return
+
         # Pobierz wszystkie pluginy z kernela
         try:
             plugins = kernel.plugins
@@ -99,7 +106,9 @@ class VenomAgent(ConversableAgent):
                     self._register_function(plugin_name, func_name, func)
 
         except Exception as e:
-            logger.error(f"Błąd podczas rejestracji funkcji z kernela: {e}")
+            logger.error(
+                f"Błąd podczas rejestracji funkcji z kernela agenta {self.name}: {e}"
+            )
 
     def _register_function(self, plugin_name: str, func_name: str, func: Callable):
         """
@@ -120,7 +129,9 @@ class VenomAgent(ConversableAgent):
             logger.debug(f"Zarejestrowano funkcję: {autogen_func_name}")
 
         except Exception as e:
-            logger.warning(f"Nie udało się zarejestrować funkcji {func_name}: {e}")
+            logger.warning(
+                f"Nie udało się zarejestrować funkcji {plugin_name}.{func_name}: {e}"
+            )
 
     async def a_process_venom(self, message: str) -> str:
         """

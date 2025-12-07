@@ -185,9 +185,12 @@ class CouncilSession:
         try:
             # Zainicjuj dyskusję - UserProxy wysyła zadanie do Managera
             # Manager koordynuje rozmowę między agentami
-            self.user_proxy.initiate_chat(
-                self.manager,
-                message=task,
+            # UWAGA: initiate_chat jest synchroniczny w AutoGen 0.2.x
+            # Używamy asyncio.to_thread aby nie blokować event loop
+            import asyncio
+
+            await asyncio.to_thread(
+                self.user_proxy.initiate_chat, self.manager, message=task
             )
 
             # Zbierz wyniki z historii czatu

@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
@@ -87,6 +88,9 @@ class Orchestrator:
         # Council mode - inicjalizowane lazy (tylko jeśli włączone i potrzebne)
         self._council_config = None
 
+        # Tracking ostatniej aktywności dla idle mode
+        self.last_activity: Optional[datetime] = None
+
     async def _broadcast_event(
         self, event_type: str, message: str, agent: str = None, data: dict = None
     ):
@@ -114,6 +118,9 @@ class Orchestrator:
         Returns:
             Odpowiedź z ID zadania i statusem
         """
+        # Zaktualizuj czas ostatniej aktywności
+        self.last_activity = datetime.now()
+
         # Utwórz zadanie przez StateManager
         task = self.state_manager.create_task(content=request.content)
 

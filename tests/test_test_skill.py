@@ -82,7 +82,7 @@ def test_parse_pytest_output_with_failures():
 
     =================================== FAILURES ===================================
     _________________________________ test_two _____________________________________
-    
+
         def test_two():
     >       assert 1 == 2
     E       AssertionError: assert 1 == 2

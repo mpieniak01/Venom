@@ -6,11 +6,11 @@ class VenomDashboard {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.tasks = new Map();
-        
+
         // Constants
         this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
         this.LOG_ENTRY_MAX_COUNT = 100;
-        
+
         this.initElements();
         this.initWebSocket();
         this.initEventHandlers();
@@ -49,9 +49,9 @@ class VenomDashboard {
             animation: slideIn 0.3s ease-out;
         `;
         notification.textContent = message;
-        
+
         container.appendChild(notification);
-        
+
         // Auto-remove after 5 seconds
         setTimeout(() => {
             notification.style.animation = 'slideOut 0.3s ease-out';
@@ -81,10 +81,10 @@ class VenomDashboard {
     initWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/events`;
-        
+
         try {
             this.ws = new WebSocket(wsUrl);
-            
+
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
                 this.updateConnectionStatus(true);
@@ -121,9 +121,9 @@ class VenomDashboard {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-            
+
             this.addLogEntry('warning', `Reconnecting in ${delay/1000}s... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-            
+
             setTimeout(() => {
                 this.initWebSocket();
             }, delay);
@@ -144,7 +144,7 @@ class VenomDashboard {
 
     handleWebSocketMessage(data) {
         const { type, agent, message, data: eventData } = data;
-        
+
         // Add to live feed
         const logLevel = this.getLogLevel(type);
         this.addLogEntry(logLevel, `[${type}] ${agent ? agent + ': ' : ''}${message}`);
@@ -234,26 +234,26 @@ class VenomDashboard {
     addLogEntry(level, message) {
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry ${level}`;
-        
+
         const now = new Date();
         const timestamp = now.toLocaleTimeString('pl-PL');
-        
+
         const timestampSpan = document.createElement('span');
         timestampSpan.className = 'timestamp';
         timestampSpan.textContent = `[${timestamp}]`;
-        
+
         const messageSpan = document.createElement('span');
         messageSpan.className = 'message';
         messageSpan.textContent = message;
-        
+
         logEntry.appendChild(timestampSpan);
         logEntry.appendChild(messageSpan);
-        
+
         this.elements.liveFeed.appendChild(logEntry);
-        
+
         // Auto-scroll
         this.elements.liveFeed.scrollTop = this.elements.liveFeed.scrollHeight;
-        
+
         // Limit number of logs
         while (this.elements.liveFeed.children.length > this.LOG_ENTRY_MAX_COUNT) {
             this.elements.liveFeed.removeChild(this.elements.liveFeed.firstChild);
@@ -263,19 +263,19 @@ class VenomDashboard {
     addChatMessage(role, content, agent = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
-        
+
         if (agent) {
             const agentSpan = document.createElement('strong');
             agentSpan.textContent = agent + ': ';
             messageDiv.appendChild(agentSpan);
-            
+
             const contentSpan = document.createElement('span');
             contentSpan.textContent = content;
             messageDiv.appendChild(contentSpan);
         } else {
             messageDiv.textContent = content;
         }
-        
+
         this.elements.chatMessages.appendChild(messageDiv);
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
@@ -283,7 +283,7 @@ class VenomDashboard {
     updateTaskList() {
         // Clear task list
         this.elements.taskList.innerHTML = '';
-        
+
         if (this.tasks.size === 0) {
             // Brak aktywnych zadań - use DOM methods for consistency
             const emptyState = document.createElement('p');
@@ -292,9 +292,9 @@ class VenomDashboard {
             this.elements.taskList.appendChild(emptyState);
             return;
         }
-        
+
         const tasksArray = Array.from(this.tasks.values()).reverse();
-        
+
         tasksArray.forEach(task => {
             const statusEmoji = {
                 'PENDING': '⏳',
@@ -305,23 +305,23 @@ class VenomDashboard {
 
             const statusClass = task.status.toLowerCase();
             const truncatedContent = task.content.substring(0, this.TASK_CONTENT_TRUNCATE_LENGTH);
-            
+
             // Create task item using DOM methods
             const taskItem = document.createElement('div');
             taskItem.className = `task-item ${statusClass}`;
-            
+
             const contentDiv = document.createElement('div');
             const strong = document.createElement('strong');
             strong.textContent = `${statusEmoji} ${truncatedContent}...`;
             contentDiv.appendChild(strong);
-            
+
             const statusDiv = document.createElement('div');
             statusDiv.className = 'task-status';
             statusDiv.textContent = `Status: ${task.status}`;
-            
+
             taskItem.appendChild(contentDiv);
             taskItem.appendChild(statusDiv);
-            
+
             this.elements.taskList.appendChild(taskItem);
         });
     }
@@ -343,7 +343,7 @@ class VenomDashboard {
 
     async sendTask() {
         const content = this.elements.taskInput.value.trim();
-        
+
         if (!content) {
             this.showNotification('Wprowadź treść zadania', 'warning');
             return;
@@ -351,11 +351,11 @@ class VenomDashboard {
 
         // Disable button
         this.elements.sendButton.disabled = true;
-        
+
         try {
             // Add user message to chat
             this.addChatMessage('user', content);
-            
+
             // Send via API
             const response = await fetch('/api/v1/tasks', {
                 method: 'POST',
@@ -370,13 +370,13 @@ class VenomDashboard {
             }
 
             const result = await response.json();
-            
+
             // Clear input
             this.elements.taskInput.value = '';
-            
+
             this.addLogEntry('info', `Task sent: ${result.task_id}`);
             this.showNotification('Zadanie wysłane pomyślnie', 'success');
-            
+
         } catch (error) {
             console.error('Error sending task:', error);
             this.addLogEntry('error', `Cannot send task: ${error.message}`);
@@ -389,14 +389,14 @@ class VenomDashboard {
     async fetchMetrics() {
         try {
             const response = await fetch('/api/v1/metrics');
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const metrics = await response.json();
             this.updateMetrics(metrics);
-            
+
         } catch (error) {
             console.error('Error fetching metrics:', error);
         }
@@ -407,7 +407,7 @@ class VenomDashboard {
             this.elements.metricTasks.textContent = metrics.tasks.created || 0;
             this.elements.metricSuccess.textContent = `${metrics.tasks.success_rate || 0}%`;
         }
-        
+
         if (metrics.uptime_seconds !== undefined) {
             this.elements.metricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
         }
@@ -417,12 +417,12 @@ class VenomDashboard {
         if (seconds < 60) {
             return `${Math.floor(seconds)}s`;
         }
-        
+
         const minutes = Math.floor(seconds / 60);
         if (minutes < 60) {
             return `${minutes}m`;
         }
-        
+
         const hours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
         return `${hours}h ${remainingMinutes}m`;
@@ -431,15 +431,225 @@ class VenomDashboard {
     startMetricsPolling() {
         // Fetch metrics immediately
         this.fetchMetrics();
-        
+
         // Then every 5 seconds
         setInterval(() => {
             this.fetchMetrics();
         }, 5000);
+    }
+
+    // Memory Tab Functions
+    initMemoryTab() {
+        // Setup tab switching
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const tabName = button.getAttribute('data-tab');
+                this.switchTab(tabName);
+            });
+        });
+
+        // Setup refresh buttons
+        const refreshLessons = document.getElementById('refreshLessons');
+        if (refreshLessons) {
+            refreshLessons.addEventListener('click', () => {
+                this.fetchLessons();
+            });
+        }
+
+        const scanGraph = document.getElementById('scanGraph');
+        if (scanGraph) {
+            scanGraph.addEventListener('click', () => {
+                this.triggerGraphScan();
+            });
+        }
+
+        // Initial load
+        this.fetchLessons();
+        this.fetchGraphSummary();
+    }
+
+    switchTab(tabName) {
+        // Update buttons
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(btn => {
+            if (btn.getAttribute('data-tab') === tabName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        // Update content
+        const tabContents = document.querySelectorAll('.tab-content');
+        tabContents.forEach(content => {
+            content.classList.remove('active');
+        });
+
+        if (tabName === 'feed') {
+            document.getElementById('feedTab').classList.add('active');
+        } else if (tabName === 'memory') {
+            document.getElementById('memoryTab').classList.add('active');
+            // Refresh data when switching to memory tab
+            this.fetchLessons();
+            this.fetchGraphSummary();
+        }
+    }
+
+    async fetchLessons() {
+        try {
+            const response = await fetch('/api/v1/lessons?limit=10');
+            const data = await response.json();
+
+            const lessonsList = document.getElementById('lessonsList');
+            if (!lessonsList) return;
+
+            if (data.status === 'success' && data.lessons.length > 0) {
+                lessonsList.innerHTML = '';
+                data.lessons.forEach(lesson => {
+                    const lessonItem = this.createLessonElement(lesson);
+                    lessonsList.appendChild(lessonItem);
+                });
+            } else {
+                lessonsList.innerHTML = '<p class="empty-state">Brak lekcji</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching lessons:', error);
+            const lessonsList = document.getElementById('lessonsList');
+            if (lessonsList) {
+                lessonsList.innerHTML = '<p class="empty-state">Błąd ładowania lekcji</p>';
+            }
+        }
+    }
+
+    createLessonElement(lesson) {
+        const div = document.createElement('div');
+        const isError = lesson.result.toLowerCase().includes('błąd') ||
+                        lesson.result.toLowerCase().includes('error');
+        div.className = `lesson-item ${isError ? 'error' : 'success'}`;
+
+        const situation = document.createElement('div');
+        situation.className = 'lesson-situation';
+        situation.textContent = lesson.situation.slice(0, 80) + (lesson.situation.length > 80 ? '...' : '');
+
+        const feedback = document.createElement('div');
+        feedback.className = 'lesson-feedback';
+        feedback.textContent = '💡 ' + lesson.feedback.slice(0, 100) + (lesson.feedback.length > 100 ? '...' : '');
+
+        const tags = document.createElement('div');
+        tags.className = 'lesson-tags';
+        lesson.tags.forEach(tag => {
+            const tagSpan = document.createElement('span');
+            tagSpan.className = 'lesson-tag';
+            tagSpan.textContent = tag;
+            tags.appendChild(tagSpan);
+        });
+
+        div.appendChild(situation);
+        div.appendChild(feedback);
+        if (lesson.tags.length > 0) {
+            div.appendChild(tags);
+        }
+
+        return div;
+    }
+
+    async fetchGraphSummary() {
+        try {
+            const response = await fetch('/api/v1/graph/summary');
+            const data = await response.json();
+
+            const graphSummary = document.getElementById('graphSummary');
+            if (!graphSummary) return;
+
+            if (data.status === 'success' && data.summary) {
+                const summary = data.summary;
+
+                // Wyczyść poprzednią zawartość
+                graphSummary.innerHTML = '';
+
+                // Helper do tworzenia statystyki - bezpieczne użycie textContent
+                const createStat = (label, value) => {
+                    const statDiv = document.createElement('div');
+                    statDiv.className = 'graph-stat';
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'graph-stat-label';
+                    labelSpan.textContent = label;
+
+                    const valueSpan = document.createElement('span');
+                    valueSpan.className = 'graph-stat-value';
+                    valueSpan.textContent = String(value);
+
+                    statDiv.appendChild(labelSpan);
+                    statDiv.appendChild(valueSpan);
+                    return statDiv;
+                };
+
+                // Dodaj statystyki używając bezpiecznego DOM manipulation
+                graphSummary.appendChild(createStat('Węzły', summary.total_nodes || 0));
+                graphSummary.appendChild(createStat('Krawędzie', summary.total_edges || 0));
+                graphSummary.appendChild(createStat('Pliki', (summary.node_types && summary.node_types.file) || 0));
+                graphSummary.appendChild(createStat('Klasy', (summary.node_types && summary.node_types.class) || 0));
+                graphSummary.appendChild(createStat('Funkcje', (summary.node_types && summary.node_types.function) || 0));
+            } else {
+                graphSummary.textContent = '';
+                const p = document.createElement('p');
+                p.className = 'empty-state';
+                p.textContent = 'Brak danych grafu';
+                graphSummary.appendChild(p);
+            }
+        } catch (error) {
+            console.error('Error fetching graph summary:', error);
+            const graphSummary = document.getElementById('graphSummary');
+            if (graphSummary) {
+                graphSummary.textContent = '';
+                const p = document.createElement('p');
+                p.className = 'empty-state';
+                p.textContent = 'Błąd ładowania grafu';
+                graphSummary.appendChild(p);
+            }
+        }
+    }
+
+    async triggerGraphScan() {
+        try {
+            const scanButton = document.getElementById('scanGraph');
+            if (scanButton) {
+                scanButton.textContent = '⏳ Skanowanie...';
+                scanButton.disabled = true;
+            }
+
+            const response = await fetch('/api/v1/graph/scan', {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                this.showNotification('Skanowanie zakończone pomyślnie', 'success');
+                // Odśwież podsumowanie
+                setTimeout(() => {
+                    this.fetchGraphSummary();
+                }, 1000);
+            } else {
+                this.showNotification('Błąd skanowania', 'error');
+            }
+        } catch (error) {
+            console.error('Error triggering graph scan:', error);
+            this.showNotification('Błąd podczas skanowania', 'error');
+        } finally {
+            const scanButton = document.getElementById('scanGraph');
+            if (scanButton) {
+                scanButton.textContent = '🔍 Skanuj';
+                scanButton.disabled = false;
+            }
+        }
     }
 }
 
 // Initialize after DOM loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard = new VenomDashboard();
+    // Initialize memory tab
+    window.venomDashboard.initMemoryTab();
 });

@@ -8,12 +8,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from venom_core.agents.gardener import GardenerAgent
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
+from venom_core.memory.graph_store import CodeGraphStore
+from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 from venom_core.utils.logger import get_logger
 
@@ -26,11 +29,16 @@ orchestrator = Orchestrator(state_manager, event_broadcaster=event_broadcaster)
 # Inicjalizacja VectorStore dla API
 vector_store = None
 
+# Inicjalizacja GraphStore i LessonsStore dla API
+graph_store = None
+lessons_store = None
+gardener_agent = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
-    global vector_store
+    global vector_store, graph_store, lessons_store, gardener_agent
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -54,9 +62,50 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Nie udało się zainicjalizować VectorStore: {e}")
         vector_store = None
 
+    # Inicjalizuj GraphStore
+    try:
+        graph_store = CodeGraphStore()
+        graph_store.load_graph()  # Załaduj istniejący graf jeśli jest
+        logger.info("CodeGraphStore zainicjalizowany")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować CodeGraphStore: {e}")
+        graph_store = None
+
+    # Inicjalizuj LessonsStore z VectorStore
+    try:
+        lessons_store = LessonsStore(vector_store=vector_store)
+        logger.info(
+            f"LessonsStore zainicjalizowany z {len(lessons_store.lessons)} lekcjami"
+        )
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować LessonsStore: {e}")
+        lessons_store = None
+
+    # Połącz LessonsStore z Orchestrator
+    if lessons_store:
+        orchestrator.lessons_store = lessons_store
+        logger.info("LessonsStore podłączony do Orchestrator (meta-uczenie włączone)")
+
+    # Inicjalizuj i uruchom GardenerAgent
+    try:
+        gardener_agent = GardenerAgent(graph_store=graph_store)
+        await gardener_agent.start()
+        logger.info("GardenerAgent uruchomiony")
+    except Exception as e:
+        logger.warning(f"Nie udało się uruchomić GardenerAgent: {e}")
+        gardener_agent = None
+
     yield
-    # Shutdown - czeka na zakończenie zapisów stanu
+
+    # Shutdown
     logger.info("Zamykanie aplikacji...")
+
+    # Zatrzymaj GardenerAgent
+    if gardener_agent:
+        await gardener_agent.stop()
+        logger.info("GardenerAgent zatrzymany")
+
+    # Czeka na zakończenie zapisów stanu
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")
 
@@ -321,3 +370,231 @@ async def get_metrics():
     if metrics_collector is None:
         raise HTTPException(status_code=503, detail="Metrics collector not initialized")
     return metrics_collector.get_metrics()
+
+
+# --- Graph & Lessons API Endpoints ---
+
+
+def validate_file_path(file_path: str, workspace_root: Path) -> None:
+    """
+    Waliduje ścieżkę do pliku, zapobiegając path traversal attacks.
+
+    Args:
+        file_path: Ścieżka do walidacji
+        workspace_root: Katalog workspace
+
+    Raises:
+        HTTPException: Jeśli ścieżka jest nieprawidłowa
+    """
+    try:
+        # Normalizuj ścieżkę i sprawdź czy zawiera ..
+        if ".." in file_path or file_path.startswith("/"):
+            raise HTTPException(
+                status_code=400, detail="Nieprawidłowa ścieżka do pliku"
+            )
+
+        # Zweryfikuj że ścieżka jest w workspace
+        full_path = (workspace_root / file_path).resolve()
+
+        if not str(full_path).startswith(str(workspace_root)):
+            raise HTTPException(status_code=400, detail="Ścieżka poza workspace")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka")
+
+
+@app.get("/api/v1/graph/summary")
+async def get_graph_summary():
+    """
+    Zwraca podsumowanie grafu wiedzy o kodzie.
+
+    Returns:
+        Statystyki grafu (liczba węzłów, krawędzi, typy)
+
+    Raises:
+        HTTPException: 503 jeśli GraphStore nie jest dostępny
+    """
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="GraphStore nie jest dostępny")
+
+    try:
+        summary = graph_store.get_graph_summary()
+        return {"status": "success", "summary": summary}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania podsumowania grafu")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/graph/file/{file_path:path}")
+async def get_file_graph_info(file_path: str):
+    """
+    Zwraca informacje o pliku z grafu (klasy, funkcje, zależności).
+
+    Args:
+        file_path: Ścieżka do pliku (relatywna do workspace)
+
+    Returns:
+        Informacje o pliku z grafu
+
+    Raises:
+        HTTPException: 404 jeśli plik nie istnieje w grafie, 503 jeśli GraphStore nie jest dostępny
+    """
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="GraphStore nie jest dostępny")
+
+    try:
+        # Walidacja ścieżki - zapobieganie path traversal
+        workspace_root = Path(graph_store.workspace_root).resolve()
+        validate_file_path(file_path, workspace_root)
+
+        info = graph_store.get_file_info(file_path)
+
+        if not info:
+            raise HTTPException(
+                status_code=404, detail=f"Plik {file_path} nie istnieje w grafie"
+            )
+
+        return {"status": "success", "file_path": file_path, "info": info}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas pobierania informacji o pliku {file_path}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/graph/impact/{file_path:path}")
+async def get_impact_analysis(file_path: str):
+    """
+    Analizuje wpływ usunięcia/modyfikacji pliku.
+
+    Args:
+        file_path: Ścieżka do pliku (relatywna do workspace)
+
+    Returns:
+        Raport wpływu na inne pliki
+
+    Raises:
+        HTTPException: 404 jeśli plik nie istnieje w grafie, 503 jeśli GraphStore nie jest dostępny
+    """
+    if graph_store is None:
+        raise HTTPException(status_code=503, detail="GraphStore nie jest dostępny")
+
+    try:
+        # Walidacja ścieżki - zapobieganie path traversal
+        workspace_root = Path(graph_store.workspace_root).resolve()
+        validate_file_path(file_path, workspace_root)
+
+        impact = graph_store.get_impact_analysis(file_path)
+
+        if "error" in impact:
+            raise HTTPException(status_code=404, detail=impact["error"])
+
+        return {"status": "success", "impact": impact}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas analizy wpływu pliku {file_path}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.post("/api/v1/graph/scan")
+async def trigger_graph_scan():
+    """
+    Wyzwala manualne skanowanie workspace i aktualizację grafu.
+
+    Returns:
+        Statystyki skanowania
+
+    Raises:
+        HTTPException: 503 jeśli GardenerAgent nie jest dostępny
+    """
+    if gardener_agent is None:
+        raise HTTPException(status_code=503, detail="GardenerAgent nie jest dostępny")
+
+    try:
+        stats = await gardener_agent.trigger_manual_scan()
+        return {"status": "success", "scan_stats": stats}
+    except Exception as e:
+        logger.exception("Błąd podczas manualnego skanowania")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/lessons")
+async def get_lessons(limit: int = 10, tags: str = None):
+    """
+    Pobiera listę lekcji.
+
+    Args:
+        limit: Maksymalna liczba lekcji do zwrócenia
+        tags: Opcjonalne tagi do filtrowania (oddzielone przecinkami)
+
+    Returns:
+        Lista lekcji
+
+    Raises:
+        HTTPException: 503 jeśli LessonsStore nie jest dostępny
+    """
+    if lessons_store is None:
+        raise HTTPException(status_code=503, detail="LessonsStore nie jest dostępny")
+
+    try:
+        if tags:
+            tag_list = [t.strip() for t in tags.split(",")]
+            lessons = lessons_store.get_lessons_by_tags(tag_list)
+        else:
+            lessons = lessons_store.get_all_lessons(limit=limit)
+
+        # Konwertuj do dict
+        lessons_data = [lesson.to_dict() for lesson in lessons]
+
+        return {
+            "status": "success",
+            "count": len(lessons_data),
+            "lessons": lessons_data,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania lekcji")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/lessons/stats")
+async def get_lessons_stats():
+    """
+    Zwraca statystyki magazynu lekcji.
+
+    Returns:
+        Statystyki lekcji
+
+    Raises:
+        HTTPException: 503 jeśli LessonsStore nie jest dostępny
+    """
+    if lessons_store is None:
+        raise HTTPException(status_code=503, detail="LessonsStore nie jest dostępny")
+
+    try:
+        stats = lessons_store.get_statistics()
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statystyk lekcji")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/gardener/status")
+async def get_gardener_status():
+    """
+    Zwraca status agenta Ogrodnika.
+
+    Returns:
+        Status GardenerAgent
+
+    Raises:
+        HTTPException: 503 jeśli GardenerAgent nie jest dostępny
+    """
+    if gardener_agent is None:
+        raise HTTPException(status_code=503, detail="GardenerAgent nie jest dostępny")
+
+    try:
+        status = gardener_agent.get_status()
+        return {"status": "success", "gardener": status}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu Ogrodnika")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

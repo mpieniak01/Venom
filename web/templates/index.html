@@ -42,8 +42,8 @@
                         </div>
                     </div>
                     <div class="chat-input-container">
-                        <textarea 
-                            id="taskInput" 
+                        <textarea
+                            id="taskInput"
                             placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
                             rows="3"
                         ></textarea>
@@ -57,31 +57,56 @@
 
             <!-- Right Panel: Live Feed & Metrics -->
             <aside class="right-panel">
-                <div class="panel-header">
-                    <h2>📡 Live Feed</h2>
+                <!-- Tabs for switching between views -->
+                <div class="panel-tabs">
+                    <button class="tab-button active" data-tab="feed">📡 Live Feed</button>
+                    <button class="tab-button" data-tab="memory">🧠 Memory</button>
                 </div>
-                <div class="live-feed" id="liveFeed">
-                    <div class="log-entry info">
-                        <span class="timestamp">[--:--:--]</span>
-                        <span class="message">Oczekiwanie na połączenie...</span>
+
+                <!-- Live Feed Tab -->
+                <div class="tab-content active" id="feedTab">
+                    <div class="live-feed" id="liveFeed">
+                        <div class="log-entry info">
+                            <span class="timestamp">[--:--:--]</span>
+                            <span class="message">Oczekiwanie na połączenie...</span>
+                        </div>
+                    </div>
+
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>📊 Metrics</h2>
+                    </div>
+                    <div class="metrics-container" id="metricsContainer">
+                        <div class="metric">
+                            <span class="metric-label">Zadania</span>
+                            <span class="metric-value" id="metricTasks">0</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Sukces</span>
+                            <span class="metric-value" id="metricSuccess">0%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Uptime</span>
+                            <span class="metric-value" id="metricUptime">0s</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>📊 Metrics</h2>
-                </div>
-                <div class="metrics-container" id="metricsContainer">
-                    <div class="metric">
-                        <span class="metric-label">Zadania</span>
-                        <span class="metric-value" id="metricTasks">0</span>
+                <!-- Memory Tab -->
+                <div class="tab-content" id="memoryTab">
+                    <div class="panel-header">
+                        <h2>📚 Lekcje</h2>
+                        <button id="refreshLessons" class="btn-small">🔄</button>
                     </div>
-                    <div class="metric">
-                        <span class="metric-label">Sukces</span>
-                        <span class="metric-value" id="metricSuccess">0%</span>
+                    <div class="lessons-list" id="lessonsList">
+                        <p class="empty-state">Ładowanie lekcji...</p>
                     </div>
-                    <div class="metric">
-                        <span class="metric-label">Uptime</span>
-                        <span class="metric-value" id="metricUptime">0s</span>
+
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>🕸️ Graf Wiedzy</h2>
+                        <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
+                    </div>
+                    <div class="graph-summary" id="graphSummary">
+                        <p class="empty-state">Ładowanie grafu...</p>
                     </div>
                 </div>
             </aside>

@@ -42,7 +42,9 @@ class DockerHabitat:
             raise RuntimeError(error_msg) from e
 
         self.container = self._get_or_create_container()
-        logger.info(f"DockerHabitat zainicjalizowany z kontenerem: {self.CONTAINER_NAME}")
+        logger.info(
+            f"DockerHabitat zainicjalizowany z kontenerem: {self.CONTAINER_NAME}"
+        )
 
     def _get_or_create_container(self):
         """
@@ -61,7 +63,9 @@ class DockerHabitat:
 
             # Jeśli kontener istnieje ale nie działa, uruchom go
             if container.status != "running":
-                logger.info(f"Uruchamianie zatrzymanego kontenera: {self.CONTAINER_NAME}")
+                logger.info(
+                    f"Uruchamianie zatrzymanego kontenera: {self.CONTAINER_NAME}"
+                )
                 container.start()
                 container.reload()
 
@@ -101,18 +105,18 @@ class DockerHabitat:
                 image=image_name,
                 name=self.CONTAINER_NAME,
                 command="tail -f /dev/null",  # Utrzymuje kontener w działaniu
-                volumes={
-                    str(workspace_path): {
-                        "bind": "/workspace",
-                        "mode": "rw"
-                    }
-                },
+                volumes={str(workspace_path): {"bind": "/workspace", "mode": "rw"}},
                 working_dir="/workspace",
                 detach=True,
                 remove=False,  # Nie usuwaj kontenera po zatrzymaniu
             )
 
-            logger.info(f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> /workspace")
+            # Odśwież status kontenera
+            container.reload()
+
+            logger.info(
+                f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> /workspace"
+            )
             return container
 
         except APIError as e:
@@ -191,4 +195,3 @@ class DockerHabitat:
         """Destruktor - nie usuwa kontenera automatycznie (długożyjący kontener)."""
         # Nie wywołujemy cleanup() tutaj - kontener powinien zostać
         pass
-

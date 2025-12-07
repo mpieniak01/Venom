@@ -21,6 +21,10 @@ MAX_REPAIR_ATTEMPTS = 2
 # Maksymalna długość tekstu w promptach (zabezpieczenie przed prompt injection)
 MAX_PROMPT_LENGTH = 500
 
+# Ustawienia dla pętli meta-uczenia
+ENABLE_META_LEARNING = True  # Flaga do włączania/wyłączania meta-uczenia
+MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
+
 
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
@@ -31,6 +35,7 @@ class Orchestrator:
         intent_manager: IntentManager = None,
         task_dispatcher: TaskDispatcher = None,
         event_broadcaster=None,
+        lessons_store=None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -40,10 +45,12 @@ class Orchestrator:
             intent_manager: Opcjonalny menedżer klasyfikacji intencji (jeśli None, zostanie utworzony)
             task_dispatcher: Opcjonalny dispatcher zadań (jeśli None, zostanie utworzony)
             event_broadcaster: Opcjonalny broadcaster zdarzeń do WebSocket
+            lessons_store: Opcjonalny magazyn lekcji (dla meta-uczenia)
         """
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
         self.event_broadcaster = event_broadcaster
+        self.lessons_store = lessons_store  # Magazyn lekcji dla meta-uczenia
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
         if task_dispatcher is None:
@@ -120,6 +127,11 @@ class Orchestrator:
             task_id: ID zadania do wykonania
             request: Oryginalne żądanie (z obrazami jeśli są)
         """
+        # Inicjalizuj zmienne dla error handling
+        context = request.content
+        intent = "UNKNOWN"
+        result = ""
+
         try:
             # Pobierz zadanie
             task = self.state_manager.get_task(task_id)
@@ -144,6 +156,9 @@ class Orchestrator:
 
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
+
+            # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości
+            context = await self._add_lessons_to_context(task_id, context)
 
             # Klasyfikuj intencję użytkownika
             intent = await self.intent_manager.classify_intent(context)
@@ -205,6 +220,15 @@ class Orchestrator:
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
             )
 
+            # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone)
+            await self._save_task_lesson(
+                task_id=task_id,
+                context=context,
+                intent=intent,
+                result=result,
+                success=True,
+            )
+
             # Inkrementuj licznik ukończonych zadań
             if metrics_collector:
                 metrics_collector.increment_task_completed()
@@ -221,6 +245,16 @@ class Orchestrator:
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
+
+            # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone)
+            await self._save_task_lesson(
+                task_id=task_id,
+                context=context,
+                intent=intent,
+                result=f"Błąd: {str(e)}",
+                success=False,
+                error=str(e),
+            )
 
             # Inkrementuj licznik nieudanych zadań
             if metrics_collector:
@@ -383,3 +417,138 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
         # Nie powinno się tu dostać, ale dla bezpieczeństwa
         return generated_code or "Błąd: nie udało się wygenerować kodu"
+
+    async def _add_lessons_to_context(self, task_id: UUID, context: str) -> str:
+        """
+        Pre-flight check: Dodaje relevantne lekcje z przeszłości do kontekstu.
+
+        Args:
+            task_id: ID zadania
+            context: Oryginalny kontekst
+
+        Returns:
+            Kontekst wzbogacony o lekcje
+        """
+        if not ENABLE_META_LEARNING or not self.lessons_store:
+            return context
+
+        try:
+            # Wyszukaj relevantne lekcje
+            lessons = self.lessons_store.search_lessons(
+                query=context[:500],  # Użyj fragmentu kontekstu do wyszukania
+                limit=MAX_LESSONS_IN_CONTEXT,
+            )
+
+            if not lessons:
+                logger.debug("Brak relevantnych lekcji dla tego zadania")
+                return context
+
+            # Sformatuj lekcje do dołączenia
+            lessons_text = "\n\n📚 LEKCJE Z PRZESZŁOŚCI (Nauczyłem się wcześniej):\n"
+            for i, lesson in enumerate(lessons, 1):
+                lessons_text += f"\n[Lekcja {i}]\n"
+                lessons_text += f"Sytuacja: {lesson.situation}\n"
+                lessons_text += f"Co poszło nie tak: {lesson.result}\n"
+                lessons_text += f"Wniosek: {lesson.feedback}\n"
+
+            self.state_manager.add_log(
+                task_id, f"Dołączono {len(lessons)} lekcji z przeszłości do kontekstu"
+            )
+
+            # Broadcast informacji o lekcjach
+            await self._broadcast_event(
+                event_type="AGENT_THOUGHT",
+                message=f"Znalazłem {len(lessons)} relevantnych lekcji z przeszłości",
+                data={"task_id": str(task_id), "lessons_count": len(lessons)},
+            )
+
+            # Dołącz lekcje na początku kontekstu
+            return lessons_text + "\n\n" + context
+
+        except Exception as e:
+            logger.warning(f"Błąd podczas dodawania lekcji do kontekstu: {e}")
+            return context
+
+    async def _save_task_lesson(
+        self,
+        task_id: UUID,
+        context: str,
+        intent: str,
+        result: str,
+        success: bool,
+        error: str = None,
+    ) -> None:
+        """
+        Zapisuje lekcję z wykonanego zadania (refleksja).
+
+        Args:
+            task_id: ID zadania
+            context: Kontekst zadania
+            intent: Sklasyfikowana intencja
+            result: Rezultat zadania
+            success: Czy zadanie zakończyło się sukcesem
+            error: Opcjonalny opis błędu
+        """
+        if not ENABLE_META_LEARNING or not self.lessons_store:
+            return
+
+        try:
+            # Przygotuj dane lekcji
+            situation = f"[{intent}] {context[:200]}..."  # Skrócony opis sytuacji
+
+            if success:
+                # Lekcja o sukcesie - zapisuj tylko jeśli coś ciekawego
+                # (np. jeśli było więcej niż 1 próba w Coder-Critic)
+                task_logs = self.state_manager.get_task(task_id)
+                if task_logs and len(task_logs.logs) > 5:
+                    # Było dużo iteracji, warto zapisać
+                    action = (
+                        f"Zadanie wykonane pomyślnie po {len(task_logs.logs)} krokach"
+                    )
+                    lesson_result = "SUKCES"
+                    feedback = f"Zadanie typu {intent} wymaga dokładnego planowania. Wynik: {result[:100]}..."
+                    tags = [intent, "sukces", "nauka"]
+                else:
+                    # Proste zadanie, nie ma co zapisywać
+                    logger.debug("Proste zadanie, pomijam zapis lekcji")
+                    return
+            else:
+                # Lekcja o błędzie - zawsze zapisuj
+                action = f"Próba wykonania zadania typu {intent}"
+                error_msg = error if error else "Unknown error"
+                lesson_result = f"BŁĄD: {error_msg[:200]}"
+                feedback = f"Unikaj powtórzenia tego błędu. Błąd: {error_msg[:300]}"
+                tags = [intent, "błąd", "ostrzeżenie"]
+
+            # Zapisz lekcję
+            lesson = self.lessons_store.add_lesson(
+                situation=situation,
+                action=action,
+                result=lesson_result,
+                feedback=feedback,
+                tags=tags,
+                metadata={
+                    "task_id": str(task_id),
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
+
+            self.state_manager.add_log(
+                task_id, f"💡 Zapisano lekcję: {lesson.lesson_id}"
+            )
+
+            # Broadcast informacji o nowej lekcji
+            await self._broadcast_event(
+                event_type="LESSON_LEARNED",
+                message=f"Nauczyłem się czegoś nowego: {feedback[:100]}",
+                data={
+                    "task_id": str(task_id),
+                    "lesson_id": lesson.lesson_id,
+                    "success": success,
+                },
+            )
+
+            logger.info(f"Zapisano lekcję z zadania {task_id}: {lesson.lesson_id}")
+
+        except Exception as e:
+            logger.error(f"Błąd podczas zapisywania lekcji: {e}")

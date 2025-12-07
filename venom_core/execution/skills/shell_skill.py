@@ -156,14 +156,12 @@ class ShellSkill:
         Returns:
             Exit code (0 = sukces, >0 = błąd)
         """
-        if "exit_code=" in output:
-            try:
-                # Parsuj exit_code z outputu
-                start = output.find("exit_code=") + len("exit_code=")
-                end = output.find(")", start)
-                return int(output[start:end])
-            except (ValueError, IndexError):
-                pass
+        import re
+
+        # Próbuj znaleźć exit_code używając regex
+        match = re.search(r"exit_code=(\d+)", output)
+        if match:
+            return int(match.group(1))
 
         # Jeśli nie można sparsować, sprawdź czy był sukces
         if "wykonana pomyślnie" in output.lower():

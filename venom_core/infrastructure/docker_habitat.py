@@ -30,8 +30,7 @@ class DockerHabitat:
         Jeśli nie istnieje - tworzy i uruchamia nowy.
 
         Raises:
-            docker.errors.DockerException: Jeśli Docker nie jest dostępny
-            RuntimeError: Jeśli nie można uruchomić kontenera
+            RuntimeError: Jeśli Docker nie jest dostępny lub nie można uruchomić kontenera
         """
         try:
             self.client = docker.from_env()
@@ -135,6 +134,8 @@ class DockerHabitat:
         Args:
             command: Komenda do wykonania (np. "python script.py")
             timeout: Maksymalny czas wykonania w sekundach (domyślnie 30)
+                    Uwaga: Obecnie timeout nie jest implementowany - parametr jest
+                    zachowany dla kompatybilności z przyszłymi wersjami
 
         Returns:
             Krotka (exit_code, output) gdzie:

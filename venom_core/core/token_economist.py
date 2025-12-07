@@ -25,6 +25,9 @@ class TokenEconomist:
         "local": {"input": 0.0, "output": 0.0},  # Lokalny model jest darmowy
     }
 
+    # Modele lokalne - rozszerzalna lista
+    LOCAL_MODEL_PATTERNS = ["local", "phi", "mistral", "llama", "gemma", "qwen"]
+
     def __init__(self, enable_compression: bool = True):
         """
         Inicjalizacja Token Economist.
@@ -229,9 +232,10 @@ class TokenEconomist:
         # Normalizuj nazwę modelu
         model_name_lower = model_name.lower()
 
-        # Sprawdź czy to lokalny model
-        if "local" in model_name_lower or "phi" in model_name_lower or "mistral" in model_name_lower:
-            return self.PRICING["local"]
+        # Sprawdź czy to lokalny model (używając patterns)
+        for pattern in self.LOCAL_MODEL_PATTERNS:
+            if pattern in model_name_lower:
+                return self.PRICING["local"]
 
         # Sprawdź predefiniowane modele
         for key, pricing in self.PRICING.items():

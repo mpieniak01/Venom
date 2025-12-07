@@ -47,6 +47,7 @@ class DocumenterAgent:
         # Tracking: ostatnie zmiany aby uniknąć pętli
         self._last_processed_files: set[str] = set()
         self._processing_lock = asyncio.Lock()
+        self._changelog_lock = asyncio.Lock()  # Lock dla operacji na changelog
 
         logger.info(f"DocumenterAgent zainicjalizowany dla: {self.workspace_root}")
 
@@ -68,8 +69,22 @@ class DocumenterAgent:
         try:
             await self._process_file_change(file_path)
         finally:
-            # Usuń z tracking po 60 sekundach
+            # Odłożone czyszczenie tracking (unikanie resource leak przy cancel)
+            asyncio.create_task(self._cleanup_tracking(file_path))
+
+    async def _cleanup_tracking(self, file_path: str) -> None:
+        """
+        Usuwa plik z tracking po 60 sekundach.
+
+        Args:
+            file_path: Ścieżka do pliku
+        """
+        try:
             await asyncio.sleep(60)
+            async with self._processing_lock:
+                self._last_processed_files.discard(file_path)
+        except asyncio.CancelledError:
+            # Jeśli task został anulowany, usuń od razu
             async with self._processing_lock:
                 self._last_processed_files.discard(file_path)
 
@@ -92,12 +107,19 @@ class DocumenterAgent:
             return
 
         # Sprawdź czy to zmiana dokonana przez venom-bot (unikanie pętli)
+        # Używamy dedykowanego markera w commit message lub specjalnego email
         try:
             last_commit_author = await self._get_last_commit_author()
-            if last_commit_author and "venom" in last_commit_author.lower():
-                logger.debug("Zmiana dokonana przez venom-bot, pomijam")
-                return
+            if last_commit_author:
+                # Sprawdź czy to bot na podstawie nazwy zawierającej "bot" lub "venom"
+                author_lower = last_commit_author.lower()
+                if "venom-bot" in author_lower or (
+                    "venom" in author_lower and "bot" in author_lower
+                ):
+                    logger.debug("Zmiana dokonana przez venom-bot, pomijam")
+                    return
         except Exception as e:
+            logger.debug(f"Błąd podczas sprawdzania autora: {e}")
             logger.debug(f"Nie można sprawdzić autora commita: {e}")
 
         logger.info(f"Przetwarzam zmianę w {file_path}")
@@ -164,7 +186,16 @@ class DocumenterAgent:
         """
         try:
             # Użyj GitSkill do pobrania diffa
-            relative_path = str(Path(file_path).relative_to(self.workspace_root))
+            try:
+                relative_path = str(
+                    Path(file_path).resolve().relative_to(self.workspace_root)
+                )
+            except ValueError:
+                logger.warning(
+                    f"Plik {file_path} nie znajduje się w workspace {self.workspace_root}, pomijam diff."
+                )
+                return ""
+
             result = await self.git_skill.get_diff(file_path=relative_path)
             return result
         except Exception as e:
@@ -184,8 +215,9 @@ class DocumenterAgent:
             repo = Repo(self.workspace_root)
             if repo.head.is_valid():
                 return repo.head.commit.author.name
-        except Exception:
-            pass
+        except Exception as e:
+            # Nie można pobrać autora - repo może nie mieć commitów lub inny błąd
+            logger.debug(f"Nie można pobrać autora ostatniego commita: {e}")
         return None
 
     async def _analyze_changes(self, file_path: str, diff: str) -> bool:
@@ -199,15 +231,22 @@ class DocumenterAgent:
         Returns:
             True jeśli potrzebna aktualizacja dokumentacji
         """
-        # Prosty heurystyka: sprawdź czy są zmiany w definicjach funkcji/klas
+        # Lepsza heurystyka: sprawdzaj tylko linie diffu ze zmianami, pomijając nagłówki
         keywords = ["def ", "class ", "async def ", '"""', "'''"]
 
-        for keyword in keywords:
-            if keyword in diff:
-                logger.debug(
-                    f"Wykryto zmianę wymagającą aktualizacji dokumentacji: {keyword}"
-                )
-                return True
+        for line in diff.splitlines():
+            # Sprawdź tylko linie ze zmianami (+ lub -), pomijając nagłówki diff
+            if (
+                (line.startswith("+") or line.startswith("-"))
+                and not line.startswith("+++")
+                and not line.startswith("---")
+            ):
+                for keyword in keywords:
+                    if keyword in line:
+                        logger.debug(
+                            f"Wykryto zmianę wymagającą aktualizacji dokumentacji: {keyword} w linii: {line.strip()}"
+                        )
+                        return True
 
         return False
 
@@ -240,21 +279,22 @@ class DocumenterAgent:
         entry += diff[:500] + ("..." if len(diff) > 500 else "")  # Ogranicz długość
         entry += "\n```\n"
 
-        # Dopisz do pliku
-        try:
-            if changelog_file.exists():
-                content = changelog_file.read_text()
-                changelog_file.write_text(entry + content)
-            else:
-                changelog_file.write_text(
-                    "# Automatic Changelog\n\nThis file is automatically generated by DocumenterAgent.\n"
-                    + entry
-                )
+        # Dopisz do pliku z lockiem (unikanie race condition)
+        async with self._changelog_lock:
+            try:
+                if changelog_file.exists():
+                    content = changelog_file.read_text()
+                    changelog_file.write_text(entry + content)
+                else:
+                    changelog_file.write_text(
+                        "# Automatic Changelog\n\nThis file is automatically generated by DocumenterAgent.\n"
+                        + entry
+                    )
 
-            logger.info(f"Zaktualizowano {changelog_file}")
+                logger.info(f"Zaktualizowano {changelog_file}")
 
-        except Exception as e:
-            logger.error(f"Błąd podczas zapisu changelog: {e}")
+            except Exception as e:
+                logger.error(f"Błąd podczas zapisu changelog: {e}")
 
     async def _commit_documentation_changes(self, file_name: str) -> None:
         """
@@ -275,14 +315,19 @@ class DocumenterAgent:
 
                 repo = Repo(self.workspace_root)
 
-                # Dodaj tylko pliki z docs/
-                for file in docs_dir.rglob("*"):
-                    if file.is_file():
-                        try:
-                            relative = file.relative_to(self.workspace_root)
-                            repo.index.add([str(relative)])
-                        except Exception:
-                            pass
+                # Dodaj tylko pliki z docs/ - batch operation
+                files_to_add = [
+                    str(file.relative_to(self.workspace_root))
+                    for file in docs_dir.rglob("*")
+                    if file.is_file()
+                ]
+
+                try:
+                    if files_to_add:
+                        repo.index.add(files_to_add)
+                except Exception as e:
+                    logger.warning(f"Błąd podczas dodawania plików do indeksu git: {e}")
+                    return
 
                 # Sprawdź czy są zmiany do commitu
                 if repo.index.diff("HEAD"):

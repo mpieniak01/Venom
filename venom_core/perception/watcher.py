@@ -53,6 +53,7 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
         }
 
         # Debouncing: ścieżka -> timestamp ostatniej zmiany
+        # Note: dict operations są thread-safe w CPython dla basic operations
         self._pending_changes: dict[str, float] = {}
         self._debounce_task: Optional[asyncio.Task] = None
         self._loop = None
@@ -101,7 +102,8 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
             logger.debug(f"Ignorowanie zmiany w: {event.src_path}")
             return
 
-        # Dodaj do pending changes z aktualnym timestampem
+        # Użyj thread-safe metody do dodania zmiany
+        # Dodaj do pending changes z aktualnym timestampem (thread-safe dict access)
         self._pending_changes[event.src_path] = time.time()
 
         # Uruchom debounce task jeśli nie działa
@@ -123,7 +125,16 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
                         return
 
             if self._loop:
-                self._debounce_task = self._loop.create_task(self._debounce_handler())
+                # Użyj call_soon_threadsafe dla thread-safe task creation
+                try:
+                    self._loop.call_soon_threadsafe(self._schedule_debounce_task)
+                except RuntimeError:
+                    logger.warning("Nie można zaplanować debounce task")
+
+    def _schedule_debounce_task(self) -> None:
+        """Planuje debounce task (thread-safe helper)."""
+        if self._debounce_task is None or self._debounce_task.done():
+            self._debounce_task = asyncio.create_task(self._debounce_handler())
 
     async def _debounce_handler(self) -> None:
         """Async handler dla debouncing."""

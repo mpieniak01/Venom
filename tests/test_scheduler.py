@@ -1,6 +1,5 @@
 """Testy dla modułu scheduler (BackgroundScheduler)."""
 
-import asyncio
 from unittest.mock import AsyncMock
 
 import pytest

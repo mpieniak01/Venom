@@ -125,22 +125,27 @@ async def lifespan(app: FastAPI):
         logger.info("BackgroundScheduler uruchomiony")
 
         # Rejestruj domyślne zadania
-        if vector_store:
+        if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
             background_scheduler.add_interval_job(
                 func=_consolidate_memory,
                 minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
                 job_id="consolidate_memory",
-                description="Konsolidacja pamięci i analiza logów",
+                description="Konsolidacja pamięci i analiza logów (placeholder)",
             )
-            logger.info("Zadanie consolidate_memory zarejestrowane")
+            logger.info(
+                "Zadanie consolidate_memory zarejestrowane (PLACEHOLDER - wymaga implementacji)"
+            )
 
-        background_scheduler.add_interval_job(
-            func=_check_health,
-            minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
-            job_id="check_health",
-            description="Sprawdzanie zdrowia systemu",
-        )
-        logger.info("Zadanie check_health zarejestrowane")
+        if SETTINGS.ENABLE_HEALTH_CHECKS:
+            background_scheduler.add_interval_job(
+                func=_check_health,
+                minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
+                job_id="check_health",
+                description="Sprawdzanie zdrowia systemu (placeholder)",
+            )
+            logger.info(
+                "Zadanie check_health zarejestrowane (PLACEHOLDER - wymaga implementacji)"
+            )
 
     except Exception as e:
         logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {e}")
@@ -178,15 +183,15 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Zamykanie aplikacji...")
 
+    # Zatrzymaj BackgroundScheduler najpierw (może korzystać z innych komponentów)
+    if background_scheduler:
+        await background_scheduler.stop()
+        logger.info("BackgroundScheduler zatrzymany")
+
     # Zatrzymaj FileWatcher
     if file_watcher:
         await file_watcher.stop()
         logger.info("FileWatcher zatrzymany")
-
-    # Zatrzymaj BackgroundScheduler
-    if background_scheduler:
-        await background_scheduler.stop()
-        logger.info("BackgroundScheduler zatrzymany")
 
     # Zatrzymaj GardenerAgent
     if gardener_agent:
@@ -200,23 +205,23 @@ async def lifespan(app: FastAPI):
 
 # Funkcje pomocnicze dla scheduled jobs
 async def _consolidate_memory():
-    """Konsolidacja pamięci - analiza logów i zapis wniosków."""
-    logger.info("Uruchamiam konsolidację pamięci...")
+    """Konsolidacja pamięci - analiza logów i zapis wniosków (PLACEHOLDER)."""
+    logger.info("Uruchamiam konsolidację pamięci (placeholder)...")
     if event_broadcaster:
         await event_broadcaster.broadcast_event(
             event_type=EventType.BACKGROUND_JOB_STARTED,
-            message="Memory consolidation started",
+            message="Memory consolidation started (placeholder)",
             data={"job": "consolidate_memory"},
         )
 
     try:
-        # Placeholder: W przyszłości tutaj będzie analiza logów i zapis do GraphRAG
-        logger.info("Konsolidacja pamięci zakończona")
+        # PLACEHOLDER: W przyszłości tutaj będzie analiza logów i zapis do GraphRAG
+        logger.debug("Konsolidacja pamięci - placeholder, brak implementacji")
 
         if event_broadcaster:
             await event_broadcaster.broadcast_event(
                 event_type=EventType.MEMORY_CONSOLIDATED,
-                message="Memory consolidation completed",
+                message="Memory consolidation completed (placeholder)",
                 data={"job": "consolidate_memory"},
             )
 
@@ -231,8 +236,8 @@ async def _consolidate_memory():
 
 
 async def _check_health():
-    """Sprawdzenie zdrowia systemu."""
-    logger.debug("Sprawdzanie zdrowia systemu...")
+    """Sprawdzenie zdrowia systemu (PLACEHOLDER)."""
+    logger.debug("Sprawdzanie zdrowia systemu (placeholder)...")
 
     try:
         from datetime import datetime

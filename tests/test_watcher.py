@@ -62,7 +62,9 @@ async def test_watcher_callback_triggered(temp_workspace):
         changed_files.append(file_path)
         callback_triggered.set()
 
-    watcher = FileWatcher(workspace_root=str(temp_workspace), on_change_callback=test_callback)
+    watcher = FileWatcher(
+        workspace_root=str(temp_workspace), on_change_callback=test_callback
+    )
 
     await watcher.start()
 
@@ -70,8 +72,8 @@ async def test_watcher_callback_triggered(temp_workspace):
     test_file = temp_workspace / "test.py"
     test_file.write_text("print('hello')")
 
-    # Poczekaj chwilę na reakcję watchera
-    await asyncio.sleep(0.5)
+    # Poczekaj chwilę na reakcję watchera (dłużej na wolnych systemach CI)
+    await asyncio.sleep(2)
 
     # Zmodyfikuj plik
     test_file.write_text("print('hello world')")
@@ -98,7 +100,9 @@ async def test_watcher_ignores_non_python_files(temp_workspace):
         changed_files.append(file_path)
         callback_triggered.set()
 
-    watcher = FileWatcher(workspace_root=str(temp_workspace), on_change_callback=test_callback)
+    watcher = FileWatcher(
+        workspace_root=str(temp_workspace), on_change_callback=test_callback
+    )
 
     await watcher.start()
 
@@ -125,7 +129,9 @@ async def test_watcher_ignores_pycache(temp_workspace):
         changed_files.append(file_path)
         callback_triggered.set()
 
-    watcher = FileWatcher(workspace_root=str(temp_workspace), on_change_callback=test_callback)
+    watcher = FileWatcher(
+        workspace_root=str(temp_workspace), on_change_callback=test_callback
+    )
 
     await watcher.start()
 

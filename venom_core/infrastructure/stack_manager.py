@@ -1,5 +1,6 @@
 """Moduł: stack_manager - zarządzanie środowiskami Docker Compose."""
 
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -200,7 +201,6 @@ class StackManager:
                 # Opcjonalne czyszczenie katalogu
                 if cleanup_directory:
                     try:
-                        import shutil
                         shutil.rmtree(stack_dir)
                         logger.info(f"Katalog stacka '{stack_name}' został usunięty")
                         msg += f"\nKatalog stacka został usunięty z workspace"

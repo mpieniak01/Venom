@@ -40,6 +40,14 @@ class PolicyEngine:
         (r"mkfs\.", "Formatowanie dysku"),
         (r"dd\s+if=/dev/zero", "Nadpisywanie dysku"),
         (r">\s*/dev/sd[a-z]", "Bezpośredni zapis na dysk"),
+        (
+            r"\bgit\s+push\s+.*--force",
+            "Git push --force (może nadpisać historię)",
+        ),  # Explicit git command
+        (
+            r"\bgit\s+push\s+.*-f\b",
+            "Git push -f (może nadpisać historię)",
+        ),  # -f jako flaga w komendzie git push
     ]
 
     def check_safety(self, content: str) -> List[Violation]:

@@ -42,5 +42,13 @@ class Settings(BaseSettings):
     MEMORY_CONSOLIDATION_INTERVAL_MINUTES: int = 60  # Interwał konsolidacji pamięci
     HEALTH_CHECK_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania zdrowia systemu
 
+    # Konfiguracja External Integrations (THE_TEAMMATE)
+    GITHUB_TOKEN: str = ""  # Personal Access Token do GitHub API
+    GITHUB_REPO_NAME: str = ""  # Nazwa repozytorium np. "mpieniak01/Venom"
+    DISCORD_WEBHOOK_URL: str = ""  # Webhook URL dla powiadomień Discord
+    SLACK_WEBHOOK_URL: str = ""  # Webhook URL dla powiadomień Slack
+    ENABLE_ISSUE_POLLING: bool = False  # Włącz automatyczne sprawdzanie Issues
+    ISSUE_POLLING_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania nowych Issues
+
 
 SETTINGS = Settings()

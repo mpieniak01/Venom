@@ -235,9 +235,15 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
                 # Wstaw nowy wpis po nagłówku
                 if existing.startswith("# Changelog"):
                     parts = existing.split("\n", 2)
-                    new_content = (
-                        f"{parts[0]}\n{parts[1]}\n\n{changelog}\n{parts[2] if len(parts) > 2 else ''}"
-                    )
+                    if len(parts) >= 2:
+                        # Bezpieczne wstawienie - sprawdzamy długość parts
+                        new_content = (
+                            f"{parts[0]}\n{parts[1]}\n\n{changelog}\n"
+                            f"{parts[2] if len(parts) > 2 else ''}"
+                        )
+                    else:
+                        # Jeśli plik ma tylko nagłówek lub mniej
+                        new_content = f"# Changelog\n\n{changelog}"
                 else:
                     new_content = f"# Changelog\n\n{changelog}\n\n{existing}"
             else:
@@ -284,8 +290,11 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
                 continue
 
             # Format: <hash> - <author> - <date> - <message>
+            # Używamy robust parsing - sprawdzamy czy format jest poprawny
             parts = line.split(" - ", 3)
             if len(parts) < 4:
+                # Jeśli format jest nieprawidłowy, pomiń ten commit
+                logger.warning(f"Pomijam commit z nieprawidłowym formatem: {line[:50]}")
                 continue
 
             hash_short = parts[0].strip()

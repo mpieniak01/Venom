@@ -355,15 +355,10 @@ class BrowserSkill:
 
     def __del__(self):
         """Destruktor - upewnia się, że przeglądarka jest zamknięta."""
+        # Note: __del__ może nie być wywoływany przed zniszczeniem obiektu.
+        # Zalecane jest jawne wywołanie close_browser() po użyciu.
         if self._browser is not None:
-            # Musimy uruchomić close w event loop
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Jeśli loop działa, zaplanuj zamknięcie
-                    loop.create_task(self._close_browser())
-                else:
-                    # Jeśli loop nie działa, uruchom synchronicznie
-                    loop.run_until_complete(self._close_browser())
-            except Exception as e:
-                logger.warning(f"Nie można automatycznie zamknąć przeglądarki: {e}")
+            logger.warning(
+                "BrowserSkill: Przeglądarka nie została zamknięta jawnie. "
+                "Zalecane jest wywołanie close_browser() po użyciu."
+            )

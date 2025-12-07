@@ -651,18 +651,29 @@ async def get_git_status():
             and "working tree clean" not in status_output
         )
 
-        # Spróbuj policzyć pliki (proste parsowanie)
+        # Użyj GitPython do dokładniejszego liczenia zmian
         modified_count = 0
         if has_changes:
-            lines = status_output.split("\n")
-            for line in lines:
-                if (
-                    "modified:" in line
-                    or "new file:" in line
-                    or "deleted:" in line
-                    or "renamed:" in line
-                ):
-                    modified_count += 1
+            try:
+                # Pobierz obiekt Repo i policz zmiany
+                from git import Repo
+
+                repo = Repo(git_skill.workspace_root)
+                # Zmodyfikowane i staged pliki
+                modified_count = len(repo.index.diff("HEAD"))
+                # Dodaj nieśledzone pliki
+                modified_count += len(repo.untracked_files)
+            except Exception:
+                # Fallback: proste parsowanie jeśli GitPython zawiedzie
+                lines = status_output.split("\n")
+                for line in lines:
+                    if (
+                        "modified:" in line
+                        or "new file:" in line
+                        or "deleted:" in line
+                        or "renamed:" in line
+                    ):
+                        modified_count += 1
 
         return {
             "status": "success",

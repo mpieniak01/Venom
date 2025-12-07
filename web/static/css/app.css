@@ -95,6 +95,34 @@ body {
     color: var(--warning-color);
 }
 
+.repo-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
+}
+
+.btn-repo-action {
+    background-color: var(--bg-medium);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-repo-action:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.btn-repo-action:active {
+    transform: translateY(0);
+}
+
 .status-indicator {
     display: flex;
     align-items: center;

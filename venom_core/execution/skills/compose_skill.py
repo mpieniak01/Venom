@@ -7,7 +7,7 @@ from semantic_kernel.functions import kernel_function
 
 from venom_core.infrastructure.stack_manager import StackManager
 from venom_core.utils.logger import get_logger
-from venom_core.utils.port_authority import find_free_port, is_port_in_use
+from venom_core.utils.port_authority import is_port_in_use
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,9 @@ class ComposeSkill:
 
                 return result
             else:
-                return f"❌ Błąd podczas tworzenia środowiska '{stack_name}':\n{message}"
+                return (
+                    f"❌ Błąd podczas tworzenia środowiska '{stack_name}':\n{message}"
+                )
 
         except Exception as e:
             logger.error(f"Błąd w create_environment: {e}")
@@ -173,9 +175,7 @@ class ComposeSkill:
                     f"📋 Ostatnie logi:\n{logs}"
                 )
             else:
-                return (
-                    f"❌ Nie można pobrać logów serwisu '{service_name}':\n{logs}"
-                )
+                return f"❌ Nie można pobrać logów serwisu '{service_name}':\n{logs}"
 
         except Exception as e:
             logger.error(f"Błąd w check_service_health: {e}")
@@ -270,7 +270,7 @@ class ComposeSkill:
 
         # Śledź przypisane porty aby uniknąć duplikatów
         assigned_ports = set()
-        
+
         # Dla każdego placeholdera znajdź wolny port
         processed = compose_content
         for match in matches:
@@ -291,12 +291,14 @@ class ComposeSkill:
                     )
             else:
                 # Znajdź dowolny wolny port
-                free_port = self._find_unique_free_port(PORT_RANGE_START, assigned_ports)
+                free_port = self._find_unique_free_port(
+                    PORT_RANGE_START, assigned_ports
+                )
                 logger.info(f"Znaleziono wolny port: {free_port}")
 
             # Dodaj do przypisanych portów
             assigned_ports.add(free_port)
-            
+
             # Zastąp pierwsze wystąpienie placeholdera
             processed = processed.replace(placeholder, str(free_port), 1)
 
@@ -320,13 +322,13 @@ class ComposeSkill:
         for port in range(start, PORT_RANGE_END):
             if port not in assigned_ports and not is_port_in_use(port):
                 return port
-        
+
         # Przeszukaj od PORT_RANGE_START jeśli nie znaleziono
         if start > PORT_RANGE_START:
             for port in range(PORT_RANGE_START, start):
                 if port not in assigned_ports and not is_port_in_use(port):
                     return port
-        
+
         raise RuntimeError(
             f"Nie można znaleźć wolnego portu (start: {start}, assigned: {len(assigned_ports)})"
         )

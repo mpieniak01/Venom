@@ -34,7 +34,9 @@ def is_port_in_use(port: int, host: str = "localhost") -> bool:
             return True
 
 
-def find_free_port(start: int = 8000, end: int = 9000, host: str = "localhost") -> Optional[int]:
+def find_free_port(
+    start: int = 8000, end: int = 9000, host: str = "localhost"
+) -> Optional[int]:
     """
     Znajduje wolny port w określonym zakresie.
 
@@ -54,7 +56,9 @@ def find_free_port(start: int = 8000, end: int = 9000, host: str = "localhost") 
     if end < 1 or end > 65535:
         raise ValueError(f"Nieprawidłowy port końcowy: {end}")
     if start >= end:
-        raise ValueError(f"Port początkowy ({start}) musi być mniejszy niż końcowy ({end})")
+        raise ValueError(
+            f"Port początkowy ({start}) musi być mniejszy niż końcowy ({end})"
+        )
 
     for port in range(start, end + 1):
         if not is_port_in_use(port, host):
@@ -65,7 +69,9 @@ def find_free_port(start: int = 8000, end: int = 9000, host: str = "localhost") 
     return None
 
 
-def get_free_ports(count: int, start: int = 8000, end: int = 9000, host: str = "localhost") -> list[int]:
+def get_free_ports(
+    count: int, start: int = 8000, end: int = 9000, host: str = "localhost"
+) -> list[int]:
     """
     Znajduje określoną liczbę wolnych portów.
 

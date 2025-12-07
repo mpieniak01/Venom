@@ -1269,6 +1269,8 @@ class VenomDashboard {
             // Setup audio recording
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            // NOTE: createScriptProcessor is deprecated but widely supported.
+            // TODO: Migrate to AudioWorkletNode for better performance in the future.
             const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
 
             source.connect(processor);

@@ -73,8 +73,16 @@ class TestSkill:
         try:
             logger.info(f"Uruchamiam pytest dla: {test_path}")
 
+            # Walidacja test_path - zapobieganie command injection
+            import re
+            if not re.match(r'^[a-zA-Z0-9_./\-]+$', test_path):
+                return f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
+
             # Przygotuj komendę pytest z odpowiednimi flagami
-            command = f"python -m pytest {test_path} -v --tb=short --color=no"
+            # Używamy shlex.quote dla bezpieczeństwa
+            import shlex
+            safe_path = shlex.quote(test_path)
+            command = f"python -m pytest {safe_path} -v --tb=short --color=no"
 
             # Wykonaj w kontenerze
             exit_code, output = self.habitat.execute(command, timeout=timeout)
@@ -118,8 +126,17 @@ class TestSkill:
         try:
             logger.info(f"Uruchamiam linter dla: {path}")
 
+            # Walidacja path - zapobieganie command injection
+            import re
+            if not re.match(r'^[a-zA-Z0-9_./\-]+$', path):
+                return f"❌ Błąd: Nieprawidłowa ścieżka: {path}"
+
+            # Używamy shlex.quote dla bezpieczeństwa
+            import shlex
+            safe_path = shlex.quote(path)
+            
             # Spróbuj najpierw ruff, jeśli nie ma, użyj flake8
-            command = f"python -m ruff check {path} || python -m flake8 {path}"
+            command = f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
 
             # Wykonaj w kontenerze
             exit_code, output = self.habitat.execute(command, timeout=timeout)

@@ -235,8 +235,10 @@ async def _check_health():
     logger.debug("Sprawdzanie zdrowia systemu...")
 
     try:
+        from datetime import datetime
+
         # Placeholder: W przyszłości tutaj będzie sprawdzanie Docker, LLM endpoints, etc.
-        health_status = {"status": "ok", "timestamp": str(Path)}
+        health_status = {"status": "ok", "timestamp": datetime.now().isoformat()}
 
         if event_broadcaster:
             await event_broadcaster.broadcast_event(

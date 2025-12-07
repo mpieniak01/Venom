@@ -1007,9 +1007,7 @@ async def get_documenter_status():
         HTTPException: 503 jeśli documenter nie jest dostępny
     """
     if documenter_agent is None:
-        raise HTTPException(
-            status_code=503, detail="DocumenterAgent nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="DocumenterAgent nie jest dostępny")
 
     try:
         status = documenter_agent.get_status()

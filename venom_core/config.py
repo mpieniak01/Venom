@@ -30,8 +30,12 @@ class Settings(BaseSettings):
     VENOM_PAUSE_BACKGROUND_TASKS: bool = False  # Globalny wyłącznik dla zadań w tle
     ENABLE_AUTO_DOCUMENTATION: bool = True  # Automatyczna aktualizacja dokumentacji
     ENABLE_AUTO_GARDENING: bool = True  # Automatyczna refaktoryzacja w trybie Idle
-    WATCHER_DEBOUNCE_SECONDS: int = 5  # Czas debounce dla watchdog (unikanie wielokrotnych triggerów)
-    IDLE_THRESHOLD_MINUTES: int = 15  # Czas bezczynności przed uruchomieniem auto-gardening
+    WATCHER_DEBOUNCE_SECONDS: int = (
+        5  # Czas debounce dla watchdog (unikanie wielokrotnych triggerów)
+    )
+    IDLE_THRESHOLD_MINUTES: int = (
+        15  # Czas bezczynności przed uruchomieniem auto-gardening
+    )
     MEMORY_CONSOLIDATION_INTERVAL_MINUTES: int = 60  # Interwał konsolidacji pamięci
     HEALTH_CHECK_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania zdrowia systemu
 

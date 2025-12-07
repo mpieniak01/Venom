@@ -1,6 +1,5 @@
 """Moduł: scheduler - System harmonogramowania zadań w tle (THE_OVERMIND)."""
 
-import asyncio
 from datetime import datetime
 from typing import Callable, Optional
 
@@ -8,7 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from venom_core.api.stream import EventType, event_broadcaster
+from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 

@@ -8,7 +8,7 @@ from typing import Optional, Set
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from venom_core.api.stream import EventType, event_broadcaster
+from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 

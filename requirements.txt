@@ -74,6 +74,9 @@ loguru                  # Nowoczesne logowanie błędów
 tqdm                    # Paski postępu
 docker                  # Docker SDK dla Python (Docker Sandbox)
 gitpython               # Git operations (Git Skill)
+apscheduler             # Advanced Python Scheduler (background jobs)
+watchdog                # File system monitoring
+radon                   # Code complexity analysis
 
 
 # --- VENOM DEV TOOLS (Jakość Kodu) ---

@@ -8,17 +8,20 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
+from venom_core.perception.watcher import FileWatcher
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,11 +39,17 @@ lessons_store = None
 gardener_agent = None
 git_skill = None
 
+# Inicjalizacja Background Services (THE_OVERMIND)
+background_scheduler = None
+file_watcher = None
+documenter_agent = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
     global vector_store, graph_store, lessons_store, gardener_agent, git_skill
+    global background_scheduler, file_watcher, documenter_agent
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -90,7 +99,11 @@ async def lifespan(app: FastAPI):
 
     # Inicjalizuj i uruchom GardenerAgent
     try:
-        gardener_agent = GardenerAgent(graph_store=graph_store)
+        gardener_agent = GardenerAgent(
+            graph_store=graph_store,
+            orchestrator=orchestrator,
+            event_broadcaster=event_broadcaster,
+        )
         await gardener_agent.start()
         logger.info("GardenerAgent uruchomiony")
     except Exception as e:
@@ -105,10 +118,80 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Nie udało się zainicjalizować GitSkill: {e}")
         git_skill = None
 
+    # Inicjalizuj BackgroundScheduler (THE_OVERMIND)
+    try:
+        background_scheduler = BackgroundScheduler(event_broadcaster=event_broadcaster)
+        await background_scheduler.start()
+        logger.info("BackgroundScheduler uruchomiony")
+
+        # Rejestruj domyślne zadania
+        if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
+            background_scheduler.add_interval_job(
+                func=_consolidate_memory,
+                minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
+                job_id="consolidate_memory",
+                description="Konsolidacja pamięci i analiza logów (placeholder)",
+            )
+            logger.info(
+                "Zadanie consolidate_memory zarejestrowane (PLACEHOLDER - wymaga implementacji)"
+            )
+
+        if SETTINGS.ENABLE_HEALTH_CHECKS:
+            background_scheduler.add_interval_job(
+                func=_check_health,
+                minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
+                job_id="check_health",
+                description="Sprawdzanie zdrowia systemu (placeholder)",
+            )
+            logger.info(
+                "Zadanie check_health zarejestrowane (PLACEHOLDER - wymaga implementacji)"
+            )
+
+    except Exception as e:
+        logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {e}")
+        background_scheduler = None
+
+    # Inicjalizuj DocumenterAgent
+    try:
+        documenter_agent = DocumenterAgent(
+            workspace_root=str(workspace_path),
+            git_skill=git_skill,
+            event_broadcaster=event_broadcaster,
+        )
+        logger.info("DocumenterAgent zainicjalizowany")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować DocumenterAgent: {e}")
+        documenter_agent = None
+
+    # Inicjalizuj FileWatcher
+    try:
+        file_watcher = FileWatcher(
+            workspace_root=str(workspace_path),
+            on_change_callback=(
+                documenter_agent.handle_code_change if documenter_agent else None
+            ),
+            event_broadcaster=event_broadcaster,
+        )
+        await file_watcher.start()
+        logger.info("FileWatcher uruchomiony")
+    except Exception as e:
+        logger.warning(f"Nie udało się uruchomić FileWatcher: {e}")
+        file_watcher = None
+
     yield
 
     # Shutdown
     logger.info("Zamykanie aplikacji...")
+
+    # Zatrzymaj BackgroundScheduler najpierw (może korzystać z innych komponentów)
+    if background_scheduler:
+        await background_scheduler.stop()
+        logger.info("BackgroundScheduler zatrzymany")
+
+    # Zatrzymaj FileWatcher
+    if file_watcher:
+        await file_watcher.stop()
+        logger.info("FileWatcher zatrzymany")
 
     # Zatrzymaj GardenerAgent
     if gardener_agent:
@@ -118,6 +201,65 @@ async def lifespan(app: FastAPI):
     # Czeka na zakończenie zapisów stanu
     await state_manager.shutdown()
     logger.info("Aplikacja zamknięta")
+
+
+# Funkcje pomocnicze dla scheduled jobs
+async def _consolidate_memory():
+    """Konsolidacja pamięci - analiza logów i zapis wniosków (PLACEHOLDER)."""
+    logger.info("Uruchamiam konsolidację pamięci (placeholder)...")
+    if event_broadcaster:
+        await event_broadcaster.broadcast_event(
+            event_type=EventType.BACKGROUND_JOB_STARTED,
+            message="Memory consolidation started (placeholder)",
+            data={"job": "consolidate_memory"},
+        )
+
+    try:
+        # PLACEHOLDER: W przyszłości tutaj będzie analiza logów i zapis do GraphRAG
+        logger.debug("Konsolidacja pamięci - placeholder, brak implementacji")
+
+        if event_broadcaster:
+            await event_broadcaster.broadcast_event(
+                event_type=EventType.MEMORY_CONSOLIDATED,
+                message="Memory consolidation completed (placeholder)",
+                data={"job": "consolidate_memory"},
+            )
+
+    except Exception as e:
+        logger.error(f"Błąd podczas konsolidacji pamięci: {e}")
+        if event_broadcaster:
+            await event_broadcaster.broadcast_event(
+                event_type=EventType.BACKGROUND_JOB_FAILED,
+                message=f"Memory consolidation failed: {e}",
+                data={"job": "consolidate_memory", "error": str(e)},
+            )
+
+
+async def _check_health():
+    """Sprawdzenie zdrowia systemu (PLACEHOLDER)."""
+    logger.debug("Sprawdzanie zdrowia systemu (placeholder)...")
+
+    try:
+        from datetime import datetime
+
+        # Placeholder: W przyszłości tutaj będzie sprawdzanie Docker, LLM endpoints, etc.
+        health_status = {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+        if event_broadcaster:
+            await event_broadcaster.broadcast_event(
+                event_type=EventType.BACKGROUND_JOB_COMPLETED,
+                message="Health check completed",
+                data={"job": "check_health", "status": health_status},
+            )
+
+    except Exception as e:
+        logger.error(f"Błąd podczas sprawdzania zdrowia: {e}")
+        if event_broadcaster:
+            await event_broadcaster.broadcast_event(
+                event_type=EventType.BACKGROUND_JOB_FAILED,
+                message=f"Health check failed: {e}",
+                data={"job": "check_health", "error": str(e)},
+            )
 
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
@@ -737,3 +879,146 @@ async def undo_changes():
         status_code=501,
         detail="Cofnięcie zmian (git reset) nie jest jeszcze zaimplementowane. Użyj Integrator Agent z odpowiednim potwierdzeniem.",
     )
+
+
+# --- Background Jobs API Endpoints (THE_OVERMIND) ---
+
+
+@app.get("/api/v1/scheduler/status")
+async def get_scheduler_status():
+    """
+    Zwraca status schedulera zadań w tle.
+
+    Returns:
+        Status schedulera
+
+    Raises:
+        HTTPException: 503 jeśli scheduler nie jest dostępny
+    """
+    if background_scheduler is None:
+        raise HTTPException(
+            status_code=503, detail="BackgroundScheduler nie jest dostępny"
+        )
+
+    try:
+        status = background_scheduler.get_status()
+        return {"status": "success", "scheduler": status}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu schedulera")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/scheduler/jobs")
+async def get_scheduler_jobs():
+    """
+    Zwraca listę zadań w tle.
+
+    Returns:
+        Lista zadań
+
+    Raises:
+        HTTPException: 503 jeśli scheduler nie jest dostępny
+    """
+    if background_scheduler is None:
+        raise HTTPException(
+            status_code=503, detail="BackgroundScheduler nie jest dostępny"
+        )
+
+    try:
+        jobs = background_scheduler.get_jobs()
+        return {"status": "success", "jobs": jobs, "count": len(jobs)}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania listy zadań")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.post("/api/v1/scheduler/pause")
+async def pause_scheduler():
+    """
+    Wstrzymuje wszystkie zadania w tle.
+
+    Returns:
+        Potwierdzenie wstrzymania
+
+    Raises:
+        HTTPException: 503 jeśli scheduler nie jest dostępny
+    """
+    if background_scheduler is None:
+        raise HTTPException(
+            status_code=503, detail="BackgroundScheduler nie jest dostępny"
+        )
+
+    try:
+        await background_scheduler.pause_all_jobs()
+        return {"status": "success", "message": "All background jobs paused"}
+    except Exception as e:
+        logger.exception("Błąd podczas wstrzymywania zadań")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.post("/api/v1/scheduler/resume")
+async def resume_scheduler():
+    """
+    Wznawia wszystkie zadania w tle.
+
+    Returns:
+        Potwierdzenie wznowienia
+
+    Raises:
+        HTTPException: 503 jeśli scheduler nie jest dostępny
+    """
+    if background_scheduler is None:
+        raise HTTPException(
+            status_code=503, detail="BackgroundScheduler nie jest dostępny"
+        )
+
+    try:
+        await background_scheduler.resume_all_jobs()
+        return {"status": "success", "message": "All background jobs resumed"}
+    except Exception as e:
+        logger.exception("Błąd podczas wznawiania zadań")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/watcher/status")
+async def get_watcher_status():
+    """
+    Zwraca status obserwatora plików.
+
+    Returns:
+        Status watchera
+
+    Raises:
+        HTTPException: 503 jeśli watcher nie jest dostępny
+    """
+    if file_watcher is None:
+        raise HTTPException(status_code=503, detail="FileWatcher nie jest dostępny")
+
+    try:
+        status = file_watcher.get_status()
+        return {"status": "success", "watcher": status}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu watchera")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/documenter/status")
+async def get_documenter_status():
+    """
+    Zwraca status agenta dokumentalisty.
+
+    Returns:
+        Status DocumenterAgent
+
+    Raises:
+        HTTPException: 503 jeśli documenter nie jest dostępny
+    """
+    if documenter_agent is None:
+        raise HTTPException(status_code=503, detail="DocumenterAgent nie jest dostępny")
+
+    try:
+        status = documenter_agent.get_status()
+        return {"status": "success", "documenter": status}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu dokumentalisty")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

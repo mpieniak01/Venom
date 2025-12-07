@@ -69,7 +69,15 @@ class HardwareBridge:
             import paramiko
 
             self.ssh_client = paramiko.SSHClient()
-            self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # SECURITY: Use WarningPolicy instead of AutoAddPolicy for better security.
+            # In production, consider using RejectPolicy and managing known_hosts explicitly.
+            # For trusted local networks (like Rider-Pi), WarningPolicy provides a balance.
+            self.ssh_client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            
+            # Alternatively, load known hosts from file for stricter security:
+            # self.ssh_client.load_system_host_keys()
+            # self.ssh_client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
             # Połącz w osobnym wątku (paramiko jest blokujący)
             loop = asyncio.get_event_loop()

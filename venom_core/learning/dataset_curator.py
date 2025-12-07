@@ -10,6 +10,10 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Konfiguracja domyślnych limitów
+DEFAULT_MAX_DIFF_LENGTH = 1500  # Maksymalna długość diff w przykładzie treningowym
+DEFAULT_MIN_QUALITY_SCORE = 0.5  # Minimalny wynik jakości
+
 
 class TrainingExample:
     """
@@ -213,18 +217,18 @@ class DatasetCurator:
                     # Pierwszy commit
                     diff = repo.git.show(commit, format="", unified=3)
 
-                # Pomiń zbyt duże diffy (> 2000 znaków)
-                if len(diff) > 2000:
+                # Pomiń zbyt duże diffy (konfigurowalny limit)
+                if len(diff) > self.max_diff_length * 2:
                     continue
 
                 # Pomiń puste diffy
                 if not diff.strip():
                     continue
 
-                # Twórz przykład treningowy
+                # Twórz przykład treningowy (skróć diff do max_diff_length)
                 example = TrainingExample(
                     instruction="Na podstawie zmian w kodzie (diff), wygeneruj opisową wiadomość commit.",
-                    input_text=f"Diff:\n```\n{diff[:1500]}\n```",
+                    input_text=f"Diff:\n```\n{diff[: self.max_diff_length]}\n```",
                     output=commit.message.strip(),
                     metadata={
                         "source": "git_history",

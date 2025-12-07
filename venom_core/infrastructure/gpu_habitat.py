@@ -175,7 +175,7 @@ class GPUHabitat(DockerHabitat):
 
             # Zapisz skrypt w output_dir
             script_path = output_dir / "train_script.py"
-            with open(script_path, "w") as f:
+            with open(script_path, "w", encoding="utf-8") as f:
                 f.write(training_script)
 
             # Przygotuj volumes
@@ -194,6 +194,11 @@ class GPUHabitat(DockerHabitat):
                     docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
                 ]
 
+            # Sanitize job_name dla użycia w nazwie kontenera
+            safe_job_name = "".join(
+                c if c.isalnum() or c in ("-", "_") else "_" for c in job_name
+            )
+
             # Uruchom kontener treningowy
             container = self.client.containers.run(
                 image=self.training_image,
@@ -202,7 +207,7 @@ class GPUHabitat(DockerHabitat):
                 device_requests=device_requests,
                 detach=True,
                 remove=False,
-                name=f"venom-training-{job_name}",
+                name=f"venom-training-{safe_job_name}",
                 environment={
                     "CUDA_VISIBLE_DEVICES": "0" if self.enable_gpu else "",
                 },

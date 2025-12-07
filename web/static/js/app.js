@@ -729,19 +729,25 @@ class VenomDashboard {
 
     async handleSyncRepo() {
         try {
-            this.showNotification('Synchronizacja repozytorium...', 'info');
+            this.showNotification('Sprawdzam możliwość synchronizacji...', 'info');
 
             const response = await fetch('/api/v1/git/sync', {
                 method: 'POST'
             });
 
-            const data = await response.json();
-
-            if (data.status === 'success' || data.status === 'info') {
-                this.showNotification(data.message, 'info');
-            } else {
-                this.showNotification('Błąd synchronizacji', 'error');
+            if (response.status === 501) {
+                // Not implemented
+                const data = await response.json();
+                this.showNotification(data.detail || 'Funkcja nie jest jeszcze dostępna', 'warning');
+                return;
             }
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            this.showNotification(data.message || 'Synchronizacja zakończona', 'success');
         } catch (error) {
             console.error('Error syncing repository:', error);
             this.showNotification('Błąd podczas synchronizacji', 'error');
@@ -755,21 +761,27 @@ class VenomDashboard {
         }
 
         try {
-            this.showNotification('Cofanie zmian...', 'warning');
+            this.showNotification('Sprawdzam możliwość cofnięcia zmian...', 'warning');
 
             const response = await fetch('/api/v1/git/undo', {
                 method: 'POST'
             });
 
-            const data = await response.json();
-
-            if (data.status === 'success' || data.status === 'info') {
-                this.showNotification(data.message, 'info');
-                // Refresh status after undo
-                this.fetchRepositoryStatus();
-            } else {
-                this.showNotification('Błąd cofania zmian', 'error');
+            if (response.status === 501) {
+                // Not implemented
+                const data = await response.json();
+                this.showNotification(data.detail || 'Funkcja nie jest jeszcze dostępna', 'warning');
+                return;
             }
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            this.showNotification(data.message || 'Zmiany cofnięte', 'success');
+            // Refresh status after undo
+            this.fetchRepositoryStatus();
         } catch (error) {
             console.error('Error undoing changes:', error);
             this.showNotification('Błąd podczas cofania zmian', 'error');

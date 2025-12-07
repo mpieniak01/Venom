@@ -698,22 +698,16 @@ async def sync_repository():
         Wynik synchronizacji
 
     Raises:
-        HTTPException: 503 jeśli GitSkill nie jest dostępny
+        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
     """
     if git_skill is None:
         raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
 
-    try:
-        # W GitSkill nie ma metody pull, ale możemy dodać prostą implementację
-        # Dla uproszczenia zwróćmy komunikat że trzeba to zrobić manualnie
-        return {
-            "status": "info",
-            "message": "Synchronizacja (git pull) powinna być wykonana manualnie lub przez Integrator Agent",
-        }
-
-    except Exception as e:
-        logger.exception("Błąd podczas synchronizacji repozytorium")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody pull() do GitSkill
+    raise HTTPException(
+        status_code=501,
+        detail="Synchronizacja (git pull) nie jest jeszcze zaimplementowana. Użyj Integrator Agent lub wykonaj manualnie.",
+    )
 
 
 @app.post("/api/v1/git/undo")
@@ -727,20 +721,14 @@ async def undo_changes():
         Wynik cofnięcia zmian
 
     Raises:
-        HTTPException: 503 jeśli GitSkill nie jest dostępny
+        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
     """
     if git_skill is None:
         raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
 
-    try:
-        # W GitSkill nie ma metody reset, ale możemy dodać prostą implementację
-        # Dla uproszczenia zwróćmy komunikat że trzeba to zrobić manualnie
-        return {
-            "status": "info",
-            "message": "Cofnięcie zmian (git reset) powinno być wykonane przez Integrator Agent z odpowiednim potwierdzeniem",
-        }
-
-    except Exception as e:
-        logger.exception("Błąd podczas cofania zmian")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody reset() do GitSkill
+    raise HTTPException(
+        status_code=501,
+        detail="Cofnięcie zmian (git reset) nie jest jeszcze zaimplementowane. Użyj Integrator Agent z odpowiednim potwierdzeniem.",
+    )
 

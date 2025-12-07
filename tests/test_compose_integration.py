@@ -128,15 +128,15 @@ services:
 
     # Deploy
     success, msg = stack_manager.deploy_stack(compose_content, stack_name)
-    assert success or "error" not in msg.lower()
+    assert success, f"Deploy stack nie powiódł się: {msg}"
 
     # Status
     success, status = stack_manager.get_stack_status(stack_name)
-    assert success or "error" in status
+    assert success
 
     # Cleanup
     success, msg = stack_manager.destroy_stack(stack_name)
-    assert success or "error" not in msg.lower()
+    assert success, f"Destroy stack nie powiódł się: {msg}"
 
 
 def test_workspace_isolation_multiple_stacks(temp_workspace):
@@ -163,7 +163,7 @@ services:
     success2, _ = stack_manager.deploy_stack(compose_simple, stack2_name)
 
     # Oba powinny się udać
-    assert success1 or success2
+    assert success1 and success2
 
     # Sprawdź izolację katalogów
     stack1_dir = Path(temp_workspace) / "stacks" / stack1_name
@@ -202,6 +202,8 @@ services:
 
     try:
         result = await compose_skill.create_environment(compose_content, stack_name)
+        # Upewnij się, że środowisko zostało utworzone poprawnie
+        assert "✅" in result or "utworzone" in result.lower()
 
         # Sprawdź czy placeholder został zastąpiony
         compose_file = (

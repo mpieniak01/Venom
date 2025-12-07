@@ -175,7 +175,8 @@ def test_deploy_stack_invalid_yaml(stack_manager):
     success, message = stack_manager.deploy_stack(compose_content, stack_name)
 
     # Deployment powinien się nie powieść
-    assert not success or "błąd" in message.lower() or "error" in message.lower()
+    assert not success
+    assert "błąd" in message.lower() or "error" in message.lower()
 
     # Plik powinien zostać utworzony mimo błędu
     compose_file = stack_manager.stacks_dir / stack_name / "docker-compose.yml"

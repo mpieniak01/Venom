@@ -40,6 +40,11 @@ class PolicyEngine:
         (r"mkfs\.", "Formatowanie dysku"),
         (r"dd\s+if=/dev/zero", "Nadpisywanie dysku"),
         (r">\s*/dev/sd[a-z]", "Bezpośredni zapis na dysk"),
+        (r"push.*--force", "Git push --force (może nadpisać historię)"),
+        (
+            r"push[^\n]*-f\b",
+            "Git push -f (może nadpisać historię)",
+        ),  # -f as standalone flag
     ]
 
     def check_safety(self, content: str) -> List[Violation]:

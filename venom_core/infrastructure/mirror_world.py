@@ -189,12 +189,18 @@ class MirrorWorld:
 
         Returns:
             True jeśli pomyślnie uruchomiono
+
+        Note:
+            TODO (Task 021 - Phase 2): Pełna implementacja uruchamiania w Docker wymaga:
+            - Docker-in-Docker lub montowanie docker.sock
+            - Przygotowanie Dockerfile dla Shadow Venom
+            - Zarządzanie cyklem życia kontenera
+            - Networking configuration dla nowego portu
+            Na razie zwraca False - funkcjonalność planowana do Phase 2.
         """
-        # TODO: Implementacja uruchamiania w Docker
-        # Wymaga przygotowania Dockerfile dla Shadow Venom
-        # Na razie placeholder
+        # Placeholder: Pełna implementacja w Phase 2
         logger.warning(
-            "Uruchamianie w Docker nie jest jeszcze w pełni zaimplementowane"
+            "Uruchamianie w Docker nie jest jeszcze w pełni zaimplementowane (Phase 2)"
         )
         return False
 
@@ -207,13 +213,19 @@ class MirrorWorld:
 
         Returns:
             True jeśli pomyślnie uruchomiono
+
+        Note:
+            TODO (Task 021 - Phase 2): Pełna implementacja uruchamiania lokalnego procesu wymaga:
+            - Subprocess management z asyncio
+            - Port configuration przez env vars
+            - Health monitoring i restart logic
+            - Process cleanup przy shutdown
+            Na razie zwraca False - funkcjonalność planowana do Phase 2.
         """
         logger.info(f"Uruchamianie instancji {info.instance_id} jako lokalny proces")
 
-        # TODO: Uruchomienie uvicorn w tle na podanym porcie
-        # Wymaga obsługi procesów i zarządzania cyklem życia
-        # Na razie placeholder
-        logger.warning("Uruchamianie lokalnego procesu nie jest jeszcze zaimplementowane")
+        # Placeholder: Pełna implementacja w Phase 2
+        logger.warning("Uruchamianie lokalnego procesu nie jest jeszcze zaimplementowane (Phase 2)")
         return False
 
     async def verify_instance(

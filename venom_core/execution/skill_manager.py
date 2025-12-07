@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from semantic_kernel import Kernel
-from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger

@@ -1103,7 +1103,6 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
             )
 
             try:
-                habitat = DockerHabitat()
                 guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
 
                 # Sprawdź podstawową składnię - ogranicz kod do bezpiecznego fragmentu

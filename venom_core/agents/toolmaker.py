@@ -1,5 +1,6 @@
 """Moduł: toolmaker - agent narzędziowiec, tworzy nowe umiejętności."""
 
+import re
 from pathlib import Path
 
 from semantic_kernel import Kernel
@@ -258,7 +259,6 @@ WAŻNE:
         """
         try:
             # Walidacja nazwy narzędzia (zapobieganie directory traversal)
-            import re
             if not re.match(r'^[a-z0-9_]+$', tool_name):
                 return False, f"Nieprawidłowa nazwa narzędzia: {tool_name}. Dozwolone tylko [a-z0-9_]"
             
@@ -290,7 +290,7 @@ WYMAGANIA:
                 custom_dir = Path(self.file_skill.workspace_root) / "custom"
                 custom_dir.mkdir(parents=True, exist_ok=True)
 
-            write_result = await self.file_skill.write_file(file_path, generated_code)
+            await self.file_skill.write_file(file_path, generated_code)
 
             logger.info(f"✅ Narzędzie zapisane: {file_path}")
             return True, generated_code
@@ -346,7 +346,7 @@ Wygeneruj TYLKO kod testu (bez markdown).
                 else f"{output_dir}/test_{tool_name}.py"
             )
 
-            write_result = await self.file_skill.write_file(test_file_path, test_code)
+            await self.file_skill.write_file(test_file_path, test_code)
 
             logger.info(f"✅ Test zapisany: {test_file_path}")
             return True, test_code

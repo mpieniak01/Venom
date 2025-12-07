@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from semantic_kernel import Kernel
 
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.execution.skill_manager import SkillManager, SkillValidationError
@@ -45,7 +44,7 @@ def test_custom_skills_directory_creation(temp_skills_dir):
     # Katalog powinien być utworzony przez SkillManager
     builder = KernelBuilder()
     kernel = builder.build_kernel()
-    manager = SkillManager(kernel, custom_skills_dir=str(skills_dir))
+    SkillManager(kernel, custom_skills_dir=str(skills_dir))
 
     assert skills_dir.exists()
 

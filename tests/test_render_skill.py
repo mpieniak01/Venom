@@ -29,18 +29,18 @@ def test_render_skill_with_engine():
 def test_sanitize_html():
     """Test sanityzacji HTML."""
     skill = RenderSkill()
-    
+
     # Bezpieczny HTML
     safe_html = '<div class="test">Hello</div>'
     sanitized = skill._sanitize_html(safe_html)
-    assert '<div' in sanitized
-    assert 'Hello' in sanitized
-    
+    assert "<div" in sanitized
+    assert "Hello" in sanitized
+
     # Niebezpieczny HTML (script tag)
     dangerous_html = '<script>alert("XSS")</script><div>Safe</div>'
     sanitized = skill._sanitize_html(dangerous_html)
-    assert '<script>' not in sanitized
-    assert 'Safe' in sanitized
+    assert "<script>" not in sanitized
+    assert "Safe" in sanitized
 
 
 def test_render_chart(render_skill):
@@ -50,9 +50,9 @@ def test_render_chart(render_skill):
         labels="A,B,C",
         values="1,2,3",
         dataset_label="Test",
-        title="Test Chart"
+        title="Test Chart",
     )
-    
+
     assert "Utworzono wykres" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -65,20 +65,18 @@ def test_render_chart_invalid_data(render_skill):
         chart_type="bar",
         labels="A,B",
         values="1,2,3",  # Niezgodna liczba wartości
-        dataset_label="Test"
+        dataset_label="Test",
     )
-    
+
     assert "Błąd" in result
 
 
 def test_render_table(render_skill):
     """Test renderowania tabeli."""
     result = render_skill.render_table(
-        headers="Name,Age",
-        rows_data="John,30;Jane,25",
-        title="Test Table"
+        headers="Name,Age", rows_data="John,30;Jane,25", title="Test Table"
     )
-    
+
     assert "Utworzono tabelę" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -89,7 +87,7 @@ def test_render_dashboard_widget(render_skill):
     """Test renderowania niestandardowego widgetu HTML."""
     html = '<div class="custom">Custom Widget</div>'
     result = render_skill.render_dashboard_widget(html)
-    
+
     assert "Utworzono widget HTML" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -101,9 +99,9 @@ def test_create_input_form(render_skill):
     result = render_skill.create_input_form(
         form_title="Bug Report",
         fields="title:text:Title*;description:textarea:Description",
-        submit_intent="create_issue"
+        submit_intent="create_issue",
     )
-    
+
     assert "Utworzono formularz" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -114,7 +112,7 @@ def test_render_markdown(render_skill):
     """Test renderowania Markdown."""
     content = "# Hello\n\nThis is **bold**"
     result = render_skill.render_markdown(content)
-    
+
     assert "Utworzono Markdown" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -125,7 +123,7 @@ def test_render_mermaid_diagram(render_skill):
     """Test renderowania diagramu Mermaid."""
     diagram = "graph TD\n  A --> B"
     result = render_skill.render_mermaid_diagram(diagram, "Test")
-    
+
     assert "Utworzono diagram Mermaid" in result
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 1
@@ -138,18 +136,18 @@ def test_update_widget(render_skill):
     render_skill.render_chart("bar", "A,B", "1,2", "Test")
     widgets = render_skill.component_engine.list_widgets()
     widget_id = widgets[0].id
-    
+
     # Aktualizuj
     new_data = '{"chartType": "line", "chartData": {"labels": ["X"], "datasets": []}}'
     result = render_skill.update_widget(widget_id, new_data)
-    
+
     assert "Zaktualizowano widget" in result
 
 
 def test_update_nonexistent_widget(render_skill):
     """Test aktualizacji nieistniejącego widgetu."""
     result = render_skill.update_widget("nonexistent-id", '{"data": "test"}')
-    
+
     assert "Nie znaleziono widgetu" in result
 
 
@@ -159,10 +157,10 @@ def test_remove_widget(render_skill):
     render_skill.render_chart("bar", "A,B", "1,2", "Test")
     widgets = render_skill.component_engine.list_widgets()
     widget_id = widgets[0].id
-    
+
     # Usuń
     result = render_skill.remove_widget(widget_id)
-    
+
     assert "Usunięto widget" in result
     assert len(render_skill.component_engine.list_widgets()) == 0
 
@@ -170,7 +168,7 @@ def test_remove_widget(render_skill):
 def test_remove_nonexistent_widget(render_skill):
     """Test usuwania nieistniejącego widgetu."""
     result = render_skill.remove_widget("nonexistent-id")
-    
+
     assert "Nie znaleziono widgetu" in result
 
 
@@ -179,9 +177,9 @@ def test_get_widget(render_skill):
     render_skill.render_chart("bar", "A,B", "1,2", "Test")
     widgets = render_skill.component_engine.list_widgets()
     widget_id = widgets[0].id
-    
+
     widget_dict = render_skill.get_widget(widget_id)
-    
+
     assert widget_dict is not None
     assert widget_dict["id"] == widget_id
     assert widget_dict["type"] == "chart"
@@ -190,7 +188,7 @@ def test_get_widget(render_skill):
 def test_get_nonexistent_widget(render_skill):
     """Test pobierania nieistniejącego widgetu."""
     widget_dict = render_skill.get_widget("nonexistent-id")
-    
+
     assert widget_dict is None
 
 
@@ -198,9 +196,9 @@ def test_list_all_widgets(render_skill):
     """Test listowania wszystkich widgetów jako dict."""
     render_skill.render_chart("bar", "A", "1", "Chart")
     render_skill.render_table("Name", "John", "Table")
-    
+
     widgets = render_skill.list_all_widgets()
-    
+
     assert len(widgets) == 2
     assert all(isinstance(w, dict) for w in widgets)
     assert any(w["type"] == "chart" for w in widgets)
@@ -212,6 +210,6 @@ def test_multiple_widgets(render_skill):
     render_skill.render_chart("bar", "A", "1", "Chart")
     render_skill.render_table("Name", "John", "Table")
     render_skill.render_markdown("# Test")
-    
+
     widgets = render_skill.component_engine.list_widgets()
     assert len(widgets) == 3

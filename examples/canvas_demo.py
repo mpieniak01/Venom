@@ -165,7 +165,9 @@ graph TD
     print("=" * 60)
 
     component_engine.clear_widgets()
-    print(f"✅ Wyczyszczono. Pozostało widgetów: {len(component_engine.list_widgets())}\n")
+    print(
+        f"✅ Wyczyszczono. Pozostało widgetów: {len(component_engine.list_widgets())}\n"
+    )
 
     print("=" * 60)
     print("🎉 Demo zakończone!")

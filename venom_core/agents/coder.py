@@ -8,6 +8,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.execution.skills.shell_skill import ShellSkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,6 +24,9 @@ MASZ DOSTĘP DO SYSTEMU PLIKÓW:
 - read_file: Odczytaj istniejący kod
 - list_files: Zobacz jakie pliki już istnieją
 - file_exists: Sprawdź czy plik istnieje
+
+MASZ DOSTĘP DO SHELL:
+- run_shell: Wykonaj komendę shell w bezpiecznym środowisku
 
 ZASADY:
 - Gdy użytkownik prosi o napisanie kodu DO PLIKU, UŻYJ funkcji write_file
@@ -49,12 +53,13 @@ def hello_world():
     print("Hello World")
 ```"""
 
-    def __init__(self, kernel: Kernel):
+    def __init__(self, kernel: Kernel, enable_self_repair: bool = True):
         """
         Inicjalizacja CoderAgent.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel
+            enable_self_repair: Czy włączyć pętlę samonaprawy (domyślnie True)
         """
         super().__init__(kernel)
 
@@ -62,7 +67,12 @@ def hello_world():
         file_skill = FileSkill()
         self.kernel.add_plugin(file_skill, plugin_name="FileSkill")
 
-        logger.info("CoderAgent zainicjalizowany z FileSkill")
+        # Zarejestruj ShellSkill
+        shell_skill = ShellSkill(use_sandbox=True)
+        self.kernel.add_plugin(shell_skill, plugin_name="ShellSkill")
+
+        self.enable_self_repair = enable_self_repair
+        logger.info(f"CoderAgent zainicjalizowany z FileSkill i ShellSkill (self_repair={enable_self_repair})")
 
     async def process(self, input_text: str) -> str:
         """
@@ -107,3 +117,144 @@ def hello_world():
         except Exception as e:
             logger.error(f"Błąd podczas generowania kodu: {e}")
             raise
+
+    async def process_with_verification(
+        self, 
+        input_text: str, 
+        script_name: str = "script.py",
+        max_retries: int = 3
+    ) -> dict:
+        """
+        Generuje kod, zapisuje go i weryfikuje wykonanie z pętlą samonaprawy.
+
+        Args:
+            input_text: Opis zadania programistycznego
+            script_name: Nazwa pliku do utworzenia (domyślnie "script.py")
+            max_retries: Maksymalna liczba prób naprawy (domyślnie 3)
+
+        Returns:
+            Dict z kluczami:
+            - success: bool - czy wykonanie się powiodło
+            - output: str - output z wykonania lub błąd
+            - attempts: int - liczba prób
+            - final_code: str - ostateczna wersja kodu
+        """
+        if not self.enable_self_repair:
+            # Bez weryfikacji - tylko generuj kod
+            response = await self.process(input_text)
+            return {
+                "success": True,
+                "output": response,
+                "attempts": 1,
+                "final_code": None
+            }
+
+        logger.info(f"Rozpoczynam weryfikowane generowanie kodu: {script_name}")
+        
+        # Przygotuj historię rozmowy
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+        )
+        
+        # Dodaj instrukcję do zapisania kodu
+        enhanced_input = f"{input_text}\n\nZapisz wygenerowany kod do pliku '{script_name}'."
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=enhanced_input)
+        )
+
+        file_skill = FileSkill()
+        shell_skill = ShellSkill(use_sandbox=True)
+        
+        for attempt in range(1, max_retries + 1):
+            logger.info(f"Próba {attempt}/{max_retries}")
+            
+            try:
+                # Pobierz serwis chat completion
+                chat_service = self.kernel.get_service()
+                settings = OpenAIChatPromptExecutionSettings(
+                    function_choice_behavior="auto"
+                )
+
+                # Wywołaj model
+                response = await chat_service.get_chat_message_content(
+                    chat_history=chat_history, settings=settings
+                )
+                
+                logger.info(f"Model wygenerował odpowiedź (próba {attempt})")
+
+                # Sprawdź czy plik został utworzony
+                try:
+                    code_content = await file_skill.read_file(script_name)
+                    logger.info(f"Kod zapisany do {script_name} ({len(code_content)} znaków)")
+                except FileNotFoundError:
+                    logger.warning(f"Plik {script_name} nie został utworzony, generuję ponownie")
+                    chat_history.add_message(
+                        ChatMessageContent(
+                            role=AuthorRole.USER,
+                            content=f"Plik {script_name} nie został utworzony. Proszę zapisać kod używając write_file('{script_name}', kod)."
+                        )
+                    )
+                    continue
+
+                # Uruchom kod w sandboxie
+                logger.info(f"Uruchamianie kodu: python {script_name}")
+                shell_result = shell_skill.run_shell(f"python {script_name}", timeout=30)
+                exit_code = shell_skill.get_exit_code_from_output(shell_result)
+
+                logger.info(f"Wykonanie zakończone z exit_code={exit_code}")
+
+                if exit_code == 0:
+                    # Sukces!
+                    logger.info(f"Kod działa poprawnie po {attempt} próbach")
+                    return {
+                        "success": True,
+                        "output": shell_result,
+                        "attempts": attempt,
+                        "final_code": code_content
+                    }
+                else:
+                    # Błąd - poproś o naprawę
+                    logger.warning(f"Kod zawiera błędy (próba {attempt})")
+                    
+                    if attempt < max_retries:
+                        # Dodaj feedback do historii
+                        feedback = f"Otrzymałem błąd podczas wykonywania kodu:\n\n{shell_result}\n\nProszę poprawić kod i zapisać go ponownie do pliku '{script_name}'."
+                        chat_history.add_message(
+                            ChatMessageContent(role=AuthorRole.USER, content=feedback)
+                        )
+                    else:
+                        # Osiągnięto limit prób
+                        logger.error(f"Nie udało się naprawić kodu po {max_retries} próbach")
+                        return {
+                            "success": False,
+                            "output": shell_result,
+                            "attempts": attempt,
+                            "final_code": code_content
+                        }
+
+            except Exception as e:
+                logger.error(f"Błąd w próbie {attempt}: {e}")
+                if attempt >= max_retries:
+                    return {
+                        "success": False,
+                        "output": f"Błąd: {e}",
+                        "attempts": attempt,
+                        "final_code": None
+                    }
+                
+                # Poproś o naprawę
+                chat_history.add_message(
+                    ChatMessageContent(
+                        role=AuthorRole.USER,
+                        content=f"Wystąpił błąd: {e}. Proszę spróbować ponownie."
+                    )
+                )
+
+        # Nie powinniśmy tu dojść, ale dla bezpieczeństwa
+        return {
+            "success": False,
+            "output": "Przekroczono maksymalną liczbę prób",
+            "attempts": max_retries,
+            "final_code": None
+        }

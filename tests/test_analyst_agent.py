@@ -1,7 +1,8 @@
 """Testy dla AnalystAgent."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from venom_core.agents.analyst import AnalystAgent, TaskMetrics
 from venom_core.core.model_router import ComplexityScore, ServiceId
@@ -273,9 +274,7 @@ class TestAnalystAgent:
         recommendations = analyst_agent.generate_recommendations()
 
         # Powinna być rekomendacja o niskiej skuteczności
-        success_rate_recs = [
-            r for r in recommendations if "skuteczność" in r.lower()
-        ]
+        success_rate_recs = [r for r in recommendations if "skuteczność" in r.lower()]
         assert len(success_rate_recs) > 0
 
     def test_get_summary(self, analyst_agent):

@@ -1,10 +1,6 @@
 """Testy dla ModelRouter."""
 
-from venom_core.core.model_router import (
-    ComplexityScore,
-    ModelRouter,
-    ServiceId,
-)
+from venom_core.core.model_router import ComplexityScore, ModelRouter, ServiceId
 
 
 class TestModelRouter:
@@ -97,9 +93,7 @@ class TestModelRouter:
         """Test czy złożony task nie używa lokalnego modelu."""
         router = ModelRouter()
         assert (
-            router.should_use_local(
-                "Zaprojektuj architekturę systemu mikroserwisów"
-            )
+            router.should_use_local("Zaprojektuj architekturę systemu mikroserwisów")
             is False
         )
 
@@ -107,9 +101,7 @@ class TestModelRouter:
         """Test wymuszenia lokalnego modelu."""
         router = ModelRouter(force_local=True)
         assert (
-            router.should_use_local(
-                "Zaprojektuj architekturę systemu mikroserwisów"
-            )
+            router.should_use_local("Zaprojektuj architekturę systemu mikroserwisów")
             is True
         )
 

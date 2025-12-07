@@ -7,12 +7,13 @@ from pathlib import Path
 # Dodaj ścieżkę do PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from venom_core.core.model_router import ComplexityScore, ModelRouter
-from venom_core.core.prompt_manager import PromptManager
-from venom_core.core.token_economist import TokenEconomist
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
+
+from venom_core.core.model_router import ComplexityScore, ModelRouter
+from venom_core.core.prompt_manager import PromptManager
+from venom_core.core.token_economist import TokenEconomist
 
 
 async def example_model_routing():
@@ -56,7 +57,7 @@ async def example_prompt_management():
     # Załaduj prompt dla Coder Agent
     try:
         coder_prompt = manager.get_prompt("coder_agent")
-        print(f"\n✅ Załadowano prompt dla Coder Agent")
+        print("\n✅ Załadowano prompt dla Coder Agent")
         print(f"   Długość: {len(coder_prompt)} znaków")
 
         # Pobierz parametry
@@ -92,17 +93,21 @@ async def example_token_management():
     usage = {"input_tokens": 1000, "output_tokens": 500}
 
     cost_gpt35 = economist.calculate_cost(usage, "gpt-3.5-turbo")
-    print(f"\n💵 Koszt dla GPT-3.5:")
-    print(f"   Input: {cost_gpt35['input_tokens']} tokenów = ${cost_gpt35['input_cost_usd']:.6f}")
-    print(f"   Output: {cost_gpt35['output_tokens']} tokenów = ${cost_gpt35['output_cost_usd']:.6f}")
+    print("\n💵 Koszt dla GPT-3.5:")
+    print(
+        f"   Input: {cost_gpt35['input_tokens']} tokenów = ${cost_gpt35['input_cost_usd']:.6f}"
+    )
+    print(
+        f"   Output: {cost_gpt35['output_tokens']} tokenów = ${cost_gpt35['output_cost_usd']:.6f}"
+    )
     print(f"   RAZEM: ${cost_gpt35['total_cost_usd']:.6f}")
 
     cost_gpt4o = economist.calculate_cost(usage, "gpt-4o")
-    print(f"\n💵 Koszt dla GPT-4o:")
+    print("\n💵 Koszt dla GPT-4o:")
     print(f"   RAZEM: ${cost_gpt4o['total_cost_usd']:.6f}")
 
     cost_local = economist.calculate_cost(usage, "local")
-    print(f"\n💵 Koszt dla modelu lokalnego:")
+    print("\n💵 Koszt dla modelu lokalnego:")
     print(f"   RAZEM: ${cost_local['total_cost_usd']:.6f} (darmowy!)")
 
     # Test 3: Kompresja kontekstu
@@ -117,14 +122,20 @@ async def example_token_management():
             ChatMessageContent(role=AuthorRole.USER, content=f"User message {i}" * 50)
         )
 
-    print(f"\n🗜️  Kompresja kontekstu:")
+    print("\n🗜️  Kompresja kontekstu:")
     stats_before = economist.get_token_statistics(history)
-    print(f"   Przed: {stats_before['total_messages']} wiadomości, {stats_before['total_tokens']} tokenów")
+    print(
+        f"   Przed: {stats_before['total_messages']} wiadomości, {stats_before['total_tokens']} tokenów"
+    )
 
     compressed = economist.compress_context(history, max_tokens=500)
     stats_after = economist.get_token_statistics(compressed)
-    print(f"   Po: {stats_after['total_messages']} wiadomości, {stats_after['total_tokens']} tokenów")
-    print(f"   Oszczędność: {stats_before['total_tokens'] - stats_after['total_tokens']} tokenów")
+    print(
+        f"   Po: {stats_after['total_messages']} wiadomości, {stats_after['total_tokens']} tokenów"
+    )
+    print(
+        f"   Oszczędność: {stats_before['total_tokens'] - stats_after['total_tokens']} tokenów"
+    )
 
 
 async def example_analyst():
@@ -135,8 +146,9 @@ async def example_analyst():
 
     # Import analyst lokalnie aby uniknąć problemów z zależnościami
     try:
-        from venom_core.agents.analyst import AnalystAgent, TaskMetrics
         from unittest.mock import Mock
+
+        from venom_core.agents.analyst import AnalystAgent, TaskMetrics
 
         mock_kernel = Mock()
         analyst = AnalystAgent(kernel=mock_kernel)
@@ -202,7 +214,7 @@ async def example_kernel_builder_integration():
         # Inicjalizacja z routingiem
         builder = KernelBuilder(enable_routing=True)
 
-        print(f"\n✅ KernelBuilder zainicjalizowany")
+        print("\n✅ KernelBuilder zainicjalizowany")
         print(f"   Model Router: {builder.get_model_router().__class__.__name__}")
         print(f"   Prompt Manager: {builder.get_prompt_manager().__class__.__name__}")
         print(f"   Token Economist: {builder.get_token_economist().__class__.__name__}")
@@ -211,12 +223,12 @@ async def example_kernel_builder_integration():
         simple_task = "Napisz Hello World"
         complex_task = "Zaprojektuj system mikroserwisów"
 
-        print(f"\n🎯 Routing dla prostego zadania:")
+        print("\n🎯 Routing dla prostego zadania:")
         simple_routing = builder.get_model_router().get_routing_info(simple_task)
         print(f"   Zadanie: {simple_task}")
         print(f"   Routing: {simple_routing['selected_service']}")
 
-        print(f"\n🎯 Routing dla złożonego zadania:")
+        print("\n🎯 Routing dla złożonego zadania:")
         complex_routing = builder.get_model_router().get_routing_info(complex_task)
         print(f"   Zadanie: {complex_task}")
         print(f"   Routing: {complex_routing['selected_service']}")

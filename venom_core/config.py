@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     # Konfiguracja Model Router (THE_STRATEGIST)
     ENABLE_MODEL_ROUTING: bool = True  # Włącz inteligentny routing modeli
     FORCE_LOCAL_MODEL: bool = False  # Wymusza użycie tylko lokalnego modelu
-    ENABLE_MULTI_SERVICE: bool = False  # Włącz inicjalizację wielu serwisów jednocześnie
+    ENABLE_MULTI_SERVICE: bool = (
+        False  # Włącz inicjalizację wielu serwisów jednocześnie
+    )
 
     # Konfiguracja Prompt Manager
     PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów

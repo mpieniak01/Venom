@@ -1,8 +1,9 @@
 """Testy integracyjne dla metody run_council() w Orchestratorze."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
 
 from venom_core.core.orchestrator import Orchestrator
 
@@ -26,9 +27,7 @@ class TestOrchestratorRunCouncilIntegration:
 
         # Mock CouncilSession
         with patch("venom_core.core.council.CouncilConfig") as mock_config_class:
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 # Setup mocks
                 mock_config = MagicMock()
                 mock_config_class.return_value = mock_config
@@ -59,9 +58,7 @@ class TestOrchestratorRunCouncilIntegration:
         context = "Test task"
 
         with patch("venom_core.core.council.CouncilConfig"):
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
                 mock_session.get_message_count.return_value = 3
@@ -83,9 +80,7 @@ class TestOrchestratorRunCouncilIntegration:
         context = "Test task"
 
         with patch("venom_core.core.council.CouncilConfig"):
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_group_chat = MagicMock()
                 mock_agents = [MagicMock(name="User"), MagicMock(name="Coder")]
                 mock_group_chat.agents = mock_agents
@@ -117,9 +112,7 @@ class TestOrchestratorRunCouncilIntegration:
         context = "Test task"
 
         with patch("venom_core.core.council.CouncilConfig"):
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Success result")
                 mock_session.get_message_count.return_value = 10
@@ -160,9 +153,7 @@ class TestOrchestratorRunCouncilIntegration:
         context = "Test task"
 
         with patch("venom_core.core.council.CouncilConfig"):
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
                 mock_session.get_message_count.return_value = 5
@@ -185,9 +176,7 @@ class TestOrchestratorRunCouncilIntegration:
         context = "Specific test context"
 
         with patch("venom_core.core.council.CouncilConfig"):
-            with patch(
-                "venom_core.core.council.CouncilSession"
-            ) as mock_session_class:
+            with patch("venom_core.core.council.CouncilSession") as mock_session_class:
                 mock_session = MagicMock()
                 mock_session.run = AsyncMock(return_value="Result")
                 mock_session.get_message_count.return_value = 1

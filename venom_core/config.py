@@ -1,4 +1,4 @@
-from pydantic import ConfigDict
+from pydantic import ConfigDict, SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -43,10 +43,13 @@ class Settings(BaseSettings):
     HEALTH_CHECK_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania zdrowia systemu
 
     # Konfiguracja External Integrations (THE_TEAMMATE)
-    GITHUB_TOKEN: str = ""  # Personal Access Token do GitHub API
+    # UWAGA: Sekrety używają SecretStr aby zapobiec przypadkowemu logowaniu
+    GITHUB_TOKEN: SecretStr = SecretStr("")  # Personal Access Token do GitHub API
     GITHUB_REPO_NAME: str = ""  # Nazwa repozytorium np. "mpieniak01/Venom"
-    DISCORD_WEBHOOK_URL: str = ""  # Webhook URL dla powiadomień Discord
-    SLACK_WEBHOOK_URL: str = ""  # Webhook URL dla powiadomień Slack
+    DISCORD_WEBHOOK_URL: SecretStr = SecretStr(
+        ""
+    )  # Webhook URL dla powiadomień Discord
+    SLACK_WEBHOOK_URL: SecretStr = SecretStr("")  # Webhook URL dla powiadomień Slack
     ENABLE_ISSUE_POLLING: bool = False  # Włącz automatyczne sprawdzanie Issues
     ISSUE_POLLING_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania nowych Issues
 

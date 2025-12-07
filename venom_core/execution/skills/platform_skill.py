@@ -26,18 +26,57 @@ class PlatformSkill:
 
     def __init__(self):
         """Inicjalizacja PlatformSkill."""
-        self.github_token = getattr(SETTINGS, "GITHUB_TOKEN", None)
+        # Pobierz sekrety i konwertuj SecretStr na string
+        self.github_token = None
+        if hasattr(SETTINGS, "GITHUB_TOKEN"):
+            token = SETTINGS.GITHUB_TOKEN
+            # Handle SecretStr
+            self.github_token = (
+                token.get_secret_value()
+                if hasattr(token, "get_secret_value")
+                else token
+            )
+            if not self.github_token:  # Empty string
+                self.github_token = None
+
         self.github_repo_name = getattr(SETTINGS, "GITHUB_REPO_NAME", None)
-        self.discord_webhook = getattr(SETTINGS, "DISCORD_WEBHOOK_URL", None)
-        self.slack_webhook = getattr(SETTINGS, "SLACK_WEBHOOK_URL", None)
+
+        # Discord webhook
+        self.discord_webhook = None
+        if hasattr(SETTINGS, "DISCORD_WEBHOOK_URL"):
+            webhook = SETTINGS.DISCORD_WEBHOOK_URL
+            self.discord_webhook = (
+                webhook.get_secret_value()
+                if hasattr(webhook, "get_secret_value")
+                else webhook
+            )
+            if not self.discord_webhook:
+                self.discord_webhook = None
+
+        # Slack webhook
+        self.slack_webhook = None
+        if hasattr(SETTINGS, "SLACK_WEBHOOK_URL"):
+            webhook = SETTINGS.SLACK_WEBHOOK_URL
+            self.slack_webhook = (
+                webhook.get_secret_value()
+                if hasattr(webhook, "get_secret_value")
+                else webhook
+            )
+            if not self.slack_webhook:
+                self.slack_webhook = None
 
         # Inicjalizuj klienta GitHub jeśli token dostępny
         self.github_client = None
         if self.github_token:
             try:
                 self.github_client = Github(self.github_token)
-                # Maskuj token w logach
-                masked_token = self.github_token[:4] + "..." + self.github_token[-4:]
+                # Maskuj token w logach (zabezpieczenie przed krótkimi tokenami)
+                if len(self.github_token) > 8:
+                    masked_token = (
+                        self.github_token[:4] + "..." + self.github_token[-4:]
+                    )
+                else:
+                    masked_token = "***"
                 logger.info(
                     f"PlatformSkill: GitHub client zainicjalizowany (token: {masked_token})"
                 )
@@ -78,8 +117,11 @@ class PlatformSkill:
             repo = self.github_client.get_repo(self.github_repo_name)
             issues_list = []
 
-            # Pobierz Issues
-            issues = repo.get_issues(state=state, assignee=assignee or "*")
+            # Pobierz Issues (jeśli assignee nie podany, pobierz wszystkie)
+            if assignee:
+                issues = repo.get_issues(state=state, assignee=assignee)
+            else:
+                issues = repo.get_issues(state=state)
 
             for issue in issues:
                 # Pomiń Pull Requesty (GitHub API zwraca PR jako Issues)
@@ -378,7 +420,8 @@ class PlatformSkill:
         # Sprawdź połączenie z GitHub
         if status["github"]["configured"]:
             try:
-                self.github_client.get_user().login
+                user = self.github_client.get_user()
+                user.login  # Trigger API call
                 status["github"]["connected"] = True
             except Exception as e:
                 logger.error(f"Błąd połączenia z GitHub: {e}")

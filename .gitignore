@@ -9,3 +9,8 @@ workspace/
 data/memory/
 
 .env
+
+# Custom skills - generated dynamically, keep only README
+venom_core/execution/skills/custom/*.py
+venom_core/execution/skills/custom/test_*.py
+!venom_core/execution/skills/custom/__init__.py

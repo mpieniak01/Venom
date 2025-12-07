@@ -73,6 +73,7 @@
                 <!-- Tabs for switching between views -->
                 <div class="panel-tabs">
                     <button class="tab-button active" data-tab="feed">📡 Live Feed</button>
+                    <button class="tab-button" data-tab="jobs">⚙️ Jobs</button>
                     <button class="tab-button" data-tab="memory">🧠 Memory</button>
                 </div>
 
@@ -100,6 +101,58 @@
                         <div class="metric">
                             <span class="metric-label">Uptime</span>
                             <span class="metric-value" id="metricUptime">0s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Background Jobs Tab -->
+                <div class="tab-content" id="jobsTab">
+                    <div class="panel-header">
+                        <h2>⚙️ Background Jobs</h2>
+                        <div class="job-controls">
+                            <button id="pauseJobsBtn" class="btn-small">⏸️ Pause</button>
+                            <button id="resumeJobsBtn" class="btn-small">▶️ Resume</button>
+                            <button id="refreshJobsBtn" class="btn-small">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Scheduler Status -->
+                    <div class="status-section">
+                        <h3>Scheduler Status</h3>
+                        <div id="schedulerStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Active Jobs -->
+                    <div class="jobs-section" style="margin-top: 15px;">
+                        <h3>Active Jobs</h3>
+                        <div id="jobsList" class="jobs-list">
+                            <p class="empty-state">Ładowanie zadań...</p>
+                        </div>
+                    </div>
+
+                    <!-- Watchers Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>File Watcher</h3>
+                        <div id="watcherStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Documenter Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>Auto-Documentation</h3>
+                        <div id="documenterStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Gardener Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>Auto-Gardening</h3>
+                        <div id="gardenerStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
                         </div>
                     </div>
                 </div>

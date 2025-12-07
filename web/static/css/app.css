@@ -601,3 +601,120 @@ body {
 .notification.removing {
     animation: slideOut 0.3s ease-out;
 }
+
+/* Background Jobs Tab Styles */
+.job-controls {
+    display: flex;
+    gap: 5px;
+}
+
+.status-section {
+    margin-bottom: 15px;
+}
+
+.status-section h3 {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.status-info {
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 13px;
+}
+
+.status-label {
+    color: var(--text-secondary);
+}
+
+.status-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.status-active {
+    color: #10b981;
+}
+
+.status-inactive {
+    color: #ef4444;
+}
+
+.jobs-section {
+    margin-top: 15px;
+}
+
+.jobs-section h3 {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.jobs-list {
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.job-item {
+    background: var(--background);
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.job-item:last-child {
+    margin-bottom: 0;
+}
+
+.job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.job-id {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.job-type {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--surface);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.job-description {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.job-next-run {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.error-state {
+    color: #ef4444;
+    font-size: 13px;
+    text-align: center;
+    padding: 10px;
+}

@@ -30,6 +30,8 @@ class GardenerAgent:
         graph_store: CodeGraphStore = None,
         workspace_root: str = None,
         scan_interval: int = 300,  # 5 minut
+        orchestrator=None,  # Referencja do orchestratora dla idle mode
+        event_broadcaster=None,  # Broadcaster zdarzeń
     ):
         """
         Inicjalizacja GardenerAgent.
@@ -38,15 +40,21 @@ class GardenerAgent:
             graph_store: Instancja CodeGraphStore (domyślnie nowa)
             workspace_root: Katalog workspace (domyślnie z SETTINGS)
             scan_interval: Interwał skanowania w sekundach (domyślnie 300s = 5min)
+            orchestrator: Referencja do Orchestrator dla śledzenia aktywności
+            event_broadcaster: Broadcaster zdarzeń do WebSocket
         """
         self.graph_store = graph_store or CodeGraphStore(workspace_root=workspace_root)
         self.workspace_root = Path(workspace_root or SETTINGS.WORKSPACE_ROOT).resolve()
         self.scan_interval = scan_interval
+        self.orchestrator = orchestrator
+        self.event_broadcaster = event_broadcaster
 
         self.is_running = False
         self._task: Optional[asyncio.Task] = None
         self._last_scan_time: Optional[datetime] = None
         self._last_file_mtimes: dict = {}
+        self._last_idle_check: Optional[datetime] = None
+        self._idle_refactoring_in_progress = False
 
         logger.info(
             f"GardenerAgent zainicjalizowany: workspace={self.workspace_root}, interval={scan_interval}s"
@@ -88,7 +96,7 @@ class GardenerAgent:
         logger.info("GardenerAgent zatrzymany")
 
     async def _monitoring_loop(self) -> None:
-        """Pętla monitorowania zmian w plikach."""
+        """Pętla monitorowania zmian w plikach i idle mode."""
         while self.is_running:
             try:
                 # Czekaj określony interwał
@@ -100,6 +108,10 @@ class GardenerAgent:
                     await self.scan_and_update()
                 else:
                     logger.debug("Brak zmian w workspace")
+
+                # Sprawdź idle mode (jeśli włączony)
+                if SETTINGS.ENABLE_AUTO_GARDENING and self.orchestrator:
+                    await self._check_idle_mode()
 
             except asyncio.CancelledError:
                 logger.info("Monitoring loop anulowany")
@@ -233,4 +245,207 @@ class GardenerAgent:
             "scan_interval_seconds": self.scan_interval,
             "workspace_root": str(self.workspace_root),
             "monitored_files": len(self._last_file_mtimes),
+            "idle_refactoring_enabled": SETTINGS.ENABLE_AUTO_GARDENING,
+            "idle_refactoring_in_progress": self._idle_refactoring_in_progress,
         }
+
+    async def _check_idle_mode(self) -> None:
+        """
+        Sprawdza czy system jest bezczynny i uruchamia refaktoryzację jeśli tak.
+        """
+        if self._idle_refactoring_in_progress:
+            logger.debug("Refaktoryzacja już w toku, pomijam")
+            return
+
+        # Sprawdź czas ostatniej aktywności
+        last_activity = getattr(self.orchestrator, "last_activity", None)
+        if not isinstance(last_activity, datetime):
+            logger.debug(
+                "Brak poprawnej informacji o ostatniej aktywności (None lub zły typ)"
+            )
+            return
+
+        now = datetime.now()
+        idle_time = (now - last_activity).total_seconds() / 60
+
+        idle_threshold = SETTINGS.IDLE_THRESHOLD_MINUTES
+
+        if idle_time >= idle_threshold:
+            logger.info(
+                f"System bezczynny przez {idle_time:.1f} minut (próg: {idle_threshold}), "
+                "uruchamiam auto-refaktoryzację"
+            )
+            await self._run_idle_refactoring()
+        else:
+            logger.debug(
+                f"System aktywny ({idle_time:.1f}/{idle_threshold} minut do idle)"
+            )
+
+    async def _run_idle_refactoring(self) -> None:
+        """
+        Uruchamia automatyczną refaktoryzację w trybie idle.
+        """
+        self._idle_refactoring_in_progress = True
+
+        try:
+            if self.event_broadcaster:
+                from venom_core.api.stream import EventType
+
+                await self.event_broadcaster.broadcast_event(
+                    event_type=EventType.IDLE_REFACTORING_STARTED,
+                    message="Starting idle refactoring",
+                    data={
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
+
+            logger.info("Rozpoczynam automatyczną refaktoryzację w trybie idle")
+
+            # 1. Znajdź pliki o wysokiej złożoności
+            complex_files = await self._find_complex_files()
+
+            if not complex_files:
+                logger.info("Brak plików wymagających refaktoryzacji")
+                return
+
+            # 2. Wybierz plik do refaktoryzacji (pierwszy z listy)
+            target_file = complex_files[0]
+            logger.info(f"Refaktoryzacja pliku: {target_file['path']}")
+
+            # 3. Utwórz branch (jeśli Git jest dostępny)
+            branch_created = await self._create_refactoring_branch()
+
+            if branch_created:
+                logger.info(
+                    "Branch refactor/auto-gardening utworzony, zmiany gotowe do przeglądu"
+                )
+
+            if self.event_broadcaster:
+                from venom_core.api.stream import EventType
+
+                await self.event_broadcaster.broadcast_event(
+                    event_type=EventType.IDLE_REFACTORING_COMPLETED,
+                    message=f"Idle refactoring completed for {target_file['path']}",
+                    data={
+                        "file": target_file["path"],
+                        "branch_created": branch_created,
+                    },
+                )
+
+        except Exception as e:
+            logger.error(f"Błąd podczas idle refactoring: {e}")
+        finally:
+            self._idle_refactoring_in_progress = False
+
+    async def _find_complex_files(self) -> list[dict]:
+        """
+        Znajduje pliki o wysokiej złożoności cyklomatycznej.
+
+        Returns:
+            Lista plików z metrykami złożoności
+        """
+        try:
+            from radon.visitors import ComplexityVisitor
+
+            complex_files = []
+
+            # Znajdź wszystkie pliki Python w workspace
+            python_files = list(self.workspace_root.rglob("*.py"))
+
+            for file_path in python_files:
+                # Pomiń pliki testowe (różne konwencje) i migracje
+                file_name = file_path.name
+                file_str = str(file_path)
+                if (
+                    file_name.startswith("test_")
+                    or file_name.endswith("_test.py")
+                    or file_name.startswith("test")
+                    or "/tests/" in file_str
+                    or "/__tests__/" in file_str
+                ):
+                    continue
+
+                try:
+                    content = file_path.read_text()
+
+                    # Analizuj złożoność
+                    visitor = ComplexityVisitor.from_code(content)
+
+                    # Oblicz średnią złożoność
+                    if visitor.functions:
+                        avg_complexity = sum(
+                            f.complexity for f in visitor.functions
+                        ) / len(visitor.functions)
+
+                        # Próg złożoności z konfiguracji
+                        if avg_complexity > SETTINGS.GARDENER_COMPLEXITY_THRESHOLD:
+                            complex_files.append(
+                                {
+                                    "path": str(
+                                        file_path.relative_to(self.workspace_root)
+                                    ),
+                                    "avg_complexity": avg_complexity,
+                                    "functions_count": len(visitor.functions),
+                                }
+                            )
+
+                except Exception as e:
+                    logger.debug(f"Nie można przeanalizować {file_path}: {e}")
+                    continue
+
+            # Sortuj po złożoności (malejąco)
+            complex_files.sort(key=lambda x: x["avg_complexity"], reverse=True)
+
+            logger.info(f"Znaleziono {len(complex_files)} plików o wysokiej złożoności")
+            return complex_files
+
+        except ImportError:
+            logger.warning(
+                "Radon nie jest zainstalowany, nie można analizować złożoności"
+            )
+            return []
+        except Exception as e:
+            logger.error(f"Błąd podczas analizy złożoności: {e}")
+            return []
+
+    async def _create_refactoring_branch(self) -> bool:
+        """
+        Tworzy branch dla automatycznej refaktoryzacji.
+
+        Returns:
+            True jeśli branch został utworzony, False w przeciwnym razie
+        """
+        try:
+            from git import GitCommandError, Repo
+
+            repo = Repo(self.workspace_root)
+
+            # Sprawdź czy jesteśmy w repo Git
+            if repo.bare:
+                logger.warning("Workspace nie jest repozytorium Git")
+                return False
+
+            base_branch_name = "refactor/auto-gardening"
+            branch_name = base_branch_name
+
+            # Sprawdź czy branch już istnieje, jeśli tak - dodaj timestamp
+            existing_branches = [b.name for b in repo.branches]
+            if branch_name in existing_branches:
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                branch_name = f"{base_branch_name}-{timestamp}"
+                logger.info(
+                    f"Branch {base_branch_name} już istnieje, tworzę nowy: {branch_name}"
+                )
+
+            # Utwórz nowy branch
+            repo.create_head(branch_name)
+            logger.info(f"Utworzono branch: {branch_name}")
+
+            return True
+
+        except GitCommandError as e:
+            logger.warning(f"Nie można utworzyć brancha: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Błąd podczas tworzenia brancha: {e}")
+            return False

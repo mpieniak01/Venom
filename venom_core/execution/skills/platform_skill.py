@@ -108,7 +108,7 @@ class PlatformSkill:
             assignee: Filtruj po przypisanym użytkowniku (None = wszystkie)
 
         Returns:
-            JSON z listą Issues lub komunikat błędu
+            Sformatowany tekst z listą Issues lub komunikat błędu
         """
         if not self.github_client or not self.github_repo_name:
             return "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"

@@ -13,8 +13,6 @@ UWAGA: Aby uruchomić ten przykład, potrzebujesz:
 import asyncio
 
 from venom_core.config import SETTINGS
-from venom_core.core.orchestrator import Orchestrator
-from venom_core.core.state_manager import StateManager
 from venom_core.execution.skills.platform_skill import PlatformSkill
 
 
@@ -122,29 +120,29 @@ async def example_manual_pr_creation():
 
     # UWAGA: Zmień na nazwę istniejącego brancha w Twoim repo
     branch_name = "example-branch"
-    pr_title = "feat: add example feature"
-    pr_body = """
-## Opis zmian
-
-To jest przykładowy Pull Request utworzony przez Venom PlatformSkill.
-
-## Zmiany
-- ✅ Dodano nową funkcjonalność
-- ✅ Zaktualizowano dokumentację
-- ✅ Dodano testy
-
-## Testy
-Wszystkie testy przeszły pomyślnie.
-
-Closes #123
-    """.strip()
-
-    skill = PlatformSkill()
 
     print(f"\nTworzę PR z brancha '{branch_name}'...")
     print("(To tylko przykład - zamień na istniejący branch)")
 
     # Odkomentuj aby faktycznie utworzyć PR:
+    # pr_title = "feat: add example feature"
+    # pr_body = """
+    # ## Opis zmian
+    #
+    # To jest przykładowy Pull Request utworzony przez Venom PlatformSkill.
+    #
+    # ## Zmiany
+    # - ✅ Dodano nową funkcjonalność
+    # - ✅ Zaktualizowano dokumentację
+    # - ✅ Dodano testy
+    #
+    # ## Testy
+    # Wszystkie testy przeszły pomyślnie.
+    #
+    # Closes #123
+    # """.strip()
+    #
+    # skill = PlatformSkill()
     # result = await skill.create_pull_request(
     #     branch=branch_name,
     #     title=pr_title,
@@ -165,29 +163,31 @@ async def example_comment_on_issue():
     # UWAGA: Zmień na numer istniejącego Issue
     issue_number = 1
 
-    comment_text = """
-🤖 **Venom Bot Update**
-
-Issue zostało przeanalizowane i dodane do kolejki.
-
-**Status:** W trakcie analizy
-**Priorytet:** Normalny
-**ETA:** 2-3 dni robocze
-
----
-*Komentarz dodany automatycznie przez Venom*
-    """.strip()
-
-    skill = PlatformSkill()
-
     print(f"\nDodaję komentarz do Issue #{issue_number}...")
     print("(To tylko przykład - zamień na istniejący Issue)")
 
     # Odkomentuj aby faktycznie dodać komentarz:
+    # comment_text = """
+    # 🤖 **Venom Bot Update**
+    #
+    # Issue zostało przeanalizowane i dodane do kolejki.
+    #
+    # **Status:** W trakcie analizy
+    # **Priorytet:** Normalny
+    # **ETA:** 2-3 dni robocze
+    #
+    # ---
+    # *Komentarz dodany automatycznie przez Venom*
+    # """.strip()
+    #
+    # skill = PlatformSkill()
     # result = await skill.comment_on_issue(
     #     issue_number=issue_number,
     #     text=comment_text
     # )
+    # print(f"\n{result}")
+
+    print("\n❌ Przykład wyłączony - odkomentuj kod aby dodać komentarz")
     # print(f"\n{result}")
 
     print("\n❌ Przykład wyłączony - odkomentuj kod aby dodać komentarz")

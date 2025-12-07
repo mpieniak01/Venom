@@ -73,6 +73,7 @@
                 <!-- Tabs for switching between views -->
                 <div class="panel-tabs">
                     <button class="tab-button active" data-tab="feed">📡 Live Feed</button>
+                    <button class="tab-button" data-tab="voice">🎤 Voice</button>
                     <button class="tab-button" data-tab="jobs">⚙️ Jobs</button>
                     <button class="tab-button" data-tab="memory">🧠 Memory</button>
                 </div>
@@ -101,6 +102,76 @@
                         <div class="metric">
                             <span class="metric-label">Uptime</span>
                             <span class="metric-value" id="metricUptime">0s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Command Center Tab -->
+                <div class="tab-content" id="voiceTab">
+                    <div class="panel-header">
+                        <h2>🎤 Voice Command Center</h2>
+                    </div>
+                    
+                    <!-- Voice Status -->
+                    <div class="voice-status" id="voiceStatus">
+                        <div class="status-indicator">
+                            <span class="status-dot" id="audioConnectionStatus"></span>
+                            <span id="audioStatusText">Rozłączony</span>
+                        </div>
+                    </div>
+
+                    <!-- Microphone Control -->
+                    <div class="voice-control">
+                        <button id="micButton" class="btn-mic" disabled>
+                            <span class="mic-icon">🎤</span>
+                            <span class="mic-text">Push to Talk</span>
+                        </button>
+                        <div class="voice-hint">Trzymaj przycisk i mów</div>
+                    </div>
+
+                    <!-- Audio Visualizer -->
+                    <div class="audio-visualizer" id="audioVisualizer">
+                        <canvas id="visualizerCanvas" width="280" height="80"></canvas>
+                    </div>
+
+                    <!-- Transcription Display -->
+                    <div class="transcription-box">
+                        <h3>Transkrypcja</h3>
+                        <div id="transcriptionText" class="transcription-text">
+                            Oczekiwanie na komendę głosową...
+                        </div>
+                    </div>
+
+                    <!-- Response Display -->
+                    <div class="response-box">
+                        <h3>Odpowiedź</h3>
+                        <div id="responseText" class="response-text">
+                            -
+                        </div>
+                    </div>
+
+                    <!-- IoT Status Panel -->
+                    <div class="iot-panel" style="margin-top: 20px;">
+                        <div class="panel-header">
+                            <h2>🔌 Rider-Pi Status</h2>
+                            <button id="refreshIoTBtn" class="btn-small">🔄</button>
+                        </div>
+                        <div id="iotStatus" class="iot-status">
+                            <p class="empty-state">Połączenie nieaktywne</p>
+                        </div>
+                        <div id="iotMetrics" class="iot-metrics" style="display: none;">
+                            <div class="metric">
+                                <span class="metric-label">CPU Temp</span>
+                                <span class="metric-value" id="iotCpuTemp">--°C</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Memory</span>
+                                <span class="metric-value" id="iotMemory">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Disk</span>
+                                <span class="metric-value" id="iotDisk">--%</span>
+                            </div>
                         </div>
                     </div>
                 </div>

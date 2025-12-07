@@ -53,5 +53,23 @@ class Settings(BaseSettings):
     ENABLE_ISSUE_POLLING: bool = False  # Włącz automatyczne sprawdzanie Issues
     ISSUE_POLLING_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania nowych Issues
 
+    # Konfiguracja Audio Interface (THE_AVATAR)
+    ENABLE_AUDIO_INTERFACE: bool = False  # Włącz interfejs głosowy (STT/TTS)
+    WHISPER_MODEL_SIZE: str = "base"  # Rozmiar modelu Whisper ('tiny', 'base', 'small', 'medium', 'large')
+    TTS_MODEL_PATH: str = ""  # Ścieżka do modelu Piper TTS (ONNX), puste = mock mode
+    AUDIO_DEVICE: str = "cpu"  # Urządzenie dla modeli audio ('cpu', 'cuda')
+    VAD_THRESHOLD: float = 0.5  # Próg Voice Activity Detection (0.0-1.0)
+    SILENCE_DURATION: float = 1.5  # Czas ciszy (sekundy) oznaczający koniec wypowiedzi
+
+    # Konfiguracja IoT Bridge (Rider-Pi)
+    ENABLE_IOT_BRIDGE: bool = False  # Włącz komunikację z Raspberry Pi
+    RIDER_PI_HOST: str = "192.168.1.100"  # Adres IP Raspberry Pi
+    RIDER_PI_PORT: int = 22  # Port SSH (22) lub HTTP (8888 dla pigpio)
+    RIDER_PI_USERNAME: str = "pi"  # Nazwa użytkownika SSH
+    RIDER_PI_PASSWORD: SecretStr = SecretStr("")  # Hasło SSH (opcjonalne jeśli używamy klucza)
+    RIDER_PI_KEY_FILE: str = ""  # Ścieżka do klucza SSH (opcjonalne)
+    RIDER_PI_PROTOCOL: str = "ssh"  # Protokół komunikacji ('ssh' lub 'http')
+    IOT_REQUIRE_CONFIRMATION: bool = True  # Wymagaj potwierdzenia dla komend sprzętowych
+
 
 SETTINGS = Settings()

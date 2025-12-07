@@ -232,28 +232,28 @@ Przykład: "feat(git): add GitSkill implementation"
     async def poll_issues(self) -> list:
         """
         Pobiera nowe otwarte Issues z GitHub.
-        
+
         Returns:
             Lista Issues do przetworzenia
         """
         try:
             logger.info("Sprawdzanie nowych Issues na GitHub...")
-            
+
             # Pobierz otwarte Issues
             result = await self.platform_skill.get_assigned_issues(state="open")
-            
+
             if result.startswith("❌"):
                 logger.warning(f"Nie można pobrać Issues: {result}")
                 return []
-            
+
             if result.startswith("ℹ️"):
                 logger.info("Brak nowych Issues")
                 return []
-            
+
             # Parsuj wynik (uproszczone - w produkcji lepiej by było zwracać strukturę danych)
             logger.info(f"Znaleziono Issues:\n{result}")
             return [result]  # Zwróć jako listę stringów
-            
+
         except Exception as e:
             logger.error(f"Błąd podczas pollowania Issues: {e}")
             return []
@@ -261,35 +261,35 @@ Przykład: "feat(git): add GitSkill implementation"
     async def handle_issue(self, issue_number: int, architect_agent=None) -> str:
         """
         Obsługuje konkretne Issue: pobiera szczegóły, tworzy branch, deleguje do Architekta.
-        
+
         Args:
             issue_number: Numer Issue do obsłużenia
             architect_agent: Opcjonalny agent Architekta (do stworzenia planu)
-        
+
         Returns:
             Status obsługi Issue
         """
         try:
             logger.info(f"Rozpoczynam obsługę Issue #{issue_number}")
-            
+
             # 1. Pobierz szczegóły Issue
             issue_details = await self.platform_skill.get_issue_details(issue_number)
-            
+
             if issue_details.startswith("❌"):
                 return f"❌ Nie można pobrać Issue #{issue_number}: {issue_details}"
-            
+
             logger.info(f"Szczegóły Issue #{issue_number}:\n{issue_details}")
-            
+
             # 2. Utwórz branch dla Issue
             branch_name = f"issue-{issue_number}"
             checkout_result = await self.git_skill.checkout(
                 branch_name=branch_name, create_new=True
             )
             logger.info(f"Branch utworzony: {checkout_result}")
-            
+
             # 3. Zwróć szczegóły Issue aby Orchestrator mógł przekazać do Architekta
             return f"✅ Issue #{issue_number} gotowe do przetworzenia na branchu {branch_name}\n\n{issue_details}"
-            
+
         except Exception as e:
             error_msg = f"❌ Błąd podczas obsługi Issue #{issue_number}: {str(e)}"
             logger.error(error_msg)
@@ -300,23 +300,23 @@ Przykład: "feat(git): add GitSkill implementation"
     ) -> str:
         """
         Finalizuje obsługę Issue: tworzy PR, komentuje Issue, wysyła powiadomienie.
-        
+
         Args:
             issue_number: Numer Issue
             branch_name: Nazwa brancha z poprawką
             pr_title: Tytuł Pull Requesta
             pr_body: Opis Pull Requesta
-        
+
         Returns:
             Status finalizacji
         """
         try:
             logger.info(f"Finalizacja Issue #{issue_number}")
-            
+
             # 1. Upewnij się że zmiany są spushowane
             push_result = await self.git_skill.push()
             logger.info(f"Push: {push_result}")
-            
+
             # 2. Utwórz Pull Request
             pr_body_with_link = f"{pr_body}\n\nCloses #{issue_number}"
             pr_result = await self.platform_skill.create_pull_request(
@@ -325,12 +325,12 @@ Przykład: "feat(git): add GitSkill implementation"
                 body=pr_body_with_link,
                 base="main",
             )
-            
+
             if pr_result.startswith("❌"):
                 return f"❌ Nie można utworzyć PR: {pr_result}"
-            
+
             logger.info(f"PR utworzony: {pr_result}")
-            
+
             # 3. Dodaj komentarz do Issue
             comment_text = f"🤖 Automatyczna naprawa utworzona.\n\n{pr_result}"
             comment_result = await self.platform_skill.comment_on_issue(
@@ -338,7 +338,7 @@ Przykład: "feat(git): add GitSkill implementation"
                 text=comment_text,
             )
             logger.info(f"Komentarz dodany: {comment_result}")
-            
+
             # 4. Wyślij powiadomienie na Discord (jeśli skonfigurowane)
             notification_msg = f"🚀 Pull Request gotowy do review: {pr_title}\n\nIssue: #{issue_number}\nBranch: {branch_name}"
             notification_result = await self.platform_skill.send_notification(
@@ -346,9 +346,9 @@ Przykład: "feat(git): add GitSkill implementation"
                 channel="discord",
             )
             logger.info(f"Powiadomienie: {notification_result}")
-            
+
             return f"✅ Issue #{issue_number} sfinalizowane:\n{pr_result}"
-            
+
         except Exception as e:
             error_msg = f"❌ Błąd podczas finalizacji Issue #{issue_number}: {str(e)}"
             logger.error(error_msg)

@@ -219,7 +219,7 @@ class Professor(BaseAgent):
 
             # Zapisz w historii
             from datetime import datetime
-            
+
             self.training_history.append(
                 {
                     "job_name": job_info["job_name"],

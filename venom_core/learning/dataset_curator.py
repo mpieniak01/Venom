@@ -345,7 +345,9 @@ class DatasetCurator:
         return removed
 
     def save_dataset(
-        self, filename: Optional[str] = None, format: Literal["alpaca", "sharegpt"] = "alpaca"
+        self,
+        filename: Optional[str] = None,
+        format: Literal["alpaca", "sharegpt"] = "alpaca",
     ) -> Path:
         """
         Zapisuje dataset do pliku JSONL.

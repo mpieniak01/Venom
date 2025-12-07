@@ -408,9 +408,6 @@ async def audio_websocket_endpoint(websocket: WebSocket):
         )
     except Exception as e:
         logger.error(f"Audio WebSocket error: {e}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await connection_manager.disconnect(websocket)
 
 
 @app.get("/healthz")

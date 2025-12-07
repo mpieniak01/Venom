@@ -300,12 +300,68 @@ WYMAGANIA:
             await self.file_skill.write_file(file_path, generated_code)
 
             logger.info(f"✅ Narzędzie zapisane: {file_path}")
+
+            # THE_CANVAS: Automatycznie generuj UI card dla nowego narzędzia
+            _ = self.create_tool_ui_card(
+                tool_name=tool_name, tool_description=specification[:200]
+            )
+            logger.info(f"🎨 UI card wygenerowana dla {tool_name}")
+
             return True, generated_code
 
         except Exception as e:
             error_msg = f"Błąd podczas tworzenia narzędzia {tool_name}: {e}"
             logger.error(error_msg)
             return False, error_msg
+
+    def create_tool_ui_card(
+        self, tool_name: str, tool_description: str, icon: str = "🛠️"
+    ) -> dict:
+        """
+        Tworzy konfigurację UI card dla nowego narzędzia (integracja z THE_CANVAS).
+
+        Args:
+            tool_name: Nazwa narzędzia
+            tool_description: Opis narzędzia
+            icon: Emoji dla karty
+
+        Returns:
+            Konfiguracja widgetu karty
+        """
+        logger.info(f"Tworzenie UI card dla narzędzia: {tool_name}")
+
+        card_config = {
+            "type": "card",
+            "data": {
+                "title": tool_name.replace("_", " ").title(),
+                "content": tool_description,
+                "icon": icon,
+                "actions": [
+                    {
+                        "id": f"use_{tool_name}",
+                        "label": "Użyj narzędzia",
+                        "intent": f"use_tool:{tool_name}",
+                    },
+                    {
+                        "id": f"info_{tool_name}",
+                        "label": "Info",
+                        "intent": f"tool_info:{tool_name}",
+                    },
+                ],
+            },
+            "events": {
+                f"use_{tool_name}": f"use_tool:{tool_name}",
+                f"info_{tool_name}": f"tool_info:{tool_name}",
+            },
+            "metadata": {
+                "tool_name": tool_name,
+                "created_by": "ToolmakerAgent",
+                "category": "custom_tool",
+            },
+        }
+
+        logger.info(f"✅ UI card wygenerowana dla: {tool_name}")
+        return card_config
 
     async def create_test(
         self, tool_name: str, tool_code: str, output_dir: str = None

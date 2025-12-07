@@ -115,9 +115,7 @@ Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
             # Przygotuj historię rozmowy
             chat_history = ChatHistory()
             chat_history.add_message(
-                ChatMessageContent(
-                    role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT
-                )
+                ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
             )
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=input_text)

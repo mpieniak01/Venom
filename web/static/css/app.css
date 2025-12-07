@@ -919,3 +919,235 @@ body {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.3; }
 }
+
+/* ========================================
+   THE_CANVAS: Widget Styles
+   ======================================== */
+
+.widgets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+    margin-top: 1rem;
+    background-color: var(--bg-dark);
+    border-radius: 8px;
+}
+
+.widget {
+    background-color: var(--bg-medium);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.widget:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3);
+}
+
+.widget-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--primary-color);
+}
+
+/* Chart Widget */
+.widget-chart canvas {
+    max-height: 300px;
+}
+
+/* Table Widget */
+.widget-table-content {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.widget-table-content th,
+.widget-table-content td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.widget-table-content th {
+    background-color: var(--bg-light);
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.widget-table-content tr:hover {
+    background-color: var(--bg-light);
+}
+
+/* Form Widget */
+.widget-form-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.form-field label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.form-field input,
+.form-field textarea {
+    padding: 0.5rem;
+    background-color: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+/* Markdown Widget */
+.widget-markdown {
+    line-height: 1.8;
+}
+
+.widget-markdown h1,
+.widget-markdown h2,
+.widget-markdown h3 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
+.widget-markdown code {
+    background-color: var(--bg-light);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+.widget-markdown pre {
+    background-color: var(--bg-light);
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+.widget-markdown a {
+    color: var(--secondary-color);
+    text-decoration: none;
+}
+
+.widget-markdown a:hover {
+    text-decoration: underline;
+}
+
+/* Mermaid Widget */
+.widget-mermaid {
+    background-color: var(--bg-light);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.widget-mermaid .mermaid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+}
+
+/* Card Widget */
+.widget-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.card-icon {
+    font-size: 2.5rem;
+    text-align: center;
+}
+
+.card-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+.card-text {
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.card-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+}
+
+.btn-card-action {
+    padding: 0.5rem 1rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.btn-card-action:hover {
+    background-color: #7c3aed;
+}
+
+/* Custom HTML Widget */
+.widget-custom {
+    overflow-x: auto;
+}
+
+/* Btn Small for Clear Widgets */
+.btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-small:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Panel header update for clear button */
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: var(--bg-light);
+    border-bottom: 1px solid var(--border-color);
+}

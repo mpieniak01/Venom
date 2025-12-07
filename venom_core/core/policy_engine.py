@@ -40,7 +40,14 @@ class PolicyEngine:
         (r"mkfs\.", "Formatowanie dysku"),
         (r"dd\s+if=/dev/zero", "Nadpisywanie dysku"),
         (r">\s*/dev/sd[a-z]", "Bezpośredni zapis na dysk"),
-        (r"push.*--force", "Git push --force (może nadpisać historię)"),
+        (
+            r"\bgit\s+push\s+.*--force",
+            "Git push --force (może nadpisać historię)",
+        ),  # Explicit git command
+        (
+            r"push.*--force",
+            "Git push --force (może nadpisać historię)",
+        ),  # Catch in code/strings
         (
             r"push[^\n]*-f\b",
             "Git push -f (może nadpisać historię)",

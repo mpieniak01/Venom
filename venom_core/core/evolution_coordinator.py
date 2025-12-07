@@ -1,8 +1,7 @@
 """Moduł: evolution_coordinator - koordynacja procedury ewolucji Venom."""
 
-import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from venom_core.agents.system_engineer import SystemEngineerAgent
@@ -59,7 +58,7 @@ class EvolutionCoordinator:
 
     async def evolve(
         self, task_id: UUID, request: str, project_root: Path
-    ) -> dict[str, any]:
+    ) -> dict[str, Any]:
         """
         Wykonuje pełną procedurę ewolucji.
 
@@ -219,7 +218,7 @@ class EvolutionCoordinator:
 
         # Weryfikacja 1: Sprawdź składnię plików Python
         logger.info("Sprawdzanie składni plików Python...")
-        python_files = list(instance_info.workspace_path.rglob("*.py"))[:10]  # Próbka
+        python_files = list(instance_info.workspace_path.rglob("*.py"))
 
         for py_file in python_files:
             syntax_result = await self.core_skill.verify_syntax(str(py_file))

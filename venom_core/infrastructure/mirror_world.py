@@ -1,6 +1,5 @@
 """Moduł: mirror_world - zarządzanie lustrzanymi instancjami Venom do testowania."""
 
-import asyncio
 import shutil
 import time
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ from typing import Optional
 import httpx
 
 from venom_core.config import SETTINGS
-from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
 from venom_core.utils.port_authority import find_free_port
 

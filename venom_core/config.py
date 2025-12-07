@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
 
+    # Konfiguracja Model Router (THE_STRATEGIST)
+    ENABLE_MODEL_ROUTING: bool = True  # Włącz inteligentny routing modeli
+    FORCE_LOCAL_MODEL: bool = False  # Wymusza użycie tylko lokalnego modelu
+    ENABLE_MULTI_SERVICE: bool = False  # Włącz inicjalizację wielu serwisów jednocześnie
+
+    # Konfiguracja Prompt Manager
+    PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów
+
+    # Konfiguracja Token Economist
+    ENABLE_CONTEXT_COMPRESSION: bool = True  # Włącz kompresję kontekstu
+    MAX_CONTEXT_TOKENS: int = 4000  # Maksymalna liczba tokenów w kontekście
+
     # Konfiguracja Docker Sandbox
     DOCKER_IMAGE_NAME: str = "python:3.11-slim"
     ENABLE_SANDBOX: bool = True

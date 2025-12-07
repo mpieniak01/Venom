@@ -657,6 +657,10 @@ class VenomDashboard {
 
         if (tabName === 'feed') {
             document.getElementById('feedTab').classList.add('active');
+        } else if (tabName === 'jobs') {
+            document.getElementById('jobsTab').classList.add('active');
+            // Refresh data when switching to jobs tab
+            this.fetchBackgroundJobsStatus();
         } else if (tabName === 'memory') {
             document.getElementById('memoryTab').classList.add('active');
             // Refresh data when switching to memory tab
@@ -898,6 +902,230 @@ class VenomDashboard {
             this.showNotification('Błąd podczas cofania zmian', 'error');
         }
     }
+
+    // Background Jobs Tab Functions
+    initBackgroundJobsTab() {
+        // Setup control buttons
+        const pauseBtn = document.getElementById('pauseJobsBtn');
+        const resumeBtn = document.getElementById('resumeJobsBtn');
+        const refreshBtn = document.getElementById('refreshJobsBtn');
+
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => this.pauseBackgroundJobs());
+        }
+
+        if (resumeBtn) {
+            resumeBtn.addEventListener('click', () => this.resumeBackgroundJobs());
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.fetchBackgroundJobsStatus());
+        }
+    }
+
+    async fetchBackgroundJobsStatus() {
+        // Fetch all background job statuses
+        await Promise.all([
+            this.fetchSchedulerStatus(),
+            this.fetchSchedulerJobs(),
+            this.fetchWatcherStatus(),
+            this.fetchDocumenterStatus(),
+            this.fetchGardenerStatus()
+        ]);
+    }
+
+    async fetchSchedulerStatus() {
+        try {
+            const response = await fetch('/api/v1/scheduler/status');
+            if (!response.ok) throw new Error('Failed to fetch scheduler status');
+            
+            const data = await response.json();
+            const statusDiv = document.getElementById('schedulerStatus');
+            
+            if (data.status === 'success') {
+                const scheduler = data.scheduler;
+                statusDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value ${scheduler.is_running ? 'status-active' : 'status-inactive'}">
+                            ${scheduler.is_running ? '🟢 Running' : '🔴 Stopped'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Jobs Count:</span>
+                        <span class="status-value">${scheduler.jobs_count}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Paused:</span>
+                        <span class="status-value">${scheduler.paused ? '⏸️ Yes' : '▶️ No'}</span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error fetching scheduler status:', error);
+            document.getElementById('schedulerStatus').innerHTML = 
+                '<p class="error-state">❌ Nie można pobrać statusu schedulera</p>';
+        }
+    }
+
+    async fetchSchedulerJobs() {
+        try {
+            const response = await fetch('/api/v1/scheduler/jobs');
+            if (!response.ok) throw new Error('Failed to fetch jobs');
+            
+            const data = await response.json();
+            const jobsDiv = document.getElementById('jobsList');
+            
+            if (data.jobs && data.jobs.length > 0) {
+                jobsDiv.innerHTML = data.jobs.map(job => `
+                    <div class="job-item">
+                        <div class="job-header">
+                            <span class="job-id">${job.id}</span>
+                            <span class="job-type">${job.type || 'interval'}</span>
+                        </div>
+                        <div class="job-description">${job.description || 'No description'}</div>
+                        <div class="job-next-run">
+                            Next run: ${job.next_run_time ? new Date(job.next_run_time).toLocaleString() : 'N/A'}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                jobsDiv.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching jobs:', error);
+            document.getElementById('jobsList').innerHTML = 
+                '<p class="error-state">❌ Nie można pobrać listy zadań</p>';
+        }
+    }
+
+    async fetchWatcherStatus() {
+        try {
+            const response = await fetch('/api/v1/watcher/status');
+            if (!response.ok) throw new Error('Failed to fetch watcher status');
+            
+            const data = await response.json();
+            const statusDiv = document.getElementById('watcherStatus');
+            
+            if (data.status === 'success') {
+                const watcher = data.watcher;
+                statusDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value ${watcher.is_running ? 'status-active' : 'status-inactive'}">
+                            ${watcher.is_running ? '🟢 Watching' : '🔴 Stopped'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Workspace:</span>
+                        <span class="status-value">${watcher.workspace_root}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Monitoring:</span>
+                        <span class="status-value">${watcher.monitoring_extensions.join(', ')}</span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error fetching watcher status:', error);
+            document.getElementById('watcherStatus').innerHTML = 
+                '<p class="error-state">❌ Nie można pobrać statusu watchera</p>';
+        }
+    }
+
+    async fetchDocumenterStatus() {
+        try {
+            const response = await fetch('/api/v1/documenter/status');
+            if (!response.ok) throw new Error('Failed to fetch documenter status');
+            
+            const data = await response.json();
+            const statusDiv = document.getElementById('documenterStatus');
+            
+            if (data.status === 'success') {
+                const documenter = data.documenter;
+                statusDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Enabled:</span>
+                        <span class="status-value ${documenter.enabled ? 'status-active' : 'status-inactive'}">
+                            ${documenter.enabled ? '🟢 Yes' : '🔴 No'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Processing Files:</span>
+                        <span class="status-value">${documenter.processing_files}</span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error fetching documenter status:', error);
+            document.getElementById('documenterStatus').innerHTML = 
+                '<p class="error-state">❌ Nie można pobrać statusu documentera</p>';
+        }
+    }
+
+    async fetchGardenerStatus() {
+        try {
+            const response = await fetch('/api/v1/gardener/status');
+            if (!response.ok) throw new Error('Failed to fetch gardener status');
+            
+            const data = await response.json();
+            const statusDiv = document.getElementById('gardenerStatus');
+            
+            if (data.status === 'success') {
+                const gardener = data.gardener;
+                statusDiv.innerHTML = `
+                    <div class="status-item">
+                        <span class="status-label">Running:</span>
+                        <span class="status-value ${gardener.is_running ? 'status-active' : 'status-inactive'}">
+                            ${gardener.is_running ? '🟢 Yes' : '🔴 No'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Idle Refactoring:</span>
+                        <span class="status-value">${gardener.idle_refactoring_enabled ? '✅ Enabled' : '❌ Disabled'}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">In Progress:</span>
+                        <span class="status-value">${gardener.idle_refactoring_in_progress ? '🔄 Yes' : '✅ No'}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Scan:</span>
+                        <span class="status-value">${gardener.last_scan_time ? new Date(gardener.last_scan_time).toLocaleString() : 'Never'}</span>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error fetching gardener status:', error);
+            document.getElementById('gardenerStatus').innerHTML = 
+                '<p class="error-state">❌ Nie można pobrać statusu gardenera</p>';
+        }
+    }
+
+    async pauseBackgroundJobs() {
+        try {
+            const response = await fetch('/api/v1/scheduler/pause', { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to pause jobs');
+            
+            this.showNotification('Background jobs paused', 'success');
+            this.fetchBackgroundJobsStatus();
+        } catch (error) {
+            console.error('Error pausing jobs:', error);
+            this.showNotification('Błąd podczas wstrzymywania zadań', 'error');
+        }
+    }
+
+    async resumeBackgroundJobs() {
+        try {
+            const response = await fetch('/api/v1/scheduler/resume', { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to resume jobs');
+            
+            this.showNotification('Background jobs resumed', 'success');
+            this.fetchBackgroundJobsStatus();
+        } catch (error) {
+            console.error('Error resuming jobs:', error);
+            this.showNotification('Błąd podczas wznawiania zadań', 'error');
+        }
+    }
 }
 
 // Initialize after DOM loaded
@@ -905,4 +1133,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard = new VenomDashboard();
     // Initialize memory tab
     window.venomDashboard.initMemoryTab();
+    // Initialize background jobs tab
+    window.venomDashboard.initBackgroundJobsTab();
 });

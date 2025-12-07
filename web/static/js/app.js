@@ -171,6 +171,21 @@ class VenomDashboard {
             case 'PLAN_CREATED':
                 this.handlePlanCreated(eventData);
                 break;
+            case 'HEALING_STARTED':
+                this.handleHealingStarted(eventData);
+                break;
+            case 'TEST_RUNNING':
+                this.handleTestRunning(eventData);
+                break;
+            case 'TEST_RESULT':
+                this.handleTestResult(eventData, message);
+                break;
+            case 'HEALING_FAILED':
+                this.handleHealingFailed(eventData);
+                break;
+            case 'HEALING_ERROR':
+                this.handleHealingError(eventData);
+                break;
             case 'AGENT_ACTION':
             case 'AGENT_THOUGHT':
                 this.addChatMessage('assistant', message, agent);
@@ -234,6 +249,102 @@ class VenomDashboard {
     handlePlanCreated(data) {
         // Could add plan visualization here
         this.addChatMessage('assistant', 'Plan created - details in Live Feed', 'Architect');
+    }
+
+    handleHealingStarted(data) {
+        if (data && data.task_id) {
+            this.showNotification('🔄 Rozpoczynam automatyczne testy i naprawy', 'info');
+            this.addChatMessage('assistant', `Uruchamiam pętlę samonaprawy (max ${data.max_iterations} iteracji)`, 'Guardian');
+        }
+    }
+
+    handleTestRunning(data) {
+        if (data && data.task_id) {
+            const iterationInfo = data.iteration ? ` - Próba ${data.iteration}` : '';
+            this.addChatMessage('assistant', `🔍 Uruchamiam testy${iterationInfo}`, 'Guardian');
+        }
+    }
+
+    handleTestResult(data, message) {
+        if (data && data.task_id) {
+            if (data.success) {
+                // Testy przeszły ✅
+                this.showNotification('✅ Wszystkie testy przeszły pomyślnie!', 'success');
+                this.addChatMessage('assistant', `✅ ${message}`, 'Guardian');
+                
+                // Pokaż zielony pasek
+                this.showTestProgressBar(data.task_id, true, data.iterations || 1);
+            } else {
+                // Testy nie przeszły ❌
+                this.addChatMessage('assistant', `❌ ${message}`, 'Guardian');
+                
+                // Pokaż czerwony pasek
+                this.showTestProgressBar(data.task_id, false, data.iteration || 1);
+            }
+        }
+    }
+
+    handleHealingFailed(data) {
+        if (data && data.task_id) {
+            this.showNotification('⚠️ Nie udało się naprawić kodu automatycznie', 'warning');
+            this.addChatMessage('assistant', 
+                `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`, 
+                'Guardian'
+            );
+            
+            // Pokaż fragment raportu jeśli dostępny
+            if (data.final_report) {
+                const reportPreview = data.final_report.substring(0, 200);
+                this.addChatMessage('assistant', `Ostatni raport: ${reportPreview}...`, 'Guardian');
+            }
+        }
+    }
+
+    handleHealingError(data) {
+        if (data && data.task_id) {
+            this.showNotification('❌ Błąd podczas pętli samonaprawy', 'error');
+            this.addChatMessage('assistant', `❌ Błąd: ${data.error}`, 'Guardian');
+        }
+    }
+
+    showTestProgressBar(taskId, success, iteration) {
+        // Stwórz lub zaktualizuj pasek postępu testów
+        let progressBar = document.getElementById(`test-progress-${taskId}`);
+        
+        if (!progressBar) {
+            // Utwórz nowy pasek postępu
+            progressBar = document.createElement('div');
+            progressBar.id = `test-progress-${taskId}`;
+            progressBar.className = 'test-progress';
+            progressBar.style.cssText = `
+                margin: 10px 0;
+                padding: 10px;
+                border-radius: 6px;
+                background: ${success ? '#d1fae5' : '#fee2e2'};
+                border: 2px solid ${success ? '#10b981' : '#ef4444'};
+            `;
+            
+            // Dodaj do chat messages
+            this.elements.chatMessages.appendChild(progressBar);
+        }
+        
+        // Zaktualizuj zawartość
+        const emoji = success ? '🟢' : '🔴';
+        const statusText = success ? 'SUKCES' : 'BŁĄD';
+        const color = success ? '#10b981' : '#ef4444';
+        
+        progressBar.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="font-size: 24px;">${emoji}</div>
+                <div>
+                    <div style="font-weight: bold; color: ${color};">${statusText}</div>
+                    <div style="font-size: 12px; color: #6b7280;">Iteracja: ${iteration}</div>
+                </div>
+            </div>
+        `;
+        
+        // Auto-scroll
+        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
 
     addLogEntry(level, message) {

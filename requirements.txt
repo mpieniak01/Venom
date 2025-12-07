@@ -87,6 +87,8 @@ webrtcvad               # Voice Activity Detection (optional, can use simple RMS
 # IoT & Hardware Bridge (Rider-Pi)
 paramiko                # SSH client for Raspberry Pi communication
 
+# UI & Visualization (THE_CANVAS)
+bleach                  # HTML sanitization for safe widget rendering
 
 # --- VENOM DEV TOOLS (Jakość Kodu) ---
 

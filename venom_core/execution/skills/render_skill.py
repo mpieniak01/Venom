@@ -197,7 +197,9 @@ class RenderSkill:
     )
     def render_dashboard_widget(
         self,
-        html: Annotated[str, "Kod HTML widgetu (zostanie automatycznie zesanityzowany)"],
+        html: Annotated[
+            str, "Kod HTML widgetu (zostanie automatycznie zesanityzowany)"
+        ],
     ) -> str:
         """
         Wstrzykuje customowy HTML jako widget.

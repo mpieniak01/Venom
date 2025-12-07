@@ -15,8 +15,8 @@ class VenomDashboard {
 
         // Initialize Mermaid
         if (typeof mermaid !== 'undefined') {
-            mermaid.initialize({ 
-                startOnLoad: false, 
+            mermaid.initialize({
+                startOnLoad: false,
                 theme: 'dark',
                 themeVariables: {
                     darkMode: true,
@@ -304,13 +304,13 @@ class VenomDashboard {
                 // Testy przeszły ✅
                 this.showNotification('✅ Wszystkie testy przeszły pomyślnie!', 'success');
                 this.addChatMessage('assistant', `✅ ${message}`, 'Guardian');
-                
+
                 // Pokaż zielony pasek
                 this.showTestProgressBar(data.task_id, true, data.iterations || 1);
             } else {
                 // Testy nie przeszły ❌
                 this.addChatMessage('assistant', `❌ ${message}`, 'Guardian');
-                
+
                 // Pokaż czerwony pasek
                 this.showTestProgressBar(data.task_id, false, data.iteration || 1);
             }
@@ -320,11 +320,11 @@ class VenomDashboard {
     handleHealingFailed(data) {
         if (data && data.task_id) {
             this.showNotification('⚠️ Nie udało się naprawić kodu automatycznie', 'warning');
-            this.addChatMessage('assistant', 
-                `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`, 
+            this.addChatMessage('assistant',
+                `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`,
                 'Guardian'
             );
-            
+
             // Pokaż fragment raportu jeśli dostępny
             if (data.final_report) {
                 const reportPreview = data.final_report.substring(0, 200);
@@ -343,7 +343,7 @@ class VenomDashboard {
     showTestProgressBar(taskId, success, iteration) {
         // Stwórz lub zaktualizuj pasek postępu testów
         let progressBar = document.getElementById(`test-progress-${taskId}`);
-        
+
         if (!progressBar) {
             // Utwórz nowy pasek postępu
             progressBar = document.createElement('div');
@@ -356,16 +356,16 @@ class VenomDashboard {
                 background: ${success ? '#d1fae5' : '#fee2e2'};
                 border: 2px solid ${success ? '#10b981' : '#ef4444'};
             `;
-            
+
             // Dodaj do chat messages
             this.elements.chatMessages.appendChild(progressBar);
         }
-        
+
         // Zaktualizuj zawartość
         const emoji = success ? '🟢' : '🔴';
         const statusText = success ? 'SUKCES' : 'BŁĄD';
         const color = success ? '#10b981' : '#ef4444';
-        
+
         progressBar.innerHTML = `
             <div style="display: flex; align-items: center; gap: 10px;">
                 <div style="font-size: 24px;">${emoji}</div>
@@ -375,7 +375,7 @@ class VenomDashboard {
                 </div>
             </div>
         `;
-        
+
         // Auto-scroll
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
@@ -978,10 +978,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/status');
             if (!response.ok) throw new Error('Failed to fetch scheduler status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('schedulerStatus');
-            
+
             if (data.status === 'success') {
                 const scheduler = data.scheduler;
                 statusDiv.innerHTML = `
@@ -1003,7 +1003,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching scheduler status:', error);
-            document.getElementById('schedulerStatus').innerHTML = 
+            document.getElementById('schedulerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu schedulera</p>';
         }
     }
@@ -1012,10 +1012,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/jobs');
             if (!response.ok) throw new Error('Failed to fetch jobs');
-            
+
             const data = await response.json();
             const jobsDiv = document.getElementById('jobsList');
-            
+
             if (data.jobs && data.jobs.length > 0) {
                 jobsDiv.innerHTML = data.jobs.map(job => {
                     // Walidacja i formatowanie daty
@@ -1030,7 +1030,7 @@ class VenomDashboard {
                             console.warn('Invalid date format:', job.next_run_time);
                         }
                     }
-                    
+
                     return `
                     <div class="job-item">
                         <div class="job-header">
@@ -1048,7 +1048,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching jobs:', error);
-            document.getElementById('jobsList').innerHTML = 
+            document.getElementById('jobsList').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać listy zadań</p>';
         }
     }
@@ -1057,10 +1057,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/watcher/status');
             if (!response.ok) throw new Error('Failed to fetch watcher status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('watcherStatus');
-            
+
             if (data.status === 'success') {
                 const watcher = data.watcher;
                 statusDiv.innerHTML = `
@@ -1082,7 +1082,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching watcher status:', error);
-            document.getElementById('watcherStatus').innerHTML = 
+            document.getElementById('watcherStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu watchera</p>';
         }
     }
@@ -1091,10 +1091,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/documenter/status');
             if (!response.ok) throw new Error('Failed to fetch documenter status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('documenterStatus');
-            
+
             if (data.status === 'success') {
                 const documenter = data.documenter;
                 statusDiv.innerHTML = `
@@ -1112,7 +1112,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching documenter status:', error);
-            document.getElementById('documenterStatus').innerHTML = 
+            document.getElementById('documenterStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu documentera</p>';
         }
     }
@@ -1121,10 +1121,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/gardener/status');
             if (!response.ok) throw new Error('Failed to fetch gardener status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('gardenerStatus');
-            
+
             if (data.status === 'success') {
                 const gardener = data.gardener;
                 statusDiv.innerHTML = `
@@ -1150,7 +1150,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching gardener status:', error);
-            document.getElementById('gardenerStatus').innerHTML = 
+            document.getElementById('gardenerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu gardenera</p>';
         }
     }
@@ -1159,7 +1159,7 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/pause', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to pause jobs');
-            
+
             this.showNotification('Zadania w tle wstrzymane', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
@@ -1172,7 +1172,7 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/resume', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to resume jobs');
-            
+
             this.showNotification('Zadania w tle wznowione', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
@@ -1388,13 +1388,13 @@ class VenomDashboard {
 
             case 'processing':
                 console.log('Processing:', data.status);
-                document.getElementById('transcriptionText').textContent = 
+                document.getElementById('transcriptionText').textContent =
                     `Przetwarzanie (${data.status})...`;
                 break;
 
             case 'transcription':
                 console.log('Transcription:', data.text);
-                document.getElementById('transcriptionText').textContent = 
+                document.getElementById('transcriptionText').textContent =
                     data.text || 'Nie rozpoznano mowy';
                 break;
 
@@ -1434,7 +1434,7 @@ class VenomDashboard {
 
             // Create audio context
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
+
             // Convert Int16 to Float32 for playback
             const audioData = new Int16Array(bytes.buffer);
             const floatData = new Float32Array(audioData.length);
@@ -1512,15 +1512,15 @@ class VenomDashboard {
         // This would call an API endpoint to get Rider-Pi status
         // For now, it's a placeholder
         this.showNotification('IoT status refresh (funkcja w rozwoju)', 'info');
-        
+
         // Mock data for demonstration
         const iotStatus = document.getElementById('iotStatus');
         const iotMetrics = document.getElementById('iotMetrics');
-        
+
         if (iotStatus && iotMetrics) {
             iotStatus.innerHTML = '<p class="success-state">Połączony z Rider-Pi</p>';
             iotMetrics.style.display = 'grid';
-            
+
             document.getElementById('iotCpuTemp').textContent = '45.2°C';
             document.getElementById('iotMemory').textContent = '42%';
             document.getElementById('iotDisk').textContent = '65%';
@@ -1609,7 +1609,7 @@ class VenomDashboard {
         }
 
         const widgetId = data.widget_id;
-        
+
         // Remove from storage
         this.widgets.delete(widgetId);
 
@@ -1635,7 +1635,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-chart';
-        
+
         if (widget.data.title) {
             const title = document.createElement('h3');
             title.className = 'widget-title';
@@ -1685,7 +1685,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-table';
-        
+
         if (widget.data.title) {
             const title = document.createElement('h3');
             title.className = 'widget-title';
@@ -1728,7 +1728,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-form';
-        
+
         if (widget.data.title) {
             const title = document.createElement('h3');
             title.className = 'widget-title';
@@ -1740,7 +1740,7 @@ class VenomDashboard {
         form.className = 'widget-form-content';
 
         const schema = widget.data.schema;
-        
+
         // Generate form fields from schema
         Object.keys(schema.properties || {}).forEach(fieldName => {
             const field = schema.properties[fieldName];
@@ -1781,7 +1781,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-markdown';
-        
+
         // Render markdown with marked.js
         if (typeof marked !== 'undefined') {
             container.innerHTML = marked.parse(widget.data.content);
@@ -1796,7 +1796,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-mermaid';
-        
+
         if (widget.data.title) {
             const title = document.createElement('h3');
             title.className = 'widget-title';
@@ -1823,7 +1823,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-card';
-        
+
         const cardContent = document.createElement('div');
         cardContent.className = 'card-content';
 
@@ -1875,7 +1875,7 @@ class VenomDashboard {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
         container.className = 'widget widget-custom';
-        
+
         // Sanitize HTML with DOMPurify if available
         if (typeof DOMPurify !== 'undefined') {
             container.innerHTML = DOMPurify.sanitize(widget.data.html);

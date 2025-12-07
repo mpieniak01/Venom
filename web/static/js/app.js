@@ -75,6 +75,10 @@ class VenomDashboard {
             metricTasks: document.getElementById('metricTasks'),
             metricSuccess: document.getElementById('metricSuccess'),
             metricUptime: document.getElementById('metricUptime'),
+            // Repository status elements
+            branchName: document.getElementById('branchName'),
+            changesText: document.getElementById('changesText'),
+            repoChanges: document.getElementById('repoChanges'),
         };
     }
 
@@ -643,6 +647,27 @@ class VenomDashboard {
                 scanButton.textContent = '🔍 Skanuj';
                 scanButton.disabled = false;
             }
+        }
+    }
+
+    // Update repository status in header
+    updateRepositoryStatus(branch, hasChanges, changeCount = 0) {
+        if (!this.elements.branchName || !this.elements.changesText || !this.elements.repoChanges) {
+            return;
+        }
+
+        // Update branch name
+        this.elements.branchName.textContent = branch || '-';
+
+        // Update changes status
+        if (hasChanges) {
+            this.elements.changesText.textContent = `${changeCount} modified`;
+            this.elements.repoChanges.classList.add('dirty');
+            this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} modified</span>`;
+        } else {
+            this.elements.changesText.textContent = 'Clean';
+            this.elements.repoChanges.classList.remove('dirty');
+            this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Clean</span>`;
         }
     }
 }

@@ -11,9 +11,17 @@
         <!-- Header -->
         <header class="header">
             <h1>🕷️ Venom Cockpit</h1>
-            <div class="status-indicator">
-                <span class="status-dot" id="connectionStatus"></span>
-                <span id="statusText">Łączenie...</span>
+            <div class="header-info">
+                <!-- Repository Status -->
+                <div class="repo-status" id="repoStatus">
+                    <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
+                    <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Clean</span></span>
+                </div>
+                <!-- Connection Status -->
+                <div class="status-indicator">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span id="statusText">Łączenie...</span>
+                </div>
             </div>
         </header>
 

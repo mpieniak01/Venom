@@ -42,9 +42,7 @@ class HardwareBridge:
         self.protocol = protocol
         self.ssh_client = None
         self.connected = False
-        logger.info(
-            f"Inicjalizacja HardwareBridge: host={host}, protocol={protocol}"
-        )
+        logger.info(f"Inicjalizacja HardwareBridge: host={host}, protocol={protocol}")
 
     async def connect(self) -> bool:
         """
@@ -92,9 +90,7 @@ class HardwareBridge:
             return True
 
         except ImportError:
-            logger.error(
-                "paramiko nie jest zainstalowany. Użyj: pip install paramiko"
-            )
+            logger.error("paramiko nie jest zainstalowany. Użyj: pip install paramiko")
             return False
         except Exception as e:
             logger.error(f"Błąd podczas łączenia SSH: {e}")

@@ -36,9 +36,7 @@ class WhisperSkill:
         self.device = device
         self.compute_type = compute_type
         self.model = None
-        logger.info(
-            f"Inicjalizacja WhisperSkill: model={model_size}, device={device}"
-        )
+        logger.info(f"Inicjalizacja WhisperSkill: model={model_size}, device={device}")
 
     def _load_model(self):
         """Lazy loading modelu (tylko gdy potrzebny)."""
@@ -61,9 +59,7 @@ class WhisperSkill:
                 logger.error(f"Błąd podczas ładowania modelu Whisper: {e}")
                 raise
 
-    async def transcribe(
-        self, audio_buffer: np.ndarray, language: str = "pl"
-    ) -> str:
+    async def transcribe(self, audio_buffer: np.ndarray, language: str = "pl") -> str:
         """
         Transkrybuje audio na tekst.
 

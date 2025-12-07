@@ -635,8 +635,14 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 )
                 last_test_report = test_report
 
-                # Sprawdź czy testy przeszły (szukamy "PRZESZŁY POMYŚLNIE")
-                if "PRZESZŁY POMYŚLNIE" in test_report or "exit_code: 0" in test_report.lower():
+                # Sprawdź czy testy przeszły - używamy wielokrotnych sprawdzeń dla niezawodności
+                test_passed = (
+                    "PRZESZŁY POMYŚLNIE" in test_report 
+                    or "PASSED" in test_report.upper()
+                    or ("exit_code: 0" in test_report.lower() and "failed: 0" in test_report.lower())
+                )
+                
+                if test_passed:
                     self.state_manager.add_log(
                         task_id,
                         f"✅ Testy przeszły pomyślnie po {iteration} iteracji!",

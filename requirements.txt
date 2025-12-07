@@ -78,6 +78,15 @@ apscheduler             # Advanced Python Scheduler (background jobs)
 watchdog                # File system monitoring
 radon                   # Code complexity analysis
 
+# Audio & Voice Interface (THE_AVATAR)
+faster-whisper          # Local STT (Speech-to-Text) engine
+piper-tts               # Local TTS (Text-to-Speech) engine (ONNX-based)
+sounddevice             # Audio I/O
+webrtcvad               # Voice Activity Detection (optional, can use simple RMS)
+
+# IoT & Hardware Bridge (Rider-Pi)
+paramiko                # SSH client for Raspberry Pi communication
+
 
 # --- VENOM DEV TOOLS (Jakość Kodu) ---
 

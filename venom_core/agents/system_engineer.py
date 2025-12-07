@@ -173,7 +173,7 @@ Ty:
 
             response = result[0].content if result else "Brak odpowiedzi z LLM"
 
-            logger.info(f"SystemEngineer zakończył przetwarzanie")
+            logger.info("SystemEngineer zakończył przetwarzanie")
             return response
 
         except Exception as e:
@@ -192,9 +192,7 @@ Ty:
             Słownik z analizą wpływu
         """
         if not self.graph_store:
-            return {
-                "error": "GraphStore niedostępny - brak możliwości analizy wpływu"
-            }
+            return {"error": "GraphStore niedostępny - brak możliwości analizy wpływu"}
 
         try:
             impact = self.graph_store.get_impact_analysis(file_path)

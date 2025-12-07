@@ -81,7 +81,9 @@ class MirrorWorld:
             clean_branch = branch_name.replace("/", "_").replace("\\", "_")
             instance_id = f"{clean_branch}_{timestamp}"
 
-        logger.info(f"Tworzenie lustrzanej instancji: {instance_id} z brancha {branch_name}")
+        logger.info(
+            f"Tworzenie lustrzanej instancji: {instance_id} z brancha {branch_name}"
+        )
 
         try:
             # 1. Przygotuj katalog dla instancji lustrzanej
@@ -128,7 +130,9 @@ class MirrorWorld:
             # 5. Zarejestruj instancję
             self.instances[instance_id] = info
 
-            logger.info(f"✅ Instancja lustrzana {instance_id} utworzona (port: {port})")
+            logger.info(
+                f"✅ Instancja lustrzana {instance_id} utworzona (port: {port})"
+            )
             return info
 
         except Exception as e:
@@ -166,7 +170,9 @@ class MirrorWorld:
 
             if success:
                 info.status = "running"
-                logger.info(f"✅ Instancja {instance_id} uruchomiona na porcie {info.port}")
+                logger.info(
+                    f"✅ Instancja {instance_id} uruchomiona na porcie {info.port}"
+                )
             else:
                 info.status = "failed"
                 logger.error(f"❌ Nie udało się uruchomić instancji {instance_id}")
@@ -223,7 +229,9 @@ class MirrorWorld:
         logger.info(f"Uruchamianie instancji {info.instance_id} jako lokalny proces")
 
         # Placeholder: Pełna implementacja w Phase 2
-        logger.warning("Uruchamianie lokalnego procesu nie jest jeszcze zaimplementowane (Phase 2)")
+        logger.warning(
+            "Uruchamianie lokalnego procesu nie jest jeszcze zaimplementowane (Phase 2)"
+        )
         return False
 
     async def verify_instance(

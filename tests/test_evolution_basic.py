@@ -1,8 +1,9 @@
 """Testy jednostkowe dla modułów ewolucji (bez zależności zewnętrznych)."""
 
 import pytest
-from venom_core.infrastructure.mirror_world import MirrorWorld, InstanceInfo
+
 from venom_core.execution.skills.core_skill import CoreSkill
+from venom_core.infrastructure.mirror_world import InstanceInfo, MirrorWorld
 
 
 @pytest.fixture
@@ -36,14 +37,14 @@ class TestMirrorWorldBasic:
         project_root = tmp_path / "project"
         project_root.mkdir()
         (project_root / "test.py").write_text("print('test')")
-        
+
         # Utwórz instancję
         info = mirror_world.spawn_shadow_instance(
             branch_name="evolution/test",
             project_root=project_root,
-            instance_id="test_instance"
+            instance_id="test_instance",
         )
-        
+
         assert isinstance(info, InstanceInfo)
         assert info.instance_id == "test_instance"
         assert info.branch_name == "evolution/test"
@@ -58,16 +59,16 @@ class TestMirrorWorldBasic:
         project_root = tmp_path / "project"
         project_root.mkdir()
         (project_root / "test.py").write_text("print('test')")
-        
-        info = mirror_world.spawn_shadow_instance(
+
+        mirror_world.spawn_shadow_instance(
             branch_name="evolution/test",
             project_root=project_root,
-            instance_id="test_destroy"
+            instance_id="test_destroy",
         )
-        
+
         # Usuń instancję
         success = await mirror_world.destroy_instance("test_destroy", cleanup=True)
-        
+
         assert success
         assert "test_destroy" not in mirror_world.instances
 
@@ -76,13 +77,13 @@ class TestMirrorWorldBasic:
         project_root = tmp_path / "project"
         project_root.mkdir()
         (project_root / "test.py").write_text("print('test')")
-        
+
         # Utwórz kilka instancji
         mirror_world.spawn_shadow_instance("evolution/test1", project_root, "inst1")
         mirror_world.spawn_shadow_instance("evolution/test2", project_root, "inst2")
-        
+
         instances = mirror_world.list_instances()
-        
+
         assert len(instances) == 2
         assert all(isinstance(i, InstanceInfo) for i in instances)
 
@@ -101,14 +102,12 @@ class TestCoreSkillBasic:
         # Utwórz plik testowy
         test_file = tmp_path / "test.py"
         test_file.write_text("original content")
-        
+
         # Zmodyfikuj plik
         result = await core_skill.hot_patch(
-            file_path=str(test_file),
-            content="new content",
-            create_backup=True
+            file_path=str(test_file), content="new content", create_backup=True
         )
-        
+
         assert "✅" in result
         assert test_file.read_text() == "new content"
         # Sprawdź czy backup został utworzony
@@ -121,12 +120,12 @@ class TestCoreSkillBasic:
         # Utwórz plik i zmodyfikuj go z backupem
         test_file = tmp_path / "test.py"
         test_file.write_text("original")
-        
+
         await core_skill.hot_patch(str(test_file), "modified", create_backup=True)
-        
+
         # Wycofaj zmiany
         result = await core_skill.rollback(file_path=str(test_file))
-        
+
         assert "✅" in result
         assert test_file.read_text() == "original"
 
@@ -135,9 +134,9 @@ class TestCoreSkillBasic:
         """Test weryfikacji poprawnej składni."""
         test_file = tmp_path / "valid.py"
         test_file.write_text("def hello():\n    print('Hello')\n")
-        
+
         result = await core_skill.verify_syntax(file_path=str(test_file))
-        
+
         assert "✅" in result
         assert "poprawna" in result
 
@@ -146,9 +145,9 @@ class TestCoreSkillBasic:
         """Test weryfikacji niepoprawnej składni."""
         test_file = tmp_path / "invalid.py"
         test_file.write_text("def hello(\n    print('Hello')\n")  # Błąd składni
-        
+
         result = await core_skill.verify_syntax(file_path=str(test_file))
-        
+
         assert "❌" in result
         assert "Błąd składni" in result
 
@@ -157,7 +156,9 @@ class TestEvolutionScenarios:
     """Scenariusze testowe procedury ewolucji."""
 
     @pytest.mark.asyncio
-    async def test_mirror_test_with_syntax_error(self, mirror_world, core_skill, tmp_path):
+    async def test_mirror_test_with_syntax_error(
+        self, mirror_world, core_skill, tmp_path
+    ):
         """
         Test lustrzany: Wprowadzenie błędu składni.
         MirrorWorld wykrywa problem, główny kod pozostaje nienaruszony.
@@ -167,27 +168,27 @@ class TestEvolutionScenarios:
         project_root.mkdir()
         test_file = project_root / "main.py"
         test_file.write_text("def main():\n    print('OK')\n")
-        
+
         # Utwórz instancję lustrzaną
         info = mirror_world.spawn_shadow_instance(
             branch_name="evolution/broken",
             project_root=project_root,
-            instance_id="broken_test"
+            instance_id="broken_test",
         )
-        
+
         # Wprowadź błąd składni w klonie
         cloned_file = info.workspace_path / "main.py"
         cloned_file.write_text("def main(\n    print('Broken')\n")  # Błąd
-        
+
         # Weryfikuj składnię
         result = await core_skill.verify_syntax(str(cloned_file))
-        
+
         assert "❌" in result
         assert "Błąd składni" in result
-        
+
         # Główny plik pozostał nienaruszony
         assert test_file.read_text() == "def main():\n    print('OK')\n"
-        
+
         # Cleanup
         await mirror_world.destroy_instance("broken_test", cleanup=True)
 
@@ -202,36 +203,36 @@ class TestEvolutionScenarios:
         project_root.mkdir()
         utils_file = project_root / "utils.py"
         utils_file.write_text("def old_function():\n    pass\n")
-        
+
         # Utwórz instancję lustrzaną
         info = mirror_world.spawn_shadow_instance(
             branch_name="evolution/new-feature",
             project_root=project_root,
-            instance_id="evolution_test"
+            instance_id="evolution_test",
         )
-        
+
         # Dodaj nową metodę w klonie
         cloned_file = info.workspace_path / "utils.py"
-        new_content = "def old_function():\n    pass\n\ndef new_function():\n    return 42\n"
+        new_content = (
+            "def old_function():\n    pass\n\ndef new_function():\n    return 42\n"
+        )
         cloned_file.write_text(new_content)
-        
+
         # Weryfikuj składnię
         syntax_result = await core_skill.verify_syntax(str(cloned_file))
         assert "✅" in syntax_result
-        
+
         # Symuluj merge: zastosuj zmiany do głównego pliku
         await core_skill.hot_patch(
-            file_path=str(utils_file),
-            content=new_content,
-            create_backup=True
+            file_path=str(utils_file), content=new_content, create_backup=True
         )
-        
+
         # Sprawdź czy zmiany zostały zastosowane
         assert "new_function" in utils_file.read_text()
-        
+
         # Sprawdź czy backup istnieje
         backups = list(core_skill.backup_dir.glob("utils.py.*.bak"))
         assert len(backups) == 1
-        
+
         # Cleanup
         await mirror_world.destroy_instance("evolution_test", cleanup=True)

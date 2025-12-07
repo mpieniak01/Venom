@@ -29,8 +29,8 @@ def temp_workspace():
 def test_shell_skill_initialization_sandbox():
     """Test inicjalizacji ShellSkill z sandbox."""
     skill = ShellSkill(use_sandbox=True)
-    # Może być True lub False jeśli Docker niedostępny
-    assert skill.use_sandbox or not skill.use_sandbox
+    # Sprawdź czy use_sandbox jest boolean
+    assert isinstance(skill.use_sandbox, bool)
     if skill.use_sandbox:
         assert skill.habitat is not None
 

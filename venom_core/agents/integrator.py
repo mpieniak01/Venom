@@ -234,7 +234,7 @@ Przykład: "feat(git): add GitSkill implementation"
         Pobiera nowe otwarte Issues z GitHub.
 
         Returns:
-            Lista Issues do przetworzenia
+            Lista dict z danymi Issues (lub pusta lista jeśli błąd/brak Issues)
         """
         try:
             logger.info("Sprawdzanie nowych Issues na GitHub...")
@@ -250,9 +250,10 @@ Przykład: "feat(git): add GitSkill implementation"
                 logger.info("Brak nowych Issues")
                 return []
 
-            # Parsuj wynik (uproszczone - w produkcji lepiej by było zwracać strukturę danych)
+            # TODO: Parsuj wynik do struktury danych (dict/Issue objects)
+            # W przyszłej wersji zwróć listę dict z parsed data
             logger.info(f"Znaleziono Issues:\n{result}")
-            return [result]  # Zwróć jako listę stringów
+            return [{"raw_result": result}]  # Tymczasowo jako dict
 
         except Exception as e:
             logger.error(f"Błąd podczas pollowania Issues: {e}")

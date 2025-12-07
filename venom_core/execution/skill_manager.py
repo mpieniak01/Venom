@@ -163,7 +163,7 @@ class SkillManager:
 
             # Przeładuj istniejący moduł
             old_module = self.loaded_skills[skill_name]
-            
+
             # Waliduj przed przeładowaniem
             skill_file = self.custom_skills_dir / f"{skill_name}.py"
             try:
@@ -290,7 +290,7 @@ class SkillManager:
         """
         # Użyj prefixu aby uniknąć konfliktów z innymi modułami
         module_name = f"venom_custom_{skill_name}"
-        
+
         # Utwórz spec modułu
         spec = importlib.util.spec_from_file_location(module_name, skill_file)
         if spec is None or spec.loader is None:
@@ -335,7 +335,10 @@ class SkillManager:
         for cls in classes:
             # Pomiń klasy zaimportowane z innych modułów
             # Sprawdź czy klasa należy do tego modułu (z prefixem)
-            if not cls.__module__.endswith(skill_name) and cls.__module__ != module_full_name:
+            if (
+                not cls.__module__.endswith(skill_name)
+                and cls.__module__ != module_full_name
+            ):
                 continue
 
             try:

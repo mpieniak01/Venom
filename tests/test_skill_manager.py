@@ -97,7 +97,9 @@ class TestSkill:
     skill_file.write_text(skill_code)
 
     # Walidacja powinna nie przejść
-    with pytest.raises(SkillValidationError, match="nie ma dekoratora @kernel_function"):
+    with pytest.raises(
+        SkillValidationError, match="nie ma dekoratora @kernel_function"
+    ):
         skill_manager.validate_skill(str(skill_file))
 
 

@@ -69,9 +69,8 @@ class TestOrchestratorCouncilDecision:
                 result = self.orchestrator._should_use_council(
                     context=long_context, intent="CODE_GENERATION"
                 )
-                assert (
-                    result is True
-                ), f"Słowo kluczowe '{keyword}' nie aktywowało Council"
+                fail_msg = f"Słowo kluczowe '{keyword}' nie aktywowało Council"
+                assert result is True, fail_msg
 
     def test_should_use_council_case_insensitive(self):
         """Test: Sprawdzanie słów kluczowych jest case-insensitive."""
@@ -130,6 +129,5 @@ class TestOrchestratorCouncilDecision:
                 result = self.orchestrator._should_use_council(
                     context="Krótkie zadanie", intent=intent
                 )
-                assert (
-                    result is False
-                ), f"Intencja '{intent}' błędnie aktywowała Council"
+                fail_msg = f"Intencja '{intent}' błędnie aktywowała Council"
+                assert result is False, fail_msg

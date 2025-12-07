@@ -35,7 +35,7 @@ class TaskDispatcher:
 
         # Inicjalizuj SkillManager - zarządza dynamicznymi pluginami
         self.skill_manager = SkillManager(kernel)
-        
+
         # Załaduj istniejące custom skills przy starcie
         try:
             loaded_skills = self.skill_manager.load_skills_from_dir()

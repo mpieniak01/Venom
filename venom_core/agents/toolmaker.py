@@ -55,11 +55,11 @@ from semantic_kernel.functions import kernel_function
 class {ClassName}:
     \"\"\"
     {Opis klasy}.
-    
+
     Przykłady użycia:
     - ...
     \"\"\"
-    
+
     @kernel_function(
         name="{function_name}",
         description="{krótki opis funkcji}"
@@ -71,11 +71,11 @@ class {ClassName}:
     ) -> str:
         \"\"\"
         {Szczegółowy opis metody}.
-        
+
         Args:
             param1: {Opis}
             param2: {Opis}
-            
+
         Returns:
             {Opis wyniku}
         \"\"\"
@@ -99,10 +99,10 @@ from semantic_kernel.functions import kernel_function
 class WeatherSkill:
     \"\"\"
     Skill do pobierania informacji o pogodzie używając Open-Meteo API.
-    
+
     Open-Meteo to darmowe API bez wymagania klucza.
     \"\"\"
-    
+
     @kernel_function(
         name="get_current_weather",
         description="Pobiera aktualną pogodę dla podanego miasta"
@@ -113,10 +113,10 @@ class WeatherSkill:
     ) -> str:
         \"\"\"
         Pobiera aktualną pogodę dla miasta.
-        
+
         Args:
             city: Nazwa miasta
-            
+
         Returns:
             Opis pogody z temperaturą i warunkami
         \"\"\"
@@ -127,24 +127,24 @@ class WeatherSkill:
                 geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={{city}}&count=1"
                 async with session.get(geo_url) as resp:
                     geo_data = await resp.json()
-                    
+
                 if not geo_data.get("results"):
                     return f"Nie znaleziono miasta: {{city}}"
-                
+
                 lat = geo_data["results"][0]["latitude"]
                 lon = geo_data["results"][0]["longitude"]
-                
+
                 # Pobierz pogodę
                 weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={{lat}}&longitude={{lon}}&current_weather=true"
                 async with session.get(weather_url) as resp:
                     weather_data = await resp.json()
-                
+
                 current = weather_data["current_weather"]
                 temp = current["temperature"]
                 windspeed = current["windspeed"]
-                
+
                 return f"Pogoda w {{city}}: {{temp}}°C, wiatr {{windspeed}} km/h"
-                
+
         except Exception as e:
             return f"Błąd pobierania pogody: {{str(e)}}"
 ```
@@ -259,9 +259,12 @@ WAŻNE:
         """
         try:
             # Walidacja nazwy narzędzia (zapobieganie directory traversal)
-            if not re.match(r'^[a-z0-9_]+$', tool_name):
-                return False, f"Nieprawidłowa nazwa narzędzia: {tool_name}. Dozwolone tylko [a-z0-9_]"
-            
+            if not re.match(r"^[a-z0-9_]+$", tool_name):
+                return (
+                    False,
+                    f"Nieprawidłowa nazwa narzędzia: {tool_name}. Dozwolone tylko [a-z0-9_]",
+                )
+
             logger.info(f"Tworzenie narzędzia: {tool_name}")
 
             # Generuj kod
@@ -271,7 +274,7 @@ SPECYFIKACJA:
 {specification}
 
 WYMAGANIA:
-- Nazwa klasy: {tool_name.title().replace('_', '')}Skill
+- Nazwa klasy: {tool_name.title().replace("_", "")}Skill
 - Plik powinien być gotowy do zapisania jako {tool_name}.py
 - Pamiętaj o wszystkich importach na początku
 - Kod MUSI być kompletny i gotowy do użycia"""
@@ -283,7 +286,11 @@ WYMAGANIA:
                 return False, generated_code
 
             # Zapisz do pliku
-            file_path = f"custom/{tool_name}.py" if not output_dir else f"{output_dir}/{tool_name}.py"
+            file_path = (
+                f"custom/{tool_name}.py"
+                if not output_dir
+                else f"{output_dir}/{tool_name}.py"
+            )
 
             # Upewnij się że katalog custom istnieje
             if not output_dir:

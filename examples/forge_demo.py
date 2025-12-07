@@ -195,9 +195,7 @@ async def main():
         print("=" * 80)
         print()
         print("Co dalej?")
-        print(
-            "- Sprawdź katalog workspace/custom/ aby zobaczyć wygenerowane narzędzia"
-        )
+        print("- Sprawdź katalog workspace/custom/ aby zobaczyć wygenerowane narzędzia")
         print("- Użyj tych narzędzi w swoich zadaniach przez Venom API")
         print("- Stwórz własne narzędzia modyfikując specyfikację")
         print()

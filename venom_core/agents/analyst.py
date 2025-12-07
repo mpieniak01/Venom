@@ -169,9 +169,7 @@ class AnalystAgent(BaseAgent):
         # Analiza per complexity level
         complexity_analysis = {}
         for complexity in ComplexityScore:
-            tasks = [
-                m for m in self.metrics_history if m.complexity == complexity
-            ]
+            tasks = [m for m in self.metrics_history if m.complexity == complexity]
 
             if not tasks:
                 continue
@@ -198,7 +196,12 @@ class AnalystAgent(BaseAgent):
             m
             for m in self.metrics_history
             if m.complexity == ComplexityScore.LOW
-            and (m.selected_service if isinstance(m.selected_service, str) else m.selected_service.value) != ServiceId.LOCAL.value
+            and (
+                m.selected_service
+                if isinstance(m.selected_service, str)
+                else m.selected_service.value
+            )
+            != ServiceId.LOCAL.value
         ]
 
         # Znajdź przypadki underprovisioning (HIGH complexity -> LOCAL model failing)
@@ -206,7 +209,12 @@ class AnalystAgent(BaseAgent):
             m
             for m in self.metrics_history
             if m.complexity == ComplexityScore.HIGH
-            and (m.selected_service if isinstance(m.selected_service, str) else m.selected_service.value) == ServiceId.LOCAL.value
+            and (
+                m.selected_service
+                if isinstance(m.selected_service, str)
+                else m.selected_service.value
+            )
+            == ServiceId.LOCAL.value
             and not m.success
         ]
 
@@ -236,11 +244,11 @@ class AnalystAgent(BaseAgent):
                 "total_cost_usd": round(stats["total_cost"], 6),
                 "tasks_count": stats["tasks_count"],
                 "cost_per_task_usd": round(cost_per_task, 6),
-                "success_rate": round(
-                    stats["success_count"] / stats["tasks_count"] * 100, 2
-                )
-                if stats["tasks_count"] > 0
-                else 0,
+                "success_rate": (
+                    round(stats["success_count"] / stats["tasks_count"] * 100, 2)
+                    if stats["tasks_count"] > 0
+                    else 0
+                ),
             }
 
         return breakdown
@@ -279,7 +287,7 @@ class AnalystAgent(BaseAgent):
             success_rate = self.successful_tasks / self.total_tasks
             if success_rate < 0.8:
                 recommendations.append(
-                    f"⚠️ Niska skuteczność zadań ({success_rate*100:.1f}%). "
+                    f"⚠️ Niska skuteczność zadań ({success_rate * 100:.1f}%). "
                     "Rozważ dostosowanie kryteriów routingu."
                 )
 
@@ -293,7 +301,7 @@ class AnalystAgent(BaseAgent):
             if local_ratio < 0.5:
                 savings_potential = self.total_cost_usd * 0.3
                 recommendations.append(
-                    f"💰 Tylko {local_ratio*100:.1f}% zadań używa lokalnego modelu. "
+                    f"💰 Tylko {local_ratio * 100:.1f}% zadań używa lokalnego modelu. "
                     f"Potencjalne oszczędności: ${savings_potential:.2f}"
                 )
 
@@ -314,7 +322,9 @@ class AnalystAgent(BaseAgent):
 
         # Nagłówek
         report = ["📊 RAPORT ANALITYCZNY VENOM STRATEGIST\n"]
-        report.append(f"Data wygenerowania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        report.append(
+            f"Data wygenerowania: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
 
         # Sekcja 1: Statystyki ogólne
         report.append("=" * 60)
@@ -324,7 +334,9 @@ class AnalystAgent(BaseAgent):
         report.append(f"Zadania zakończone sukcesem: {self.successful_tasks}")
         report.append(f"Zadania nieudane: {self.failed_tasks}")
         success_rate = (
-            self.successful_tasks / self.total_tasks * 100 if self.total_tasks > 0 else 0
+            self.successful_tasks / self.total_tasks * 100
+            if self.total_tasks > 0
+            else 0
         )
         report.append(f"Skuteczność: {success_rate:.1f}%")
         report.append(f"Łączny koszt: ${self.total_cost_usd:.4f}")
@@ -384,11 +396,11 @@ class AnalystAgent(BaseAgent):
             "total_tasks": self.total_tasks,
             "successful_tasks": self.successful_tasks,
             "failed_tasks": self.failed_tasks,
-            "success_rate": round(
-                self.successful_tasks / self.total_tasks * 100, 2
-            )
-            if self.total_tasks > 0
-            else 0,
+            "success_rate": (
+                round(self.successful_tasks / self.total_tasks * 100, 2)
+                if self.total_tasks > 0
+                else 0
+            ),
             "total_cost_usd": round(self.total_cost_usd, 4),
             "total_tokens": self.total_tokens,
             "services_used": list(self.service_stats.keys()),

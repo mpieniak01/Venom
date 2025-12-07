@@ -79,8 +79,16 @@ class KernelBuilder:
                 # Mapowanie ServiceId na typ serwisu
                 service_mapping = {
                     ServiceId.LOCAL.value: "local",
-                    ServiceId.CLOUD_FAST.value: service_type if service_type in ["openai", "azure"] else "openai",
-                    ServiceId.CLOUD_HIGH.value: service_type if service_type in ["openai", "azure"] else "openai",
+                    ServiceId.CLOUD_FAST.value: (
+                        service_type
+                        if service_type in ["openai", "azure"]
+                        else "openai"
+                    ),
+                    ServiceId.CLOUD_HIGH.value: (
+                        service_type
+                        if service_type in ["openai", "azure"]
+                        else "openai"
+                    ),
                 }
 
                 service_type = service_mapping.get(recommended_service, service_type)

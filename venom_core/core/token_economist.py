@@ -40,7 +40,9 @@ class TokenEconomist:
             enable_compression: Czy włączyć kompresję kontekstu (domyślnie True)
         """
         self.enable_compression = enable_compression
-        logger.info(f"TokenEconomist zainicjalizowany (compression={enable_compression})")
+        logger.info(
+            f"TokenEconomist zainicjalizowany (compression={enable_compression})"
+        )
 
     def estimate_tokens(self, text: str) -> int:
         """
@@ -131,7 +133,11 @@ class TokenEconomist:
                 break
 
         # Jeśli są starsze wiadomości, zsumuj je
-        older_messages = remaining_messages[: -len(messages_to_keep)] if messages_to_keep else remaining_messages
+        older_messages = (
+            remaining_messages[: -len(messages_to_keep)]
+            if messages_to_keep
+            else remaining_messages
+        )
         if older_messages:
             summary = self._summarize_messages(older_messages)
             compressed_history.add_message(
@@ -181,16 +187,18 @@ class TokenEconomist:
                 assistant_responses.append(content)
 
         if user_questions:
-            summary_parts.append(
-                f"Użytkownik pytał o: {', '.join(user_questions[:3])}"
-            )
+            summary_parts.append(f"Użytkownik pytał o: {', '.join(user_questions[:3])}")
 
         if assistant_responses:
             summary_parts.append(
                 f"Asystent odpowiedział na tematy: {', '.join(assistant_responses[:3])}"
             )
 
-        return " | ".join(summary_parts) if summary_parts else "Brak treści do podsumowania"
+        return (
+            " | ".join(summary_parts)
+            if summary_parts
+            else "Brak treści do podsumowania"
+        )
 
     def calculate_cost(
         self,
@@ -258,7 +266,10 @@ class TokenEconomist:
         return self.PRICING["gpt-3.5-turbo"]
 
     def estimate_request_cost(
-        self, prompt: str, expected_output_tokens: int = 500, model_name: str = "gpt-3.5-turbo"
+        self,
+        prompt: str,
+        expected_output_tokens: int = 500,
+        model_name: str = "gpt-3.5-turbo",
     ) -> dict:
         """
         Estymuje koszt requesta przed jego wykonaniem.

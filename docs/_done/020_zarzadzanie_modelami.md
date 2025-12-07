@@ -2,8 +2,8 @@
 
 ## Status: ✅ COMPLETED
 
-**Wykonawca:** Copilot Agent  
-**Data rozpoczęcia:** 2025-12-07  
+**Wykonawca:** Copilot Agent
+**Data rozpoczęcia:** 2025-12-07
 **Data zakończenia:** 2025-12-07
 
 ---

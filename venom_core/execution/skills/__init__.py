@@ -1,1 +1,9 @@
-"""Moduł: __init__"""
+"""Moduł: skills - zestawienie wszystkich umiejętności Venom."""
+
+from venom_core.execution.skills.file_skill import FileSkill
+from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.execution.skills.shell_skill import ShellSkill
+from venom_core.execution.skills.test_skill import TestSkill
+from venom_core.execution.skills.web_skill import WebSkill
+
+__all__ = ["FileSkill", "GitSkill", "ShellSkill", "TestSkill", "WebSkill"]

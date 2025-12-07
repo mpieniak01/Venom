@@ -251,13 +251,10 @@ def test_detect_git_push_force(policy_engine):
 
     for code in code_variants:
         violations = policy_engine.check_safety(code)
-        dangerous_violations = [
-            v for v in violations if v.rule == "dangerous_command"
-        ]
+        dangerous_violations = [v for v in violations if v.rule == "dangerous_command"]
         assert len(dangerous_violations) > 0, f"Failed to detect: {code}"
-        assert any(
-            "push" in v.message.lower() for v in dangerous_violations
-        ), f"Wrong message for: {code}"
+        message = f"Wrong message for: {code}"
+        assert any("push" in v.message.lower() for v in dangerous_violations), message
 
 
 def test_safe_git_push(policy_engine):

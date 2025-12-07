@@ -656,7 +656,7 @@ async def get_git_status():
         if has_changes:
             try:
                 # Pobierz obiekt Repo i policz zmiany
-                from git import Repo, GitCommandError
+                from git import GitCommandError, Repo
 
                 repo = Repo(git_skill.workspace_root)
                 # Sprawdź czy HEAD istnieje (czy repo ma commity)
@@ -737,4 +737,3 @@ async def undo_changes():
         status_code=501,
         detail="Cofnięcie zmian (git reset) nie jest jeszcze zaimplementowane. Użyj Integrator Agent z odpowiednim potwierdzeniem.",
     )
-

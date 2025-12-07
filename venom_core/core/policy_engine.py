@@ -49,9 +49,9 @@ class PolicyEngine:
             "Git push --force (może nadpisać historię)",
         ),  # Catch in code/strings
         (
-            r"push[^\n]*-f\b",
+            r"\bgit\s+push\s+.*-f\b",
             "Git push -f (może nadpisać historię)",
-        ),  # -f as standalone flag
+        ),  # -f jako flaga w komendzie git push
     ]
 
     def check_safety(self, content: str) -> List[Violation]:

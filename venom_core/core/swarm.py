@@ -90,20 +90,34 @@ class VenomAgent(ConversableAgent):
             for plugin_name, plugin in plugins.items():
                 logger.debug(f"Przetwarzam plugin: {plugin_name}")
 
-                # Pobierz wszystkie funkcje z pluginu
-                for func_name in dir(plugin):
-                    # Pomiń prywatne i magiczne metody
-                    if func_name.startswith("_"):
-                        continue
+                # Pobierz funkcje z pluginu używając bezpieczniejszego podejścia
+                # Sprawdź czy plugin ma dedykowany interfejs do pobierania funkcji
+                if hasattr(plugin, "functions") and isinstance(plugin.functions, dict):
+                    # Użyj dedykowanego API Semantic Kernel
+                    for func_name, func in plugin.functions.items():
+                        if callable(func):
+                            self._register_function(plugin_name, func_name, func)
+                else:
+                    # Fallback: użyj inspect aby znaleźć tylko metody zdefiniowane w klasie pluginu
+                    import inspect
 
-                    func = getattr(plugin, func_name)
+                    # Pobierz tylko metody zdefiniowane w tej klasie (nie odziedziczone)
+                    for func_name, func in inspect.getmembers(
+                        plugin, predicate=inspect.ismethod
+                    ):
+                        # Pomiń prywatne, magiczne metody i metody z object/type
+                        if func_name.startswith("_"):
+                            continue
 
-                    # Sprawdź czy to callable
-                    if not callable(func):
-                        continue
+                        # Sprawdź czy metoda jest zdefiniowana w tym pluginie (nie odziedziczona)
+                        if func_name not in plugin.__class__.__dict__:
+                            continue
 
-                    # Zarejestruj funkcję w AutoGen
-                    self._register_function(plugin_name, func_name, func)
+                        # Sprawdź czy ma atrybut __kernel_function__ (dodawany przez dekorator)
+                        if hasattr(func, "__kernel_function__") or hasattr(
+                            func, "__wrapped__"
+                        ):
+                            self._register_function(plugin_name, func_name, func)
 
         except Exception as e:
             logger.error(

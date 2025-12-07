@@ -676,6 +676,10 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 logger.info("Council Config zainicjalizowany")
 
             # Stwórz sesję Council
+            # UWAGA: Tworzymy nową sesję przy każdym wywołaniu aby zapewnić czysty stan
+            # i uniknąć kontaminacji historii między różnymi zadaniami.
+            # GroupChat przechowuje historię wiadomości, więc ponowne użycie
+            # mogłoby prowadzić do nieprawidłowych kontekstów dla kolejnych zadań.
             from venom_core.core.council import CouncilSession
 
             user_proxy, group_chat, manager = self._council_config.create_council()

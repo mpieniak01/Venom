@@ -5,6 +5,7 @@ from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
+from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.guardian import GuardianAgent
 from venom_core.agents.integrator import IntegratorAgent
@@ -20,6 +21,7 @@ __all__ = [
     "ChatAgent",
     "CoderAgent",
     "CriticAgent",
+    "DocumenterAgent",
     "GardenerAgent",
     "GuardianAgent",
     "IntegratorAgent",

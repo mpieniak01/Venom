@@ -342,7 +342,6 @@ class GardenerAgent:
             Lista plików z metrykami złożoności
         """
         try:
-            import radon.complexity as radon_complexity
             from radon.visitors import ComplexityVisitor
 
             complex_files = []
@@ -371,7 +370,9 @@ class GardenerAgent:
                         if avg_complexity > 10:
                             complex_files.append(
                                 {
-                                    "path": str(file_path.relative_to(self.workspace_root)),
+                                    "path": str(
+                                        file_path.relative_to(self.workspace_root)
+                                    ),
                                     "avg_complexity": avg_complexity,
                                     "functions_count": len(visitor.functions),
                                 }
@@ -388,7 +389,9 @@ class GardenerAgent:
             return complex_files
 
         except ImportError:
-            logger.warning("Radon nie jest zainstalowany, nie można analizować złożoności")
+            logger.warning(
+                "Radon nie jest zainstalowany, nie można analizować złożoności"
+            )
             return []
         except Exception as e:
             logger.error(f"Błąd podczas analizy złożoności: {e}")

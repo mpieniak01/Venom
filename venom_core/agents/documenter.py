@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 
-from venom_core.api.stream import EventType, event_broadcaster
+from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
@@ -39,7 +39,9 @@ class DocumenterAgent:
         """
         self.workspace_root = Path(workspace_root or SETTINGS.WORKSPACE_ROOT).resolve()
         self.git_skill = git_skill or GitSkill(workspace_root=str(self.workspace_root))
-        self.file_skill = file_skill or FileSkill(workspace_root=str(self.workspace_root))
+        self.file_skill = file_skill or FileSkill(
+            workspace_root=str(self.workspace_root)
+        )
         self.event_broadcaster = event_broadcaster
 
         # Tracking: ostatnie zmiany aby uniknąć pętli

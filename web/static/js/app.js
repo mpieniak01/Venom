@@ -1140,6 +1140,350 @@ class VenomDashboard {
             this.showNotification('Błąd podczas wznawiania zadań', 'error');
         }
     }
+
+    // ========================================
+    // Voice Command Center
+    // ========================================
+
+    initVoiceTab() {
+        this.audioWs = null;
+        this.isRecording = false;
+        this.audioContext = null;
+        this.mediaStream = null;
+        this.audioChunks = [];
+
+        const micButton = document.getElementById('micButton');
+        const refreshIoTBtn = document.getElementById('refreshIoTBtn');
+
+        if (micButton) {
+            // Connect to audio WebSocket
+            this.connectAudioWebSocket();
+
+            // Push-to-Talk: Hold to record
+            micButton.addEventListener('mousedown', () => this.startRecording());
+            micButton.addEventListener('mouseup', () => this.stopRecording());
+            micButton.addEventListener('mouseleave', () => {
+                if (this.isRecording) this.stopRecording();
+            });
+
+            // Touch support for mobile
+            micButton.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.startRecording();
+            });
+            micButton.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.stopRecording();
+            });
+        }
+
+        if (refreshIoTBtn) {
+            refreshIoTBtn.addEventListener('click', () => this.refreshIoTStatus());
+        }
+
+        // Initialize audio visualizer
+        this.initAudioVisualizer();
+    }
+
+    connectAudioWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
+
+        try {
+            this.audioWs = new WebSocket(wsUrl);
+
+            this.audioWs.onopen = () => {
+                console.log('Audio WebSocket connected');
+                this.updateAudioConnectionStatus('connected');
+                document.getElementById('micButton').disabled = false;
+            };
+
+            this.audioWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleAudioMessage(data);
+                } catch (error) {
+                    console.error('Error parsing audio message:', error);
+                }
+            };
+
+            this.audioWs.onerror = (error) => {
+                console.error('Audio WebSocket error:', error);
+                this.updateAudioConnectionStatus('disconnected');
+            };
+
+            this.audioWs.onclose = () => {
+                console.log('Audio WebSocket disconnected');
+                this.updateAudioConnectionStatus('disconnected');
+                document.getElementById('micButton').disabled = true;
+
+                // Try to reconnect after 5 seconds
+                setTimeout(() => this.connectAudioWebSocket(), 5000);
+            };
+        } catch (error) {
+            console.error('Error connecting to audio WebSocket:', error);
+            this.updateAudioConnectionStatus('disconnected');
+        }
+    }
+
+    updateAudioConnectionStatus(status) {
+        const statusDot = document.getElementById('audioConnectionStatus');
+        const statusText = document.getElementById('audioStatusText');
+
+        if (statusDot) {
+            statusDot.className = 'status-dot ' + status;
+        }
+
+        if (statusText) {
+            const statusTexts = {
+                'connected': 'Połączony',
+                'disconnected': 'Rozłączony',
+                'connecting': 'Łączenie...'
+            };
+            statusText.textContent = statusTexts[status] || 'Nieznany';
+        }
+    }
+
+    async startRecording() {
+        if (!this.audioWs || this.audioWs.readyState !== WebSocket.OPEN) {
+            this.showNotification('Audio WebSocket nie jest połączony', 'error');
+            return;
+        }
+
+        if (this.isRecording) return;
+
+        try {
+            // Request microphone access
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.isRecording = true;
+            this.audioChunks = [];
+
+            // Update UI
+            const micButton = document.getElementById('micButton');
+            micButton.classList.add('recording');
+            micButton.querySelector('.mic-text').textContent = 'Nagrywanie...';
+
+            // Send start recording command
+            this.audioWs.send(JSON.stringify({ command: 'start_recording' }));
+
+            // Setup audio recording
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+            source.connect(processor);
+            processor.connect(this.audioContext.destination);
+
+            processor.onaudioprocess = (e) => {
+                if (!this.isRecording) return;
+
+                const inputData = e.inputBuffer.getChannelData(0);
+                const audioData = new Int16Array(inputData.length);
+
+                // Convert Float32 to Int16
+                for (let i = 0; i < inputData.length; i++) {
+                    audioData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                }
+
+                // Send audio chunk
+                if (this.audioWs && this.audioWs.readyState === WebSocket.OPEN) {
+                    this.audioWs.send(audioData.buffer);
+                }
+
+                // Update visualizer
+                this.updateVisualizer(inputData);
+            };
+
+            this.audioProcessor = processor;
+
+        } catch (error) {
+            console.error('Error starting recording:', error);
+            this.showNotification('Nie udało się uruchomić mikrofonu', 'error');
+            this.isRecording = false;
+        }
+    }
+
+    stopRecording() {
+        if (!this.isRecording) return;
+
+        this.isRecording = false;
+
+        // Update UI
+        const micButton = document.getElementById('micButton');
+        micButton.classList.remove('recording');
+        micButton.querySelector('.mic-text').textContent = 'Push to Talk';
+
+        // Stop audio processing
+        if (this.audioProcessor) {
+            this.audioProcessor.disconnect();
+            this.audioProcessor = null;
+        }
+
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+
+        // Send stop recording command
+        if (this.audioWs && this.audioWs.readyState === WebSocket.OPEN) {
+            this.audioWs.send(JSON.stringify({ command: 'stop_recording' }));
+        }
+
+        // Clear visualizer
+        this.clearVisualizer();
+    }
+
+    handleAudioMessage(data) {
+        switch (data.type) {
+            case 'recording_started':
+                console.log('Recording started');
+                break;
+
+            case 'processing':
+                console.log('Processing:', data.status);
+                document.getElementById('transcriptionText').textContent = 
+                    `Przetwarzanie (${data.status})...`;
+                break;
+
+            case 'transcription':
+                console.log('Transcription:', data.text);
+                document.getElementById('transcriptionText').textContent = 
+                    data.text || 'Nie rozpoznano mowy';
+                break;
+
+            case 'response_text':
+                console.log('Response:', data.text);
+                document.getElementById('responseText').textContent = data.text;
+                break;
+
+            case 'audio_response':
+                console.log('Audio response received');
+                this.playAudioResponse(data.audio, data.sample_rate);
+                break;
+
+            case 'complete':
+                console.log('Processing complete');
+                break;
+
+            case 'error':
+                console.error('Audio error:', data.message);
+                this.showNotification('Błąd: ' + data.message, 'error');
+                break;
+
+            case 'pong':
+                // Keep-alive response
+                break;
+        }
+    }
+
+    playAudioResponse(base64Audio, sampleRate) {
+        try {
+            // Decode base64 audio
+            const binaryString = atob(base64Audio);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create audio context
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Convert Int16 to Float32 for playback
+            const audioData = new Int16Array(bytes.buffer);
+            const floatData = new Float32Array(audioData.length);
+            for (let i = 0; i < audioData.length; i++) {
+                floatData[i] = audioData[i] / 32768.0;
+            }
+
+            // Create audio buffer
+            const audioBuffer = audioContext.createBuffer(1, floatData.length, sampleRate || 22050);
+            audioBuffer.getChannelData(0).set(floatData);
+
+            // Play audio
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+
+        } catch (error) {
+            console.error('Error playing audio response:', error);
+        }
+    }
+
+    initAudioVisualizer() {
+        this.visualizerCanvas = document.getElementById('visualizerCanvas');
+        this.visualizerCtx = this.visualizerCanvas ? this.visualizerCanvas.getContext('2d') : null;
+    }
+
+    updateVisualizer(audioData) {
+        if (!this.visualizerCtx) return;
+
+        const canvas = this.visualizerCanvas;
+        const ctx = this.visualizerCtx;
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Clear canvas
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw waveform
+        ctx.strokeStyle = '#8b5cf6';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        const sliceWidth = width / audioData.length;
+        let x = 0;
+
+        for (let i = 0; i < audioData.length; i++) {
+            const v = (audioData[i] + 1) / 2; // Normalize to 0-1
+            const y = v * height;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+
+            x += sliceWidth;
+        }
+
+        ctx.stroke();
+    }
+
+    clearVisualizer() {
+        if (!this.visualizerCtx) return;
+
+        const canvas = this.visualizerCanvas;
+        const ctx = this.visualizerCtx;
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    async refreshIoTStatus() {
+        // This would call an API endpoint to get Rider-Pi status
+        // For now, it's a placeholder
+        this.showNotification('IoT status refresh (funkcja w rozwoju)', 'info');
+        
+        // Mock data for demonstration
+        const iotStatus = document.getElementById('iotStatus');
+        const iotMetrics = document.getElementById('iotMetrics');
+        
+        if (iotStatus && iotMetrics) {
+            iotStatus.innerHTML = '<p class="success-state">Połączony z Rider-Pi</p>';
+            iotMetrics.style.display = 'grid';
+            
+            document.getElementById('iotCpuTemp').textContent = '45.2°C';
+            document.getElementById('iotMemory').textContent = '42%';
+            document.getElementById('iotDisk').textContent = '65%';
+        }
+    }
 }
 
 // Initialize after DOM loaded
@@ -1149,4 +1493,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard.initMemoryTab();
     // Initialize background jobs tab
     window.venomDashboard.initBackgroundJobsTab();
+    // Initialize voice tab
+    window.venomDashboard.initVoiceTab();
 });

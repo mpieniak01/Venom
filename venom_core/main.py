@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
+from venom_core.agents.operator import OperatorAgent
+from venom_core.api.audio_stream import AudioStreamHandler
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import init_metrics_collector, metrics_collector
@@ -21,7 +23,9 @@ from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
+from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
+from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,12 +48,19 @@ background_scheduler = None
 file_watcher = None
 documenter_agent = None
 
+# Inicjalizacja Audio i IoT (THE_AVATAR)
+audio_engine = None
+operator_agent = None
+hardware_bridge = None
+audio_stream_handler = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Zarządzanie cyklem życia aplikacji."""
     global vector_store, graph_store, lessons_store, gardener_agent, git_skill
     global background_scheduler, file_watcher, documenter_agent
+    global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -178,6 +189,67 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Nie udało się uruchomić FileWatcher: {e}")
         file_watcher = None
 
+    # Inicjalizuj Audio Engine (THE_AVATAR)
+    if SETTINGS.ENABLE_AUDIO_INTERFACE:
+        try:
+            audio_engine = AudioEngine(
+                whisper_model_size=SETTINGS.WHISPER_MODEL_SIZE,
+                tts_model_path=SETTINGS.TTS_MODEL_PATH,
+                device=SETTINGS.AUDIO_DEVICE,
+            )
+            logger.info("AudioEngine zainicjalizowany")
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować AudioEngine: {e}")
+            audio_engine = None
+
+    # Inicjalizuj Hardware Bridge (Rider-Pi)
+    if SETTINGS.ENABLE_IOT_BRIDGE:
+        try:
+            hardware_bridge = HardwareBridge(
+                host=SETTINGS.RIDER_PI_HOST,
+                port=SETTINGS.RIDER_PI_PORT,
+                username=SETTINGS.RIDER_PI_USERNAME,
+                password=SETTINGS.RIDER_PI_PASSWORD,
+                protocol=SETTINGS.RIDER_PI_PROTOCOL,
+            )
+            # Połącz w tle
+            connected = await hardware_bridge.connect()
+            if connected:
+                logger.info("HardwareBridge połączony z Rider-Pi")
+            else:
+                logger.warning("Nie udało się połączyć z Rider-Pi")
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować HardwareBridge: {e}")
+            hardware_bridge = None
+
+    # Inicjalizuj Operator Agent
+    if SETTINGS.ENABLE_AUDIO_INTERFACE and audio_engine:
+        try:
+            from venom_core.execution.kernel_builder import build_kernel
+
+            operator_kernel = build_kernel()
+            operator_agent = OperatorAgent(
+                kernel=operator_kernel,
+                hardware_bridge=hardware_bridge,
+            )
+            logger.info("OperatorAgent zainicjalizowany")
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować OperatorAgent: {e}")
+            operator_agent = None
+
+    # Inicjalizuj Audio Stream Handler
+    if audio_engine and operator_agent:
+        try:
+            audio_stream_handler = AudioStreamHandler(
+                audio_engine=audio_engine,
+                vad_threshold=SETTINGS.VAD_THRESHOLD,
+                silence_duration=SETTINGS.SILENCE_DURATION,
+            )
+            logger.info("AudioStreamHandler zainicjalizowany")
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {e}")
+            audio_stream_handler = None
+
     yield
 
     # Shutdown
@@ -197,6 +269,11 @@ async def lifespan(app: FastAPI):
     if gardener_agent:
         await gardener_agent.stop()
         logger.info("GardenerAgent zatrzymany")
+
+    # Rozłącz Hardware Bridge
+    if hardware_bridge:
+        await hardware_bridge.disconnect()
+        logger.info("HardwareBridge rozłączony")
 
     # Czeka na zakończenie zapisów stanu
     await state_manager.shutdown()
@@ -306,6 +383,31 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         await connection_manager.disconnect(websocket)
         logger.info("Client disconnected WebSocket")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await connection_manager.disconnect(websocket)
+
+
+@app.websocket("/ws/audio")
+async def audio_websocket_endpoint(websocket: WebSocket):
+    """
+    Endpoint WebSocket dla streamingu audio (STT/TTS).
+    Umożliwia komunikację głosową z systemem Venom.
+
+    Args:
+        websocket: Połączenie WebSocket
+    """
+    if not audio_stream_handler:
+        await websocket.close(code=1003, reason="Audio interface not enabled")
+        return
+
+    try:
+        await audio_stream_handler.handle_websocket(
+            websocket,
+            operator_agent=operator_agent,
+        )
+    except Exception as e:
+        logger.error(f"Audio WebSocket error: {e}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         await connection_manager.disconnect(websocket)

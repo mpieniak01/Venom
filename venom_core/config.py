@@ -22,5 +22,9 @@ class Settings(BaseSettings):
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
 
+    # Konfiguracja Docker Sandbox
+    DOCKER_IMAGE_NAME: str = "python:3.11-slim"
+    ENABLE_SANDBOX: bool = True
+
 
 SETTINGS = Settings()

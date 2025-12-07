@@ -62,7 +62,11 @@ class StackManager:
                 logger.info(f"Docker Compose dostępny: {result.stdout.strip()}")
             else:
                 raise RuntimeError("Docker Compose nie odpowiada poprawnie")
-        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError) as e:
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            subprocess.SubprocessError,
+        ) as e:
             error_msg = f"Docker Compose nie jest dostępny: {e}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
@@ -181,7 +185,15 @@ class StackManager:
             proj_name = project_name or stack_name
 
             # Przygotuj komendę docker compose down
-            cmd = ["docker", "compose", "-f", str(compose_file), "-p", proj_name, "down"]
+            cmd = [
+                "docker",
+                "compose",
+                "-f",
+                str(compose_file),
+                "-p",
+                proj_name,
+                "down",
+            ]
 
             if remove_volumes:
                 cmd.append("-v")
@@ -197,17 +209,17 @@ class StackManager:
             if result.returncode == 0:
                 msg = f"Stack '{stack_name}' usunięty pomyślnie\n{result.stdout}"
                 logger.info(msg)
-                
+
                 # Opcjonalne czyszczenie katalogu
                 if cleanup_directory:
                     try:
                         shutil.rmtree(stack_dir)
                         logger.info(f"Katalog stacka '{stack_name}' został usunięty")
-                        msg += f"\nKatalog stacka został usunięty z workspace"
+                        msg += "\nKatalog stacka został usunięty z workspace"
                     except Exception as e:
                         logger.warning(f"Nie można usunąć katalogu stacka: {e}")
                         msg += f"\nUWAGA: Nie można usunąć katalogu: {e}"
-                
+
                 return True, msg
             else:
                 msg = f"Błąd podczas usuwania stacka '{stack_name}':\n{result.stderr}"
@@ -343,7 +355,9 @@ class StackManager:
                             }
                         )
                 except Exception as e:
-                    logger.debug(f"Nie można sprawdzić statusu stacka {stack_name}: {e}")
+                    logger.debug(
+                        f"Nie można sprawdzić statusu stacka {stack_name}: {e}"
+                    )
 
             logger.info(f"Znaleziono {len(running_stacks)} aktywnych stacków")
             return running_stacks

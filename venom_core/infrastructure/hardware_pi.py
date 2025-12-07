@@ -87,7 +87,9 @@ class HardwareBridge:
                     hostname=self.host,
                     port=self.port,
                     username=self.username,
-                    password=self.password,
+                    password=self.password.get_secret_value()
+                    if hasattr(self.password, "get_secret_value")
+                    else self.password,
                     key_filename=self.key_file,
                     timeout=10,
                 ),

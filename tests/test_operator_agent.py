@@ -1,7 +1,7 @@
 """Testy jednostkowe dla modułu operator (OperatorAgent)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from venom_core.agents.operator import OperatorAgent
 from venom_core.infrastructure.hardware_pi import HardwareBridge

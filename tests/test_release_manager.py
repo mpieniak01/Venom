@@ -1,7 +1,6 @@
 """Testy dla ReleaseManagerAgent."""
 
 import pytest
-from pathlib import Path
 
 from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.execution.kernel_builder import KernelBuilder

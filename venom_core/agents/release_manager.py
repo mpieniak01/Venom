@@ -293,8 +293,17 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             # Używamy robust parsing - sprawdzamy czy format jest poprawny
             parts = line.split(" - ", 3)
             if len(parts) < 4:
-                # Jeśli format jest nieprawidłowy, pomiń ten commit
-                logger.warning(f"Pomijam commit z nieprawidłowym formatem: {line[:50]}")
+                # Jeśli format jest nieprawidłowy, dodaj commit jako "other" z oryginalną wiadomością
+                logger.warning(f"Commit z nieprawidłowym formatem, dodaję jako 'other': {line[:50]}")
+                commits.append(
+                    {
+                        "hash": parts[0].strip() if parts else "",
+                        "type": "other",
+                        "scope": None,
+                        "message": line.strip(),
+                        "breaking": False,
+                    }
+                )
                 continue
 
             hash_short = parts[0].strip()

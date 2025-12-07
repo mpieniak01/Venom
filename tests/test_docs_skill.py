@@ -1,7 +1,6 @@
 """Testy dla DocsSkill."""
 
 import pytest
-from pathlib import Path
 
 from venom_core.execution.skills.docs_skill import DocsSkill
 

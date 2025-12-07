@@ -45,7 +45,7 @@ ZASADY TWORZENIA DOKUMENTACJI:
 4. Zbuduj stronę (build_docs_site)
 5. Zweryfikuj że strona została utworzona poprawnie
 
-STRUKTURA DOBRZE DOKUMENTACJI:
+STRUKTURA DOBREJ DOKUMENTACJI:
 - index.md - strona główna z wprowadzeniem
 - Sekcje logicznie podzielone (Getting Started, API Reference, Examples, etc.)
 - Nawigacja czytelna i intuicyjna

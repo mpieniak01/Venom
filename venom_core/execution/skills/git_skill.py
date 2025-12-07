@@ -84,9 +84,13 @@ class GitSkill:
                 return f"✅ Sklonowano repozytorium z {url} do {self.workspace_root}"
             else:
                 # Inicjalizuj nowe repozytorium
-                logger.info(f"Inicjalizacja nowego repozytorium w {self.workspace_root}")
+                logger.info(
+                    f"Inicjalizacja nowego repozytorium w {self.workspace_root}"
+                )
                 Repo.init(self.workspace_root)
-                return f"✅ Zainicjalizowano nowe repozytorium Git w {self.workspace_root}"
+                return (
+                    f"✅ Zainicjalizowano nowe repozytorium Git w {self.workspace_root}"
+                )
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas inicjalizacji repozytorium: {str(e)}"
@@ -229,7 +233,9 @@ class GitSkill:
     )
     async def commit(
         self,
-        message: Annotated[str, "Wiadomość commita (najlepiej w formacie Conventional Commits)"],
+        message: Annotated[
+            str, "Wiadomość commita (najlepiej w formacie Conventional Commits)"
+        ],
     ) -> str:
         """
         Tworzy commit Git.

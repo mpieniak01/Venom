@@ -110,10 +110,20 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
                 try:
                     self._loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    # Brak running loop - utwórz nowy task w głównym loop
-                    self._loop = asyncio.get_event_loop()
+                    # Fallback dla edge case: watchdog wywołuje z innego wątku
+                    # gdzie nie ma running loop. Próbujemy pobrać główny loop.
+                    # W Python 3.10+ może być None jeśli loop nie istnieje.
+                    try:
+                        self._loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        # Brak loopa - nie możemy utworzyć task
+                        logger.warning(
+                            "Brak event loop dla debounce task, pomijam zmianę"
+                        )
+                        return
 
-            self._debounce_task = self._loop.create_task(self._debounce_handler())
+            if self._loop:
+                self._debounce_task = self._loop.create_task(self._debounce_handler())
 
     async def _debounce_handler(self) -> None:
         """Async handler dla debouncing."""

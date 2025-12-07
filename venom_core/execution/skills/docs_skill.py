@@ -68,7 +68,7 @@ class DocsSkill:
             # Przygotuj konfigurację
             config_lines = [
                 f"site_name: {site_name}",
-                f"theme:",
+                "theme:",
                 f"  name: {theme}",
             ]
 

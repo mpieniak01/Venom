@@ -194,7 +194,7 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
         """
         logger.info(f"Przygotowywanie release'u: {version_type}")
 
-        report_lines = [f"📦 Przygotowanie release'u\n"]
+        report_lines = ["📦 Przygotowanie release'u\n"]
 
         try:
             # 1. Pobierz historię commitów
@@ -247,17 +247,17 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             await self.file_skill.write_file(
                 path=str(changelog_path), content=new_content
             )
-            report_lines.append(f"4. Zaktualizowano CHANGELOG.md\n")
+            report_lines.append("4. Zaktualizowano CHANGELOG.md\n")
 
             # 5. Podsumowanie
-            report_lines.append(f"\n✅ Release przygotowany!\n")
+            report_lines.append("\n✅ Release przygotowany!\n")
             report_lines.append(
-                f"📋 Następne kroki:\n"
-                f"   1. Sprawdź CHANGELOG.md\n"
-                f"   2. Zaktualizuj numer wersji w plikach projektu\n"
-                f"   3. Commitnij zmiany: git commit -m 'chore: prepare release'\n"
-                f"   4. Utwórz tag: git tag v<NOWA_WERSJA>\n"
-                f"   5. Wypchnij: git push && git push --tags\n"
+                "📋 Następne kroki:\n"
+                "   1. Sprawdź CHANGELOG.md\n"
+                "   2. Zaktualizuj numer wersji w plikach projektu\n"
+                "   3. Commitnij zmiany: git commit -m 'chore: prepare release'\n"
+                "   4. Utwórz tag: git tag v<NOWA_WERSJA>\n"
+                "   5. Wypchnij: git push && git push --tags\n"
             )
 
         except Exception as e:

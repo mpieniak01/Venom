@@ -23,6 +23,9 @@ class IntentManager:
 4. RESEARCH - użytkownik potrzebuje aktualnych informacji z Internetu, dokumentacji, najnowszej wiedzy o technologii
 5. COMPLEX_PLANNING - użytkownik prosi o stworzenie złożonego projektu wymagającego wielu kroków i koordynacji
 6. VERSION_CONTROL - użytkownik chce zarządzać Git: tworzyć branch, commitować zmiany, synchronizować kod
+7. E2E_TESTING - użytkownik chce przetestować aplikację webową end-to-end, sprawdzić UI, wykonać scenariusz użytkownika
+8. DOCUMENTATION - użytkownik chce wygenerować dokumentację projektu, stronę HTML z markdown
+9. RELEASE_PROJECT - użytkownik chce wydać nową wersję projektu, wygenerować changelog, stworzyć tag
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
@@ -52,6 +55,27 @@ KIEDY WYBIERAĆ VERSION_CONTROL:
 - "Wypchnij zmiany"
 - Zapytania zawierające: "branch", "commit", "push", "git", "repozytorium"
 
+KIEDY WYBIERAĆ E2E_TESTING:
+- "Przetestuj formularz logowania na localhost:3000"
+- "Sprawdź czy aplikacja działa poprawnie w przeglądarce"
+- "Wykonaj test E2E dla strony głównej"
+- "Kliknij przycisk i sprawdź rezultat"
+- Zapytania zawierające: "test E2E", "przetestuj w przeglądarce", "UI test", "sprawdź stronę"
+
+KIEDY WYBIERAĆ DOCUMENTATION:
+- "Wygeneruj dokumentację projektu"
+- "Zbuduj stronę HTML z dokumentacji"
+- "Stwórz dokumentację z plików markdown"
+- "Opublikuj dokumentację"
+- Zapytania zawierające: "dokumentacja", "docs", "mkdocs", "strona dokumentacji"
+
+KIEDY WYBIERAĆ RELEASE_PROJECT:
+- "Wydaj nową wersję projektu"
+- "Przygotuj release"
+- "Wygeneruj changelog"
+- "Utwórz tag release'owy"
+- Zapytania zawierające: "release", "wydanie", "changelog", "wersja", "tag"
+
 Przykłady:
 - "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION
 - "Jak zrefaktoryzować ten kod?" → CODE_GENERATION
@@ -64,7 +88,10 @@ Przykłady:
 - "Stwórz grę Snake z PyGame" → COMPLEX_PLANNING
 - "Zbuduj stronę z zegarem (HTML + CSS + JS)" → COMPLEX_PLANNING
 - "Utwórz branch feat/new-feature" → VERSION_CONTROL
-- "Commitnij moje zmiany" → VERSION_CONTROL"""
+- "Commitnij moje zmiany" → VERSION_CONTROL
+- "Przetestuj formularz logowania" → E2E_TESTING
+- "Wygeneruj dokumentację projektu" → DOCUMENTATION
+- "Wydaj nową wersję" → RELEASE_PROJECT"""
 
     def __init__(self, kernel: Kernel = None):
         """
@@ -124,6 +151,9 @@ Przykłady:
                 "RESEARCH",
                 "COMPLEX_PLANNING",
                 "VERSION_CONTROL",
+                "E2E_TESTING",
+                "DOCUMENTATION",
+                "RELEASE_PROJECT",
             ]
             if intent not in valid_intents:
                 # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie

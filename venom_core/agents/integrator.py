@@ -192,7 +192,7 @@ Akcja: get_current_branch()"""
             prompt = f"""Przeanalizuj poniższe zmiany w kodzie i wygeneruj TYLKO wiadomość commita w formacie Conventional Commits.
 
 ZMIANY:
-{diff[:2000]}  
+{diff[:2000]}
 
 FORMAT: <typ>(<zakres>): <opis>
 

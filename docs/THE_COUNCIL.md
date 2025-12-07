@@ -58,8 +58,8 @@ task = "Napisz grę w węża w Pythonie z GUI używając pygame"
 # 7. Jeśli testy OK: Guardian mówi "TERMINATE"
 ```
 
-> **⚠️ Uwaga dot. terminacji:**  
-> GuardianAgent obecnie nie ma wbudowanego mechanizmu automatycznego wysyłania "TERMINATE".  
+> **⚠️ Uwaga dot. terminacji:**
+> GuardianAgent obecnie nie ma wbudowanego mechanizmu automatycznego wysyłania "TERMINATE".
 > Aby rozmowa zakończyła się poprawnie, należy:
 > 1. Skonfigurować SYSTEM_PROMPT GuardianAgent tak, by w przypadku pozytywnej weryfikacji testów wyraźnie wysyłał wiadomość zawierającą słowo "TERMINATE"
 > 2. Jeśli Guardian nie wyśle "TERMINATE", rozmowa zakończy się automatycznie po osiągnięciu limitu max_round=20 rund

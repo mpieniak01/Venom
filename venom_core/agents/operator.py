@@ -5,8 +5,6 @@ from typing import Optional
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.infrastructure.hardware_pi import HardwareBridge
@@ -240,7 +238,9 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             if len(self.chat_history.messages) > 10:
                 # Zachowaj system prompt
                 system_msg = self.chat_history.messages[0]
-                self.chat_history.messages = [system_msg] + self.chat_history.messages[-9:]
+                self.chat_history.messages = [system_msg] + self.chat_history.messages[
+                    -9:
+                ]
 
             logger.info(f"OperatorAgent odpowiedź: {assistant_message}")
             return assistant_message

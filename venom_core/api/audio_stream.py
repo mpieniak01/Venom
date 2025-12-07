@@ -214,7 +214,9 @@ class AudioStreamHandler:
         """
         try:
             # Wyślij status
-            await self._send_json(connection_id, {"type": "processing", "status": "stt"})
+            await self._send_json(
+                connection_id, {"type": "processing", "status": "stt"}
+            )
 
             # Połącz wszystkie fragmenty
             full_audio = np.concatenate(audio_buffer)
@@ -275,9 +277,7 @@ class AudioStreamHandler:
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania bufora audio: {e}")
-            await self._send_json(
-                connection_id, {"type": "error", "message": str(e)}
-            )
+            await self._send_json(connection_id, {"type": "error", "message": str(e)})
 
     async def _send_json(self, connection_id: int, data: dict):
         """

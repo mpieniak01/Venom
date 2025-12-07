@@ -16,7 +16,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         assert bridge.host == "192.168.1.100"
         assert bridge.port == 22
         assert bridge.username == "pi"
@@ -31,7 +31,7 @@ class TestHardwareBridge:
             port=8888,
             protocol="http",
         )
-        
+
         assert bridge.protocol == "http"
         assert bridge.port == 8888
 
@@ -45,7 +45,7 @@ class TestHardwareBridge:
             password="invalid",
             protocol="ssh",
         )
-        
+
         # Test powinien obsłużyć brak połączenia gracefully
         # W realnym przypadku połączenie się nie powiedzie
         # ale kod nie powinien crashować
@@ -61,7 +61,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         # Disconnect powinien działać nawet jeśli nie było połączenia
         await bridge.disconnect()
         assert bridge.connected is False
@@ -75,7 +75,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         result = await bridge.execute_command("ls")
         assert result["return_code"] == -1
         assert "Not connected" in result["stderr"]
@@ -89,7 +89,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         result = await bridge.read_sensor("cpu_temp")
         assert result is None
 
@@ -102,7 +102,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         result = await bridge.set_gpio(17, True)
         assert result is False
 
@@ -115,7 +115,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         info = await bridge.get_system_info()
         assert isinstance(info, dict)
         # Bez połączenia info powinno być puste
@@ -130,7 +130,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         # Reset GPIO bez połączenia
         result = await bridge.emergency_procedure("reset_gpio")
         assert result is False
@@ -144,7 +144,7 @@ class TestHardwareBridge:
             username="pi",
             protocol="ssh",
         )
-        
+
         # Nieznana procedura
         result = await bridge.emergency_procedure("unknown_procedure")
         assert result is False
@@ -160,7 +160,7 @@ class TestHardwareBridgeHTTP:
             port=8888,
             protocol="http",
         )
-        
+
         assert bridge.protocol == "http"
         assert bridge.port == 8888
 
@@ -172,7 +172,7 @@ class TestHardwareBridgeHTTP:
             port=8888,
             protocol="http",
         )
-        
+
         result = await bridge.connect()
         assert isinstance(result, bool)
         # Oczekujemy że połączenie się nie powiedzie

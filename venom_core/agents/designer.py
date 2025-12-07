@@ -164,9 +164,7 @@ i wygeneruj odpowiednią konfigurację."""
             logger.error(f"Błąd podczas przetwarzania przez DesignerAgent: {e}")
             return f"Błąd projektanta: {str(e)}"
 
-    async def create_visualization(
-        self, data_description: str, data: dict
-    ) -> dict:
+    async def create_visualization(self, data_description: str, data: dict) -> dict:
         """
         Tworzy wizualizację na podstawie opisu i danych.
 
@@ -199,9 +197,7 @@ Wygeneruj konfigurację widgetu w formacie JSON. Odpowiedz TYLKO JSONem, bez dod
 
         return {"type": "markdown", "data": {"content": result}}
 
-    async def create_chart(
-        self, chart_type: str, data: dict, title: str = ""
-    ) -> dict:
+    async def create_chart(self, chart_type: str, data: dict, title: str = "") -> dict:
         """
         Tworzy konfigurację wykresu.
 

@@ -60,7 +60,7 @@ The Forge to system autonomicznego tworzenia, testowania i ładowania nowych umi
 **Linie kodu:** ~200
 
 ### 4. Integracje ✅
-**Lokalizacje:** 
+**Lokalizacje:**
 - `venom_core/core/dispatcher.py`
 - `venom_core/agents/architect.py`
 
@@ -210,11 +210,11 @@ Modyfikacja istniejącego skill bez restartu aplikacji
 
 ### Workflow:
 ```
-User Request → IntentManager → 
-Architect (detect missing tool) → 
-Toolmaker (generate) → 
-Guardian (verify) → 
-SkillManager (load) → 
+User Request → IntentManager →
+Architect (detect missing tool) →
+Toolmaker (generate) →
+Guardian (verify) →
+SkillManager (load) →
 Ready to use
 ```
 

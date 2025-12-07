@@ -107,7 +107,7 @@ class DocumenterAgent:
             return
 
         # Sprawdź czy to zmiana dokonana przez venom-bot (unikanie pętli)
-        # Używamy dedykowanego markera w commit message lub specjalnego email
+        # Sprawdzamy na podstawie nazwy autora
         try:
             last_commit_author = await self._get_last_commit_author()
             if last_commit_author:
@@ -231,11 +231,9 @@ class DocumenterAgent:
         Returns:
             True jeśli potrzebna aktualizacja dokumentacji
         """
-        # Lepsza heurystyka: sprawdzaj tylko linie diffu ze zmianami, pomijając nagłówki
         keywords = ["def ", "class ", "async def ", '"""', "'''"]
 
         for line in diff.splitlines():
-            # Sprawdź tylko linie ze zmianami (+ lub -), pomijając nagłówki diff
             if (
                 (line.startswith("+") or line.startswith("-"))
                 and not line.startswith("+++")
@@ -244,7 +242,7 @@ class DocumenterAgent:
                 for keyword in keywords:
                     if keyword in line:
                         logger.debug(
-                            f"Wykryto zmianę wymagającą aktualizacji dokumentacji: {keyword} w linii: {line.strip()}"
+                            f"Wykryto zmianę wymagającą aktualizacji dokumentacji: {keyword}"
                         )
                         return True
 

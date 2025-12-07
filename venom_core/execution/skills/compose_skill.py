@@ -280,6 +280,10 @@ class ComposeSkill:
                     free_port = find_free_port(start=preferred)
                     if free_port is None:
                         free_port = find_free_port(start=8000)
+                    if free_port is None:
+                        raise RuntimeError(
+                            f"Nie można znaleźć wolnego portu (preferowany: {preferred})"
+                        )
                     logger.info(
                         f"Port {preferred} zajęty, użycie alternatywnego: {free_port}"
                     )

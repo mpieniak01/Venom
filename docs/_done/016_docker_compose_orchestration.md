@@ -189,7 +189,7 @@ services:
     # ...
     environment:
       - REDIS_HOST=redis  # Nie localhost!
-      
+
   redis:
     # ...
 ```
@@ -284,7 +284,7 @@ services:
       - redis
     environment:
       - REDIS_HOST=redis
-      
+
   redis:
     image: redis:alpine
     ports:
@@ -308,7 +308,7 @@ services:
       - DATABASE_URL=postgresql://user:pass@db:5432/mydb
     depends_on:
       - db
-      
+
   db:
     image: postgres:15-alpine
     environment:
@@ -336,14 +336,14 @@ docker compose version
 
 ### Problem: "Timeout podczas wdrażania stacka"
 
-**Rozwiązanie:** 
+**Rozwiązanie:**
 - Zwiększ timeout w `deploy_stack(timeout=600)`
 - Sprawdź czy obrazy Docker są już pobrane
 - Sprawdź logi: `docker compose logs`
 
 ### Problem: "Port już zajęty"
 
-**Rozwiązanie:** 
+**Rozwiązanie:**
 - Użyj placeholdera `{{PORT}}` zamiast hardcoded portu
 - System automatycznie znajdzie wolny port
 

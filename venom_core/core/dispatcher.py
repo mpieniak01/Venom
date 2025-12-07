@@ -81,9 +81,7 @@ class TaskDispatcher:
             "RELEASE_PROJECT": self.release_manager_agent,
         }
 
-        logger.info(
-            "TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)"
-        )
+        logger.info("TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)")
 
     async def dispatch(self, intent: str, content: str) -> str:
         """

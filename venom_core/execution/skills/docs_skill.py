@@ -48,9 +48,7 @@ class DocsSkill:
         theme: Annotated[
             str, "Motyw MkDocs: 'material' lub 'readthedocs' (domyślnie 'material')"
         ] = "material",
-        repo_url: Annotated[
-            Optional[str], "URL repozytorium (opcjonalne)"
-        ] = None,
+        repo_url: Annotated[Optional[str], "URL repozytorium (opcjonalne)"] = None,
     ) -> str:
         """
         Generuje plik mkdocs.yml.
@@ -120,7 +118,9 @@ class DocsSkill:
                 f.write(config_content)
 
             logger.info(f"Plik mkdocs.yml utworzony: {config_path}")
-            return f"✅ Plik konfiguracyjny utworzony: {config_path}\n\n{config_content}"
+            return (
+                f"✅ Plik konfiguracyjny utworzony: {config_path}\n\n{config_content}"
+            )
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas generowania mkdocs.yml: {str(e)}"
@@ -203,9 +203,7 @@ class DocsSkill:
             # Sprawdź czy mkdocs.yml istnieje
             config_path = self.workspace_root / "mkdocs.yml"
             if not config_path.exists():
-                return (
-                    "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
-                )
+                return "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
 
             # Sprawdź czy mkdocs jest zainstalowany
             try:
@@ -238,7 +236,9 @@ class DocsSkill:
                 if self.site_dir.exists():
                     # Policz pliki HTML
                     html_files = list(self.site_dir.rglob("*.html"))
-                    logger.info(f"Strona dokumentacji zbudowana: {len(html_files)} plików HTML")
+                    logger.info(
+                        f"Strona dokumentacji zbudowana: {len(html_files)} plików HTML"
+                    )
 
                     return (
                         f"✅ Strona dokumentacji zbudowana pomyślnie!\n\n"
@@ -285,9 +285,7 @@ class DocsSkill:
             # Sprawdź czy mkdocs.yml istnieje
             config_path = self.workspace_root / "mkdocs.yml"
             if not config_path.exists():
-                return (
-                    "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
-                )
+                return "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
 
             # Informacja dla użytkownika
             info = (
@@ -341,7 +339,9 @@ class DocsSkill:
                 report_lines.append(f"📁 Podkatalogów: {len(subdirs)}")
                 for subdir in subdirs:
                     subdir_files = list(subdir.glob("*.md"))
-                    report_lines.append(f"  - {subdir.name}/ ({len(subdir_files)} plików)")
+                    report_lines.append(
+                        f"  - {subdir.name}/ ({len(subdir_files)} plików)"
+                    )
 
             # Sprawdź czy jest index/readme
             has_index = (self.docs_dir / "index.md").exists()
@@ -352,9 +352,7 @@ class DocsSkill:
                     f"\n✅ Strona główna: {'index.md' if has_index else 'README.md'}"
                 )
             else:
-                report_lines.append(
-                    "\n⚠️ Brak strony głównej (index.md lub README.md)"
-                )
+                report_lines.append("\n⚠️ Brak strony głównej (index.md lub README.md)")
 
             # Lista pierwszych 10 plików
             if md_files:

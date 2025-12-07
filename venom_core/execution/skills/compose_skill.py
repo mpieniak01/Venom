@@ -11,6 +11,10 @@ from venom_core.utils.port_authority import find_free_port, is_port_in_use
 
 logger = get_logger(__name__)
 
+# Konfiguracja zakresu portów dla automatycznej alokacji
+PORT_RANGE_START = 8000
+PORT_RANGE_END = 9000
+
 
 class ComposeSkill:
     """
@@ -61,7 +65,7 @@ class ComposeSkill:
         """
         try:
             # Walidacja nazwy stacka
-            if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", stack_name):
+            if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9]|)$", stack_name):
                 return (
                     f"Błąd: Nieprawidłowa nazwa stacka '{stack_name}'. "
                     "Nazwa musi zaczynać się i kończyć małą literą lub cyfrą, może zawierać myślniki w środku."
@@ -287,7 +291,7 @@ class ComposeSkill:
                     )
             else:
                 # Znajdź dowolny wolny port
-                free_port = self._find_unique_free_port(8000, assigned_ports)
+                free_port = self._find_unique_free_port(PORT_RANGE_START, assigned_ports)
                 logger.info(f"Znaleziono wolny port: {free_port}")
 
             # Dodaj do przypisanych portów
@@ -312,14 +316,14 @@ class ComposeSkill:
         Raises:
             RuntimeError: Jeśli nie można znaleźć wolnego portu
         """
-        # Przeszukaj od start do 9000
-        for port in range(start, 9000):
+        # Przeszukaj od start do PORT_RANGE_END
+        for port in range(start, PORT_RANGE_END):
             if port not in assigned_ports and not is_port_in_use(port):
                 return port
         
-        # Przeszukaj od 8000 jeśli nie znaleziono
-        if start > 8000:
-            for port in range(8000, start):
+        # Przeszukaj od PORT_RANGE_START jeśli nie znaleziono
+        if start > PORT_RANGE_START:
+            for port in range(PORT_RANGE_START, start):
                 if port not in assigned_ports and not is_port_in_use(port):
                     return port
         

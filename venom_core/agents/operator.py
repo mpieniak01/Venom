@@ -259,7 +259,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         try:
             # Ogranicz tekst do 1000 znaków
             text_excerpt = long_text[:1000]
-            prompt = f"""Streszczaj poniższy tekst do maksymalnie 2-3 zdań, które można naturalnie wypowiedzieć. 
+            prompt = f"""Streszczaj poniższy tekst do maksymalnie 2-3 zdań, które można naturalnie wypowiedzieć.
 Usuń szczegóły techniczne i kod. Użyj prostego języka.
 
 Tekst do streszczenia:

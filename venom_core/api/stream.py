@@ -64,6 +64,11 @@ class EventType:
     # Logi systemowe
     SYSTEM_LOG = "SYSTEM_LOG"
 
+    # Zdarzenia UI (THE_CANVAS)
+    RENDER_WIDGET = "RENDER_WIDGET"
+    UPDATE_WIDGET = "UPDATE_WIDGET"
+    REMOVE_WIDGET = "REMOVE_WIDGET"
+
 
 class Event(BaseModel):
     """Model zdarzenia WebSocket."""

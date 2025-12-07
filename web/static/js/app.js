@@ -6,10 +6,30 @@ class VenomDashboard {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.tasks = new Map();
+        this.widgets = new Map(); // THE_CANVAS: Widget storage
+        this.chartInstances = new Map(); // Chart.js instances
 
         // Constants
         this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
         this.LOG_ENTRY_MAX_COUNT = 100;
+
+        // Initialize Mermaid
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'dark',
+                themeVariables: {
+                    darkMode: true,
+                    background: '#1e1e1e',
+                    primaryColor: '#3b82f6',
+                    primaryTextColor: '#fff',
+                    primaryBorderColor: '#3b82f6',
+                    lineColor: '#6b7280',
+                    secondaryColor: '#10b981',
+                    tertiaryColor: '#f59e0b'
+                }
+            });
+        }
 
         this.initElements();
         this.initWebSocket();
@@ -80,6 +100,9 @@ class VenomDashboard {
             branchName: document.getElementById('branchName'),
             changesText: document.getElementById('changesText'),
             repoChanges: document.getElementById('repoChanges'),
+            // THE_CANVAS: Widget elements
+            widgetsGrid: document.getElementById('widgetsGrid'),
+            clearWidgetsBtn: document.getElementById('clearWidgetsBtn'),
         };
     }
 
@@ -190,6 +213,16 @@ class VenomDashboard {
             case 'AGENT_THOUGHT':
                 this.addChatMessage('assistant', message, agent);
                 break;
+            // THE_CANVAS: Widget rendering events
+            case 'RENDER_WIDGET':
+                this.handleRenderWidget(eventData);
+                break;
+            case 'UPDATE_WIDGET':
+                this.handleUpdateWidget(eventData);
+                break;
+            case 'REMOVE_WIDGET':
+                this.handleRemoveWidget(eventData);
+                break;
         }
     }
 
@@ -271,13 +304,13 @@ class VenomDashboard {
                 // Testy przeszły ✅
                 this.showNotification('✅ Wszystkie testy przeszły pomyślnie!', 'success');
                 this.addChatMessage('assistant', `✅ ${message}`, 'Guardian');
-                
+
                 // Pokaż zielony pasek
                 this.showTestProgressBar(data.task_id, true, data.iterations || 1);
             } else {
                 // Testy nie przeszły ❌
                 this.addChatMessage('assistant', `❌ ${message}`, 'Guardian');
-                
+
                 // Pokaż czerwony pasek
                 this.showTestProgressBar(data.task_id, false, data.iteration || 1);
             }
@@ -287,11 +320,11 @@ class VenomDashboard {
     handleHealingFailed(data) {
         if (data && data.task_id) {
             this.showNotification('⚠️ Nie udało się naprawić kodu automatycznie', 'warning');
-            this.addChatMessage('assistant', 
-                `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`, 
+            this.addChatMessage('assistant',
+                `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`,
                 'Guardian'
             );
-            
+
             // Pokaż fragment raportu jeśli dostępny
             if (data.final_report) {
                 const reportPreview = data.final_report.substring(0, 200);
@@ -310,7 +343,7 @@ class VenomDashboard {
     showTestProgressBar(taskId, success, iteration) {
         // Stwórz lub zaktualizuj pasek postępu testów
         let progressBar = document.getElementById(`test-progress-${taskId}`);
-        
+
         if (!progressBar) {
             // Utwórz nowy pasek postępu
             progressBar = document.createElement('div');
@@ -323,16 +356,16 @@ class VenomDashboard {
                 background: ${success ? '#d1fae5' : '#fee2e2'};
                 border: 2px solid ${success ? '#10b981' : '#ef4444'};
             `;
-            
+
             // Dodaj do chat messages
             this.elements.chatMessages.appendChild(progressBar);
         }
-        
+
         // Zaktualizuj zawartość
         const emoji = success ? '🟢' : '🔴';
         const statusText = success ? 'SUKCES' : 'BŁĄD';
         const color = success ? '#10b981' : '#ef4444';
-        
+
         progressBar.innerHTML = `
             <div style="display: flex; align-items: center; gap: 10px;">
                 <div style="font-size: 24px;">${emoji}</div>
@@ -342,7 +375,7 @@ class VenomDashboard {
                 </div>
             </div>
         `;
-        
+
         // Auto-scroll
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
@@ -468,6 +501,13 @@ class VenomDashboard {
         if (undoBtn) {
             undoBtn.addEventListener('click', () => {
                 this.handleUndoChanges();
+            });
+        }
+
+        // THE_CANVAS: Clear widgets button
+        if (this.elements.clearWidgetsBtn) {
+            this.elements.clearWidgetsBtn.addEventListener('click', () => {
+                this.clearAllWidgets();
             });
         }
     }
@@ -938,10 +978,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/status');
             if (!response.ok) throw new Error('Failed to fetch scheduler status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('schedulerStatus');
-            
+
             if (data.status === 'success') {
                 const scheduler = data.scheduler;
                 statusDiv.innerHTML = `
@@ -963,7 +1003,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching scheduler status:', error);
-            document.getElementById('schedulerStatus').innerHTML = 
+            document.getElementById('schedulerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu schedulera</p>';
         }
     }
@@ -972,10 +1012,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/jobs');
             if (!response.ok) throw new Error('Failed to fetch jobs');
-            
+
             const data = await response.json();
             const jobsDiv = document.getElementById('jobsList');
-            
+
             if (data.jobs && data.jobs.length > 0) {
                 jobsDiv.innerHTML = data.jobs.map(job => {
                     // Walidacja i formatowanie daty
@@ -990,7 +1030,7 @@ class VenomDashboard {
                             console.warn('Invalid date format:', job.next_run_time);
                         }
                     }
-                    
+
                     return `
                     <div class="job-item">
                         <div class="job-header">
@@ -1008,7 +1048,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching jobs:', error);
-            document.getElementById('jobsList').innerHTML = 
+            document.getElementById('jobsList').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać listy zadań</p>';
         }
     }
@@ -1017,10 +1057,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/watcher/status');
             if (!response.ok) throw new Error('Failed to fetch watcher status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('watcherStatus');
-            
+
             if (data.status === 'success') {
                 const watcher = data.watcher;
                 statusDiv.innerHTML = `
@@ -1042,7 +1082,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching watcher status:', error);
-            document.getElementById('watcherStatus').innerHTML = 
+            document.getElementById('watcherStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu watchera</p>';
         }
     }
@@ -1051,10 +1091,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/documenter/status');
             if (!response.ok) throw new Error('Failed to fetch documenter status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('documenterStatus');
-            
+
             if (data.status === 'success') {
                 const documenter = data.documenter;
                 statusDiv.innerHTML = `
@@ -1072,7 +1112,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching documenter status:', error);
-            document.getElementById('documenterStatus').innerHTML = 
+            document.getElementById('documenterStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu documentera</p>';
         }
     }
@@ -1081,10 +1121,10 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/gardener/status');
             if (!response.ok) throw new Error('Failed to fetch gardener status');
-            
+
             const data = await response.json();
             const statusDiv = document.getElementById('gardenerStatus');
-            
+
             if (data.status === 'success') {
                 const gardener = data.gardener;
                 statusDiv.innerHTML = `
@@ -1110,7 +1150,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error fetching gardener status:', error);
-            document.getElementById('gardenerStatus').innerHTML = 
+            document.getElementById('gardenerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu gardenera</p>';
         }
     }
@@ -1119,7 +1159,7 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/pause', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to pause jobs');
-            
+
             this.showNotification('Zadania w tle wstrzymane', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
@@ -1132,7 +1172,7 @@ class VenomDashboard {
         try {
             const response = await fetch('/api/v1/scheduler/resume', { method: 'POST' });
             if (!response.ok) throw new Error('Failed to resume jobs');
-            
+
             this.showNotification('Zadania w tle wznowione', 'success');
             this.fetchBackgroundJobsStatus();
         } catch (error) {
@@ -1348,13 +1388,13 @@ class VenomDashboard {
 
             case 'processing':
                 console.log('Processing:', data.status);
-                document.getElementById('transcriptionText').textContent = 
+                document.getElementById('transcriptionText').textContent =
                     `Przetwarzanie (${data.status})...`;
                 break;
 
             case 'transcription':
                 console.log('Transcription:', data.text);
-                document.getElementById('transcriptionText').textContent = 
+                document.getElementById('transcriptionText').textContent =
                     data.text || 'Nie rozpoznano mowy';
                 break;
 
@@ -1394,7 +1434,7 @@ class VenomDashboard {
 
             // Create audio context
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
+
             // Convert Int16 to Float32 for playback
             const audioData = new Int16Array(bytes.buffer);
             const floatData = new Float32Array(audioData.length);
@@ -1472,19 +1512,415 @@ class VenomDashboard {
         // This would call an API endpoint to get Rider-Pi status
         // For now, it's a placeholder
         this.showNotification('IoT status refresh (funkcja w rozwoju)', 'info');
-        
+
         // Mock data for demonstration
         const iotStatus = document.getElementById('iotStatus');
         const iotMetrics = document.getElementById('iotMetrics');
-        
+
         if (iotStatus && iotMetrics) {
             iotStatus.innerHTML = '<p class="success-state">Połączony z Rider-Pi</p>';
             iotMetrics.style.display = 'grid';
-            
+
             document.getElementById('iotCpuTemp').textContent = '45.2°C';
             document.getElementById('iotMemory').textContent = '42%';
             document.getElementById('iotDisk').textContent = '65%';
         }
+    }
+
+    // ========================================
+    // THE_CANVAS: Widget Rendering Methods
+    // ========================================
+
+    handleRenderWidget(data) {
+        if (!data || !data.widget) {
+            console.error('Invalid widget data:', data);
+            return;
+        }
+
+        const widget = data.widget;
+        console.log('Rendering widget:', widget);
+
+        // Store widget
+        this.widgets.set(widget.id, widget);
+
+        // Show widgets grid if hidden
+        if (this.elements.widgetsGrid) {
+            this.elements.widgetsGrid.style.display = 'grid';
+        }
+
+        // Render based on type
+        switch (widget.type) {
+            case 'chart':
+                this.renderChartWidget(widget);
+                break;
+            case 'table':
+                this.renderTableWidget(widget);
+                break;
+            case 'form':
+                this.renderFormWidget(widget);
+                break;
+            case 'markdown':
+                this.renderMarkdownWidget(widget);
+                break;
+            case 'mermaid':
+                this.renderMermaidWidget(widget);
+                break;
+            case 'card':
+                this.renderCardWidget(widget);
+                break;
+            case 'custom-html':
+                this.renderCustomHTMLWidget(widget);
+                break;
+            default:
+                console.warn('Unknown widget type:', widget.type);
+        }
+    }
+
+    handleUpdateWidget(data) {
+        if (!data || !data.widget_id) {
+            console.error('Invalid update widget data:', data);
+            return;
+        }
+
+        const widgetId = data.widget_id;
+        const widget = this.widgets.get(widgetId);
+
+        if (!widget) {
+            console.warn('Widget not found for update:', widgetId);
+            return;
+        }
+
+        // Update widget data
+        widget.data = data.data || widget.data;
+        this.widgets.set(widgetId, widget);
+
+        // Re-render widget
+        const widgetElement = document.getElementById(`widget-${widgetId}`);
+        if (widgetElement) {
+            widgetElement.remove();
+        }
+        this.handleRenderWidget({ widget });
+    }
+
+    handleRemoveWidget(data) {
+        if (!data || !data.widget_id) {
+            console.error('Invalid remove widget data:', data);
+            return;
+        }
+
+        const widgetId = data.widget_id;
+
+        // Remove from storage
+        this.widgets.delete(widgetId);
+
+        // Remove from DOM
+        const widgetElement = document.getElementById(`widget-${widgetId}`);
+        if (widgetElement) {
+            widgetElement.remove();
+        }
+
+        // Destroy chart instance if exists
+        if (this.chartInstances.has(widgetId)) {
+            this.chartInstances.get(widgetId).destroy();
+            this.chartInstances.delete(widgetId);
+        }
+
+        // Hide grid if no widgets
+        if (this.widgets.size === 0 && this.elements.widgetsGrid) {
+            this.elements.widgetsGrid.style.display = 'none';
+        }
+    }
+
+    renderChartWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-chart';
+
+        if (widget.data.title) {
+            const title = document.createElement('h3');
+            title.className = 'widget-title';
+            title.textContent = widget.data.title;
+            container.appendChild(title);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.id = `chart-${widget.id}`;
+        container.appendChild(canvas);
+
+        this.elements.widgetsGrid.appendChild(container);
+
+        // Render chart with Chart.js
+        if (typeof Chart !== 'undefined') {
+            const ctx = canvas.getContext('2d');
+            const chart = new Chart(ctx, {
+                type: widget.data.chartType || 'bar',
+                data: widget.data.chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#fff'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: '#333' }
+                        },
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+            this.chartInstances.set(widget.id, chart);
+        }
+    }
+
+    renderTableWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-table';
+
+        if (widget.data.title) {
+            const title = document.createElement('h3');
+            title.className = 'widget-title';
+            title.textContent = widget.data.title;
+            container.appendChild(title);
+        }
+
+        const table = document.createElement('table');
+        table.className = 'widget-table-content';
+
+        // Headers
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        widget.data.headers.forEach(header => {
+            const th = document.createElement('th');
+            th.textContent = header;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Rows
+        const tbody = document.createElement('tbody');
+        widget.data.rows.forEach(row => {
+            const tr = document.createElement('tr');
+            row.forEach(cell => {
+                const td = document.createElement('td');
+                td.textContent = cell;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        container.appendChild(table);
+        this.elements.widgetsGrid.appendChild(container);
+    }
+
+    renderFormWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-form';
+
+        if (widget.data.title) {
+            const title = document.createElement('h3');
+            title.className = 'widget-title';
+            title.textContent = widget.data.title;
+            container.appendChild(title);
+        }
+
+        const form = document.createElement('form');
+        form.className = 'widget-form-content';
+
+        const schema = widget.data.schema;
+
+        // Generate form fields from schema
+        Object.keys(schema.properties || {}).forEach(fieldName => {
+            const field = schema.properties[fieldName];
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'form-field';
+
+            const label = document.createElement('label');
+            label.textContent = field.title || fieldName;
+            fieldDiv.appendChild(label);
+
+            let input;
+            if (field.type === 'string') {
+                // Use textarea for multiline, otherwise input[type=text]
+                if (field.format === 'textarea' || field.format === 'multiline') {
+                    input = document.createElement('textarea');
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                }
+            } else if (field.type === 'number' || field.type === 'integer') {
+                input = document.createElement('input');
+                input.type = 'number';
+            } else if (field.type === 'boolean') {
+                input = document.createElement('input');
+                input.type = 'checkbox';
+            } else {
+                input = document.createElement('input');
+                input.type = 'text';
+            }
+            input.name = fieldName;
+            input.required = schema.required && schema.required.includes(fieldName);
+            fieldDiv.appendChild(input);
+
+            form.appendChild(fieldDiv);
+        });
+
+        const submitBtn = document.createElement('button');
+        submitBtn.type = 'submit';
+        submitBtn.className = 'btn-primary';
+        submitBtn.textContent = 'Wyślij';
+        form.appendChild(submitBtn);
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData);
+            console.log('Form submitted:', data);
+            // TODO: Send to backend with submit_intent
+        });
+
+        container.appendChild(form);
+        this.elements.widgetsGrid.appendChild(container);
+    }
+
+    renderMarkdownWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-markdown';
+
+        // Render markdown with marked.js
+        if (typeof marked !== 'undefined') {
+            container.innerHTML = marked.parse(widget.data.content);
+        } else {
+            container.textContent = widget.data.content;
+        }
+
+        this.elements.widgetsGrid.appendChild(container);
+    }
+
+    renderMermaidWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-mermaid';
+
+        if (widget.data.title) {
+            const title = document.createElement('h3');
+            title.className = 'widget-title';
+            title.textContent = widget.data.title;
+            container.appendChild(title);
+        }
+
+        const mermaidDiv = document.createElement('div');
+        mermaidDiv.className = 'mermaid';
+        mermaidDiv.textContent = widget.data.diagram;
+        container.appendChild(mermaidDiv);
+
+        this.elements.widgetsGrid.appendChild(container);
+
+        // Render mermaid diagram
+        if (typeof mermaid !== 'undefined') {
+            mermaid.run({
+                nodes: [mermaidDiv]
+            });
+        }
+    }
+
+    renderCardWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-card';
+
+        const cardContent = document.createElement('div');
+        cardContent.className = 'card-content';
+
+        if (widget.data.icon) {
+            const icon = document.createElement('div');
+            icon.className = 'card-icon';
+            icon.textContent = widget.data.icon;
+            cardContent.appendChild(icon);
+        }
+
+        if (widget.data.title) {
+            const title = document.createElement('h3');
+            title.className = 'card-title';
+            title.textContent = widget.data.title;
+            cardContent.appendChild(title);
+        }
+
+        if (widget.data.content) {
+            const content = document.createElement('p');
+            content.className = 'card-text';
+            content.textContent = widget.data.content;
+            cardContent.appendChild(content);
+        }
+
+        // Actions
+        if (widget.data.actions && widget.data.actions.length > 0) {
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'card-actions';
+
+            widget.data.actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-card-action';
+                btn.textContent = action.label || action.id;
+                btn.addEventListener('click', () => {
+                    console.log('Action clicked:', action.intent);
+                    // TODO: Trigger intent
+                });
+                actionsDiv.appendChild(btn);
+            });
+
+            cardContent.appendChild(actionsDiv);
+        }
+
+        container.appendChild(cardContent);
+        this.elements.widgetsGrid.appendChild(container);
+    }
+
+    renderCustomHTMLWidget(widget) {
+        const container = document.createElement('div');
+        container.id = `widget-${widget.id}`;
+        container.className = 'widget widget-custom';
+
+        // Sanitize HTML with DOMPurify if available
+        if (typeof DOMPurify !== 'undefined') {
+            container.innerHTML = DOMPurify.sanitize(widget.data.html);
+        } else {
+            // Fallback: use textContent (no HTML)
+            container.textContent = widget.data.html;
+            console.warn('DOMPurify not available, rendering as text only');
+        }
+
+        this.elements.widgetsGrid.appendChild(container);
+    }
+
+    clearAllWidgets() {
+        // Destroy all chart instances
+        this.chartInstances.forEach(chart => chart.destroy());
+        this.chartInstances.clear();
+
+        // Clear widgets
+        this.widgets.clear();
+
+        // Clear DOM
+        if (this.elements.widgetsGrid) {
+            this.elements.widgetsGrid.innerHTML = '';
+            this.elements.widgetsGrid.style.display = 'none';
+        }
+
+        this.showNotification('Wszystkie widgety zostały wyczyszczone', 'info');
     }
 }
 

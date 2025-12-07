@@ -20,12 +20,12 @@ from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
-from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

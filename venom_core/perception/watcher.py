@@ -53,7 +53,7 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
         }
 
         # Debouncing: ścieżka -> timestamp ostatniej zmiany
-        # Note: dict operations są thread-safe w CPython dla basic operations
+        # Note: podstawowe operacje na dict są thread-safe w CPython
         self._pending_changes: dict[str, float] = {}
         self._debounce_task: Optional[asyncio.Task] = None
         self._loop = None

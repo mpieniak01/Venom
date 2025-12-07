@@ -30,6 +30,7 @@ DOSTĘPNI AGENCI (WYKONAWCY):
 
 2. CODER - Pisze kod, tworzy pliki, implementuje funkcjonalność
    Używaj gdy: trzeba napisać konkretny kod, stworzyć pliki, zaimplementować logikę
+   WAŻNE: CODER ma dostęp do ComposeSkill - może tworzyć środowiska Docker Compose
 
 3. LIBRARIAN - Zarządza plikami, czyta istniejący kod, organizuje strukturę
    Używaj gdy: trzeba sprawdzić co już istnieje, odczytać konfigurację, przejrzeć strukturę
@@ -43,8 +44,15 @@ ZASADY PLANOWANIA:
 2. Każdy krok powinien mieć JEDNEGO wykonawcę
 3. Kroki powinny być w LOGICZNEJ KOLEJNOŚCI
 4. Jeśli zadanie wymaga wiedzy o technologii/bibliotece - ZACZNIJ od RESEARCHER
-5. Jeśli zadanie wymaga nowego narzędzia (np. API które nie jest standardowe) - użyj TOOLMAKER
-6. Każda instrukcja powinna być JASNA i KONKRETNA
+5. Jeśli zadanie wymaga infrastruktury (baza danych, cache, kolejka) - dodaj krok Infrastructure Setup
+6. Jeśli zadanie wymaga nowego narzędzia (np. API które nie jest standardowe) - użyj TOOLMAKER
+7. Każda instrukcja powinna być JASNA i KONKRETNA
+
+INFRASTRUKTURA (Infrastructure Setup):
+- Jeśli aplikacja potrzebuje bazy danych (PostgreSQL, MySQL, MongoDB), cache (Redis), kolejki (RabbitMQ) lub innych serwisów
+- Użyj CODER z instrukcją typu: "Stwórz docker-compose.yml z [lista serwisów] i uruchom środowisko używając ComposeSkill"
+- Serwisy w docker-compose powinny używać nazw sieciowych (np. 'redis', 'postgres') do komunikacji między kontenerami
+- CODER automatycznie użyje ComposeSkill.create_environment() do wdrożenia stacka
 
 FORMAT ODPOWIEDZI (TYLKO JSON, NIC WIĘCEJ):
 {
@@ -118,6 +126,31 @@ Plan:
       "agent_type": "CODER",
       "instruction": "Dodaj do snake.py system punktacji i jedzenie, finalizuj grę",
       "depends_on": 3
+    }
+  ]
+}
+
+Zadanie: "Stwórz aplikację TODO z API w Pythonie i bazą Redis"
+Plan:
+{
+  "steps": [
+    {
+      "step_number": 1,
+      "agent_type": "CODER",
+      "instruction": "Stwórz docker-compose.yml z serwisami: python-api (FastAPI) i redis. Użyj ComposeSkill.create_environment() aby wdrożyć stack o nazwie 'todo-stack'",
+      "depends_on": null
+    },
+    {
+      "step_number": 2,
+      "agent_type": "CODER",
+      "instruction": "Stwórz plik main.py z FastAPI, endpointy POST/GET /todos, używaj redis (host='redis') do przechowywania zadań",
+      "depends_on": 1
+    },
+    {
+      "step_number": 3,
+      "agent_type": "CODER",
+      "instruction": "Przetestuj endpoint POST /todos używając ComposeSkill.check_service_health() dla serwisu python-api",
+      "depends_on": 2
     }
   ]
 }

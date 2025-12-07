@@ -656,15 +656,21 @@ async def get_git_status():
         if has_changes:
             try:
                 # Pobierz obiekt Repo i policz zmiany
-                from git import Repo
+                from git import Repo, GitCommandError
 
                 repo = Repo(git_skill.workspace_root)
-                # Zmodyfikowane i staged pliki
-                modified_count = len(repo.index.diff("HEAD"))
-                # Dodaj nieśledzone pliki
-                modified_count += len(repo.untracked_files)
-            except Exception:
-                # Fallback: proste parsowanie jeśli GitPython zawiedzie
+                # Sprawdź czy HEAD istnieje (czy repo ma commity)
+                if repo.head.is_valid():
+                    # Zmodyfikowane i staged pliki względem HEAD
+                    modified_count = len(repo.index.diff("HEAD"))
+                else:
+                    # Brak HEAD — policz tylko nieśledzone pliki
+                    modified_count = len(repo.untracked_files)
+                # Dodaj nieśledzone pliki (jeśli HEAD istnieje)
+                if repo.head.is_valid():
+                    modified_count += len(repo.untracked_files)
+            except (GitCommandError, ValueError):
+                # Fallback: proste parsowanie jeśli GitPython zawiedzie (np. HEAD nie istnieje)
                 lines = status_output.split("\n")
                 for line in lines:
                     if (

@@ -1,6 +1,6 @@
 """Moduł: token_economist - optymalizacja kontekstu i kalkulacja kosztów."""
 
-from typing import List, Optional
+from typing import List
 
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
@@ -14,8 +14,9 @@ logger = get_logger(__name__)
 class TokenEconomist:
     """Optymalizator kontekstu i kalkulator kosztów tokenów."""
 
-    # Cennik tokenów (USD za 1M tokenów) - przykładowe wartości
+    # Cennik tokenów (USD za 1M tokenów) - aktualizowany 2025-12-07
     PRICING = {
+        "_updated": "2025-12-07",  # Data ostatniej aktualizacji cennika
         "gpt-4o": {"input": 5.0, "output": 15.0},
         "gpt-4-turbo": {"input": 10.0, "output": 30.0},
         "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
@@ -27,6 +28,9 @@ class TokenEconomist:
 
     # Modele lokalne - rozszerzalna lista
     LOCAL_MODEL_PATTERNS = ["local", "phi", "mistral", "llama", "gemma", "qwen"]
+
+    # Rezerwa tokenów dla podsumowania przy kompresji
+    RESERVE_TOKENS_FOR_SUMMARY = 500
 
     def __init__(self, enable_compression: bool = True):
         """
@@ -50,12 +54,13 @@ class TokenEconomist:
         Returns:
             Przybliżona liczba tokenów
         """
-        # Heurystyka: ~4 znaki na token dla języka angielskiego
-        # Dla polskiego ~3-3.5 znaki na token (więcej znaków przez polskie znaki)
+        # Uproszczona heurystyka: zawsze ~4 znaki na token (oparta na angielskim),
+        # NIE rozróżnia języka tekstu. Dla polskiego i tekstów mieszanych może zaniżać liczbę tokenów.
+        # W produkcji użyj tiktoken lub detekcji języka i innego przelicznika.
         return max(1, len(text) // 4)
 
     def compress_context(
-        self, history: ChatHistory, max_tokens: int = 4000
+        self, history: ChatHistory, max_tokens: int = 4000, reserve_tokens: int = None
     ) -> ChatHistory:
         """
         Kompresuje historię czatu jeśli przekracza limit tokenów.
@@ -68,10 +73,14 @@ class TokenEconomist:
         Args:
             history: Historia czatu do skompresowania
             max_tokens: Maksymalna liczba tokenów (domyślnie 4000)
+            reserve_tokens: Tokeny zarezerwowane na podsumowanie (domyślnie RESERVE_TOKENS_FOR_SUMMARY)
 
         Returns:
             Skompresowana historia czatu
         """
+        if reserve_tokens is None:
+            reserve_tokens = self.RESERVE_TOKENS_FOR_SUMMARY
+
         if not self.enable_compression:
             logger.debug("Kompresja wyłączona, zwracam oryginalną historię")
             return history
@@ -107,7 +116,7 @@ class TokenEconomist:
             if history.messages and history.messages[0].role == AuthorRole.SYSTEM
             else 0
         )
-        available_tokens = max_tokens - system_tokens - 500  # Reserve 500 dla summary
+        available_tokens = max_tokens - system_tokens - reserve_tokens
 
         # Zachowaj ostatnie N wiadomości
         messages_to_keep = []
@@ -122,7 +131,7 @@ class TokenEconomist:
                 break
 
         # Jeśli są starsze wiadomości, zsumuj je
-        older_messages = remaining_messages[: -len(messages_to_keep)]
+        older_messages = remaining_messages[: -len(messages_to_keep)] if messages_to_keep else remaining_messages
         if older_messages:
             summary = self._summarize_messages(older_messages)
             compressed_history.add_message(

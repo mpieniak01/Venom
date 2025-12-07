@@ -224,9 +224,9 @@ Logowanie w czasie rzeczywistym:
 **Rezultat:**
 ```
 Kompresja kontekstu:
-   Przed: 21 wiadomości, 3623 tokenów
-   Po: 1 wiadomości, 3 tokenów
-   Oszczędność: 3620 tokenów (99.9%)
+   Przed: wiele wiadomości, wysoka liczba tokenów
+   Po: skompresowana historia z podsumowaniem starszych wiadomości
+   Oszczędność: nawet >95% tokenów w zależności od historii
 ```
 
 Automatyczna kompresja gdy `len(history) > MAX_CONTEXT_TOKENS` zapobiega błędom `ContextLengthExceeded`.

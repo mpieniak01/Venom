@@ -1,7 +1,5 @@
 """Testy dla TokenEconomist."""
 
-import pytest
-
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole

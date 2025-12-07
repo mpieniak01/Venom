@@ -11,7 +11,10 @@ from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
 from venom_core.agents.integrator import IntegratorAgent
 from venom_core.agents.librarian import LibrarianAgent
+from venom_core.agents.publisher import PublisherAgent
+from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.agents.researcher import ResearcherAgent
+from venom_core.agents.tester import TesterAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.utils.logger import get_logger
@@ -55,6 +58,9 @@ class TaskDispatcher:
         self.architect_agent = ArchitectAgent(
             kernel, event_broadcaster=event_broadcaster
         )
+        self.tester_agent = TesterAgent(kernel)
+        self.publisher_agent = PublisherAgent(kernel)
+        self.release_manager_agent = ReleaseManagerAgent(kernel)
 
         # Ustawienie referencji do dispatchera w Architect (circular dependency)
         self.architect_agent.set_dispatcher(self)
@@ -69,11 +75,14 @@ class TaskDispatcher:
             "RESEARCH": self.researcher_agent,
             "COMPLEX_PLANNING": self.architect_agent,
             "VERSION_CONTROL": self.integrator_agent,
-            "TOOL_CREATION": self.toolmaker_agent,  # Nowa intencja dla tworzenia narzędzi
+            "TOOL_CREATION": self.toolmaker_agent,
+            "E2E_TESTING": self.tester_agent,
+            "DOCUMENTATION": self.publisher_agent,
+            "RELEASE_PROJECT": self.release_manager_agent,
         }
 
         logger.info(
-            "TaskDispatcher zainicjalizowany z agentami (+ Toolmaker + SkillManager)"
+            "TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)"
         )
 
     async def dispatch(self, intent: str, content: str) -> str:

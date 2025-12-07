@@ -317,7 +317,7 @@ PARAMETER top_k 40
                         diff_pct = (diff / val1) * 100
                     else:
                         # Jeśli val1 == 0, procentowa zmiana jest nieskończona (lub "N/A"), chyba że oba są zerowe
-                        diff_pct = float('inf') if val2 != 0 else 0
+                        diff_pct = float("inf") if val2 != 0 else 0
                     comparison["metrics_diff"][key] = {
                         "v1": val1,
                         "v2": val2,

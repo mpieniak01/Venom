@@ -35,7 +35,7 @@ class GPUHabitat(DockerHabitat):
 
         Raises:
             RuntimeError: Jeśli Docker nie jest dostępny
-            
+
         Note:
             Nie wywołujemy super().__init__() ponieważ GPUHabitat nie tworzy
             standardowego kontenera sandbox - zamiast tego zarządza tymczasowymi
@@ -295,7 +295,7 @@ class GPUHabitat(DockerHabitat):
             return {
                 "status": "error",
                 "error": str(e),
-                "container_id": container.id if hasattr(container, 'id') else None,
+                "container_id": container.id if hasattr(container, "id") else None,
             }
 
     def _generate_training_script(

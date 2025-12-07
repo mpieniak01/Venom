@@ -7,6 +7,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.skills.compose_skill import ComposeSkill
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.shell_skill import ShellSkill
 from venom_core.utils.logger import get_logger
@@ -28,12 +29,20 @@ MASZ DOSTĘP DO SYSTEMU PLIKÓW:
 MASZ DOSTĘP DO SHELL:
 - run_shell: Wykonaj komendę shell w bezpiecznym środowisku
 
+MASZ DOSTĘP DO ORKIESTRACJI DOCKER COMPOSE:
+- create_environment: Stwórz środowisko wielokontenerowe (stack) z docker-compose.yml
+- destroy_environment: Usuń środowisko i posprzątaj zasoby
+- check_service_health: Sprawdź logi i status serwisu w środowisku
+- list_environments: Zobacz aktywne środowiska
+- get_environment_status: Pobierz szczegółowy status środowiska
+
 ZASADY:
 - Gdy użytkownik prosi o napisanie kodu DO PLIKU, UŻYJ funkcji write_file
 - Nie tylko wypisuj kod w markdownie - zapisz go fizycznie używając write_file
 - Kod powinien być kompletny i gotowy do użycia
 - Dodaj komentarze wyjaśniające tylko wtedy, gdy logika jest złożona
 - Używaj dobrych praktyk programistycznych i konwencji nazewnictwa
+- Gdy zadanie wymaga bazy danych, cache lub innych serwisów - użyj create_environment z docker-compose.yml
 
 Przykłady:
 Żądanie: "Stwórz plik test.py z funkcją Hello World"
@@ -44,6 +53,13 @@ Akcja:
 
 Żądanie: "Co jest w pliku test.py?"
 Akcja: Użyj read_file("test.py") i pokaż zawartość
+
+Żądanie: "Stwórz API z bazą Redis"
+Akcja:
+1. Stwórz docker-compose.yml z serwisami (api, redis)
+2. Użyj create_environment() aby uruchomić stack
+3. Stwórz kod aplikacji używając nazw sieciowych serwisów (host='redis')
+4. Zapisz kod używając write_file()
 
 Żądanie: "Napisz funkcję Hello World w Python" (bez wskazania pliku)
 Odpowiedź: Pokaż kod w bloku markdown:
@@ -71,9 +87,13 @@ def hello_world():
         self.shell_skill = ShellSkill(use_sandbox=True)
         self.kernel.add_plugin(self.shell_skill, plugin_name="ShellSkill")
 
+        # Zarejestruj ComposeSkill
+        self.compose_skill = ComposeSkill()
+        self.kernel.add_plugin(self.compose_skill, plugin_name="ComposeSkill")
+
         self.enable_self_repair = enable_self_repair
         logger.info(
-            f"CoderAgent zainicjalizowany z FileSkill i ShellSkill (self_repair={enable_self_repair})"
+            f"CoderAgent zainicjalizowany z FileSkill, ShellSkill i ComposeSkill (self_repair={enable_self_repair})"
         )
 
     async def process(self, input_text: str) -> str:

@@ -31,6 +31,19 @@ COUNCIL_TASK_THRESHOLD = (
     100  # Minimalna długość zadania aby użyć Council (liczba znaków)
 )
 
+# Słowa kluczowe sugerujące potrzebę współpracy agentów (dla decyzji Council vs Standard)
+COUNCIL_COLLABORATION_KEYWORDS = [
+    "projekt",
+    "aplikacja",
+    "system",
+    "stwórz grę",
+    "zbuduj",
+    "zaprojektuj",
+    "zaimplementuj",
+    "kompletny",
+    "cała aplikacja",
+]
+
 
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
@@ -593,18 +606,8 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         # Council dla długich zadań wymagających współpracy
         if len(context) > COUNCIL_TASK_THRESHOLD:
             # Sprawdź czy zadanie zawiera słowa kluczowe sugerujące współpracę
-            collaboration_keywords = [
-                "projekt",
-                "aplikacja",
-                "system",
-                "stwórz grę",
-                "zbuduj",
-                "zaprojektuj",
-                "zaimplementuj",
-            ]
-
             context_lower = context.lower()
-            for keyword in collaboration_keywords:
+            for keyword in COUNCIL_COLLABORATION_KEYWORDS:
                 if keyword in context_lower:
                     logger.info(f"Wykryto słowo kluczowe '{keyword}' - użyję Council")
                     return True

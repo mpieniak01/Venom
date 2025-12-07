@@ -61,10 +61,10 @@ class ComposeSkill:
         """
         try:
             # Walidacja nazwy stacka
-            if not re.match(r"^[a-z0-9-]+$", stack_name):
+            if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", stack_name):
                 return (
                     f"Błąd: Nieprawidłowa nazwa stacka '{stack_name}'. "
-                    "Użyj tylko małych liter, cyfr i myślników."
+                    "Nazwa musi zaczynać się i kończyć małą literą lub cyfrą, może zawierać myślniki w środku."
                 )
 
             logger.info(f"Tworzenie środowiska: {stack_name}")
@@ -249,6 +249,7 @@ class ComposeSkill:
         Przetwarza placeholdery portów w docker-compose.yml.
 
         Znajduje placeholdery {{PORT}} i zastępuje je wolnymi portami.
+        Każdy unikalny placeholder otrzymuje unikalny port.
 
         Args:
             compose_content: Zawartość docker-compose.yml
@@ -263,6 +264,9 @@ class ComposeSkill:
         if not matches:
             return compose_content
 
+        # Śledź przypisane porty aby uniknąć duplikatów
+        assigned_ports = set()
+        
         # Dla każdego placeholdera znajdź wolny port
         processed = compose_content
         for match in matches:
@@ -272,32 +276,56 @@ class ComposeSkill:
             if preferred_port:
                 # Sprawdź czy preferowany port jest wolny
                 preferred = int(preferred_port)
-                if not is_port_in_use(preferred):
+                if not is_port_in_use(preferred) and preferred not in assigned_ports:
                     free_port = preferred
                     logger.info(f"Użycie preferowanego portu: {free_port}")
                 else:
                     # Znajdź alternatywny port
-                    free_port = find_free_port(start=preferred)
-                    if free_port is None:
-                        free_port = find_free_port(start=8000)
-                    if free_port is None:
-                        raise RuntimeError(
-                            f"Nie można znaleźć wolnego portu (preferowany: {preferred})"
-                        )
+                    free_port = self._find_unique_free_port(preferred, assigned_ports)
                     logger.info(
-                        f"Port {preferred} zajęty, użycie alternatywnego: {free_port}"
+                        f"Port {preferred} zajęty lub już przypisany, użycie alternatywnego: {free_port}"
                     )
             else:
                 # Znajdź dowolny wolny port
-                free_port = find_free_port(start=8000)
-                if free_port is None:
-                    raise RuntimeError("Nie można znaleźć wolnego portu")
+                free_port = self._find_unique_free_port(8000, assigned_ports)
                 logger.info(f"Znaleziono wolny port: {free_port}")
 
-            # Zastąp placeholder
+            # Dodaj do przypisanych portów
+            assigned_ports.add(free_port)
+            
+            # Zastąp pierwsze wystąpienie placeholdera
             processed = processed.replace(placeholder, str(free_port), 1)
 
         return processed
+
+    def _find_unique_free_port(self, start: int, assigned_ports: set) -> int:
+        """
+        Znajduje wolny port który nie jest jeszcze przypisany.
+
+        Args:
+            start: Port początkowy do przeszukiwania
+            assigned_ports: Zbiór już przypisanych portów
+
+        Returns:
+            Wolny port
+
+        Raises:
+            RuntimeError: Jeśli nie można znaleźć wolnego portu
+        """
+        # Przeszukaj od start do 9000
+        for port in range(start, 9000):
+            if port not in assigned_ports and not is_port_in_use(port):
+                return port
+        
+        # Przeszukaj od 8000 jeśli nie znaleziono
+        if start > 8000:
+            for port in range(8000, start):
+                if port not in assigned_ports and not is_port_in_use(port):
+                    return port
+        
+        raise RuntimeError(
+            f"Nie można znaleźć wolnego portu (start: {start}, assigned: {len(assigned_ports)})"
+        )
 
     def _extract_port_info(self, compose_content: str) -> str:
         """

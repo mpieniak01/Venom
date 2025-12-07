@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 import docker
-from docker.errors import NotFound
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -154,6 +153,7 @@ class StackManager:
         stack_name: str,
         project_name: Optional[str] = None,
         remove_volumes: bool = True,
+        cleanup_directory: bool = False,
     ) -> tuple[bool, str]:
         """
         Usuwa stack Docker Compose.
@@ -162,6 +162,7 @@ class StackManager:
             stack_name: Nazwa stacka
             project_name: Opcjonalna nazwa projektu (domyślnie stack_name)
             remove_volumes: Czy usunąć również wolumeny (domyślnie True)
+            cleanup_directory: Czy usunąć katalog stacka po zniszczeniu (domyślnie False)
 
         Returns:
             Krotka (sukces, komunikat)
@@ -195,6 +196,18 @@ class StackManager:
             if result.returncode == 0:
                 msg = f"Stack '{stack_name}' usunięty pomyślnie\n{result.stdout}"
                 logger.info(msg)
+                
+                # Opcjonalne czyszczenie katalogu
+                if cleanup_directory:
+                    try:
+                        import shutil
+                        shutil.rmtree(stack_dir)
+                        logger.info(f"Katalog stacka '{stack_name}' został usunięty")
+                        msg += f"\nKatalog stacka został usunięty z workspace"
+                    except Exception as e:
+                        logger.warning(f"Nie można usunąć katalogu stacka: {e}")
+                        msg += f"\nUWAGA: Nie można usunąć katalogu: {e}"
+                
                 return True, msg
             else:
                 msg = f"Błąd podczas usuwania stacka '{stack_name}':\n{result.stderr}"

@@ -18,6 +18,13 @@ def is_port_in_use(port: int, host: str = "localhost") -> bool:
 
     Returns:
         True jeśli port jest zajęty, False w przeciwnym razie
+
+    Note:
+        UWAGA: Ta funkcja ma potencjalny race condition - po sprawdzeniu że port
+        jest wolny, socket jest zamykany, co oznacza że inny proces może zająć
+        ten port przed jego użyciem. Jest to ograniczenie inherentne dla podejścia
+        check-then-use. W praktyce ryzyko jest minimalne przy krótkim czasie
+        między sprawdzeniem a użyciem.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         try:
@@ -73,6 +80,12 @@ def get_free_ports(count: int, start: int = 8000, end: int = 9000, host: str = "
 
     Raises:
         ValueError: Jeśli nie można znaleźć wystarczającej liczby wolnych portów
+
+    Note:
+        UWAGA: Ta funkcja alokuje porty sekwencyjnie i ma potencjalny TOCTOU
+        (Time-Of-Check-Time-Of-Use) problem. Porty nie są rezerwowane, więc
+        mogą zostać zajęte przez inny proces między sprawdzeniem a użyciem.
+        Używaj tej funkcji tylko gdy porty będą użyte natychmiast po alokacji.
     """
     if count < 1:
         raise ValueError("Liczba portów musi być większa od 0")

@@ -13,6 +13,7 @@ from venom_core.agents.librarian import LibrarianAgent
 from venom_core.agents.publisher import PublisherAgent
 from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.agents.researcher import ResearcherAgent
+from venom_core.agents.system_engineer import SystemEngineerAgent
 from venom_core.agents.tester import TesterAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 
@@ -32,6 +33,7 @@ __all__ = [
     "PublisherAgent",
     "ReleaseManagerAgent",
     "ResearcherAgent",
+    "SystemEngineerAgent",
     "TesterAgent",
     "ToolmakerAgent",
     # "WriterAgent",

@@ -49,6 +49,52 @@ body {
     font-weight: 700;
 }
 
+.header-info {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+/* Repository Status */
+.repo-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.repo-branch {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.repo-branch #branchName {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.repo-changes {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.repo-changes #changesText {
+    color: var(--success-color);
+}
+
+.repo-changes.dirty #changesText {
+    color: var(--warning-color);
+}
+
 .status-indicator {
     display: flex;
     align-items: center;

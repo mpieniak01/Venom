@@ -195,7 +195,7 @@ if result["success"]:
 
 ## Testy
 
-Implementacja zawiera **51 testów** pokrywających wszystkie komponenty:
+Implementacja zawiera **43 testy** pokrywające wszystkie komponenty:
 
 ### Test Coverage
 

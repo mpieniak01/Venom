@@ -1,7 +1,6 @@
 """Testy dla SystemEngineerAgent i procedury ewolucji."""
 
 import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from venom_core.agents.system_engineer import SystemEngineerAgent
@@ -82,8 +81,6 @@ class TestSystemEngineerAgent:
     @pytest.mark.asyncio
     async def test_process_request(self, system_engineer):
         """Test przetwarzania żądania modyfikacji kodu."""
-        request = "Dodaj obsługę logowania kolorami w logger.py"
-        
         # Skip this test as it requires full semantic-kernel setup
         pytest.skip("Wymaga pełnej konfiguracji semantic-kernel")
 
@@ -304,18 +301,25 @@ class TestCoreSkill:
     @pytest.mark.asyncio
     async def test_list_backups(self, core_skill, tmp_path):
         """Test listowania backupów."""
-        import time
+        from unittest.mock import patch
         
-        # Utwórz kilka backupów z opóźnieniem aby nazwy były różne
+        # Utwórz kilka backupów z różnymi timestampami przez mockowanie datetime
         test_file = tmp_path / "test.py"
         test_file.write_text("v1")
-        await core_skill.hot_patch(str(test_file), "v2", create_backup=True)
-        time.sleep(1)  # Opóźnienie 1 sekunda aby timestamp był inny
-        await core_skill.hot_patch(str(test_file), "v3", create_backup=True)
+        
+        # Mock datetime.now() aby wygenerować różne timestampy
+        with patch('venom_core.execution.skills.core_skill.datetime') as mock_datetime:
+            # Pierwszy backup
+            mock_datetime.now.return_value.strftime.return_value = "20251207_120000"
+            await core_skill.hot_patch(str(test_file), "v2", create_backup=True)
+            
+            # Drugi backup z innym timestampem
+            mock_datetime.now.return_value.strftime.return_value = "20251207_120001"
+            await core_skill.hot_patch(str(test_file), "v3", create_backup=True)
         
         result = await core_skill.list_backups(file_path=str(test_file))
         
-        # Może być 1 lub 2 backupy w zależności od timingu
+        # Może być 1 lub 2 backupy w zależności od implementacji mockowania
         assert "backup" in result.lower()
         assert ".bak" in result
 

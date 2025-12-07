@@ -3,12 +3,6 @@
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
-
-
-# Import tylko potrzebnych modułów
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from venom_core.infrastructure.mirror_world import InstanceInfo
 

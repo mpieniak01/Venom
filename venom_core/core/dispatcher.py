@@ -9,6 +9,7 @@ from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
+from venom_core.agents.integrator import IntegratorAgent
 from venom_core.agents.librarian import LibrarianAgent
 from venom_core.agents.researcher import ResearcherAgent
 from venom_core.utils.logger import get_logger
@@ -36,6 +37,7 @@ class TaskDispatcher:
         self.librarian_agent = LibrarianAgent(kernel)
         self.critic_agent = CriticAgent(kernel)
         self.researcher_agent = ResearcherAgent(kernel)
+        self.integrator_agent = IntegratorAgent(kernel)
         self.architect_agent = ArchitectAgent(
             kernel, event_broadcaster=event_broadcaster
         )
@@ -52,10 +54,11 @@ class TaskDispatcher:
             "CODE_REVIEW": self.critic_agent,
             "RESEARCH": self.researcher_agent,
             "COMPLEX_PLANNING": self.architect_agent,
+            "VERSION_CONTROL": self.integrator_agent,
         }
 
         logger.info(
-            "TaskDispatcher zainicjalizowany z agentami (+ ResearcherAgent + ArchitectAgent)"
+            "TaskDispatcher zainicjalizowany z agentami (+ ResearcherAgent + ArchitectAgent + IntegratorAgent)"
         )
 
     async def dispatch(self, intent: str, content: str) -> str:
@@ -63,7 +66,7 @@ class TaskDispatcher:
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
 
         Args:
-            intent: Sklasyfikowana intencja (CODE_GENERATION, GENERAL_CHAT, KNOWLEDGE_SEARCH, FILE_OPERATION, CODE_REVIEW, RESEARCH, COMPLEX_PLANNING)
+            intent: Sklasyfikowana intencja (CODE_GENERATION, GENERAL_CHAT, KNOWLEDGE_SEARCH, FILE_OPERATION, CODE_REVIEW, RESEARCH, COMPLEX_PLANNING, VERSION_CONTROL)
             content: Treść zadania do wykonania
 
         Returns:

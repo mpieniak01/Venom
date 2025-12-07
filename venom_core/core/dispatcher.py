@@ -12,6 +12,8 @@ from venom_core.agents.critic import CriticAgent
 from venom_core.agents.integrator import IntegratorAgent
 from venom_core.agents.librarian import LibrarianAgent
 from venom_core.agents.researcher import ResearcherAgent
+from venom_core.agents.toolmaker import ToolmakerAgent
+from venom_core.execution.skill_manager import SkillManager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +33,17 @@ class TaskDispatcher:
         self.kernel = kernel
         self.event_broadcaster = event_broadcaster
 
+        # Inicjalizuj SkillManager - zarządza dynamicznymi pluginami
+        self.skill_manager = SkillManager(kernel)
+        
+        # Załaduj istniejące custom skills przy starcie
+        try:
+            loaded_skills = self.skill_manager.load_skills_from_dir()
+            if loaded_skills:
+                logger.info(f"Załadowano custom skills: {', '.join(loaded_skills)}")
+        except Exception as e:
+            logger.warning(f"Nie udało się załadować custom skills: {e}")
+
         # Inicjalizuj agentów
         self.coder_agent = CoderAgent(kernel)
         self.chat_agent = ChatAgent(kernel)
@@ -38,6 +51,7 @@ class TaskDispatcher:
         self.critic_agent = CriticAgent(kernel)
         self.researcher_agent = ResearcherAgent(kernel)
         self.integrator_agent = IntegratorAgent(kernel)
+        self.toolmaker_agent = ToolmakerAgent(kernel)
         self.architect_agent = ArchitectAgent(
             kernel, event_broadcaster=event_broadcaster
         )
@@ -55,10 +69,11 @@ class TaskDispatcher:
             "RESEARCH": self.researcher_agent,
             "COMPLEX_PLANNING": self.architect_agent,
             "VERSION_CONTROL": self.integrator_agent,
+            "TOOL_CREATION": self.toolmaker_agent,  # Nowa intencja dla tworzenia narzędzi
         }
 
         logger.info(
-            "TaskDispatcher zainicjalizowany z agentami (+ ResearcherAgent + ArchitectAgent + IntegratorAgent)"
+            "TaskDispatcher zainicjalizowany z agentami (+ Toolmaker + SkillManager)"
         )
 
     async def dispatch(self, intent: str, content: str) -> str:
@@ -66,7 +81,7 @@ class TaskDispatcher:
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
 
         Args:
-            intent: Sklasyfikowana intencja (CODE_GENERATION, GENERAL_CHAT, KNOWLEDGE_SEARCH, FILE_OPERATION, CODE_REVIEW, RESEARCH, COMPLEX_PLANNING, VERSION_CONTROL)
+            intent: Sklasyfikowana intencja
             content: Treść zadania do wykonania
 
         Returns:

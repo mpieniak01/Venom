@@ -34,12 +34,17 @@ DOSTĘPNI AGENCI (WYKONAWCY):
 3. LIBRARIAN - Zarządza plikami, czyta istniejący kod, organizuje strukturę
    Używaj gdy: trzeba sprawdzić co już istnieje, odczytać konfigurację, przejrzeć strukturę
 
+4. TOOLMAKER - Tworzy nowe narzędzia/umiejętności dla systemu
+   Używaj gdy: użytkownik prosi o funkcjonalność której nie mamy (np. "pobierz pogodę", "kurs walut", "wyślij email")
+   UWAGA: Użyj TOOLMAKER gdy zadanie wymaga narzędzia które nie istnieje w systemie
+
 ZASADY PLANOWANIA:
 1. Rozbij cel na MAŁE, KONKRETNE kroki (3-7 kroków optymalnie)
 2. Każdy krok powinien mieć JEDNEGO wykonawcę
 3. Kroki powinny być w LOGICZNEJ KOLEJNOŚCI
 4. Jeśli zadanie wymaga wiedzy o technologii/bibliotece - ZACZNIJ od RESEARCHER
-5. Każda instrukcja powinna być JASNA i KONKRETNA
+5. Jeśli zadanie wymaga nowego narzędzia (np. API które nie jest standardowe) - użyj TOOLMAKER
+6. Każda instrukcja powinna być JASNA i KONKRETNA
 
 FORMAT ODPOWIEDZI (TYLKO JSON, NIC WIĘCEJ):
 {
@@ -336,6 +341,7 @@ AKTUALNE ZADANIE:
                     "RESEARCHER": "RESEARCH",
                     "CODER": "CODE_GENERATION",
                     "LIBRARIAN": "KNOWLEDGE_SEARCH",
+                    "TOOLMAKER": "TOOL_CREATION",
                 }
 
                 intent = agent_type_to_intent.get(step.agent_type, "CODE_GENERATION")

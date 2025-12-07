@@ -45,7 +45,6 @@ class PolicyEngine:
             "Git push --force (może nadpisać historię)",
         ),  # Explicit git command
         (
-        (
             r"\bgit\s+push\s+.*-f\b",
             "Git push -f (może nadpisać historię)",
         ),  # -f jako flaga w komendzie git push

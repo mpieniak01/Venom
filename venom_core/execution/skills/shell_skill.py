@@ -50,7 +50,9 @@ class ShellSkill:
     def run_shell(
         self,
         command: Annotated[str, "Komenda shell do wykonania"],
-        timeout: Annotated[int, "Maksymalny czas wykonania w sekundach (domyślnie 30)"] = 30,
+        timeout: Annotated[
+            int, "Maksymalny czas wykonania w sekundach (domyślnie 30)"
+        ] = 30,
     ) -> str:
         """
         Wykonuje komendę shell.
@@ -90,7 +92,9 @@ class ShellSkill:
             else:
                 result = f"Komenda zakończona z błędem (exit_code={exit_code}).\n\nOutput:\n{output}"
 
-            logger.info(f"Wynik wykonania: exit_code={exit_code}, output_length={len(output)}")
+            logger.info(
+                f"Wynik wykonania: exit_code={exit_code}, output_length={len(output)}"
+            )
             return result
 
         except Exception as e:
@@ -128,7 +132,9 @@ class ShellSkill:
             else:
                 result_msg = f"Komenda zakończona z błędem (exit_code={result.returncode}).\n\nOutput:\n{output}"
 
-            logger.info(f"Wynik wykonania: exit_code={result.returncode}, output_length={len(output)}")
+            logger.info(
+                f"Wynik wykonania: exit_code={result.returncode}, output_length={len(output)}"
+            )
             return result_msg
 
         except subprocess.TimeoutExpired:
@@ -164,4 +170,3 @@ class ShellSkill:
             return 0
         else:
             return 1
-

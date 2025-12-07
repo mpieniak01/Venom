@@ -1,7 +1,5 @@
 """Testy dla ModelRouter."""
 
-import pytest
-
 from venom_core.core.model_router import (
     ComplexityScore,
     ModelRouter,

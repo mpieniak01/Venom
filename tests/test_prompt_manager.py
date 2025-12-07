@@ -2,7 +2,6 @@
 
 import pytest
 import yaml
-from pathlib import Path
 
 from venom_core.core.prompt_manager import PromptManager
 

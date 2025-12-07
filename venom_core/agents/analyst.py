@@ -1,7 +1,7 @@
 """Moduł: analyst - agent analityczny audytujący wydajność i koszty."""
 
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 from semantic_kernel import Kernel
 
@@ -193,20 +193,20 @@ class AnalystAgent(BaseAgent):
                 "services_used": list(services_used),
             }
 
-        # Znajdź przypadki overprovisioning (HIGH complexity -> LOCAL model)
+        # Znajdź przypadki overprovisioning (LOW complexity -> expensive model)
         overprovisioned = [
             m
             for m in self.metrics_history
             if m.complexity == ComplexityScore.LOW
-            and m.selected_service != ServiceId.LOCAL
+            and (m.selected_service if isinstance(m.selected_service, str) else m.selected_service.value) != ServiceId.LOCAL.value
         ]
 
-        # Znajdź przypadki underprovisioning (LOW complexity -> HIGH model)
+        # Znajdź przypadki underprovisioning (HIGH complexity -> LOCAL model failing)
         underprovisioned = [
             m
             for m in self.metrics_history
             if m.complexity == ComplexityScore.HIGH
-            and m.selected_service == ServiceId.LOCAL
+            and (m.selected_service if isinstance(m.selected_service, str) else m.selected_service.value) == ServiceId.LOCAL.value
             and not m.success
         ]
 

@@ -1,6 +1,5 @@
 """Moduł: prompt_manager - zarządzanie promptami z plików YAML."""
 
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional

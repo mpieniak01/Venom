@@ -1018,7 +1018,6 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
             - code: str - wygenerowany kod (jeśli sukces)
         """
         from venom_core.agents.guardian import GuardianAgent
-        from venom_core.infrastructure.docker_habitat import DockerHabitat
 
         try:
             logger.info(f"🔨 THE FORGE: Rozpoczynam tworzenie narzędzia {tool_name}")
@@ -1088,7 +1087,7 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
             if test_success:
                 self.state_manager.add_log(
                     task_id,
-                    f"✅ Test jednostkowy wygenerowany",
+                    "✅ Test jednostkowy wygenerowany",
                 )
             else:
                 self.state_manager.add_log(
@@ -1186,7 +1185,7 @@ Odpowiedz APPROVED jeśli wygląda OK, lub opisz problemy."""
                         "code": tool_code,
                     }
                 else:
-                    error_msg = f"❌ Nie udało się załadować narzędzia do Kernela"
+                    error_msg = "❌ Nie udało się załadować narzędzia do Kernela"
                     self.state_manager.add_log(task_id, error_msg)
 
                     await self._broadcast_event(

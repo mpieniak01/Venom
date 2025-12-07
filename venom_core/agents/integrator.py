@@ -250,10 +250,13 @@ Przykład: "feat(git): add GitSkill implementation"
                 logger.info("Brak nowych Issues")
                 return []
 
-            # TODO: Parsuj wynik do struktury danych (dict/Issue objects)
-            # W przyszłej wersji zwróć listę dict z parsed data
+            # Parsowanie wyników do listy dictów (tymczasowo: każda linia jako oddzielny Issue)
+            issues = []
+            for line in result.splitlines():
+                if line.strip():
+                    issues.append({"raw_result": line.strip()})
             logger.info(f"Znaleziono Issues:\n{result}")
-            return [{"raw_result": result}]  # Tymczasowo jako dict
+            return issues
 
         except Exception as e:
             logger.error(f"Błąd podczas pollowania Issues: {e}")

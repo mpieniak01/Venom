@@ -1,5 +1,6 @@
 """Moduł: operator - agent interfejsu głosowo-sprzętowego."""
 
+import re
 from typing import Optional
 
 from semantic_kernel import Kernel
@@ -151,8 +152,6 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             # GPIO control
             elif "włącz" in text_lower and "gpio" in text_lower:
                 # Wyciągnij numer pinu (bardzo prosta heurystyka)
-                import re
-
                 match = re.search(r"gpio\s*(\d+)", text_lower)
                 if match:
                     pin = int(match.group(1))
@@ -165,8 +164,6 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
                     return "Nie rozpoznano numeru pinu. Spróbuj ponownie."
 
             elif "wyłącz" in text_lower and "gpio" in text_lower:
-                import re
-
                 match = re.search(r"gpio\s*(\d+)", text_lower)
                 if match:
                     pin = int(match.group(1))

@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     RIDER_PI_HOST: str = "192.168.1.100"  # Adres IP Raspberry Pi
     RIDER_PI_PORT: int = 22  # Port SSH (22) lub HTTP (8888 dla pigpio)
     RIDER_PI_USERNAME: str = "pi"  # Nazwa użytkownika SSH
-    RIDER_PI_PASSWORD: str = ""  # Hasło SSH (opcjonalne jeśli używamy klucza)
+    RIDER_PI_PASSWORD: SecretStr = SecretStr("")  # Hasło SSH (opcjonalne jeśli używamy klucza)
     RIDER_PI_KEY_FILE: str = ""  # Ścieżka do klucza SSH (opcjonalne)
     RIDER_PI_PROTOCOL: str = "ssh"  # Protokół komunikacji ('ssh' lub 'http')
     IOT_REQUIRE_CONFIRMATION: bool = True  # Wymagaj potwierdzenia dla komend sprzętowych

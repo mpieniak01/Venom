@@ -1755,7 +1755,13 @@ The implementation provides significant value:
 # Before (INSECURE):
 self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-# After (SECURE):
+# After (BEZPIECZNIE - dla produkcji):
+# Ładujemy zaufane klucze hosta z systemowego known_hosts (można podać własny plik)
+self.ssh_client.load_system_host_keys()
+self.ssh_client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+# Current implementation (development - WarningPolicy):
+# Dla środowisk deweloperskich/zaufanych sieci lokalnych
 self.ssh_client.set_missing_host_key_policy(paramiko.WarningPolicy())
 ```
 

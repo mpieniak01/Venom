@@ -64,12 +64,12 @@ def hello_world():
         super().__init__(kernel)
 
         # Zarejestruj FileSkill
-        file_skill = FileSkill()
-        self.kernel.add_plugin(file_skill, plugin_name="FileSkill")
+        self.file_skill = FileSkill()
+        self.kernel.add_plugin(self.file_skill, plugin_name="FileSkill")
 
         # Zarejestruj ShellSkill
-        shell_skill = ShellSkill(use_sandbox=True)
-        self.kernel.add_plugin(shell_skill, plugin_name="ShellSkill")
+        self.shell_skill = ShellSkill(use_sandbox=True)
+        self.kernel.add_plugin(self.shell_skill, plugin_name="ShellSkill")
 
         self.enable_self_repair = enable_self_repair
         logger.info(
@@ -164,9 +164,6 @@ def hello_world():
             ChatMessageContent(role=AuthorRole.USER, content=enhanced_input)
         )
 
-        file_skill = FileSkill()
-        shell_skill = ShellSkill(use_sandbox=True)
-
         for attempt in range(1, max_retries + 1):
             logger.info(f"Próba {attempt}/{max_retries}")
 
@@ -184,9 +181,14 @@ def hello_world():
 
                 logger.info(f"Model wygenerował odpowiedź (próba {attempt})")
 
+                # Dodaj odpowiedź modelu do historii konwersacji
+                chat_history.add_message(
+                    ChatMessageContent(role=AuthorRole.ASSISTANT, content=str(response))
+                )
+
                 # Sprawdź czy plik został utworzony
                 try:
-                    code_content = await file_skill.read_file(script_name)
+                    code_content = await self.file_skill.read_file(script_name)
                     logger.info(
                         f"Kod zapisany do {script_name} ({len(code_content)} znaków)"
                     )
@@ -204,10 +206,10 @@ def hello_world():
 
                 # Uruchom kod w sandboxie
                 logger.info(f"Uruchamianie kodu: python {script_name}")
-                shell_result = shell_skill.run_shell(
+                shell_result = self.shell_skill.run_shell(
                     f"python {script_name}", timeout=30
                 )
-                exit_code = shell_skill.get_exit_code_from_output(shell_result)
+                exit_code = self.shell_skill.get_exit_code_from_output(shell_result)
 
                 logger.info(f"Wykonanie zakończone z exit_code={exit_code}")
 

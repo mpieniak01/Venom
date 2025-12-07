@@ -497,11 +497,12 @@ Implementation of Docker Sandbox (THE_HABITAT) - Task 010_THE_HABITAT
 **Fix**: Updated docstring to accurately reflect RuntimeError is raised
 **Location**: `venom_core/infrastructure/docker_habitat.py:25`
 
-##### 2. Timeout Parameter (DOCUMENTED)
+##### 2. Timeout Parameter (KNOWN LIMITATION)
 **Issue**: timeout parameter defined but not implemented
 
-**Fix**: Added documentation noting parameter is for future use
+**Status**: Known limitation - timeout parameter is not currently implemented in Docker habitat. This may lead to hanging containers during long-running operations.
 **Location**: `venom_core/infrastructure/docker_habitat.py:131`
+**Recommendation**: Implement timeout handling in future release
 
 ##### 3. Exit Code Parsing (IMPROVED)
 **Issue**: Fragile string parsing with indexOf/substring could fail on edge cases
@@ -510,10 +511,10 @@ Implementation of Docker Sandbox (THE_HABITAT) - Task 010_THE_HABITAT
 **Location**: `venom_core/execution/skills/shell_skill.py:159-166`
 
 ##### 4. Resource Optimization (COMPLETED)
-**Issue**: FileSkill and ShellSkill instances created in loop
+**Issue**: FileSkill and ShellSkill instances created multiple times
 
-**Fix**: Moved instance creation before loop to avoid unnecessary object creation
-**Location**: `venom_core/agents/coder.py:167-168`
+**Fix**: Instances are now stored as class attributes in `__init__` (lines 67-72) and reused throughout the class lifecycle. In `process_with_verification`, the method uses `self.file_skill` and `self.shell_skill` instead of creating new instances.
+**Location**: `venom_core/agents/coder.py:67-72` (instance storage), `venom_core/agents/coder.py:189,209` (reuse)
 
 #### Testing Coverage
 

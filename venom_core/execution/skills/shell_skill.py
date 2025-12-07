@@ -1,5 +1,6 @@
 """Moduł: shell_skill - wykonywanie komend shell z obsługą Docker Sandbox."""
 
+import re
 import subprocess
 from typing import Annotated
 
@@ -156,8 +157,6 @@ class ShellSkill:
         Returns:
             Exit code (0 = sukces, >0 = błąd)
         """
-        import re
-
         # Próbuj znaleźć exit_code używając regex
         match = re.search(r"exit_code=(\d+)", output)
         if match:

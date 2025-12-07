@@ -8,7 +8,7 @@ from venom_core.agents.system_engineer import SystemEngineerAgent
 from venom_core.agents.tester import TesterAgent
 from venom_core.execution.skills.core_skill import CoreSkill
 from venom_core.execution.skills.git_skill import GitSkill
-from venom_core.infrastructure.mirror_world import MirrorWorld, InstanceInfo
+from venom_core.infrastructure.mirror_world import InstanceInfo, MirrorWorld
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.utils.logger import get_logger
 
@@ -250,7 +250,9 @@ class EvolutionCoordinator:
             logger.info("Uruchamianie testów...")
             # TODO: Implementacja uruchamiania testów w Shadow Instance
             # Na razie placeholder
-            logger.info("⚠️ Uruchamianie testów nie jest jeszcze w pełni zaimplementowane")
+            logger.info(
+                "⚠️ Uruchamianie testów nie jest jeszcze w pełni zaimplementowane"
+            )
 
         return {
             "success": True,

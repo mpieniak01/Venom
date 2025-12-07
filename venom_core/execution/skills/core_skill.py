@@ -48,9 +48,13 @@ class CoreSkill:
     )
     async def hot_patch(
         self,
-        file_path: Annotated[str, "Ścieżka do pliku do zmodyfikowania (relatywna lub bezwzględna)"],
+        file_path: Annotated[
+            str, "Ścieżka do pliku do zmodyfikowania (relatywna lub bezwzględna)"
+        ],
         content: Annotated[str, "Nowa zawartość pliku"],
-        create_backup: Annotated[bool, "Czy utworzyć backup przed zmianą (domyślnie True)"] = True,
+        create_backup: Annotated[
+            bool, "Czy utworzyć backup przed zmianą (domyślnie True)"
+        ] = True,
     ) -> str:
         """
         Bezpiecznie modyfikuje plik z opcjonalnym backupem.
@@ -106,7 +110,10 @@ class CoreSkill:
     async def rollback(
         self,
         file_path: Annotated[str, "Ścieżka do pliku do przywrócenia"],
-        backup_file: Annotated[Optional[str], "Opcjonalna ścieżka do konkretnego backupu (jeśli nie podano, użyje najnowszego)"] = None,
+        backup_file: Annotated[
+            Optional[str],
+            "Opcjonalna ścieżka do konkretnego backupu (jeśli nie podano, użyje najnowszego)",
+        ] = None,
     ) -> str:
         """
         Przywraca plik z backupu.
@@ -158,7 +165,10 @@ class CoreSkill:
     )
     async def list_backups(
         self,
-        file_path: Annotated[Optional[str], "Opcjonalna ścieżka do pliku (jeśli nie podano, pokaże wszystkie backupy)"] = None,
+        file_path: Annotated[
+            Optional[str],
+            "Opcjonalna ścieżka do pliku (jeśli nie podano, pokaże wszystkie backupy)",
+        ] = None,
     ) -> str:
         """
         Wyświetla listę backupów.

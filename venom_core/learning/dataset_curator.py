@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -99,7 +99,8 @@ class DatasetCurator:
         lessons_store=None,
         git_skill=None,
         state_manager=None,
-        min_quality_score: float = 0.5,
+        min_quality_score: float = DEFAULT_MIN_QUALITY_SCORE,
+        max_diff_length: int = DEFAULT_MAX_DIFF_LENGTH,
     ):
         """
         Inicjalizacja DatasetCurator.
@@ -110,6 +111,7 @@ class DatasetCurator:
             git_skill: Instancja GitSkill (opcjonalne)
             state_manager: Instancja StateManager (opcjonalne)
             min_quality_score: Minimalny wynik jakości dla przykładów (0.0-1.0)
+            max_diff_length: Maksymalna długość diff w przykładzie (znaki)
         """
         self.output_dir = Path(
             output_dir or f"{SETTINGS.WORKSPACE_ROOT}/../data/training"
@@ -120,12 +122,13 @@ class DatasetCurator:
         self.git_skill = git_skill
         self.state_manager = state_manager
         self.min_quality_score = min_quality_score
+        self.max_diff_length = max_diff_length
 
         self.examples: List[TrainingExample] = []
 
         logger.info(
             f"DatasetCurator zainicjalizowany (output_dir={self.output_dir}, "
-            f"min_quality={min_quality_score})"
+            f"min_quality={min_quality_score}, max_diff_length={max_diff_length})"
         )
 
     def collect_from_lessons(
@@ -337,13 +340,12 @@ class DatasetCurator:
         self.examples = unique_examples
 
         removed = initial_count - len(self.examples)
-        if removed > 0:
-            logger.info(f"Usunięto {removed} przykładów niskiej jakości")
+        logger.info(f"Usunięto {removed} przykładów niskiej jakości")
 
         return removed
 
     def save_dataset(
-        self, filename: Optional[str] = None, format: str = "alpaca"
+        self, filename: Optional[str] = None, format: Literal["alpaca", "sharegpt"] = "alpaca"
     ) -> Path:
         """
         Zapisuje dataset do pliku JSONL.

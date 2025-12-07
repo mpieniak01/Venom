@@ -35,8 +35,14 @@ class GPUHabitat(DockerHabitat):
 
         Raises:
             RuntimeError: Jeśli Docker nie jest dostępny
+            
+        Note:
+            Nie wywołujemy super().__init__() ponieważ GPUHabitat nie tworzy
+            standardowego kontenera sandbox - zamiast tego zarządza tymczasowymi
+            kontenerami treningowymi. Dziedziczymy po DockerHabitat głównie jako
+            marker typologiczny, a nie dla dziedziczenia funkcjonalności.
         """
-        # Nie wywołujemy super().__init__() aby nie tworzyć standardowego kontenera
+        # Inicjalizacja klienta Docker (bez tworzenia standardowego kontenera)
         try:
             self.client = docker.from_env()
             logger.info("Połączono z Docker daemon (GPU mode)")
@@ -288,8 +294,8 @@ class GPUHabitat(DockerHabitat):
             logger.error(f"Błąd podczas pobierania statusu: {e}")
             return {
                 "status": "error",
-                "logs": str(e),
-                "container_id": container.id,
+                "error": str(e),
+                "container_id": container.id if hasattr(container, 'id') else None,
             }
 
     def _generate_training_script(
@@ -356,6 +362,8 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 
 # Dodaj adapter LoRA
 print("\\n[2/5] Dodawanie adaptera LoRA...")
+# UWAGA: Lista target_modules poniżej jest specyficzna dla architektury Llama/Phi.
+# Jeśli używasz innego modelu (np. BERT, T5), musisz ją odpowiednio zmienić!
 model = FastLanguageModel.get_peft_model(
     model,
     r=LORA_RANK,

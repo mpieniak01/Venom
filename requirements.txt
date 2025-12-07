@@ -72,6 +72,7 @@ colorama                # Kolory w terminalu
 rich                    # Piękne logi i paski postępu
 loguru                  # Nowoczesne logowanie błędów
 tqdm                    # Paski postępu
+docker                  # Docker SDK dla Python (Docker Sandbox)
 
 
 # --- VENOM DEV TOOLS (Jakość Kodu) ---

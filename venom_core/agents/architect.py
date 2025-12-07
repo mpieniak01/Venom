@@ -27,10 +27,10 @@ class ArchitectAgent(BaseAgent):
 DOSTĘPNI AGENCI (WYKONAWCY):
 1. RESEARCHER - Zbiera wiedzę z Internetu, czyta dokumentację, znajduje przykłady
    Używaj gdy: trzeba znaleźć informacje o bibliotekach, API, najlepsze praktyki, aktualne wersje
-   
+
 2. CODER - Pisze kod, tworzy pliki, implementuje funkcjonalność
    Używaj gdy: trzeba napisać konkretny kod, stworzyć pliki, zaimplementować logikę
-   
+
 3. LIBRARIAN - Zarządza plikami, czyta istniejący kod, organizuje strukturę
    Używaj gdy: trzeba sprawdzić co już istnieje, odczytać konfigurację, przejrzeć strukturę
 
@@ -117,7 +117,7 @@ Plan:
   ]
 }
 
-WAŻNE: 
+WAŻNE:
 - Odpowiedz TYLKO kodem JSON, bez ```json ani innych znaczników
 - NIE dodawaj komentarzy ani wyjaśnień poza JSONem
 - Upewnij się że JSON jest poprawny syntaktycznie"""

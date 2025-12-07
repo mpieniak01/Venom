@@ -56,7 +56,7 @@ Zaktualizowano `Orchestrator`:
   - Test konfiguracji local, OpenAI, Azure
   - Test walidacji (brak API key, niepoprawny typ)
   - Test case-insensitive service type
-  
+
 - ✅ **IntentManager**: 10 testów (100% passed) z mockami
   - Test klasyfikacji wszystkich 3 typów intencji
   - Test obsługi różnych formatów odpowiedzi (lowercase, extra text, whitespace)
@@ -88,12 +88,12 @@ Zaktualizowano `Orchestrator`:
 
 ## 4. Weryfikacja Kryteriów Akceptacji (DoD) ✅
 
-1. ✅ **Działa bez Internetu:** 
+1. ✅ **Działa bez Internetu:**
    - Testy z mockami przechodzą bez potrzeby połączenia
    - Konfiguracja local-first z endpoint `http://localhost:11434/v1`
    - AsyncOpenAI client z custom base_url
 
-2. ✅ **Elastyczność:** 
+2. ✅ **Elastyczność:**
    - Zmiana `LLM_SERVICE_TYPE` w `.env` przełącza tryb
    - Przykłady konfiguracji w dokumentacji
    - Brak hardcodowania - wszystko z `config.py`
@@ -103,7 +103,7 @@ Zaktualizowano `Orchestrator`:
    - Test: "Witaj Venom, jak się masz?" → `GENERAL_CHAT` ✅
    - Test: "Co to jest GraphRAG?" → `KNOWLEDGE_SEARCH` ✅
 
-4. ✅ **Brak Hardcodowania:** 
+4. ✅ **Brak Hardcodowania:**
    - Wszystkie parametry w `venom_core/config.py`
    - Konfigurowalny przez zmienne środowiskowe (.env)
    - Dummy API key również konfigurowalny

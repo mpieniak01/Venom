@@ -214,16 +214,22 @@ WAŻNE:
             generated_code = str(response[0])
 
             # Oczyść kod z markdown jeśli LLM dodało
+            # Obsługa różnych formatów markdown code blocks
             if "```python" in generated_code:
-                # Wyciągnij kod między ```python a ```
-                start = generated_code.find("```python") + len("```python")
-                end = generated_code.rfind("```")
-                generated_code = generated_code[start:end].strip()
+                # Wyciągnij wszystkie bloki kodu python
+                parts = generated_code.split("```python")
+                if len(parts) > 1:
+                    # Weź pierwszy blok kodu
+                    code_part = parts[1]
+                    end_idx = code_part.find("```")
+                    if end_idx != -1:
+                        generated_code = code_part[:end_idx].strip()
             elif "```" in generated_code:
                 # Jeśli jest tylko ``` bez python
-                start = generated_code.find("```") + len("```")
-                end = generated_code.rfind("```")
-                generated_code = generated_code[start:end].strip()
+                parts = generated_code.split("```")
+                if len(parts) >= 3:
+                    # Kod jest między pierwszym i drugim ```
+                    generated_code = parts[1].strip()
 
             logger.info(
                 f"Toolmaker wygenerował narzędzie: {len(generated_code)} znaków"
@@ -244,13 +250,18 @@ WAŻNE:
 
         Args:
             specification: Specyfikacja narzędzia (co ma robić)
-            tool_name: Nazwa narzędzia (bez rozszerzenia .py)
+            tool_name: Nazwa narzędzia (bez rozszerzenia .py, tylko [a-z0-9_])
             output_dir: Katalog docelowy (domyślnie workspace)
 
         Returns:
             Tuple (success, message/code)
         """
         try:
+            # Walidacja nazwy narzędzia (zapobieganie directory traversal)
+            import re
+            if not re.match(r'^[a-z0-9_]+$', tool_name):
+                return False, f"Nieprawidłowa nazwa narzędzia: {tool_name}. Dozwolone tylko [a-z0-9_]"
+            
             logger.info(f"Tworzenie narzędzia: {tool_name}")
 
             # Generuj kod

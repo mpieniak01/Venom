@@ -1106,20 +1106,28 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
                 habitat = DockerHabitat()
                 guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
 
-                # Sprawdź podstawową składnię
+                # Sprawdź podstawową składnię - ogranicz kod do bezpiecznego fragmentu
+                # Używamy tylko metadanych, nie całego kodu aby uniknąć prompt injection
                 verify_prompt = f"""Sprawdź czy narzędzie {tool_name} jest poprawne składniowo.
 
-KOD NARZĘDZIA:
+METADANE NARZĘDZIA:
+- Nazwa: {tool_name}
+- Długość kodu: {len(tool_code)} znaków
+- Czy zawiera @kernel_function: {"TAK" if "@kernel_function" in tool_code else "NIE"}
+- Czy zawiera klasę: {"TAK" if "class " in tool_code else "NIE"}
+
+FRAGMENT KODU (pierwsze 500 znaków):
 ```python
-{tool_code[:1000]}
+{tool_code[:500]}
 ```
 
 Zweryfikuj:
-1. Czy kod jest poprawny składniowo (Python syntax)
+1. Czy fragment kodu jest poprawny składniowo (Python syntax)
 2. Czy ma dekorator @kernel_function
 3. Czy ma odpowiednie type hints
+4. Czy nie widać niebezpiecznych konstrukcji (eval, exec)
 
-Odpowiedz APPROVED jeśli wszystko OK, lub opisz problemy."""
+Odpowiedz APPROVED jeśli wygląda OK, lub opisz problemy."""
 
                 verification_result = await guardian.process(verify_prompt)
 

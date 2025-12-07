@@ -51,11 +51,10 @@ class SkillManager:
         if custom_skills_dir:
             self.custom_skills_dir = Path(custom_skills_dir).resolve()
         else:
-            # Domyślna ścieżka: venom_core/execution/skills/custom/
-            venom_root = Path(__file__).parent.parent.parent  # 3 poziomy w górę
-            self.custom_skills_dir = (
-                venom_root / "venom_core" / "execution" / "skills" / "custom"
-            )
+            # Domyślna ścieżka: znajdź katalog względem workspace/custom
+            # (SkillManager oczekuje że FileSkill zapisuje do workspace/custom)
+            workspace_root = Path(SETTINGS.WORKSPACE_ROOT).resolve()
+            self.custom_skills_dir = workspace_root / "custom"
 
         # Upewnij się że katalog istnieje
         self.custom_skills_dir.mkdir(parents=True, exist_ok=True)
@@ -165,13 +164,22 @@ class SkillManager:
 
             # Przeładuj istniejący moduł
             old_module = self.loaded_skills[skill_name]
-
-            # Użyj importlib.reload
-            reloaded_module = importlib.reload(old_module)
-
-            # Waliduj przeładowany moduł
+            
+            # Waliduj przed przeładowaniem
             skill_file = self.custom_skills_dir / f"{skill_name}.py"
-            self.validate_skill(str(skill_file))
+            try:
+                self.validate_skill(str(skill_file))
+            except SkillValidationError as e:
+                logger.error(f"Walidacja nie powiodła się: {e}")
+                return False
+
+            # Użyj importlib.reload z obsługą błędów
+            try:
+                reloaded_module = importlib.reload(old_module)
+            except Exception as e:
+                logger.error(f"Błąd podczas reload: {e}")
+                # Pozostaw stary moduł załadowany
+                return False
 
             # Zarejestruj ponownie w kernelu (nadpisz)
             self._register_skill_in_kernel(skill_name, reloaded_module)
@@ -281,8 +289,11 @@ class SkillManager:
         Returns:
             Załadowany moduł
         """
+        # Użyj prefixu aby uniknąć konfliktów z innymi modułami
+        module_name = f"venom_custom_{skill_name}"
+        
         # Utwórz spec modułu
-        spec = importlib.util.spec_from_file_location(skill_name, skill_file)
+        spec = importlib.util.spec_from_file_location(module_name, skill_file)
         if spec is None or spec.loader is None:
             raise ImportError(f"Nie można utworzyć spec dla {skill_file}")
 
@@ -290,7 +301,7 @@ class SkillManager:
         module = importlib.util.module_from_spec(spec)
 
         # Dodaj do sys.modules aby można było go później przeładować
-        sys.modules[skill_name] = module
+        sys.modules[module_name] = module
 
         # Wykonaj moduł
         spec.loader.exec_module(module)
@@ -318,10 +329,14 @@ class SkillManager:
             logger.warning(f"Moduł {skill_name} nie zawiera żadnych klas")
             return
 
+        # Moduł name z prefixem
+        module_full_name = f"venom_custom_{skill_name}"
+
         # Zarejestruj każdą klasę jako plugin
         for cls in classes:
             # Pomiń klasy zaimportowane z innych modułów
-            if cls.__module__ != skill_name:
+            # Sprawdź czy klasa należy do tego modułu (z prefixem)
+            if not cls.__module__.endswith(skill_name) and cls.__module__ != module_full_name:
                 continue
 
             try:

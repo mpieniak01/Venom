@@ -22,6 +22,7 @@ class IntentManager:
 3. GENERAL_CHAT - rozmowa ogólna, powitanie, żarty, pytania o samopoczucie systemu
 4. RESEARCH - użytkownik potrzebuje aktualnych informacji z Internetu, dokumentacji, najnowszej wiedzy o technologii
 5. COMPLEX_PLANNING - użytkownik prosi o stworzenie złożonego projektu wymagającego wielu kroków i koordynacji
+6. VERSION_CONTROL - użytkownik chce zarządzać Git: tworzyć branch, commitować zmiany, synchronizować kod
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
@@ -42,6 +43,15 @@ KIEDY WYBIERAĆ COMPLEX_PLANNING:
 - "Stwórz stronę HTML z CSS i JavaScript"
 - Zadania wymagające: wielu plików, integracji technologii, złożonej logiki
 
+KIEDY WYBIERAĆ VERSION_CONTROL:
+- "Utwórz nowy branch feat/csv-support"
+- "Commitnij zmiany"
+- "Synchronizuj kod z repozytorium"
+- "Jaki jest aktualny branch?"
+- "Pokaż status Git"
+- "Wypchnij zmiany"
+- Zapytania zawierające: "branch", "commit", "push", "git", "repozytorium"
+
 Przykłady:
 - "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION
 - "Jak zrefaktoryzować ten kod?" → CODE_GENERATION
@@ -52,7 +62,9 @@ Przykłady:
 - "Jaka jest aktualna cena Bitcoina?" → RESEARCH
 - "Znajdź dokumentację PyGame" → RESEARCH
 - "Stwórz grę Snake z PyGame" → COMPLEX_PLANNING
-- "Zbuduj stronę z zegarem (HTML + CSS + JS)" → COMPLEX_PLANNING"""
+- "Zbuduj stronę z zegarem (HTML + CSS + JS)" → COMPLEX_PLANNING
+- "Utwórz branch feat/new-feature" → VERSION_CONTROL
+- "Commitnij moje zmiany" → VERSION_CONTROL"""
 
     def __init__(self, kernel: Kernel = None):
         """
@@ -76,7 +88,7 @@ Przykłady:
             user_input: Treść wejścia użytkownika
 
         Returns:
-            Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING)
+            Nazwa kategorii intencji (CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING, VERSION_CONTROL)
         """
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
 
@@ -111,6 +123,7 @@ Przykłady:
                 "GENERAL_CHAT",
                 "RESEARCH",
                 "COMPLEX_PLANNING",
+                "VERSION_CONTROL",
             ]
             if intent not in valid_intents:
                 # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie

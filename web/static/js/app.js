@@ -15,6 +15,7 @@ class VenomDashboard {
         this.initWebSocket();
         this.initEventHandlers();
         this.startMetricsPolling();
+        this.startRepositoryStatusPolling();
         this.initNotificationContainer();
     }
 
@@ -343,6 +344,21 @@ class VenomDashboard {
                 this.sendTask();
             }
         });
+
+        // Repository quick actions
+        const syncBtn = document.getElementById('syncRepoBtn');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', () => {
+                this.handleSyncRepo();
+            });
+        }
+
+        const undoBtn = document.getElementById('undoChangesBtn');
+        if (undoBtn) {
+            undoBtn.addEventListener('click', () => {
+                this.handleUndoChanges();
+            });
+        }
     }
 
     async sendTask() {
@@ -440,6 +456,44 @@ class VenomDashboard {
         setInterval(() => {
             this.fetchMetrics();
         }, 5000);
+    }
+
+    startRepositoryStatusPolling() {
+        // Fetch repository status immediately
+        this.fetchRepositoryStatus();
+
+        // Then every 3 seconds
+        setInterval(() => {
+            this.fetchRepositoryStatus();
+        }, 3000);
+    }
+
+    async fetchRepositoryStatus() {
+        try {
+            const response = await fetch('/api/v1/git/status');
+
+            if (!response.ok) {
+                // If endpoint returns error, don't update UI
+                return;
+            }
+
+            const data = await response.json();
+
+            if (data.status === 'success' && data.is_git_repo) {
+                this.updateRepositoryStatus(
+                    data.branch,
+                    data.has_changes,
+                    data.modified_count
+                );
+            } else {
+                // Not a git repo or error
+                this.updateRepositoryStatus('-', false, 0);
+            }
+
+        } catch (error) {
+            console.error('Error fetching repository status:', error);
+            // Don't update UI on error
+        }
     }
 
     // Memory Tab Functions
@@ -662,7 +716,8 @@ class VenomDashboard {
         // Update changes status
         if (hasChanges) {
             this.elements.repoChanges.classList.add('dirty');
-            this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} modified</span>`;
+            const filesText = changeCount === 1 ? 'file' : 'files';
+            this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} modified ${filesText}</span>`;
         } else {
             this.elements.repoChanges.classList.remove('dirty');
             this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Clean</span>`;
@@ -670,6 +725,55 @@ class VenomDashboard {
 
         // Re-cache the changesText reference after innerHTML update
         this.elements.changesText = document.getElementById('changesText');
+    }
+
+    async handleSyncRepo() {
+        try {
+            this.showNotification('Synchronizacja repozytorium...', 'info');
+
+            const response = await fetch('/api/v1/git/sync', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success' || data.status === 'info') {
+                this.showNotification(data.message, 'info');
+            } else {
+                this.showNotification('Błąd synchronizacji', 'error');
+            }
+        } catch (error) {
+            console.error('Error syncing repository:', error);
+            this.showNotification('Błąd podczas synchronizacji', 'error');
+        }
+    }
+
+    async handleUndoChanges() {
+        // Ask for confirmation before destructive operation
+        if (!confirm('Czy na pewno chcesz cofnąć wszystkie zmiany? Ta operacja jest nieodwracalna!')) {
+            return;
+        }
+
+        try {
+            this.showNotification('Cofanie zmian...', 'warning');
+
+            const response = await fetch('/api/v1/git/undo', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success' || data.status === 'info') {
+                this.showNotification(data.message, 'info');
+                // Refresh status after undo
+                this.fetchRepositoryStatus();
+            } else {
+                this.showNotification('Błąd cofania zmian', 'error');
+            }
+        } catch (error) {
+            console.error('Error undoing changes:', error);
+            this.showNotification('Błąd podczas cofania zmian', 'error');
+        }
     }
 }
 

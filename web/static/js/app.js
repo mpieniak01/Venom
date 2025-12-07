@@ -652,7 +652,7 @@ class VenomDashboard {
 
     // Update repository status in header
     updateRepositoryStatus(branch, hasChanges, changeCount = 0) {
-        if (!this.elements.branchName || !this.elements.changesText || !this.elements.repoChanges) {
+        if (!this.elements.branchName || !this.elements.repoChanges) {
             return;
         }
 
@@ -661,14 +661,15 @@ class VenomDashboard {
 
         // Update changes status
         if (hasChanges) {
-            this.elements.changesText.textContent = `${changeCount} modified`;
             this.elements.repoChanges.classList.add('dirty');
             this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} modified</span>`;
         } else {
-            this.elements.changesText.textContent = 'Clean';
             this.elements.repoChanges.classList.remove('dirty');
             this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Clean</span>`;
         }
+
+        // Re-cache the changesText reference after innerHTML update
+        this.elements.changesText = document.getElementById('changesText');
     }
 }
 

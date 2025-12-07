@@ -1,6 +1,5 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
-import asyncio
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -19,6 +18,11 @@ class BrowserSkill:
 
     Umożliwia agentom wykonywanie testów E2E poprzez kontrolowanie przeglądarki
     (headless Chromium) za pomocą Playwright.
+
+    UWAGA: Zasoby przeglądarki (browser, page, Playwright) muszą być zamykane jawnie przez użytkownika
+    poprzez wywołanie metody `close_browser()`. Destruktor nie zamyka zasobów automatycznie ze względu
+    na ograniczenia asynchronicznego czyszczenia w Pythonie. Brak jawnego zamknięcia może prowadzić do
+    wycieków pamięci lub pozostawienia procesów przeglądarki.
     """
 
     def __init__(self, workspace_root: Optional[str] = None):

@@ -1,7 +1,5 @@
 """Testy jednostkowe dla modułu Council (bez dependencies na pełny kernel)."""
 
-import pytest
-
 from venom_core.core.council import create_local_llm_config
 
 
@@ -37,3 +35,53 @@ def test_swarm_module_imports():
     # Sprawdź że klasy/funkcje są dostępne
     assert VenomAgent is not None
     assert create_venom_agent_wrapper is not None
+
+
+def test_create_local_llm_config_invalid_temperature_high():
+    """Test walidacji temperatury - wartość za wysoka."""
+    try:
+        create_local_llm_config(temperature=1.5)
+        assert False, "Powinien rzucić ValueError dla temperature > 1.0"
+    except ValueError as e:
+        assert "Temperature" in str(e)
+        assert "0.0-1.0" in str(e)
+
+
+def test_create_local_llm_config_invalid_temperature_low():
+    """Test walidacji temperatury - wartość za niska."""
+    try:
+        create_local_llm_config(temperature=-0.1)
+        assert False, "Powinien rzucić ValueError dla temperature < 0.0"
+    except ValueError as e:
+        assert "Temperature" in str(e)
+        assert "0.0-1.0" in str(e)
+
+
+def test_create_local_llm_config_invalid_base_url_empty():
+    """Test walidacji base_url - pusty string."""
+    try:
+        create_local_llm_config(base_url="")
+        assert False, "Powinien rzucić ValueError dla pustego base_url"
+    except ValueError as e:
+        assert "base_url" in str(e)
+
+
+def test_create_local_llm_config_invalid_model_empty():
+    """Test walidacji model - pusty string."""
+    try:
+        create_local_llm_config(model="")
+        assert False, "Powinien rzucić ValueError dla pustego model"
+    except ValueError as e:
+        assert "model" in str(e)
+
+
+def test_create_local_llm_config_edge_case_temperature_zero():
+    """Test edge case - temperatura 0.0 powinna być akceptowana."""
+    config = create_local_llm_config(temperature=0.0)
+    assert config["temperature"] == 0.0
+
+
+def test_create_local_llm_config_edge_case_temperature_one():
+    """Test edge case - temperatura 1.0 powinna być akceptowana."""
+    config = create_local_llm_config(temperature=1.0)
+    assert config["temperature"] == 1.0

@@ -17,6 +17,10 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Konfiguracja Group Chat
+DEFAULT_MAX_COUNCIL_ROUNDS = 20  # Maksymalna liczba rund konwersacji w Council
+COUNCIL_SESSION_TIMEOUT = 300  # Timeout dla sesji Council w sekundach (5 minut)
+
 
 class CouncilConfig:
     """Konfiguracja The Council - Group Chat agentów."""
@@ -129,7 +133,7 @@ class CouncilConfig:
         group_chat = GroupChat(
             agents=agents,
             messages=[],
-            max_round=20,  # Maksymalnie 20 rund konwersacji
+            max_round=DEFAULT_MAX_COUNCIL_ROUNDS,
             speaker_selection_method="auto",  # AutoGen wybiera następnego mówcę
             allow_repeat_speaker=False,  # Nie pozwól temu samemu agentowi mówić dwa razy z rzędu
             allowed_or_disallowed_speaker_transitions=allowed_transitions,
@@ -189,8 +193,12 @@ class CouncilSession:
             # Używamy asyncio.to_thread aby nie blokować event loop
             import asyncio
 
-            await asyncio.to_thread(
-                self.user_proxy.initiate_chat, self.manager, message=task
+            # Dodaj timeout aby uniknąć zawieszonych sesji
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.user_proxy.initiate_chat, self.manager, message=task
+                ),
+                timeout=COUNCIL_SESSION_TIMEOUT,
             )
 
             # Zbierz wyniki z historii czatu
@@ -199,6 +207,10 @@ class CouncilSession:
             logger.info("Council zakończył dyskusję")
             return result
 
+        except asyncio.TimeoutError:
+            error_msg = f"Council przekroczył timeout ({COUNCIL_SESSION_TIMEOUT}s)"
+            logger.error(error_msg)
+            return error_msg
         except Exception as e:
             error_msg = f"Błąd podczas dyskusji Council: {e}"
             logger.error(error_msg)
@@ -218,9 +230,18 @@ class CouncilSession:
         result = "=== THE COUNCIL - TRANSKRYPCJA DYSKUSJI ===\n\n"
 
         for msg in self.group_chat.messages:
+            # Waliduj strukturę wiadomości
+            if not isinstance(msg, dict):
+                logger.warning(f"Nieprawidłowa wiadomość (nie dict): {msg}")
+                continue
+
             # Każda wiadomość to dict z kluczami: 'role', 'content', 'name'
             speaker = msg.get("name", "Unknown")
             content = msg.get("content", "")
+
+            # Pomiń puste wiadomości
+            if not content:
+                continue
 
             result += f"[{speaker}]:\n{content}\n\n"
 
@@ -273,7 +294,24 @@ def create_local_llm_config(
 
     Returns:
         Dict z konfiguracją LLM dla AutoGen
+
+    Raises:
+        ValueError: Jeśli parametry są nieprawidłowe
     """
+    # Walidacja parametrów
+    if not 0.0 <= temperature <= 1.0:
+        raise ValueError(
+            f"Temperature musi być w zakresie 0.0-1.0, otrzymano: {temperature}"
+        )
+
+    if not base_url or not isinstance(base_url, str):
+        raise ValueError(
+            f"base_url musi być niepustym stringiem, otrzymano: {base_url}"
+        )
+
+    if not model or not isinstance(model, str):
+        raise ValueError(f"model musi być niepustym stringiem, otrzymano: {model}")
+
     config = {
         "config_list": [
             {

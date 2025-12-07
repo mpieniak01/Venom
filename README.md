@@ -127,7 +127,15 @@ LLM_MODEL_NAME=phi3:latest
 
 # Opcjonalne (dla chmurowych modeli)
 OPENAI_API_KEY=your_key_here
+
+# External Integrations (NEW v2.0)
+GITHUB_TOKEN=ghp_your_token         # Personal Access Token
+GITHUB_REPO_NAME=username/repo      # Nazwa repozytorium
+DISCORD_WEBHOOK_URL=https://...     # Opcjonalne
+ENABLE_ISSUE_POLLING=false          # Włącz auto-polling Issues
 ```
+
+📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
 
 ### Uruchomienie
 
@@ -205,14 +213,22 @@ mypy venom_core
 - [x] Integracja z Internetem
 - [x] Pamięć długoterminowa
 - [x] Comprehensive testing
+- [x] **NEW: External Integrations (PlatformSkill)** 🤖
+  - [x] GitHub Integration (Issues, Pull Requests)
+  - [x] Discord/Slack Notifications
+  - [x] Issue-to-PR Workflow
 
 ### 🚧 v2.1 (Planned)
+- [ ] Background polling dla GitHub Issues
+- [ ] Dashboard panel dla External Integrations
 - [ ] Recursive Summarization dla długich dokumentów
 - [ ] Cached Search Results
 - [ ] Plan Validation i Optimization
 - [ ] Better Error Recovery
 
 ### 🔮 v3.0 (Future)
+- [ ] Webhook support dla GitHub
+- [ ] MS Teams Integration
 - [ ] Multi-Source Verification
 - [ ] Google Search API Integration
 - [ ] Parallel Execution kroków planu

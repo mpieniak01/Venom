@@ -553,9 +553,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         except Exception as e:
             logger.error(f"Błąd podczas zapisywania lekcji: {e}")
 
-    async def execute_healing_cycle(
-        self, task_id: UUID, test_path: str = "."
-    ) -> dict:
+    async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """
         Pętla samonaprawy (Test-Diagnose-Fix-Apply).
 
@@ -601,7 +599,10 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
             await self._broadcast_event(
                 event_type="HEALING_STARTED",
                 message="Rozpoczynam automatyczne testy i naprawy",
-                data={"task_id": str(task_id), "max_iterations": MAX_HEALING_ITERATIONS},
+                data={
+                    "task_id": str(task_id),
+                    "max_iterations": MAX_HEALING_ITERATIONS,
+                },
             )
 
             # Przygotuj środowisko - zainstaluj zależności
@@ -637,11 +638,14 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
                 # Sprawdź czy testy przeszły - używamy wielokrotnych sprawdzeń dla niezawodności
                 test_passed = (
-                    "PRZESZŁY POMYŚLNIE" in test_report 
+                    "PRZESZŁY POMYŚLNIE" in test_report
                     or "PASSED" in test_report.upper()
-                    or ("exit_code: 0" in test_report.lower() and "failed: 0" in test_report.lower())
+                    or (
+                        "exit_code: 0" in test_report.lower()
+                        and "failed: 0" in test_report.lower()
+                    )
                 )
-                
+
                 if test_passed:
                     self.state_manager.add_log(
                         task_id,
@@ -650,7 +654,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
                     await self._broadcast_event(
                         event_type="TEST_RESULT",
-                        message=f"✅ Testy przeszły pomyślnie!",
+                        message="✅ Testy przeszły pomyślnie!",
                         agent="Guardian",
                         data={
                             "task_id": str(task_id),
@@ -667,12 +671,12 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
                 # Testy nie przeszły - diagnozuj
                 self.state_manager.add_log(
-                    task_id, f"❌ Testy nie przeszły. Rozpoczynam diagnostykę..."
+                    task_id, "❌ Testy nie przeszły. Rozpoczynam diagnostykę..."
                 )
 
                 await self._broadcast_event(
                     event_type="TEST_RESULT",
-                    message=f"❌ Testy nie przeszły - analizuję błędy",
+                    message="❌ Testy nie przeszły - analizuję błędy",
                     agent="Guardian",
                     data={
                         "task_id": str(task_id),
@@ -684,7 +688,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 # PHASE 2: DIAGNOSE - Guardian analizuje błędy
                 self.state_manager.add_log(
                     task_id,
-                    f"🔬 PHASE 2: Guardian analizuje błędy (traceback)",
+                    "🔬 PHASE 2: Guardian analizuje błędy (traceback)",
                 )
 
                 diagnosis_prompt = f"""Przeanalizuj wyniki testów i stwórz precyzyjny ticket naprawczy.
@@ -711,13 +715,16 @@ Odpowiedz w formacie ticketu naprawczego.
                     event_type="AGENT_THOUGHT",
                     message="Zdiagnozowałem problem - tworzę ticket naprawczy",
                     agent="Guardian",
-                    data={"task_id": str(task_id), "ticket_preview": repair_ticket[:100]},
+                    data={
+                        "task_id": str(task_id),
+                        "ticket_preview": repair_ticket[:100],
+                    },
                 )
 
                 # PHASE 3: FIX - Coder generuje poprawkę
                 self.state_manager.add_log(
                     task_id,
-                    f"🛠️ PHASE 3: Coder generuje poprawkę",
+                    "🛠️ PHASE 3: Coder generuje poprawkę",
                 )
 
                 fix_prompt = f"""TICKET NAPRAWCZY OD GUARDIANA:
@@ -749,7 +756,7 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
 
                 self.state_manager.add_log(
                     task_id,
-                    f"💾 PHASE 4: Poprawka zastosowana, wracam do testów",
+                    "💾 PHASE 4: Poprawka zastosowana, wracam do testów",
                 )
 
                 # Jeśli to ostatnia iteracja

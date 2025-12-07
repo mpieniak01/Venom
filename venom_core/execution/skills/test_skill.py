@@ -75,12 +75,14 @@ class TestSkill:
 
             # Walidacja test_path - zapobieganie command injection
             import re
-            if not re.match(r'^[a-zA-Z0-9_./\-]+$', test_path):
+
+            if not re.match(r"^[a-zA-Z0-9_./\-]+$", test_path):
                 return f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
 
             # Przygotuj komendę pytest z odpowiednimi flagami
             # Używamy shlex.quote dla bezpieczeństwa
             import shlex
+
             safe_path = shlex.quote(test_path)
             command = f"python -m pytest {safe_path} -v --tb=short --color=no"
 
@@ -128,15 +130,19 @@ class TestSkill:
 
             # Walidacja path - zapobieganie command injection
             import re
-            if not re.match(r'^[a-zA-Z0-9_./\-]+$', path):
+
+            if not re.match(r"^[a-zA-Z0-9_./\-]+$", path):
                 return f"❌ Błąd: Nieprawidłowa ścieżka: {path}"
 
             # Używamy shlex.quote dla bezpieczeństwa
             import shlex
+
             safe_path = shlex.quote(path)
-            
+
             # Spróbuj najpierw ruff, jeśli nie ma, użyj flake8
-            command = f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
+            command = (
+                f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
+            )
 
             # Wykonaj w kontenerze
             exit_code, output = self.habitat.execute(command, timeout=timeout)
@@ -249,7 +255,7 @@ class TestSkill:
         if report.exit_code == 0:
             return f"✅ TESTY PRZESZŁY POMYŚLNIE\n\nPassed: {report.passed}\nFailed: {report.failed}\n"
 
-        result = f"❌ TESTY NIE PRZESZŁY\n\n"
+        result = "❌ TESTY NIE PRZESZŁY\n\n"
         result += f"Exit Code: {report.exit_code}\n"
         result += f"Passed: {report.passed}\n"
         result += f"Failed: {report.failed}\n\n"

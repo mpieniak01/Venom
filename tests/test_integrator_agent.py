@@ -26,8 +26,9 @@ def mock_kernel():
 @pytest.fixture
 def integrator_agent(mock_kernel):
     """Tworzy instancję IntegratorAgent z mock kernel."""
-    with patch("venom_core.agents.integrator.GitSkill"), patch(
-        "venom_core.agents.integrator.PlatformSkill"
+    with (
+        patch("venom_core.agents.integrator.GitSkill"),
+        patch("venom_core.agents.integrator.PlatformSkill"),
     ):
         agent = IntegratorAgent(mock_kernel)
         return agent
@@ -36,9 +37,10 @@ def integrator_agent(mock_kernel):
 @pytest.mark.asyncio
 async def test_integrator_agent_initialization(mock_kernel):
     """Test inicjalizacji IntegratorAgent."""
-    with patch("venom_core.agents.integrator.GitSkill") as mock_git_skill, patch(
-        "venom_core.agents.integrator.PlatformSkill"
-    ) as mock_platform_skill:
+    with (
+        patch("venom_core.agents.integrator.GitSkill") as mock_git_skill,
+        patch("venom_core.agents.integrator.PlatformSkill") as mock_platform_skill,
+    ):
         IntegratorAgent(mock_kernel)
 
         # Sprawdź czy GitSkill i PlatformSkill zostały utworzone

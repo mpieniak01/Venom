@@ -124,7 +124,6 @@ class Professor(BaseAgent):
             # Zbierz dane z różnych źródeł
             lessons_count = self.dataset_curator.collect_from_lessons(limit=200)
             git_count = self.dataset_curator.collect_from_git_history(max_commits=100)
-            # task_count = self.dataset_curator.collect_from_task_history(max_tasks=50)
 
             # Filtruj niską jakość
             removed = self.dataset_curator.filter_low_quality()
@@ -141,7 +140,6 @@ class Professor(BaseAgent):
                 f"- Łączna liczba przykładów: {stats['total_examples']}\n"
                 f"- Z LessonsStore: {lessons_count}\n"
                 f"- Z Git History: {git_count}\n"
-                # f"- Z Task History: {task_count}\n"
                 f"- Usunięto (niska jakość): {removed}\n\n"
                 f"- Średnia długość input: {stats['avg_input_length']} znaków\n"
                 f"- Średnia długość output: {stats['avg_output_length']} znaków\n\n"
@@ -220,13 +218,15 @@ class Professor(BaseAgent):
             )
 
             # Zapisz w historii
+            from datetime import datetime
+            
             self.training_history.append(
                 {
                     "job_name": job_info["job_name"],
                     "dataset_path": dataset_path,
                     "params": params,
                     "status": "running",
-                    "started_at": None,  # TODO: dodaj timestamp
+                    "started_at": datetime.now().isoformat(),
                 }
             )
 

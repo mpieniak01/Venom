@@ -313,7 +313,11 @@ PARAMETER top_k 40
             if val1 is not None and val2 is not None:
                 try:
                     diff = val2 - val1
-                    diff_pct = (diff / val1) * 100 if val1 != 0 else 0
+                    if val1 != 0:
+                        diff_pct = (diff / val1) * 100
+                    else:
+                        # Jeśli val1 == 0, procentowa zmiana jest nieskończona (lub "N/A"), chyba że oba są zerowe
+                        diff_pct = float('inf') if val2 != 0 else 0
                     comparison["metrics_diff"][key] = {
                         "v1": val1,
                         "v2": val2,

@@ -15,7 +15,9 @@ def mock_kernel():
 
     # Mock chat service
     chat_service = MagicMock()
-    chat_service.get_chat_message_content = AsyncMock(return_value="Wykonano operację Git")
+    chat_service.get_chat_message_content = AsyncMock(
+        return_value="Wykonano operację Git"
+    )
     kernel.get_service = MagicMock(return_value=chat_service)
 
     return kernel

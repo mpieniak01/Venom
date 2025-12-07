@@ -91,5 +91,22 @@ class Settings(BaseSettings):
         True  # Wymagaj potwierdzenia dla komend sprzętowych
     )
 
+    # Konfiguracja THE_ACADEMY (Knowledge Distillation & Fine-tuning)
+    ENABLE_ACADEMY: bool = True  # Włącz system uczenia maszynowego
+    ACADEMY_TRAINING_DIR: str = "./data/training"  # Katalog z datasetami
+    ACADEMY_MODELS_DIR: str = "./data/models"  # Katalog z modelami
+    ACADEMY_MIN_LESSONS: int = 100  # Minimum lekcji do rozpoczęcia treningu
+    ACADEMY_TRAINING_INTERVAL_HOURS: int = 24  # Minimum godzin między treningami
+    ACADEMY_DEFAULT_BASE_MODEL: str = (
+        "unsloth/Phi-3-mini-4k-instruct"  # Model bazowy do fine-tuningu
+    )
+    ACADEMY_LORA_RANK: int = 16  # LoRA rank (4-64, wyższe = więcej parametrów)
+    ACADEMY_LEARNING_RATE: float = 2e-4  # Learning rate dla treningu
+    ACADEMY_NUM_EPOCHS: int = 3  # Liczba epok treningu
+    ACADEMY_BATCH_SIZE: int = 4  # Batch size (zmniejsz jeśli OOM)
+    ACADEMY_MAX_SEQ_LENGTH: int = 2048  # Maksymalna długość sekwencji
+    ACADEMY_ENABLE_GPU: bool = True  # Czy używać GPU (jeśli dostępne)
+    ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
+
 
 SETTINGS = Settings()

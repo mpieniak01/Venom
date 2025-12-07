@@ -1751,7 +1751,25 @@ class VenomDashboard {
             label.textContent = field.title || fieldName;
             fieldDiv.appendChild(label);
 
-            const input = document.createElement(field.type === 'string' ? 'input' : 'textarea');
+            let input;
+            if (field.type === 'string') {
+                // Use textarea for multiline, otherwise input[type=text]
+                if (field.format === 'textarea' || field.format === 'multiline') {
+                    input = document.createElement('textarea');
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'text';
+                }
+            } else if (field.type === 'number' || field.type === 'integer') {
+                input = document.createElement('input');
+                input.type = 'number';
+            } else if (field.type === 'boolean') {
+                input = document.createElement('input');
+                input.type = 'checkbox';
+            } else {
+                input = document.createElement('input');
+                input.type = 'text';
+            }
             input.name = fieldName;
             input.required = schema.required && schema.required.includes(fieldName);
             fieldDiv.appendChild(input);

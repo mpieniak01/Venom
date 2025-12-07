@@ -267,16 +267,18 @@ class RenderSkill:
                             parts[2].strip(),
                         )
 
+                        clean_name = name.rstrip("*")
+
                         # Mapowanie typów
                         json_type = "string"
                         if field_type in ["number", "integer"]:
                             json_type = "number"
 
-                        properties[name] = {"type": json_type, "title": label}
+                        properties[clean_name] = {"type": json_type, "title": label}
 
                         # Jeśli pole kończy się *, jest wymagane
                         if name.endswith("*"):
-                            required.append(name.rstrip("*"))
+                            required.append(clean_name)
 
             # Tworzenie JSON Schema
             schema = {

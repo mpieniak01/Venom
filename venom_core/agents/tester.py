@@ -233,9 +233,7 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
                     actual = await self.browser_skill.get_text_content(selector)
 
                     if expected in actual:
-                        report_lines.append(
-                            f"   ✅ Tekst OK: '{expected}' znaleziony"
-                        )
+                        report_lines.append(f"   ✅ Tekst OK: '{expected}' znaleziony")
                     else:
                         report_lines.append(
                             f"   ❌ BŁĄD: Oczekiwano '{expected}', otrzymano '{actual}'"

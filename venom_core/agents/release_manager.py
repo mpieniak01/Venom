@@ -223,7 +223,9 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
                 )
             else:
                 suggested_type = version_type
-                report_lines.append(f"3. Użyto ręcznego typu: {suggested_type.upper()}\n")
+                report_lines.append(
+                    f"3. Użyto ręcznego typu: {suggested_type.upper()}\n"
+                )
 
             # 4. Wygeneruj CHANGELOG
             changelog = self._generate_changelog(commits)
@@ -294,7 +296,9 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
             parts = line.split(" - ", 3)
             if len(parts) < 4:
                 # Jeśli format jest nieprawidłowy, dodaj commit jako "other" z oryginalną wiadomością
-                logger.warning(f"Commit z nieprawidłowym formatem, dodaję jako 'other': {line[:50]}")
+                logger.warning(
+                    f"Commit z nieprawidłowym formatem, dodaję jako 'other': {line[:50]}"
+                )
                 commits.append(
                     {
                         "hash": parts[0].strip() if parts else "",
@@ -355,9 +359,7 @@ Bądź precyzyjny w analizie commitów i profesjonalny w formatowaniu.
         features = [c for c in commits if c["type"] == "feat" and not c["breaking"]]
         fixes = [c for c in commits if c["type"] == "fix"]
         other = [
-            c
-            for c in commits
-            if c["type"] not in ["feat", "fix"] and not c["breaking"]
+            c for c in commits if c["type"] not in ["feat", "fix"] and not c["breaking"]
         ]
 
         # Breaking Changes

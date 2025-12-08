@@ -54,9 +54,7 @@ class SimulationDirector:
         self.active_simulations = {}
         self.simulation_results = []
 
-        logger.info(
-            f"SimulationDirector zainicjalizowany (chaos={enable_chaos})"
-        )
+        logger.info(f"SimulationDirector zainicjalizowany (chaos={enable_chaos})")
 
     async def run_scenario(
         self,
@@ -184,9 +182,9 @@ class SimulationDirector:
             "successful_users": successful_users,
             "rage_quits": rage_quits,
             "failed_sessions": len(failed_results),
-            "success_rate": round(successful_users / total_users * 100, 1)
-            if total_users > 0
-            else 0,
+            "success_rate": (
+                round(successful_users / total_users * 100, 1) if total_users > 0 else 0
+            ),
             "duration_seconds": round(duration, 2),
             "chaos_enabled": self.enable_chaos,
             "user_results": successful_results,
@@ -336,9 +334,7 @@ class SimulationDirector:
                 await agent.browser_skill.close_browser()
                 logger.debug(f"Zamknięto przeglądarkę dla sesji: {session_id}")
             except Exception as e:
-                logger.warning(
-                    f"Błąd podczas zamykania przeglądarki {session_id}: {e}"
-                )
+                logger.warning(f"Błąd podczas zamykania przeglądarki {session_id}: {e}")
 
         self.active_simulations.clear()
 

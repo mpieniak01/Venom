@@ -97,9 +97,7 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
         logger.info(f"Załadowano {len(all_events)} eventów z {len(log_files)} sesji")
         return all_events
 
-    def analyze_sessions(
-        self, session_ids: Optional[list[str]] = None
-    ) -> dict:
+    def analyze_sessions(self, session_ids: Optional[list[str]] = None) -> dict:
         """
         Analizuje sesje symulacji.
 
@@ -160,8 +158,12 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
         for session_id, session_events in sessions.items():
             # Ostatni event to session_end
             end_event = next(
-                (e for e in reversed(session_events) if e["event_type"] == "session_end"),
-                None
+                (
+                    e
+                    for e in reversed(session_events)
+                    if e["event_type"] == "session_end"
+                ),
+                None,
             )
 
             if end_event:
@@ -191,9 +193,7 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
         # Heatmapa frustracji (które persony miały najwięcej problemów)
         frustration_heatmap = []
         for persona, perf in personas_performance.items():
-            success_rate = (
-                perf["success"] / perf["total"] if perf["total"] > 0 else 0
-            )
+            success_rate = perf["success"] / perf["total"] if perf["total"] > 0 else 0
             frustration_heatmap.append(
                 {
                     "persona": persona,
@@ -211,12 +211,16 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
                 "total_sessions": total_sessions,
                 "successful_sessions": successful_sessions,
                 "rage_quits": rage_quits,
-                "success_rate": round(successful_sessions / total_sessions * 100, 1)
-                if total_sessions > 0
-                else 0,
-                "avg_frustration": round(total_frustration / total_sessions, 2)
-                if total_sessions > 0
-                else 0,
+                "success_rate": (
+                    round(successful_sessions / total_sessions * 100, 1)
+                    if total_sessions > 0
+                    else 0
+                ),
+                "avg_frustration": (
+                    round(total_frustration / total_sessions, 2)
+                    if total_sessions > 0
+                    else 0
+                ),
             },
             "top_problems": [
                 {"problem": problem, "occurrences": count}
@@ -227,9 +231,7 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
             "personas_performance": dict(personas_performance),
         }
 
-    async def generate_recommendations(
-        self, analysis: dict
-    ) -> str:
+    async def generate_recommendations(self, analysis: dict) -> str:
         """
         Generuje rekomendacje UX na podstawie analizy używając LLM.
 

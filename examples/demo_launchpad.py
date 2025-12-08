@@ -73,9 +73,7 @@ async def demo_cloud_provisioner():
     print(f"   Message: {dns_result['message']}")
 
     print("\n✓ CloudProvisioner działa poprawnie!")
-    print(
-        "\nUWAGA: Pełny deployment wymaga prawdziwego serwera VPS i klucza SSH."
-    )
+    print("\nUWAGA: Pełny deployment wymaga prawdziwego serwera VPS i klucza SSH.")
 
 
 def demo_agents():
@@ -94,9 +92,7 @@ def demo_agents():
     print("   - System Prompt: Ekspert DevOps i SRE")
     print("   - Dostępne funkcje: provision_server, deploy_stack, check_health")
 
-    print(
-        "\n✓ Agenci zdefiniowani poprawnie (wymagają kernel do pełnego działania)"
-    )
+    print("\n✓ Agenci zdefiniowani poprawnie (wymagają kernel do pełnego działania)")
 
 
 async def main():

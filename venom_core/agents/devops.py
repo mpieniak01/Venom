@@ -139,7 +139,8 @@ przed wdrożeniem produkcyjnym."""
 
             # Wykonaj chat completion
             settings = OpenAIChatPromptExecutionSettings(
-                max_tokens=2000, temperature=0.3  # Niska temperatura dla precyzji
+                max_tokens=2000,
+                temperature=0.3,  # Niska temperatura dla precyzji
             )
 
             response = await chat_service.get_chat_message_contents(

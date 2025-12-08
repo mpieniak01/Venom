@@ -200,11 +200,12 @@ async def demo_full_simulation_with_app():
         if result.get("user_results"):
             print("\n👥 Szczegóły użytkowników:")
             for user_result in result["user_results"]:
-                status = (
-                    "✅"
-                    if user_result.get("goal_achieved")
-                    else "😡" if user_result.get("rage_quit") else "❌"
-                )
+                if user_result.get("goal_achieved"):
+                    status = "✅"
+                elif user_result.get("rage_quit"):
+                    status = "😡"
+                else:
+                    status = "❌"
                 print(
                     f"   {status} {user_result['persona_name']}: "
                     f"{user_result['actions_taken']} akcji, "

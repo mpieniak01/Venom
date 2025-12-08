@@ -9,13 +9,15 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.core.goal_store import GoalStore
+from venom_core.core.goal_store import GoalStore, GoalStatus
+from venom_core.memory.embedding_service import EmbeddingService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.utils.logger import get_logger
 
@@ -430,8 +432,6 @@ Gdy otrzymujesz dane z sensora:
 
         try:
             # Pobierz zadania w trakcie realizacji
-            from venom_core.core.goal_store import GoalStatus
-
             active_tasks = self.goal_store.get_tasks(status=GoalStatus.IN_PROGRESS)
 
             if not active_tasks:
@@ -457,10 +457,6 @@ Odpowiedz tylko: TAK (i podaj numer zadania) lub NIE
 ODPOWIEDŹ:"""
 
             # Wywołaj LLM
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
-
             chat_history = ChatHistory()
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=prompt)
@@ -536,8 +532,6 @@ ODPOWIEDŹ:"""
                 return lessons
 
             # Fallback: użyj EmbeddingService do semantycznego wyszukiwania
-            from venom_core.memory.embedding_service import EmbeddingService
-
             logger.info("Używam EmbeddingService do semantycznego wyszukiwania lekcji")
 
             embedding_service = EmbeddingService()
@@ -564,8 +558,6 @@ ODPOWIEDŹ:"""
             lesson_embeddings = embedding_service.get_embeddings_batch(lesson_texts)
 
             # Oblicz cosine similarity dla każdej lekcji
-            import numpy as np
-
             query_vec = np.array(query_embedding)
             similarities = []
 

@@ -1,5 +1,6 @@
 """Moduł: complexity_skill - umiejętność oceny złożoności zadań."""
 
+import json
 import re
 from typing import Annotated
 
@@ -137,8 +138,6 @@ class ComplexitySkill:
             total_time *= multiplier
 
         # Zwróć zarówno JSON jak i czytelny format
-        import json
-
         time_json = json.dumps({"minutes": int(total_time)})
 
         result = f"{time_json}\n\n"

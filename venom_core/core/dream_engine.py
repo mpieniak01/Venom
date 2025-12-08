@@ -4,6 +4,7 @@ import asyncio
 import json
 import random
 import re
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -570,21 +571,36 @@ class DreamEngine:
         """
         try:
             timeline_path = self.chronos.timelines_dir / timeline_name
-            if timeline_path.exists():
-                # Sprawdź czy timeline jest pusta lub ma tylko checkpoint startowy
-                checkpoints = list(timeline_path.iterdir())
-                if len(checkpoints) == 0:
-                    # Pusta timeline - usuń
-                    timeline_path.rmdir()
-                    logger.info(f"🗑️ Usunięto pustą timeline: {timeline_name}")
-                elif len(checkpoints) == 1:
-                    # Tylko checkpoint startowy - sprawdź czy to jedyny
-                    checkpoint_dir = checkpoints[0]
-                    if checkpoint_dir.name == self.current_checkpoint_id:
-                        # Usuń checkpoint i timeline
-                        import shutil
-                        shutil.rmtree(checkpoint_dir)
-                        timeline_path.rmdir()
-                        logger.info(f"🗑️ Usunięto nieużywaną timeline: {timeline_name}")
+            if not timeline_path.exists():
+                return
+
+            # Sprawdź czy timeline jest pusta lub ma tylko checkpoint startowy
+            checkpoints = list(timeline_path.iterdir())
+            
+            if len(checkpoints) == 0:
+                # Pusta timeline - usuń
+                self._remove_timeline_directory(timeline_path, timeline_name, "pustą")
+            elif len(checkpoints) == 1 and self.current_checkpoint_id:
+                # Tylko checkpoint startowy - sprawdź czy to jedyny
+                checkpoint_dir = checkpoints[0]
+                if checkpoint_dir.name == self.current_checkpoint_id:
+                    # Usuń checkpoint i timeline
+                    shutil.rmtree(checkpoint_dir)
+                    self._remove_timeline_directory(timeline_path, timeline_name, "nieużywaną")
         except Exception as e:
             logger.debug(f"Nie udało się wyczyścić timeline {timeline_name}: {e}")
+
+    def _remove_timeline_directory(self, timeline_path: Path, timeline_name: str, description: str) -> None:
+        """
+        Usuwa katalog timeline i loguje akcję.
+
+        Args:
+            timeline_path: Ścieżka do katalogu timeline
+            timeline_name: Nazwa timeline
+            description: Opis typu timeline (np. "pustą", "nieużywaną")
+        """
+        try:
+            timeline_path.rmdir()
+            logger.info(f"🗑️ Usunięto {description} timeline: {timeline_name}")
+        except Exception as e:
+            logger.debug(f"Nie udało się usunąć timeline {timeline_name}: {e}")

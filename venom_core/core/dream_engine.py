@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,9 @@ from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Stałe konfiguracyjne
+MAX_CODE_PREVIEW_LENGTH = 500  # Maksymalna długość podglądu kodu w zapisach
 
 
 class DreamState:
@@ -371,9 +375,10 @@ REASON: <dlaczego pass lub fail>
             logger.debug(f"[Dream {dream_id}] Faza 3: Zapisywanie do LessonsStore...")
 
             # Dodaj do LessonsStore
+            code_preview = code[:MAX_CODE_PREVIEW_LENGTH]
             self.lessons_store.add_lesson(
                 situation=f"[SYNTHETIC DREAM] {scenario.title}\n{scenario.description}",
-                action=f"Wygenerowano kod:\n```python\n{code[:500]}...\n```",
+                action=f"Wygenerowano kod:\n```python\n{code_preview}...\n```",
                 result="✅ Sukces - kod przeszedł walidację Guardian",
                 feedback=f"Nauczyłem się: {', '.join(scenario.libraries)}",
                 tags=["synthetic", "dream", *scenario.libraries],
@@ -447,8 +452,6 @@ REASON: <dlaczego pass lub fail>
         Returns:
             Czysty kod Python
         """
-        import re
-
         # Szukaj bloków kodu ```python ... ```
         code_blocks = re.findall(
             r"```python\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE

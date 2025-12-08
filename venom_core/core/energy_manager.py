@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import psutil
 
@@ -64,7 +64,7 @@ class EnergyManager:
         self.is_monitoring = False
         self.last_activity_time = time.time()
         self._monitor_task: Optional[asyncio.Task] = None
-        self._alert_callbacks: list[Callable] = []
+        self._alert_callbacks: List[Callable] = []
 
         logger.info(
             f"EnergyManager zainicjalizowany (CPU threshold={self.cpu_threshold}, "

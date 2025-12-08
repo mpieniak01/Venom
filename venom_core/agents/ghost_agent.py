@@ -7,7 +7,6 @@ i input skill do wykonywania akcji.
 """
 
 import asyncio
-import re
 from typing import Any, Dict, List, Optional
 
 from PIL import ImageGrab
@@ -259,19 +258,21 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
             )
 
             response_text = str(response).strip()
-            
+
             # Wyciągnij JSON z odpowiedzi (może być otoczony markdown)
             import json
-            
+
             # Usuń markdown code blocks jeśli istnieją
             if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
+                response_text = (
+                    response_text.split("```json")[1].split("```")[0].strip()
+                )
             elif "```" in response_text:
                 response_text = response_text.split("```")[1].split("```")[0].strip()
-            
+
             # Parsuj JSON
             plan_data = json.loads(response_text)
-            
+
             # Konwertuj na ActionSteps
             plan = []
             for step_data in plan_data:
@@ -384,7 +385,9 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                 # Weryfikacja po każdym kroku jeśli włączona
                 if self.verification_enabled and step.status == "success":
                     # Zrób screenshot po akcji i sprawdź czy akcja zakończyła się sukcesem
-                    verification_result = await self._verify_step_result(step, last_screenshot)
+                    verification_result = await self._verify_step_result(
+                        step, last_screenshot
+                    )
                     if not verification_result:
                         logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
                         step.status = "failed"
@@ -403,7 +406,9 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
         # Generuj raport
         return self._generate_report()
 
-    async def _verify_step_result(self, step: ActionStep, pre_action_screenshot) -> bool:
+    async def _verify_step_result(
+        self, step: ActionStep, pre_action_screenshot
+    ) -> bool:
         """
         Weryfikuje rezultat wykonania kroku porównując stan przed i po akcji.
 
@@ -430,7 +435,9 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                 # Konwertuj na numpy arrays dla porównania
                 import numpy as np
 
-                pre_array = np.array(pre_action_screenshot) if pre_action_screenshot else None
+                pre_array = (
+                    np.array(pre_action_screenshot) if pre_action_screenshot else None
+                )
                 post_array = np.array(post_action_screenshot)
 
                 if pre_array is None:
@@ -438,7 +445,9 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                     return True
 
                 # Oblicz różnicę między obrazami
-                diff = np.sum(np.abs(post_array.astype(float) - pre_array.astype(float)))
+                diff = np.sum(
+                    np.abs(post_array.astype(float) - pre_array.astype(float))
+                )
                 total_pixels = post_array.size
 
                 # Jeśli różnica > 0.5% pixeli, uznajemy że coś się zmieniło

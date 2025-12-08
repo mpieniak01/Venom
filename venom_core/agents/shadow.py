@@ -433,13 +433,15 @@ Gdy otrzymujesz dane z sensora:
             from venom_core.core.goal_store import GoalStatus
 
             active_tasks = self.goal_store.get_tasks(status=GoalStatus.IN_PROGRESS)
-            
+
             if not active_tasks:
                 logger.debug("Brak aktywnych zadań do sprawdzenia")
                 return None
 
             # Użyj LLM do oceny czy window_title pasuje do któregoś zadania
-            task_titles = [f"- {task.title}" for task in active_tasks[:5]]  # Max 5 zadań
+            task_titles = [
+                f"- {task.title}" for task in active_tasks[:5]
+            ]  # Max 5 zadań
             tasks_text = "\n".join(task_titles)
 
             prompt = f"""Przeanalizuj czy użytkownik pracuje nad jednym z aktywnych zadań.
@@ -470,21 +472,24 @@ ODPOWIEDŹ:"""
             )
 
             response_text = str(response).strip().upper()
-            
+
             logger.debug(f"LLM odpowiedź dla task context: {response_text}")
 
             # Parsuj odpowiedź
             if "TAK" in response_text:
                 confidence = self.CONFIDENCE_TASK_UPDATE
-                
+
                 if confidence >= self.confidence_threshold:
                     # Znajdź najbardziej pasujące zadanie
                     matched_task = None
                     for i, task in enumerate(active_tasks[:5], 1):
-                        if str(i) in response_text or task.title.lower() in window_title.lower():
+                        if (
+                            str(i) in response_text
+                            or task.title.lower() in window_title.lower()
+                        ):
                             matched_task = task
                             break
-                    
+
                     if not matched_task:
                         matched_task = active_tasks[0]  # Fallback do pierwszego
 
@@ -500,7 +505,7 @@ ODPOWIEDŹ:"""
                         },
                         metadata={"source": "window", "task_detected": True},
                     )
-            
+
             return None
 
         except Exception as e:
@@ -522,7 +527,10 @@ ODPOWIEDŹ:"""
 
         try:
             # Użyj vector store jeśli dostępny (preferowane)
-            if hasattr(self.lessons_store, "vector_store") and self.lessons_store.vector_store:
+            if (
+                hasattr(self.lessons_store, "vector_store")
+                and self.lessons_store.vector_store
+            ):
                 logger.info("Używam vector store do wyszukiwania lekcji")
                 lessons = self.lessons_store.search_lessons(context, limit=3)
                 return lessons
@@ -531,9 +539,9 @@ ODPOWIEDŹ:"""
             from venom_core.memory.embedding_service import EmbeddingService
 
             logger.info("Używam EmbeddingService do semantycznego wyszukiwania lekcji")
-            
+
             embedding_service = EmbeddingService()
-            
+
             # Pobierz wszystkie lekcje
             all_lessons = self.lessons_store.get_all_lessons()
 
@@ -563,29 +571,31 @@ ODPOWIEDŹ:"""
 
             for i, lesson_embedding in enumerate(lesson_embeddings):
                 lesson_vec = np.array(lesson_embedding)
-                
+
                 # Cosine similarity = dot product / (norm1 * norm2)
                 dot_product = np.dot(query_vec, lesson_vec)
                 norm_query = np.linalg.norm(query_vec)
                 norm_lesson = np.linalg.norm(lesson_vec)
-                
+
                 if norm_query > 0 and norm_lesson > 0:
                     similarity = dot_product / (norm_query * norm_lesson)
                 else:
                     similarity = 0.0
-                
+
                 similarities.append((similarity, all_lessons[i]))
 
             # Sortuj po similarity (malejąco) i zwróć top 3
             similarities.sort(key=lambda x: x[0], reverse=True)
-            
-            top_lessons = [lesson for similarity, lesson in similarities[:3] if similarity > 0.5]
-            
+
+            top_lessons = [
+                lesson for similarity, lesson in similarities[:3] if similarity > 0.5
+            ]
+
             logger.info(
                 f"Znaleziono {len(top_lessons)} podobnych lekcji "
                 f"(top similarity: {similarities[0][0]:.3f})"
             )
-            
+
             return top_lessons
 
         except Exception as e:

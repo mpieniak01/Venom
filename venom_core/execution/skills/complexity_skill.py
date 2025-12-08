@@ -138,8 +138,9 @@ class ComplexitySkill:
 
         # Zwróć zarówno JSON jak i czytelny format
         import json
+
         time_json = json.dumps({"minutes": int(total_time)})
-        
+
         result = f"{time_json}\n\n"
         result += f"Oszacowany czas: {total_time:.0f} minut ({total_time / 60:.1f}h)\n"
         result += f"Złożoność: {complexity.value}\n"

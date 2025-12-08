@@ -10,7 +10,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
 from pynput import keyboard, mouse
@@ -74,7 +74,7 @@ class DemonstrationRecorder:
         self.keyboard_listener: Optional[keyboard.Listener] = None
 
         # Bufor do przechowywania zrzutów ekranu w pamięci
-        self.screenshot_buffer: List[tuple[float, Image.Image]] = []
+        self.screenshot_buffer: List[Tuple[float, Image.Image]] = []
         self.max_buffer_size = 100
 
         logger.info(f"DemonstrationRecorder zainicjalizowany (dir: {self.sessions_dir})")

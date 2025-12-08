@@ -395,10 +395,13 @@ class BackgroundScheduler:
 
         # Funkcja do wykonania
         async def check_idle_and_dream():
+            # Import DreamState for comparison
+            from venom_core.core.dream_engine import DreamState
+            
             # Sprawdź czy system bezczynny i czy nie śnimy już
             if (
                 dream_engine.energy_manager.is_idle()
-                and dream_engine.state == "idle"
+                and dream_engine.state == DreamState.IDLE
                 and not dream_engine.energy_manager.is_system_busy()
             ):
                 logger.info("💤 System bezczynny - rozpoczynam śnienie...")

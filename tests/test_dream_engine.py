@@ -1,8 +1,6 @@
 """Testy dla DreamEngine."""
 
-import json
 import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from venom_core.core.dream_engine import DreamEngine, DreamState
@@ -252,6 +250,43 @@ print(x)
 
         # State nie powinien się zmienić
         assert dream_engine.state == DreamState.IDLE
+
+    @pytest.mark.asyncio
+    async def test_dream_scenario_without_strict_validation(
+        self, dream_engine, mock_components, tmp_path
+    ):
+        """Test _dream_scenario gdy DREAMING_VALIDATION_STRICT jest False."""
+        with patch("venom_core.core.dream_engine.SETTINGS") as mock_settings:
+            mock_settings.DREAMING_VALIDATION_STRICT = False
+            mock_settings.DREAMING_OUTPUT_DIR = str(tmp_path / "synthetic_training")
+            
+            # Mock scenario
+            scenario = ScenarioSpec(
+                title="Test No Validation",
+                description="Test without validation",
+                task_prompt="Write code",
+                test_cases=["test1"],
+                difficulty="simple",
+                libraries=["lib"],
+                metadata={},
+            )
+            
+            # Mock coder response
+            mock_components["coder_agent"].process = AsyncMock(
+                return_value="```python\nprint('test')\n```"
+            )
+            
+            # Set output dir
+            dream_engine.output_dir = tmp_path / "synthetic_training"
+            dream_engine.output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Run dream scenario
+            result = await dream_engine._dream_scenario(scenario)
+            
+            # Powinien zapisać bez walidacji
+            assert result["success"] is True
+            # Guardian nie powinien być wywołany
+            mock_components["guardian_agent"].process.assert_not_called()
 
     def test_get_statistics(self, dream_engine, tmp_path):
         """Test pobierania statystyk."""

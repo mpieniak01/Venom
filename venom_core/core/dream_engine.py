@@ -1,5 +1,6 @@
 """Moduł: dream_engine - Silnik Aktywnego Śnienia (Synthetic Experience Replay)."""
 
+import asyncio
 import json
 import random
 import re
@@ -87,6 +88,7 @@ class DreamEngine:
         self.current_session_id: Optional[str] = None
         self.dreams_count = 0
         self.successful_dreams = 0
+        self._state_lock = asyncio.Lock()  # Lock dla ochrony przed race conditions
 
         # Katalog wyjściowy
         self.output_dir = Path(SETTINGS.DREAMING_OUTPUT_DIR)
@@ -113,13 +115,16 @@ class DreamEngine:
         Returns:
             Raport z sesji śnienia
         """
-        if self.state != DreamState.IDLE:
-            logger.warning(f"Nie można rozpocząć śnienia - aktualny stan: {self.state}")
-            return {"error": "Dream engine not idle", "state": self.state}
+        # Użyj lock aby zapobiec race conditions
+        async with self._state_lock:
+            if self.state != DreamState.IDLE:
+                logger.warning(f"Nie można rozpocząć śnienia - aktualny stan: {self.state}")
+                return {"error": "Dream engine not idle", "state": self.state}
 
-        # Rozpocznij sesję
-        self.current_session_id = str(uuid.uuid4())
-        self.state = DreamState.DREAMING
+            # Rozpocznij sesję
+            self.current_session_id = str(uuid.uuid4())
+            self.state = DreamState.DREAMING
+        
         session_start = datetime.now()
 
         logger.info(
@@ -324,32 +329,25 @@ class DreamEngine:
                 self.state = DreamState.VALIDATING
                 logger.debug(f"[Dream {dream_id}] Faza 2: Walidacja Guardian...")
 
-                validation_prompt = f"""Przeanalizuj poniższy kod w \
-trybie ULTRA-SUROWYM.
-
-SCENARIUSZ: {scenario.title}
-ZADANIE: {scenario.description}
-
-TEST CASES (wszystkie muszą być spełnione):
-{chr(10).join(f"- {tc}" for tc in scenario.test_cases)}
-
-KOD:
-```python
-{code}
-```
-
-WYMAGANIA ULTRA-SUROWE:
-- Kod musi się kompilować (brak SyntaxError)
-- Musi spełniać WSZYSTKIE test cases
-- Brak błędów bezpieczeństwa
-- Brak hardcoded credentials/paths
-- Proper error handling
-- Code quality (nie hacki, czytelny)
-
-Odpowiedz w formacie:
-PASS: yes/no
-REASON: <dlaczego pass lub fail>
-"""
+                validation_prompt = (
+                    f"Przeanalizuj poniższy kod w trybie ULTRA-SUROWYM.\n\n"
+                    f"SCENARIUSZ: {scenario.title}\n"
+                    f"ZADANIE: {scenario.description}\n\n"
+                    f"TEST CASES (wszystkie muszą być spełnione):\n"
+                    f"{chr(10).join(f'- {tc}' for tc in scenario.test_cases)}\n\n"
+                    f"KOD:\n"
+                    f"```python\n{code}\n```\n\n"
+                    f"WYMAGANIA ULTRA-SUROWE:\n"
+                    f"- Kod musi się kompilować (brak SyntaxError)\n"
+                    f"- Musi spełniać WSZYSTKIE test cases\n"
+                    f"- Brak błędów bezpieczeństwa\n"
+                    f"- Brak hardcoded credentials/paths\n"
+                    f"- Proper error handling\n"
+                    f"- Code quality (nie hacki, czytelny)\n\n"
+                    f"Odpowiedz w formacie:\n"
+                    f"PASS: yes/no\n"
+                    f"REASON: <dlaczego pass lub fail>\n"
+                )
 
                 validation_result = await self.guardian_agent.process(validation_prompt)
 
@@ -393,38 +391,45 @@ REASON: <dlaczego pass lub fail>
 
             # Zapisz też jako plik w synthetic_training/
             dream_file = self.output_dir / f"dream_{dream_id}.py"
-            with open(dream_file, "w", encoding="utf-8") as f:
-                f.write(f"# Dream: {scenario.title}\n")
-                f.write(f"# Description: {scenario.description}\n")
-                f.write(f"# Libraries: {', '.join(scenario.libraries)}\n")
-                f.write(f"# Difficulty: {scenario.difficulty}\n\n")
-                f.write(code)
-
-            # Zapisz metadane
             meta_file = self.output_dir / f"dream_{dream_id}.json"
-            with open(meta_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "dream_id": dream_id,
-                        "session_id": self.current_session_id,
-                        "scenario": {
-                            "title": scenario.title,
-                            "description": scenario.description,
-                            "difficulty": scenario.difficulty,
-                            "libraries": scenario.libraries,
-                            "test_cases": scenario.test_cases,
-                        },
-                        "code_file": f"dream_{dream_id}.py",
-                        "timestamp": datetime.now().isoformat(),
-                        "synthetic": True,
-                    },
-                    f,
-                    indent=2,
-                )
+            
+            try:
+                with open(dream_file, "w", encoding="utf-8") as f:
+                    f.write(f"# Dream: {scenario.title}\n")
+                    f.write(f"# Description: {scenario.description}\n")
+                    f.write(f"# Libraries: {', '.join(scenario.libraries)}\n")
+                    f.write(f"# Difficulty: {scenario.difficulty}\n\n")
+                    f.write(code)
 
-            logger.info(
-                f"[Dream {dream_id}] 💾 Zapisano jako {dream_file.name}"
-            )
+                # Zapisz metadane
+                with open(meta_file, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "dream_id": dream_id,
+                            "session_id": self.current_session_id,
+                            "scenario": {
+                                "title": scenario.title,
+                                "description": scenario.description,
+                                "difficulty": scenario.difficulty,
+                                "libraries": scenario.libraries,
+                                "test_cases": scenario.test_cases,
+                            },
+                            "code_file": f"dream_{dream_id}.py",
+                            "timestamp": datetime.now().isoformat(),
+                            "synthetic": True,
+                        },
+                        f,
+                        indent=2,
+                    )
+
+                logger.info(
+                    f"[Dream {dream_id}] 💾 Zapisano jako {dream_file.name}"
+                )
+            except Exception as io_err:
+                logger.warning(
+                    f"[Dream {dream_id}] ⚠️ Nie udało się zapisać plików snu: {io_err}. "
+                    f"Lekcja została dodana do LessonsStore, ale pliki nie zostały zapisane."
+                )
 
             return {
                 "success": True,

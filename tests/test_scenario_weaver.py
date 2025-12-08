@@ -1,7 +1,7 @@
 """Testy dla ScenarioWeaver."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver
 

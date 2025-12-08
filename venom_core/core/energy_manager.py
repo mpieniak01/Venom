@@ -183,6 +183,7 @@ class EnergyManager:
             try:
                 await self._monitor_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania monitoringu — brak dalszych działań
                 pass
 
         logger.info("Zatrzymano monitorowanie systemu")

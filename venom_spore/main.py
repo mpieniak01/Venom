@@ -5,14 +5,10 @@ import json
 import signal
 import sys
 import time
-from pathlib import Path
 
 import psutil
 import websockets
 from websockets.exceptions import ConnectionClosed
-
-from venom_spore.config import SPORE_SETTINGS
-from venom_spore.skill_executor import SkillExecutor
 
 # Import protokołu z venom_core - zakładamy, że venom_core jest zainstalowany jako pakiet
 from venom_core.nodes.protocol import (
@@ -24,6 +20,8 @@ from venom_core.nodes.protocol import (
     NodeResponse,
     SkillExecutionRequest,
 )
+from venom_spore.config import SPORE_SETTINGS
+from venom_spore.skill_executor import SkillExecutor
 
 
 class VenomSpore:
@@ -138,7 +136,7 @@ class VenomSpore:
         """Pętla odbierająca wiadomości od Nexusa."""
         self.running = True
         print("👂 Nasłuchuję poleceń od Nexusa...")
-        
+
         invalid_message_count = 0
         MAX_INVALID_MESSAGES = 10
 
@@ -150,25 +148,29 @@ class VenomSpore:
 
                     if message.message_type == MessageType.EXECUTE_SKILL:
                         await self._handle_skill_execution(message.payload)
-                        invalid_message_count = 0  # Reset counter po poprawnej wiadomości
+                        invalid_message_count = (
+                            0  # Reset counter po poprawnej wiadomości
+                        )
                     else:
                         print(f"⚠️ Nieznany typ wiadomości: {message.message_type}")
                         invalid_message_count += 1
                         if invalid_message_count >= MAX_INVALID_MESSAGES:
-                            print(f"❌ Zbyt wiele nieprawidłowych wiadomości - rozłączam")
+                            print(
+                                "❌ Zbyt wiele nieprawidłowych wiadomości - rozłączam"
+                            )
                             break
 
                 except json.JSONDecodeError as e:
                     print(f"❌ Błąd JSON: {e}")
                     invalid_message_count += 1
                     if invalid_message_count >= MAX_INVALID_MESSAGES:
-                        print(f"❌ Zbyt wiele błędów parsowania - rozłączam")
+                        print("❌ Zbyt wiele błędów parsowania - rozłączam")
                         break
                 except Exception as e:
                     print(f"❌ Błąd parsowania wiadomości: {e}")
                     invalid_message_count += 1
                     if invalid_message_count >= MAX_INVALID_MESSAGES:
-                        print(f"❌ Zbyt wiele błędów - rozłączam")
+                        print("❌ Zbyt wiele błędów - rozłączam")
                         break
 
         except ConnectionClosed:
@@ -249,7 +251,7 @@ async def main():
 
     # Pobierz event loop dla signal handlera
     loop = asyncio.get_running_loop()
-    
+
     # Obsługa sygnałów - używamy flag zamiast bezpośredniego wywołania
     shutdown_event = asyncio.Event()
 

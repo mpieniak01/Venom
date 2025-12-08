@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
                 await node_manager.start()
                 logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
                 # Port aplikacji FastAPI, domyślnie 8000
-                app_port = getattr(SETTINGS, 'APP_PORT', 8000)
+                app_port = getattr(SETTINGS, "APP_PORT", 8000)
                 logger.info(
                     f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
                 )
@@ -105,7 +105,10 @@ async def lifespan(app: FastAPI):
         event_broadcaster=event_broadcaster,
         node_manager=node_manager,
     )
-    logger.info("Orchestrator zainicjalizowany" + (" z obsługą węzłów rozproszonych" if node_manager else ""))
+    logger.info(
+        "Orchestrator zainicjalizowany"
+        + (" z obsługą węzłów rozproszonych" if node_manager else "")
+    )
 
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
@@ -530,7 +533,7 @@ async def nodes_websocket_endpoint(websocket: WebSocket):
                 elif message.message_type == MessageType.DISCONNECT:
                     logger.info(f"Węzeł {node_id} zgłosił rozłączenie")
                     break
-            
+
             except json.JSONDecodeError as e:
                 logger.warning(f"Nieprawidłowy JSON od węzła {node_id}: {e}")
                 continue  # Kontynuuj pętlę, nie rozłączaj węzła
@@ -1392,4 +1395,3 @@ async def execute_on_node(node_id: str, request: NodeExecuteRequest):
     except Exception as e:
         logger.exception(f"Błąd podczas wykonywania skilla na węźle {node_id}")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-

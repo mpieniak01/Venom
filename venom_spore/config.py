@@ -1,6 +1,7 @@
 """Konfiguracja Venom Spore."""
 
 import os
+
 from pydantic import ConfigDict, SecretStr
 from pydantic_settings import BaseSettings
 
@@ -23,7 +24,9 @@ class SporeSettings(BaseSettings):
     ENABLE_CAMERA: bool = False
 
     # Tags opisujące węzeł
-    NODE_TAGS: str = ""  # Tagi rozdzielone przecinkami, np. "location:server_room,gpu,camera"
+    NODE_TAGS: str = (
+        ""  # Tagi rozdzielone przecinkami, np. "location:server_room,gpu,camera"
+    )
 
     # Heartbeat
     HEARTBEAT_INTERVAL: int = 30  # Sekundy między heartbeat

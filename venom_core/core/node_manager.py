@@ -223,7 +223,7 @@ class NodeManager:
             node = self.nodes[node_id]
             if not node.is_online:
                 raise ValueError(f"Węzeł {node_id} jest offline")
-            
+
             # Skopiuj referencję do websocket w zakresie locka
             websocket = node.websocket
 
@@ -259,9 +259,7 @@ class NodeManager:
             logger.error(
                 f"Timeout podczas wykonywania {skill_name}.{method_name} na węźle {node_id}"
             )
-            raise TimeoutError(
-                f"Węzeł {node_id} nie odpowiedział w czasie {timeout}s"
-            )
+            raise TimeoutError(f"Węzeł {node_id} nie odpowiedział w czasie {timeout}s")
         except Exception as e:
             logger.error(f"Nie udało się wysłać wiadomości do węzła {node_id}: {e}")
             # Oznacz węzeł jako offline

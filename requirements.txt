@@ -77,6 +77,8 @@ gitpython               # Git operations (Git Skill)
 apscheduler             # Advanced Python Scheduler (background jobs)
 watchdog                # File system monitoring
 radon                   # Code complexity analysis
+psutil                  # System and process utilities (monitoring CPU, memory)
+websockets              # WebSocket client/server (dla The Nexus)
 
 # Audio & Voice Interface (THE_AVATAR)
 faster-whisper          # Local STT (Speech-to-Text) engine

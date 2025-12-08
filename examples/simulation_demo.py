@@ -35,7 +35,7 @@ async def demo_persona_factory():
     print("\n📝 Generuję pojedynczą personę...")
     persona = factory.generate_persona(goal="Kupić czerwone buty", archetype="senior")
 
-    print(f"\n✅ Wygenerowano personę:")
+    print("\n✅ Wygenerowano personę:")
     print(persona.to_json())
 
     # Wygeneruj zróżnicowane persony
@@ -70,7 +70,7 @@ async def demo_simple_simulation():
 
     print(f"\n🎬 Scenariusz: {scenario_desc}")
     print(f"   URL: {mock_url}")
-    print(f"   Użytkowników: 3")
+    print("   Użytkowników: 3")
 
     # Wygeneruj persony
     factory = PersonaFactory(kernel=kernel)

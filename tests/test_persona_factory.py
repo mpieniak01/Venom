@@ -2,11 +2,7 @@
 
 import pytest
 
-from venom_core.simulation.persona_factory import (
-    Persona,
-    PersonaFactory,
-    TechLiteracy,
-)
+from venom_core.simulation.persona_factory import Persona, PersonaFactory, TechLiteracy
 
 
 def test_persona_creation():

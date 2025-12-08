@@ -79,8 +79,7 @@ class TestNotifier:
             mock_exec.return_value = mock_process
 
             result = await notifier._send_toast_windows_powershell(
-                title="Test Title",
-                message="Test Message"
+                title="Test Title", message="Test Message"
             )
 
             assert result is True
@@ -125,7 +124,9 @@ class TestNotifier:
 
     @pytest.mark.asyncio
     @patch("platform.system", return_value="Linux")
-    async def test_send_toast_linux_notify_not_found(self, mock_system, mock_webhook_handler):
+    async def test_send_toast_linux_notify_not_found(
+        self, mock_system, mock_webhook_handler
+    ):
         """Test wysyłania powiadomienia gdy notify-send nie jest zainstalowany."""
         notifier = Notifier(webhook_handler=mock_webhook_handler)
         notifier._is_wsl = False
@@ -134,10 +135,7 @@ class TestNotifier:
             mock_exec.side_effect = FileNotFoundError()
 
             result = await notifier._send_toast_linux(
-                title="Test",
-                message="Test",
-                urgency="normal",
-                timeout=5000
+                title="Test", message="Test", urgency="normal", timeout=5000
             )
 
             assert result is False

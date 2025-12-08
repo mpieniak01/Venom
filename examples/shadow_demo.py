@@ -87,7 +87,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(sensor_data_error)
 
     if suggestion:
-        print(f"✅ Sugestia wygenerowana!")
+        print("✅ Sugestia wygenerowana!")
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Tytuł: {suggestion.title}")
         print(f"   Treść: {suggestion.message}")
@@ -114,7 +114,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(sensor_data_code)
 
     if suggestion:
-        print(f"✅ Sugestia wygenerowana!")
+        print("✅ Sugestia wygenerowana!")
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Pewność: {suggestion.confidence:.2%}")
     else:
@@ -131,7 +131,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(window_data)
 
     if suggestion:
-        print(f"✅ Sugestia wygenerowana!")
+        print("✅ Sugestia wygenerowana!")
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Treść: {suggestion.message}")
     else:
@@ -151,7 +151,7 @@ async def demo_desktop_sensor():
     async def clipboard_callback(data):
         """Callback dla zmian w schowku."""
         events_received.append(data)
-        print(f"\n📋 Zmiana w schowku!")
+        print("\n📋 Zmiana w schowku!")
         print(f"   Długość: {data.get('length')} znaków")
         print(f"   Czas: {data.get('timestamp')}")
 
@@ -165,7 +165,7 @@ async def demo_desktop_sensor():
 
     # Status
     status = sensor.get_status()
-    print(f"\nStatus sensora:")
+    print("\nStatus sensora:")
     for key, value in status.items():
         print(f"   {key}: {value}")
 
@@ -189,13 +189,13 @@ async def demo_notifier():
     # Utwórz notifier
     notifier = Notifier(webhook_handler=action_handler)
 
-    print(f"\n✓ Notifier zainicjalizowany")
+    print("\n✓ Notifier zainicjalizowany")
     print(f"   System: {notifier.system}")
     print(f"   WSL2: {notifier._is_wsl}")
 
     # Status
     status = notifier.get_status()
-    print(f"\nStatus:")
+    print("\nStatus:")
     for key, value in status.items():
         print(f"   {key}: {value}")
 

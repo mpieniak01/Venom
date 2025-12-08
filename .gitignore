@@ -5,7 +5,12 @@ __pycache__/
 *.pyo
 
 logs/
-workspace/
+
+# Workspace (user-generated projects)
+workspace/*
+!workspace/MARKETING_KIT_TEMPLATE.md
+!workspace/.gitkeep
+
 data/memory/
 
 .env

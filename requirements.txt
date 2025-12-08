@@ -92,6 +92,7 @@ webrtcvad               # Voice Activity Detection (optional, can use simple RMS
 
 # IoT & Hardware Bridge (Rider-Pi)
 paramiko                # SSH client for Raspberry Pi communication
+asyncssh                # Async SSH client for cloud deployment
 
 # UI & Visualization (THE_CANVAS)
 bleach                  # HTML sanitization for safe widget rendering

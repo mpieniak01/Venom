@@ -223,7 +223,7 @@
         <!-- Action Buttons -->
         <div class="action-buttons">
             <button class="btn btn-primary" onclick="loadRoadmap()">🔄 Odśwież Roadmapę</button>
-            <button class="btn" onclick="showDefinedVisionDialog()">✨ Zdefiniuj Wizję</button>
+            <button class="btn" onclick="showDefineVisionDialog()">✨ Zdefiniuj Wizję</button>
             <button class="btn" onclick="startCampaign()">🚀 Uruchom Kampanię</button>
             <button class="btn" onclick="requestStatusReport()">📊 Raport Statusu</button>
         </div>
@@ -371,7 +371,7 @@
         }
 
         // Define Vision Dialog
-        function showDefinedVisionDialog() {
+        function showDefineVisionDialog() {
             const vision = prompt('Zdefiniuj wizję projektu:\n\nNp. "Stworzyć najlepszy framework AI do automatyzacji"');
             if (vision) {
                 defineVision(vision);

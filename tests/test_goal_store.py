@@ -143,19 +143,19 @@ def test_get_milestones(temp_storage):
     )
 
     # Dodaj 3 milestone
-    m1 = store.add_goal(
+    store.add_goal(
         title="M1",
         goal_type=GoalType.MILESTONE,
         parent_id=vision.goal_id,
         priority=1,
     )
-    m2 = store.add_goal(
+    store.add_goal(
         title="M2",
         goal_type=GoalType.MILESTONE,
         parent_id=vision.goal_id,
         priority=2,
     )
-    m3 = store.add_goal(
+    store.add_goal(
         title="M3",
         goal_type=GoalType.MILESTONE,
         parent_id=vision.goal_id,
@@ -180,15 +180,15 @@ def test_get_next_milestone(temp_storage):
     )
 
     # Dodaj milestone z różnymi statusami
-    m1 = store.add_goal(
+    m1_id = store.add_goal(
         title="M1",
         goal_type=GoalType.MILESTONE,
         parent_id=vision.goal_id,
         priority=1,
-    )
-    store.update_progress(m1.goal_id, status=GoalStatus.COMPLETED)
+    ).goal_id
+    store.update_progress(m1_id, status=GoalStatus.COMPLETED)
 
-    m2 = store.add_goal(
+    store.add_goal(
         title="M2",
         goal_type=GoalType.MILESTONE,
         parent_id=vision.goal_id,
@@ -217,14 +217,14 @@ def test_get_next_task(temp_storage):
     )
 
     # Dodaj zadania
-    t1 = store.add_goal(
+    store.add_goal(
         title="T1",
         goal_type=GoalType.TASK,
         parent_id=milestone.goal_id,
         priority=1,
     )
 
-    t2 = store.add_goal(
+    store.add_goal(
         title="T2",
         goal_type=GoalType.TASK,
         parent_id=milestone.goal_id,
@@ -241,14 +241,15 @@ def test_generate_roadmap_report(temp_storage):
     """Test generowania raportu roadmapy."""
     store = GoalStore(storage_path=temp_storage)
 
-    vision = store.add_goal(
+    store.add_goal(
         title="Vision", goal_type=GoalType.VISION, priority=1
     )
 
-    milestone = store.add_goal(
+    vision_id = store.get_vision().goal_id
+    store.add_goal(
         title="Milestone 1",
         goal_type=GoalType.MILESTONE,
-        parent_id=vision.goal_id,
+        parent_id=vision_id,
         priority=1,
     )
 
@@ -263,7 +264,7 @@ def test_persistence(temp_storage):
     """Test zapisu i odczytu z dysku."""
     # Utwórz store i dodaj cele
     store1 = GoalStore(storage_path=temp_storage)
-    vision = store1.add_goal(
+    store1.add_goal(
         title="Vision", goal_type=GoalType.VISION, priority=1
     )
 

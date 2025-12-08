@@ -1562,11 +1562,10 @@ Plan naprawy:
                 # 4. Zaktualizuj postęp w GoalStore
                 if sub_task.status == TaskStatus.COMPLETED:
                     goal_store.update_progress(
-                        next_task.goal_id, status=GoalStatus.COMPLETED
+                        next_task.goal_id, 
+                        status=GoalStatus.COMPLETED,
+                        task_id=sub_task.id
                     )
-                    # Aktualizuj Goal object z task_id (bezpośrednia modyfikacja dla kontekstu)
-                    next_task.task_id = sub_task.id
-                    goal_store._save_to_disk()  # Zapisz zmianę
                     tasks_completed += 1
 
                     self.state_manager.add_log(

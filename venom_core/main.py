@@ -1474,23 +1474,22 @@ async def get_roadmap():
             )
 
         # KPIs
-        all_milestones = goal_store.get_milestones()
         completed_milestones = [
-            m for m in all_milestones if m.status.value == "COMPLETED"
+            m for m in milestones if m.status.value == "COMPLETED"
         ]
         all_tasks_list = []
-        for m in all_milestones:
+        for m in milestones:
             all_tasks_list.extend(goal_store.get_tasks(parent_id=m.goal_id))
         completed_tasks = [t for t in all_tasks_list if t.status.value == "COMPLETED"]
 
         completion_rate = 0.0
-        if all_milestones:
-            completion_rate = (len(completed_milestones) / len(all_milestones)) * 100
+        if milestones:
+            completion_rate = (len(completed_milestones) / len(milestones)) * 100
 
         kpis = {
             "completion_rate": completion_rate,
             "milestones_completed": len(completed_milestones),
-            "milestones_total": len(all_milestones),
+            "milestones_total": len(milestones),
             "tasks_completed": len(completed_tasks),
             "tasks_total": len(all_tasks_list),
         }

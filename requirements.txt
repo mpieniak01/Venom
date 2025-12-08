@@ -101,6 +101,11 @@ bleach                  # HTML sanitization for safe widget rendering
 pyperclip               # Cross-platform clipboard access
 win10toast              # Windows 10/11 Toast Notifications (Windows only)
 
+# Visual GUI Automation (THE_GHOST)
+pyautogui               # GUI automation (mouse, keyboard)
+pynput                  # Alternative input control library
+mss                     # Fast screenshot library
+
 # --- VENOM DEV TOOLS (Jakość Kodu) ---
 
 pytest                  # Testy

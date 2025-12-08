@@ -156,5 +156,13 @@ class Settings(BaseSettings):
     IMAGE_DEFAULT_SIZE: str = "1024x1024"  # Domyślny rozmiar obrazu
     IMAGE_STYLE: str = "vivid"  # Styl obrazu dla DALL-E: 'vivid' lub 'natural'
 
+    # Konfiguracja THE_SHADOW (Desktop Awareness & Proactive Assistance)
+    ENABLE_PROACTIVE_MODE: bool = False  # Włącz tryb proaktywny (Shadow Agent)
+    ENABLE_DESKTOP_SENSOR: bool = False  # Włącz monitorowanie pulpitu (okna, schowek)
+    SHADOW_CONFIDENCE_THRESHOLD: float = 0.8  # Próg pewności dla sugestii (0.0-1.0)
+    SHADOW_PRIVACY_FILTER: bool = True  # Włącz filtr prywatności dla schowka
+    SHADOW_CLIPBOARD_MAX_LENGTH: int = 1000  # Maksymalna długość tekstu ze schowka
+    SHADOW_CHECK_INTERVAL: int = 1  # Interwał sprawdzania sensora (sekundy)
+
 
 SETTINGS = Settings()

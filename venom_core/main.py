@@ -310,7 +310,15 @@ async def lifespan(app: FastAPI):
 
             # Callback dla desktop sensor
             async def handle_shadow_action(action_payload: dict):
-                """Obsługa akcji z powiadomień Shadow Agent."""
+                """
+                Obsługa akcji z powiadomień Shadow Agent.
+
+                UWAGA: Podstawowa implementacja - akcje nie wykonują rzeczywistych zmian.
+                TODO: Pełna implementacja wymaga integracji z:
+                - Orchestrator (error_fix, code_improvement)
+                - GoalStore (task_update)
+                - Coder Agent (code generation)
+                """
                 logger.info(f"Shadow Agent action triggered: {action_payload}")
 
                 # Obsługa różnych typów akcji
@@ -318,16 +326,18 @@ async def lifespan(app: FastAPI):
 
                 if action_type == "error_fix":
                     # TODO: Zintegrować z Orchestrator do naprawy błędu
-                    logger.info("Action: Error fix requested")
-                    # await orchestrator.submit_task(...)
+                    # Przykład: await orchestrator.submit_task(TaskRequest(content=f"Fix error: {action_payload['error_text']}"))
+                    logger.info("Action: Error fix requested (not implemented)")
 
                 elif action_type == "code_improvement":
                     # TODO: Zintegrować z Coder Agent
-                    logger.info("Action: Code improvement requested")
+                    # Przykład: await coder_agent.improve_code(action_payload['code'])
+                    logger.info("Action: Code improvement requested (not implemented)")
 
                 elif action_type == "task_update":
                     # TODO: Zaktualizować status zadania w GoalStore
-                    logger.info("Action: Task update requested")
+                    # Przykład: goal_store.update_goal_status(goal_id, GoalStatus.IN_PROGRESS)
+                    logger.info("Action: Task update requested (not implemented)")
 
                 else:
                     logger.warning(f"Unknown action type: {action_type}")
@@ -335,7 +345,7 @@ async def lifespan(app: FastAPI):
                 # Broadcast akcji do UI
                 await event_broadcaster.broadcast_event(
                     event_type=EventType.SYSTEM_LOG,
-                    message=f"Shadow action executed: {action_type}",
+                    message=f"Shadow action triggered: {action_type} (implementation pending)",
                     data=action_payload,
                 )
 
@@ -1425,12 +1435,12 @@ async def get_shadow_status():
 
 
 @app.post("/api/v1/shadow/reject")
-async def reject_shadow_suggestion(suggestion_type: str):
+async def reject_shadow_suggestion(request: TaskRequest):
     """
     Rejestruje odrzuconą sugestię Shadow Agent dla uczenia się.
 
     Args:
-        suggestion_type: Typ odrzuconej sugestii
+        request: Request body z polem 'content' zawierającym suggestion_type
 
     Returns:
         Potwierdzenie rejestracji
@@ -1442,17 +1452,11 @@ async def reject_shadow_suggestion(suggestion_type: str):
         raise HTTPException(status_code=503, detail="Shadow Agent nie jest dostępny")
 
     try:
-        from venom_core.agents.shadow import Suggestion
+        suggestion_type = request.content
 
-        # Utwórz prostą sugestię do rejestracji
-        suggestion = Suggestion(
-            suggestion_type=suggestion_type,
-            title="Rejected by user",
-            message="User rejected this suggestion",
-            confidence=0.0,
-        )
+        # Użyj nowego API z suggestion_type string
+        shadow_agent.record_rejection(suggestion_type=suggestion_type)
 
-        shadow_agent.record_rejection(suggestion)
         return {
             "status": "success",
             "message": f"Odrzucona sugestia typu '{suggestion_type}' zarejestrowana",

@@ -9,10 +9,19 @@ import asyncio
 import platform
 import re
 from datetime import datetime
+from io import BytesIO
 from typing import Callable, Optional
+
+try:
+    from PIL import ImageGrab
+
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 import pyperclip
 
+from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,11 +32,9 @@ class PrivacyFilter:
 
     # Wzorce regex dla wrażliwych danych
     SENSITIVE_PATTERNS = [
-        r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",  # Numery kart kredytowych (basic pattern - może dawać false positives)
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",  # Emaile (opcjonalnie)
+        r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",  # Numery kart kredytowych (basic pattern - może dawać false positives, brak walidacji Luhn)
         r"(?i)(password|hasło|passwd|pwd)[\s:=]+\S+",  # Hasła
         r"(?i)(api[_-]?key|token|secret)[\s:=]+[A-Za-z0-9_\-]+",  # API keys
-        r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b",  # Adresy IP (opcjonalnie)
         r"-----BEGIN (RSA |EC )?PRIVATE KEY-----",  # Klucze prywatne
     ]
 
@@ -164,10 +171,11 @@ class DesktopSensor:
                 if not self._is_wsl:
                     await self._check_active_window()
 
-                # Czekaj przed następnym sprawdzeniem (1 sekunda)
-                await asyncio.sleep(1)
+                # Czekaj przed następnym sprawdzeniem
+                await asyncio.sleep(SETTINGS.SHADOW_CHECK_INTERVAL)
 
             except asyncio.CancelledError:
+                # Oczekiwany wyjątek przy anulowaniu taska – ignorujemy
                 break
             except Exception as e:
                 logger.error(f"Błąd w pętli monitoringu: {e}")
@@ -185,11 +193,13 @@ class DesktopSensor:
 
                 # Filtruj wrażliwe dane
                 if self.privacy_filter:
-                    sanitized = PrivacyFilter.sanitize(current_content)
+                    sanitized = PrivacyFilter.sanitize(
+                        current_content, max_length=SETTINGS.SHADOW_CLIPBOARD_MAX_LENGTH
+                    )
                     if not sanitized:
                         return  # Odrzuć wrażliwe dane
                 else:
-                    sanitized = current_content[:1000]  # Obetnij do 1000 znaków
+                    sanitized = current_content[: SETTINGS.SHADOW_CLIPBOARD_MAX_LENGTH]
 
                 logger.info(f"Zmiana w schowku: {len(sanitized)} znaków")
 
@@ -210,7 +220,7 @@ class DesktopSensor:
     async def _check_active_window(self) -> None:
         """Sprawdza aktywne okno (tylko native Linux/Windows)."""
         try:
-            title = self.get_active_window_title()
+            title = await self.get_active_window_title()
 
             if title and title != self._last_active_window:
                 self._last_active_window = title
@@ -229,7 +239,7 @@ class DesktopSensor:
         except Exception as e:
             logger.error(f"Błąd przy sprawdzaniu aktywnego okna: {e}")
 
-    def get_active_window_title(self) -> str:
+    async def get_active_window_title(self) -> str:
         """
         Zwraca tytuł aktywnego okna.
 
@@ -244,7 +254,7 @@ class DesktopSensor:
             if self.system == "Windows":
                 return self._get_window_title_windows()
             elif self.system == "Linux":
-                return self._get_window_title_linux()
+                return await self._get_window_title_linux()
             else:
                 logger.warning(f"System {self.system} nie jest wspierany")
                 return ""
@@ -270,21 +280,29 @@ class DesktopSensor:
             logger.error(f"Błąd przy pobieraniu okna Windows: {e}")
             return ""
 
-    def _get_window_title_linux(self) -> str:
+    async def _get_window_title_linux(self) -> str:
         """Pobiera tytuł aktywnego okna na Linux (wymaga X11)."""
         try:
-            import subprocess
-
             # Użyj xdotool (jeśli zainstalowane)
-            result = subprocess.run(
-                ["xdotool", "getactivewindow", "getwindowname"],
-                capture_output=True,
-                text=True,
-                timeout=2,
+            process = await asyncio.create_subprocess_exec(
+                "xdotool",
+                "getactivewindow",
+                "getwindowname",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
 
-            if result.returncode == 0:
-                return result.stdout.strip()
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(), timeout=2
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                return ""
+
+            if process.returncode == 0:
+                return stdout.decode().strip()
             else:
                 return ""
         except FileNotFoundError:
@@ -304,9 +322,13 @@ class DesktopSensor:
         Returns:
             Bytes zawierające obraz PNG lub None przy błędzie
         """
-        try:
-            from PIL import ImageGrab
+        if not PIL_AVAILABLE:
+            logger.error(
+                "PIL/Pillow nie jest zainstalowane - zrzuty ekranu niedostępne"
+            )
+            return None
 
+        try:
             if self._is_wsl:
                 logger.warning("Zrzuty ekranu niedostępne w WSL2 bez satelity")
                 return None
@@ -317,22 +339,15 @@ class DesktopSensor:
                 img = ImageGrab.grab()
 
             # Konwertuj do bytes
-            from io import BytesIO
-
             buffer = BytesIO()
             img.save(buffer, format="PNG")
             return buffer.getvalue()
 
-        except ImportError:
-            logger.error(
-                "PIL/Pillow nie jest zainstalowane - zrzuty ekranu niedostępne"
-            )
-            return None
         except Exception as e:
             logger.error(f"Błąd przy robieniu zrzutu ekranu: {e}")
             return None
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, any]:
         """
         Zwraca status sensora.
 

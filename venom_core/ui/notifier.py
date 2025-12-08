@@ -178,13 +178,14 @@ class Notifier:
         try:
             # PowerShell script dla Toast notification
             # Używamy argument list zamiast string interpolation dla bezpieczeństwa
+            # XML escaping odbywa się przez PowerShell's SecurityElement
             ps_script = """
             [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
 
-            $title = $args[0]
-            $message = $args[1]
+            $title = [System.Security.SecurityElement]::Escape($args[0])
+            $message = [System.Security.SecurityElement]::Escape($args[1])
 
             $template = @"
             <toast>
@@ -289,15 +290,20 @@ class Notifier:
             True jeśli sukces
         """
         try:
-            # Użyj powershell.exe (dostępne w WSL2)
-            title_escaped = title.replace('"', '`"')
-            message_escaped = message.replace('"', '`"')
+            # Escapowanie dla PowerShell: podwójne cudzysłowy, wewnątrz podwójnych cudzysłowów " należy zamienić na `"
+            def ps_escape(s: str) -> str:
+                return s.replace('"', '`"')
 
-            # Prosty BurntToast command (jeśli zainstalowany na Windows)
-            cmd = f"powershell.exe -Command \"New-BurntToastNotification -Text '{title_escaped}', '{message_escaped}'\""
+            title_escaped = ps_escape(title)
+            message_escaped = ps_escape(message)
 
-            process = await asyncio.create_subprocess_shell(
-                cmd,
+            # Komenda PowerShell jako jeden argument
+            ps_command = f'New-BurntToastNotification -Text "{title_escaped}", "{message_escaped}"'
+
+            process = await asyncio.create_subprocess_exec(
+                "powershell.exe",
+                "-Command",
+                ps_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -333,7 +339,7 @@ class Notifier:
         except Exception as e:
             logger.error(f"Błąd przy obsłudze akcji: {e}")
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict[str, any]:
         """
         Zwraca status Notifier.
 

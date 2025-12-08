@@ -12,7 +12,7 @@ import asyncio
 import time
 
 # Importy z Venom
-from venom_core.agents.shadow import ShadowAgent, Suggestion, SuggestionType
+from venom_core.agents.shadow import ShadowAgent
 from venom_core.perception.desktop_sensor import DesktopSensor, PrivacyFilter
 from venom_core.ui.notifier import Notifier
 from venom_core.utils.logger import get_logger

@@ -1,6 +1,6 @@
 """Testy jednostkowe dla DesktopSensor."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -115,7 +115,9 @@ class TestDesktopSensor:
     async def test_check_clipboard_with_sensitive_data(self, mock_paste):
         """Test sprawdzania schowka z wrażliwymi danymi."""
         clipboard_callback = AsyncMock()
-        sensor = DesktopSensor(clipboard_callback=clipboard_callback, privacy_filter=True)
+        sensor = DesktopSensor(
+            clipboard_callback=clipboard_callback, privacy_filter=True
+        )
 
         # Mockuj wrażliwe dane w schowku
         mock_paste.return_value = "password: mySecretPassword123"
@@ -153,16 +155,19 @@ class TestDesktopSensor:
         assert status["is_running"] is False
         assert status["privacy_filter"] is True
 
+    @pytest.mark.asyncio
     @patch("platform.system", return_value="Windows")
-    def test_get_active_window_title_windows(self, mock_system):
+    async def test_get_active_window_title_windows(self, mock_system):
         """Test pobierania tytułu okna na Windows (mock)."""
         sensor = DesktopSensor()
         sensor._is_wsl = False
 
         # W testach nie możemy prawdziwie wywołać Windows API
         # Testujemy tylko że metoda nie rzuca błędu
-        with patch.object(sensor, "_get_window_title_windows", return_value="Test Window"):
-            title = sensor.get_active_window_title()
+        with patch.object(
+            sensor, "_get_window_title_windows", return_value="Test Window"
+        ):
+            title = await sensor.get_active_window_title()
             assert title == "Test Window"
 
     def test_detect_wsl(self):

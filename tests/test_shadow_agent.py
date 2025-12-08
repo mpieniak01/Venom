@@ -1,6 +1,6 @@
 """Testy jednostkowe dla ShadowAgent."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from semantic_kernel import Kernel
@@ -154,7 +154,7 @@ class TestShadowAgent:
     async def test_analyze_clipboard_with_error(self, shadow_agent):
         """Test analizy schowka z błędem."""
         await shadow_agent.start()
-        
+
         sensor_data = {
             "type": "clipboard",
             "content": "Traceback (most recent call last):\n  Error: Something failed",
@@ -166,7 +166,7 @@ class TestShadowAgent:
         assert suggestion is not None
         assert suggestion.suggestion_type == SuggestionType.ERROR_FIX
         assert suggestion.confidence >= 0.8
-        
+
         await shadow_agent.stop()
 
     @pytest.mark.asyncio
@@ -182,7 +182,10 @@ class TestShadowAgent:
 
         # Może zwrócić sugestię lub None, zależnie od confidence
         # W tym przypadku confidence jest niskie, więc None
-        assert suggestion is None or suggestion.confidence >= shadow_agent.confidence_threshold
+        assert (
+            suggestion is None
+            or suggestion.confidence >= shadow_agent.confidence_threshold
+        )
 
     @pytest.mark.asyncio
     async def test_analyze_window_with_docs(self, shadow_agent):

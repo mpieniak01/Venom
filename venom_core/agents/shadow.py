@@ -114,6 +114,12 @@ Gdy otrzymujesz dane z sensora:
 3. Wygeneruj sugestię TYLKO jeśli confidence > próg
 4. Zwróć JSON z sugestią lub null jeśli nic nie znalazłeś"""
 
+    # Confidence levels dla różnych typów sugestii
+    CONFIDENCE_ERROR_FIX = 0.85
+    CONFIDENCE_CODE_IMPROVEMENT = 0.65
+    CONFIDENCE_CONTEXT_HELP = 0.75
+    CONFIDENCE_TASK_UPDATE = 0.70
+
     def __init__(
         self,
         kernel: Kernel,
@@ -350,8 +356,7 @@ Gdy otrzymujesz dane z sensora:
             if similar_lessons:
                 logger.info(f"Znaleziono {len(similar_lessons)} podobnych lekcji")
 
-        # Prostą heurystyką - w prawdziwej wersji użyj LLM
-        confidence = 0.85  # Wysoka pewność dla błędów składni
+        confidence = self.CONFIDENCE_ERROR_FIX
 
         return Suggestion(
             suggestion_type=SuggestionType.ERROR_FIX,
@@ -372,8 +377,7 @@ Gdy otrzymujesz dane z sensora:
         Returns:
             Sugestia lub None
         """
-        # Niska pewność dla ogólnych fragmentów kodu
-        confidence = 0.65
+        confidence = self.CONFIDENCE_CODE_IMPROVEMENT
 
         if confidence < self.confidence_threshold:
             return None
@@ -397,7 +401,7 @@ Gdy otrzymujesz dane z sensora:
         Returns:
             Sugestia pomocy
         """
-        confidence = 0.75
+        confidence = self.CONFIDENCE_CONTEXT_HELP
 
         if confidence < self.confidence_threshold:
             return None
@@ -426,7 +430,7 @@ Gdy otrzymujesz dane z sensora:
 
         # Tutaj można dodać logikę dopasowywania tytułu okna do zadań
         # Na razie prostą heurystyką
-        confidence = 0.7
+        confidence = self.CONFIDENCE_TASK_UPDATE
 
         if confidence < self.confidence_threshold:
             return None
@@ -458,12 +462,27 @@ Gdy otrzymujesz dane z sensora:
             # Na razie proste filtrowanie po słowach kluczowych
             lessons = self.lessons_store.get_all_lessons()
 
+            # Early return jeśli brak lekcji
+            if not lessons:
+                return []
+
+            # Early return dla dużej liczby lekcji (optymalizacja)
+            if len(lessons) > 1000:
+                logger.warning(
+                    f"Dużo lekcji ({len(lessons)}), limitowanie wyszukiwania"
+                )
+                lessons = lessons[:1000]
+
             # Ekstrakuj słowa kluczowe z kontekstu (uproszczona wersja)
             keywords = set(
                 word.lower()
                 for word in context.split()
                 if len(word) > 3  # Ignoruj krótkie słowa
             )
+
+            # Early return jeśli brak keywords
+            if not keywords:
+                return []
 
             # Filtruj lekcje zawierające podobne słowa kluczowe
             similar = []
@@ -476,21 +495,38 @@ Gdy otrzymujesz dane z sensora:
                 if any(keyword in lesson_text for keyword in keywords):
                     similar.append(lesson)
 
+                    # Early exit jeśli znaleziono wystarczająco
+                    if len(similar) >= 3:
+                        break
+
             return similar[:3]  # Zwróć max 3 lekcje
 
         except Exception as e:
             logger.error(f"Błąd przy szukaniu lekcji: {e}")
             return []
 
-    def record_rejection(self, suggestion: Suggestion) -> None:
+    def record_rejection(
+        self, suggestion: Suggestion = None, suggestion_type: str = None
+    ) -> None:
         """
         Rejestruje odrzuconą sugestię dla uczenia się.
 
         Args:
-            suggestion: Odrzucona sugestia
+            suggestion: Odrzucona sugestia (deprecated, użyj suggestion_type)
+            suggestion_type: Typ odrzuconej sugestii (preferowane)
         """
-        self._rejected_suggestions.append(suggestion.suggestion_type)
-        logger.info(f"Użytkownik odrzucił sugestię: {suggestion.title}")
+        # Wspieraj oba API - stare (Suggestion object) i nowe (string)
+        if suggestion_type is None and suggestion is not None:
+            suggestion_type = suggestion.suggestion_type
+            title = suggestion.title
+        elif suggestion_type is not None:
+            title = f"Suggestion of type {suggestion_type}"
+        else:
+            logger.error("record_rejection wywołane bez argumentów")
+            return
+
+        self._rejected_suggestions.append(suggestion_type)
+        logger.info(f"Użytkownik odrzucił sugestię typu: {suggestion_type}")
 
         # Zapisz lekcję w LessonsStore
         if self.lessons_store:
@@ -498,11 +534,11 @@ Gdy otrzymujesz dane z sensora:
                 from venom_core.memory.lessons_store import Lesson
 
                 lesson = Lesson(
-                    situation=f"Sugestia typu {suggestion.suggestion_type}",
-                    action=f"Zasugerowano: {suggestion.title}",
+                    situation=f"Sugestia typu {suggestion_type}",
+                    action=f"Zasugerowano: {title}",
                     result="Użytkownik odrzucił",
                     feedback="Nie przeszkadzać w podobnej sytuacji",
-                    tags=["shadow", "rejection", suggestion.suggestion_type],
+                    tags=["shadow", "rejection", suggestion_type],
                 )
                 self.lessons_store.add_lesson(lesson)
             except Exception as e:

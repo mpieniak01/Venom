@@ -37,6 +37,11 @@ networkx                # Analiza grafów
 lancedb                 # Baza wektorowa (Local-first)
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
 
+# Ingestion Engine dependencies
+pypdf                   # Ekstrakcja tekstu z PDF (fallback dla markitdown)
+markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
+python-docx             # Obsługa plików DOCX (fallback dla markitdown)
+
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
 

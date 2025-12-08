@@ -1,5 +1,7 @@
 """Testy jednostkowe dla GhostAgent."""
 
+# ruff: noqa: E402
+
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -45,16 +47,18 @@ class TestGhostAgent:
     @pytest.fixture
     def ghost_agent(self, mock_kernel):
         """Fixture do tworzenia GhostAgent."""
-        with patch("venom_core.agents.ghost_agent.VisionGrounding"), patch(
-            "venom_core.agents.ghost_agent.InputSkill"
-        ), patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings:
+        with (
+            patch("venom_core.agents.ghost_agent.VisionGrounding"),
+            patch("venom_core.agents.ghost_agent.InputSkill"),
+            patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings,
+        ):
             # Mock SETTINGS to enable Ghost Agent in tests
             mock_settings.ENABLE_GHOST_AGENT = True
             mock_settings.GHOST_MAX_STEPS = 20
             mock_settings.GHOST_STEP_DELAY = 1.0
             mock_settings.GHOST_VERIFICATION_ENABLED = True
             mock_settings.GHOST_SAFETY_DELAY = 0.5
-            
+
             agent = GhostAgent(
                 kernel=mock_kernel,
                 max_steps=10,
@@ -76,7 +80,7 @@ class TestGhostAgent:
     async def test_process_when_already_running(self, ghost_agent):
         """Test próby uruchomienia gdy agent już działa."""
         ghost_agent.is_running = True
-        
+
         with patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings:
             mock_settings.ENABLE_GHOST_AGENT = True
             result = await ghost_agent.process("Otwórz notatnik")
@@ -91,9 +95,10 @@ class TestGhostAgent:
         ghost_agent.input_skill.keyboard_hotkey = AsyncMock(return_value="✅ OK")
         ghost_agent.input_skill.keyboard_type = AsyncMock(return_value="✅ OK")
 
-        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab, patch(
-            "venom_core.agents.ghost_agent.SETTINGS"
-        ) as mock_settings:
+        with (
+            patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab,
+            patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings,
+        ):
             mock_settings.ENABLE_GHOST_AGENT = True
             mock_grab.return_value = Image.new("RGB", (100, 100))
 

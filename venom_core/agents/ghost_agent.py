@@ -113,22 +113,29 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             safety_delay: Opóźnienie bezpieczeństwa dla operacji input (domyślnie z SETTINGS)
         """
         super().__init__(kernel)
-        
+
         # Sprawdź czy Ghost Agent jest włączony w konfiguracji
         if not SETTINGS.ENABLE_GHOST_AGENT:
             logger.warning(
                 "Ghost Agent jest wyłączony w konfiguracji (ENABLE_GHOST_AGENT=False). "
                 "Aby go włączyć, ustaw ENABLE_GHOST_AGENT=True w .env lub config.py"
             )
-        
+
         # Użyj wartości z SETTINGS jako domyślnych
-        self.max_steps = max_steps if max_steps is not None else SETTINGS.GHOST_MAX_STEPS
-        self.step_delay = step_delay if step_delay is not None else SETTINGS.GHOST_STEP_DELAY
+        self.max_steps = (
+            max_steps if max_steps is not None else SETTINGS.GHOST_MAX_STEPS
+        )
+        self.step_delay = (
+            step_delay if step_delay is not None else SETTINGS.GHOST_STEP_DELAY
+        )
         self.verification_enabled = (
-            verification_enabled if verification_enabled is not None 
+            verification_enabled
+            if verification_enabled is not None
             else SETTINGS.GHOST_VERIFICATION_ENABLED
         )
-        self.safety_delay = safety_delay if safety_delay is not None else SETTINGS.GHOST_SAFETY_DELAY
+        self.safety_delay = (
+            safety_delay if safety_delay is not None else SETTINGS.GHOST_SAFETY_DELAY
+        )
 
         # Inicjalizuj komponenty
         self.vision = VisionGrounding()
@@ -163,7 +170,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
                 "❌ Ghost Agent jest wyłączony w konfiguracji. "
                 "Ustaw ENABLE_GHOST_AGENT=True w .env aby go włączyć."
             )
-        
+
         if self.is_running:
             return (
                 "❌ Ghost Agent już działa. Poczekaj na zakończenie bieżącego zadania."

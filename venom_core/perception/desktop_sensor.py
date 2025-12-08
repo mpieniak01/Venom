@@ -353,7 +353,7 @@ class DesktopSensor:
 
         W tym trybie sensor zapisuje wszystkie akcje użytkownika
         które mogą być później odtworzone przez GhostAgent.
-        
+
         TODO: Implementacja faktycznego nagrywania akcji (mouse clicks, keyboard events)
         wymaga integracji z pynput lub podobną biblioteką do przechwytywania zdarzeń.
         Obecnie metoda tylko inicjalizuje stan, ale nie nagrywa akcji.
@@ -361,7 +361,9 @@ class DesktopSensor:
         self._recording_mode = True
         self._recorded_actions = []
         logger.info("DesktopSensor: tryb nagrywania WŁĄCZONY")
-        logger.warning("UWAGA: Faktyczne nagrywanie akcji nie jest jeszcze zaimplementowane (TODO)")
+        logger.warning(
+            "UWAGA: Faktyczne nagrywanie akcji nie jest jeszcze zaimplementowane (TODO)"
+        )
 
     def stop_recording(self) -> List[Dict[str, Any]]:
         """

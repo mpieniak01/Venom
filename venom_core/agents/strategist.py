@@ -1,5 +1,6 @@
 """Moduł: strategist - agent planowania i zarządzania złożonością zadań."""
 
+import re
 from typing import Dict, Optional
 
 from semantic_kernel import Kernel
@@ -417,12 +418,12 @@ class StrategistAgent(BaseAgent):
 
     def _extract_time(self, time_result: str) -> float:
         """Wyciąga szacowany czas z wyniku tekstowego."""
-        import re
-
         match = re.search(r"Oszacowany czas: (\d+)", time_result)
         if match:
             return float(match.group(1))
-        return 30.0  # Domyślnie 30 minut
+        # Domyślna wartość 30 minut: typowy czas dla małego zadania,
+        # stosowana gdy nie uda się wyciągnąć czasu z tekstu
+        return 30.0
 
     def _generate_recommendations(
         self, complexity: TaskComplexity, estimated_minutes: float, risks: str

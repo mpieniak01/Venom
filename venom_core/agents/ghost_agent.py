@@ -7,14 +7,10 @@ i input skill do wykonywania akcji.
 """
 
 import asyncio
-import time
 from typing import Any, Dict, List, Optional
 
 from PIL import ImageGrab
 from semantic_kernel import Kernel
-from semantic_kernel.contents import ChatHistory
-from semantic_kernel.contents.chat_message_content import ChatMessageContent
-from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.execution.skills.input_skill import InputSkill
@@ -144,7 +140,9 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
             Raport z wykonania zadania
         """
         if self.is_running:
-            return "❌ Ghost Agent już działa. Poczekaj na zakończenie bieżącego zadania."
+            return (
+                "❌ Ghost Agent już działa. Poczekaj na zakończenie bieżącego zadania."
+            )
 
         try:
             self.is_running = True
@@ -237,9 +235,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
 
         # Przykład 2: "Włącz następną piosenkę w Spotify"
         elif "spotify" in task.lower() and "następn" in task.lower():
-            plan.append(
-                ActionStep("screenshot", "Zrób screenshot ekranu", {})
-            )
+            plan.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
             plan.append(
                 ActionStep(
                     "locate",
@@ -257,9 +253,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
 
         else:
             # Ogólny plan - zrób screenshot i spróbuj znaleźć opisany element
-            plan.append(
-                ActionStep("screenshot", "Zrób screenshot ekranu", {})
-            )
+            plan.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
             logger.warning(
                 f"Nie rozpoznano konkretnego zadania: {task}. Używam ogólnego planu."
             )

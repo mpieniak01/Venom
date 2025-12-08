@@ -32,9 +32,7 @@ class VisionGrounding:
     def __init__(self):
         """Inicjalizacja VisionGrounding."""
         self.use_openai = bool(SETTINGS.OPENAI_API_KEY)
-        logger.info(
-            f"VisionGrounding zainicjalizowany (OpenAI: {self.use_openai})"
-        )
+        logger.info(f"VisionGrounding zainicjalizowany (OpenAI: {self.use_openai})")
 
     async def locate_element(
         self,

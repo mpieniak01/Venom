@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from venom_core.utils.logger import get_logger
 
@@ -53,7 +53,7 @@ class TaskRecord:
     completed_at: Optional[str] = None
     risks: List[str] = field(default_factory=list)
     subtasks: List[str] = field(default_factory=list)
-    metadata: Dict[str, any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Konwertuje rekord do słownika."""
@@ -135,7 +135,7 @@ class WorkLedger:
         description: str,
         estimated_minutes: float,
         complexity: TaskComplexity,
-        metadata: Optional[Dict[str, any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> TaskRecord:
         """
         Loguje nowe zadanie do Work Ledger.
@@ -306,7 +306,7 @@ class WorkLedger:
 
         return True
 
-    def predict_overrun(self, task_id: str) -> Dict[str, any]:
+    def predict_overrun(self, task_id: str) -> Dict[str, Any]:
         """
         Przewiduje czy zadanie przekroczy estymację.
 
@@ -393,7 +393,7 @@ class WorkLedger:
 
         return tasks
 
-    def summaries(self) -> Dict[str, any]:
+    def summaries(self) -> Dict[str, Any]:
         """
         Generuje podsumowanie stanu wszystkich zadań.
 

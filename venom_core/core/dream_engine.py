@@ -14,6 +14,7 @@ from semantic_kernel import Kernel
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.guardian import GuardianAgent
 from venom_core.config import SETTINGS
+from venom_core.core.chronos import ChronosEngine
 from venom_core.core.energy_manager import EnergyManager
 from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.lessons_store import LessonsStore
@@ -60,6 +61,7 @@ class DreamEngine:
         scenario_weaver: Optional[ScenarioWeaver] = None,
         coder_agent: Optional[CoderAgent] = None,
         guardian_agent: Optional[GuardianAgent] = None,
+        chronos_engine: Optional[ChronosEngine] = None,
     ):
         """
         Inicjalizacja DreamEngine.
@@ -72,6 +74,7 @@ class DreamEngine:
             scenario_weaver: Tkacz scenariuszy (opcjonalny, utworzy nowy)
             coder_agent: Agent programujący (opcjonalny, utworzy nowy)
             guardian_agent: Agent walidujący (opcjonalny, utworzy nowy)
+            chronos_engine: Silnik zarządzania czasem (opcjonalny, utworzy nowy)
         """
         self.kernel = kernel
         self.graph_rag = graph_rag
@@ -82,10 +85,12 @@ class DreamEngine:
         self.scenario_weaver = scenario_weaver or ScenarioWeaver(kernel)
         self.coder_agent = coder_agent or CoderAgent(kernel)
         self.guardian_agent = guardian_agent or GuardianAgent(kernel)
+        self.chronos = chronos_engine or ChronosEngine()
 
         # Stan
         self.state = DreamState.IDLE
         self.current_session_id: Optional[str] = None
+        self.current_checkpoint_id: Optional[str] = None  # Checkpoint dla sesji śnienia
         self.dreams_count = 0
         self.successful_dreams = 0
         self._state_lock = asyncio.Lock()  # Lock dla ochrony przed race conditions
@@ -132,6 +137,22 @@ class DreamEngine:
         logger.info(
             f"🌙 Rozpoczynam fazę REM (session_id={self.current_session_id[:8]})"
         )
+
+        # Utwórz checkpoint przed rozpoczęciem śnienia (tymczasowa timeline)
+        timeline_name = f"dream_{self.current_session_id[:8]}"
+        try:
+            self.chronos.create_timeline(timeline_name)
+            self.current_checkpoint_id = self.chronos.create_checkpoint(
+                name=f"dream_start_{self.current_session_id[:8]}",
+                description="Punkt startowy sesji śnienia - na wypadek błędów",
+                timeline=timeline_name,
+            )
+            logger.info(
+                f"🛡️ Checkpoint bezpieczeństwa utworzony: {self.current_checkpoint_id} (timeline: {timeline_name})"
+            )
+        except Exception as e:
+            logger.warning(f"Nie udało się utworzyć checkpointu dla śnienia: {e}")
+            self.current_checkpoint_id = None
 
         max_scenarios = max_scenarios or SETTINGS.DREAMING_MAX_SCENARIOS
         difficulty = difficulty or SETTINGS.DREAMING_SCENARIO_COMPLEXITY
@@ -217,6 +238,20 @@ class DreamEngine:
                 f"{report['dreams_successful']}/{report['dreams_attempted']} sukcesów"
             )
 
+            # Jeśli sesja była pomyślna, merge wiedzy do głównej linii
+            if report["success_rate"] > 0.5 and self.current_checkpoint_id:
+                logger.info(
+                    "✅ Sesja śnienia pomyślna - wiedza zostanie zachowana w głównej linii"
+                )
+                # Wiedza jest już w LessonsStore, więc nie musimy nic robić
+                # Timeline może zostać jako historia eksperymentów
+            elif self.current_checkpoint_id:
+                logger.info(
+                    "⚠️ Sesja śnienia niepomyślna - rozważ przywrócenie checkpointu"
+                )
+                report["checkpoint_id"] = self.current_checkpoint_id
+                report["timeline"] = timeline_name
+
             return report
 
         except Exception as e:
@@ -230,6 +265,7 @@ class DreamEngine:
         finally:
             # Reset stanu
             self.state = DreamState.IDLE
+            self.current_checkpoint_id = None
             self.current_session_id = None
 
     async def _get_knowledge_clusters(self, count: int) -> List[str]:

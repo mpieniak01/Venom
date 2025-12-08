@@ -306,16 +306,16 @@ Format odpowiedzi: Markdown z jasno wydzielonymi sekcjami."""
                 return f"""# RAPORT ANALIZY UX
 
 ## Podsumowanie
-- Sesji: {analysis['summary']['total_sessions']}
-- Sukces: {analysis['summary']['successful_sessions']} ({analysis['summary']['success_rate']}%)
-- Rage Quits: {analysis['summary']['rage_quits']}
-- Średnia frustracja: {analysis['summary']['avg_frustration']}
+- Sesji: {analysis["summary"]["total_sessions"]}
+- Sukces: {analysis["summary"]["successful_sessions"]} ({analysis["summary"]["success_rate"]}%)
+- Rage Quits: {analysis["summary"]["rage_quits"]}
+- Średnia frustracja: {analysis["summary"]["avg_frustration"]}
 
 ## Najczęstsze problemy
-{chr(10).join(f"- {p['problem']} ({p['occurrences']}x)" for p in analysis['top_problems'])}
+{chr(10).join(f"- {p['problem']} ({p['occurrences']}x)" for p in analysis["top_problems"])}
 
 ## Heatmapa Frustracji (według person)
-{chr(10).join(f"- {h['persona']}: {h['failure_rate']}% porażek ({h['sessions']} sesji)" for h in analysis['frustration_heatmap'])}
+{chr(10).join(f"- {h['persona']}: {h['failure_rate']}% porażek ({h['sessions']} sesji)" for h in analysis["frustration_heatmap"])}
 
 ---
 

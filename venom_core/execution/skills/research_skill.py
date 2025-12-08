@@ -112,7 +112,7 @@ class ResearchSkill:
             result = await self.ingestion_engine.ingest_file(str(path))
             text = result["text"]
             chunks = result["chunks"]
-            metadata = result["metadata"]
+            metadata = result.get("metadata", {})
             file_type = result["file_type"]
 
             # Dodaj do VectorStore
@@ -164,7 +164,13 @@ class ResearchSkill:
             f"ResearchSkill: digest_directory dla {directory_path} (recursive={recursive})"
         )
 
-        path = Path(directory_path)
+        # Walidacja ścieżki - tylko katalogi w ./workspace są dozwolone
+        path = Path(directory_path).resolve()
+        allowed_base = Path("./workspace").resolve()
+        try:
+            path.relative_to(allowed_base)
+        except ValueError:
+            return f"❌ Dostęp do katalogu {directory_path} jest zabroniony. Używaj tylko katalogów w workspace."
 
         if not path.exists() or not path.is_dir():
             return f"❌ Katalog nie istnieje: {directory_path}"

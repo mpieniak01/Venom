@@ -87,7 +87,7 @@ async def test_oracle_agent_process_error(mock_kernel, mock_graph_rag_service):
 
 def test_oracle_plugin_functions(mock_kernel, mock_graph_rag_service):
     """Test czy funkcje Oracle są poprawnie zarejestrowane."""
-    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    OracleAgent(mock_kernel, mock_graph_rag_service)
 
     # Sprawdź czy plugin został dodany
     assert mock_kernel.add_plugin.called
@@ -107,7 +107,7 @@ def test_oracle_plugin_functions(mock_kernel, mock_graph_rag_service):
 @pytest.mark.asyncio
 async def test_oracle_plugin_global_search(mock_kernel, mock_graph_rag_service):
     """Test funkcji global_search w pluginie."""
-    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    OracleAgent(mock_kernel, mock_graph_rag_service)
 
     # Pobierz plugin
     plugin = mock_kernel.add_plugin.call_args[0][0]
@@ -126,7 +126,7 @@ async def test_oracle_plugin_global_search(mock_kernel, mock_graph_rag_service):
 @pytest.mark.asyncio
 async def test_oracle_plugin_local_search(mock_kernel, mock_graph_rag_service):
     """Test funkcji local_search w pluginie."""
-    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    OracleAgent(mock_kernel, mock_graph_rag_service)
 
     # Pobierz plugin
     plugin = mock_kernel.add_plugin.call_args[0][0]
@@ -176,7 +176,7 @@ async def test_oracle_plugin_ingest_file(mock_kernel, mock_graph_rag_service, tm
 
 def test_oracle_plugin_get_graph_stats(mock_kernel, mock_graph_rag_service):
     """Test funkcji get_graph_stats w pluginie."""
-    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    OracleAgent(mock_kernel, mock_graph_rag_service)
 
     # Pobierz plugin
     plugin = mock_kernel.add_plugin.call_args[0][0]

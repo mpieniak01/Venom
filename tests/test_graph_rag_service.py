@@ -1,8 +1,7 @@
 """Testy dla GraphRAGService."""
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import networkx as nx
 import pytest
@@ -106,6 +105,25 @@ async def test_extract_knowledge_from_text_with_llm(graph_rag_service):
     assert "python" in graph_rag_service.graph
     assert "guido" in graph_rag_service.graph
     assert graph_rag_service.graph.has_edge("python", "guido")
+
+
+@pytest.mark.asyncio
+async def test_extract_knowledge_from_text_invalid_json(graph_rag_service):
+    """Test ekstrakcji wiedzy z niepoprawnym JSON z LLM."""
+    mock_llm = AsyncMock()
+    mock_response = Mock()
+    mock_response.__str__ = Mock(return_value="This is not valid JSON")
+    mock_llm.get_chat_message_content.return_value = mock_response
+
+    result = await graph_rag_service.extract_knowledge_from_text(
+        text="Test text",
+        source_id="test_doc",
+        llm_service=mock_llm,
+    )
+
+    assert result["entities"] == 0
+    assert result["relationships"] == 0
+    assert "error" in result
 
 
 def test_find_communities_empty_graph(graph_rag_service):
@@ -253,5 +271,5 @@ def test_find_communities_with_cache(graph_rag_service):
     assert communities1 == communities2
 
     # Wymuś przeliczenie
-    communities3 = graph_rag_service.find_communities(force_recompute=True)
+    communities3 = graph_rag_service.find_communities(refresh_cache=True)
     assert communities3 is not None

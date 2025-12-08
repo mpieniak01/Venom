@@ -17,7 +17,6 @@ from semantic_kernel import Kernel
 from venom_core.agents.oracle import OracleAgent
 from venom_core.config import SETTINGS
 from venom_core.core.model_router import ModelRouter
-from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -90,11 +89,15 @@ async def demo_ingest_url(oracle: OracleAgent):
     # Przykładowy URL (możesz zmienić na rzeczywisty)
     url = "https://docs.python.org/3/tutorial/index.html"
 
-    logger.info(f"\nPobieranie i przetwarzanie URL: {url}")
-    result = await oracle.process(
-        f"Pobierz i przeanalizuj stronę: {url}. Dodaj ją do grafu wiedzy."
-    )
-    print(f"\n{result}\n")
+    try:
+        logger.info(f"\nPobieranie i przetwarzanie URL: {url}")
+        result = await oracle.process(
+            f"Pobierz i przeanalizuj stronę: {url}. Dodaj ją do grafu wiedzy."
+        )
+        print(f"\n{result}\n")
+    except Exception as e:
+        logger.warning(f"Nie udało się przetworzyć URL {url}: {e}")
+        logger.info("Pomijam demo ingestii URL")
 
 
 async def demo_global_search(oracle: OracleAgent):

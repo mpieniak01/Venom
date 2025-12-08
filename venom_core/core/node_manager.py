@@ -215,6 +215,7 @@ class NodeManager:
             ValueError: Jeśli węzeł nie istnieje lub jest offline
             TimeoutError: Jeśli węzeł nie odpowiedział w czasie
         """
+        # Pobierz węzeł z lockiem i skopiuj potrzebne dane
         async with self._lock:
             if node_id not in self.nodes:
                 raise ValueError(f"Węzeł {node_id} nie istnieje")
@@ -222,6 +223,9 @@ class NodeManager:
             node = self.nodes[node_id]
             if not node.is_online:
                 raise ValueError(f"Węzeł {node_id} jest offline")
+            
+            # Skopiuj referencję do websocket w zakresie locka
+            websocket = node.websocket
 
         # Utwórz żądanie
         request = SkillExecutionRequest(
@@ -232,14 +236,15 @@ class NodeManager:
             timeout=timeout,
         )
 
-        # Utwórz Future dla odpowiedzi
+        # Utwórz Future dla odpowiedzi (z lockiem dla _pending_requests)
         future = asyncio.Future()
-        self._pending_requests[request.request_id] = future
+        async with self._lock:
+            self._pending_requests[request.request_id] = future
 
         try:
-            # Wyślij żądanie do węzła
+            # Wyślij żądanie do węzła (już poza lockiem, używając skopiowanej referencji)
             message = NodeMessage.from_execution_request(request)
-            await node.websocket.send_json(message.model_dump())
+            await websocket.send_json(message.model_dump())
 
             logger.info(
                 f"Wysłano żądanie {request.request_id} do węzła {node_id}: "
@@ -258,9 +263,10 @@ class NodeManager:
                 f"Węzeł {node_id} nie odpowiedział w czasie {timeout}s"
             )
         finally:
-            # Usuń Future z pending
-            if request.request_id in self._pending_requests:
-                del self._pending_requests[request.request_id]
+            # Usuń Future z pending (z lockiem)
+            async with self._lock:
+                if request.request_id in self._pending_requests:
+                    del self._pending_requests[request.request_id]
 
     async def handle_response(self, response: NodeResponse):
         """

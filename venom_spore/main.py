@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 
 import psutil
 import websockets
@@ -14,8 +15,12 @@ from websockets.exceptions import ConnectionClosed
 from venom_spore.config import SPORE_SETTINGS
 from venom_spore.skill_executor import SkillExecutor
 
-# Import protokołu z venom_core
-sys.path.insert(0, str(__file__).rsplit("/", 2)[0])
+# Import protokołu z venom_core - używamy relatywnej ścieżki do parent directory
+_current_dir = Path(__file__).parent
+_venom_core_dir = _current_dir.parent / "venom_core"
+if str(_venom_core_dir) not in sys.path:
+    sys.path.insert(0, str(_venom_core_dir.parent))
+
 from venom_core.nodes.protocol import (
     Capabilities,
     HeartbeatMessage,
@@ -230,17 +235,35 @@ async def main():
 
     spore = VenomSpore()
 
-    # Obsługa sygnałów
+    # Obsługa sygnałów - używamy flag zamiast bezpośredniego wywołania
+    shutdown_event = asyncio.Event()
+
     def signal_handler(sig, frame):
         print("\n⚠️ Otrzymano sygnał przerwania")
-        asyncio.create_task(spore.disconnect())
-        sys.exit(0)
+        shutdown_event.set()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Połącz się z Nexusem
-    await spore.connect()
+    # Uruchom połączenie w tle
+    connect_task = asyncio.create_task(spore.connect())
+
+    # Czekaj na sygnał shutdown lub zakończenie zadania
+    done, pending = await asyncio.wait(
+        [connect_task, asyncio.create_task(shutdown_event.wait())],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    # Jeśli otrzymaliśmy sygnał shutdown, rozłącz się
+    if shutdown_event.is_set():
+        await spore.disconnect()
+        # Anuluj połączenie jeśli jeszcze działa
+        if not connect_task.done():
+            connect_task.cancel()
+            try:
+                await connect_task
+            except asyncio.CancelledError:
+                pass
 
 
 if __name__ == "__main__":

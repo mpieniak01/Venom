@@ -133,10 +133,10 @@ class Settings(BaseSettings):
     ENABLE_SIMULATION: bool = False  # Włącz warstwę symulacji użytkowników
     SIMULATION_CHAOS_ENABLED: bool = False  # Włącz Chaos Engineering w symulacjach
     SIMULATION_MAX_STEPS: int = 10  # Maksymalna liczba kroków na użytkownika
-    SIMULATION_USER_MODEL: str = "local"  # Model dla symulowanych użytkowników (local/flash)
-    SIMULATION_ANALYST_MODEL: str = (
-        "openai"  # Model dla UX Analyst (openai/local)
+    SIMULATION_USER_MODEL: str = (
+        "local"  # Model dla symulowanych użytkowników (local/flash)
     )
+    SIMULATION_ANALYST_MODEL: str = "openai"  # Model dla UX Analyst (openai/local)
     SIMULATION_DEFAULT_USERS: int = 5  # Domyślna liczba użytkowników w symulacji
     SIMULATION_LOGS_DIR: str = (
         "./workspace/simulation_logs"  # Katalog z logami symulacji

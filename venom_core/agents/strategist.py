@@ -417,12 +417,45 @@ class StrategistAgent(BaseAgent):
         return TaskComplexity.MEDIUM
 
     def _extract_time(self, time_result: str) -> float:
-        """Wyciąga szacowany czas z wyniku tekstowego."""
-        match = re.search(r"Oszacowany czas: (\d+)", time_result)
+        """
+        Wyciąga szacowany czas z wyniku tekstowego.
+        Obsługuje format JSON {"minutes": X} oraz tekstowy "Oszacowany czas: X".
+        
+        Args:
+            time_result: Wynik tekstowy z estimate_time
+            
+        Returns:
+            Szacowany czas w minutach
+        """
+        import json
+        
+        # Najpierw spróbuj wyciągnąć JSON z początku odpowiedzi
+        try:
+            # Szukaj JSON na początku stringa
+            lines = time_result.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if line.startswith('{') and 'minutes' in line:
+                    data = json.loads(line)
+                    minutes = data.get('minutes')
+                    if minutes is not None:
+                        logger.debug(f"Wyciągnięto czas z JSON: {minutes} minut")
+                        return float(minutes)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.debug(f"Nie udało się sparsować JSON z time_result: {e}")
+        
+        # Fallback: szukaj wzorca tekstowego "Oszacowany czas: X"
+        match = re.search(r"Oszacowany czas:\s*(\d+)", time_result)
         if match:
-            return float(match.group(1))
-        # Domyślna wartość 30 minut: typowy czas dla małego zadania,
-        # stosowana gdy nie uda się wyciągnąć czasu z tekstu
+            minutes = float(match.group(1))
+            logger.debug(f"Wyciągnięto czas z tekstu: {minutes} minut")
+            return minutes
+        
+        # Ostatni fallback: zwróć wartość domyślną z ostrzeżeniem
+        logger.warning(
+            f"Nie udało się wyciągnąć czasu z wyniku. Używam domyślnej wartości 30 minut. "
+            f"Wynik: {time_result[:100]}"
+        )
         return 30.0
 
     def _generate_recommendations(

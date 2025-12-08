@@ -204,7 +204,7 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
 
     async def _create_action_plan(self, task: str) -> List[ActionStep]:
         """
-        Tworzy plan akcji dla zadania.
+        Tworzy plan akcji dla zadania używając LLM.
 
         Args:
             task: Opis zadania
@@ -214,82 +214,82 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         """
         logger.info(f"Tworzenie planu dla: {task}")
 
-        # W pełnej implementacji tutaj byłoby LLM które generuje plan
-        # Na razie używamy prostej heurystyki dla przykładowych zadań
+        # Prompt dla LLM do generowania planu akcji
+        planning_prompt = f"""Jesteś ekspertem od automatyzacji GUI. Stwórz szczegółowy plan akcji dla następującego zadania:
 
-        plan = []
+ZADANIE: {task}
 
-        # Przykład 1: "Otwórz notatnik i napisz 'Hello Venom'"
-        if "notatnik" in task.lower() or "notepad" in task.lower():
-            plan.append(
-                ActionStep(
-                    "hotkey",
-                    "Otwórz dialog Run",
-                    {"keys": "win+r"},
-                )
-            )
-            plan.append(ActionStep("wait", "Czekaj na otwarcie", {"duration": 1.0}))
-            plan.append(
-                ActionStep(
-                    "type",
-                    "Wpisz 'notepad'",
-                    {"text": "notepad"},
-                )
-            )
-            plan.append(
-                ActionStep(
-                    "hotkey",
-                    "Naciśnij Enter",
-                    {"keys": "enter"},
-                )
-            )
-            plan.append(ActionStep("wait", "Czekaj na notatnik", {"duration": 2.0}))
+Dostępne akcje:
+1. "locate" - Znajdź element na ekranie po opisie (params: description)
+2. "click" - Kliknij w element (params: x, y lub use_located: true)
+3. "type" - Wpisz tekst (params: text)
+4. "hotkey" - Użyj skrótu klawiszowego (params: keys, np. "win+r", "ctrl+s", "enter")
+5. "wait" - Czekaj określony czas (params: duration w sekundach)
+6. "screenshot" - Zrób screenshot ekranu (brak params)
 
-            # Wyciągnij tekst do wpisania
-            if "napisz" in task.lower():
-                # Prosta ekstrakcja tekstu z cudzysłowów lub po słowie "napisz"
-                text_to_write = "Hello Venom"  # domyślny
-                if "'" in task or '"' in task:
-                    # Spróbuj wyciągnąć tekst z cudzysłowów
-                    match = re.search(r"['\"](.+?)['\"]", task)
-                    if match:
-                        text_to_write = match.group(1)
+ZASADY:
+- Zawsze zaczynaj od screenshot jeśli potrzeba zlokalizować element
+- Dodawaj opóźnienia (wait) między akcjami (min 1s dla dialogów, 2s dla aplikacji)
+- Dla otwierania aplikacji używaj Win+R, potem type, potem Enter
+- Dla lokalizacji elementów najpierw screenshot, potem locate, potem click
+- Bądź konkretny w opisach elementów do locate
 
-                plan.append(
-                    ActionStep(
-                        "type",
-                        f"Wpisz tekst: {text_to_write}",
-                        {"text": text_to_write},
-                    )
-                )
+Zwróć plan jako JSON array w formacie:
+[
+  {{"action_type": "hotkey", "description": "Otwórz dialog Run", "params": {{"keys": "win+r"}}}},
+  {{"action_type": "wait", "description": "Czekaj na otwarcie", "params": {{"duration": 1.0}}}}
+]
 
-        # Przykład 2: "Włącz następną piosenkę w Spotify"
-        elif "spotify" in task.lower() and "następn" in task.lower():
-            plan.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
-            plan.append(
-                ActionStep(
-                    "locate",
-                    "Znajdź przycisk Next w Spotify",
-                    {"description": "next button spotify"},
-                )
-            )
-            plan.append(
-                ActionStep(
-                    "click",
-                    "Kliknij przycisk Next",
-                    {"use_located": True},
-                )
+ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
+
+        try:
+            # Użyj LLM do wygenerowania planu
+            from semantic_kernel.contents import ChatHistory
+            from semantic_kernel.contents.chat_message_content import ChatMessageContent
+            from semantic_kernel.contents.utils.author_role import AuthorRole
+
+            chat_history = ChatHistory()
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=planning_prompt)
             )
 
-        else:
-            # Ogólny plan - zrób screenshot i spróbuj znaleźć opisany element
-            plan.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
-            logger.warning(
-                f"Nie rozpoznano konkretnego zadania: {task}. Używam ogólnego planu."
+            chat_service = self.kernel.get_service()
+            response = await chat_service.get_chat_message_content(
+                chat_history=chat_history, kernel=self.kernel
             )
 
-        logger.info(f"Plan utworzony: {len(plan)} kroków")
-        return plan
+            response_text = str(response).strip()
+            
+            # Wyciągnij JSON z odpowiedzi (może być otoczony markdown)
+            import json
+            
+            # Usuń markdown code blocks jeśli istnieją
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+            # Parsuj JSON
+            plan_data = json.loads(response_text)
+            
+            # Konwertuj na ActionSteps
+            plan = []
+            for step_data in plan_data:
+                step = ActionStep(
+                    action_type=step_data["action_type"],
+                    description=step_data["description"],
+                    params=step_data.get("params", {}),
+                )
+                plan.append(step)
+
+            logger.info(f"Plan utworzony przez LLM: {len(plan)} kroków")
+            return plan
+
+        except Exception as e:
+            logger.error(f"Błąd podczas generowania planu przez LLM: {e}")
+            # Fallback: prosty plan ze screenshot
+            logger.warning("Używam fallback planu (tylko screenshot)")
+            return [ActionStep("screenshot", "Zrób screenshot ekranu (fallback)", {})]
 
     async def _execute_plan(self, plan: List[ActionStep]) -> str:
         """
@@ -381,13 +381,14 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
 
                 self.action_history.append(step)
 
-                # TODO: Implementacja weryfikacji po każdym kroku
-                # if self.verification_enabled:
-                #     # Zrób screenshot i sprawdź czy akcja zakończyła się sukcesem
-                #     # Na przykład: czy okno się otworzyło, czy tekst został wpisany itp.
-                #     verification_result = await self._verify_step_result(step, last_screenshot)
-                #     if not verification_result:
-                #         logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
+                # Weryfikacja po każdym kroku jeśli włączona
+                if self.verification_enabled and step.status == "success":
+                    # Zrób screenshot po akcji i sprawdź czy akcja zakończyła się sukcesem
+                    verification_result = await self._verify_step_result(step, last_screenshot)
+                    if not verification_result:
+                        logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
+                        step.status = "failed"
+                        step.result += " (weryfikacja nieudana)"
 
                 # Czekaj między krokami
                 if step.action_type != "wait":
@@ -401,6 +402,75 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
 
         # Generuj raport
         return self._generate_report()
+
+    async def _verify_step_result(self, step: ActionStep, pre_action_screenshot) -> bool:
+        """
+        Weryfikuje rezultat wykonania kroku porównując stan przed i po akcji.
+
+        Args:
+            step: Wykonany krok akcji
+            pre_action_screenshot: Screenshot przed wykonaniem akcji
+
+        Returns:
+            True jeśli weryfikacja przebiegła pomyślnie, False w przeciwnym wypadku
+        """
+        try:
+            # Zrób screenshot po akcji
+            post_action_screenshot = ImageGrab.grab()
+
+            # Dla różnych typów akcji stosujemy różne strategie weryfikacji
+            if step.action_type == "type":
+                # Dla wpisywania tekstu trudno zweryfikować wizualnie bez OCR
+                # Zakładamy sukces jeśli akcja się wykonała
+                logger.debug("Weryfikacja 'type': zakładam sukces (brak OCR)")
+                return True
+
+            elif step.action_type in ["hotkey", "click"]:
+                # Dla kliknięć i skrótów sprawdzamy czy coś się zmieniło na ekranie
+                # Konwertuj na numpy arrays dla porównania
+                import numpy as np
+
+                pre_array = np.array(pre_action_screenshot) if pre_action_screenshot else None
+                post_array = np.array(post_action_screenshot)
+
+                if pre_array is None:
+                    logger.debug("Brak pre-screenshot, zakładam sukces")
+                    return True
+
+                # Oblicz różnicę między obrazami
+                diff = np.sum(np.abs(post_array.astype(float) - pre_array.astype(float)))
+                total_pixels = post_array.size
+
+                # Jeśli różnica > 0.5% pixeli, uznajemy że coś się zmieniło
+                change_percent = (diff / total_pixels) * 100
+                logger.debug(f"Zmiana ekranu: {change_percent:.2f}%")
+
+                if change_percent > 0.5:
+                    logger.debug("Wykryto zmianę ekranu - weryfikacja OK")
+                    return True
+                else:
+                    logger.warning("Brak znaczącej zmiany ekranu - możliwy problem")
+                    return False
+
+            elif step.action_type == "locate":
+                # Dla locate sprawdzamy czy element został znaleziony
+                if step.result and "znaleziony" in step.result:
+                    return True
+                return False
+
+            elif step.action_type in ["wait", "screenshot"]:
+                # Te akcje zawsze są OK
+                return True
+
+            else:
+                # Nieznany typ akcji - zakładamy sukces
+                logger.debug(f"Nieznany typ akcji {step.action_type}, zakładam sukces")
+                return True
+
+        except Exception as e:
+            logger.error(f"Błąd podczas weryfikacji kroku: {e}")
+            # W przypadku błędu weryfikacji zakładamy sukces (fail-open)
+            return True
 
     def _generate_report(self) -> str:
         """

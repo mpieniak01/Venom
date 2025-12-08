@@ -97,8 +97,9 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
 
     def _register_oracle_functions(self):
         """Rejestruje funkcje Oracle jako plugin dla Semantic Kernel."""
-        from semantic_kernel.functions import kernel_function
         from typing import Annotated
+
+        from semantic_kernel.functions import kernel_function
 
         class OraclePlugin:
             """Plugin Oracle z funkcjami do reasoning."""
@@ -116,7 +117,9 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
                 """Wyszukiwanie globalne."""
                 try:
                     llm_service = self.oracle.kernel.get_service()
-                    result = await self.oracle.graph_rag.global_search(query, llm_service)
+                    result = await self.oracle.graph_rag.global_search(
+                        query, llm_service
+                    )
                     return result
                 except Exception as e:
                     logger.error(f"Błąd w global_search: {e}")
@@ -129,7 +132,9 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
             async def local_search(
                 self,
                 query: Annotated[str, "Zapytanie użytkownika"],
-                max_hops: Annotated[int, "Maksymalna liczba skoków w grafie (domyślnie 2)"] = 2,
+                max_hops: Annotated[
+                    int, "Maksymalna liczba skoków w grafie (domyślnie 2)"
+                ] = 2,
             ) -> str:
                 """Wyszukiwanie lokalne."""
                 try:
@@ -168,10 +173,12 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
                     # Ekstrahuj wiedzę (tylko dla tekstów, nie dla obrazów/audio)
                     if result["file_type"] in ["pdf", "docx", "text", "web"]:
                         llm_service = self.oracle.kernel.get_service()
-                        extraction_result = await self.oracle.graph_rag.extract_knowledge_from_text(
-                            text[:3000],  # Ogranicz dla LLM
-                            f"doc_{file_path}",
-                            llm_service,
+                        extraction_result = (
+                            await self.oracle.graph_rag.extract_knowledge_from_text(
+                                text[:3000],  # Ogranicz dla LLM
+                                f"doc_{file_path}",
+                                llm_service,
+                            )
                         )
 
                         return f"Plik przetworzony: {file_path}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"
@@ -204,8 +211,10 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
 
                     # Ekstrahuj wiedzę
                     llm_service = self.oracle.kernel.get_service()
-                    extraction_result = await self.oracle.graph_rag.extract_knowledge_from_text(
-                        text[:3000], f"url_{url}", llm_service
+                    extraction_result = (
+                        await self.oracle.graph_rag.extract_knowledge_from_text(
+                            text[:3000], f"url_{url}", llm_service
+                        )
                     )
 
                     return f"URL przetworzony: {url}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"

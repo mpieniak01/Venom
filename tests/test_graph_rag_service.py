@@ -137,12 +137,8 @@ def test_get_community_summary_empty(graph_rag_service):
 def test_get_community_summary(graph_rag_service):
     """Test podsumowania społeczności."""
     # Dodaj encje
-    graph_rag_service.add_entity(
-        "entity1", "Type1", properties={"name": "Entity 1"}
-    )
-    graph_rag_service.add_entity(
-        "entity2", "Type2", properties={"name": "Entity 2"}
-    )
+    graph_rag_service.add_entity("entity1", "Type1", properties={"name": "Entity 1"})
+    graph_rag_service.add_entity("entity2", "Type2", properties={"name": "Entity 2"})
     graph_rag_service.add_relationship("entity1", "entity2", "RELATED_TO")
 
     # Podsumowanie

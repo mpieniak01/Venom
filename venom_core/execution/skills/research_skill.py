@@ -188,11 +188,15 @@ class ResearchSkill:
         # Znajdź pliki
         if recursive:
             files = [
-                f for f in path.rglob("*") if f.is_file() and f.suffix in supported_extensions
+                f
+                for f in path.rglob("*")
+                if f.is_file() and f.suffix in supported_extensions
             ]
         else:
             files = [
-                f for f in path.glob("*") if f.is_file() and f.suffix in supported_extensions
+                f
+                for f in path.glob("*")
+                if f.is_file() and f.suffix in supported_extensions
             ]
 
         if not files:

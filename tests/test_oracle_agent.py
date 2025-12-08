@@ -113,7 +113,9 @@ async def test_oracle_plugin_global_search(mock_kernel, mock_graph_rag_service):
     plugin = mock_kernel.add_plugin.call_args[0][0]
 
     # Mock GraphRAG global_search
-    mock_graph_rag_service.global_search = AsyncMock(return_value="Global search result")
+    mock_graph_rag_service.global_search = AsyncMock(
+        return_value="Global search result"
+    )
 
     result = await plugin.global_search("test query")
 
@@ -201,6 +203,9 @@ def test_oracle_plugin_get_graph_stats(mock_kernel, mock_graph_rag_service):
 def test_oracle_system_prompt():
     """Test czy system prompt jest poprawnie zdefiniowany."""
     assert OracleAgent.SYSTEM_PROMPT is not None
-    assert "Wyrocznia" in OracleAgent.SYSTEM_PROMPT or "Oracle" in OracleAgent.SYSTEM_PROMPT
+    assert (
+        "Wyrocznia" in OracleAgent.SYSTEM_PROMPT
+        or "Oracle" in OracleAgent.SYSTEM_PROMPT
+    )
     assert "global_search" in OracleAgent.SYSTEM_PROMPT
     assert "local_search" in OracleAgent.SYSTEM_PROMPT

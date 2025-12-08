@@ -30,9 +30,11 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Inicjalizacja StateManager i Orchestrator
+# Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
-orchestrator = Orchestrator(state_manager, event_broadcaster=event_broadcaster)
+
+# Note: orchestrator zostanie zainicjalizowany w lifespan po utworzeniu node_manager
+orchestrator = None
 
 # Inicjalizacja VectorStore dla API
 vector_store = None
@@ -54,6 +56,9 @@ operator_agent = None
 hardware_bridge = None
 audio_stream_handler = None
 
+# Inicjalizacja Node Manager (THE_NEXUS)
+node_manager = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,10 +66,46 @@ async def lifespan(app: FastAPI):
     global vector_store, graph_store, lessons_store, gardener_agent, git_skill
     global background_scheduler, file_watcher, documenter_agent
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
+    global node_manager, orchestrator
 
     # Startup
     # Inicjalizuj MetricsCollector
     init_metrics_collector()
+
+    # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
+    if SETTINGS.ENABLE_NEXUS:
+        try:
+            from venom_core.core.node_manager import NodeManager
+
+            token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
+            if not token:
+                logger.warning(
+                    "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
+                    "Węzły nie będą mogły się połączyć."
+                )
+            else:
+                node_manager = NodeManager(
+                    shared_token=token,
+                    heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
+                )
+                await node_manager.start()
+                logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
+                # Port aplikacji FastAPI, domyślnie 8000
+                app_port = getattr(SETTINGS, 'APP_PORT', 8000)
+                logger.info(
+                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
+                )
+        except Exception as e:
+            logger.warning(f"Nie udało się uruchomić NodeManager: {e}")
+            node_manager = None
+
+    # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
+    orchestrator = Orchestrator(
+        state_manager,
+        event_broadcaster=event_broadcaster,
+        node_manager=node_manager,
+    )
+    logger.info("Orchestrator zainicjalizowany" + (" z obsługą węzłów rozproszonych" if node_manager else ""))
 
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
@@ -255,6 +296,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Zamykanie aplikacji...")
 
+    # Zatrzymaj Node Manager
+    if node_manager:
+        await node_manager.stop()
+        logger.info("NodeManager zatrzymany")
+
     # Zatrzymaj BackgroundScheduler najpierw (może korzystać z innych komponentów)
     if background_scheduler:
         await background_scheduler.stop()
@@ -408,6 +454,102 @@ async def audio_websocket_endpoint(websocket: WebSocket):
         )
     except Exception as e:
         logger.error(f"Audio WebSocket error: {e}")
+
+
+@app.websocket("/ws/nodes")
+async def nodes_websocket_endpoint(websocket: WebSocket):
+    """
+    Endpoint WebSocket dla węzłów Venom Spore.
+    Umożliwia rejestrację i komunikację z węzłami zdalnymi.
+
+    Args:
+        websocket: Połączenie WebSocket
+    """
+    if not node_manager:
+        await websocket.close(code=1003, reason="Nexus mode not enabled")
+        return
+
+    await websocket.accept()
+    node_id = None
+
+    try:
+        # Odbierz pierwszą wiadomość (powinna być handshake)
+        from venom_core.nodes.protocol import MessageType, NodeHandshake, NodeMessage
+
+        message_str = await websocket.receive_text()
+        import json
+
+        message_dict = json.loads(message_str)
+        message = NodeMessage(**message_dict)
+
+        if message.message_type != MessageType.HANDSHAKE:
+            await websocket.close(code=1003, reason="Expected HANDSHAKE message")
+            return
+
+        # Parsuj handshake
+        handshake = NodeHandshake(**message.payload)
+        node_id = handshake.node_id
+
+        # Zarejestruj węzeł
+        registered = await node_manager.register_node(handshake, websocket)
+        if not registered:
+            await websocket.close(code=1008, reason="Authentication failed")
+            return
+
+        # Broadcast informacji o nowym węźle
+        await event_broadcaster.broadcast_event(
+            event_type="NODE_CONNECTED",
+            message=f"Węzeł {handshake.node_name} ({node_id}) połączył się z Nexusem",
+            data={
+                "node_id": node_id,
+                "node_name": handshake.node_name,
+                "skills": handshake.capabilities.skills,
+                "tags": handshake.capabilities.tags,
+            },
+        )
+
+        # Pętla odbierania wiadomości
+        while True:
+            try:
+                message_str = await websocket.receive_text()
+                message_dict = json.loads(message_str)
+                message = NodeMessage(**message_dict)
+
+                if message.message_type == MessageType.HEARTBEAT:
+                    from venom_core.nodes.protocol import HeartbeatMessage
+
+                    heartbeat = HeartbeatMessage(**message.payload)
+                    await node_manager.update_heartbeat(heartbeat)
+
+                elif message.message_type == MessageType.RESPONSE:
+                    from venom_core.nodes.protocol import NodeResponse
+
+                    response = NodeResponse(**message.payload)
+                    await node_manager.handle_response(response)
+
+                elif message.message_type == MessageType.DISCONNECT:
+                    logger.info(f"Węzeł {node_id} zgłosił rozłączenie")
+                    break
+            
+            except json.JSONDecodeError as e:
+                logger.warning(f"Nieprawidłowy JSON od węzła {node_id}: {e}")
+                continue  # Kontynuuj pętlę, nie rozłączaj węzła
+            except Exception as e:
+                logger.warning(f"Błąd parsowania wiadomości od węzła {node_id}: {e}")
+                continue
+
+    except WebSocketDisconnect:
+        logger.info(f"Węzeł {node_id} rozłączony (WebSocket disconnect)")
+    except Exception as e:
+        logger.error(f"Błąd w WebSocket węzła {node_id}: {e}")
+    finally:
+        if node_id is not None:
+            await node_manager.unregister_node(node_id)
+            await event_broadcaster.broadcast_event(
+                event_type="NODE_DISCONNECTED",
+                message=f"Węzeł {node_id} rozłączony",
+                data={"node_id": node_id},
+            )
 
 
 @app.get("/healthz")
@@ -1121,3 +1263,133 @@ async def get_documenter_status():
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu dokumentalisty")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ==================== NODE MANAGEMENT API (THE_NEXUS) ====================
+
+
+@app.get("/api/v1/nodes")
+async def list_nodes(online_only: bool = False):
+    """
+    Zwraca listę zarejestrowanych węzłów.
+
+    Args:
+        online_only: Czy zwrócić tylko węzły online (domyślnie False)
+
+    Returns:
+        Lista węzłów z ich informacjami
+
+    Raises:
+        HTTPException: 503 jeśli NodeManager nie jest dostępny
+    """
+    if node_manager is None:
+        raise HTTPException(
+            status_code=503,
+            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+        )
+
+    try:
+        nodes = node_manager.list_nodes(online_only=online_only)
+        nodes_data = [node.to_dict() for node in nodes]
+        return {
+            "status": "success",
+            "count": len(nodes_data),
+            "online_count": len([n for n in nodes if n.is_online]),
+            "nodes": nodes_data,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania listy węzłów")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/nodes/{node_id}")
+async def get_node_info(node_id: str):
+    """
+    Zwraca szczegółowe informacje o węźle.
+
+    Args:
+        node_id: ID węzła
+
+    Returns:
+        Informacje o węźle
+
+    Raises:
+        HTTPException: 404 jeśli węzeł nie istnieje, 503 jeśli NodeManager nie jest dostępny
+    """
+    if node_manager is None:
+        raise HTTPException(
+            status_code=503,
+            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+        )
+
+    try:
+        node = node_manager.get_node(node_id)
+        if node is None:
+            raise HTTPException(status_code=404, detail=f"Węzeł {node_id} nie istnieje")
+
+        return {"status": "success", "node": node.to_dict()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas pobierania informacji o węźle {node_id}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+class NodeExecuteRequest(BaseModel):
+    """Model żądania wykonania skilla na węźle."""
+
+    skill_name: str
+    method_name: str
+    parameters: dict = {}
+    timeout: int = 30
+
+
+@app.post("/api/v1/nodes/{node_id}/execute")
+async def execute_on_node(node_id: str, request: NodeExecuteRequest):
+    """
+    Wykonuje skill na określonym węźle.
+
+    Args:
+        node_id: ID węzła docelowego
+        request: Żądanie wykonania
+
+    Returns:
+        Wynik wykonania
+
+    Raises:
+        HTTPException: 404 jeśli węzeł nie istnieje, 400 jeśli węzeł offline,
+                      503 jeśli NodeManager nie jest dostępny, 504 jeśli timeout
+    """
+    if node_manager is None:
+        raise HTTPException(
+            status_code=503,
+            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+        )
+
+    try:
+        response = await node_manager.execute_skill_on_node(
+            node_id=node_id,
+            skill_name=request.skill_name,
+            method_name=request.method_name,
+            parameters=request.parameters,
+            timeout=request.timeout,
+        )
+
+        return {
+            "status": "success",
+            "node_id": node_id,
+            "request_id": response.request_id,
+            "success": response.success,
+            "result": response.result,
+            "error": response.error,
+            "execution_time": response.execution_time,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e)) from e
+    except Exception as e:
+        logger.exception(f"Błąd podczas wykonywania skilla na węźle {node_id}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+

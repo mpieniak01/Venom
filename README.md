@@ -258,6 +258,51 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md) aby d
 
 [LICENSE](LICENSE) - Szczegóły w pliku licencji
 
+## 🌐 THE NEXUS: Architektura Rozproszona
+
+**NOWE w v2.1!** Venom może teraz działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores).
+
+### Cechy distributed mesh:
+- 🔗 **Master-Worker Architecture** - Nexus (mózg) + Spores (wykonawcy)
+- 📡 **WebSocket Communication** - Szybka, dwukierunkowa komunikacja
+- ⚖️ **Load Balancing** - Automatyczny wybór najmniej obciążonego węzła
+- 🔄 **Hot-Plug** - Dynamiczne dodawanie/usuwanie węzłów
+- 💓 **Healthcheck & Failover** - Automatyczne wykrywanie offline nodes
+
+### Przykład użycia:
+
+```bash
+# 1. Uruchom Venom w trybie Nexus
+export ENABLE_NEXUS=true
+export NEXUS_SHARED_TOKEN=your-secret-token
+cd venom_core && python main.py
+
+# 2. Uruchom Venom Spore na zdalnej maszynie
+cd venom_spore
+export SPORE_NEXUS_HOST=192.168.1.10
+export SPORE_SHARED_TOKEN=your-secret-token
+python main.py
+
+# 3. Sprawdź połączone węzły
+curl http://localhost:8000/api/v1/nodes
+
+# 4. Wykonaj zadanie na zdalnym węźle
+curl -X POST http://localhost:8000/api/v1/nodes/{node_id}/execute \
+  -H "Content-Type: application/json" \
+  -d '{"skill_name": "ShellSkill", "method_name": "run", "parameters": {"command": "ls"}}'
+```
+
+### Demo z Docker Compose:
+```bash
+# Uruchom symulację roju (2 węzły Docker)
+docker-compose -f docker-compose.spores.yml up
+
+# Uruchom demo
+python examples/nexus_demo.py
+```
+
+📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)
+
 ## 👥 Zespół
 
 - **Lead Developer:** mpieniak01

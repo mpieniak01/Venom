@@ -2,6 +2,7 @@
 
 import json
 import re
+import string
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -269,7 +270,10 @@ PAMIĘTAJ:
             library_hint = keywords[0]
         else:
             # Lepszy fallback: pierwsze 2-3 sensowne słowa z fragmentu
-            filtered = [w.strip(",.;:()[]") for w in words if len(w) > 2]
+            # Usuń znaki interpunkcyjne używając string.punctuation
+            filtered = [
+                w.strip(string.punctuation) for w in words if len(w.strip(string.punctuation)) > 2
+            ]
             library_hint = " ".join(filtered[:3]) if filtered else "fragment wiedzy"
 
         return ScenarioSpec(

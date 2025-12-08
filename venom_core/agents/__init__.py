@@ -18,6 +18,7 @@ __all__ = [
     "PublisherAgent",
     "ReleaseManagerAgent",
     "ResearcherAgent",
+    "StrategistAgent",
     "SystemEngineerAgent",
     "TesterAgent",
     "ToolmakerAgent",
@@ -90,6 +91,10 @@ def __getattr__(name):
         from venom_core.agents.researcher import ResearcherAgent
 
         return ResearcherAgent
+    elif name == "StrategistAgent":
+        from venom_core.agents.strategist import StrategistAgent
+
+        return StrategistAgent
     elif name == "SystemEngineerAgent":
         from venom_core.agents.system_engineer import SystemEngineerAgent
 

@@ -76,7 +76,7 @@ next_task = goal_store.get_next_task()
 
 # Aktualizuj postęp
 goal_store.update_progress(
-    task.goal_id, 
+    task.goal_id,
     status=GoalStatus.COMPLETED
 )
 

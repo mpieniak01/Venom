@@ -345,7 +345,7 @@ A: ~30-60 sekund (zależy od prędkości LLM i jakości PDF).
 A: Tak, graf jest zapisywany do `data/memory/knowledge_graph.json` i ładowany automatycznie.
 
 **Q: Czy mogę używać Oracle w API?**
-A: Tak, Oracle jest agnetem i może być wywoływany przez FastAPI endpoint.
+A: Tak, Oracle jest agentem i może być wywoływany przez FastAPI endpoint.
 
 **Q: Multi-hop reasoning - ile "skoków" mogę zrobić?**
 A: Parametr `max_hops` kontroluje głębokość (domyślnie 2). Więcej skoków = więcej kontekstu, ale dłuższe zapytania.

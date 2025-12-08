@@ -181,9 +181,17 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
                             )
                         )
 
-                        return f"Plik przetworzony: {file_path}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"
+                        # Sanityzuj nazwę pliku dla bezpieczeństwa
+                        from pathlib import Path
+
+                        safe_filename = Path(file_path).name
+                        return f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\nEncje: {extraction_result.get('entities', 0)}\nRelacje: {extraction_result.get('relationships', 0)}"
                     else:
-                        return f"Plik przetworzony: {file_path}\nChunks: {len(chunks)}\n(ekstrakcja wiedzy niedostępna dla tego typu pliku)"
+                        # Sanityzuj nazwę pliku dla bezpieczeństwa
+                        from pathlib import Path
+
+                        safe_filename = Path(file_path).name
+                        return f"Plik przetworzony: {safe_filename}\nChunks: {len(chunks)}\n(ekstrakcja wiedzy niedostępna dla tego typu pliku)"
 
                 except Exception as e:
                     logger.error(f"Błąd w ingest_file: {e}")

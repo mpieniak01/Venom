@@ -327,6 +327,13 @@ class IngestionEngine:
         logger.info(f"Przetwarzanie video: {path.name} (ekstrakcja audio)")
 
         try:
+            # Sprawdź czy plik istnieje i jest plikiem
+            if not path.is_file():
+                raise ValueError(f"Invalid video file: {path}")
+
+            # Użyj Path.resolve() dla bezpiecznej ścieżki
+            safe_path = path.resolve()
+
             # Użyj ffmpeg do ekstrakcji audio (jeśli dostępne)
             import subprocess
             import tempfile
@@ -339,7 +346,7 @@ class IngestionEngine:
                 [
                     "ffmpeg",
                     "-i",
-                    str(path),
+                    str(safe_path),
                     "-vn",
                     "-acodec",
                     "pcm_s16le",
@@ -397,36 +404,48 @@ class IngestionEngine:
                     continue
             raise ValueError(f"Nie udało się zdekodować pliku: {path}")
 
-    def _semantic_chunk(self, text: str) -> List[str]:
+    def _semantic_chunk(
+        self, text: str, separators: Optional[List[str]] = None
+    ) -> List[str]:
         """
-        Dzieli tekst na fragmenty semantyczne (zamiast prostego cięcia co N znaków).
+        Dzieli tekst na fragmenty semantyczne (rekurencyjnie według hierarchii separatorów).
 
         Args:
             text: Tekst do podziału
+            separators: Lista separatorów do użycia (domyślnie SEMANTIC_SEPARATORS)
 
         Returns:
             Lista fragmentów tekstowych
         """
+        if separators is None:
+            separators = SEMANTIC_SEPARATORS
+
         if len(text) <= SEMANTIC_CHUNK_SIZE:
             return [text]
 
-        chunks = []
-        current_chunk = ""
-
-        # Dziel według separatorów hierarchicznych
-        for separator in SEMANTIC_SEPARATORS:
-            if separator in text:
-                parts = text.split(separator)
-                break
-        else:
-            # Jeśli nie znaleziono separatorów, dziel po prostu po znakach
+        if not separators:
+            # Brak separatorów, dziel po znakach
             parts = [
                 text[i : i + SEMANTIC_CHUNK_SIZE]
                 for i in range(0, len(text), SEMANTIC_CHUNK_SIZE)
             ]
             return [p.strip() for p in parts if p.strip()]
 
+        separator = separators[0]
+        if separator in text:
+            parts = text.split(separator)
+        else:
+            # Próbuj z kolejnym separatorem
+            return self._semantic_chunk(text, separators[1:])
+
+        chunks = []
+        current_chunk = ""
+
         for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+
             # Jeśli dodanie części nie przekroczy limitu, dodaj ją
             if len(current_chunk) + len(part) + len(separator) <= SEMANTIC_CHUNK_SIZE:
                 current_chunk += part + separator
@@ -437,8 +456,8 @@ class IngestionEngine:
 
                 # Rozpocznij nowy chunk
                 if len(part) > SEMANTIC_CHUNK_SIZE:
-                    # Jeśli część jest za duża, rekurencyjnie ją podziel
-                    sub_chunks = self._semantic_chunk(part)
+                    # Jeśli część jest za duża, rekurencyjnie ją podziel z kolejnymi separatorami
+                    sub_chunks = self._semantic_chunk(part, separators[1:])
                     chunks.extend(sub_chunks)
                     current_chunk = ""
                 else:
@@ -465,6 +484,16 @@ class IngestionEngine:
             Dict z ekstrahowanymi danymi
         """
         logger.info(f"Pobieranie URL: {url}")
+
+        # Walidacja URL
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        # Blokuj localhost, private IP ranges, file:// etc.
+        if parsed.scheme not in ["http", "https"]:
+            raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+        if parsed.hostname in ["localhost", "127.0.0.1", "0.0.0.0"]:
+            raise ValueError("Access to localhost is not allowed")
 
         try:
             import trafilatura

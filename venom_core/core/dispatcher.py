@@ -25,16 +25,18 @@ logger = get_logger(__name__)
 class TaskDispatcher:
     """Dyspozytornia zadań - kieruje zadania do odpowiednich agentów."""
 
-    def __init__(self, kernel: Kernel, event_broadcaster=None):
+    def __init__(self, kernel: Kernel, event_broadcaster=None, node_manager=None):
         """
         Inicjalizacja TaskDispatcher.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel dla agentów
             event_broadcaster: Opcjonalny broadcaster zdarzeń
+            node_manager: Opcjonalny NodeManager dla distributed execution
         """
         self.kernel = kernel
         self.event_broadcaster = event_broadcaster
+        self.node_manager = node_manager
 
         # Inicjalizuj SkillManager - zarządza dynamicznymi pluginami
         self.skill_manager = SkillManager(kernel)
@@ -83,13 +85,14 @@ class TaskDispatcher:
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)")
 
-    async def dispatch(self, intent: str, content: str) -> str:
+    async def dispatch(self, intent: str, content: str, node_preference: dict = None) -> str:
         """
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
 
         Args:
             intent: Sklasyfikowana intencja
             content: Treść zadania do wykonania
+            node_preference: Opcjonalne preferencje węzła (np. {"tag": "location:server_room", "skill": "ShellSkill"})
 
         Returns:
             Wynik przetworzenia zadania przez agenta
@@ -98,6 +101,15 @@ class TaskDispatcher:
             ValueError: Jeśli intencja jest nieznana
         """
         logger.info(f"Dispatcher kieruje zadanie z intencją: {intent}")
+
+        # Sprawdź czy zadanie powinno być wykonane na zdalnym węźle
+        if self.node_manager and node_preference:
+            try:
+                result = await self._dispatch_to_node(intent, content, node_preference)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning(f"Nie udało się wykonać na węźle zdalnym: {e}. Fallback do lokalnego wykonania.")
 
         # Znajdź odpowiedniego agenta
         agent = self.agent_map.get(intent)
@@ -120,3 +132,54 @@ class TaskDispatcher:
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania zadania przez agenta: {e}")
             raise
+
+    async def _dispatch_to_node(self, intent: str, content: str, node_preference: dict) -> str:
+        """
+        Próbuje wykonać zadanie na zdalnym węźle.
+
+        Args:
+            intent: Sklasyfikowana intencja
+            content: Treść zadania
+            node_preference: Preferencje węzła
+
+        Returns:
+            Wynik wykonania lub None jeśli nie udało się
+        """
+        # Parsuj preferencje
+        tag = node_preference.get("tag")
+        skill_name = node_preference.get("skill")
+        method_name = node_preference.get("method", "run")
+
+        if not skill_name:
+            return None
+
+        # Znajdź odpowiedni węzeł
+        node = None
+        if tag:
+            nodes = self.node_manager.find_nodes_by_tag(tag)
+            if nodes:
+                node = nodes[0]  # Weź pierwszy pasujący węzeł
+        else:
+            node = self.node_manager.select_best_node(skill_name)
+
+        if not node:
+            logger.warning(f"Nie znaleziono węzła obsługującego {skill_name}" + (f" z tagiem {tag}" if tag else ""))
+            return None
+
+        logger.info(f"Wykonuję zadanie na węźle zdalnym: {node.node_name} ({node.node_id})")
+
+        # Wykonaj na węźle
+        response = await self.node_manager.execute_skill_on_node(
+            node_id=node.node_id,
+            skill_name=skill_name,
+            method_name=method_name,
+            parameters={"command": content} if skill_name == "ShellSkill" else {},
+            timeout=60,
+        )
+
+        if response.success:
+            logger.info(f"Zadanie wykonane na węźle {node.node_name} w {response.execution_time:.2f}s")
+            return response.result
+        else:
+            logger.error(f"Błąd wykonania na węźle {node.node_name}: {response.error}")
+            raise RuntimeError(f"Remote execution failed: {response.error}")

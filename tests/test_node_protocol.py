@@ -1,8 +1,5 @@
 """Testy jednostkowe dla protokołu komunikacji węzłów."""
 
-import pytest
-from datetime import datetime
-
 from venom_core.nodes.protocol import (
     Capabilities,
     HeartbeatMessage,

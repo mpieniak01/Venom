@@ -13,7 +13,7 @@ class SporeSettings(BaseSettings):
     # Podstawowa konfiguracja
     NODE_NAME: str = os.getenv("HOSTNAME", "venom-spore-1")
     NEXUS_HOST: str = "localhost"
-    NEXUS_PORT: int = 8765
+    NEXUS_PORT: int = 8000
     SHARED_TOKEN: SecretStr = SecretStr("")
 
     # Możliwości węzła
@@ -23,7 +23,7 @@ class SporeSettings(BaseSettings):
     ENABLE_CAMERA: bool = False
 
     # Tags opisujące węzeł
-    NODE_TAGS: str = ""  # Rozdzielone przecinkami, np. "location:server_room,gpu"
+    NODE_TAGS: str = ""  # Tagi rozdzielone przecinkami, np. "location:server_room,gpu,camera"
 
     # Heartbeat
     HEARTBEAT_INTERVAL: int = 30  # Sekundy między heartbeat

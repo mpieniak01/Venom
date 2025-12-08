@@ -9,7 +9,6 @@ from fastapi import WebSocket
 from venom_core.nodes.protocol import (
     Capabilities,
     HeartbeatMessage,
-    MessageType,
     NodeHandshake,
     NodeMessage,
     NodeResponse,
@@ -105,6 +104,7 @@ class NodeManager:
             try:
                 await self._healthcheck_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania podczas zatrzymywania NodeManagera
                 pass
         logger.info("NodeManager zatrzymany")
 
@@ -262,6 +262,13 @@ class NodeManager:
             raise TimeoutError(
                 f"Węzeł {node_id} nie odpowiedział w czasie {timeout}s"
             )
+        except Exception as e:
+            logger.error(f"Nie udało się wysłać wiadomości do węzła {node_id}: {e}")
+            # Oznacz węzeł jako offline
+            async with self._lock:
+                if node_id in self.nodes:
+                    self.nodes[node_id].is_online = False
+            raise ValueError(f"Węzeł {node_id} jest niedostępny")
         finally:
             # Usuń Future z pending (z lockiem)
             async with self._lock:
@@ -353,7 +360,9 @@ class NodeManager:
 
         # Sortuj po obciążeniu (CPU + pamięć + liczba aktywnych zadań)
         def load_score(node: NodeInfo) -> float:
-            return node.cpu_usage + node.memory_usage + (node.active_tasks * 0.1)
+            # Normalizuj active_tasks do zakresu 0-1 (przyjmując max 10 zadań)
+            task_load = min(node.active_tasks / 10.0, 1.0)
+            return node.cpu_usage + node.memory_usage + task_load
 
         return min(candidates, key=load_score)
 

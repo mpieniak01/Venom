@@ -119,8 +119,16 @@ class SkillExecutor:
             # SECURITY: Walidacja path traversal
             try:
                 file_path = (self.workspace_root / path).resolve()
+                workspace_resolved = self.workspace_root.resolve()
+                
+                # Sprawdź czy ścieżka jest w workspace (obsługa symlinków)
+                if file_path.is_symlink():
+                    real_path = file_path.resolve()
+                    if workspace_resolved not in real_path.parents and real_path != workspace_resolved:
+                        return f"❌ Zabroniony dostęp: symlink poza workspace"
+                
                 # Sprawdź czy ścieżka jest w workspace
-                if not str(file_path).startswith(str(self.workspace_root.resolve())):
+                if workspace_resolved not in file_path.parents and file_path != workspace_resolved:
                     return f"❌ Zabroniony dostęp: ścieżka poza workspace"
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"
@@ -139,8 +147,16 @@ class SkillExecutor:
             # SECURITY: Walidacja path traversal
             try:
                 file_path = (self.workspace_root / path).resolve()
+                workspace_resolved = self.workspace_root.resolve()
+                
+                # Sprawdź czy ścieżka jest w workspace (obsługa symlinków)
+                if file_path.is_symlink():
+                    real_path = file_path.resolve()
+                    if workspace_resolved not in real_path.parents and real_path != workspace_resolved:
+                        return f"❌ Zabroniony dostęp: symlink poza workspace"
+                
                 # Sprawdź czy ścieżka jest w workspace
-                if not str(file_path).startswith(str(self.workspace_root.resolve())):
+                if workspace_resolved not in file_path.parents and file_path != workspace_resolved:
                     return f"❌ Zabroniony dostęp: ścieżka poza workspace"
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"
@@ -158,8 +174,16 @@ class SkillExecutor:
             # SECURITY: Walidacja path traversal
             try:
                 dir_path = (self.workspace_root / path).resolve()
+                workspace_resolved = self.workspace_root.resolve()
+                
+                # Sprawdź czy ścieżka jest w workspace (obsługa symlinków)
+                if dir_path.is_symlink():
+                    real_path = dir_path.resolve()
+                    if workspace_resolved not in real_path.parents and real_path != workspace_resolved:
+                        return f"❌ Zabroniony dostęp: symlink poza workspace"
+                
                 # Sprawdź czy ścieżka jest w workspace
-                if not str(dir_path).startswith(str(self.workspace_root.resolve())):
+                if workspace_resolved not in dir_path.parents and dir_path != workspace_resolved:
                     return f"❌ Zabroniony dostęp: ścieżka poza workspace"
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"

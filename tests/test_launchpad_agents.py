@@ -148,7 +148,7 @@ def test_devops_reset_conversation(devops_agent):
 def test_creative_director_system_prompt_content(creative_director):
     """Test zawartości system promptu Creative Director."""
     prompt = creative_director.SYSTEM_PROMPT
-    
+
     # Sprawdź czy zawiera kluczowe elementy
     assert "branding" in prompt.lower()
     assert "marketing" in prompt.lower()
@@ -159,7 +159,7 @@ def test_creative_director_system_prompt_content(creative_director):
 def test_devops_system_prompt_content(devops_agent):
     """Test zawartości system promptu DevOps Agent."""
     prompt = devops_agent.SYSTEM_PROMPT
-    
+
     # Sprawdź czy zawiera kluczowe elementy
     assert "devops" in prompt.lower() or "infrastructure" in prompt.lower()
     assert "docker" in prompt.lower()

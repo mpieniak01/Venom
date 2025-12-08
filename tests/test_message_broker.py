@@ -109,10 +109,12 @@ async def test_get_task_status_from_registry():
     broker = MessageBroker()
     task = TaskMessage("task_123", "test", {"data": "test"})
     broker._task_registry["task_123"] = task
-    
+
     # Mock redis_client aby get_task_status działało
     broker.redis_client = AsyncMock()
-    broker.redis_client.get = AsyncMock(return_value=None)  # Nie ma w Redis, będzie z rejestru
+    broker.redis_client.get = AsyncMock(
+        return_value=None
+    )  # Nie ma w Redis, będzie z rejestru
 
     result = await broker.get_task_status("task_123")
 

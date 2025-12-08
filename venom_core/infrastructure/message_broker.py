@@ -96,7 +96,9 @@ class TaskMessage:
         task.attempt = data.get("attempt", 0)
         task.assigned_node = data.get("assigned_node")
         task.started_at = (
-            datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None
+            datetime.fromisoformat(data["started_at"])
+            if data.get("started_at")
+            else None
         )
         task.completed_at = (
             datetime.fromisoformat(data["completed_at"])
@@ -332,7 +334,9 @@ class MessageBroker:
 
         logger.info(f"Status zadania {task_id} zaktualizowany: {status}")
 
-    async def broadcast_control(self, command: str, data: Optional[Dict[str, Any]] = None):
+    async def broadcast_control(
+        self, command: str, data: Optional[Dict[str, Any]] = None
+    ):
         """
         Wysyła komendę broadcast do wszystkich węzłów.
 
@@ -343,7 +347,11 @@ class MessageBroker:
         if not self.redis_client:
             raise RuntimeError("MessageBroker nie jest połączony z Redis")
 
-        message = {"command": command, "data": data or {}, "timestamp": datetime.now().isoformat()}
+        message = {
+            "command": command,
+            "data": data or {},
+            "timestamp": datetime.now().isoformat(),
+        }
 
         # Publikuj na kanale broadcast
         await self.redis_client.publish(
@@ -398,12 +406,14 @@ class MessageBroker:
         # Długości kolejek (0 jeśli brak połączenia)
         high_priority_length = 0
         background_length = 0
-        
+
         if self.redis_client:
             high_priority_length = await self.get_queue_length(
                 SETTINGS.HIVE_HIGH_PRIORITY_QUEUE
             )
-            background_length = await self.get_queue_length(SETTINGS.HIVE_BACKGROUND_QUEUE)
+            background_length = await self.get_queue_length(
+                SETTINGS.HIVE_BACKGROUND_QUEUE
+            )
 
         # Zlicz zadania według statusu
         pending = sum(1 for t in self._task_registry.values() if t.status == "pending")

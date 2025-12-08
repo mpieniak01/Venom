@@ -108,5 +108,13 @@ class Settings(BaseSettings):
     ACADEMY_ENABLE_GPU: bool = True  # Czy używać GPU (jeśli dostępne)
     ACADEMY_TRAINING_IMAGE: str = "unsloth/unsloth:latest"  # Obraz Docker dla treningu
 
+    # Konfiguracja THE_NEXUS (Distributed Mesh)
+    ENABLE_NEXUS: bool = False  # Włącz tryb Nexus (master node)
+    NEXUS_SHARED_TOKEN: SecretStr = SecretStr(
+        ""
+    )  # Shared token dla uwierzytelniania węzłów
+    NEXUS_HEARTBEAT_TIMEOUT: int = 60  # Timeout heartbeat w sekundach (domyślnie 60s)
+    NEXUS_PORT: int = 8765  # Port WebSocket dla węzłów (domyślnie 8765)
+
 
 SETTINGS = Settings()

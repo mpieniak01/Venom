@@ -142,5 +142,19 @@ class Settings(BaseSettings):
         "./workspace/simulation_logs"  # Katalog z logami symulacji
     )
 
+    # Konfiguracja THE_LAUNCHPAD (Cloud Deployment & Creative Media)
+    ENABLE_LAUNCHPAD: bool = False  # Włącz możliwość cloud deployment
+    DEPLOYMENT_SSH_KEY_PATH: str = ""  # Ścieżka do klucza SSH dla deploymentu
+    DEPLOYMENT_DEFAULT_USER: str = "root"  # Domyślny użytkownik SSH
+    DEPLOYMENT_TIMEOUT: int = 300  # Timeout dla operacji SSH (sekundy)
+    ASSETS_DIR: str = "./workspace/assets"  # Katalog dla wygenerowanych assetów
+    ENABLE_IMAGE_GENERATION: bool = True  # Włącz generowanie obrazów
+    IMAGE_GENERATION_SERVICE: str = (
+        "placeholder"  # Serwis: 'placeholder', 'openai', 'local-sd'
+    )
+    DALLE_MODEL: str = "dall-e-3"  # Model DALL-E (jeśli używamy OpenAI)
+    IMAGE_DEFAULT_SIZE: str = "1024x1024"  # Domyślny rozmiar obrazu
+    IMAGE_STYLE: str = "vivid"  # Styl obrazu dla DALL-E: 'vivid' lub 'natural'
+
 
 SETTINGS = Settings()

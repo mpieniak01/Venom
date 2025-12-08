@@ -340,27 +340,55 @@ class ChronosEngine:
             return
 
         try:
-            # Najpierw zresetuj do czystego stanu
+            # Sprawdź czy mamy nieucommitowane zmiany
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.workspace_root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if status_result.stdout.strip():
+                logger.warning(
+                    "UWAGA: Wykryto nieucommitowane zmiany. Zostaną one nadpisane podczas przywracania."
+                )
+                logger.warning(
+                    f"Nieucommitowane pliki:\n{status_result.stdout[:500]}"
+                )
+
+            # Zresetuj do czystego stanu
             subprocess.run(
                 ["git", "reset", "--hard", "HEAD"],
                 cwd=self.workspace_root,
                 check=True,
                 timeout=30,
+                capture_output=True,
             )
 
-            # Następnie zastosuj patch
+            # Zastosuj patch
             subprocess.run(
                 ["git", "apply", str(diff_file)],
                 cwd=self.workspace_root,
                 check=True,
                 timeout=30,
+                capture_output=True,
             )
 
             logger.debug("Diff przywrócony")
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Błąd podczas przywracania diff: {e}")
-            raise
+            logger.error(
+                f"Błąd Git podczas przywracania diff: {e}\n"
+                f"Stdout: {e.stdout}\n"
+                f"Stderr: {e.stderr}"
+            )
+            raise RuntimeError(
+                "Nie udało się przywrócić diff. Upewnij się, że katalog workspace jest repozytorium Git."
+            ) from e
+        except FileNotFoundError:
+            logger.error("Git nie jest zainstalowany lub niedostępny w PATH")
+            raise RuntimeError("Git jest wymagany do przywracania checkpointów") from None
 
     def _backup_memory(self, checkpoint_dir: Path) -> None:
         """Tworzy backup baz danych pamięci."""
@@ -395,21 +423,54 @@ class ChronosEngine:
             return
 
         try:
-            # Usuń obecny katalog pamięci
+            # Utwórz backup obecnego stanu przed nadpisaniem
             if self.memory_root.exists():
-                shutil.rmtree(self.memory_root)
+                temp_backup = self.memory_root.parent / f"memory_backup_temp_{uuid.uuid4().hex[:8]}"
+                logger.debug(f"Tworzę tymczasowy backup: {temp_backup}")
+                shutil.copytree(self.memory_root, temp_backup)
 
-            # Przywróć z backupu
-            self.memory_root.mkdir(parents=True, exist_ok=True)
-            for item in memory_backup.iterdir():
-                if item.is_file():
-                    shutil.copy2(item, self.memory_root / item.name)
-                elif item.is_dir():
-                    shutil.copytree(
-                        item, self.memory_root / item.name, dirs_exist_ok=True
-                    )
+                try:
+                    # Usuń obecny katalog pamięci
+                    shutil.rmtree(self.memory_root)
 
-            logger.debug("Pamięć przywrócona")
+                    # Przywróć z checkpointu
+                    self.memory_root.mkdir(parents=True, exist_ok=True)
+                    for item in memory_backup.iterdir():
+                        if item.is_file():
+                            shutil.copy2(item, self.memory_root / item.name)
+                        elif item.is_dir():
+                            shutil.copytree(
+                                item, self.memory_root / item.name, dirs_exist_ok=True
+                            )
+
+                    # Sukces - usuń tymczasowy backup
+                    shutil.rmtree(temp_backup)
+                    logger.debug("Pamięć przywrócona pomyślnie")
+
+                except Exception as e:
+                    # Błąd - przywróć z tymczasowego backupu
+                    logger.error(f"Błąd podczas przywracania pamięci: {e}")
+                    logger.info("Przywracam z tymczasowego backupu...")
+
+                    if self.memory_root.exists():
+                        shutil.rmtree(self.memory_root)
+
+                    shutil.copytree(temp_backup, self.memory_root)
+                    shutil.rmtree(temp_backup)
+
+                    raise RuntimeError("Nie udało się przywrócić pamięci, przywrócono poprzedni stan") from e
+            else:
+                # Brak obecnego stanu - po prostu przywróć
+                self.memory_root.mkdir(parents=True, exist_ok=True)
+                for item in memory_backup.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, self.memory_root / item.name)
+                    elif item.is_dir():
+                        shutil.copytree(
+                            item, self.memory_root / item.name, dirs_exist_ok=True
+                        )
+
+                logger.debug("Pamięć przywrócona")
 
         except Exception as e:
             logger.error(f"Błąd podczas przywracania pamięci: {e}")

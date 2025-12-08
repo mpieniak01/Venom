@@ -145,15 +145,24 @@ class HistorianAgent(BaseAgent):
         logger.info(f"Historyk analizuje błąd: {error[:100]}...")
 
         try:
+            # Przygotuj feedback
+            if checkpoint_before:
+                feedback = (
+                    f"W przyszłości należy przywrócić checkpoint {checkpoint_before}. "
+                    "Rozważ dodatkową walidację przed wykonaniem."
+                )
+            else:
+                feedback = (
+                    "W przyszłości należy utworzyć checkpoint przed podobnymi operacjami. "
+                    "Rozważ dodatkową walidację przed wykonaniem."
+                )
+
             # Zapisz lekcję
             lesson = Lesson(
                 situation=f"Operacja: {operation}",
                 action="Wykonano operację bez wystarczającej walidacji",
                 result=f"BŁĄD: {error}",
-                feedback=(
-                    f"W przyszłości należy {'przywrócić checkpoint ' + checkpoint_before if checkpoint_before else 'utworzyć checkpoint przed podobnymi operacjami'}. "
-                    "Rozważ dodatkową walidację przed wykonaniem."
-                ),
+                feedback=feedback,
                 tags=["error", "checkpoint", "risk_management"],
                 metadata={
                     "checkpoint_id": checkpoint_before,

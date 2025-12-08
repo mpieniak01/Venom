@@ -6,7 +6,9 @@ __all__ = [
     "ArchitectAgent",
     "ChatAgent",
     "CoderAgent",
+    "CreativeDirectorAgent",
     "CriticAgent",
+    "DevOpsAgent",
     "DocumenterAgent",
     "GardenerAgent",
     "GuardianAgent",
@@ -40,10 +42,18 @@ def __getattr__(name):
         from venom_core.agents.coder import CoderAgent
 
         return CoderAgent
+    elif name == "CreativeDirectorAgent":
+        from venom_core.agents.creative_director import CreativeDirectorAgent
+
+        return CreativeDirectorAgent
     elif name == "CriticAgent":
         from venom_core.agents.critic import CriticAgent
 
         return CriticAgent
+    elif name == "DevOpsAgent":
+        from venom_core.agents.devops import DevOpsAgent
+
+        return DevOpsAgent
     elif name == "DocumenterAgent":
         from venom_core.agents.documenter import DocumenterAgent
 

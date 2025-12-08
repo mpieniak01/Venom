@@ -13,6 +13,31 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Domyślny stack z Redis dla architektury Hive
+DEFAULT_HIVE_STACK = """version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: venom-hive-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - venom-hive
+
+networks:
+  venom-hive:
+    driver: bridge
+
+volumes:
+  redis_data:
+"""
+
+
 class StackManager:
     """
     Zarządca stacków Docker Compose.
@@ -417,3 +442,17 @@ class StackManager:
 
         except Exception as e:
             return False, {"error": str(e)}
+
+    def deploy_default_hive_stack(self) -> tuple[bool, str]:
+        """
+        Wdraża domyślny stack Hive z Redis.
+
+        Returns:
+            Krotka (sukces, komunikat)
+        """
+        logger.info("Wdrażanie domyślnego stacka Hive (Redis)...")
+        return self.deploy_stack(
+            compose_content=DEFAULT_HIVE_STACK,
+            stack_name="venom-hive",
+            project_name="venom-hive",
+        )

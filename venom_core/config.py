@@ -116,5 +116,18 @@ class Settings(BaseSettings):
     NEXUS_HEARTBEAT_TIMEOUT: int = 60  # Timeout heartbeat w sekundach (domyślnie 60s)
     NEXUS_PORT: int = 8765  # Port WebSocket dla węzłów (domyślnie 8765)
 
+    # Konfiguracja THE_HIVE (Distributed Processing & Task Queue)
+    ENABLE_HIVE: bool = False  # Włącz architekturę rozproszonego przetwarzania
+    REDIS_HOST: str = "localhost"  # Host Redis (dla Docker: 'redis')
+    REDIS_PORT: int = 6379  # Port Redis
+    REDIS_DB: int = 0  # Numer bazy danych Redis
+    REDIS_PASSWORD: SecretStr = SecretStr("")  # Hasło Redis (opcjonalne)
+    HIVE_HIGH_PRIORITY_QUEUE: str = "venom:tasks:high"  # Kolejka high priority
+    HIVE_BACKGROUND_QUEUE: str = "venom:tasks:background"  # Kolejka background
+    HIVE_BROADCAST_CHANNEL: str = "venom:broadcast"  # Kanał broadcast
+    HIVE_TASK_TIMEOUT: int = 300  # Timeout zadania w sekundach (5 minut)
+    HIVE_MAX_RETRIES: int = 3  # Maksymalna liczba prób wykonania zadania
+    HIVE_ZOMBIE_TASK_TIMEOUT: int = 600  # Timeout dla zombie tasks (10 minut)
+
 
 SETTINGS = Settings()

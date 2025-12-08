@@ -80,6 +80,10 @@ radon                   # Code complexity analysis
 psutil                  # System and process utilities (monitoring CPU, memory)
 websockets              # WebSocket client/server (dla The Nexus)
 
+# Task Queue & Message Broker (THE_HIVE)
+redis>=5.0.0            # Redis client for message broker
+arq>=0.26.0             # Async Redis Queue (lightweight, FastAPI-friendly)
+
 # Audio & Voice Interface (THE_AVATAR)
 faster-whisper          # Local STT (Speech-to-Text) engine
 piper-tts               # Local TTS (Text-to-Speech) engine (ONNX-based)

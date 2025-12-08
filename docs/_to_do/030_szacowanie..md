@@ -134,13 +134,3 @@ Wyświetla:
 * złożoność licz heurystycznie (ilość plików, modułów, integracji),
 * Strategist powinien działać **przed** kodowaniem i **po** każdej iteracji,
 * Dashboard może używać Plotly/Chart.js.
-
----
-
-## ⭐ Efekt
-
-Zadanie zachowuje strukturę PR‑ową jak w poprzednich modułach Venoma, ale:
-
-* brak ekonomii finansowej,
-* brak kosztów,
-* pełen fokus na **szacowaniu, planowaniu, złożoności i operacyjnej inteligencji**.

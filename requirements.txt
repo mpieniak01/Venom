@@ -97,6 +97,10 @@ asyncssh                # Async SSH client for cloud deployment
 # UI & Visualization (THE_CANVAS)
 bleach                  # HTML sanitization for safe widget rendering
 
+# Desktop Awareness & Proactive Assistance (THE_SHADOW)
+pyperclip               # Cross-platform clipboard access
+win10toast              # Windows 10/11 Toast Notifications (Windows only)
+
 # --- VENOM DEV TOOLS (Jakość Kodu) ---
 
 pytest                  # Testy

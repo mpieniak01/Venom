@@ -26,6 +26,8 @@ class IntentManager:
 7. E2E_TESTING - użytkownik chce przetestować aplikację webową end-to-end, sprawdzić UI, wykonać scenariusz użytkownika
 8. DOCUMENTATION - użytkownik chce wygenerować dokumentację projektu, stronę HTML z markdown
 9. RELEASE_PROJECT - użytkownik chce wydać nową wersję projektu, wygenerować changelog, stworzyć tag
+10. START_CAMPAIGN - użytkownik chce uruchomić tryb autonomiczny (kampania), gdzie system sam realizuje roadmapę
+11. STATUS_REPORT - użytkownik pyta o status projektu, postęp realizacji celów, aktualny milestone
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
@@ -76,6 +78,20 @@ KIEDY WYBIERAĆ RELEASE_PROJECT:
 - "Utwórz tag release'owy"
 - Zapytania zawierające: "release", "wydanie", "changelog", "wersja", "tag"
 
+KIEDY WYBIERAĆ START_CAMPAIGN:
+- "Rozpocznij kampanię"
+- "Uruchom tryb autonomiczny"
+- "Pracuj nad roadmapą automatycznie"
+- "Kontynuuj pracę nad projektem"
+- Zapytania zawierające: "kampania", "autonomiczny", "automatyczny", "samodzielnie realizuj"
+
+KIEDY WYBIERAĆ STATUS_REPORT:
+- "Jaki jest status projektu?"
+- "Gdzie jesteśmy z realizacją celów?"
+- "Pokaż postęp"
+- "Raport statusu"
+- Zapytania zawierające: "status", "postęp", "gdzie jesteśmy", "raport", "jak idzie projekt"
+
 Przykłady:
 - "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION
 - "Jak zrefaktoryzować ten kod?" → CODE_GENERATION
@@ -91,7 +107,9 @@ Przykłady:
 - "Commitnij moje zmiany" → VERSION_CONTROL
 - "Przetestuj formularz logowania" → E2E_TESTING
 - "Wygeneruj dokumentację projektu" → DOCUMENTATION
-- "Wydaj nową wersję" → RELEASE_PROJECT"""
+- "Wydaj nową wersję" → RELEASE_PROJECT
+- "Rozpocznij kampanię" → START_CAMPAIGN
+- "Jaki jest status projektu?" → STATUS_REPORT"""
 
     def __init__(self, kernel: Kernel = None):
         """
@@ -154,6 +172,8 @@ Przykłady:
                 "E2E_TESTING",
                 "DOCUMENTATION",
                 "RELEASE_PROJECT",
+                "START_CAMPAIGN",
+                "STATUS_REPORT",
             ]
             if intent not in valid_intents:
                 # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie

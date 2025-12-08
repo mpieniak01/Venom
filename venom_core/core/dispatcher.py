@@ -1,6 +1,6 @@
 """Moduł: dispatcher - dyspozytornia zadań."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 from semantic_kernel import Kernel
 
@@ -9,6 +9,7 @@ from venom_core.agents.base import BaseAgent
 from venom_core.agents.chat import ChatAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
+from venom_core.agents.executive import ExecutiveAgent
 from venom_core.agents.integrator import IntegratorAgent
 from venom_core.agents.librarian import LibrarianAgent
 from venom_core.agents.publisher import PublisherAgent
@@ -16,6 +17,7 @@ from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.agents.researcher import ResearcherAgent
 from venom_core.agents.tester import TesterAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
+from venom_core.core.goal_store import GoalStore
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.utils.logger import get_logger
 
@@ -25,7 +27,13 @@ logger = get_logger(__name__)
 class TaskDispatcher:
     """Dyspozytornia zadań - kieruje zadania do odpowiednich agentów."""
 
-    def __init__(self, kernel: Kernel, event_broadcaster=None, node_manager=None):
+    def __init__(
+        self,
+        kernel: Kernel,
+        event_broadcaster=None,
+        node_manager=None,
+        goal_store: Optional[GoalStore] = None,
+    ):
         """
         Inicjalizacja TaskDispatcher.
 
@@ -33,10 +41,14 @@ class TaskDispatcher:
             kernel: Skonfigurowane jądro Semantic Kernel dla agentów
             event_broadcaster: Opcjonalny broadcaster zdarzeń
             node_manager: Opcjonalny NodeManager dla distributed execution
+            goal_store: Opcjonalny GoalStore dla Executive Agent
         """
         self.kernel = kernel
         self.event_broadcaster = event_broadcaster
         self.node_manager = node_manager
+
+        # Inicjalizuj GoalStore jeśli nie przekazano
+        self.goal_store = goal_store or GoalStore()
 
         # Inicjalizuj SkillManager - zarządza dynamicznymi pluginami
         self.skill_manager = SkillManager(kernel)
@@ -63,6 +75,7 @@ class TaskDispatcher:
         self.tester_agent = TesterAgent(kernel)
         self.publisher_agent = PublisherAgent(kernel)
         self.release_manager_agent = ReleaseManagerAgent(kernel)
+        self.executive_agent = ExecutiveAgent(kernel, self.goal_store)
 
         # Ustawienie referencji do dispatchera w Architect (circular dependency)
         self.architect_agent.set_dispatcher(self)
@@ -81,9 +94,10 @@ class TaskDispatcher:
             "E2E_TESTING": self.tester_agent,
             "DOCUMENTATION": self.publisher_agent,
             "RELEASE_PROJECT": self.release_manager_agent,
+            "STATUS_REPORT": self.executive_agent,
         }
 
-        logger.info("TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)")
+        logger.info("TaskDispatcher zainicjalizowany z agentami (+ Executive layer)")
 
     async def dispatch(
         self, intent: str, content: str, node_preference: dict = None

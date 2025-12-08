@@ -43,9 +43,7 @@ class MediaSkill:
                 from openai import AsyncOpenAI
 
                 if SETTINGS.OPENAI_API_KEY:
-                    self.openai_client = AsyncOpenAI(
-                        api_key=SETTINGS.OPENAI_API_KEY
-                    )
+                    self.openai_client = AsyncOpenAI(api_key=SETTINGS.OPENAI_API_KEY)
                     self.openai_available = True
                     logger.info("OpenAI DALL-E dostępny dla generowania obrazów")
                 else:
@@ -157,9 +155,7 @@ class MediaSkill:
             logger.info("Fallback do generatora placeholderów")
             return await self._generate_placeholder(prompt, size, filename)
 
-    async def _generate_placeholder(
-        self, prompt: str, size: str, filename: str
-    ) -> str:
+    async def _generate_placeholder(self, prompt: str, size: str, filename: str) -> str:
         """
         Generuje placeholder obrazu używając Pillow (fallback).
 
@@ -189,28 +185,35 @@ class MediaSkill:
             # Spróbuj użyć domyślnej czcionki
             font_size = min(w, h) // 20
             try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-            except:
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size
+                )
+            except (OSError, IOError):
                 font = ImageFont.load_default()
-        except:
+        except Exception:
             font = ImageFont.load_default()
 
         # Dodaj tekst na środku
         text = prompt[:50] if len(prompt) > 50 else prompt
-        
+
         # Oblicz pozycję tekstu (wycentrowany)
         # Używamy textbbox dla kompatybilności z nowszymi wersjami Pillow
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
-        
+
         x = (w - text_width) // 2
         y = (h - text_height) // 2
 
         # Rysuj tło pod tekstem
         padding = 20
         draw.rectangle(
-            [x - padding, y - padding, x + text_width + padding, y + text_height + padding],
+            [
+                x - padding,
+                y - padding,
+                x + text_width + padding,
+                y + text_height + padding,
+            ],
             fill="#2d2d2d",
         )
 

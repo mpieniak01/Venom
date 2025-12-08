@@ -1527,7 +1527,9 @@ Plan naprawy:
                         break
 
                 # 2. Oznacz zadanie jako w trakcie
-                goal_store.update_progress(next_task.goal_id, status=GoalStatus.IN_PROGRESS)
+                goal_store.update_progress(
+                    next_task.goal_id, status=GoalStatus.IN_PROGRESS
+                )
                 self.state_manager.add_log(
                     task_id, f"🎯 Rozpoczynam: {next_task.title}"
                 )
@@ -1562,9 +1564,9 @@ Plan naprawy:
                 # 4. Zaktualizuj postęp w GoalStore
                 if sub_task.status == TaskStatus.COMPLETED:
                     goal_store.update_progress(
-                        next_task.goal_id, 
+                        next_task.goal_id,
                         status=GoalStatus.COMPLETED,
-                        task_id=sub_task.id
+                        task_id=sub_task.id,
                     )
                     tasks_completed += 1
 

@@ -56,7 +56,9 @@ class Goal(BaseModel):
     description: str = Field(default="", description="Szczegółowy opis")
     status: GoalStatus = Field(default=GoalStatus.PENDING, description="Status")
     priority: int = Field(default=1, ge=1, le=5, description="Priorytet (1=najwyższy)")
-    parent_id: Optional[UUID] = Field(default=None, description="ID rodzica w hierarchii")
+    parent_id: Optional[UUID] = Field(
+        default=None, description="ID rodzica w hierarchii"
+    )
     kpis: List[KPI] = Field(default_factory=list, description="Wskaźniki sukcesu")
     task_id: Optional[UUID] = Field(
         default=None, description="ID zadania w Orchestratorze (dla TASK)"
@@ -378,12 +380,16 @@ class GoalStore:
                 report.append(
                     f"  {i}. {status_emoji} [{milestone.priority}] {milestone.title}"
                 )
-                report.append(f"      Postęp: {progress:.1f}% | {milestone.status.value}")
+                report.append(
+                    f"      Postęp: {progress:.1f}% | {milestone.status.value}"
+                )
 
                 # Zadania w milestone
                 tasks = self.get_tasks(parent_id=milestone.goal_id)
                 if tasks:
-                    completed = len([t for t in tasks if t.status == GoalStatus.COMPLETED])
+                    completed = len(
+                        [t for t in tasks if t.status == GoalStatus.COMPLETED]
+                    )
                     report.append(
                         f"      Zadania: {completed}/{len(tasks)} ukończonych"
                     )

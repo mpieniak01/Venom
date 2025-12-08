@@ -11,7 +11,6 @@ from typing import Annotated, Optional
 import pyautogui
 from semantic_kernel.functions import kernel_function
 
-from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -60,9 +59,7 @@ class InputSkill:
         self,
         x: Annotated[int, "Współrzędna X na ekranie"],
         y: Annotated[int, "Współrzędna Y na ekranie"],
-        button: Annotated[
-            str, "Przycisk myszy: 'left', 'right', 'middle'"
-        ] = "left",
+        button: Annotated[str, "Przycisk myszy: 'left', 'right', 'middle'"] = "left",
         double: Annotated[bool, "Czy wykonać podwójne kliknięcie"] = False,
         move_duration: Annotated[
             float, "Czas ruchu kursora w sekundach (0 = natychmiast)"
@@ -130,9 +127,7 @@ class InputSkill:
     async def keyboard_type(
         self,
         text: Annotated[str, "Tekst do wpisania"],
-        interval: Annotated[
-            float, "Opóźnienie między literami (sekundy)"
-        ] = 0.05,
+        interval: Annotated[float, "Opóźnienie między literami (sekundy)"] = 0.05,
     ) -> str:
         """
         Wpisuje tekst używając klawiatury.
@@ -291,15 +286,11 @@ class InputSkill:
             True jeśli współrzędne są prawidłowe
         """
         if x < 0 or x >= self.screen_width:
-            logger.warning(
-                f"X poza zakresem: {x} (zakres: 0-{self.screen_width - 1})"
-            )
+            logger.warning(f"X poza zakresem: {x} (zakres: 0-{self.screen_width - 1})")
             return False
 
         if y < 0 or y >= self.screen_height:
-            logger.warning(
-                f"Y poza zakresem: {y} (zakres: 0-{self.screen_height - 1})"
-            )
+            logger.warning(f"Y poza zakresem: {y} (zakres: 0-{self.screen_height - 1})")
             return False
 
         return True

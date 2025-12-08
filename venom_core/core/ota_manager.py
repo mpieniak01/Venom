@@ -1,8 +1,6 @@
 """Moduł: ota_manager - Over-The-Air Updates dla węzłów Spore."""
 
-import asyncio
 import hashlib
-import io
 import subprocess
 import zipfile
 from datetime import datetime
@@ -258,8 +256,9 @@ class OTAManager:
             logger.info(f"Paczka rozpakowana do: {extract_dir}")
 
             # 4. Skopiuj pliki do właściwych lokalizacji
-            # (W produkcji: backup starych plików przed nadpisaniem)
-            await self._copy_files(extract_dir, Path.cwd())
+            # Użyj katalogu instalacji Venom zamiast Path.cwd()
+            venom_root = Path(__file__).parent.parent.parent
+            await self._copy_files(extract_dir, venom_root)
 
             # 5. Instaluj zależności jeśli requirements.txt
             requirements_path = extract_dir / "requirements.txt"
@@ -338,11 +337,8 @@ class OTAManager:
         """
         Instaluje zależności z requirements.txt.
 
-        UWAGA BEZPIECZEŃSTWA:
-        - Upewnij się że requirements.txt pochodzi z zaufanego źródła
-        - W produkcji rozważ walidację zawartości requirements.txt
-        - Alternatywnie użyj pip-audit do skanowania podatności
-        - Można użyć hash verification (pip install --require-hashes)
+        UWAGA: Szczegółowe uwagi bezpieczeństwa dotyczące instalacji zależności
+        znajdują się w dokumentacji: patrz docs/THE_HIVE.md, sekcja Security.
 
         Args:
             requirements_path: Ścieżka do requirements.txt
@@ -351,15 +347,15 @@ class OTAManager:
             True jeśli instalacja udana
         """
         try:
-            # TODO: Dodać walidację requirements.txt przed instalacją
-            # TODO: Rozważyć użycie wirtualnego środowiska dla izolacji
-
+            # Timeout instalacji zależności konfigurowalny przez SETTINGS
+            timeout = getattr(SETTINGS, "OTA_DEPENDENCY_INSTALL_TIMEOUT", 300)
+            
             # Uruchom pip install
             result = subprocess.run(
                 ["pip", "install", "-r", str(requirements_path)],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=timeout,
             )
 
             if result.returncode == 0:
@@ -374,7 +370,13 @@ class OTAManager:
             return False
 
     async def _schedule_restart(self):
-        """Planuje restart procesu (bezpieczny)."""
+        """
+        Planuje restart procesu.
+        
+        UWAGA: W obecnej implementacji tylko loguje ostrzeżenie.
+        W produkcji należy użyć systemd/supervisor lub mechanizmu
+        zarządzania procesami do bezpiecznego restartu.
+        """
         # W produkcji: użyj systemd, supervisor lub innego mechanizmu
         # Na razie: log informacji
         logger.warning(

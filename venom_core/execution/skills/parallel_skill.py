@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List
 
 from semantic_kernel.functions import kernel_function
 
@@ -10,6 +10,10 @@ from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Stałe konfiguracyjne
+DEFAULT_SORT_INDEX = 999999  # Używane dla zadań bez item_index przy sortowaniu
+POLLING_INTERVAL_SECONDS = 2  # Interwał sprawdzania statusu zadań
 
 
 class ParallelSkill:
@@ -129,7 +133,7 @@ class ParallelSkill:
                 f"Map-Reduce zakończony: {completed} OK, {failed} Failed, {pending} Pending"
             )
 
-            return json.dumps(response, indent=2, ensure_ascii=False)
+            return json.dumps(response, ensure_ascii=False)
 
         except Exception as e:
             logger.error(f"Błąd w map_reduce: {e}")
@@ -196,11 +200,11 @@ class ParallelSkill:
             if all_done:
                 break
 
-            # Czekaj przed następnym sprawdzeniem (polling co 2 sekundy)
-            await asyncio.sleep(2)
+            # Czekaj przed następnym sprawdzeniem (polling)
+            await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
         # Sortuj wyniki według item_index
-        results.sort(key=lambda r: r["item_index"] if r["item_index"] is not None else 999999)
+        results.sort(key=lambda r: r["item_index"] if r["item_index"] is not None else DEFAULT_SORT_INDEX)
 
         return results
 
@@ -292,7 +296,7 @@ class ParallelSkill:
 
             logger.info(f"parallel_execute zakończony: {completed} OK, {failed} Failed")
 
-            return json.dumps(response, indent=2, ensure_ascii=False)
+            return json.dumps(response, ensure_ascii=False)
 
         except Exception as e:
             logger.error(f"Błąd w parallel_execute: {e}")
@@ -338,7 +342,7 @@ class ParallelSkill:
                 "error": task.error,
             }
 
-            return json.dumps(status_info, indent=2, ensure_ascii=False)
+            return json.dumps(status_info, ensure_ascii=False)
 
         except Exception as e:
             logger.error(f"Błąd podczas sprawdzania statusu zadania: {e}")

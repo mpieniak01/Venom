@@ -1,6 +1,5 @@
 """Testy dla parallel_skill - umiejętność równoległego przetwarzania."""
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, Mock
 
@@ -161,7 +160,7 @@ async def test_parallel_execute_creates_tasks(parallel_skill, mock_message_broke
 
     mock_message_broker.get_task_status.side_effect = mock_get_status
 
-    result = await parallel_skill.parallel_execute(
+    await parallel_skill.parallel_execute(
         task_description="Main task",
         subtasks=json.dumps(subtasks),
         wait_timeout=1,

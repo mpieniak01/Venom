@@ -176,6 +176,7 @@ await ota.broadcast_update(package, target_nodes=["spore-1", "spore-2"])
 
 **Przykład użycia (Spore):**
 ```python
+# UWAGA BEZPIECZEŃSTWA: W produkcji należy zweryfikować źródło aktualizacji!
 # Nasłuchiwanie broadcast
 pubsub = await message_broker.subscribe_broadcast()
 
@@ -183,7 +184,9 @@ async for message in pubsub.listen():
     if message["type"] == "message":
         data = json.loads(message["data"])
         if data["command"] == "UPDATE_SYSTEM":
-            # Aplikuj aktualizację
+            # KROK 1: Zweryfikuj że package_url pochodzi z zaufanego źródła
+            # KROK 2: Opcjonalnie: weryfikuj podpis cyfrowy paczki
+            # KROK 3: Aplikuj aktualizację
             await ota.apply_update(
                 package_url=data["data"]["package_url"],
                 expected_checksum=data["data"]["checksum"],
@@ -191,11 +194,56 @@ async for message in pubsub.listen():
             )
 ```
 
+**⚠️ UWAGA BEZPIECZEŃSTWA OTA:**
+Powyższy przykład jest uproszczony dla celów demonstracyjnych. W środowisku produkcyjnym:
+1. **Autentykacja źródła**: Weryfikuj że aktualizacje pochodzą tylko z zaufanego Nexus
+2. **Podpisy cyfrowe**: Podpisuj paczki OTA kluczem prywatnym Nexus, weryfikuj przez Spores
+3. **Whitelist URLi**: Ogranicz package_url do zaufanych hostów
+4. **Token autoryzacji**: Dodaj NEXUS_SHARED_TOKEN do danych broadcast
+5. **Redis auth**: Zawsze używaj REDIS_PASSWORD w produkcji
+
 ## Konfiguracja
 
-### Docker Compose - Redis Stack
+### Docker Compose - Redis Stack (Produkcja)
 
-Domyślny stack Hive z Redis jest automatycznie dostępny w `StackManager`:
+⚠️ **KRYTYCZNE**: Domyślna konfiguracja Redis NIE JEST bezpieczna dla produkcji!
+
+**Konfiguracja zabezpieczona (ZALECANA):**
+
+```yaml
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    container_name: venom-hive-redis
+    # NIE eksponuj portu na hosta w produkcji!
+    # ports:
+    #   - "6379:6379"
+    environment:
+      # KRYTYCZNE: Ustaw silne hasło!
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-changeme}
+      --appendonly yes
+      --bind 0.0.0.0
+    restart: unless-stopped
+    networks:
+      - venom-internal  # Tylko wewnętrzna sieć!
+
+networks:
+  venom-internal:
+    driver: bridge
+    internal: true  # Brak dostępu z zewnątrz
+
+volumes:
+  redis_data:
+```
+
+**Minimalna konfiguracja (TYLKO dla developmentu/demo):**
 
 ```yaml
 version: '3.8'
@@ -205,11 +253,14 @@ services:
     image: redis:alpine
     container_name: venom-hive-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"  # Bind tylko do localhost!
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
+
+volumes:
+  redis_data:
 ```
 
 Wdrażanie stacka:
@@ -504,6 +555,152 @@ while True:
 - Overhead Redis: marginalny (<5%)
 - Bottleneck: Zazwyczaj I/O, nie CPU
 
+## Bezpieczeństwo (Security)
+
+### ⚠️ KRYTYCZNE: Zabezpieczenie Produkcyjne
+
+THE HIVE wymaga szczególnej uwagi na bezpieczeństwo ze względu na:
+- Rozproszoną architekturę z wieloma węzłami
+- Zdalne wykonywanie kodu (OTA updates)
+- Shared Redis jako single point of trust
+
+### Redis Security
+
+**Minimalne wymagania:**
+1. **Hasło**: Zawsze ustaw `requirepass` (REDIS_PASSWORD)
+2. **Binding**: Bind do `127.0.0.1` lub wewnętrznej sieci, NIE `0.0.0.0` na publicznym interface
+3. **Firewall**: Ogranicz dostęp do portu 6379 tylko dla zaufanych węzłów
+4. **TLS**: Rozważ Redis TLS dla komunikacji przez Internet
+
+**Konfiguracja secure Redis:**
+```bash
+# .env
+REDIS_PASSWORD=very_strong_password_here_min_32_chars
+
+# redis.conf lub command
+requirepass ${REDIS_PASSWORD}
+bind 127.0.0.1  # lub wewnętrzny IP
+protected-mode yes
+```
+
+### Pickle Serialization Security
+
+MessageBroker używa pickle dla serializacji TaskMessage:
+- **Ryzyko**: Pickle może wykonać arbitrary code przy deserializacji
+- **Mitygacja**: Wszystkie węzły muszą być zaufane
+- **Alternatywa**: Użyj JSON z custom serializers dla prostych zadań
+
+**Zasady bezpiecznego użycia:**
+1. Wszystkie węzły Hive w zamkniętej, zaufanej sieci (VPN, private network)
+2. Redis auth (hasło) dla dodatkowej warstwy
+3. Monitoring dostępu do Redis (logs, metrics)
+4. Dla publicznych deploymentów: rozważ JSON zamiast pickle
+
+### OTA Updates Security
+
+**Problem**: OTA updates mogą być użyte do RCE jeśli źródło nie jest zweryfikowane.
+
+**Wymagane zabezpieczenia dla produkcji:**
+
+1. **Autentykacja źródła**:
+```python
+# Sprawdź że broadcast pochodzi od zaufanego Nexus
+if data.get("nexus_token") != SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value():
+    logger.error("Unauthorized OTA update attempt!")
+    return
+```
+
+2. **Podpisy cyfrowe paczek** (zalecane):
+```python
+# Nexus: podpisz paczkę
+import hmac
+signature = hmac.new(secret_key, package_data, hashlib.sha256).hexdigest()
+
+# Spore: weryfikuj podpis
+if not hmac.compare_digest(signature, expected_signature):
+    raise SecurityError("Invalid package signature!")
+```
+
+3. **Whitelist URLi paczek**:
+```python
+ALLOWED_PACKAGE_HOSTS = ["nexus.internal", "localhost"]
+parsed_url = urlparse(package_url)
+if parsed_url.hostname not in ALLOWED_PACKAGE_HOSTS:
+    raise SecurityError(f"Package URL not whitelisted: {parsed_url.hostname}")
+```
+
+4. **Walidacja requirements.txt**:
+```python
+# Przed pip install, sprawdź zawartość
+with open(requirements_path) as f:
+    for line in f:
+        if line.strip().startswith(("http://", "https://", "git+")):
+            logger.error("Direct URL installs not allowed!")
+            return False
+```
+
+5. **Rate limiting**:
+```python
+# Ogranicz częstotliwość OTA updates (max 1 na godzinę)
+if last_update_time and (datetime.now() - last_update_time) < timedelta(hours=1):
+    logger.warning("OTA update rate limit exceeded")
+    return False
+```
+
+### Task Execution Security
+
+**Sandbox isolation**: Rozważ uruchamianie zadań w izolowanych kontenerach Docker dla dodatkowego bezpieczeństwa.
+
+**Input validation**: Zawsze waliduj payload zadań przed wykonaniem.
+
+### Network Security
+
+**Zalecana architektura sieciowa:**
+```
+Internet
+    |
+    v
+[Firewall]
+    |
+    v
+[Nexus Node] ----+
+                 |
+    [VPN/Private Network]
+    |            |            |
+    v            v            v
+[Spore-1]   [Spore-2]   [Spore-3]
+    |            |            |
+    +------------+------------+
+                 |
+                 v
+            [Redis Server]
+         (internal network only)
+```
+
+### Checklist Bezpieczeństwa
+
+Przed uruchomieniem produkcyjnym sprawdź:
+
+- [ ] Redis ma silne hasło (`requirepass`)
+- [ ] Redis nie jest dostępny publicznie (firewall/binding)
+- [ ] NEXUS_SHARED_TOKEN jest unikalny i długi (min 32 znaki)
+- [ ] OTA updates mają autentykację źródła
+- [ ] Package URLs są whitelistowane
+- [ ] Monitoring i alerty dla podejrzanej aktywności
+- [ ] Backup i disaster recovery plan
+- [ ] Wszystkie węzły w zamkniętej sieci (VPN/private)
+- [ ] Logi są zbierane i analizowane
+- [ ] Regular security updates dla Redis i Python packages
+
+### Incident Response
+
+W przypadku podejrzenia kompromitacji:
+1. Natychmiast zmień REDIS_PASSWORD i NEXUS_SHARED_TOKEN
+2. Restart wszystkich węzłów
+3. Sprawdź logi Redis i węzłów
+4. Zweryfikuj checksumy zainstalowanego kodu
+5. Rozważ reinstalację z czystych obrazów
+
 ## Roadmap
 
 ### Planowane Funkcje
@@ -512,9 +709,14 @@ while True:
 - [ ] Priorytety wielopoziomowe (0-10)
 - [ ] Task dependencies (DAG)
 - [ ] Streaming results (partial results)
+- [ ] **Podpisy cyfrowe dla OTA packages**
+- [ ] **Redis TLS support**
+- [ ] **Audit logging dla security events**
 
 ## Referencje
 
 - [Redis Documentation](https://redis.io/docs/)
+- [Redis Security](https://redis.io/docs/management/security/)
 - [ARQ Documentation](https://arq-docs.helpmanual.io/)
 - [MapReduce Paper](https://research.google/pubs/pub62/)
+- [Python Pickle Security](https://docs.python.org/3/library/pickle.html#module-pickle)

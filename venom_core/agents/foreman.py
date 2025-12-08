@@ -2,12 +2,12 @@
 
 import asyncio
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
-from venom_core.infrastructure.message_broker import MessageBroker, TaskMessage
+from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -152,6 +152,7 @@ class ForemanAgent(BaseAgent):
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania podczas zatrzymywania agenta
                 pass
 
         if self._monitoring_task:
@@ -159,6 +160,7 @@ class ForemanAgent(BaseAgent):
             try:
                 await self._monitoring_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania podczas zatrzymywania agenta
                 pass
 
         logger.info("ForemanAgent zatrzymany")

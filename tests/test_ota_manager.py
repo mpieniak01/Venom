@@ -1,7 +1,6 @@
 """Testy dla ota_manager - Over-The-Air Updates."""
 
 import hashlib
-import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -211,12 +210,17 @@ def test_list_packages_empty(ota_manager):
 
 def test_list_packages_with_files(ota_manager):
     """Test listowania paczek."""
+    import os
     import time
 
-    # Utwórz kilka paczek z opóźnieniem aby zapewnić różną mtime
-    (ota_manager.ota_dir / "venom_ota_1.0.0_20240101_120000.zip").touch()
-    time.sleep(0.01)  # Mały delay dla różnego timestamp
-    (ota_manager.ota_dir / "venom_ota_1.1.0_20240102_130000.zip").touch()
+    # Utwórz kilka paczek i jawnie ustaw mtime, aby zapewnić różne wartości
+    file1 = ota_manager.ota_dir / "venom_ota_1.0.0_20240101_120000.zip"
+    file2 = ota_manager.ota_dir / "venom_ota_1.1.0_20240102_130000.zip"
+    file1.touch()
+    file2.touch()
+    now = time.time()
+    os.utime(file1, (now, now))
+    os.utime(file2, (now + 10, now + 10))
 
     packages = ota_manager.list_packages()
 

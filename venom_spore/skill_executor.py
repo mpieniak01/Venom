@@ -64,6 +64,13 @@ class SkillExecutor:
             command = parameters.get("command", "")
             timeout = parameters.get("timeout", 30)
 
+            # SECURITY: Podstawowa walidacja - blokuj niebezpieczne komendy
+            # W produkcji użyj whitelist lub pełnej walidacji
+            dangerous_patterns = ["rm -rf", "mkfs", "dd if=", "> /dev/", "sudo", "su "]
+            for pattern in dangerous_patterns:
+                if pattern in command.lower():
+                    return f"❌ Zabroniona komenda: komenda zawiera niebezpieczny pattern '{pattern}'"
+
             try:
                 result = subprocess.run(
                     command,
@@ -157,7 +164,7 @@ class SkillExecutor:
             "skills": skills,
             "cpu_cores": cpu_count,
             "memory_mb": memory_mb,
-            "has_gpu": False,  # TODO: Wykrywanie GPU
+            "has_gpu": self._detect_gpu(),
             "has_docker": self._check_docker(),
             "platform": platform.system().lower(),
         }
@@ -174,3 +181,16 @@ class SkillExecutor:
             return True
         except Exception:
             return False
+
+    def _detect_gpu(self) -> bool:
+        """
+        Wykrywa dostępność GPU.
+        
+        Note: Obecnie zwraca False. Do implementacji w przyszłości:
+        - Użyj nvidia-ml-py lub pynvml dla NVIDIA GPU
+        - Użyj rocm dla AMD GPU
+        - Sprawdź /dev/dri dla Intel GPU
+        """
+        # TODO: Implementacja wykrywania GPU
+        # Wymaga: pip install nvidia-ml-py3 (dla NVIDIA)
+        return False

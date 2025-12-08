@@ -164,5 +164,13 @@ class Settings(BaseSettings):
     SHADOW_CLIPBOARD_MAX_LENGTH: int = 1000  # Maksymalna długość tekstu ze schowka
     SHADOW_CHECK_INTERVAL: int = 1  # Interwał sprawdzania sensora (sekundy)
 
+    # Konfiguracja THE_GHOST (Visual GUI Automation)
+    ENABLE_GHOST_AGENT: bool = False  # Włącz Ghost Agent (kontrola GUI)
+    GHOST_MAX_STEPS: int = 20  # Maksymalna liczba kroków w jednym zadaniu
+    GHOST_STEP_DELAY: float = 1.0  # Opóźnienie między krokami (sekundy)
+    GHOST_VERIFICATION_ENABLED: bool = True  # Weryfikacja po każdym kroku
+    GHOST_SAFETY_DELAY: float = 0.5  # Opóźnienie bezpieczeństwa dla input operations
+    GHOST_VISION_CONFIDENCE: float = 0.7  # Próg pewności dla vision grounding
+
 
 SETTINGS = Settings()

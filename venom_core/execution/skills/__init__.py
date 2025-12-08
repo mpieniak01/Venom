@@ -7,6 +7,7 @@ __all__ = [
     "DocsSkill",
     "FileSkill",
     "GitSkill",
+    "InputSkill",
     "MediaSkill",
     "PlatformSkill",
     "ShellSkill",
@@ -37,6 +38,10 @@ def __getattr__(name):
         from venom_core.execution.skills.git_skill import GitSkill
 
         return GitSkill
+    elif name == "InputSkill":
+        from venom_core.execution.skills.input_skill import InputSkill
+
+        return InputSkill
     elif name == "MediaSkill":
         from venom_core.execution.skills.media_skill import MediaSkill
 

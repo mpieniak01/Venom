@@ -10,7 +10,7 @@ import platform
 import re
 from datetime import datetime
 from io import BytesIO
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 try:
     from PIL import ImageGrab
@@ -347,6 +347,44 @@ class DesktopSensor:
             logger.error(f"Błąd przy robieniu zrzutu ekranu: {e}")
             return None
 
+    def start_recording(self) -> None:
+        """
+        Rozpoczyna tryb nagrywania (recording mode).
+
+        W tym trybie sensor zapisuje wszystkie akcje użytkownika
+        które mogą być później odtworzone przez GhostAgent.
+        
+        TODO: Implementacja faktycznego nagrywania akcji (mouse clicks, keyboard events)
+        wymaga integracji z pynput lub podobną biblioteką do przechwytywania zdarzeń.
+        Obecnie metoda tylko inicjalizuje stan, ale nie nagrywa akcji.
+        """
+        self._recording_mode = True
+        self._recorded_actions = []
+        logger.info("DesktopSensor: tryb nagrywania WŁĄCZONY")
+        logger.warning("UWAGA: Faktyczne nagrywanie akcji nie jest jeszcze zaimplementowane (TODO)")
+
+    def stop_recording(self) -> List[Dict[str, Any]]:
+        """
+        Zatrzymuje tryb nagrywania i zwraca nagrane akcje.
+
+        Returns:
+            Lista nagranych akcji (obecnie pusta - implementacja TODO)
+        """
+        self._recording_mode = False
+        actions = self._recorded_actions.copy()
+        self._recorded_actions = []
+        logger.info(f"DesktopSensor: tryb nagrywania WYŁĄCZONY ({len(actions)} akcji)")
+        return actions
+
+    def is_recording(self) -> bool:
+        """
+        Sprawdza czy sensor jest w trybie nagrywania.
+
+        Returns:
+            True jeśli nagrywa
+        """
+        return getattr(self, "_recording_mode", False)
+
     def get_status(self) -> dict[str, any]:
         """
         Zwraca status sensora.
@@ -361,4 +399,6 @@ class DesktopSensor:
             "privacy_filter": self.privacy_filter,
             "last_clipboard_length": len(self._last_clipboard_content),
             "last_active_window": self._last_active_window,
+            "recording_mode": getattr(self, "_recording_mode", False),
+            "recorded_actions_count": len(getattr(self, "_recorded_actions", [])),
         }

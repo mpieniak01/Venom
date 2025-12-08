@@ -60,7 +60,7 @@ WORKFLOW:
 
 PRZYKŁAD DOBREGO SCENARIUSZA:
 ❌ ZŁY: "Napisz program używający pandas"
-✅ DOBRY: "Napisz program który pivotuje tabelę CSV z brakującymi danymi (NaN), 
+✅ DOBRY: "Napisz program który pivotuje tabelę CSV z brakującymi danymi (NaN),
      grupuje po wielopoziomowych kolumnach i eksportuje do Excel z conditional formatting.
      Test: plik output.xlsx musi zawierać 3 arkusze, każdy z 100+ wierszy."
 
@@ -265,14 +265,16 @@ PAMIĘTAJ:
         # Wyciągnij pierwsze słowo kluczowe z fragmentu (prosta heurystyka)
         words = knowledge_fragment.split()[:50]
         keywords = [w for w in words if len(w) > 5 and w[0].isupper()]
-        
+
         if keywords:
             library_hint = keywords[0]
         else:
             # Lepszy fallback: pierwsze 2-3 sensowne słowa z fragmentu
             # Usuń znaki interpunkcyjne używając string.punctuation
             filtered = [
-                w.strip(string.punctuation) for w in words if len(w.strip(string.punctuation)) > 2
+                w.strip(string.punctuation)
+                for w in words
+                if len(w.strip(string.punctuation)) > 2
             ]
             library_hint = " ".join(filtered[:3]) if filtered else "fragment wiedzy"
 

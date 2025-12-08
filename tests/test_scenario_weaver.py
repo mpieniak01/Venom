@@ -1,7 +1,8 @@
 """Testy dla ScenarioWeaver."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver
 
@@ -202,7 +203,13 @@ class TestScenarioWeaver:
 
         weaver = ScenarioWeaver(mock_kernel)
 
-        fragments = ["Fragment 1", "Fragment 2", "Fragment 3", "Fragment 4", "Fragment 5"]
+        fragments = [
+            "Fragment 1",
+            "Fragment 2",
+            "Fragment 3",
+            "Fragment 4",
+            "Fragment 5",
+        ]
 
         # Generuj tylko 2 scenariusze z 5 fragmentów
         scenarios = await weaver.weave_multiple_scenarios(fragments, count=2)

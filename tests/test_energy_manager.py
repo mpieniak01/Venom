@@ -22,9 +22,7 @@ class TestSystemMetrics:
 
     def test_system_metrics_with_temperature(self):
         """Test metryki z temperaturą."""
-        metrics = SystemMetrics(
-            cpu_percent=60.0, memory_percent=80.0, temperature=45.5
-        )
+        metrics = SystemMetrics(cpu_percent=60.0, memory_percent=80.0, temperature=45.5)
 
         assert metrics.temperature == 45.5
 

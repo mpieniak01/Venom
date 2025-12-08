@@ -1,7 +1,8 @@
 """Testy dla DreamEngine."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from venom_core.core.dream_engine import DreamEngine, DreamState
 from venom_core.simulation.scenario_weaver import ScenarioSpec
@@ -157,14 +158,18 @@ class TestDreamEngine:
                 dream_engine.state = DreamState.INTERRUPTED
                 return {"success": False, "scenario": "Test"}
 
-            with patch.object(dream_engine, "_dream_scenario", side_effect=interrupt_dream):
+            with patch.object(
+                dream_engine, "_dream_scenario", side_effect=interrupt_dream
+            ):
                 report = await dream_engine.enter_rem_phase()
 
                 assert report["status"] == "interrupted"
                 assert dream_engine.state == DreamState.IDLE
 
     @pytest.mark.asyncio
-    async def test_get_knowledge_clusters_empty_graph(self, dream_engine, mock_components):
+    async def test_get_knowledge_clusters_empty_graph(
+        self, dream_engine, mock_components
+    ):
         """Test pobierania klastrów wiedzy - pusty graf."""
         mock_components["graph_rag"].get_stats.return_value = {"total_nodes": 0}
 
@@ -207,7 +212,7 @@ That's it!"""
 
         code = dream_engine._extract_code_from_response(response)
 
-        assert 'def hello():' in code
+        assert "def hello():" in code
         assert 'print("Hello")' in code
         assert "Here is the code:" not in code
 
@@ -259,7 +264,7 @@ print(x)
         with patch("venom_core.core.dream_engine.SETTINGS") as mock_settings:
             mock_settings.DREAMING_VALIDATION_STRICT = False
             mock_settings.DREAMING_OUTPUT_DIR = str(tmp_path / "synthetic_training")
-            
+
             # Mock scenario
             scenario = ScenarioSpec(
                 title="Test No Validation",
@@ -270,19 +275,19 @@ print(x)
                 libraries=["lib"],
                 metadata={},
             )
-            
+
             # Mock coder response
             mock_components["coder_agent"].process = AsyncMock(
                 return_value="```python\nprint('test')\n```"
             )
-            
+
             # Set output dir
             dream_engine.output_dir = tmp_path / "synthetic_training"
             dream_engine.output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Run dream scenario
             result = await dream_engine._dream_scenario(scenario)
-            
+
             # Powinien zapisać bez walidacji
             assert result["success"] is True
             # Guardian nie powinien być wywołany

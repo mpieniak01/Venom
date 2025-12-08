@@ -118,13 +118,15 @@ class DreamEngine:
         # Użyj lock aby zapobiec race conditions
         async with self._state_lock:
             if self.state != DreamState.IDLE:
-                logger.warning(f"Nie można rozpocząć śnienia - aktualny stan: {self.state}")
+                logger.warning(
+                    f"Nie można rozpocząć śnienia - aktualny stan: {self.state}"
+                )
                 return {"error": "Dream engine not idle", "state": self.state}
 
             # Rozpocznij sesję
             self.current_session_id = str(uuid.uuid4())
             self.state = DreamState.DREAMING
-        
+
         session_start = datetime.now()
 
         logger.info(
@@ -253,17 +255,13 @@ class DreamEngine:
             graph = self.graph_rag.graph_store.graph
 
             # Sortuj węzły po degree (liczba połączeń)
-            nodes_by_degree = sorted(
-                graph.degree(), key=lambda x: x[1], reverse=True
-            )
+            nodes_by_degree = sorted(graph.degree(), key=lambda x: x[1], reverse=True)
 
             # Weź top węzły (najbardziej powiązane) + trochę losowych
-            top_nodes = [node for node, degree in nodes_by_degree[:count * 2]]
+            top_nodes = [node for node, degree in nodes_by_degree[: count * 2]]
 
             # Losuj z top nodes
-            selected_nodes = random.sample(
-                top_nodes, min(count, len(top_nodes))
-            )
+            selected_nodes = random.sample(top_nodes, min(count, len(top_nodes)))
 
             # Pobierz dane z węzłów
             fragments = []
@@ -392,7 +390,7 @@ class DreamEngine:
             # Zapisz też jako plik w synthetic_training/
             dream_file = self.output_dir / f"dream_{dream_id}.py"
             meta_file = self.output_dir / f"dream_{dream_id}.json"
-            
+
             try:
                 with open(dream_file, "w", encoding="utf-8") as f:
                     f.write(f"# Dream: {scenario.title}\n")
@@ -422,9 +420,7 @@ class DreamEngine:
                         indent=2,
                     )
 
-                logger.info(
-                    f"[Dream {dream_id}] 💾 Zapisano jako {dream_file.name}"
-                )
+                logger.info(f"[Dream {dream_id}] 💾 Zapisano jako {dream_file.name}")
             except Exception as io_err:
                 logger.warning(
                     f"[Dream {dream_id}] ⚠️ Nie udało się zapisać plików snu: {io_err}. "

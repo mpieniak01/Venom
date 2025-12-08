@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -181,7 +181,7 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
             data: Dane eventu
         """
         event = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "session_id": self.session_id,
             "persona_name": self.persona.name,
             "event_type": event_type,

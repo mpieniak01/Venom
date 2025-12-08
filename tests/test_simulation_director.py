@@ -3,7 +3,6 @@
 import pytest
 
 from venom_core.simulation.director import SimulationDirector
-from venom_core.simulation.persona_factory import Persona, TechLiteracy
 
 
 @pytest.fixture

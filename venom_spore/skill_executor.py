@@ -52,6 +52,13 @@ class SkillExecutor:
     async def _handle_shell(self, method_name: str, parameters: Dict[str, Any]) -> str:
         """
         Obsługuje ShellSkill.
+        
+        SECURITY WARNING: Używa shell=True z podstawową walidacją blacklist.
+        W produkcji rozważ:
+        - Użycie whitelist dopuszczalnych komend
+        - Użycie subprocess z listą argumentów zamiast shell=True
+        - Dedykowany parser komend z sandboxingiem
+        - Ograniczenie do predefiniowanych skryptów
 
         Args:
             method_name: Nazwa metody
@@ -65,7 +72,11 @@ class SkillExecutor:
             timeout = parameters.get("timeout", 30)
 
             # SECURITY: Podstawowa walidacja - blokuj niebezpieczne komendy
-            # W produkcji użyj whitelist lub pełnej walidacji
+            # UWAGA: To nie jest kompletna ochrona! Można obejść przez:
+            # - Różne warianty spacji/tabs (rm\t-rf)
+            # - Kodowanie (base64, hex)
+            # - Aliasy i funkcje shell
+            # W produkcji użyj whitelist lub subprocess bez shell=True
             dangerous_patterns = ["rm -rf", "mkfs", "dd if=", "> /dev/", "sudo", "su "]
             for pattern in dangerous_patterns:
                 if pattern in command.lower():
@@ -74,7 +85,7 @@ class SkillExecutor:
             try:
                 result = subprocess.run(
                     command,
-                    shell=True,
+                    shell=True,  # SECURITY RISK - rozważ przepisanie na subprocess bez shell
                     capture_output=True,
                     text=True,
                     timeout=timeout,
@@ -104,7 +115,15 @@ class SkillExecutor:
         """
         if method_name == "read_file":
             path = parameters.get("path", "")
-            file_path = self.workspace_root / path
+            
+            # SECURITY: Walidacja path traversal
+            try:
+                file_path = (self.workspace_root / path).resolve()
+                # Sprawdź czy ścieżka jest w workspace
+                if not str(file_path).startswith(str(self.workspace_root.resolve())):
+                    return f"❌ Zabroniony dostęp: ścieżka poza workspace"
+            except Exception as e:
+                return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 
             try:
                 if not file_path.exists():
@@ -116,7 +135,15 @@ class SkillExecutor:
         elif method_name == "write_file":
             path = parameters.get("path", "")
             content = parameters.get("content", "")
-            file_path = self.workspace_root / path
+            
+            # SECURITY: Walidacja path traversal
+            try:
+                file_path = (self.workspace_root / path).resolve()
+                # Sprawdź czy ścieżka jest w workspace
+                if not str(file_path).startswith(str(self.workspace_root.resolve())):
+                    return f"❌ Zabroniony dostęp: ścieżka poza workspace"
+            except Exception as e:
+                return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 
             try:
                 file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,7 +154,15 @@ class SkillExecutor:
 
         elif method_name == "list_files":
             path = parameters.get("path", ".")
-            dir_path = self.workspace_root / path
+            
+            # SECURITY: Walidacja path traversal
+            try:
+                dir_path = (self.workspace_root / path).resolve()
+                # Sprawdź czy ścieżka jest w workspace
+                if not str(dir_path).startswith(str(self.workspace_root.resolve())):
+                    return f"❌ Zabroniony dostęp: ścieżka poza workspace"
+            except Exception as e:
+                return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 
             try:
                 if not dir_path.exists():

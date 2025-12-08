@@ -275,13 +275,14 @@ class NodeManager:
         Args:
             response: Odpowiedź od węzła
         """
-        if response.request_id in self._pending_requests:
-            future = self._pending_requests[response.request_id]
-            if not future.done():
-                future.set_result(response)
-                logger.debug(
-                    f"Otrzymano odpowiedź na żądanie {response.request_id} od węzła {response.node_id}"
-                )
+        async with self._lock:
+            if response.request_id in self._pending_requests:
+                future = self._pending_requests[response.request_id]
+                if not future.done():
+                    future.set_result(response)
+                    logger.debug(
+                        f"Otrzymano odpowiedź na żądanie {response.request_id} od węzła {response.node_id}"
+                    )
 
     def get_node(self, node_id: str) -> Optional[NodeInfo]:
         """Pobiera informacje o węźle."""

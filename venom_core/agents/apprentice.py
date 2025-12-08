@@ -5,6 +5,7 @@ Agent odpowiedzialny za uczenie się workflow poprzez obserwację
 demonstracji użytkownika i generowanie skryptów automatyzacji.
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -261,6 +262,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         Returns:
             Kod Python
         """
+        # Sanityzuj nazwę funkcji
+        safe_function_name = self._sanitize_identifier(skill_name)
+
         # Nagłówek
         code = f'''"""
 Custom skill: {skill_name}
@@ -273,7 +277,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def {skill_name}(ghost_agent: GhostAgent, **kwargs):
+async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
     """
     Wykonuje workflow: {skill_name}
 
@@ -354,6 +358,29 @@ async def {skill_name}(ghost_agent: GhostAgent, **kwargs):
                 name = name.lower().replace(" ", "_").replace("-", "_")
                 return name
         return None
+
+    def _sanitize_identifier(self, identifier: str) -> str:
+        """
+        Sanitizuje identyfikator aby był bezpiecznym identyfikatorem Python.
+
+        Args:
+            identifier: Identyfikator do sanityzacji
+
+        Returns:
+            Bezpieczny identyfikator (tylko alfanumeryczne znaki i _)
+        """
+        # Usuń niedozwolone znaki, zostaw tylko alfanumeryczne i _
+        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
+
+        # Upewnij się że zaczyna się od litery lub _
+        if sanitized and sanitized[0].isdigit():
+            sanitized = "_" + sanitized
+
+        # Jeśli pusty, użyj domyślnej nazwy
+        if not sanitized:
+            sanitized = "skill"
+
+        return sanitized
 
     async def _llm_response(self, request: str) -> str:
         """

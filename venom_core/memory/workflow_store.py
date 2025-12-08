@@ -6,6 +6,7 @@ Umożliwia edycję i zarządzanie workflow.
 """
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -317,6 +318,9 @@ class WorkflowStore:
         if not workflow:
             return None
 
+        # Walidacja workflow_id jako bezpiecznego identyfikatora Python
+        safe_function_name = self._sanitize_identifier(workflow.workflow_id)
+
         # Generuj kod
         code = f'''"""
 Workflow: {workflow.name}
@@ -331,7 +335,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def {workflow.workflow_id}(ghost_agent: GhostAgent, **kwargs):
+async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
     """
     {workflow.description}
 
@@ -409,3 +413,26 @@ async def {workflow.workflow_id}(ghost_agent: GhostAgent, **kwargs):
             for w in all_workflows
             if query_lower in w["name"].lower() or query_lower in w["description"].lower()
         ]
+
+    def _sanitize_identifier(self, identifier: str) -> str:
+        """
+        Sanitizuje identyfikator aby był bezpiecznym identyfikatorem Python.
+
+        Args:
+            identifier: Identyfikator do sanityzacji
+
+        Returns:
+            Bezpieczny identyfikator (tylko alfanumeryczne znaki i _)
+        """
+        # Usuń niedozwolone znaki, zostaw tylko alfanumeryczne i _
+        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
+
+        # Upewnij się że zaczyna się od litery lub _
+        if sanitized and sanitized[0].isdigit():
+            sanitized = "_" + sanitized
+
+        # Jeśli pusty, użyj domyślnej nazwy
+        if not sanitized:
+            sanitized = "workflow"
+
+        return sanitized

@@ -13,7 +13,10 @@ from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
-from venom_core.learning.demonstration_analyzer import ActionIntent, DemonstrationAnalyzer
+from venom_core.learning.demonstration_analyzer import (
+    ActionIntent,
+    DemonstrationAnalyzer,
+)
 from venom_core.perception.recorder import DemonstrationRecorder
 from venom_core.utils.code_generation_utils import escape_string_for_code
 from venom_core.utils.logger import get_logger
@@ -55,7 +58,7 @@ Ty: [Rozpoczynasz nagrywanie]
 Użytkownik: [Wykonuje akcje: otwiera Slack, wybiera kanał, załącza plik, wysyła]
 Użytkownik: "Zrobione"
 Ty: [Analizujesz demonstrację]
-Ty: "Zrozumiałem. Kliknąłeś kanał #general, potem ikonę spinacza, wybrałeś plik. 
+Ty: "Zrozumiałem. Kliknąłeś kanał #general, potem ikonę spinacza, wybrałeś plik.
      Zapisałem to jako umiejętność 'wyslij_raport_slack'."
 
 GENERALIZACJA:
@@ -88,7 +91,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
 
         self.current_session_id: Optional[str] = None
 
-        logger.info(f"ApprenticeAgent zainicjalizowany (skills: {self.custom_skills_dir})")
+        logger.info(
+            f"ApprenticeAgent zainicjalizowany (skills: {self.custom_skills_dir})"
+        )
 
     async def process(self, request: str) -> str:
         """
@@ -265,7 +270,7 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         """
         # Sanityzuj nazwę funkcji
         safe_function_name = self._sanitize_identifier(skill_name)
-        
+
         # Bezpiecznie eskejpuj wartości dla generowanego kodu
         skill_name_repr = escape_string_for_code(skill_name)
 
@@ -304,10 +309,10 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                 fallback_x = action.params.get("fallback_coords", {}).get("x", 0)
                 fallback_y = action.params.get("fallback_coords", {}).get("y", 0)
 
-                code += f'    await ghost_agent.vision_click(\n'
-                code += f'        description={element_desc_repr},\n'
-                code += f'        fallback_coords=({fallback_x}, {fallback_y})\n'
-                code += f'    )\n\n'
+                code += "    await ghost_agent.vision_click(\n"
+                code += f"        description={element_desc_repr},\n"
+                code += f"        fallback_coords=({fallback_x}, {fallback_y})\n"
+                code += "    )\n\n"
 
             elif action.action_type == "type":
                 text = action.params.get("text", "")
@@ -316,8 +321,10 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
                 if is_sensitive:
                     # Użyj parametru
-                    code += f'    text = kwargs.get("password", "")\n'
-                    code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n\n'
+                    code += '    text = kwargs.get("password", "")\n'
+                    code += (
+                        "    await ghost_agent.input_skill.keyboard_type(text=text)\n\n"
+                    )
                 else:
                     # Hardcoded text lub parametr
                     # Generuj bezpieczną nazwę parametru (f-string z int jest zawsze bezpieczny)
@@ -325,20 +332,22 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                     # Dodatkowe zabezpieczenie - sanityzuj na wypadek przyszłych zmian
                     param_name_safe = self._sanitize_identifier(param_name)
                     code += f'    text = kwargs.get("{param_name_safe}", {text_repr})\n'
-                    code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n\n'
+                    code += (
+                        "    await ghost_agent.input_skill.keyboard_type(text=text)\n\n"
+                    )
 
             elif action.action_type == "hotkey":
                 keys = action.params.get("keys", [])
-                code += f'    await ghost_agent.input_skill.keyboard_hotkey({keys})\n\n'
+                code += f"    await ghost_agent.input_skill.keyboard_hotkey({keys})\n\n"
 
             # Dodaj opóźnienie między krokami
-            code += f'    await ghost_agent._wait(1.0)\n\n'
+            code += "    await ghost_agent._wait(1.0)\n\n"
 
         # Stopka
         code += f'    logger.info("Workflow zakończony: %s", {skill_name_repr})\n'
         # Użyj repr pojedynczo dla bezpieczeństwa, bez podwójnego eskejpowania
         return_msg = f"✅ Workflow {skill_name} wykonany pomyślnie"
-        code += f'    return {repr(return_msg)}\n'
+        code += f"    return {repr(return_msg)}\n"
 
         return code
 

@@ -47,8 +47,9 @@ async def demo_apprentice_basic():
 
     # Dodaj kilka symulowanych zdarzeń do sesji
     if apprentice.recorder.current_session:
-        from venom_core.perception.recorder import InputEvent
         import time
+
+        from venom_core.perception.recorder import InputEvent
 
         # Symuluj kliknięcie
         event1 = InputEvent(
@@ -75,7 +76,9 @@ async def demo_apprentice_basic():
         )
         apprentice.recorder.current_session.events.append(event_enter)
 
-        logger.info(f"   Dodano {len(apprentice.recorder.current_session.events)} zdarzeń\n")
+        logger.info(
+            f"   Dodano {len(apprentice.recorder.current_session.events)} zdarzeń\n"
+        )
 
     # 2. Zatrzymaj nagrywanie
     logger.info("📝 Krok 2: Zatrzymanie nagrywania")
@@ -111,7 +114,9 @@ async def demo_workflow_store():
     logger.info(f"📝 Liczba workflow: {len(workflows)}")
 
     for wf in workflows:
-        logger.info(f"   - {wf['workflow_id']}: {wf['name']} ({wf['steps_count']} kroków)")
+        logger.info(
+            f"   - {wf['workflow_id']}: {wf['name']} ({wf['steps_count']} kroków)"
+        )
 
     # Jeśli są workflow, załaduj pierwszy
     if workflows:
@@ -122,13 +127,13 @@ async def demo_workflow_store():
         if workflow:
             logger.info(f"   Nazwa: {workflow.name}")
             logger.info(f"   Opis: {workflow.description}")
-            logger.info(f"   Kroki:")
+            logger.info("   Kroki:")
             for step in workflow.steps:
                 status = "✓" if step.enabled else "✗"
                 logger.info(f"      {status} Krok {step.step_id}: {step.description}")
 
             # Eksportuj do Python
-            logger.info(f"\n📝 Eksport workflow do Python")
+            logger.info("\n📝 Eksport workflow do Python")
             python_path = workflow_store.export_to_python(wf_id)
             logger.info(f"   Plik: {python_path}")
 

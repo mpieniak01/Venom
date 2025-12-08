@@ -181,7 +181,7 @@ class DreamEngine:
                     "Brak klastrów wiedzy w GraphRAG - nie można śnić bez wiedzy"
                 )
                 # Cleanup empty timeline before returning
-                self._cleanup_empty_timeline(timeline_name)
+                self._cleanup_empty_timeline(timeline_name, self.current_checkpoint_id)
                 return {
                     "session_id": self.current_session_id,
                     "status": "no_knowledge",
@@ -271,7 +271,7 @@ class DreamEngine:
         except Exception as e:
             logger.error(f"Błąd krytyczny w enter_rem_phase: {e}")
             # Cleanup empty timeline on critical error
-            self._cleanup_empty_timeline(timeline_name)
+            self._cleanup_empty_timeline(timeline_name, self.current_checkpoint_id)
             return {
                 "session_id": self.current_session_id,
                 "status": "error",
@@ -562,12 +562,13 @@ class DreamEngine:
             "output_directory": str(self.output_dir),
         }
 
-    def _cleanup_empty_timeline(self, timeline_name: str) -> None:
+    def _cleanup_empty_timeline(self, timeline_name: str, checkpoint_id: Optional[str] = None) -> None:
         """
         Usuwa pustą lub nieużywaną timeline po nieudanej sesji śnienia.
 
         Args:
             timeline_name: Nazwa timeline do wyczyszczenia
+            checkpoint_id: ID checkpointu do sprawdzenia (opcjonalny)
         """
         try:
             timeline_path = self.chronos.timelines_dir / timeline_name
@@ -580,10 +581,10 @@ class DreamEngine:
             if len(checkpoints) == 0:
                 # Pusta timeline - usuń
                 self._remove_timeline_directory(timeline_path, timeline_name, "pustą")
-            elif len(checkpoints) == 1 and self.current_checkpoint_id:
+            elif len(checkpoints) == 1 and checkpoint_id:
                 # Tylko checkpoint startowy - sprawdź czy to jedyny
                 checkpoint_dir = checkpoints[0]
-                if checkpoint_dir.name == self.current_checkpoint_id:
+                if checkpoint_dir.name == checkpoint_id:
                     # Usuń checkpoint i timeline
                     shutil.rmtree(checkpoint_dir)
                     self._remove_timeline_directory(timeline_path, timeline_name, "nieużywaną")

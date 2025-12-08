@@ -1,5 +1,6 @@
 """Moduł: media_skill - generowanie i przetwarzanie obrazów."""
 
+import time
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -138,8 +139,6 @@ class MediaSkill:
 
             # Zapisz obraz
             if not filename:
-                import time
-
                 filename = f"dalle_{int(time.time())}.png"
             if not filename.endswith(".png"):
                 filename += ".png"
@@ -222,8 +221,6 @@ class MediaSkill:
 
         # Zapisz obraz
         if not filename:
-            import time
-
             filename = f"placeholder_{int(time.time())}.png"
         if not filename.endswith(".png"):
             filename += ".png"

@@ -77,7 +77,7 @@ class VisionGrounding:
         Lokalizuje element używając OpenAI GPT-4o Vision.
 
         GPT-4o może analizować obraz i zwracać przybliżone współrzędne.
-        
+
         Args:
             screenshot: Obraz PIL ze zrzutem ekranu
             description: Opis elementu do znalezienia
@@ -202,9 +202,7 @@ Przykład odpowiedzi:
                 return None
 
             except ImportError:
-                logger.warning(
-                    "pytesseract nie jest zainstalowany - brak lokalizacji"
-                )
+                logger.warning("pytesseract nie jest zainstalowany - brak lokalizacji")
                 # BEZPIECZEŃSTWO: NIE zwracamy środka ekranu bo może to być
                 # niebezpieczny element (np. przycisk "Delete"). Lepiej zwrócić None.
                 return None

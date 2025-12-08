@@ -1,5 +1,7 @@
 """Testy jednostkowe dla InputSkill (GUI Automation)."""
 
+# ruff: noqa: E402
+
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +36,7 @@ class TestInputSkill:
         # Set up return values properly for each test
         mock_pyautogui.size.return_value = (1920, 1080)
         mock_pyautogui.position.return_value = (500, 300)
-        
+
         # Reset call counts for tracking
         mock_pyautogui.moveTo.reset_mock()
         mock_pyautogui.click.reset_mock()

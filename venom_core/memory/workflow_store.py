@@ -377,8 +377,10 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                 text = step.params.get("text", "")
                 text_repr = escape_string_for_code(text)
                 param_name = step.params.get("param_name", "text")
+                # Sanityzuj param_name - musi być poprawnym identyfikatorem Python
+                param_name_safe = self._sanitize_identifier(param_name)
 
-                code += f'    text = kwargs.get("{param_name}", {text_repr})\n'
+                code += f'    text = kwargs.get("{param_name_safe}", {text_repr})\n'
                 code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n'
 
             elif step.action_type == "hotkey":

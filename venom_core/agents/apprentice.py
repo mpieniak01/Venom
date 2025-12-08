@@ -320,8 +320,11 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                     code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n\n'
                 else:
                     # Hardcoded text lub parametr
+                    # Generuj bezpieczną nazwę parametru (f-string z int jest zawsze bezpieczny)
                     param_name = f"text_{i}"
-                    code += f'    text = kwargs.get("{param_name}", {text_repr})\n'
+                    # Dodatkowe zabezpieczenie - sanityzuj na wypadek przyszłych zmian
+                    param_name_safe = self._sanitize_identifier(param_name)
+                    code += f'    text = kwargs.get("{param_name_safe}", {text_repr})\n'
                     code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n\n'
 
             elif action.action_type == "hotkey":

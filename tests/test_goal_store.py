@@ -5,13 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from venom_core.core.goal_store import (
-    Goal,
-    GoalStatus,
-    GoalStore,
-    GoalType,
-    KPI,
-)
+from venom_core.core.goal_store import KPI, Goal, GoalStatus, GoalStore, GoalType
 
 
 @pytest.fixture
@@ -53,9 +47,7 @@ def test_add_milestone_with_parent(temp_storage):
     store = GoalStore(storage_path=temp_storage)
 
     # Dodaj vision
-    vision = store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    vision = store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     # Dodaj milestone
     milestone = store.add_goal(
@@ -91,9 +83,7 @@ def test_update_progress(temp_storage):
     """Test aktualizacji postępu."""
     store = GoalStore(storage_path=temp_storage)
 
-    task = store.add_goal(
-        title="Zadanie", goal_type=GoalType.TASK, priority=1
-    )
+    task = store.add_goal(title="Zadanie", goal_type=GoalType.TASK, priority=1)
 
     # Aktualizuj status
     updated = store.update_progress(task.goal_id, status=GoalStatus.IN_PROGRESS)
@@ -112,9 +102,7 @@ def test_update_progress_with_kpi(temp_storage):
     )
 
     # Aktualizuj KPI
-    updated = store.update_progress(
-        task.goal_id, kpi_updates={"Test": 50.0}
-    )
+    updated = store.update_progress(task.goal_id, kpi_updates={"Test": 50.0})
 
     assert updated.kpis[0].current_value == 50.0
     assert updated.get_progress() == 50.0
@@ -124,9 +112,7 @@ def test_get_vision(temp_storage):
     """Test pobierania wizji."""
     store = GoalStore(storage_path=temp_storage)
 
-    vision = store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    vision = store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     retrieved = store.get_vision()
 
@@ -138,9 +124,7 @@ def test_get_milestones(temp_storage):
     """Test pobierania kamieni milowych."""
     store = GoalStore(storage_path=temp_storage)
 
-    vision = store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    vision = store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     # Dodaj 3 milestone
     store.add_goal(
@@ -175,9 +159,7 @@ def test_get_next_milestone(temp_storage):
     """Test pobierania kolejnego milestone."""
     store = GoalStore(storage_path=temp_storage)
 
-    vision = store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    vision = store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     # Dodaj milestone z różnymi statusami
     m1_id = store.add_goal(
@@ -205,9 +187,7 @@ def test_get_next_task(temp_storage):
     """Test pobierania kolejnego zadania."""
     store = GoalStore(storage_path=temp_storage)
 
-    vision = store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    vision = store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     milestone = store.add_goal(
         title="M1",
@@ -241,9 +221,7 @@ def test_generate_roadmap_report(temp_storage):
     """Test generowania raportu roadmapy."""
     store = GoalStore(storage_path=temp_storage)
 
-    store.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    store.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     vision_id = store.get_vision().goal_id
     store.add_goal(
@@ -264,9 +242,7 @@ def test_persistence(temp_storage):
     """Test zapisu i odczytu z dysku."""
     # Utwórz store i dodaj cele
     store1 = GoalStore(storage_path=temp_storage)
-    store1.add_goal(
-        title="Vision", goal_type=GoalType.VISION, priority=1
-    )
+    store1.add_goal(title="Vision", goal_type=GoalType.VISION, priority=1)
 
     # Utwórz nową instancję - powinna załadować dane
     store2 = GoalStore(storage_path=temp_storage)

@@ -1407,8 +1407,8 @@ async def serve_strategy_dashboard():
     if strategy_path.exists():
         return FileResponse(str(strategy_path))
     raise HTTPException(
-        status_code=404, 
-        detail="Strategy Dashboard niedostępny - brak pliku strategy.html"
+        status_code=404,
+        detail="Strategy Dashboard niedostępny - brak pliku strategy.html",
     )
 
 
@@ -1474,9 +1474,7 @@ async def get_roadmap():
             )
 
         # KPIs
-        completed_milestones = [
-            m for m in milestones if m.status.value == "COMPLETED"
-        ]
+        completed_milestones = [m for m in milestones if m.status.value == "COMPLETED"]
         all_tasks_list = []
         for m in milestones:
             all_tasks_list.extend(goal_store.get_tasks(parent_id=m.goal_id))

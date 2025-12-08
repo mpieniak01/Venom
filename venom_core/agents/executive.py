@@ -8,7 +8,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.core.goal_store import GoalStatus, GoalStore, GoalType, KPI
+from venom_core.core.goal_store import KPI, GoalStatus, GoalStore, GoalType
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -239,9 +239,7 @@ Pamiętaj:
                     goal_type=GoalType.VISION,
                     description=original_vision,
                     priority=1,
-                    kpis=[
-                        KPI(name="Postęp realizacji", target_value=100.0, unit="%")
-                    ],
+                    kpis=[KPI(name="Postęp realizacji", target_value=100.0, unit="%")],
                 )
 
             # Parse Milestones (uproszczone)
@@ -252,7 +250,9 @@ Pamiętaj:
                     # Ekstrakcja tytułu
                     parts = line.split(":", 1)
                     milestone_title = (
-                        parts[1].strip() if len(parts) > 1 else f"Milestone {milestone_count}"
+                        parts[1].strip()
+                        if len(parts) > 1
+                        else f"Milestone {milestone_count}"
                     )
 
                     # Szukaj opisu i priorytetu
@@ -272,7 +272,8 @@ Pamiętaj:
                     milestone = self.goal_store.add_goal(
                         title=milestone_title,
                         goal_type=GoalType.MILESTONE,
-                        description=description or f"Etap {milestone_count} realizacji projektu",
+                        description=description
+                        or f"Etap {milestone_count} realizacji projektu",
                         priority=priority,
                         parent_id=vision_goal.goal_id,
                         kpis=[
@@ -378,7 +379,9 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         response = await self.process(prompt)
 
         # Połącz roadmap + analizę
-        full_report = f"{roadmap_report}\n\n{'='*50}\n📊 RAPORT WYKONAWCZY:\n\n{response}"
+        full_report = (
+            f"{roadmap_report}\n\n{'=' * 50}\n📊 RAPORT WYKONAWCZY:\n\n{response}"
+        )
 
         return full_report
 
@@ -396,6 +399,7 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
 
         meeting_notes = ["=== DAILY STANDUP - STATUS MEETING ===\n"]
         from datetime import datetime as dt
+
         meeting_notes.append(f"Data: {dt.now().strftime('%Y-%m-%d %H:%M')}\n")
 
         # 1. Status aktualnego Milestone
@@ -456,7 +460,9 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         Returns:
             Raport z priorytetyzacji
         """
-        logger.info(f"ExecutiveAgent priorytetyzuje zadania dla Milestone {milestone_id}")
+        logger.info(
+            f"ExecutiveAgent priorytetyzuje zadania dla Milestone {milestone_id}"
+        )
 
         milestone = self.goal_store.get_goal(milestone_id)
         if not milestone:
@@ -468,10 +474,7 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
 
         # Przygotuj kontekst dla LLM
         tasks_info = "\n".join(
-            [
-                f"- [{t.priority}] {t.title}: {t.description}"
-                for t in tasks
-            ]
+            [f"- [{t.priority}] {t.title}: {t.description}" for t in tasks]
         )
 
         prompt = f"""Jako Executive, dokonaj priorytetyzacji zadań w Milestone: "{milestone.title}"

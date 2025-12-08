@@ -299,6 +299,7 @@ class BackgroundScheduler:
         Returns:
             ID zadania
         """
+
         # Funkcja do wykonania
         async def daily_standup():
             logger.info("⏰ Rozpoczynam Daily Standup (scheduled)")

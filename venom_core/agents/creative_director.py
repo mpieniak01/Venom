@@ -136,7 +136,8 @@ Pamiętaj: Zawsze proponuj konkretne rozwiązania, nie tylko ogólne rady."""
 
             # Wykonaj chat completion
             settings = OpenAIChatPromptExecutionSettings(
-                max_tokens=2000, temperature=0.8  # Wyższa temperatura dla kreatywności
+                max_tokens=2000,
+                temperature=0.8,  # Wyższa temperatura dla kreatywności
             )
 
             response = await chat_service.get_chat_message_contents(

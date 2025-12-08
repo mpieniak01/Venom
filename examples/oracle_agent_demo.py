@@ -15,7 +15,6 @@ from pathlib import Path
 from semantic_kernel import Kernel
 
 from venom_core.agents.oracle import OracleAgent
-from venom_core.config import SETTINGS
 from venom_core.core.model_router import ModelRouter
 from venom_core.utils.logger import get_logger
 
@@ -52,8 +51,8 @@ async def demo_ingest_file(oracle: OracleAgent):
 
     test_file = test_dir / "python_info.txt"
     test_content = """Python jest językiem programowania wysokiego poziomu stworzonym przez Guido van Rossum.
-    
-Pierwsza wersja Pythona została wydana w 1991 roku. 
+
+Pierwsza wersja Pythona została wydana w 1991 roku.
 
 Python jest używany w:
 - Data Science i Machine Learning
@@ -143,10 +142,10 @@ async def demo_complex_reasoning(oracle: OracleAgent):
     2. W jakim roku?
     3. Do czego Python jest używany?
     4. Jakie są najważniejsze biblioteki Pythona?
-    
+
     Odpowiedz na podstawie grafu wiedzy, cytując źródła."""
 
-    logger.info(f"\nPytanie złożone:")
+    logger.info("\nPytanie złożone:")
     print(question)
     result = await oracle.process(question)
     print(f"\nOdpowiedź:\n{result}\n")

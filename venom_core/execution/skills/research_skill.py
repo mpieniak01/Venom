@@ -267,16 +267,16 @@ class ResearchSkill:
 
             return f"""📊 Statystyki Grafu Wiedzy:
 
-🔹 Encje: {stats['total_nodes']}
-🔹 Relacje: {stats['total_edges']}
-🔹 Społeczności: {stats['communities_count']}
-🔹 Największa społeczność: {stats['largest_community_size']} encji
+🔹 Encje: {stats["total_nodes"]}
+🔹 Relacje: {stats["total_edges"]}
+🔹 Społeczności: {stats["communities_count"]}
+🔹 Największa społeczność: {stats["largest_community_size"]} encji
 
 📋 Typy encji:
-{chr(10).join([f'  - {k}: {v}' for k, v in stats['entity_types'].items()])}
+{chr(10).join([f"  - {k}: {v}" for k, v in stats["entity_types"].items()])}
 
 🔗 Typy relacji:
-{chr(10).join([f'  - {k}: {v}' for k, v in stats['relationship_types'].items()])}"""
+{chr(10).join([f"  - {k}: {v}" for k, v in stats["relationship_types"].items()])}"""
 
         except Exception as e:
             logger.error(f"Błąd podczas pobierania statystyk: {e}")

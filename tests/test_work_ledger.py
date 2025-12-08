@@ -124,7 +124,7 @@ class TestWorkLedger:
         prediction = ledger.predict_overrun("test_001")
 
         assert prediction["will_overrun"] is False
-        assert prediction["projected_total_minutes"] == 60
+        assert prediction["projected_total_minutes"] == pytest.approx(60)
 
     def test_predict_overrun_delayed(self, ledger):
         """Test prognozy overrun - zadanie opóźnione."""

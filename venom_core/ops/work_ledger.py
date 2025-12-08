@@ -402,7 +402,29 @@ class WorkLedger:
         """
         total_tasks = len(self.tasks)
         if total_tasks == 0:
-            return {"total_tasks": 0, "message": "Brak zadań w systemie"}
+            # Zwracamy spójną strukturę nawet dla pustego ledgera
+            complexity_breakdown = {
+                complexity.value: {
+                    "count": 0,
+                    "completed": 0,
+                    "avg_estimated_minutes": 0,
+                }
+                for complexity in TaskComplexity
+            }
+            return {
+                "total_tasks": 0,
+                "completed": 0,
+                "in_progress": 0,
+                "overrun": 0,
+                "total_estimated_minutes": 0,
+                "total_actual_minutes": 0,
+                "estimation_accuracy_percent": 0,
+                "complexity_breakdown": complexity_breakdown,
+                "total_files_touched": 0,
+                "total_api_calls": 0,
+                "total_tokens_used": 0,
+                "message": "Brak zadań w systemie",
+            }
 
         completed = [t for t in self.tasks.values() if t.status == TaskStatus.COMPLETED]
         in_progress = [

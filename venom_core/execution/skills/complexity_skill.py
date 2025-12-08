@@ -387,35 +387,36 @@ class ComplexitySkill:
             Szacowana liczba plików
         """
         desc_lower = description.lower()
-        count = 0
+        heurystyki = []
 
-        # Heurystyki
+        # Heurystyki — zbieramy potencjalne wartości
         if "system" in desc_lower or "architektura" in desc_lower:
-            count += 15
+            heurystyki.append(15)
 
         if "api" in desc_lower or "endpoint" in desc_lower:
-            count += 5
+            heurystyki.append(5)
 
         if "baza danych" in desc_lower or "database" in desc_lower:
-            count += 3
+            heurystyki.append(3)
 
         if "testy" in desc_lower or "test" in desc_lower:
-            count += 3
+            heurystyki.append(3)
 
         if "model" in desc_lower:
-            count += 2
+            heurystyki.append(2)
 
         if "service" in desc_lower or "serwis" in desc_lower:
-            count += 4
+            heurystyki.append(4)
 
         if "ui" in desc_lower or "interfejs" in desc_lower:
-            count += 5
+            heurystyki.append(5)
 
         # Jeśli nic nie dopasowano, ale tekst jest długi
-        if count == 0 and len(description) > 300:
-            count = 2
+        if not heurystyki and len(description) > 300:
+            return 2
 
-        return count
+        # Używamy max zamiast sumy aby uniknąć nadmiernego zawyżania
+        return max(heurystyki) if heurystyki else 1
 
     def _complexity_to_time(self, complexity: TaskComplexity) -> float:
         """

@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -9,6 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from venom_core.agents.strategist import StrategistAgent
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.ops.work_ledger import TaskComplexity, WorkLedger
+
+# Utwórz katalog tymczasowy kompatybilny z różnymi systemami
+TEMP_DIR = Path(tempfile.gettempdir()) / "venom_demo"
+TEMP_DIR.mkdir(exist_ok=True)
 
 
 async def demo_analyze_simple_task():
@@ -57,7 +62,7 @@ async def demo_task_monitoring():
     print("=" * 80)
 
     kernel = KernelBuilder(enable_routing=False).build_kernel()
-    work_ledger = WorkLedger(storage_path="/tmp/demo_work_ledger.json")
+    work_ledger = WorkLedger(storage_path=str(TEMP_DIR / "demo_work_ledger.json"))
     strategist = StrategistAgent(kernel=kernel, work_ledger=work_ledger)
 
     # Zaloguj zadanie
@@ -99,7 +104,7 @@ async def demo_api_usage_tracking():
     print("=" * 80)
 
     kernel = KernelBuilder(enable_routing=False).build_kernel()
-    work_ledger = WorkLedger(storage_path="/tmp/demo_api_ledger.json")
+    work_ledger = WorkLedger(storage_path=str(TEMP_DIR / "demo_api_ledger.json"))
 
     # Niskie limity dla demo
     api_limits = {
@@ -152,7 +157,7 @@ async def demo_full_report():
     print("=" * 80)
 
     kernel = KernelBuilder(enable_routing=False).build_kernel()
-    work_ledger = WorkLedger(storage_path="/tmp/demo_full_ledger.json")
+    work_ledger = WorkLedger(storage_path=str(TEMP_DIR / "demo_full_ledger.json"))
     strategist = StrategistAgent(kernel=kernel, work_ledger=work_ledger)
 
     # Dodaj kilka zadań dla raportu

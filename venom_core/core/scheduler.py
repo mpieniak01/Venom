@@ -9,6 +9,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
+from venom_core.core.dream_engine import DreamState
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -395,9 +396,6 @@ class BackgroundScheduler:
 
         # Funkcja do wykonania
         async def check_idle_and_dream():
-            # Import DreamState for comparison
-            from venom_core.core.dream_engine import DreamState
-            
             # Sprawdź czy system bezczynny i czy nie śnimy już
             if (
                 dream_engine.energy_manager.is_idle()

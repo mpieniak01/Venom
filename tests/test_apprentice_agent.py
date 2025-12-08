@@ -27,8 +27,9 @@ class TestApprenticeAgent:
     @pytest.fixture
     def apprentice_agent(self, mock_kernel, temp_workspace):
         """Fixture: ApprenticeAgent."""
-        with patch("venom_core.agents.apprentice.DemonstrationRecorder"), patch(
-            "venom_core.agents.apprentice.DemonstrationAnalyzer"
+        with (
+            patch("venom_core.agents.apprentice.DemonstrationRecorder"),
+            patch("venom_core.agents.apprentice.DemonstrationAnalyzer"),
         ):
             agent = ApprenticeAgent(kernel=mock_kernel, workspace_root=temp_workspace)
             return agent
@@ -43,7 +44,9 @@ class TestApprenticeAgent:
     async def test_start_recording(self, apprentice_agent):
         """Test rozpoczęcia nagrywania."""
         apprentice_agent.recorder.is_recording = False
-        apprentice_agent.recorder.start_recording = MagicMock(return_value="test_session")
+        apprentice_agent.recorder.start_recording = MagicMock(
+            return_value="test_session"
+        )
 
         result = await apprentice_agent._start_recording("Rozpocznij nagrywanie")
 
@@ -106,7 +109,9 @@ class TestApprenticeAgent:
             return_value="Summary"
         )
 
-        result = await apprentice_agent._analyze_demonstration("Analizuj sesję test_session")
+        result = await apprentice_agent._analyze_demonstration(
+            "Analizuj sesję test_session"
+        )
 
         assert "Analiza zakończona" in result
         assert "test_session" in result
@@ -139,7 +144,10 @@ class TestApprenticeAgent:
                 action_type="click",
                 description="Click button",
                 timestamp=1.0,
-                params={"element_description": "blue button", "fallback_coords": {"x": 100, "y": 200}},
+                params={
+                    "element_description": "blue button",
+                    "fallback_coords": {"x": 100, "y": 200},
+                },
             )
         ]
         apprentice_agent.analyzer.analyze_session = AsyncMock(return_value=mock_actions)
@@ -167,12 +175,16 @@ class TestApprenticeAgent:
 
     def test_extract_session_name(self, apprentice_agent):
         """Test wyodrębniania nazwy sesji."""
-        name = apprentice_agent._extract_session_name("Rozpocznij nagrywanie nazwany login_workflow")
+        name = apprentice_agent._extract_session_name(
+            "Rozpocznij nagrywanie nazwany login_workflow"
+        )
         assert name == "login_workflow"
 
     def test_extract_session_id(self, apprentice_agent):
         """Test wyodrębniania ID sesji."""
-        session_id = apprentice_agent._extract_session_id("Analizuj sesję demo_20241208_123456")
+        session_id = apprentice_agent._extract_session_id(
+            "Analizuj sesję demo_20241208_123456"
+        )
         assert session_id == "demo_20241208_123456"
 
     def test_extract_skill_name(self, apprentice_agent):
@@ -188,7 +200,9 @@ class TestApprenticeAgent:
     async def test_process_start_recording(self, apprentice_agent):
         """Test przetwarzania żądania rozpoczęcia nagrywania."""
         apprentice_agent.recorder.is_recording = False
-        apprentice_agent.recorder.start_recording = MagicMock(return_value="test_session")
+        apprentice_agent.recorder.start_recording = MagicMock(
+            return_value="test_session"
+        )
 
         result = await apprentice_agent.process("Rozpocznij nagrywanie")
 
@@ -213,7 +227,10 @@ class TestApprenticeAgent:
                 action_type="click",
                 description="Click login button",
                 timestamp=1.0,
-                params={"element_description": "login button", "fallback_coords": {"x": 100, "y": 200}},
+                params={
+                    "element_description": "login button",
+                    "fallback_coords": {"x": 100, "y": 200},
+                },
             ),
             ActionIntent(
                 action_type="type",
@@ -239,11 +256,25 @@ class TestApprenticeAgent:
 
     def test_sanitize_identifier_with_special_chars(self, apprentice_agent):
         """Test sanityzacji identyfikatorów ze znakami specjalnymi."""
-        assert apprentice_agent._sanitize_identifier("hello'; drop table") == "hello___drop_table"
+        assert (
+            apprentice_agent._sanitize_identifier("hello'; drop table")
+            == "hello___drop_table"
+        )
         assert apprentice_agent._sanitize_identifier("123abc") == "_123abc"
         assert apprentice_agent._sanitize_identifier("") == "skill"
         assert apprentice_agent._sanitize_identifier("valid_name") == "valid_name"
-        assert apprentice_agent._sanitize_identifier("name-with-dash") == "name_with_dash"
-        assert apprentice_agent._sanitize_identifier("name with spaces") == "name_with_spaces"
-        assert apprentice_agent._sanitize_identifier("name/with/slash") == "name_with_slash"
-        assert apprentice_agent._sanitize_identifier("../../../etc/passwd") == "____________etc_passwd"
+        assert (
+            apprentice_agent._sanitize_identifier("name-with-dash") == "name_with_dash"
+        )
+        assert (
+            apprentice_agent._sanitize_identifier("name with spaces")
+            == "name_with_spaces"
+        )
+        assert (
+            apprentice_agent._sanitize_identifier("name/with/slash")
+            == "name_with_slash"
+        )
+        assert (
+            apprentice_agent._sanitize_identifier("../../../etc/passwd")
+            == "____________etc_passwd"
+        )

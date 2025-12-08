@@ -65,7 +65,9 @@ class DemonstrationAnalyzer:
 
         # Filtruj tylko istotne zdarzenia (kliknięcia, wpisywanie tekstu)
         click_events = [
-            e for e in session.events if e.event_type == "mouse_click" and e.data.get("pressed")
+            e
+            for e in session.events
+            if e.event_type == "mouse_click" and e.data.get("pressed")
         ]
 
         key_sequences = self._extract_key_sequences(session.events)
@@ -157,7 +159,9 @@ class DemonstrationAnalyzer:
             confidence=confidence,
         )
 
-    def _extract_key_sequences(self, events: List[InputEvent]) -> List[List[InputEvent]]:
+    def _extract_key_sequences(
+        self, events: List[InputEvent]
+    ) -> List[List[InputEvent]]:
         """
         Wyodrębnia sekwencje wpisywanych klawiszy.
 

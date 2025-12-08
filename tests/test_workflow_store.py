@@ -160,7 +160,9 @@ class TestWorkflowStore:
         assert sample_workflow.workflow_id not in workflow_store.workflows_cache
 
         # Sprawdź czy plik został usunięty
-        workflow_file = workflow_store.workflows_dir / f"{sample_workflow.workflow_id}.json"
+        workflow_file = (
+            workflow_store.workflows_dir / f"{sample_workflow.workflow_id}.json"
+        )
         assert not workflow_file.exists()
 
     def test_delete_nonexistent_workflow(self, workflow_store):
@@ -192,7 +194,9 @@ class TestWorkflowStore:
         """Test aktualizacji nieistniejącego kroku."""
         workflow_store.save_workflow(sample_workflow)
 
-        result = workflow_store.update_step(sample_workflow.workflow_id, 999, {"description": "Test"})
+        result = workflow_store.update_step(
+            sample_workflow.workflow_id, 999, {"description": "Test"}
+        )
 
         assert result is False
 
@@ -228,7 +232,9 @@ class TestWorkflowStore:
             params={"duration": 1.0},
         )
 
-        result = workflow_store.add_step(sample_workflow.workflow_id, new_step, position=1)
+        result = workflow_store.add_step(
+            sample_workflow.workflow_id, new_step, position=1
+        )
 
         assert result is True
 
@@ -343,11 +349,22 @@ class TestWorkflowStore:
 
     def test_sanitize_identifier_with_special_chars(self, workflow_store):
         """Test sanityzacji identyfikatorów ze znakami specjalnymi."""
-        assert workflow_store._sanitize_identifier("hello'; drop table") == "hello___drop_table"
+        assert (
+            workflow_store._sanitize_identifier("hello'; drop table")
+            == "hello___drop_table"
+        )
         assert workflow_store._sanitize_identifier("123abc") == "_123abc"
         assert workflow_store._sanitize_identifier("") == "workflow"
         assert workflow_store._sanitize_identifier("valid_name") == "valid_name"
         assert workflow_store._sanitize_identifier("name-with-dash") == "name_with_dash"
-        assert workflow_store._sanitize_identifier("name with spaces") == "name_with_spaces"
-        assert workflow_store._sanitize_identifier("name/with/slash") == "name_with_slash"
-        assert workflow_store._sanitize_identifier("../../../etc/passwd") == "____________etc_passwd"
+        assert (
+            workflow_store._sanitize_identifier("name with spaces")
+            == "name_with_spaces"
+        )
+        assert (
+            workflow_store._sanitize_identifier("name/with/slash") == "name_with_slash"
+        )
+        assert (
+            workflow_store._sanitize_identifier("../../../etc/passwd")
+            == "____________etc_passwd"
+        )

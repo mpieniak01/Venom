@@ -9,17 +9,17 @@ wartości używanych w generowanym kodzie Python.
 def escape_string_for_code(value: str) -> str:
     """
     Bezpiecznie eskejpuje string do użycia w generowanym kodzie.
-    
+
     Używa repr() aby uniknąć problemów z cudzysłowami, backslashami
     i innymi znakami specjalnymi, które mogłyby złamać składnię Python
     lub wprowadzić lukę w zabezpieczeniach (code injection).
-    
+
     Args:
         value: Wartość do eskejpowania
-        
+
     Returns:
         Bezpiecznie eskejpowana wartość (używa repr())
-        
+
     Example:
         >>> escape_string_for_code("hello")
         "'hello'"

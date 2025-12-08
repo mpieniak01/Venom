@@ -129,7 +129,8 @@ class WorkflowStore:
 
             # Konwertuj steps z dict do WorkflowStep
             steps = [
-                WorkflowStep(**step_dict) for step_dict in workflow_dict.get("steps", [])
+                WorkflowStep(**step_dict)
+                for step_dict in workflow_dict.get("steps", [])
             ]
             workflow_dict["steps"] = steps
 
@@ -241,7 +242,9 @@ class WorkflowStore:
         logger.info(f"Zaktualizowano krok {step_id} w workflow {workflow_id}")
         return True
 
-    def add_step(self, workflow_id: str, step: WorkflowStep, position: Optional[int] = None) -> bool:
+    def add_step(
+        self, workflow_id: str, step: WorkflowStep, position: Optional[int] = None
+    ) -> bool:
         """
         Dodaje nowy krok do workflow.
 
@@ -304,7 +307,9 @@ class WorkflowStore:
         logger.info(f"Usunięto krok {step_id} z workflow {workflow_id}")
         return True
 
-    def export_to_python(self, workflow_id: str, output_path: Optional[Path] = None) -> Optional[str]:
+    def export_to_python(
+        self, workflow_id: str, output_path: Optional[Path] = None
+    ) -> Optional[str]:
         """
         Eksportuje workflow do skryptu Python.
 
@@ -321,7 +326,7 @@ class WorkflowStore:
 
         # Walidacja workflow_id jako bezpiecznego identyfikatora Python
         safe_function_name = self._sanitize_identifier(workflow.workflow_id)
-        
+
         # Bezpiecznie eskejpuj wartości dla generowanego kodu
         workflow_name_repr = escape_string_for_code(workflow.name)
         workflow_desc_repr = escape_string_for_code(workflow.description)
@@ -349,6 +354,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         **kwargs: Parametry workflow
     """
     logger.info("Rozpoczynam workflow: %s", {workflow_name_repr})
+    logger.info("Opis workflow: %s", {workflow_desc_repr})
 
 '''
 
@@ -368,10 +374,10 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                 x = fallback_coords.get("x", 0)
                 y = fallback_coords.get("y", 0)
 
-                code += f'    await ghost_agent.vision_click(\n'
-                code += f'        description={element_desc_repr},\n'
-                code += f'        fallback_coords=({x}, {y})\n'
-                code += f'    )\n'
+                code += "    await ghost_agent.vision_click(\n"
+                code += f"        description={element_desc_repr},\n"
+                code += f"        fallback_coords=({x}, {y})\n"
+                code += "    )\n"
 
             elif step.action_type == "type":
                 text = step.params.get("text", "")
@@ -381,26 +387,28 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                 param_name_safe = self._sanitize_identifier(param_name)
 
                 code += f'    text = kwargs.get("{param_name_safe}", {text_repr})\n'
-                code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n'
+                code += "    await ghost_agent.input_skill.keyboard_type(text=text)\n"
 
             elif step.action_type == "hotkey":
                 keys = step.params.get("keys", [])
-                code += f'    await ghost_agent.input_skill.keyboard_hotkey({keys})\n'
+                code += f"    await ghost_agent.input_skill.keyboard_hotkey({keys})\n"
 
             elif step.action_type == "wait":
                 duration = step.params.get("duration", 1.0)
-                code += f'    await ghost_agent._wait({duration})\n'
+                code += f"    await ghost_agent._wait({duration})\n"
 
             code += "\n"
 
         code += f'    logger.info("Workflow zakończony: %s", {workflow_name_repr})\n'
         # Użyj repr pojedynczo dla bezpieczeństwa, ale bez podwójnego eskejpowania
         return_msg = f"✅ Workflow {workflow.name} wykonany pomyślnie"
-        code += f'    return {repr(return_msg)}\n'
+        code += f"    return {repr(return_msg)}\n"
 
         # Zapisz do pliku
         if not output_path:
-            output_path = self.workspace_root / "custom_skills" / f"{workflow.workflow_id}.py"
+            output_path = (
+                self.workspace_root / "custom_skills" / f"{workflow.workflow_id}.py"
+            )
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(code, encoding="utf-8")
@@ -424,7 +432,8 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         return [
             w
             for w in all_workflows
-            if query_lower in w["name"].lower() or query_lower in w["description"].lower()
+            if query_lower in w["name"].lower()
+            or query_lower in w["description"].lower()
         ]
 
     def _sanitize_identifier(self, identifier: str) -> str:

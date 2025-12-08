@@ -78,7 +78,9 @@ class DemonstrationRecorder:
         self.screenshot_buffer: List[Tuple[float, Image.Image]] = []
         self.max_buffer_size = 100
 
-        logger.info(f"DemonstrationRecorder zainicjalizowany (dir: {self.sessions_dir})")
+        logger.info(
+            f"DemonstrationRecorder zainicjalizowany (dir: {self.sessions_dir})"
+        )
 
     def start_recording(
         self,
@@ -101,11 +103,11 @@ class DemonstrationRecorder:
 
         # Generuj ID sesji
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Sanityzuj session_name aby zapobiec path traversal
         if session_name:
-            session_name = re.sub(r'[^a-zA-Z0-9_-]', '_', session_name)
-        
+            session_name = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name)
+
         session_id = session_name or f"demo_{timestamp}"
 
         # Utwórz sesję
@@ -217,7 +219,10 @@ class DemonstrationRecorder:
         self.current_session.events.append(event)
 
         # Zrób zrzut ekranu jeśli minął cooldown
-        if pressed and (current_time - self.last_screenshot_time) > self.screenshot_cooldown:
+        if (
+            pressed
+            and (current_time - self.last_screenshot_time) > self.screenshot_cooldown
+        ):
             self._capture_screenshot(current_time, f"click_{x}_{y}")
 
         logger.debug(f"Mouse click: {button.name} at ({x}, {y}) pressed={pressed}")
@@ -306,9 +311,7 @@ class DemonstrationRecorder:
                 screenshot = sct.grab(monitor)
 
                 # Konwertuj do PIL Image
-                img = Image.frombytes(
-                    "RGB", screenshot.size, screenshot.rgb
-                )
+                img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 
                 # Dodaj do bufora
                 self.screenshot_buffer.append((timestamp, img))
@@ -373,15 +376,15 @@ class DemonstrationRecorder:
             Obiekt DemonstrationSession lub None jeśli nie znaleziono
         """
         # Sanityzuj session_id aby zapobiec path traversal
-        session_id = re.sub(r'[^a-zA-Z0-9_-]', '_', session_id)
-        
+        session_id = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id)
+
         session_file = self.sessions_dir / session_id / "session.json"
-        
+
         # Weryfikuj że ścieżka jest wewnątrz sessions_dir
         try:
             session_file_resolved = session_file.resolve()
             sessions_dir_resolved = self.sessions_dir.resolve()
-            
+
             if not str(session_file_resolved).startswith(str(sessions_dir_resolved)):
                 logger.error(f"Nieprawidłowa ścieżka sesji: {session_id}")
                 return None
@@ -399,7 +402,8 @@ class DemonstrationRecorder:
 
             # Konwertuj events z dict do InputEvent
             events = [
-                InputEvent(**event_dict) for event_dict in session_dict.get("events", [])
+                InputEvent(**event_dict)
+                for event_dict in session_dict.get("events", [])
             ]
             session_dict["events"] = events
 

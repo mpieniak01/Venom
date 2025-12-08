@@ -86,8 +86,9 @@ class TestDemonstrationRecorder:
 
     def test_stop_recording(self, recorder):
         """Test zatrzymania nagrywania."""
-        with patch.object(recorder, "_start_listeners"), patch.object(
-            recorder, "_stop_listeners"
+        with (
+            patch.object(recorder, "_start_listeners"),
+            patch.object(recorder, "_stop_listeners"),
         ):
             recorder.start_recording(session_name="test_session")
             session_path = recorder.stop_recording()
@@ -105,7 +106,9 @@ class TestDemonstrationRecorder:
 
     @patch("venom_core.perception.recorder.mouse.Listener")
     @patch("venom_core.perception.recorder.keyboard.Listener")
-    def test_listeners_started(self, mock_keyboard_listener, mock_mouse_listener, recorder):
+    def test_listeners_started(
+        self, mock_keyboard_listener, mock_mouse_listener, recorder
+    ):
         """Test czy listenery są uruchamiane."""
         mock_mouse_instance = MagicMock()
         mock_keyboard_instance = MagicMock()
@@ -178,8 +181,9 @@ class TestDemonstrationRecorder:
 
     def test_save_and_load_session(self, recorder):
         """Test zapisywania i ładowania sesji."""
-        with patch.object(recorder, "_start_listeners"), patch.object(
-            recorder, "_stop_listeners"
+        with (
+            patch.object(recorder, "_start_listeners"),
+            patch.object(recorder, "_stop_listeners"),
         ):
             # Utwórz sesję
             recorder.start_recording(session_name="test_session")
@@ -205,8 +209,9 @@ class TestDemonstrationRecorder:
 
     def test_list_sessions(self, recorder):
         """Test listowania sesji."""
-        with patch.object(recorder, "_start_listeners"), patch.object(
-            recorder, "_stop_listeners"
+        with (
+            patch.object(recorder, "_start_listeners"),
+            patch.object(recorder, "_stop_listeners"),
         ):
             # Utwórz kilka sesji
             recorder.start_recording(session_name="session1")
@@ -228,18 +233,19 @@ class TestDemonstrationRecorder:
 
     def test_session_name_sanitization(self, recorder):
         """Test sanityzacji nazw sesji aby zapobiec path traversal."""
-        with patch.object(recorder, "_start_listeners"), patch.object(
-            recorder, "_stop_listeners"
+        with (
+            patch.object(recorder, "_start_listeners"),
+            patch.object(recorder, "_stop_listeners"),
         ):
             # Próba path traversal
             session_id = recorder.start_recording(session_name="../../etc/passwd")
             assert session_id == "__________etc_passwd"
-            
+
             # Nazwa ze spacjami
             recorder.stop_recording()
             session_id = recorder.start_recording(session_name="my session name")
             assert session_id == "my_session_name"
-            
+
             # Nazwa ze znakami specjalnymi
             recorder.stop_recording()
             session_id = recorder.start_recording(session_name="test@#$%^&*()")
@@ -251,7 +257,7 @@ class TestDemonstrationRecorder:
         # Próba załadowania sesji z path traversal
         session = recorder.load_session("../../etc/passwd")
         assert session is None
-        
+
         # Próba ze slashami
         session = recorder.load_session("../../../secret")
         assert session is None

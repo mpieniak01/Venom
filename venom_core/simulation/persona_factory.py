@@ -7,8 +7,6 @@ from enum import Enum
 from typing import Optional
 
 from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
-from semantic_kernel.contents import ChatHistory
 
 from venom_core.utils.logger import get_logger
 
@@ -182,9 +180,7 @@ class PersonaFactory:
 
         # Wygeneruj podstawowe dane
         age = random.randint(*template["age_range"])
-        name = random.choice(
-            self.POLISH_NAMES["male"] + self.POLISH_NAMES["female"]
-        )
+        name = random.choice(self.POLISH_NAMES["male"] + self.POLISH_NAMES["female"])
 
         # Wylicz próg frustracji na podstawie cierpliwości
         frustration_threshold = max(1, int(template["patience"] * 5) + 1)

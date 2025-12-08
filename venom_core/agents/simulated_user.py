@@ -219,7 +219,10 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
         self.emotional_state = state
 
         logger.info(f"[{self.persona.name}] Emotion: {old_state} -> {state} ({reason})")
-        self._log_event("emotion_change", {"old_state": old_state, "new_state": state, "reason": reason})
+        self._log_event(
+            "emotion_change",
+            {"old_state": old_state, "new_state": state, "reason": reason},
+        )
 
     async def process(self, input_text: str) -> str:
         """
@@ -305,8 +308,7 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
 
             self._log_event("page_visited", {"url": self.target_url})
 
-            # Pobierz HTML i zrób screenshot
-            html = await self.browser_skill.get_html_content()
+            # Zrób screenshot początkowy
             await self.browser_skill.take_screenshot(f"start_{self.session_id}.png")
 
             # Zwróć pierwsze wrażenie

@@ -12,11 +12,11 @@ Użycie:
 
 import asyncio
 
+from venom_core.agents.ux_analyst import UXAnalystAgent
 from venom_core.config import SETTINGS
 from venom_core.execution.kernel_builder import build_kernel
 from venom_core.simulation.director import SimulationDirector
 from venom_core.simulation.persona_factory import PersonaFactory
-from venom_core.agents.ux_analyst import UXAnalystAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,9 +33,7 @@ async def demo_persona_factory():
 
     # Wygeneruj pojedynczą personę
     print("\n📝 Generuję pojedynczą personę...")
-    persona = factory.generate_persona(
-        goal="Kupić czerwone buty", archetype="senior"
-    )
+    persona = factory.generate_persona(goal="Kupić czerwone buty", archetype="senior")
 
     print(f"\n✅ Wygenerowano personę:")
     print(persona.to_json())
@@ -195,7 +193,9 @@ async def demo_full_simulation_with_app():
 
         print("\n✅ Symulacja zakończona!")
         print(f"   Sukces: {result['success_rate']}%")
-        print(f"   Użytkownicy sukcesu: {result['successful_users']}/{result['total_users']}")
+        print(
+            f"   Użytkownicy sukcesu: {result['successful_users']}/{result['total_users']}"
+        )
         print(f"   Rage Quits: {result['rage_quits']}")
         print(f"   Czas trwania: {result['duration_seconds']}s")
 
@@ -206,9 +206,7 @@ async def demo_full_simulation_with_app():
                 status = (
                     "✅"
                     if user_result.get("goal_achieved")
-                    else "😡"
-                    if user_result.get("rage_quit")
-                    else "❌"
+                    else "😡" if user_result.get("rage_quit") else "❌"
                 )
                 print(
                     f"   {status} {user_result['persona_name']}: "

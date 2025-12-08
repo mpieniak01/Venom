@@ -1564,8 +1564,9 @@ Plan naprawy:
                     goal_store.update_progress(
                         next_task.goal_id, status=GoalStatus.COMPLETED
                     )
-                    # Zapisz ID zadania
+                    # Aktualizuj Goal object z task_id (bezpośrednia modyfikacja dla kontekstu)
                     next_task.task_id = sub_task.id
+                    goal_store._save_to_disk()  # Zapisz zmianę
                     tasks_completed += 1
 
                     self.state_manager.add_log(

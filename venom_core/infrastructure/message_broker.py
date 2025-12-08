@@ -392,13 +392,15 @@ class MessageBroker:
         Returns:
             Słownik ze statystykami
         """
-        if not self.redis_client:
-            return {}
-
-        high_priority_length = await self.get_queue_length(
-            SETTINGS.HIVE_HIGH_PRIORITY_QUEUE
-        )
-        background_length = await self.get_queue_length(SETTINGS.HIVE_BACKGROUND_QUEUE)
+        # Długości kolejek (0 jeśli brak połączenia)
+        high_priority_length = 0
+        background_length = 0
+        
+        if self.redis_client:
+            high_priority_length = await self.get_queue_length(
+                SETTINGS.HIVE_HIGH_PRIORITY_QUEUE
+            )
+            background_length = await self.get_queue_length(SETTINGS.HIVE_BACKGROUND_QUEUE)
 
         # Zlicz zadania według statusu
         pending = sum(1 for t in self._task_registry.values() if t.status == "pending")

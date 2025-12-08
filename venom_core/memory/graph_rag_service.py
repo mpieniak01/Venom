@@ -380,7 +380,7 @@ Odpowiedź (JSON):"""
         try:
             search_results = self.vector_store.search(query, limit=5)
             if not search_results:
-                return "Nie znaleziono relewanatnych informacji w grafie wiedzy."
+                return "Nie znaleziono relevantnych informacji w grafie wiedzy."
 
             # Zbierz ID węzłów z metadanych
             starting_nodes = []

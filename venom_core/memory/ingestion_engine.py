@@ -77,9 +77,11 @@ class IngestionEngine:
         # DOCX
         if suffix in [".docx", ".doc"] or (
             mime_type
-            and "word" in mime_type
-            or mime_type
-            == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            and (
+                "word" in mime_type
+                or mime_type
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
         ):
             return "docx"
 

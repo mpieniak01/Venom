@@ -17,7 +17,7 @@ async def demo_analyze_simple_task():
     print("DEMO 1: Analiza prostego zadania")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     strategist = StrategistAgent(kernel=kernel)
 
     task = "Napisz funkcję sumującą dwie liczby"
@@ -32,7 +32,7 @@ async def demo_analyze_complex_task():
     print("DEMO 2: Analiza złożonego zadania")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     strategist = StrategistAgent(kernel=kernel)
 
     task = """
@@ -56,7 +56,7 @@ async def demo_task_monitoring():
     print("DEMO 3: Monitorowanie postępu zadania")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     work_ledger = WorkLedger(storage_path="/tmp/demo_work_ledger.json")
     strategist = StrategistAgent(kernel=kernel, work_ledger=work_ledger)
 
@@ -98,7 +98,7 @@ async def demo_api_usage_tracking():
     print("DEMO 4: Śledzenie wykorzystania zewnętrznych API")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     work_ledger = WorkLedger(storage_path="/tmp/demo_api_ledger.json")
 
     # Niskie limity dla demo
@@ -107,12 +107,18 @@ async def demo_api_usage_tracking():
         "anthropic": {"calls": 30, "tokens": 5000},
     }
 
-    strategist = StrategistAgent(kernel=kernel, work_ledger=work_ledger, api_limits=api_limits)
+    strategist = StrategistAgent(
+        kernel=kernel, work_ledger=work_ledger, api_limits=api_limits
+    )
 
     # Symuluj zadania używające API
     task1_id = "api_task_001"
     work_ledger.log_task(
-        task1_id, "Generowanie opisów produktów", "Opis produktów AI", 30, TaskComplexity.LOW
+        task1_id,
+        "Generowanie opisów produktów",
+        "Opis produktów AI",
+        30,
+        TaskComplexity.LOW,
     )
     work_ledger.start_task(task1_id)
 
@@ -134,7 +140,9 @@ async def demo_api_usage_tracking():
 
     # Sugestie lokalnych fallbacków
     print("\n--- Sugestie lokalnych alternatyw ---")
-    print(strategist.suggest_local_fallback("Generowanie obrazów produktów przez DALL-E"))
+    print(
+        strategist.suggest_local_fallback("Generowanie obrazów produktów przez DALL-E")
+    )
 
 
 async def demo_full_report():
@@ -143,7 +151,7 @@ async def demo_full_report():
     print("DEMO 5: Raport operacyjny")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     work_ledger = WorkLedger(storage_path="/tmp/demo_full_ledger.json")
     strategist = StrategistAgent(kernel=kernel, work_ledger=work_ledger)
 
@@ -158,7 +166,9 @@ async def demo_full_report():
     for task_id, name, estimated, complexity, actual in tasks_data:
         work_ledger.log_task(task_id, name, name, estimated, complexity)
         work_ledger.start_task(task_id)
-        work_ledger.update_progress(task_id, 100, actual_minutes=actual, files_touched=5)
+        work_ledger.update_progress(
+            task_id, 100, actual_minutes=actual, files_touched=5
+        )
         work_ledger.complete_task(task_id, actual)
 
     # Dodaj jedno zadanie w trakcie
@@ -180,7 +190,7 @@ async def demo_epic_task_split():
     print("DEMO 6: Podział EPIC zadania")
     print("=" * 80)
 
-    kernel = KernelBuilder(enable_routing=False).build()
+    kernel = KernelBuilder(enable_routing=False).build_kernel()
     strategist = StrategistAgent(kernel=kernel)
 
     epic_task = """

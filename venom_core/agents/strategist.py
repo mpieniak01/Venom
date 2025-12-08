@@ -1,6 +1,6 @@
 """Moduł: strategist - agent planowania i zarządzania złożonością zadań."""
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from semantic_kernel import Kernel
 
@@ -86,7 +86,9 @@ class StrategistAgent(BaseAgent):
             # Domyślnie: analiza zadania
             return await self.analyze_task(input_text)
 
-    async def analyze_task(self, task_description: str, task_id: Optional[str] = None) -> str:
+    async def analyze_task(
+        self, task_description: str, task_id: Optional[str] = None
+    ) -> str:
         """
         Analizuje zadanie pod kątem złożoności, czasu i ryzyk.
 
@@ -100,7 +102,9 @@ class StrategistAgent(BaseAgent):
         logger.info(f"Analiza zadania: {task_description[:50]}...")
 
         # Użyj ComplexitySkill do analizy
-        complexity_result = await self.complexity_skill.estimate_complexity(task_description)
+        complexity_result = await self.complexity_skill.estimate_complexity(
+            task_description
+        )
         time_result = await self.complexity_skill.estimate_time(task_description)
         risks_result = await self.complexity_skill.flag_risks(task_description)
 
@@ -110,7 +114,9 @@ class StrategistAgent(BaseAgent):
         # Sugeruj podział jeśli zadanie jest duże
         subtasks_result = ""
         if complexity in [TaskComplexity.HIGH, TaskComplexity.EPIC]:
-            subtasks_result = await self.complexity_skill.suggest_subtasks(task_description)
+            subtasks_result = await self.complexity_skill.suggest_subtasks(
+                task_description
+            )
 
         # Szacuj czas
         estimated_minutes = self._extract_time(time_result)
@@ -131,7 +137,11 @@ class StrategistAgent(BaseAgent):
 
         # Sprawdź ryzyka i dodaj do zadania
         if "⚠️" in risks_result:
-            risk_lines = [line for line in risks_result.split("\n") if line.strip().startswith("[")]
+            risk_lines = [
+                line
+                for line in risks_result.split("\n")
+                if line.strip().startswith("[")
+            ]
             for risk_line in risk_lines:
                 self.work_ledger.add_risk(task_id, risk_line.strip())
 
@@ -159,7 +169,9 @@ class StrategistAgent(BaseAgent):
         result += "=" * 60 + "\n"
         result += "REKOMENDACJE STRATEGIST\n"
         result += "=" * 60 + "\n"
-        result += self._generate_recommendations(complexity, estimated_minutes, risks_result)
+        result += self._generate_recommendations(
+            complexity, estimated_minutes, risks_result
+        )
 
         return result
 
@@ -232,12 +244,18 @@ class StrategistAgent(BaseAgent):
         result += "=" * 60 + "\n\n"
 
         result += f"📊 Łączna liczba zadań: {summary['total_tasks']}\n"
+
+        # Handle empty case
+        if summary["total_tasks"] == 0:
+            result += "\n" + summary.get("message", "Brak zadań w systemie") + "\n"
+            return result
+
         result += f"✅ Ukończone: {summary['completed']}\n"
         result += f"🔄 W trakcie: {summary['in_progress']}\n"
         result += f"⚠️ Overrun: {summary['overrun']}\n\n"
 
-        result += f"⏱️ Łączny szacowany czas: {summary['total_estimated_minutes']:.0f} minut ({summary['total_estimated_minutes']/60:.1f}h)\n"
-        result += f"⏱️ Łączny rzeczywisty czas: {summary['total_actual_minutes']:.0f} minut ({summary['total_actual_minutes']/60:.1f}h)\n"
+        result += f"⏱️ Łączny szacowany czas: {summary['total_estimated_minutes']:.0f} minut ({summary['total_estimated_minutes'] / 60:.1f}h)\n"
+        result += f"⏱️ Łączny rzeczywisty czas: {summary['total_actual_minutes']:.0f} minut ({summary['total_actual_minutes'] / 60:.1f}h)\n"
         result += f"🎯 Dokładność estymacji: {summary['estimation_accuracy_percent']:.1f}%\n\n"
 
         # Breakdown po złożoności
@@ -246,7 +264,9 @@ class StrategistAgent(BaseAgent):
             result += f"  - {complexity}: {stats['count']} zadań (ukończonych: {stats['completed']})\n"
             result += f"    Średni czas: {stats['avg_estimated_minutes']:.0f} minut\n"
 
-        result += f"\n📁 Łącznie plików zmodyfikowanych: {summary['total_files_touched']}\n"
+        result += (
+            f"\n📁 Łącznie plików zmodyfikowanych: {summary['total_files_touched']}\n"
+        )
         result += f"🌐 Łącznie wywołań API: {summary['total_api_calls']}\n"
         result += f"🔤 Łącznie tokenów: {summary['total_tokens_used']}\n"
 
@@ -268,8 +288,12 @@ class StrategistAgent(BaseAgent):
         result += "API USAGE REPORT\n"
         result += "=" * 60 + "\n\n"
 
-        result += f"Łączne wywołania API: {summary['total_api_calls']}\n"
-        result += f"Łączne tokeny użyte: {summary['total_tokens_used']}\n\n"
+        # Handle empty case
+        total_api_calls = summary.get("total_api_calls", 0)
+        total_tokens = summary.get("total_tokens_used", 0)
+
+        result += f"Łączne wywołania API: {total_api_calls}\n"
+        result += f"Łączne tokeny użyte: {total_tokens}\n\n"
 
         # Sprawdź limity per provider
         result += "Limity API:\n"
@@ -286,8 +310,12 @@ class StrategistAgent(BaseAgent):
                     current_calls += task.metadata["api_usage"][prov]["calls"]
                     current_tokens += task.metadata["api_usage"][prov]["tokens"]
 
-            calls_percent = (current_calls / limits["calls"]) * 100 if limits["calls"] > 0 else 0
-            tokens_percent = (current_tokens / limits["tokens"]) * 100 if limits["tokens"] > 0 else 0
+            calls_percent = (
+                (current_calls / limits["calls"]) * 100 if limits["calls"] > 0 else 0
+            )
+            tokens_percent = (
+                (current_tokens / limits["tokens"]) * 100 if limits["tokens"] > 0 else 0
+            )
 
             status = "✅"
             if calls_percent > 80 or tokens_percent > 80:
@@ -296,14 +324,16 @@ class StrategistAgent(BaseAgent):
                 status = "🚨"
 
             result += f"\n{status} {prov.upper()}:\n"
-            result += f"  Calls: {current_calls}/{limits['calls']} ({calls_percent:.1f}%)\n"
+            result += (
+                f"  Calls: {current_calls}/{limits['calls']} ({calls_percent:.1f}%)\n"
+            )
             result += f"  Tokens: {current_tokens}/{limits['tokens']} ({tokens_percent:.1f}%)\n"
 
             # Rekomendacje
             if calls_percent > 90 or tokens_percent > 90:
-                result += f"  🚨 OSTRZEŻENIE: Zbliżasz się do limitu - rozważ użycie lokalnych modeli.\n"
+                result += "  🚨 OSTRZEŻENIE: Zbliżasz się do limitu - rozważ użycie lokalnych modeli.\n"
             elif calls_percent > 75 or tokens_percent > 75:
-                result += f"  ⚠️ Uwaga: Wysokie zużycie - monitoruj.\n"
+                result += "  ⚠️ Uwaga: Wysokie zużycie - monitoruj.\n"
 
         return result
 
@@ -327,10 +357,14 @@ class StrategistAgent(BaseAgent):
             )
 
         if "embedding" in desc_lower or "wektoryzacja" in desc_lower:
-            suggestions.append("📊 Embeddingi: Użyj sentence-transformers (lokalny) zamiast OpenAI embeddings")
+            suggestions.append(
+                "📊 Embeddingi: Użyj sentence-transformers (lokalny) zamiast OpenAI embeddings"
+            )
 
         if "analiza tekstu" in desc_lower and "duży" in desc_lower:
-            suggestions.append("📄 Analiza dużych tekstów: Podziel na mniejsze fragmenty lub użyj lokalnego LLM")
+            suggestions.append(
+                "📄 Analiza dużych tekstów: Podziel na mniejsze fragmenty lub użyj lokalnego LLM"
+            )
 
         if not suggestions:
             return "✅ Brak sugestii lokalnych fallbacków - kontynuuj z API."
@@ -360,12 +394,16 @@ class StrategistAgent(BaseAgent):
         if overrun.get("will_overrun"):
             overrun_percent = overrun.get("overrun_percent", 0)
             if overrun_percent > 100:
-                logger.warning(f"Zadanie {task_id} przekracza estymację o {overrun_percent:.0f}% - rekomendacja PAUSE")
+                logger.warning(
+                    f"Zadanie {task_id} przekracza estymację o {overrun_percent:.0f}% - rekomendacja PAUSE"
+                )
                 return True
 
         # Sprawdź ryzyka
         if len(task.risks) > 3:
-            logger.warning(f"Zadanie {task_id} ma {len(task.risks)} ryzyk - rekomendacja PAUSE")
+            logger.warning(
+                f"Zadanie {task_id} ma {len(task.risks)} ryzyk - rekomendacja PAUSE"
+            )
             return True
 
         return False
@@ -386,7 +424,9 @@ class StrategistAgent(BaseAgent):
             return float(match.group(1))
         return 30.0  # Domyślnie 30 minut
 
-    def _generate_recommendations(self, complexity: TaskComplexity, estimated_minutes: float, risks: str) -> str:
+    def _generate_recommendations(
+        self, complexity: TaskComplexity, estimated_minutes: float, risks: str
+    ) -> str:
         """Generuje rekomendacje na podstawie analizy."""
         recommendations = []
 
@@ -396,23 +436,39 @@ class StrategistAgent(BaseAgent):
                 "🚨 EPIC Task: Obowiązkowy podział na mniejsze PR-y. Nie próbuj wykonać w jednym sprint."
             )
         elif complexity == TaskComplexity.HIGH:
-            recommendations.append("⚠️ HIGH Complexity: Rozważ podział na 2-3 mniejsze zadania.")
+            recommendations.append(
+                "⚠️ HIGH Complexity: Rozważ podział na 2-3 mniejsze zadania."
+            )
 
         # Rekomendacje czasowe
         if estimated_minutes > 240:  # > 4h
-            recommendations.append(f"⏱️ Szacowany czas: {estimated_minutes/60:.1f}h - zaplanuj wielodniową pracę.")
+            recommendations.append(
+                f"⏱️ Szacowany czas: {estimated_minutes / 60:.1f}h - zaplanuj wielodniową pracę."
+            )
         elif estimated_minutes > 120:  # > 2h
-            recommendations.append("⏱️ Zadanie długie - zaplanuj przerwy i regularne commity.")
+            recommendations.append(
+                "⏱️ Zadanie długie - zaplanuj przerwy i regularne commity."
+            )
 
         # Rekomendacje na podstawie ryzyk
         if "⚠️" in risks and len(risks.split("\n")) > 5:
-            recommendations.append("🛡️ Wysokie ryzyko: Rozpocznij od prototypu lub proof-of-concept.")
+            recommendations.append(
+                "🛡️ Wysokie ryzyko: Rozpocznij od prototypu lub proof-of-concept."
+            )
 
         # Ogólne best practices
-        if complexity in [TaskComplexity.MEDIUM, TaskComplexity.HIGH, TaskComplexity.EPIC]:
-            recommendations.append("📝 Zalecane: Napisz plan działania przed rozpoczęciem kodowania.")
+        if complexity in [
+            TaskComplexity.MEDIUM,
+            TaskComplexity.HIGH,
+            TaskComplexity.EPIC,
+        ]:
+            recommendations.append(
+                "📝 Zalecane: Napisz plan działania przed rozpoczęciem kodowania."
+            )
 
         if not recommendations:
-            recommendations.append("✅ Zadanie w rozsądnym zakresie - możesz kontynuować.")
+            recommendations.append(
+                "✅ Zadanie w rozsądnym zakresie - możesz kontynuować."
+            )
 
         return "\n".join(recommendations) + "\n"

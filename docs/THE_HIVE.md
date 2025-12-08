@@ -408,7 +408,7 @@ async def process_url(url: str):
     # Sprawdź czy już przetworzone
     if await cache.exists(url):
         return await cache.get(url)
-    
+
     # Przetwórz
     result = await scrape(url)
     await cache.set(url, result)

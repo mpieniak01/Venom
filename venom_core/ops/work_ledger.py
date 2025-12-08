@@ -124,7 +124,9 @@ class WorkLedger:
 
         self.tasks: Dict[str, TaskRecord] = {}
         self._load_tasks()
-        logger.info(f"WorkLedger zainicjalizowany: {len(self.tasks)} zadań załadowanych")
+        logger.info(
+            f"WorkLedger zainicjalizowany: {len(self.tasks)} zadań załadowanych"
+        )
 
     def log_task(
         self,
@@ -168,7 +170,9 @@ class WorkLedger:
                 metadata=metadata or {},
             )
             self.tasks[task_id] = task
-            logger.info(f"Zadanie {task_id} zalogowane: {name} ({complexity.value}, {estimated_minutes}min)")
+            logger.info(
+                f"Zadanie {task_id} zalogowane: {name} ({complexity.value}, {estimated_minutes}min)"
+            )
 
         self._save_tasks()
         return task
@@ -247,7 +251,9 @@ class WorkLedger:
         self._save_tasks()
         return True
 
-    def complete_task(self, task_id: str, actual_minutes: Optional[float] = None) -> bool:
+    def complete_task(
+        self, task_id: str, actual_minutes: Optional[float] = None
+    ) -> bool:
         """
         Oznacza zadanie jako ukończone.
 
@@ -326,7 +332,9 @@ class WorkLedger:
         # Prognoza na podstawie postępu
         if task.progress_percent > 0:
             projected_total = (task.actual_minutes / task.progress_percent) * 100
-            overrun_percent = ((projected_total - task.estimated_minutes) / task.estimated_minutes) * 100
+            overrun_percent = (
+                (projected_total - task.estimated_minutes) / task.estimated_minutes
+            ) * 100
 
             return {
                 "task_id": task_id,
@@ -397,12 +405,16 @@ class WorkLedger:
             return {"total_tasks": 0, "message": "Brak zadań w systemie"}
 
         completed = [t for t in self.tasks.values() if t.status == TaskStatus.COMPLETED]
-        in_progress = [t for t in self.tasks.values() if t.status == TaskStatus.IN_PROGRESS]
+        in_progress = [
+            t for t in self.tasks.values() if t.status == TaskStatus.IN_PROGRESS
+        ]
         overrun = [t for t in self.tasks.values() if t.status == TaskStatus.OVERRUN]
 
         # Statystyki czasowe
         total_estimated = sum(t.estimated_minutes for t in self.tasks.values())
-        total_actual = sum(t.actual_minutes for t in self.tasks.values() if t.actual_minutes > 0)
+        total_actual = sum(
+            t.actual_minutes for t in self.tasks.values() if t.actual_minutes > 0
+        )
 
         # Accuracy estymacji dla ukończonych zadań
         accuracy_data = []
@@ -419,7 +431,9 @@ class WorkLedger:
             tasks = [t for t in self.tasks.values() if t.complexity == complexity]
             complexity_breakdown[complexity.value] = {
                 "count": len(tasks),
-                "completed": len([t for t in tasks if t.status == TaskStatus.COMPLETED]),
+                "completed": len(
+                    [t for t in tasks if t.status == TaskStatus.COMPLETED]
+                ),
                 "avg_estimated_minutes": (
                     sum(t.estimated_minutes for t in tasks) / len(tasks) if tasks else 0
                 ),
@@ -439,7 +453,9 @@ class WorkLedger:
             "total_tokens_used": sum(t.tokens_used for t in self.tasks.values()),
         }
 
-    def record_api_usage(self, task_id: str, provider: str, tokens: int, ops: int = 1) -> bool:
+    def record_api_usage(
+        self, task_id: str, provider: str, tokens: int, ops: int = 1
+    ) -> bool:
         """
         Zapisuje wykorzystanie zewnętrznego API.
 
@@ -471,7 +487,9 @@ class WorkLedger:
         task.metadata["api_usage"][provider]["tokens"] += tokens
 
         self._save_tasks()
-        logger.debug(f"API usage zapisane: {task_id} -> {provider}: {tokens} tokens, {ops} ops")
+        logger.debug(
+            f"API usage zapisane: {task_id} -> {provider}: {tokens} tokens, {ops} ops"
+        )
         return True
 
     def _load_tasks(self):
@@ -483,7 +501,10 @@ class WorkLedger:
         try:
             with open(self.storage_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                self.tasks = {task_id: TaskRecord.from_dict(task_data) for task_id, task_data in data.items()}
+                self.tasks = {
+                    task_id: TaskRecord.from_dict(task_data)
+                    for task_id, task_data in data.items()
+                }
             logger.info(f"Załadowano {len(self.tasks)} zadań z {self.storage_path}")
         except Exception as e:
             logger.error(f"Błąd wczytywania work_ledger: {e}")

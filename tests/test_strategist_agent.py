@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from venom_core.agents.strategist import StrategistAgent
-from venom_core.ops.work_ledger import TaskComplexity, TaskStatus, WorkLedger
+from venom_core.ops.work_ledger import TaskComplexity, WorkLedger
 
 
 class TestStrategistAgent:
@@ -106,9 +106,7 @@ class TestStrategistAgent:
     def test_generate_report_with_tasks(self, agent):
         """Test generowania raportu z zadaniami."""
         # Dodaj kilka zadań
-        agent.work_ledger.log_task(
-            "test_001", "Task 1", "Desc", 30, TaskComplexity.LOW
-        )
+        agent.work_ledger.log_task("test_001", "Task 1", "Desc", 30, TaskComplexity.LOW)
         agent.work_ledger.start_task("test_001")
         agent.work_ledger.complete_task("test_001", 28)
 
@@ -152,7 +150,9 @@ class TestStrategistAgent:
 
     def test_suggest_local_fallback_embeddings(self, agent):
         """Test sugestii lokalnych fallbacków dla embeddingów."""
-        result = agent.suggest_local_fallback("Wektoryzacja tekstów przez embedding API")
+        result = agent.suggest_local_fallback(
+            "Wektoryzacja tekstów przez embedding API"
+        )
 
         assert "sentence-transformers" in result or "lokalny" in result.lower()
 
@@ -176,9 +176,7 @@ class TestStrategistAgent:
 
     def test_should_pause_task_major_overrun(self, agent):
         """Test decyzji o pauzowaniu - duże przekroczenie."""
-        agent.work_ledger.log_task(
-            "test_001", "Task", "Desc", 30, TaskComplexity.LOW
-        )
+        agent.work_ledger.log_task("test_001", "Task", "Desc", 30, TaskComplexity.LOW)
         agent.work_ledger.start_task("test_001")
         # 25% po 30 minutach = prognoza 120 minut (400% overrun!)
         agent.work_ledger.update_progress("test_001", 25, actual_minutes=30)
@@ -209,26 +207,25 @@ class TestStrategistAgent:
 
         assert "STRATEGIST ANALYSIS" in result
 
-    def test_process_monitor_command(self, agent):
+    @pytest.mark.asyncio
+    async def test_process_monitor_command(self, agent):
         """Test przetwarzania komendy monitor."""
-        agent.work_ledger.log_task(
-            "test_001", "Task", "Desc", 30, TaskComplexity.LOW
-        )
+        agent.work_ledger.log_task("test_001", "Task", "Desc", 30, TaskComplexity.LOW)
 
-        result = agent.process("monitor:test_001")
+        result = await agent.process("monitor:test_001")
 
-        # Result is awaitable, need to check appropriately
-        # For sync test, we know monitor_task is called
         assert "MONITORING" in result or "❌" in result
 
-    def test_process_report_command(self, agent):
+    @pytest.mark.asyncio
+    async def test_process_report_command(self, agent):
         """Test przetwarzania komendy report."""
-        result = agent.process("report")
+        result = await agent.process("report")
 
         assert "OPERATIONS DASHBOARD" in result
 
-    def test_process_check_api_command(self, agent):
+    @pytest.mark.asyncio
+    async def test_process_check_api_command(self, agent):
         """Test przetwarzania komendy check_api."""
-        result = agent.process("check_api:openai")
+        result = await agent.process("check_api:openai")
 
         assert "API USAGE" in result

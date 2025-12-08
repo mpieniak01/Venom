@@ -129,5 +129,18 @@ class Settings(BaseSettings):
     HIVE_MAX_RETRIES: int = 3  # Maksymalna liczba prób wykonania zadania
     HIVE_ZOMBIE_TASK_TIMEOUT: int = 600  # Timeout dla zombie tasks (10 minut)
 
+    # Konfiguracja THE_SIMULACRUM (Simulation Layer)
+    ENABLE_SIMULATION: bool = False  # Włącz warstwę symulacji użytkowników
+    SIMULATION_CHAOS_ENABLED: bool = False  # Włącz Chaos Engineering w symulacjach
+    SIMULATION_MAX_STEPS: int = 10  # Maksymalna liczba kroków na użytkownika
+    SIMULATION_USER_MODEL: str = "local"  # Model dla symulowanych użytkowników (local/flash)
+    SIMULATION_ANALYST_MODEL: str = (
+        "openai"  # Model dla UX Analyst (openai/local)
+    )
+    SIMULATION_DEFAULT_USERS: int = 5  # Domyślna liczba użytkowników w symulacji
+    SIMULATION_LOGS_DIR: str = (
+        "./workspace/simulation_logs"  # Katalog z logami symulacji
+    )
+
 
 SETTINGS = Settings()

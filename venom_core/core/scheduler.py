@@ -286,14 +286,13 @@ class BackgroundScheduler:
         }
 
     def schedule_daily_standup(
-        self, executive_agent, goal_store, hour: int = 9, minute: int = 0
+        self, executive_agent, hour: int = 9, minute: int = 0
     ) -> str:
         """
         Harmonogramuje codzienne spotkanie statusowe (Daily Standup).
 
         Args:
             executive_agent: Instancja ExecutiveAgent
-            goal_store: Instancja GoalStore
             hour: Godzina spotkania (domyślnie 9:00)
             minute: Minuta spotkania
 

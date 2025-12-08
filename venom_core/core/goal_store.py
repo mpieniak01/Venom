@@ -36,8 +36,8 @@ class KPI(BaseModel):
     """Wskaźnik sukcesu (Key Performance Indicator)."""
 
     name: str = Field(description="Nazwa wskaźnika")
-    target_value: float = Field(description="Wartość docelowa")
-    current_value: float = Field(default=0.0, description="Wartość bieżąca")
+    target_value: float = Field(gt=0, description="Wartość docelowa (musi być > 0)")
+    current_value: float = Field(default=0.0, ge=0, description="Wartość bieżąca")
     unit: str = Field(default="%", description="Jednostka miary")
 
     def get_progress_percentage(self) -> float:
@@ -189,6 +189,7 @@ class GoalStore:
         goal_id: UUID,
         status: Optional[GoalStatus] = None,
         kpi_updates: Optional[dict[str, float]] = None,
+        task_id: Optional[UUID] = None,
     ) -> Optional[Goal]:
         """
         Aktualizuje postęp celu.
@@ -197,6 +198,7 @@ class GoalStore:
             goal_id: ID celu
             status: Nowy status (opcjonalnie)
             kpi_updates: Dict {kpi_name: new_value} (opcjonalnie)
+            task_id: ID zadania w Orchestratorze (opcjonalnie)
 
         Returns:
             Zaktualizowany cel lub None jeśli nie znaleziono
@@ -215,6 +217,9 @@ class GoalStore:
             for kpi in goal.kpis:
                 if kpi.name in kpi_updates:
                     kpi.current_value = kpi_updates[kpi.name]
+
+        if task_id is not None:
+            goal.task_id = task_id
 
         goal.updated_at = datetime.now()
         self._save_to_disk()

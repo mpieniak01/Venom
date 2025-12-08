@@ -1,6 +1,5 @@
 """Moduł: executive - Agent Wykonawczy (CEO/Product Manager)."""
 
-from typing import Optional
 from uuid import UUID
 
 from semantic_kernel import Kernel
@@ -9,7 +8,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.core.goal_store import Goal, GoalStatus, GoalStore, GoalType, KPI
+from venom_core.core.goal_store import GoalStatus, GoalStore, GoalType, KPI
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

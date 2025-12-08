@@ -2,8 +2,9 @@
 
 import asyncio
 import random
+import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -89,7 +90,7 @@ class SimulationDirector:
             f"(ID: {scenario_id}, użytkowników: {user_count})"
         )
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # Krok 1: Wdróż stack jeśli wymagane
         if deploy_stack:
@@ -165,7 +166,7 @@ class SimulationDirector:
             r for r in user_results if not isinstance(r, dict) or "error" in r
         ]
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
 
         # Statystyki
@@ -260,10 +261,10 @@ class SimulationDirector:
         """
         logger.warning(f"🐵 Chaos Monkey aktywowany na {duration_seconds}s")
 
-        start_time = asyncio.get_event_loop().time()
+        start_time = time.monotonic()
         chaos_events = []
 
-        while (asyncio.get_event_loop().time() - start_time) < duration_seconds:
+        while (time.monotonic() - start_time) < duration_seconds:
             # Czekaj losowy czas (10-30s)
             await asyncio.sleep(random.randint(10, 30))
 
@@ -281,7 +282,7 @@ class SimulationDirector:
                 logger.warning("🐵 Chaos: Restart serwisu (placeholder)")
                 chaos_events.append(
                     {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                         "action": "restart_service",
                         "stack": stack_name,
                     }

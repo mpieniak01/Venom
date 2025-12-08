@@ -64,9 +64,6 @@ async def demo_simple_simulation():
     # Zbuduj kernel
     kernel = await build_kernel()
 
-    # Stwórz reżysera
-    director = SimulationDirector(kernel=kernel, enable_chaos=False)
-
     # Przygotuj scenariusz
     scenario_desc = "Znaleźć i kliknąć przycisk 'Kontakt'"
     mock_url = "http://example.com"  # Mock URL

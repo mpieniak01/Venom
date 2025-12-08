@@ -7,7 +7,7 @@ demonstracji użytkownika i generowanie skryptów automatyzacji.
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from semantic_kernel import Kernel
 
@@ -18,6 +18,19 @@ from venom_core.perception.recorder import DemonstrationRecorder
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _escape_string_for_code(value: str) -> str:
+    """
+    Bezpiecznie eskejpuje string do użycia w generowanym kodzie.
+    
+    Args:
+        value: Wartość do eskejpowania
+        
+    Returns:
+        Bezpiecznie eskejpowana wartość (używa repr())
+    """
+    return repr(value)
 
 
 class ApprenticeAgent(BaseAgent):
@@ -264,6 +277,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         """
         # Sanityzuj nazwę funkcji
         safe_function_name = self._sanitize_identifier(skill_name)
+        
+        # Bezpiecznie eskejpuj wartości dla generowanego kodu
+        skill_name_repr = _escape_string_for_code(skill_name)
 
         # Nagłówek
         code = f'''"""
@@ -285,26 +301,29 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         ghost_agent: Instancja GhostAgent
         **kwargs: Parametry workflow
     """
-    logger.info(f"Rozpoczynam workflow: {skill_name}")
+    logger.info("Rozpoczynam workflow: %s", {skill_name_repr})
 
 '''
 
         # Generuj kod dla każdej akcji
         for i, action in enumerate(actions, 1):
-            code += f"    # Krok {i}: {action.description}\n"
+            desc_repr = _escape_string_for_code(action.description)
+            code += f"    # Krok {i}: {desc_repr}\n"
 
             if action.action_type == "click":
                 element_desc = action.params.get("element_description", "unknown")
+                element_desc_repr = _escape_string_for_code(element_desc)
                 fallback_x = action.params.get("fallback_coords", {}).get("x", 0)
                 fallback_y = action.params.get("fallback_coords", {}).get("y", 0)
 
                 code += f'    await ghost_agent.vision_click(\n'
-                code += f'        description="{element_desc}",\n'
+                code += f'        description={element_desc_repr},\n'
                 code += f'        fallback_coords=({fallback_x}, {fallback_y})\n'
                 code += f'    )\n\n'
 
             elif action.action_type == "type":
                 text = action.params.get("text", "")
+                text_repr = _escape_string_for_code(text)
                 is_sensitive = action.params.get("is_sensitive", False)
 
                 if is_sensitive:
@@ -314,7 +333,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
                 else:
                     # Hardcoded text lub parametr
                     param_name = f"text_{i}"
-                    code += f'    text = kwargs.get("{param_name}", "{text}")\n'
+                    code += f'    text = kwargs.get("{param_name}", {text_repr})\n'
                     code += f'    await ghost_agent.input_skill.keyboard_type(text=text)\n\n'
 
             elif action.action_type == "hotkey":
@@ -325,7 +344,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
             code += f'    await ghost_agent._wait(1.0)\n\n'
 
         # Stopka
-        code += f'    logger.info(f"Workflow {skill_name} zakończony")\n'
+        code += f'    logger.info("Workflow zakończony: %s", {skill_name_repr})\n'
         code += f'    return "✅ Workflow {skill_name} wykonany pomyślnie"\n'
 
         return code
@@ -410,9 +429,7 @@ Obecnie:
         sessions = self.recorder.list_sessions()
         context += f"- Dostępne sesje: {', '.join(sessions)}\n"
 
-        full_prompt = f"{context}\n\nUżytkownik: {request}\n\nOdpowiedź:"
-
-        # Wywołaj LLM przez kernel
+        # Wywołaj LLM przez kernel (placeholder - obecnie nie używamy full_prompt)
         try:
             # Prosta odpowiedź bez LLM (placeholder)
             return (

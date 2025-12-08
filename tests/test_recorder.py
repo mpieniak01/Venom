@@ -1,13 +1,11 @@
 """Testy jednostkowe dla DemonstrationRecorder."""
 
-import json
 import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PIL import Image
 
 from venom_core.perception.recorder import (
     DemonstrationRecorder,
@@ -226,4 +224,34 @@ class TestDemonstrationRecorder:
     def test_load_nonexistent_session(self, recorder):
         """Test ładowania nieistniejącej sesji."""
         session = recorder.load_session("nonexistent")
+        assert session is None
+
+    def test_session_name_sanitization(self, recorder):
+        """Test sanityzacji nazw sesji aby zapobiec path traversal."""
+        with patch.object(recorder, "_start_listeners"), patch.object(
+            recorder, "_stop_listeners"
+        ):
+            # Próba path traversal
+            session_id = recorder.start_recording(session_name="../../etc/passwd")
+            assert session_id == "__________etc_passwd"
+            
+            # Nazwa ze spacjami
+            recorder.stop_recording()
+            session_id = recorder.start_recording(session_name="my session name")
+            assert session_id == "my_session_name"
+            
+            # Nazwa ze znakami specjalnymi
+            recorder.stop_recording()
+            session_id = recorder.start_recording(session_name="test@#$%^&*()")
+            assert "_" in session_id
+            assert "@" not in session_id
+
+    def test_load_session_with_path_traversal_attempt(self, recorder):
+        """Test że load_session blokuje próby path traversal."""
+        # Próba załadowania sesji z path traversal
+        session = recorder.load_session("../../etc/passwd")
+        assert session is None
+        
+        # Próba ze slashami
+        session = recorder.load_session("../../../secret")
         assert session is None

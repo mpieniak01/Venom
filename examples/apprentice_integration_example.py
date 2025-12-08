@@ -33,8 +33,8 @@ async def example_full_cycle():
     kernel = kernel_builder.build_kernel()
     
     apprentice = ApprenticeAgent(kernel)
-    ghost = GhostAgent(kernel)
-    workflow_store = WorkflowStore()
+    # ghost = GhostAgent(kernel)  # Zarezerwowane na przyszłość
+    # workflow_store = WorkflowStore()  # Zarezerwowane na przyszłość
 
     # FAZA 1: Nagrywanie Demonstracji
     logger.info("📝 FAZA 1: Nagrywanie Demonstracji")

@@ -206,25 +206,35 @@ class ChronoSkill:
             Komunikat o wyniku operacji
         """
         try:
-            # Najpierw utwórz checkpoint na głównej linii
-            checkpoint_id = self.chronos.create_checkpoint(
-                name=f"branch_point_{name}",
-                description=f"Punkt rozgałęzienia dla timeline '{name}'",
-                timeline="main",
-            )
-
-            # Następnie utwórz nową timeline
+            # Najpierw utwórz nową timeline
             success = self.chronos.create_timeline(name=name)
 
-            if success:
+            if not success:
+                return f"✗ Nie udało się utworzyć timeline '{name}'. Możliwe, że już istnieje."
+
+            # Następnie utwórz checkpoint na głównej linii jako punkt rozgałęzienia
+            try:
+                checkpoint_id = self.chronos.create_checkpoint(
+                    name=f"branch_point_{name}",
+                    description=f"Punkt rozgałęzienia dla timeline '{name}'",
+                    timeline="main",
+                )
+
                 return (
                     f"✓ Nowa timeline '{name}' utworzona.\n"
                     f"Punkt rozgałęzienia (checkpoint): {checkpoint_id}\n"
                     f"Możesz teraz eksperymentować na tej linii czasowej używając parametru timeline='{name}'.\n"
                     f"Aby wrócić do głównej linii: restore_checkpoint('{checkpoint_id}', timeline='main')"
                 )
-            else:
-                return f"✗ Nie udało się utworzyć timeline '{name}'. Możliwe, że już istnieje."
+
+            except Exception as cp_error:
+                logger.warning(
+                    f"Timeline utworzona, ale nie udało się utworzyć checkpointu: {cp_error}"
+                )
+                return (
+                    f"⚠️ Timeline '{name}' utworzona, ale checkpoint nie został zapisany.\n"
+                    f"Możesz ręcznie utworzyć checkpoint na timeline 'main' przed eksperymentowaniem."
+                )
 
         except Exception as e:
             logger.error(f"Błąd podczas tworzenia timeline: {e}")

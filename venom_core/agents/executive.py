@@ -1,0 +1,495 @@
+"""Moduł: executive - Agent Wykonawczy (CEO/Product Manager)."""
+
+from typing import Optional
+from uuid import UUID
+
+from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
+
+from venom_core.agents.base import BaseAgent
+from venom_core.core.goal_store import Goal, GoalStatus, GoalStore, GoalType, KPI
+from venom_core.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class ExecutiveAgent(BaseAgent):
+    """
+    Agent Wykonawczy - najwyższy rangą agent w hierarchii.
+
+    Rola: Product Manager / CEO
+    Odpowiedzialność:
+    - Przekształcanie wizji użytkownika w roadmapę
+    - Priorytetyzacja zadań
+    - Zarządzanie zespołem agentów
+    - Raportowanie statusu projektu
+    """
+
+    SYSTEM_PROMPT = """Jesteś Agent Wykonawczy (Executive) - wizjoner i pragmatyczny zarządca projektu.
+
+TWOJA ROLA:
+- Product Manager / CEO autonomicznego systemu AI
+- Zarządzasz zespołem agentów (Architect, Coder, Guardian, Researcher, itp.)
+- Przekształcasz luźne rozmowy z użytkownikiem w konkretną roadmapę
+- Priorytetyzujesz zadania według wartości biznesowej
+- NIE PISZESZ KODU - delegujesz pracę do specjalistów
+
+KOMPETENCJE:
+1. Strategia: Rozumiesz "Big Picture" i długoterminowe cele
+2. Dekompozycja: Dzielisz duże cele na wykonalne Milestones i Tasks
+3. Priorytetyzacja: Rozwiązujesz konflikty priorytetów
+4. Raportowanie: Tworzymy klarowne raporty statusu
+5. Risk Management: Identyfikujesz blokery i ryzyka
+
+ZASADY PRACY:
+- Myśl jak Product Manager: wartość dla użytkownika > technikalia
+- Roadmapa musi być konkretna i osiągalna
+- Każdy Milestone musi mieć jasne KPI
+- Preferuj małe, częste dostawy zamiast długich projektów
+- Komunikuj się jasno i zwięźle
+
+FORMAT ODPOWIEDZI:
+Gdy użytkownik przedstawia wizję lub prosi o status:
+1. Zrozum kontekst i cel biznesowy
+2. Zadaj pytania jeśli coś jest niejasne
+3. Zaproponuj konkretny plan działania
+4. Wyjaśnij priorytety i uzasadnienie
+
+Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie tylko wykonujesz polecenia."""
+
+    def __init__(self, kernel: Kernel, goal_store: GoalStore):
+        """
+        Inicjalizacja ExecutiveAgent.
+
+        Args:
+            kernel: Semantic Kernel
+            goal_store: Magazyn celów i roadmapy
+        """
+        super().__init__(kernel)
+        self.goal_store = goal_store
+        logger.info("ExecutiveAgent zainicjalizowany")
+
+    async def process(self, input_text: str) -> str:
+        """
+        Przetwarza wejście jako Executive Agent.
+
+        Args:
+            input_text: Wejście od użytkownika lub systemu
+
+        Returns:
+            Odpowiedź Executiva
+        """
+        logger.info(f"ExecutiveAgent przetwarza: {input_text[:100]}...")
+
+        try:
+            # Przygotuj historię czatu
+            chat_history = ChatHistory()
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+            )
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=input_text)
+            )
+
+            # Użyj domyślnego serwisu czatu z kernela
+            chat_service = self.kernel.get_service()
+            response = await chat_service.get_chat_message_content(
+                chat_history=chat_history
+            )
+
+            result = str(response)
+            logger.info("ExecutiveAgent zakończył przetwarzanie")
+            return result
+
+        except Exception as e:
+            error_msg = f"Błąd w ExecutiveAgent: {e}"
+            logger.error(error_msg)
+            return error_msg
+
+    async def create_roadmap(self, vision_text: str) -> dict:
+        """
+        Tworzy roadmapę projektu na podstawie wizji użytkownika.
+
+        Args:
+            vision_text: Opis wizji projektu od użytkownika
+
+        Returns:
+            Dict z utworzoną roadmapą
+        """
+        logger.info("ExecutiveAgent tworzy roadmapę...")
+
+        prompt = f"""Użytkownik przedstawił wizję projektu:
+
+"{vision_text}"
+
+Twoim zadaniem jest stworzyć ROADMAPĘ PROJEKTU. Przeprowadź analizę i zaproponuj:
+
+1. VISION (1 główny cel długoterminowy)
+   - Tytuł (krótki, konkretny)
+   - Opis (co chcemy osiągnąć)
+   - KPI (jak zmierzymy sukces)
+
+2. MILESTONES (3-5 etapów realizacji)
+   Dla każdego:
+   - Tytuł
+   - Opis (co zostanie zrobione)
+   - Priorytet (1=najwyższy)
+   - KPI (jak zmierzymy postęp)
+
+3. TASKS (3-5 zadań dla pierwszego Milestone)
+   Dla każdego:
+   - Tytuł
+   - Opis (konkretne action items)
+   - Priorytet
+
+ODPOWIEDZ W FORMACIE:
+
+VISION: [tytuł]
+Opis: [opis wizji]
+KPI: [nazwa KPI] - target: [wartość] [jednostka]
+
+MILESTONE 1: [tytuł]
+Priorytet: [1-5]
+Opis: [opis]
+KPI: [nazwa] - target: [wartość] [jednostka]
+
+MILESTONE 2: [tytuł]
+...
+
+TASKS dla Milestone 1:
+TASK 1: [tytuł]
+Priorytet: [1-5]
+Opis: [opis]
+
+TASK 2: [tytuł]
+...
+
+Pamiętaj:
+- Bądź konkretny i realistyczny
+- Milestones powinny być osiągalne w rozsądnym czasie
+- Tasks powinny być atomowe i wykonalne
+"""
+
+        response = await self.process(prompt)
+
+        # Sparsuj odpowiedź i utwórz strukturę w GoalStore
+        return await self._parse_and_create_roadmap(response, vision_text)
+
+    async def _parse_and_create_roadmap(
+        self, llm_response: str, original_vision: str
+    ) -> dict:
+        """
+        Parsuje odpowiedź LLM i tworzy strukturę w GoalStore.
+
+        Args:
+            llm_response: Odpowiedź od LLM z roadmapą
+            original_vision: Oryginalna wizja użytkownika
+
+        Returns:
+            Dict z podsumowaniem utworzonych celów
+        """
+        # Prosty parser - w produkcji można użyć structured output
+        lines = llm_response.split("\n")
+
+        vision_goal = None
+        current_milestone = None
+        milestones_created = []
+        tasks_created = []
+
+        try:
+            # Parse Vision
+            for i, line in enumerate(lines):
+                if line.startswith("VISION:"):
+                    vision_title = line.replace("VISION:", "").strip()
+                    vision_desc = original_vision
+
+                    # Szukaj KPI
+                    kpi_line = None
+                    for j in range(i + 1, min(i + 5, len(lines))):
+                        if "KPI:" in lines[j]:
+                            kpi_line = lines[j]
+                            break
+
+                    kpis = []
+                    if kpi_line:
+                        # Prosta ekstrakcja KPI
+                        kpis = [
+                            KPI(
+                                name="Główny wskaźnik postępu",
+                                target_value=100.0,
+                                unit="%",
+                            )
+                        ]
+
+                    vision_goal = self.goal_store.add_goal(
+                        title=vision_title,
+                        goal_type=GoalType.VISION,
+                        description=vision_desc,
+                        priority=1,
+                        kpis=kpis,
+                    )
+                    logger.info(f"Utworzono Vision: {vision_title}")
+                    break
+
+            if not vision_goal:
+                # Fallback - utwórz Vision z oryginalnego tekstu
+                vision_goal = self.goal_store.add_goal(
+                    title="Wizja projektu",
+                    goal_type=GoalType.VISION,
+                    description=original_vision,
+                    priority=1,
+                    kpis=[
+                        KPI(name="Postęp realizacji", target_value=100.0, unit="%")
+                    ],
+                )
+
+            # Parse Milestones (uproszczone)
+            milestone_count = 0
+            for i, line in enumerate(lines):
+                if line.startswith("MILESTONE"):
+                    milestone_count += 1
+                    # Ekstrakcja tytułu
+                    parts = line.split(":", 1)
+                    milestone_title = (
+                        parts[1].strip() if len(parts) > 1 else f"Milestone {milestone_count}"
+                    )
+
+                    # Szukaj opisu i priorytetu
+                    priority = 1
+                    description = ""
+                    for j in range(i + 1, min(i + 5, len(lines))):
+                        if "Priorytet:" in lines[j]:
+                            try:
+                                priority = int(
+                                    lines[j].replace("Priorytet:", "").strip()
+                                )
+                            except ValueError:
+                                priority = milestone_count
+                        elif "Opis:" in lines[j]:
+                            description = lines[j].replace("Opis:", "").strip()
+
+                    milestone = self.goal_store.add_goal(
+                        title=milestone_title,
+                        goal_type=GoalType.MILESTONE,
+                        description=description or f"Etap {milestone_count} realizacji projektu",
+                        priority=priority,
+                        parent_id=vision_goal.goal_id,
+                        kpis=[
+                            KPI(
+                                name="Ukończone zadania",
+                                target_value=100.0,
+                                unit="%",
+                            )
+                        ],
+                    )
+                    milestones_created.append(milestone)
+                    current_milestone = milestone
+                    logger.info(f"Utworzono Milestone: {milestone_title}")
+
+            # Parse Tasks (uproszczone - dla pierwszego milestone)
+            if current_milestone:
+                task_count = 0
+                for i, line in enumerate(lines):
+                    if line.startswith("TASK") and ":" in line:
+                        task_count += 1
+                        parts = line.split(":", 1)
+                        task_title = (
+                            parts[1].strip()
+                            if len(parts) > 1
+                            else f"Zadanie {task_count}"
+                        )
+
+                        # Szukaj opisu i priorytetu
+                        priority = 1
+                        description = ""
+                        for j in range(i + 1, min(i + 5, len(lines))):
+                            if "Priorytet:" in lines[j]:
+                                try:
+                                    priority = int(
+                                        lines[j].replace("Priorytet:", "").strip()
+                                    )
+                                except ValueError:
+                                    priority = task_count
+                            elif "Opis:" in lines[j]:
+                                description = lines[j].replace("Opis:", "").strip()
+
+                        task = self.goal_store.add_goal(
+                            title=task_title,
+                            goal_type=GoalType.TASK,
+                            description=description or task_title,
+                            priority=priority,
+                            parent_id=current_milestone.goal_id,
+                        )
+                        tasks_created.append(task)
+                        logger.info(f"Utworzono Task: {task_title}")
+
+            return {
+                "success": True,
+                "vision": vision_goal.title if vision_goal else None,
+                "milestones_count": len(milestones_created),
+                "tasks_count": len(tasks_created),
+                "roadmap_report": self.goal_store.generate_roadmap_report(),
+            }
+
+        except Exception as e:
+            logger.error(f"Błąd podczas parsowania roadmapy: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "raw_response": llm_response,
+            }
+
+    async def generate_status_report(self) -> str:
+        """
+        Generuje raport statusu projektu.
+
+        Returns:
+            Sformatowany raport menedżerski
+        """
+        logger.info("ExecutiveAgent generuje raport statusu...")
+
+        # Pobierz dane z GoalStore
+        roadmap_report = self.goal_store.generate_roadmap_report()
+
+        # Dodaj analizę Executive
+        vision = self.goal_store.get_vision()
+        current_milestone = self.goal_store.get_next_milestone()
+
+        prompt = f"""Jako Executive, przeanalizuj obecny stan projektu i wygeneruj raport menedżerski.
+
+ROADMAP:
+{roadmap_report}
+
+AKTUALNE DANE:
+- Vision: {vision.title if vision else "Brak"}
+- Aktualny Milestone: {current_milestone.title if current_milestone else "Brak"}
+- Status: {current_milestone.status.value if current_milestone else "N/A"}
+
+Wygeneruj krótki raport statusu (3-5 zdań) odpowiadając na:
+1. Gdzie jesteśmy w realizacji projektu?
+2. Jakie są główne osiągnięcia?
+3. Czy są jakieś problemy lub blokery?
+4. Co będziemy robić dalej?
+
+Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera).
+"""
+
+        response = await self.process(prompt)
+
+        # Połącz roadmap + analizę
+        full_report = f"{roadmap_report}\n\n{'='*50}\n📊 RAPORT WYKONAWCZY:\n\n{response}"
+
+        return full_report
+
+    async def run_status_meeting(self, council_session=None) -> str:
+        """
+        Przeprowadza "Daily Standup" - spotkanie statusowe z zespołem.
+
+        Args:
+            council_session: Opcjonalnie sesja Council do konsultacji
+
+        Returns:
+            Podsumowanie spotkania
+        """
+        logger.info("ExecutiveAgent prowadzi Status Meeting...")
+
+        meeting_notes = ["=== DAILY STANDUP - STATUS MEETING ===\n"]
+        meeting_notes.append(f"Data: {GoalStore.__module__}\n")
+
+        # 1. Status aktualnego Milestone
+        current_milestone = self.goal_store.get_next_milestone()
+        if current_milestone:
+            progress = current_milestone.get_progress()
+            meeting_notes.append(f"📋 AKTUALNY MILESTONE: {current_milestone.title}")
+            meeting_notes.append(f"   Status: {current_milestone.status.value}")
+            meeting_notes.append(f"   Postęp: {progress:.1f}%\n")
+
+            # Zadania w milestone
+            tasks = self.goal_store.get_tasks(parent_id=current_milestone.goal_id)
+            completed = [t for t in tasks if t.status == GoalStatus.COMPLETED]
+            in_progress = [t for t in tasks if t.status == GoalStatus.IN_PROGRESS]
+            pending = [t for t in tasks if t.status == GoalStatus.PENDING]
+
+            meeting_notes.append(f"   ✅ Ukończone: {len(completed)}")
+            meeting_notes.append(f"   🔄 W trakcie: {len(in_progress)}")
+            meeting_notes.append(f"   ⏸️ Oczekujące: {len(pending)}\n")
+
+            # Blokery
+            blocked = [t for t in tasks if t.status == GoalStatus.BLOCKED]
+            if blocked:
+                meeting_notes.append(f"   🚫 BLOKERY: {len(blocked)}")
+                for task in blocked:
+                    meeting_notes.append(f"      - {task.title}")
+                meeting_notes.append("")
+        else:
+            meeting_notes.append("⚠️ Brak aktualnego Milestone\n")
+
+        # 2. Co dalej?
+        next_task = self.goal_store.get_next_task()
+        if next_task:
+            meeting_notes.append(f"🎯 NASTĘPNE ZADANIE: {next_task.title}")
+            meeting_notes.append(f"   Priorytet: {next_task.priority}")
+            meeting_notes.append(f"   {next_task.description}\n")
+        else:
+            meeting_notes.append("✅ Wszystkie zadania w Milestone ukończone!\n")
+
+        # 3. Decyzje Executiva
+        meeting_notes.append("💡 DECYZJE EXECUTIVE:")
+        if next_task:
+            meeting_notes.append(f"   → Rozpocząć pracę nad: {next_task.title}")
+        elif current_milestone and current_milestone.get_progress() >= 100:
+            meeting_notes.append("   → Milestone ukończony - przejść do kolejnego")
+        else:
+            meeting_notes.append("   → Potrzebna akceptacja użytkownika lub nowy cel")
+
+        return "\n".join(meeting_notes)
+
+    async def prioritize_tasks(self, milestone_id: UUID) -> str:
+        """
+        Priorytetyzuje zadania w ramach Milestone.
+
+        Args:
+            milestone_id: ID kamienia milowego
+
+        Returns:
+            Raport z priorytetyzacji
+        """
+        logger.info(f"ExecutiveAgent priorytetyzuje zadania dla Milestone {milestone_id}")
+
+        milestone = self.goal_store.get_goal(milestone_id)
+        if not milestone:
+            return "❌ Nie znaleziono Milestone"
+
+        tasks = self.goal_store.get_tasks(parent_id=milestone_id)
+        if not tasks:
+            return "⚠️ Brak zadań w Milestone"
+
+        # Przygotuj kontekst dla LLM
+        tasks_info = "\n".join(
+            [
+                f"- [{t.priority}] {t.title}: {t.description}"
+                for t in tasks
+            ]
+        )
+
+        prompt = f"""Jako Executive, dokonaj priorytetyzacji zadań w Milestone: "{milestone.title}"
+
+ZADANIA:
+{tasks_info}
+
+Przeanalizuj zadania i zaproponuj optymalny porządek realizacji uwzględniając:
+1. Zależności między zadaniami (co musi być pierwsze)
+2. Wartość biznesową (co przyniesie największą wartość)
+3. Trudność i szacowany czas (quick wins vs długie zadania)
+4. Ryzyko (co jest krytyczne dla sukcesu)
+
+Odpowiedz w formacie:
+1. [nazwa zadania] - uzasadnienie
+2. [nazwa zadania] - uzasadnienie
+...
+"""
+
+        response = await self.process(prompt)
+        return f"=== PRIORYTETYZACJA ZADAŃ ===\n\n{response}"

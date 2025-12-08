@@ -396,7 +396,8 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         logger.info("ExecutiveAgent prowadzi Status Meeting...")
 
         meeting_notes = ["=== DAILY STANDUP - STATUS MEETING ===\n"]
-        meeting_notes.append(f"Data: {GoalStore.__module__}\n")
+        from datetime import datetime as dt
+        meeting_notes.append(f"Data: {dt.now().strftime('%Y-%m-%d %H:%M')}\n")
 
         # 1. Status aktualnego Milestone
         current_milestone = self.goal_store.get_next_milestone()

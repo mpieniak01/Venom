@@ -1406,7 +1406,10 @@ async def serve_strategy_dashboard():
     strategy_path = web_dir / "templates" / "strategy.html"
     if strategy_path.exists():
         return FileResponse(str(strategy_path))
-    return {"message": "Strategy Dashboard niedostępny"}
+    raise HTTPException(
+        status_code=404, 
+        detail="Strategy Dashboard niedostępny - brak pliku strategy.html"
+    )
 
 
 class RoadmapCreateRequest(BaseModel):

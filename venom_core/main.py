@@ -59,6 +59,11 @@ audio_stream_handler = None
 # Inicjalizacja Node Manager (THE_NEXUS)
 node_manager = None
 
+# Inicjalizacja Shadow Agent (THE_SHADOW)
+shadow_agent = None
+desktop_sensor = None
+notifier = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,6 +72,7 @@ async def lifespan(app: FastAPI):
     global background_scheduler, file_watcher, documenter_agent
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
     global node_manager, orchestrator
+    global shadow_agent, desktop_sensor, notifier
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -294,10 +300,99 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {e}")
             audio_stream_handler = None
 
+    # Inicjalizuj Shadow Agent i Desktop Sensor (THE_SHADOW)
+    if SETTINGS.ENABLE_PROACTIVE_MODE:
+        try:
+            from venom_core.agents.shadow import ShadowAgent
+            from venom_core.execution.kernel_builder import build_kernel
+            from venom_core.perception.desktop_sensor import DesktopSensor
+            from venom_core.ui.notifier import Notifier
+
+            # Inicjalizuj Notifier
+            async def handle_shadow_action(action_payload: dict):
+                """Obsługa akcji z powiadomień Shadow Agent."""
+                logger.info(f"Shadow Agent action triggered: {action_payload}")
+                # Tutaj można dodać logikę obsługi akcji
+                # np. wykonanie kodu, aktualizacja zadania, itp.
+
+            notifier = Notifier(webhook_handler=handle_shadow_action)
+            logger.info("Notifier zainicjalizowany")
+
+            # Inicjalizuj Shadow Agent
+            shadow_kernel = build_kernel()
+            shadow_agent = ShadowAgent(
+                kernel=shadow_kernel,
+                goal_store=(
+                    orchestrator.goal_store
+                    if hasattr(orchestrator, "goal_store")
+                    else None
+                ),
+                lessons_store=lessons_store,
+                confidence_threshold=SETTINGS.SHADOW_CONFIDENCE_THRESHOLD,
+            )
+            await shadow_agent.start()
+            logger.info("ShadowAgent uruchomiony")
+
+            # Callback dla desktop sensor
+            async def handle_sensor_data(sensor_data: dict):
+                """Obsługa danych z Desktop Sensor."""
+                logger.debug(f"Desktop Sensor data: {sensor_data.get('type')}")
+
+                # Przekaż do Shadow Agent do analizy
+                suggestion = await shadow_agent.analyze_sensor_data(sensor_data)
+
+                if suggestion:
+                    logger.info(f"Shadow Agent suggestion: {suggestion.title}")
+
+                    # Wyślij powiadomienie
+                    await notifier.send_toast(
+                        title=suggestion.title,
+                        message=suggestion.message,
+                        action_payload=suggestion.action_payload,
+                    )
+
+                    # Broadcast event do UI
+                    await event_broadcaster.broadcast_event(
+                        event_type=EventType.SYSTEM_LOG,
+                        message=f"Shadow: {suggestion.title}",
+                        data=suggestion.to_dict(),
+                    )
+
+            # Inicjalizuj Desktop Sensor
+            if SETTINGS.ENABLE_DESKTOP_SENSOR:
+                desktop_sensor = DesktopSensor(
+                    clipboard_callback=handle_sensor_data,
+                    window_callback=handle_sensor_data,
+                    privacy_filter=SETTINGS.SHADOW_PRIVACY_FILTER,
+                )
+                await desktop_sensor.start()
+                logger.info(
+                    "DesktopSensor uruchomiony - monitorowanie schowka i okien aktywne"
+                )
+            else:
+                logger.info("DesktopSensor wyłączony (ENABLE_DESKTOP_SENSOR=False)")
+
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować Shadow Agent: {e}")
+            shadow_agent = None
+            desktop_sensor = None
+            notifier = None
+    else:
+        logger.info("Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)")
+
     yield
 
     # Shutdown
     logger.info("Zamykanie aplikacji...")
+
+    # Zatrzymaj Shadow Agent components
+    if desktop_sensor:
+        await desktop_sensor.stop()
+        logger.info("DesktopSensor zatrzymany")
+
+    if shadow_agent:
+        await shadow_agent.stop()
+        logger.info("ShadowAgent zatrzymany")
 
     # Zatrzymaj Node Manager
     if node_manager:
@@ -1265,6 +1360,81 @@ async def get_documenter_status():
         return {"status": "success", "documenter": status}
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu dokumentalisty")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ==================== SHADOW AGENT API (THE_SHADOW) ====================
+
+
+@app.get("/api/v1/shadow/status")
+async def get_shadow_status():
+    """
+    Zwraca status Shadow Agent, Desktop Sensor i Notifier.
+
+    Returns:
+        Status komponentów Shadow Agent
+
+    Raises:
+        HTTPException: 503 jeśli Shadow Agent nie jest dostępny
+    """
+    if not SETTINGS.ENABLE_PROACTIVE_MODE:
+        raise HTTPException(
+            status_code=503,
+            detail="Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)",
+        )
+
+    try:
+        status_data = {
+            "shadow_agent": shadow_agent.get_status() if shadow_agent else None,
+            "desktop_sensor": desktop_sensor.get_status() if desktop_sensor else None,
+            "notifier": notifier.get_status() if notifier else None,
+            "config": {
+                "confidence_threshold": SETTINGS.SHADOW_CONFIDENCE_THRESHOLD,
+                "privacy_filter": SETTINGS.SHADOW_PRIVACY_FILTER,
+                "desktop_sensor_enabled": SETTINGS.ENABLE_DESKTOP_SENSOR,
+            },
+        }
+        return {"status": "success", "shadow": status_data}
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu Shadow Agent")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.post("/api/v1/shadow/reject")
+async def reject_shadow_suggestion(suggestion_type: str):
+    """
+    Rejestruje odrzuconą sugestię Shadow Agent dla uczenia się.
+
+    Args:
+        suggestion_type: Typ odrzuconej sugestii
+
+    Returns:
+        Potwierdzenie rejestracji
+
+    Raises:
+        HTTPException: 503 jeśli Shadow Agent nie jest dostępny
+    """
+    if shadow_agent is None:
+        raise HTTPException(status_code=503, detail="Shadow Agent nie jest dostępny")
+
+    try:
+        from venom_core.agents.shadow import Suggestion
+
+        # Utwórz prostą sugestię do rejestracji
+        suggestion = Suggestion(
+            suggestion_type=suggestion_type,
+            title="Rejected by user",
+            message="User rejected this suggestion",
+            confidence=0.0,
+        )
+
+        shadow_agent.record_rejection(suggestion)
+        return {
+            "status": "success",
+            "message": f"Odrzucona sugestia typu '{suggestion_type}' zarejestrowana",
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas rejestrowania odrzuconej sugestii")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 

@@ -139,9 +139,7 @@ Gdy otrzymujesz dane z sensora:
         self._suggestion_queue: List[Suggestion] = []
         self._rejected_suggestions: List[str] = []  # Historia odrzuconych sugestii
 
-        logger.info(
-            f"ShadowAgent zainicjalizowany z threshold={confidence_threshold}"
-        )
+        logger.info(f"ShadowAgent zainicjalizowany z threshold={confidence_threshold}")
 
     async def start(self) -> None:
         """Uruchamia Shadow Agent w trybie daemon."""
@@ -195,7 +193,9 @@ Gdy otrzymujesz dane z sensora:
             logger.error(f"Błąd w ShadowAgent.process: {e}")
             return f"Błąd podczas analizy: {e}"
 
-    async def analyze_sensor_data(self, sensor_data: Dict[str, Any]) -> Optional[Suggestion]:
+    async def analyze_sensor_data(
+        self, sensor_data: Dict[str, Any]
+    ) -> Optional[Suggestion]:
         """
         Analizuje dane z sensora i generuje sugestię jeśli to zasadne.
 
@@ -286,7 +286,9 @@ Gdy otrzymujesz dane z sensora:
             r"NullReferenceException|NullPointerException",
         ]
 
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in error_patterns)
+        return any(
+            re.search(pattern, text, re.IGNORECASE) for pattern in error_patterns
+        )
 
     def _is_code_snippet(self, text: str) -> bool:
         """
@@ -307,7 +309,9 @@ Gdy otrzymujesz dane z sensora:
             r"SELECT\s+.+FROM",
         ]
 
-        return any(re.search(pattern, text, re.IGNORECASE) for pattern in code_indicators)
+        return any(
+            re.search(pattern, text, re.IGNORECASE) for pattern in code_indicators
+        )
 
     def _is_reading_docs(self, title: str) -> bool:
         """

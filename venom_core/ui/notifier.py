@@ -71,9 +71,7 @@ class Notifier:
                 if result.returncode == 0:
                     logger.info("notify-send dostępne")
                 else:
-                    logger.warning(
-                        "notify-send niedostępne - zainstaluj libnotify-bin"
-                    )
+                    logger.warning("notify-send niedostępne - zainstaluj libnotify-bin")
             except Exception as e:
                 logger.warning(f"Nie można sprawdzić notify-send: {e}")
         elif self._is_wsl:
@@ -106,9 +104,7 @@ class Notifier:
             if self.system == "Windows":
                 return await self._send_toast_windows(title, message, action_payload)
             elif self.system == "Linux" and not self._is_wsl:
-                return await self._send_toast_linux(
-                    title, message, urgency, timeout
-                )
+                return await self._send_toast_linux(title, message, urgency, timeout)
             elif self._is_wsl:
                 logger.warning(
                     "Powiadomienia w WSL2 wymagają satelity - próba wysłania przez PowerShell"
@@ -296,7 +292,7 @@ class Notifier:
             message_escaped = message.replace('"', '`"')
 
             # Prosty BurntToast command (jeśli zainstalowany na Windows)
-            cmd = f'powershell.exe -Command "New-BurntToastNotification -Text \'{title_escaped}\', \'{message_escaped}\'"'
+            cmd = f"powershell.exe -Command \"New-BurntToastNotification -Text '{title_escaped}', '{message_escaped}'\""
 
             process = await asyncio.create_subprocess_shell(
                 cmd,

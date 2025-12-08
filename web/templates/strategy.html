@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Venom - War Room (Strategy)</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <style>
+        .war-room-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .war-room-header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .war-room-header h1 {
+            font-size: 2.5em;
+            color: #00ff00;
+            margin-bottom: 10px;
+        }
+
+        .war-room-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .war-room-panel {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .panel-title {
+            font-size: 1.5em;
+            color: #00ff00;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .vision-box {
+            background: rgba(0, 100, 0, 0.3);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .vision-title {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+
+        .milestone-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .milestone-item {
+            background: rgba(0, 50, 0, 0.5);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #00ff00;
+        }
+
+        .milestone-item.in-progress {
+            border-left-color: #ffaa00;
+        }
+
+        .milestone-item.completed {
+            border-left-color: #00ff00;
+            opacity: 0.7;
+        }
+
+        .milestone-item.blocked {
+            border-left-color: #ff0000;
+        }
+
+        .milestone-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .milestone-title {
+            font-weight: bold;
+            color: #00ffaa;
+        }
+
+        .milestone-status {
+            font-size: 0.9em;
+            padding: 3px 8px;
+            border-radius: 3px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #00ff88);
+            transition: width 0.3s ease;
+        }
+
+        .task-list {
+            margin-top: 10px;
+            padding-left: 15px;
+        }
+
+        .task-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            background: rgba(0, 0, 0, 0.3);
+            font-size: 0.9em;
+        }
+
+        .task-item.completed {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .kpi-card {
+            background: rgba(0, 50, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .kpi-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .kpi-label {
+            font-size: 0.9em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: 1px solid #00ff00;
+            background: rgba(0, 100, 0, 0.3);
+            color: #00ff00;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: monospace;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(0, 150, 0, 0.5);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        .btn-primary {
+            background: rgba(0, 150, 0, 0.5);
+        }
+
+        .status-emoji {
+            font-size: 1.2em;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-style: italic;
+        }
+
+        .roadmap-report {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body style="background: #000; color: #0f0; font-family: monospace;">
+    <div class="war-room-container">
+        <!-- Header -->
+        <div class="war-room-header">
+            <h1>🎯 WAR ROOM - Zarządzanie Strategiczne</h1>
+            <p>Executive Dashboard: Wizja → Milestones → Tasks</p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="loadRoadmap()">🔄 Odśwież Roadmapę</button>
+            <button class="btn" onclick="showDefineVisionDialog()">✨ Zdefiniuj Wizję</button>
+            <button class="btn" onclick="startCampaign()">🚀 Uruchom Kampanię</button>
+            <button class="btn" onclick="requestStatusReport()">📊 Raport Statusu</button>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="war-room-grid">
+            <!-- Vision Panel -->
+            <div class="war-room-panel">
+                <div class="panel-title">🎯 VISION (Wizja)</div>
+                <div id="visionContent" class="vision-box">
+                    <div class="empty-state">Brak zdefiniowanej wizji. Kliknij "Zdefiniuj Wizję" aby rozpocząć.</div>
+                </div>
+            </div>
+
+            <!-- KPIs Panel -->
+            <div class="war-room-panel">
+                <div class="panel-title">📊 Key Performance Indicators</div>
+                <div id="kpisContent" class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-value" id="completionRate">0%</div>
+                        <div class="kpi-label">Postęp Ogólny</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-value" id="milestonesCompleted">0/0</div>
+                        <div class="kpi-label">Milestones</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-value" id="tasksCompleted">0/0</div>
+                        <div class="kpi-label">Tasks</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Milestones Panel (Full Width) -->
+        <div class="war-room-panel" style="grid-column: 1 / -1;">
+            <div class="panel-title">📋 MILESTONES (Kamienie Milowe)</div>
+            <div id="milestonesContent">
+                <div class="empty-state">Brak kamieni milowych. Zdefiniuj wizję aby automatycznie wygenerować roadmapę.</div>
+            </div>
+        </div>
+
+        <!-- Roadmap Report (Full Width) -->
+        <div class="war-room-panel" style="grid-column: 1 / -1;">
+            <div class="panel-title">📝 Pełny Raport Roadmapy</div>
+            <div id="roadmapReportContent" class="roadmap-report">
+                <div class="empty-state">Brak danych do wyświetlenia</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API endpoint
+        const API_BASE = '/api';
+
+        // Load roadmap data
+        async function loadRoadmap() {
+            try {
+                const response = await fetch(`${API_BASE}/roadmap`);
+                if (!response.ok) {
+                    throw new Error('Failed to load roadmap');
+                }
+                const data = await response.json();
+                renderRoadmap(data);
+            } catch (error) {
+                console.error('Error loading roadmap:', error);
+                alert('Błąd ładowania roadmapy. Sprawdź czy serwer działa.');
+            }
+        }
+
+        // Render roadmap data
+        function renderRoadmap(data) {
+            // Render Vision
+            if (data.vision) {
+                const visionHtml = `
+                    <div class="vision-title">${data.vision.title}</div>
+                    <div>${data.vision.description}</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${data.vision.progress}%"></div>
+                    </div>
+                    <div style="text-align: right; margin-top: 5px;">${data.vision.progress.toFixed(1)}%</div>
+                `;
+                document.getElementById('visionContent').innerHTML = visionHtml;
+            }
+
+            // Render Milestones
+            if (data.milestones && data.milestones.length > 0) {
+                const milestonesHtml = data.milestones.map(m => `
+                    <div class="milestone-item ${m.status.toLowerCase().replace('_', '-')}">
+                        <div class="milestone-header">
+                            <div class="milestone-title">
+                                <span class="status-emoji">${getStatusEmoji(m.status)}</span>
+                                ${m.title}
+                            </div>
+                            <div class="milestone-status">${m.status}</div>
+                        </div>
+                        <div>${m.description || ''}</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${m.progress}%"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.9em;">
+                            <span>Postęp: ${m.progress.toFixed(1)}%</span>
+                            <span>Priorytet: ${m.priority}</span>
+                        </div>
+                        ${m.tasks && m.tasks.length > 0 ? `
+                            <div class="task-list">
+                                <strong>Zadania (${m.tasks.filter(t => t.status === 'COMPLETED').length}/${m.tasks.length}):</strong>
+                                ${m.tasks.map(t => `
+                                    <div class="task-item ${t.status === 'COMPLETED' ? 'completed' : ''}">
+                                        ${getStatusEmoji(t.status)} ${t.title}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+                document.getElementById('milestonesContent').innerHTML = milestonesHtml;
+            }
+
+            // Render KPIs
+            if (data.kpis) {
+                document.getElementById('completionRate').textContent = `${data.kpis.completion_rate.toFixed(0)}%`;
+                document.getElementById('milestonesCompleted').textContent = 
+                    `${data.kpis.milestones_completed}/${data.kpis.milestones_total}`;
+                document.getElementById('tasksCompleted').textContent = 
+                    `${data.kpis.tasks_completed}/${data.kpis.tasks_total}`;
+            }
+
+            // Render full report
+            if (data.report) {
+                document.getElementById('roadmapReportContent').textContent = data.report;
+            }
+        }
+
+        // Get emoji for status
+        function getStatusEmoji(status) {
+            const emojiMap = {
+                'PENDING': '⏸️',
+                'IN_PROGRESS': '🔄',
+                'COMPLETED': '✅',
+                'BLOCKED': '🚫',
+                'CANCELLED': '❌'
+            };
+            return emojiMap[status] || '❓';
+        }
+
+        // Define Vision Dialog
+        function showDefineVisionDialog() {
+            const vision = prompt('Zdefiniuj wizję projektu:\n\nNp. "Stworzyć najlepszy framework AI do automatyzacji"');
+            if (vision) {
+                defineVision(vision);
+            }
+        }
+
+        // Define vision via API
+        async function defineVision(visionText) {
+            try {
+                const response = await fetch(`${API_BASE}/roadmap/create`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({vision: visionText})
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to create roadmap');
+                }
+                const data = await response.json();
+                alert('Roadmapa utworzona! Milestones i Tasks zostały wygenerowane.');
+                loadRoadmap();
+            } catch (error) {
+                console.error('Error creating roadmap:', error);
+                alert('Błąd tworzenia roadmapy: ' + error.message);
+            }
+        }
+
+        // Start Campaign Mode
+        async function startCampaign() {
+            if (!confirm('Uruchomić Tryb Kampanii?\n\nVenom będzie autonomicznie realizował roadmapę.')) {
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/campaign/start`, {
+                    method: 'POST'
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to start campaign');
+                }
+                alert('Kampania rozpoczęta! Monitoruj postępy w Task Monitor.');
+            } catch (error) {
+                console.error('Error starting campaign:', error);
+                alert('Błąd uruchamiania kampanii: ' + error.message);
+            }
+        }
+
+        // Request Status Report
+        async function requestStatusReport() {
+            try {
+                const response = await fetch(`${API_BASE}/roadmap/status`);
+                if (!response.ok) {
+                    throw new Error('Failed to get status report');
+                }
+                const data = await response.json();
+                alert(data.report || 'Brak raportu');
+            } catch (error) {
+                console.error('Error getting status:', error);
+                alert('Błąd pobierania raportu: ' + error.message);
+            }
+        }
+
+        // Auto-load on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadRoadmap();
+            // Auto-refresh every 30 seconds
+            setInterval(loadRoadmap, 30000);
+        });
+    </script>
+</body>
+</html>

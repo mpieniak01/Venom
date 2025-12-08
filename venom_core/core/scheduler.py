@@ -284,3 +284,48 @@ class BackgroundScheduler:
             "jobs_count": len(self.scheduler.get_jobs()),
             "state": state_str,
         }
+
+    def schedule_daily_standup(
+        self, executive_agent, hour: int = 9, minute: int = 0
+    ) -> str:
+        """
+        Harmonogramuje codzienne spotkanie statusowe (Daily Standup).
+
+        Args:
+            executive_agent: Instancja ExecutiveAgent
+            hour: Godzina spotkania (domyślnie 9:00)
+            minute: Minuta spotkania
+
+        Returns:
+            ID zadania
+        """
+        # Funkcja do wykonania
+        async def daily_standup():
+            logger.info("⏰ Rozpoczynam Daily Standup (scheduled)")
+            try:
+                report = await executive_agent.run_status_meeting()
+                logger.info(f"Daily Standup zakończony:\n{report}")
+
+                # Broadcast przez event broadcaster jeśli dostępny
+                if self.event_broadcaster:
+                    await self.event_broadcaster.broadcast_event(
+                        event_type="DAILY_STANDUP",
+                        message="Raport z Daily Standup",
+                        agent="Executive",
+                        data={"report": report},
+                    )
+            except Exception as e:
+                logger.error(f"Błąd podczas Daily Standup: {e}")
+
+        # Cron expression: 0 9 * * * (codziennie o 9:00)
+        cron_expr = f"{minute} {hour} * * *"
+
+        job_id = self.add_cron_job(
+            func=daily_standup,
+            cron_expression=cron_expr,
+            job_id="daily_standup",
+            description=f"Daily Standup - codziennie o {hour}:{minute:02d}",
+        )
+
+        logger.info(f"Zaplanowano Daily Standup na codziennie o {hour}:{minute:02d}")
+        return job_id

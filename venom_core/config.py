@@ -172,5 +172,18 @@ class Settings(BaseSettings):
     GHOST_SAFETY_DELAY: float = 0.5  # Opóźnienie bezpieczeństwa dla input operations
     GHOST_VISION_CONFIDENCE: float = 0.7  # Próg pewności dla vision grounding
 
+    # Konfiguracja THE_DREAMER (Synthetic Experience Replay & Active Learning)
+    ENABLE_DREAMING: bool = False  # Włącz system aktywnego śnienia
+    DREAMING_IDLE_THRESHOLD_MINUTES: int = 30  # Czas bezczynności przed rozpoczęciem śnienia
+    DREAMING_NIGHT_HOURS: str = "2-6"  # Godziny nocne dla intensywnego śnienia (np. "2-6")
+    DREAMING_MAX_SCENARIOS: int = 10  # Maksymalna liczba scenariuszy na sesję śnienia
+    DREAMING_CPU_THRESHOLD: float = 0.7  # Próg użycia CPU dla przerwania śnienia (0.0-1.0)
+    DREAMING_MEMORY_THRESHOLD: float = 0.8  # Próg użycia pamięci (0.0-1.0)
+    DREAMING_SCENARIO_COMPLEXITY: str = "medium"  # Złożoność scenariuszy: 'simple', 'medium', 'complex'
+    DREAMING_VALIDATION_STRICT: bool = True  # Ultra-surowa walidacja snów przez Guardian
+    DREAMING_OUTPUT_DIR: str = "./data/synthetic_training"  # Katalog dla syntetycznych danych
+    DREAMING_DOCKER_NAMESPACE: str = "venom-dream-worker"  # Namespace Docker dla snów
+    DREAMING_PROCESS_PRIORITY: int = 19  # Priorytet procesu (0-19, 19=najniższy)
+
 
 SETTINGS = Settings()

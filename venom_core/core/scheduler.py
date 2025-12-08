@@ -9,6 +9,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
+from venom_core.core.dream_engine import DreamState
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -329,4 +330,100 @@ class BackgroundScheduler:
         )
 
         logger.info(f"Zaplanowano Daily Standup na codziennie o {hour}:{minute:02d}")
+        return job_id
+
+    def schedule_nightly_dreaming(
+        self, dream_engine, start_hour: int = 2, end_hour: int = 6
+    ) -> str:
+        """
+        Harmonogramuje nocne śnienie (nightly REM phase).
+
+        Args:
+            dream_engine: Instancja DreamEngine
+            start_hour: Godzina rozpoczęcia nocnego śnienia (domyślnie 2:00)
+            end_hour: Godzina zakończenia okna nocnego (informacyjna)
+
+        Returns:
+            ID zadania
+        """
+
+        # Funkcja do wykonania
+        async def nightly_dream():
+            logger.info(f"🌙 Rozpoczynam nocne śnienie (scheduled {start_hour}:00)")
+            try:
+                report = await dream_engine.enter_rem_phase()
+                logger.info(f"Nocne śnienie zakończone:\n{report}")
+
+                # Broadcast przez event broadcaster jeśli dostępny
+                if self.event_broadcaster:
+                    await self.event_broadcaster.broadcast_event(
+                        event_type="DREAM_SESSION",
+                        message="Raport z nocnego śnienia",
+                        agent="DreamEngine",
+                        data={"report": report},
+                    )
+            except Exception as e:
+                logger.error(f"Błąd podczas nocnego śnienia: {e}")
+
+        # Cron expression: 0 2 * * * (codziennie o 2:00)
+        cron_expr = f"0 {start_hour} * * *"
+
+        job_id = self.add_cron_job(
+            func=nightly_dream,
+            cron_expression=cron_expr,
+            job_id="nightly_dreaming",
+            description=f"Nightly Dreaming - codziennie o {start_hour}:00-{end_hour}:00",
+        )
+
+        logger.info(
+            f"Zaplanowano nocne śnienie na codziennie o {start_hour}:00-{end_hour}:00"
+        )
+        return job_id
+
+    def schedule_idle_dreaming(
+        self, dream_engine, check_interval_minutes: int = 5
+    ) -> str:
+        """
+        Harmonogramuje sprawdzanie bezczynności i uruchamianie śnienia.
+
+        Args:
+            dream_engine: Instancja DreamEngine
+            check_interval_minutes: Interwał sprawdzania bezczynności
+
+        Returns:
+            ID zadania
+        """
+
+        # Funkcja do wykonania
+        async def check_idle_and_dream():
+            # Sprawdź czy system bezczynny i czy nie śnimy już
+            if (
+                dream_engine.energy_manager.is_idle()
+                and dream_engine.state == DreamState.IDLE
+                and not dream_engine.energy_manager.is_system_busy()
+            ):
+                logger.info("💤 System bezczynny - rozpoczynam śnienie...")
+                try:
+                    report = await dream_engine.enter_rem_phase(max_scenarios=3)
+                    logger.info(f"Idle dreaming zakończone:\n{report}")
+
+                    # Broadcast przez event broadcaster jeśli dostępny
+                    if self.event_broadcaster:
+                        await self.event_broadcaster.broadcast_event(
+                            event_type="DREAM_SESSION",
+                            message="Raport z idle dreaming",
+                            agent="DreamEngine",
+                            data={"report": report, "trigger": "idle"},
+                        )
+                except Exception as e:
+                    logger.error(f"Błąd podczas idle dreaming: {e}")
+
+        job_id = self.add_interval_job(
+            func=check_idle_and_dream,
+            minutes=check_interval_minutes,
+            job_id="idle_dreaming_check",
+            description=f"Idle Dreaming Check - co {check_interval_minutes} minut",
+        )
+
+        logger.info(f"Zaplanowano sprawdzanie bezczynności co {check_interval_minutes} minut")
         return job_id

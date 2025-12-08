@@ -115,42 +115,6 @@ class GraphRAGService:
             return {"entities": 0, "relationships": 0}
 
         try:
-            # Prompt dla ekstrakcji wiedzy
-            extraction_prompt = f"""Przeanalizuj poniższy tekst i wyekstrahuj kluczowe fakty w formie trójek (podmiot, relacja, dopełnienie).
-
-Format odpowiedzi (JSON):
-{{
-  "entities": [
-    {{"id": "unique_id", "name": "nazwa", "type": "typ"}},
-    ...
-  ],
-  "relationships": [
-    {{"source": "id_podmiotu", "target": "id_dopełnienia", "type": "typ_relacji"}},
-    ...
-  ]
-}}
-
-Przykład:
-Tekst: "Python jest językiem programowania stworzonym przez Guido van Rossum w 1991 roku."
-
-Odpowiedź:
-{{
-  "entities": [
-    {{"id": "python", "name": "Python", "type": "ProgrammingLanguage"}},
-    {{"id": "guido_van_rossum", "name": "Guido van Rossum", "type": "Person"}},
-    {{"id": "1991", "name": "1991", "type": "Year"}}
-  ],
-  "relationships": [
-    {{"source": "python", "target": "guido_van_rossum", "type": "CREATED_BY"}},
-    {{"source": "python", "target": "1991", "type": "CREATED_IN"}}
-  ]
-}}
-
-Tekst do analizy:
-{sanitized_text}
-
-Odpowiedź (JSON):"""
-
             # Sanityzuj tekst przed wstawieniem do promptu
             sanitized_text = text[:2000]
             # Usuń markdown code blocks, które mogłyby zamknąć kontekst

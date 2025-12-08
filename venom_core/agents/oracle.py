@@ -240,12 +240,12 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
                 try:
                     stats = self.oracle.graph_rag.get_stats()
                     return f"""Statystyki grafu wiedzy:
-- Encje: {stats['total_nodes']}
-- Relacje: {stats['total_edges']}
-- Społeczności: {stats['communities_count']}
-- Największa społeczność: {stats['largest_community_size']} encji
-- Typy encji: {stats['entity_types']}
-- Typy relacji: {stats['relationship_types']}"""
+- Encje: {stats["total_nodes"]}
+- Relacje: {stats["total_edges"]}
+- Społeczności: {stats["communities_count"]}
+- Największa społeczność: {stats["largest_community_size"]} encji
+- Typy encji: {stats["entity_types"]}
+- Typy relacji: {stats["relationship_types"]}"""
                 except Exception as e:
                     return f"Błąd: {str(e)}"
 

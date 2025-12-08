@@ -6,6 +6,7 @@ rejestrowanie zrzutów ekranu i zdarzeń wejścia (mysz/klawiatura).
 """
 
 import json
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -100,6 +101,11 @@ class DemonstrationRecorder:
 
         # Generuj ID sesji
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Sanityzuj session_name aby zapobiec path traversal
+        if session_name:
+            session_name = re.sub(r'[^a-zA-Z0-9_-]', '_', session_name)
+        
         session_id = session_name or f"demo_{timestamp}"
 
         # Utwórz sesję
@@ -366,7 +372,22 @@ class DemonstrationRecorder:
         Returns:
             Obiekt DemonstrationSession lub None jeśli nie znaleziono
         """
+        # Sanityzuj session_id aby zapobiec path traversal
+        session_id = re.sub(r'[^a-zA-Z0-9_-]', '_', session_id)
+        
         session_file = self.sessions_dir / session_id / "session.json"
+        
+        # Weryfikuj że ścieżka jest wewnątrz sessions_dir
+        try:
+            session_file_resolved = session_file.resolve()
+            sessions_dir_resolved = self.sessions_dir.resolve()
+            
+            if not str(session_file_resolved).startswith(str(sessions_dir_resolved)):
+                logger.error(f"Nieprawidłowa ścieżka sesji: {session_id}")
+                return None
+        except (OSError, ValueError) as e:
+            logger.error(f"Nieprawidłowy ID sesji: {session_id}, błąd: {e}")
+            return None
 
         if not session_file.exists():
             logger.error(f"Sesja nie znaleziona: {session_id}")

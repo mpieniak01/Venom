@@ -8,7 +8,7 @@ surowych danych (piksele, kliki) na semantyczne kroki akcji.
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from PIL import Image
 
@@ -267,7 +267,7 @@ class DemonstrationAnalyzer:
                 text += " "
             elif key == "enter":
                 text += "\n"
-            # Inne specjalne klawisz możemy ignorować
+            # Inne specjalne klawisze możemy ignorować
 
         return text
 

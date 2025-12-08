@@ -236,3 +236,14 @@ class TestApprenticeAgent:
         assert "keyboard_type" in code
         assert "keyboard_hotkey" in code
         assert "login button" in code
+
+    def test_sanitize_identifier_with_special_chars(self, apprentice_agent):
+        """Test sanityzacji identyfikatorów ze znakami specjalnymi."""
+        assert apprentice_agent._sanitize_identifier("hello'; drop table") == "hello___drop_table"
+        assert apprentice_agent._sanitize_identifier("123abc") == "_123abc"
+        assert apprentice_agent._sanitize_identifier("") == "skill"
+        assert apprentice_agent._sanitize_identifier("valid_name") == "valid_name"
+        assert apprentice_agent._sanitize_identifier("name-with-dash") == "name_with_dash"
+        assert apprentice_agent._sanitize_identifier("name with spaces") == "name_with_spaces"
+        assert apprentice_agent._sanitize_identifier("name/with/slash") == "name_with_slash"
+        assert apprentice_agent._sanitize_identifier("../../../etc/passwd") == "____________etc_passwd"

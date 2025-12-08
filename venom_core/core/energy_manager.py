@@ -139,7 +139,9 @@ class EnergyManager:
                 # Linux/Unix
                 os.nice(SETTINGS.DREAMING_PROCESS_PRIORITY)
                 logger.info(
-                    f"Ustawiono niski priorytet (nice={SETTINGS.DREAMING_PROCESS_PRIORITY}) dla PID {process.pid}"
+                    f"Ustawiono niski priorytet "
+                    f"(nice={SETTINGS.DREAMING_PROCESS_PRIORITY}) "
+                    f"dla PID {process.pid}"
                 )
             else:
                 # Windows

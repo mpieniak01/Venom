@@ -285,6 +285,8 @@ class InputSkill:
         Returns:
             True jeśli współrzędne są prawidłowe
         """
+        # Współrzędne ekranu są 0-based: (0,0) do (width-1, height-1)
+        # Używamy >= dla górnej granicy aby wykluczyć wartości równe width/height
         if x < 0 or x >= self.screen_width:
             logger.warning(f"X poza zakresem: {x} (zakres: 0-{self.screen_width - 1})")
             return False

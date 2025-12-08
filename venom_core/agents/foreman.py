@@ -52,9 +52,14 @@ class NodeMetrics:
         """
         Oblicza wynik obciążenia węzła (niższy = lepszy).
 
+        Wagi można dostosować w config.py dla różnych scenariuszy:
+        - CPU-intensive workloads: zwiększ cpu_weight
+        - Memory-intensive workloads: zwiększ memory_weight
+
         Returns:
             Wynik obciążenia (0-100, gdzie 0 = wolny, 100 = zajęty)
         """
+        # TODO: Rozważyć przeniesienie wag do SETTINGS dla konfigurowalności
         # Waga: CPU (40%), Memory (30%), Active Tasks (30%)
         cpu_weight = 0.4
         memory_weight = 0.3
@@ -204,16 +209,24 @@ class ForemanAgent(BaseAgent):
                 if self.node_manager:
                     nodes = self.node_manager.nodes
                     for node_id, node_info in nodes.items():
-                        metrics = NodeMetrics(
-                            node_id=node_id,
-                            node_name=node_info.node_name,
-                            cpu_usage=node_info.cpu_usage,
-                            memory_usage=node_info.memory_usage,
-                            active_tasks=node_info.active_tasks,
-                            gpu_available=node_info.capabilities.has_gpu,
-                            capabilities=node_info.capabilities.model_dump(),
-                        )
-                        self.nodes_metrics[node_id] = metrics
+                        try:
+                            # Bezpieczne pobieranie atrybutów z fallbackiem
+                            metrics = NodeMetrics(
+                                node_id=node_id,
+                                node_name=getattr(node_info, 'node_name', node_id),
+                                cpu_usage=getattr(node_info, 'cpu_usage', 0.0),
+                                memory_usage=getattr(node_info, 'memory_usage', 0.0),
+                                active_tasks=getattr(node_info, 'active_tasks', 0),
+                                gpu_available=getattr(
+                                    node_info.capabilities, 'has_gpu', False
+                                ) if hasattr(node_info, 'capabilities') else False,
+                                capabilities=node_info.capabilities.model_dump() 
+                                if hasattr(node_info, 'capabilities') and hasattr(node_info.capabilities, 'model_dump')
+                                else {},
+                            )
+                            self.nodes_metrics[node_id] = metrics
+                        except Exception as e:
+                            logger.warning(f"Nie można pobrać metryk węzła {node_id}: {e}")
 
                 # Czekaj 30 sekund przed następną aktualizacją
                 await asyncio.sleep(30)

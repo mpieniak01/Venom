@@ -338,6 +338,12 @@ class OTAManager:
         """
         Instaluje zależności z requirements.txt.
 
+        UWAGA BEZPIECZEŃSTWA:
+        - Upewnij się że requirements.txt pochodzi z zaufanego źródła
+        - W produkcji rozważ walidację zawartości requirements.txt
+        - Alternatywnie użyj pip-audit do skanowania podatności
+        - Można użyć hash verification (pip install --require-hashes)
+
         Args:
             requirements_path: Ścieżka do requirements.txt
 
@@ -345,6 +351,9 @@ class OTAManager:
             True jeśli instalacja udana
         """
         try:
+            # TODO: Dodać walidację requirements.txt przed instalacją
+            # TODO: Rozważyć użycie wirtualnego środowiska dla izolacji
+
             # Uruchom pip install
             result = subprocess.run(
                 ["pip", "install", "-r", str(requirements_path)],

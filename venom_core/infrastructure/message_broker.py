@@ -1,4 +1,21 @@
-"""Moduł: message_broker - infrastruktura kolejkowania zadań (Redis + ARQ)."""
+"""Moduł: message_broker - infrastruktura kolejkowania zadań (Redis + ARQ).
+
+UWAGA BEZPIECZEŃSTWA:
+Ten moduł używa pickle do serializacji obiektów Python (TaskMessage).
+Pickle umożliwia przechowywanie złożonych struktur, ale może być podatny
+na ataki arbitrary code execution jeśli dane pochodzą z niezaufanych źródeł.
+
+W architekturze Hive:
+- Wszystkie węzły są zaufane (Nexus + Spores w zamkniętej sieci)
+- Redis powinien być chroniony (firewall, hasło, VPN)
+- Alternatywnie można użyć JSON z custom serializers dla prostszych obiektów
+
+Dla publicznych deploymentów zaleca się:
+1. Używanie JSON zamiast pickle gdzie możliwe
+2. Walidację danych przed deserializacją
+3. Izolację sieci Redis (VPN, private network)
+4. Autentykację Redis (REDIS_PASSWORD)
+"""
 
 import asyncio
 import json

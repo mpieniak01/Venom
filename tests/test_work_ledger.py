@@ -1,11 +1,13 @@
 """Testy dla WorkLedger."""
 
-import json
-from pathlib import Path
-
 import pytest
 
-from venom_core.ops.work_ledger import TaskComplexity, TaskRecord, TaskStatus, WorkLedger
+from venom_core.ops.work_ledger import (
+    TaskComplexity,
+    TaskRecord,
+    TaskStatus,
+    WorkLedger,
+)
 
 
 class TestWorkLedger:

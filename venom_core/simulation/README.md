@@ -1,7 +1,7 @@
 # THE SIMULACRUM - Warstwa Symulacji Użytkowników
 
-**Status:** MVP Complete ✅  
-**Wersja:** 1.0  
+**Status:** MVP Complete ✅
+**Wersja:** 1.0
 **Ostatnia aktualizacja:** 2024-12-08
 
 ---
@@ -410,6 +410,6 @@ Część projektu Venom - patrz główna licencja projektu.
 
 ## 🎉 Credits
 
-**Autor:** Venom Team  
-**Inspiracje:** Synthetic User Testing, Chaos Engineering, UX Research  
+**Autor:** Venom Team
+**Inspiracje:** Synthetic User Testing, Chaos Engineering, UX Research
 **Integracje:** Semantic Kernel, Playwright, Docker Compose

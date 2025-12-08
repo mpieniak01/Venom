@@ -1,6 +1,6 @@
 # Venom Spore - Klient Węzła Rozproszonego
 
-Venom Spore to lekki klient, który pozwala na rozszerzenie możliwości Venoma poprzez wykonywanie zadań na zdalnych maszynach. 
+Venom Spore to lekki klient, który pozwala na rozszerzenie możliwości Venoma poprzez wykonywanie zadań na zdalnych maszynach.
 
 ## 🎯 Czym jest Venom Spore?
 
@@ -133,7 +133,7 @@ services:
       - SPORE_NEXUS_HOST=host.docker.internal
       - SPORE_SHARED_TOKEN=test-token-123
       - SPORE_NODE_TAGS=worker,docker
-    
+
   spore-2:
     build: .
     environment:
@@ -207,7 +207,7 @@ GET http://localhost:8000/api/v1/nodes/{node_id}
 
 ## 🔒 Bezpieczeństwo
 
-⚠️ **WAŻNE:** Venom Spore wykonuje komendy shell przekazane przez Nexus. 
+⚠️ **WAŻNE:** Venom Spore wykonuje komendy shell przekazane przez Nexus.
 Upewnij się, że:
 
 1. **Token jest tajny** - nie commituj go do repo

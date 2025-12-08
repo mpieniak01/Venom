@@ -127,7 +127,11 @@ class TestComplexitySkill:
             "Zaprojektuj architekturę mikroserwisów z bazami danych"
         )
 
-        assert complexity in [TaskComplexity.MEDIUM, TaskComplexity.HIGH, TaskComplexity.EPIC]
+        assert complexity in [
+            TaskComplexity.MEDIUM,
+            TaskComplexity.HIGH,
+            TaskComplexity.EPIC,
+        ]
 
     def test_estimate_file_count_simple(self, skill):
         """Test szacowania liczby plików - proste."""

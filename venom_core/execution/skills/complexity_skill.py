@@ -136,7 +136,7 @@ class ComplexitySkill:
         for reason, multiplier in multipliers:
             total_time *= multiplier
 
-        result = f"Oszacowany czas: {total_time:.0f} minut ({total_time/60:.1f}h)\n"
+        result = f"Oszacowany czas: {total_time:.0f} minut ({total_time / 60:.1f}h)\n"
         result += f"Złożoność: {complexity.value}\n"
         result += f"Podstawowy czas: {time_estimate:.0f} minut\n"
 
@@ -172,13 +172,19 @@ class ComplexitySkill:
         # Szukaj słów kluczowych
         desc_lower = description.lower()
 
-        high_keywords_found = [kw for kw in self.HIGH_COMPLEXITY_KEYWORDS if kw in desc_lower]
+        high_keywords_found = [
+            kw for kw in self.HIGH_COMPLEXITY_KEYWORDS if kw in desc_lower
+        ]
         if high_keywords_found:
             factors.append(f"Wysokiej złożoności: {', '.join(high_keywords_found[:3])}")
 
-        medium_keywords_found = [kw for kw in self.MEDIUM_COMPLEXITY_KEYWORDS if kw in desc_lower]
+        medium_keywords_found = [
+            kw for kw in self.MEDIUM_COMPLEXITY_KEYWORDS if kw in desc_lower
+        ]
         if medium_keywords_found:
-            factors.append(f"Średniej złożoności: {', '.join(medium_keywords_found[:3])}")
+            factors.append(
+                f"Średniej złożoności: {', '.join(medium_keywords_found[:3])}"
+            )
 
         # Szacuj liczbę plików
         file_count = self._estimate_file_count(description)
@@ -242,12 +248,16 @@ class ComplexitySkill:
             subtasks.append("4. Integracja z zewnętrznymi systemami")
 
         # Testy
-        if complexity in [TaskComplexity.MEDIUM, TaskComplexity.HIGH, TaskComplexity.EPIC]:
-            subtasks.append(f"{len(subtasks)+1}. Testy jednostkowe i integracyjne")
+        if complexity in [
+            TaskComplexity.MEDIUM,
+            TaskComplexity.HIGH,
+            TaskComplexity.EPIC,
+        ]:
+            subtasks.append(f"{len(subtasks) + 1}. Testy jednostkowe i integracyjne")
 
         # Dokumentacja
         if complexity in [TaskComplexity.HIGH, TaskComplexity.EPIC]:
-            subtasks.append(f"{len(subtasks)+1}. Dokumentacja i przykłady użycia")
+            subtasks.append(f"{len(subtasks) + 1}. Dokumentacja i przykłady użycia")
 
         result = f"Zadanie '{description[:50]}...' ma złożoność {complexity.value}\n\n"
         result += "Proponowany podział na podzadania:\n\n"
@@ -289,7 +299,9 @@ class ComplexitySkill:
 
         # Dodatkowe ryzyka
         if len(description) > 500:
-            risks.append(("complexity", "Bardzo długi opis zadania - możliwe scope creep"))
+            risks.append(
+                ("complexity", "Bardzo długi opis zadania - możliwe scope creep")
+            )
 
         if "szybko" in desc_lower or "pilne" in desc_lower or "urgent" in desc_lower:
             risks.append(("time_pressure", "Presja czasowa - ryzyko obniżenia jakości"))
@@ -309,7 +321,9 @@ class ComplexitySkill:
         if len(risks) >= 3:
             result += "Wysokie ryzyko - rozważ prototyp lub proof-of-concept najpierw."
         elif len(risks) == 2:
-            result += "Średnie ryzyko - zaplanuj dodatkowy czas na nieprzewidziane problemy."
+            result += (
+                "Średnie ryzyko - zaplanuj dodatkowy czas na nieprzewidziane problemy."
+            )
         else:
             result += "Niskie ryzyko - kontynuuj zgodnie z planem."
 
@@ -340,7 +354,9 @@ class ComplexitySkill:
         high_count = sum(1 for kw in self.HIGH_COMPLEXITY_KEYWORDS if kw in desc_lower)
 
         # Zlicz słowa kluczowe średniej złożoności
-        medium_count = sum(1 for kw in self.MEDIUM_COMPLEXITY_KEYWORDS if kw in desc_lower)
+        medium_count = sum(
+            1 for kw in self.MEDIUM_COMPLEXITY_KEYWORDS if kw in desc_lower
+        )
 
         # Szacuj liczbę plików
         file_count = self._estimate_file_count(description)

@@ -454,12 +454,30 @@ Gdy otrzymujesz dane z sensora:
             return []
 
         try:
-            # Użyj prostego wyszukiwania tekstowego
-            # W prawdziwej wersji można użyć embeddings
+            # TODO: Użyj embeddings dla lepszego dopasowania
+            # Na razie proste filtrowanie po słowach kluczowych
             lessons = self.lessons_store.get_all_lessons()
+
+            # Ekstrakuj słowa kluczowe z kontekstu (uproszczona wersja)
+            keywords = set(
+                word.lower()
+                for word in context.split()
+                if len(word) > 3  # Ignoruj krótkie słowa
+            )
+
             # Filtruj lekcje zawierające podobne słowa kluczowe
-            # (uproszczona wersja)
-            return lessons[:3]  # Zwróć max 3 lekcje
+            similar = []
+            for lesson in lessons:
+                lesson_text = (
+                    lesson.situation + " " + lesson.action + " " + lesson.feedback
+                ).lower()
+
+                # Sprawdź czy zawiera którekolwiek słowo kluczowe
+                if any(keyword in lesson_text for keyword in keywords):
+                    similar.append(lesson)
+
+            return similar[:3]  # Zwróć max 3 lekcje
+
         except Exception as e:
             logger.error(f"Błąd przy szukaniu lekcji: {e}")
             return []

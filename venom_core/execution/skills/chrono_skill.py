@@ -1,10 +1,10 @@
 """Moduł: chrono_skill - Umiejętności Czasowe (Timeline Branching & State Management)."""
 
-from typing import Annotated, List, Optional
+from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
-from venom_core.core.chronos import Checkpoint, ChronosEngine
+from venom_core.core.chronos import ChronosEngine
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

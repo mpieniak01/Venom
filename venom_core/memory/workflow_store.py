@@ -13,22 +13,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from venom_core.config import SETTINGS
+from venom_core.utils.code_generation_utils import escape_string_for_code
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def _escape_string_for_code(value: str) -> str:
-    """
-    Bezpiecznie eskejpuje string do użycia w generowanym kodzie.
-    
-    Args:
-        value: Wartość do eskejpowania
-        
-    Returns:
-        Bezpiecznie eskejpowana wartość (używa repr())
-    """
-    return repr(value)
 
 
 @dataclass
@@ -335,8 +323,8 @@ class WorkflowStore:
         safe_function_name = self._sanitize_identifier(workflow.workflow_id)
         
         # Bezpiecznie eskejpuj wartości dla generowanego kodu
-        workflow_name_repr = _escape_string_for_code(workflow.name)
-        workflow_desc_repr = _escape_string_for_code(workflow.description)
+        workflow_name_repr = escape_string_for_code(workflow.name)
+        workflow_desc_repr = escape_string_for_code(workflow.description)
 
         # Generuj kod
         code = f'''"""
@@ -366,16 +354,16 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         for step in workflow.steps:
             if not step.enabled:
-                desc_repr = _escape_string_for_code(step.description)
+                desc_repr = escape_string_for_code(step.description)
                 code += f"    # DISABLED: Krok {step.step_id}: {desc_repr}\n"
                 continue
 
-            desc_repr = _escape_string_for_code(step.description)
+            desc_repr = escape_string_for_code(step.description)
             code += f"    # Krok {step.step_id}: {desc_repr}\n"
 
             if step.action_type == "click":
                 element_desc = step.params.get("element_description", "unknown")
-                element_desc_repr = _escape_string_for_code(element_desc)
+                element_desc_repr = escape_string_for_code(element_desc)
                 fallback_coords = step.params.get("fallback_coords", {})
                 x = fallback_coords.get("x", 0)
                 y = fallback_coords.get("y", 0)
@@ -387,7 +375,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
             elif step.action_type == "type":
                 text = step.params.get("text", "")
-                text_repr = _escape_string_for_code(text)
+                text_repr = escape_string_for_code(text)
                 param_name = step.params.get("param_name", "text")
 
                 code += f'    text = kwargs.get("{param_name}", {text_repr})\n'
@@ -404,7 +392,8 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
             code += "\n"
 
         code += f'    logger.info("Workflow zakończony: %s", {workflow_name_repr})\n'
-        code += f'    return "✅ Workflow {workflow.name} wykonany pomyślnie"\n'
+        return_message = f'✅ Workflow {escape_string_for_code(workflow.name)} wykonany pomyślnie'
+        code += f'    return {escape_string_for_code(return_message)}\n'
 
         # Zapisz do pliku
         if not output_path:

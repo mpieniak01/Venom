@@ -15,22 +15,10 @@ from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.learning.demonstration_analyzer import ActionIntent, DemonstrationAnalyzer
 from venom_core.perception.recorder import DemonstrationRecorder
+from venom_core.utils.code_generation_utils import escape_string_for_code
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def _escape_string_for_code(value: str) -> str:
-    """
-    Bezpiecznie eskejpuje string do użycia w generowanym kodzie.
-    
-    Args:
-        value: Wartość do eskejpowania
-        
-    Returns:
-        Bezpiecznie eskejpowana wartość (używa repr())
-    """
-    return repr(value)
 
 
 class ApprenticeAgent(BaseAgent):
@@ -279,7 +267,7 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         safe_function_name = self._sanitize_identifier(skill_name)
         
         # Bezpiecznie eskejpuj wartości dla generowanego kodu
-        skill_name_repr = _escape_string_for_code(skill_name)
+        skill_name_repr = escape_string_for_code(skill_name)
 
         # Nagłówek
         code = f'''"""
@@ -307,12 +295,12 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         # Generuj kod dla każdej akcji
         for i, action in enumerate(actions, 1):
-            desc_repr = _escape_string_for_code(action.description)
+            desc_repr = escape_string_for_code(action.description)
             code += f"    # Krok {i}: {desc_repr}\n"
 
             if action.action_type == "click":
                 element_desc = action.params.get("element_description", "unknown")
-                element_desc_repr = _escape_string_for_code(element_desc)
+                element_desc_repr = escape_string_for_code(element_desc)
                 fallback_x = action.params.get("fallback_coords", {}).get("x", 0)
                 fallback_y = action.params.get("fallback_coords", {}).get("y", 0)
 
@@ -323,7 +311,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
             elif action.action_type == "type":
                 text = action.params.get("text", "")
-                text_repr = _escape_string_for_code(text)
+                text_repr = escape_string_for_code(text)
                 is_sensitive = action.params.get("is_sensitive", False)
 
                 if is_sensitive:
@@ -345,7 +333,8 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         # Stopka
         code += f'    logger.info("Workflow zakończony: %s", {skill_name_repr})\n'
-        code += f'    return "✅ Workflow {skill_name} wykonany pomyślnie"\n'
+        return_message = f'✅ Workflow {escape_string_for_code(skill_name)} wykonany pomyślnie'
+        code += f'    return {escape_string_for_code(return_message)}\n'
 
         return code
 

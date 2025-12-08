@@ -161,6 +161,9 @@ class DatasetCurator:
                 if "sukces" not in lesson.result.lower() and "✅" not in lesson.result:
                     continue
 
+                # Sprawdź czy to syntetyczny przykład
+                is_synthetic = lesson.metadata.get("synthetic", False) or "synthetic" in lesson.tags
+
                 # Twórz przykład treningowy
                 example = TrainingExample(
                     instruction="Jesteś asystentem AI Venom. Pomóż użytkownikowi rozwiązać problem.",
@@ -171,6 +174,7 @@ class DatasetCurator:
                         "lesson_id": lesson.lesson_id,
                         "timestamp": lesson.timestamp,
                         "tags": lesson.tags,
+                        "synthetic": is_synthetic,  # Flaga synthetic
                     },
                 )
 

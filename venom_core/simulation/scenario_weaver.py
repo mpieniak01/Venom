@@ -49,7 +49,7 @@ Tworzysz zadania które będą używane do trenowania AI. Muszą być:
 1. REALISTYCZNE - takie jakie by zadał prawdziwy użytkownik
 2. BRZEGOWE - zawierające edge cases, nie tylko happy path
 3. KOMPLEKSOWE - łączące wiele konceptów, nie tylko "Hello World"
-4. TESOWALNE - z jasnymi kryteriami sukcesu
+4. TESTOWALNE - z jasnymi kryteriami sukcesu
 
 WORKFLOW:
 1. Analizujesz fragment dokumentacji (node z GraphRAG)
@@ -264,7 +264,13 @@ PAMIĘTAJ:
         # Wyciągnij pierwsze słowo kluczowe z fragmentu (prosta heurystyka)
         words = knowledge_fragment.split()[:50]
         keywords = [w for w in words if len(w) > 5 and w[0].isupper()]
-        library_hint = keywords[0] if keywords else "biblioteka"
+        
+        if keywords:
+            library_hint = keywords[0]
+        else:
+            # Lepszy fallback: pierwsze 2-3 sensowne słowa z fragmentu
+            filtered = [w.strip(",.;:()[]") for w in words if len(w) > 2]
+            library_hint = " ".join(filtered[:3]) if filtered else "fragment wiedzy"
 
         return ScenarioSpec(
             title=f"Eksploracja {library_hint}",

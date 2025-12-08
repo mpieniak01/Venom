@@ -5,7 +5,6 @@ import json
 import signal
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import psutil
@@ -15,12 +14,7 @@ from websockets.exceptions import ConnectionClosed
 from venom_spore.config import SPORE_SETTINGS
 from venom_spore.skill_executor import SkillExecutor
 
-# Import protokołu z venom_core - używamy relatywnej ścieżki do parent directory
-_current_dir = Path(__file__).parent
-_venom_core_dir = _current_dir.parent / "venom_core"
-if str(_venom_core_dir) not in sys.path:
-    sys.path.insert(0, str(_venom_core_dir.parent))
-
+# Import protokołu z venom_core - zakładamy, że venom_core jest zainstalowany jako pakiet
 from venom_core.nodes.protocol import (
     Capabilities,
     HeartbeatMessage,
@@ -116,7 +110,7 @@ class VenomSpore:
                 await asyncio.sleep(self.settings.HEARTBEAT_INTERVAL)
 
                 # Pobierz statystyki
-                cpu_usage = psutil.cpu_percent(interval=1) / 100.0
+                cpu_usage = psutil.cpu_percent(interval=0.1) / 100.0
                 memory = psutil.virtual_memory()
                 memory_usage = memory.percent / 100.0
 
@@ -144,6 +138,9 @@ class VenomSpore:
         """Pętla odbierająca wiadomości od Nexusa."""
         self.running = True
         print("👂 Nasłuchuję poleceń od Nexusa...")
+        
+        invalid_message_count = 0
+        MAX_INVALID_MESSAGES = 10
 
         try:
             async for message_str in self.websocket:
@@ -153,11 +150,26 @@ class VenomSpore:
 
                     if message.message_type == MessageType.EXECUTE_SKILL:
                         await self._handle_skill_execution(message.payload)
+                        invalid_message_count = 0  # Reset counter po poprawnej wiadomości
                     else:
                         print(f"⚠️ Nieznany typ wiadomości: {message.message_type}")
+                        invalid_message_count += 1
+                        if invalid_message_count >= MAX_INVALID_MESSAGES:
+                            print(f"❌ Zbyt wiele nieprawidłowych wiadomości - rozłączam")
+                            break
 
+                except json.JSONDecodeError as e:
+                    print(f"❌ Błąd JSON: {e}")
+                    invalid_message_count += 1
+                    if invalid_message_count >= MAX_INVALID_MESSAGES:
+                        print(f"❌ Zbyt wiele błędów parsowania - rozłączam")
+                        break
                 except Exception as e:
                     print(f"❌ Błąd parsowania wiadomości: {e}")
+                    invalid_message_count += 1
+                    if invalid_message_count >= MAX_INVALID_MESSAGES:
+                        print(f"❌ Zbyt wiele błędów - rozłączam")
+                        break
 
         except ConnectionClosed:
             print("❌ Połączenie z Nexusem zostało zamknięte")
@@ -235,12 +247,15 @@ async def main():
 
     spore = VenomSpore()
 
+    # Pobierz event loop dla signal handlera
+    loop = asyncio.get_running_loop()
+    
     # Obsługa sygnałów - używamy flag zamiast bezpośredniego wywołania
     shutdown_event = asyncio.Event()
 
     def signal_handler(sig, frame):
         print("\n⚠️ Otrzymano sygnał przerwania")
-        shutdown_event.set()
+        loop.call_soon_threadsafe(shutdown_event.set)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -249,7 +264,7 @@ async def main():
     connect_task = asyncio.create_task(spore.connect())
 
     # Czekaj na sygnał shutdown lub zakończenie zadania
-    done, pending = await asyncio.wait(
+    done, _ = await asyncio.wait(
         [connect_task, asyncio.create_task(shutdown_event.wait())],
         return_when=asyncio.FIRST_COMPLETED,
     )
@@ -263,6 +278,7 @@ async def main():
             try:
                 await connect_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania podczas zamykania aplikacji
                 pass
 
 

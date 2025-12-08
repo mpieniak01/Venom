@@ -173,7 +173,7 @@ class TaskDispatcher:
             node_id=node.node_id,
             skill_name=skill_name,
             method_name=method_name,
-            parameters={"command": content} if skill_name == "ShellSkill" else {},
+            parameters=self._prepare_skill_parameters(skill_name, content),
             timeout=60,
         )
 
@@ -183,3 +183,23 @@ class TaskDispatcher:
         else:
             logger.error(f"Błąd wykonania na węźle {node.node_name}: {response.error}")
             raise RuntimeError(f"Remote execution failed: {response.error}")
+
+    def _prepare_skill_parameters(self, skill_name: str, content: str) -> dict:
+        """
+        Przygotowuje parametry dla konkretnego skilla.
+        
+        Args:
+            skill_name: Nazwa skilla
+            content: Treść zadania
+            
+        Returns:
+            Słownik parametrów dla skilla
+        """
+        if skill_name == "ShellSkill":
+            return {"command": content}
+        elif skill_name == "FileSkill":
+            # TODO: Parsowanie content dla operacji na plikach
+            # W przyszłości można dodać logikę parsowania z content
+            return {}
+        else:
+            return {}

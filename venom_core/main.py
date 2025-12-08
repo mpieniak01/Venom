@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 # Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
 
-# Note: orchestrator will be initialized in lifespan to allow node_manager injection
+# Note: orchestrator zostanie zainicjalizowany w lifespan po utworzeniu node_manager
 orchestrator = None
 
 # Inicjalizacja VectorStore dla API
@@ -90,8 +90,10 @@ async def lifespan(app: FastAPI):
                 )
                 await node_manager.start()
                 logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
+                # Port aplikacji FastAPI, domyślnie 8000
+                app_port = getattr(SETTINGS, 'APP_PORT', 8000)
                 logger.info(
-                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{SETTINGS.NEXUS_PORT}/ws/nodes"
+                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{app_port}/ws/nodes"
                 )
         except Exception as e:
             logger.warning(f"Nie udało się uruchomić NodeManager: {e}")
@@ -508,32 +510,40 @@ async def nodes_websocket_endpoint(websocket: WebSocket):
 
         # Pętla odbierania wiadomości
         while True:
-            message_str = await websocket.receive_text()
-            message_dict = json.loads(message_str)
-            message = NodeMessage(**message_dict)
+            try:
+                message_str = await websocket.receive_text()
+                message_dict = json.loads(message_str)
+                message = NodeMessage(**message_dict)
 
-            if message.message_type == MessageType.HEARTBEAT:
-                from venom_core.nodes.protocol import HeartbeatMessage
+                if message.message_type == MessageType.HEARTBEAT:
+                    from venom_core.nodes.protocol import HeartbeatMessage
 
-                heartbeat = HeartbeatMessage(**message.payload)
-                await node_manager.update_heartbeat(heartbeat)
+                    heartbeat = HeartbeatMessage(**message.payload)
+                    await node_manager.update_heartbeat(heartbeat)
 
-            elif message.message_type == MessageType.RESPONSE:
-                from venom_core.nodes.protocol import NodeResponse
+                elif message.message_type == MessageType.RESPONSE:
+                    from venom_core.nodes.protocol import NodeResponse
 
-                response = NodeResponse(**message.payload)
-                await node_manager.handle_response(response)
+                    response = NodeResponse(**message.payload)
+                    await node_manager.handle_response(response)
 
-            elif message.message_type == MessageType.DISCONNECT:
-                logger.info(f"Węzeł {node_id} zgłosił rozłączenie")
-                break
+                elif message.message_type == MessageType.DISCONNECT:
+                    logger.info(f"Węzeł {node_id} zgłosił rozłączenie")
+                    break
+            
+            except json.JSONDecodeError as e:
+                logger.warning(f"Nieprawidłowy JSON od węzła {node_id}: {e}")
+                continue  # Kontynuuj pętlę, nie rozłączaj węzła
+            except Exception as e:
+                logger.warning(f"Błąd parsowania wiadomości od węzła {node_id}: {e}")
+                continue
 
     except WebSocketDisconnect:
         logger.info(f"Węzeł {node_id} rozłączony (WebSocket disconnect)")
     except Exception as e:
         logger.error(f"Błąd w WebSocket węzła {node_id}: {e}")
     finally:
-        if node_id:
+        if node_id is not None:
             await node_manager.unregister_node(node_id)
             await event_broadcaster.broadcast_event(
                 event_type="NODE_DISCONNECTED",

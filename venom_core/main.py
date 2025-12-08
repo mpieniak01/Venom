@@ -308,12 +308,36 @@ async def lifespan(app: FastAPI):
             from venom_core.perception.desktop_sensor import DesktopSensor
             from venom_core.ui.notifier import Notifier
 
-            # Inicjalizuj Notifier
+            # Callback dla desktop sensor
             async def handle_shadow_action(action_payload: dict):
                 """Obsługa akcji z powiadomień Shadow Agent."""
                 logger.info(f"Shadow Agent action triggered: {action_payload}")
-                # Tutaj można dodać logikę obsługi akcji
-                # np. wykonanie kodu, aktualizacja zadania, itp.
+
+                # Obsługa różnych typów akcji
+                action_type = action_payload.get("type", "unknown")
+
+                if action_type == "error_fix":
+                    # TODO: Zintegrować z Orchestrator do naprawy błędu
+                    logger.info("Action: Error fix requested")
+                    # await orchestrator.submit_task(...)
+
+                elif action_type == "code_improvement":
+                    # TODO: Zintegrować z Coder Agent
+                    logger.info("Action: Code improvement requested")
+
+                elif action_type == "task_update":
+                    # TODO: Zaktualizować status zadania w GoalStore
+                    logger.info("Action: Task update requested")
+
+                else:
+                    logger.warning(f"Unknown action type: {action_type}")
+
+                # Broadcast akcji do UI
+                await event_broadcaster.broadcast_event(
+                    event_type=EventType.SYSTEM_LOG,
+                    message=f"Shadow action executed: {action_type}",
+                    data=action_payload,
+                )
 
             notifier = Notifier(webhook_handler=handle_shadow_action)
             logger.info("Notifier zainicjalizowany")

@@ -176,22 +176,22 @@ class Notifier:
             True jeśli sukces
         """
         try:
-            # Escape cudzysłowów
-            title_escaped = title.replace('"', '`"')
-            message_escaped = message.replace('"', '`"')
-
             # PowerShell script dla Toast notification
-            ps_script = f"""
+            # Używamy argument list zamiast string interpolation dla bezpieczeństwa
+            ps_script = """
             [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
             [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+
+            $title = $args[0]
+            $message = $args[1]
 
             $template = @"
             <toast>
                 <visual>
                     <binding template="ToastText02">
-                        <text id="1">{title_escaped}</text>
-                        <text id="2">{message_escaped}</text>
+                        <text id="1">$title</text>
+                        <text id="2">$message</text>
                     </binding>
                 </visual>
             </toast>
@@ -203,11 +203,13 @@ class Notifier:
             [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Venom").Show($toast)
             """
 
-            # Uruchom PowerShell
+            # Uruchom PowerShell z argumentami (bezpieczniejsze niż string interpolation)
             process = await asyncio.create_subprocess_exec(
                 "powershell",
                 "-Command",
                 ps_script,
+                title,
+                message,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

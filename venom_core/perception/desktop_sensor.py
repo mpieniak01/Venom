@@ -23,8 +23,8 @@ class PrivacyFilter:
 
     # Wzorce regex dla wrażliwych danych
     SENSITIVE_PATTERNS = [
-        r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",  # Numery kart kredytowych
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",  # Emaile (opcjonalnie)
+        r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",  # Numery kart kredytowych (basic pattern - może dawać false positives)
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",  # Emaile (opcjonalnie)
         r"(?i)(password|hasło|passwd|pwd)[\s:=]+\S+",  # Hasła
         r"(?i)(api[_-]?key|token|secret)[\s:=]+[A-Za-z0-9_\-]+",  # API keys
         r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b",  # Adresy IP (opcjonalnie)

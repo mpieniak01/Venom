@@ -232,7 +232,7 @@ class TestChronosIntegration:
         assert initial_content == "Initial content"
 
         # Utwórz checkpoint
-        checkpoint_id = chronos_engine.create_checkpoint(name="Before Change")
+        chronos_engine.create_checkpoint(name="Before Change")
 
         # Modyfikuj plik
         test_file.write_text("Modified content")

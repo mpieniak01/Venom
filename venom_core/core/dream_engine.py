@@ -140,8 +140,10 @@ class DreamEngine:
 
         # Utwórz checkpoint przed rozpoczęciem śnienia (tymczasowa timeline)
         timeline_name = f"dream_{self.current_session_id[:8]}"
+        timeline_created = False
         try:
             self.chronos.create_timeline(timeline_name)
+            timeline_created = True
             self.current_checkpoint_id = self.chronos.create_checkpoint(
                 name=f"dream_start_{self.current_session_id[:8]}",
                 description="Punkt startowy sesji śnienia - na wypadek błędów",
@@ -153,6 +155,15 @@ class DreamEngine:
         except Exception as e:
             logger.warning(f"Nie udało się utworzyć checkpointu dla śnienia: {e}")
             self.current_checkpoint_id = None
+            # Cleanup partially created timeline if checkpoint failed
+            if timeline_created:
+                try:
+                    timeline_path = self.chronos.timelines_dir / timeline_name
+                    if timeline_path.exists() and not list(timeline_path.iterdir()):
+                        timeline_path.rmdir()
+                        logger.debug(f"Usunięto pustą timeline: {timeline_name}")
+                except Exception as cleanup_error:
+                    logger.debug(f"Nie udało się wyczyścić timeline: {cleanup_error}")
 
         max_scenarios = max_scenarios or SETTINGS.DREAMING_MAX_SCENARIOS
         difficulty = difficulty or SETTINGS.DREAMING_SCENARIO_COMPLEXITY
@@ -168,6 +179,8 @@ class DreamEngine:
                 logger.warning(
                     "Brak klastrów wiedzy w GraphRAG - nie można śnić bez wiedzy"
                 )
+                # Cleanup empty timeline before returning
+                self._cleanup_empty_timeline(timeline_name)
                 return {
                     "session_id": self.current_session_id,
                     "status": "no_knowledge",
@@ -256,6 +269,8 @@ class DreamEngine:
 
         except Exception as e:
             logger.error(f"Błąd krytyczny w enter_rem_phase: {e}")
+            # Cleanup empty timeline on critical error
+            self._cleanup_empty_timeline(timeline_name)
             return {
                 "session_id": self.current_session_id,
                 "status": "error",
@@ -545,3 +560,31 @@ class DreamEngine:
             "saved_dreams_count": len(dream_files),
             "output_directory": str(self.output_dir),
         }
+
+    def _cleanup_empty_timeline(self, timeline_name: str) -> None:
+        """
+        Usuwa pustą lub nieużywaną timeline po nieudanej sesji śnienia.
+
+        Args:
+            timeline_name: Nazwa timeline do wyczyszczenia
+        """
+        try:
+            timeline_path = self.chronos.timelines_dir / timeline_name
+            if timeline_path.exists():
+                # Sprawdź czy timeline jest pusta lub ma tylko checkpoint startowy
+                checkpoints = list(timeline_path.iterdir())
+                if len(checkpoints) == 0:
+                    # Pusta timeline - usuń
+                    timeline_path.rmdir()
+                    logger.info(f"🗑️ Usunięto pustą timeline: {timeline_name}")
+                elif len(checkpoints) == 1:
+                    # Tylko checkpoint startowy - sprawdź czy to jedyny
+                    checkpoint_dir = checkpoints[0]
+                    if checkpoint_dir.name == self.current_checkpoint_id:
+                        # Usuń checkpoint i timeline
+                        import shutil
+                        shutil.rmtree(checkpoint_dir)
+                        timeline_path.rmdir()
+                        logger.info(f"🗑️ Usunięto nieużywaną timeline: {timeline_name}")
+        except Exception as e:
+            logger.debug(f"Nie udało się wyczyścić timeline {timeline_name}: {e}")

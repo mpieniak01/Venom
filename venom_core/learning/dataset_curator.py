@@ -162,7 +162,10 @@ class DatasetCurator:
                     continue
 
                 # Sprawdź czy to syntetyczny przykład
-                is_synthetic = lesson.metadata.get("synthetic", False) or "synthetic" in lesson.tags
+                is_synthetic = (
+                    lesson.metadata.get("synthetic", False)
+                    or "synthetic" in lesson.tags
+                )
 
                 # Twórz przykład treningowy
                 example = TrainingExample(

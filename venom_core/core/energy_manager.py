@@ -241,9 +241,7 @@ class EnergyManager:
         Returns:
             True jeśli system jest bezczynny przez więcej niż threshold_minutes
         """
-        threshold = (
-            threshold_minutes or SETTINGS.DREAMING_IDLE_THRESHOLD_MINUTES
-        ) * 60
+        threshold = (threshold_minutes or SETTINGS.DREAMING_IDLE_THRESHOLD_MINUTES) * 60
         idle_time = self.get_idle_time()
         return idle_time >= threshold
 

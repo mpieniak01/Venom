@@ -425,5 +425,7 @@ class BackgroundScheduler:
             description=f"Idle Dreaming Check - co {check_interval_minutes} minut",
         )
 
-        logger.info(f"Zaplanowano sprawdzanie bezczynności co {check_interval_minutes} minut")
+        logger.info(
+            f"Zaplanowano sprawdzanie bezczynności co {check_interval_minutes} minut"
+        )
         return job_id

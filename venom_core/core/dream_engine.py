@@ -1,6 +1,5 @@
 """Moduł: dream_engine - Silnik Aktywnego Śnienia (Synthetic Experience Replay)."""
 
-import asyncio
 import json
 import random
 import uuid
@@ -14,7 +13,6 @@ from venom_core.agents.coder import CoderAgent
 from venom_core.agents.guardian import GuardianAgent
 from venom_core.config import SETTINGS
 from venom_core.core.energy_manager import EnergyManager
-from venom_core.learning.dataset_curator import TrainingExample
 from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver
@@ -188,7 +186,9 @@ class DreamEngine:
             report = {
                 "session_id": self.current_session_id,
                 "status": (
-                    "completed" if self.state != DreamState.INTERRUPTED else "interrupted"
+                    "completed"
+                    if self.state != DreamState.INTERRUPTED
+                    else "interrupted"
                 ),
                 "duration_seconds": duration,
                 "dreams_attempted": len(results),
@@ -202,7 +202,8 @@ class DreamEngine:
             }
 
             logger.info(
-                f"✨ Sesja śnienia zakończona: {report['dreams_successful']}/{report['dreams_attempted']} sukcesów"
+                f"✨ Sesja śnienia zakończona: "
+                f"{report['dreams_successful']}/{report['dreams_attempted']} sukcesów"
             )
 
             return report
@@ -319,7 +320,8 @@ class DreamEngine:
                 self.state = DreamState.VALIDATING
                 logger.debug(f"[Dream {dream_id}] Faza 2: Walidacja Guardian...")
 
-                validation_prompt = f"""Przeanalizuj poniższy kod w trybie ULTRA-SUROWYM.
+                validation_prompt = f"""Przeanalizuj poniższy kod w \
+trybie ULTRA-SUROWYM.
 
 SCENARIUSZ: {scenario.title}
 ZADANIE: {scenario.description}
@@ -467,10 +469,12 @@ REASON: <dlaczego pass lub fail>
 
     async def _handle_wake_up(self) -> None:
         """Callback wywoływany przez EnergyManager gdy system staje się zajęty."""
-        if self.state in [DreamState.DREAMING, DreamState.VALIDATING, DreamState.SAVING]:
-            logger.warning(
-                f"⏰ WAKE UP! Przerywanie śnienia (state={self.state})"
-            )
+        if self.state in [
+            DreamState.DREAMING,
+            DreamState.VALIDATING,
+            DreamState.SAVING,
+        ]:
+            logger.warning(f"⏰ WAKE UP! Przerywanie śnienia (state={self.state})")
             self.state = DreamState.INTERRUPTED
 
             # Tu można dodać logikę zatrzymania kontenerów Docker
@@ -494,7 +498,9 @@ REASON: <dlaczego pass lub fail>
             "total_dreams": self.dreams_count,
             "successful_dreams": self.successful_dreams,
             "success_rate": (
-                self.successful_dreams / self.dreams_count if self.dreams_count > 0 else 0.0
+                self.successful_dreams / self.dreams_count
+                if self.dreams_count > 0
+                else 0.0
             ),
             "saved_dreams_count": len(dream_files),
             "output_directory": str(self.output_dir),

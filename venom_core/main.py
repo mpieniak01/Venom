@@ -30,9 +30,11 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Inicjalizacja StateManager i Orchestrator
+# Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
-orchestrator = Orchestrator(state_manager, event_broadcaster=event_broadcaster)
+
+# Note: orchestrator will be initialized in lifespan to allow node_manager injection
+orchestrator = None
 
 # Inicjalizacja VectorStore dla API
 vector_store = None
@@ -64,11 +66,44 @@ async def lifespan(app: FastAPI):
     global vector_store, graph_store, lessons_store, gardener_agent, git_skill
     global background_scheduler, file_watcher, documenter_agent
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
-    global node_manager
+    global node_manager, orchestrator
 
     # Startup
     # Inicjalizuj MetricsCollector
     init_metrics_collector()
+
+    # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
+    if SETTINGS.ENABLE_NEXUS:
+        try:
+            from venom_core.core.node_manager import NodeManager
+
+            token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
+            if not token:
+                logger.warning(
+                    "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
+                    "Węzły nie będą mogły się połączyć."
+                )
+            else:
+                node_manager = NodeManager(
+                    shared_token=token,
+                    heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
+                )
+                await node_manager.start()
+                logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
+                logger.info(
+                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{SETTINGS.NEXUS_PORT}/ws/nodes"
+                )
+        except Exception as e:
+            logger.warning(f"Nie udało się uruchomić NodeManager: {e}")
+            node_manager = None
+
+    # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
+    orchestrator = Orchestrator(
+        state_manager,
+        event_broadcaster=event_broadcaster,
+        node_manager=node_manager,
+    )
+    logger.info("Orchestrator zainicjalizowany" + (" z obsługą węzłów rozproszonych" if node_manager else ""))
 
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
@@ -253,31 +288,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Nie udało się zainicjalizować AudioStreamHandler: {e}")
             audio_stream_handler = None
-
-    # Inicjalizuj Node Manager (THE_NEXUS)
-    if SETTINGS.ENABLE_NEXUS:
-        try:
-            from venom_core.core.node_manager import NodeManager
-
-            token = SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value()
-            if not token:
-                logger.warning(
-                    "ENABLE_NEXUS=true ale NEXUS_SHARED_TOKEN jest pusty. "
-                    "Węzły nie będą mogły się połączyć."
-                )
-            else:
-                node_manager = NodeManager(
-                    shared_token=token,
-                    heartbeat_timeout=SETTINGS.NEXUS_HEARTBEAT_TIMEOUT,
-                )
-                await node_manager.start()
-                logger.info("NodeManager uruchomiony - Venom działa w trybie Nexus")
-                logger.info(
-                    f"Węzły mogą łączyć się przez WebSocket: ws://localhost:{SETTINGS.NEXUS_PORT}/ws/nodes"
-                )
-        except Exception as e:
-            logger.warning(f"Nie udało się uruchomić NodeManager: {e}")
-            node_manager = None
 
     yield
 

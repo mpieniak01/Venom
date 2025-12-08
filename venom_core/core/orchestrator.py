@@ -56,6 +56,7 @@ class Orchestrator:
         task_dispatcher: TaskDispatcher = None,
         event_broadcaster=None,
         lessons_store=None,
+        node_manager=None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -66,18 +67,20 @@ class Orchestrator:
             task_dispatcher: Opcjonalny dispatcher zadań (jeśli None, zostanie utworzony)
             event_broadcaster: Opcjonalny broadcaster zdarzeń do WebSocket
             lessons_store: Opcjonalny magazyn lekcji (dla meta-uczenia)
+            node_manager: Opcjonalny menedżer węzłów (dla distributed execution)
         """
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
         self.event_broadcaster = event_broadcaster
         self.lessons_store = lessons_store  # Magazyn lekcji dla meta-uczenia
+        self.node_manager = node_manager  # Menedżer węzłów dla distributed execution
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
         if task_dispatcher is None:
             kernel_builder = KernelBuilder()
             kernel = kernel_builder.build_kernel()
             task_dispatcher = TaskDispatcher(
-                kernel, event_broadcaster=event_broadcaster
+                kernel, event_broadcaster=event_broadcaster, node_manager=node_manager
             )
 
         self.task_dispatcher = task_dispatcher

@@ -13,6 +13,7 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 - 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł
 - 🤖 **Zarządzanie agentami** - Koordynacja wielu wyspecjalizowanych agentów
 - 💾 **Pamięć długoterminowa** - Zapisywanie i wykorzystywanie zdobytej wiedzy
+- 🎓 **Uczenie przez obserwację** - Nagrywanie demonstracji i automatyczne generowanie workflow (NOWOŚĆ!)
 
 ### 🎯 Przykłady użycia
 
@@ -32,6 +33,13 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 # 3. Strona webowa z wieloma plikami
 "Stwórz stronę HTML z zegarem cyfrowym i stylem CSS"
 → System utworzy osobno: index.html, style.css, script.js
+
+# 4. NOWE: Uczenie przez demonstrację
+"Venom, patrz jak wysyłam raport na Slacka"
+→ [Użytkownik wykonuje akcje]
+→ System nagrywa, analizuje i generuje workflow
+→ "Zapisałem jako umiejętność 'wyslij_raport_slack'"
+→ Później: "Venom, wyślij raport na Slacka" - wykonuje automatycznie!
 ```
 
 ## 🏗️ Architektura
@@ -52,8 +60,16 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 - **CriticAgent** - Weryfikuje jakość kodu
 - **LibrarianAgent** - Zarządza plikami i strukturą projektu
 - **ChatAgent** - Rozmowa i asystent
+- **GhostAgent** - Automatyzacja GUI (RPA - Robotic Process Automation)
+- **ApprenticeAgent** - Uczenie się workflow poprzez obserwację (NOWOŚĆ!)
 
-#### 4. **Orchestration** (Orkiestracja)
+#### 4. **Visual Imitation Learning** (Uczenie przez Demonstrację) 🎓
+- **DemonstrationRecorder** - Nagrywanie akcji użytkownika (mysz, klawiatura, zrzuty ekranu)
+- **DemonstrationAnalyzer** - Analiza behawioralna i transformacja pikseli → semantyka
+- **WorkflowStore** - Magazyn procedur z możliwością edycji
+- **Integration z GhostAgent** - Wykonywanie wygenerowanych workflow
+
+#### 5. **Orchestration** (Orkiestracja)
 - **Orchestrator** - Główny koordynator systemu
 - **IntentManager** - Klasyfikacja intencji (5 typów: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Routing zadań do odpowiednich agentów

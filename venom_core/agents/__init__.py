@@ -3,6 +3,7 @@
 # Lazy imports to avoid dependency issues in tests
 __all__ = [
     "BaseAgent",
+    "ApprenticeAgent",
     "ArchitectAgent",
     "ChatAgent",
     "CoderAgent",
@@ -31,6 +32,10 @@ def __getattr__(name):
         from venom_core.agents.base import BaseAgent
 
         return BaseAgent
+    elif name == "ApprenticeAgent":
+        from venom_core.agents.apprentice import ApprenticeAgent
+
+        return ApprenticeAgent
     elif name == "ArchitectAgent":
         from venom_core.agents.architect import ArchitectAgent
 

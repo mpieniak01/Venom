@@ -85,7 +85,9 @@ class TaskDispatcher:
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ QA/Delivery layer)")
 
-    async def dispatch(self, intent: str, content: str, node_preference: dict = None) -> str:
+    async def dispatch(
+        self, intent: str, content: str, node_preference: dict = None
+    ) -> str:
         """
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
 
@@ -109,7 +111,9 @@ class TaskDispatcher:
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Nie udało się wykonać na węźle zdalnym: {e}. Fallback do lokalnego wykonania.")
+                logger.warning(
+                    f"Nie udało się wykonać na węźle zdalnym: {e}. Fallback do lokalnego wykonania."
+                )
 
         # Znajdź odpowiedniego agenta
         agent = self.agent_map.get(intent)
@@ -133,7 +137,9 @@ class TaskDispatcher:
             logger.error(f"Błąd podczas przetwarzania zadania przez agenta: {e}")
             raise
 
-    async def _dispatch_to_node(self, intent: str, content: str, node_preference: dict) -> str:
+    async def _dispatch_to_node(
+        self, intent: str, content: str, node_preference: dict
+    ) -> str:
         """
         Próbuje wykonać zadanie na zdalnym węźle.
 
@@ -163,10 +169,15 @@ class TaskDispatcher:
             node = self.node_manager.select_best_node(skill_name)
 
         if not node:
-            logger.warning(f"Nie znaleziono węzła obsługującego {skill_name}" + (f" z tagiem {tag}" if tag else ""))
+            logger.warning(
+                f"Nie znaleziono węzła obsługującego {skill_name}"
+                + (f" z tagiem {tag}" if tag else "")
+            )
             return None
 
-        logger.info(f"Wykonuję zadanie na węźle zdalnym: {node.node_name} ({node.node_id})")
+        logger.info(
+            f"Wykonuję zadanie na węźle zdalnym: {node.node_name} ({node.node_id})"
+        )
 
         # Wykonaj na węźle
         response = await self.node_manager.execute_skill_on_node(
@@ -178,7 +189,9 @@ class TaskDispatcher:
         )
 
         if response.success:
-            logger.info(f"Zadanie wykonane na węźle {node.node_name} w {response.execution_time:.2f}s")
+            logger.info(
+                f"Zadanie wykonane na węźle {node.node_name} w {response.execution_time:.2f}s"
+            )
             return response.result
         else:
             logger.error(f"Błąd wykonania na węźle {node.node_name}: {response.error}")
@@ -187,11 +200,11 @@ class TaskDispatcher:
     def _prepare_skill_parameters(self, skill_name: str, content: str) -> dict:
         """
         Przygotowuje parametry dla konkretnego skilla.
-        
+
         Args:
             skill_name: Nazwa skilla
             content: Treść zadania
-            
+
         Returns:
             Słownik parametrów dla skilla
         """

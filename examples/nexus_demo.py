@@ -56,9 +56,7 @@ async def list_nodes():
 
                 if not nodes:
                     print("  Brak zarejestrowanych węzłów")
-                    print(
-                        "\n  Uruchom Venom Spore w osobnym terminalu:"
-                    )
+                    print("\n  Uruchom Venom Spore w osobnym terminalu:")
                     print("    cd venom_spore")
                     print("    export SPORE_SHARED_TOKEN=demo-token-123")
                     print("    python main.py")
@@ -86,7 +84,9 @@ async def list_nodes():
         return []
 
 
-async def execute_on_node(node_id: str, skill_name: str, method_name: str, params: dict):
+async def execute_on_node(
+    node_id: str, skill_name: str, method_name: str, params: dict
+):
     """Wykonuje skill na zdalnym węźle."""
     print(f"\n🎯 Wykonuję {skill_name}.{method_name} na węźle {node_id[:8]}...")
 
@@ -105,10 +105,8 @@ async def execute_on_node(node_id: str, skill_name: str, method_name: str, param
             if response.status_code == 200:
                 data = response.json()
                 if data["success"]:
-                    print(
-                        f"✅ Wykonano w {data['execution_time']:.2f}s"
-                    )
-                    print(f"\nWynik:")
+                    print(f"✅ Wykonano w {data['execution_time']:.2f}s")
+                    print("\nWynik:")
                     print(data["result"])
                     return data["result"]
                 else:
@@ -210,9 +208,7 @@ async def demo_load_balancing(nodes):
 
     if len(shell_nodes) < 2:
         print("⚠️ Potrzebne co najmniej 2 węzły z ShellSkill dla demo load balancingu")
-        print(
-            f"   Obecnie dostępne: {len(shell_nodes)} węzłów"
-        )
+        print(f"   Obecnie dostępne: {len(shell_nodes)} węzłów")
         return
 
     print(f"\n📍 Dostępne węzły: {len(shell_nodes)}")
@@ -222,13 +218,13 @@ async def demo_load_balancing(nodes):
         # Nexus powinien automatycznie wybrać najmniej obciążony węzeł
         # W tym demo wykonujemy manualnie na różnych węzłach
         node = shell_nodes[i % len(shell_nodes)]
-        print(f"\n🎯 Zadanie {i+1} -> {node['node_name']}")
+        print(f"\n🎯 Zadanie {i + 1} -> {node['node_name']}")
 
         await execute_on_node(
             node_id=node["node_id"],
             skill_name="ShellSkill",
             method_name="run",
-            params={"command": f"echo 'Task {i+1} executed on {node['node_name']}'"},
+            params={"command": f"echo 'Task {i + 1} executed on {node['node_name']}'"},
         )
 
         await asyncio.sleep(0.5)

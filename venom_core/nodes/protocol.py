@@ -92,9 +92,7 @@ class NodeResponse(BaseModel):
     success: bool = Field(description="Czy operacja się powiodła")
     result: Optional[Any] = Field(default=None, description="Wynik wykonania")
     error: Optional[str] = Field(default=None, description="Opis błędu jeśli wystąpił")
-    execution_time: float = Field(
-        default=0.0, description="Czas wykonania w sekundach"
-    )
+    execution_time: float = Field(default=0.0, description="Czas wykonania w sekundach")
     timestamp: str = Field(
         default_factory=lambda: datetime.now().isoformat(), description="Timestamp"
     )
@@ -118,9 +116,7 @@ class NodeMessage(BaseModel):
         )
 
     @classmethod
-    def from_execution_request(
-        cls, request: SkillExecutionRequest
-    ) -> "NodeMessage":
+    def from_execution_request(cls, request: SkillExecutionRequest) -> "NodeMessage":
         """Tworzy NodeMessage z SkillExecutionRequest."""
         return cls(
             message_type=MessageType.EXECUTE_SKILL,

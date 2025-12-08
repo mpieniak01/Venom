@@ -233,3 +233,56 @@ async def test_configure_domain_placeholder():
     assert result["status"] == "not_implemented"
     assert result["domain"] == "example.com"
     assert result["ip"] == "1.2.3.4"
+
+
+@pytest.mark.asyncio
+async def test_deploy_stack_invalid_stack_name():
+    """Test deploymentu z nieprawidłową nazwą stacku (security)."""
+    provisioner = CloudProvisioner()
+
+    # Stwórz tymczasowy docker-compose.yml
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yml", delete=False
+    ) as compose_file:
+        compose_file.write("version: '3'\nservices:\n  app:\n    image: nginx")
+        compose_path = compose_file.name
+
+    try:
+        # Test path traversal attempt
+        with pytest.raises(CloudProvisionerError, match="Invalid stack_name"):
+            await provisioner.deploy_stack(
+                host="test.example.com",
+                stack_name="../../etc",
+                compose_file_path=compose_path,
+            )
+
+        # Test command injection attempt
+        with pytest.raises(CloudProvisionerError, match="Invalid stack_name"):
+            await provisioner.deploy_stack(
+                host="test.example.com",
+                stack_name="test; rm -rf /",
+                compose_file_path=compose_path,
+            )
+
+        # Test invalid characters
+        with pytest.raises(CloudProvisionerError, match="Invalid stack_name"):
+            await provisioner.deploy_stack(
+                host="test.example.com",
+                stack_name="test$app",
+                compose_file_path=compose_path,
+            )
+
+    finally:
+        Path(compose_path).unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_check_deployment_health_invalid_stack_name():
+    """Test sprawdzania zdrowia z nieprawidłową nazwą stacku (security)."""
+    provisioner = CloudProvisioner()
+
+    with pytest.raises(CloudProvisionerError, match="Invalid stack_name"):
+        await provisioner.check_deployment_health(
+            host="test.example.com",
+            stack_name="../etc/passwd",
+        )

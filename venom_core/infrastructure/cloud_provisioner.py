@@ -1,8 +1,9 @@
 """Moduł: cloud_provisioner - zarządzanie zdalnym deploymentem przez SSH."""
 
 import asyncio
+import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import asyncssh
 
@@ -207,6 +208,12 @@ class CloudProvisioner:
                 f"Plik docker-compose nie istnieje: {compose_file_path}"
             )
 
+        # Walidacja stack_name (bezpieczeństwo)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", stack_name):
+            raise CloudProvisionerError(
+                f"Invalid stack_name '{stack_name}'. Only alphanumeric characters, underscore, and hyphen are allowed."
+            )
+
         # Katalog zdalny
         remote_dir = f"/opt/{stack_name}"
         remote_compose = f"{remote_dir}/docker-compose.yml"
@@ -218,6 +225,10 @@ class CloudProvisioner:
             connect_kwargs["client_keys"] = [self.ssh_key_path]
         elif password:
             connect_kwargs["password"] = password
+        else:
+            raise CloudProvisionerError(
+                "Brak klucza SSH ani hasła. Nie można nawiązać połączenia."
+            )
 
         try:
             async with asyncio.timeout(self.timeout):
@@ -261,7 +272,7 @@ class CloudProvisioner:
         stack_name: str,
         user: Optional[str] = None,
         password: Optional[str] = None,
-    ) -> dict[str, any]:
+    ) -> dict[str, Any]:
         """
         Sprawdza stan stacku na zdalnym serwerze.
 
@@ -275,6 +286,12 @@ class CloudProvisioner:
             Dict ze statusem kontenersów
         """
         logger.info(f"Sprawdzam stan stacku '{stack_name}' na {host}...")
+
+        # Walidacja stack_name (bezpieczeństwo)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", stack_name):
+            raise CloudProvisionerError(
+                f"Invalid stack_name '{stack_name}'. Only alphanumeric characters, underscore, and hyphen are allowed."
+            )
 
         remote_dir = f"/opt/{stack_name}"
         command = f"cd {remote_dir} && docker-compose ps"

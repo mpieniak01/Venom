@@ -1,6 +1,6 @@
 """Testy jednostkowe dla CreativeDirectorAgent i DevOpsAgent."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from semantic_kernel import Kernel

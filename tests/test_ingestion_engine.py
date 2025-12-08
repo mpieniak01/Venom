@@ -122,7 +122,9 @@ async def test_ingest_file_text(tmp_path, ingestion_engine):
 @pytest.mark.asyncio
 async def test_ingest_url_success(ingestion_engine):
     """Test ingestii URL (mock)."""
-    with patch("trafilatura.fetch_url") as mock_fetch, patch("trafilatura.extract") as mock_extract:
+    with patch("trafilatura.fetch_url") as mock_fetch, patch(
+        "trafilatura.extract"
+    ) as mock_extract:
         # Mock trafilatura
         mock_fetch.return_value = "<html>Test content</html>"
         mock_extract.return_value = "Ekstrahowana treść z URL"

@@ -1,10 +1,9 @@
 """Moduł: ingestion_engine - Silnik Ingestii Wieloformatowych Danych."""
 
 import asyncio
-import io
 import mimetypes
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -188,7 +187,9 @@ class IngestionEngine:
                 md = MarkItDown()
                 result = md.convert(str(path))
                 if result and result.text_content:
-                    logger.info(f"PDF przetworzony (markitdown): {len(result.text_content)} znaków")
+                    logger.info(
+                        f"PDF przetworzony (markitdown): {len(result.text_content)} znaków"
+                    )
                     return result.text_content
             except ImportError:
                 logger.debug("markitdown nie jest dostępny, próbuję pypdf")
@@ -232,7 +233,9 @@ class IngestionEngine:
                 md = MarkItDown()
                 result = md.convert(str(path))
                 if result and result.text_content:
-                    logger.info(f"DOCX przetworzony (markitdown): {len(result.text_content)} znaków")
+                    logger.info(
+                        f"DOCX przetworzony (markitdown): {len(result.text_content)} znaków"
+                    )
                     return result.text_content
             except ImportError:
                 logger.debug("markitdown nie jest dostępny, próbuję python-docx")
@@ -274,7 +277,9 @@ class IngestionEngine:
         try:
             # Użyj vision engine do opisu obrazu
             description = await asyncio.to_thread(
-                vision.analyze_image, str(path), "Opisz szczegółowo co widzisz na tym obrazie."
+                vision.analyze_image,
+                str(path),
+                "Opisz szczegółowo co widzisz na tym obrazie.",
             )
             logger.info(f"Obraz przeanalizowany: {len(description)} znaków")
             return f"[Obraz: {path.name}]\n\n{description}"
@@ -382,7 +387,9 @@ class IngestionEngine:
                 try:
                     with open(path, "r", encoding=encoding) as f:
                         text = f.read()
-                    logger.info(f"Plik tekstowy wczytany ({encoding}): {len(text)} znaków")
+                    logger.info(
+                        f"Plik tekstowy wczytany ({encoding}): {len(text)} znaków"
+                    )
                     return text
                 except UnicodeDecodeError:
                     continue
@@ -411,7 +418,10 @@ class IngestionEngine:
                 break
         else:
             # Jeśli nie znaleziono separatorów, dziel po prostu po znakach
-            parts = [text[i : i + SEMANTIC_CHUNK_SIZE] for i in range(0, len(text), SEMANTIC_CHUNK_SIZE)]
+            parts = [
+                text[i : i + SEMANTIC_CHUNK_SIZE]
+                for i in range(0, len(text), SEMANTIC_CHUNK_SIZE)
+            ]
             return [p.strip() for p in parts if p.strip()]
 
         for part in parts:
@@ -439,7 +449,9 @@ class IngestionEngine:
         logger.info(f"Tekst podzielony na {len(chunks)} fragmentów semantycznych")
         return chunks
 
-    async def ingest_url(self, url: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def ingest_url(
+        self, url: str, metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Pobiera i przetwarza zawartość strony WWW.
 
@@ -476,7 +488,9 @@ class IngestionEngine:
 
             chunks = self._semantic_chunk(text)
 
-            logger.info(f"URL przetworzony: {len(text)} znaków, {len(chunks)} fragmentów")
+            logger.info(
+                f"URL przetworzony: {len(text)} znaków, {len(chunks)} fragmentów"
+            )
 
             return {
                 "text": text,

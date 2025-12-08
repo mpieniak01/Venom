@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 import networkx as nx
 
@@ -34,14 +34,18 @@ class GraphRAGService:
             vector_store: VectorStore dla hybrydowego wyszukiwania
             embedding_service: Serwis embeddingów
         """
-        self.graph_file = Path(graph_file or f"{SETTINGS.MEMORY_ROOT}/knowledge_graph.json")
+        self.graph_file = Path(
+            graph_file or f"{SETTINGS.MEMORY_ROOT}/knowledge_graph.json"
+        )
         self.graph_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Graf wiedzy (DiGraph = Directed Graph)
         self.graph = nx.DiGraph()
 
         # VectorStore i EmbeddingService dla hybrydowego wyszukiwania
-        self.vector_store = vector_store or VectorStore(collection_name="knowledge_graph")
+        self.vector_store = vector_store or VectorStore(
+            collection_name="knowledge_graph"
+        )
         self.embedding_service = embedding_service or EmbeddingService()
 
         # Cache dla społeczności (communities)
@@ -50,7 +54,10 @@ class GraphRAGService:
         logger.info(f"GraphRAGService zainicjalizowany: graph_file={self.graph_file}")
 
     def add_entity(
-        self, entity_id: str, entity_type: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        entity_id: str,
+        entity_type: str,
+        properties: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Dodaje encję (węzeł) do grafu wiedzy.
@@ -61,9 +68,7 @@ class GraphRAGService:
             properties: Opcjonalne właściwości encji
         """
         properties = properties or {}
-        self.graph.add_node(
-            entity_id, entity_type=entity_type, **properties
-        )
+        self.graph.add_node(entity_id, entity_type=entity_type, **properties)
         logger.debug(f"Dodano encję: {entity_id} (typ: {entity_type})")
 
     def add_relationship(
@@ -153,7 +158,9 @@ Odpowiedź (JSON):"""
                 ChatMessageContent(role=AuthorRole.USER, content=extraction_prompt)
             )
 
-            response = await llm_service.get_chat_message_content(chat_history=chat_history)
+            response = await llm_service.get_chat_message_content(
+                chat_history=chat_history
+            )
             result_text = str(response).strip()
 
             # Parsuj JSON (szukaj między ``` jeśli są)
@@ -343,7 +350,9 @@ Odpowiedź (JSON):"""
                 )
             )
 
-            response = await llm_service.get_chat_message_content(chat_history=chat_history)
+            response = await llm_service.get_chat_message_content(
+                chat_history=chat_history
+            )
             return str(response).strip()
 
         except Exception as e:
@@ -411,14 +420,30 @@ Odpowiedź (JSON):"""
 
                             # Zapisz krawędź
                             if self.graph.has_edge(current_node, neighbor):
-                                edge_data = self.graph.get_edge_data(current_node, neighbor)
+                                edge_data = self.graph.get_edge_data(
+                                    current_node, neighbor
+                                )
                                 explored_edges.append(
-                                    (current_node, neighbor, edge_data.get("relationship_type", "RELATED_TO"))
+                                    (
+                                        current_node,
+                                        neighbor,
+                                        edge_data.get(
+                                            "relationship_type", "RELATED_TO"
+                                        ),
+                                    )
                                 )
                             elif self.graph.has_edge(neighbor, current_node):
-                                edge_data = self.graph.get_edge_data(neighbor, current_node)
+                                edge_data = self.graph.get_edge_data(
+                                    neighbor, current_node
+                                )
                                 explored_edges.append(
-                                    (neighbor, current_node, edge_data.get("relationship_type", "RELATED_TO"))
+                                    (
+                                        neighbor,
+                                        current_node,
+                                        edge_data.get(
+                                            "relationship_type", "RELATED_TO"
+                                        ),
+                                    )
                                 )
 
             # Zbuduj kontekst z eksplorowanego podgrafu
@@ -464,7 +489,9 @@ Odpowiedź (JSON):"""
                 )
             )
 
-            response = await llm_service.get_chat_message_content(chat_history=chat_history)
+            response = await llm_service.get_chat_message_content(
+                chat_history=chat_history
+            )
             return str(response).strip()
 
         except Exception as e:
@@ -531,5 +558,7 @@ Odpowiedź (JSON):"""
             "entity_types": entity_types,
             "relationship_types": relationship_types,
             "communities_count": len(communities),
-            "largest_community_size": max([len(c) for c in communities]) if communities else 0,
+            "largest_community_size": (
+                max([len(c) for c in communities]) if communities else 0
+            ),
         }

@@ -47,7 +47,14 @@ class TestGhostAgent:
         """Fixture do tworzenia GhostAgent."""
         with patch("venom_core.agents.ghost_agent.VisionGrounding"), patch(
             "venom_core.agents.ghost_agent.InputSkill"
-        ):
+        ), patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings:
+            # Mock SETTINGS to enable Ghost Agent in tests
+            mock_settings.ENABLE_GHOST_AGENT = True
+            mock_settings.GHOST_MAX_STEPS = 20
+            mock_settings.GHOST_STEP_DELAY = 1.0
+            mock_settings.GHOST_VERIFICATION_ENABLED = True
+            mock_settings.GHOST_SAFETY_DELAY = 0.5
+            
             agent = GhostAgent(
                 kernel=mock_kernel,
                 max_steps=10,
@@ -69,10 +76,13 @@ class TestGhostAgent:
     async def test_process_when_already_running(self, ghost_agent):
         """Test próby uruchomienia gdy agent już działa."""
         ghost_agent.is_running = True
-        result = await ghost_agent.process("Otwórz notatnik")
+        
+        with patch("venom_core.agents.ghost_agent.SETTINGS") as mock_settings:
+            mock_settings.ENABLE_GHOST_AGENT = True
+            result = await ghost_agent.process("Otwórz notatnik")
 
-        assert "już działa" in result
-        assert "❌" in result
+            assert "już działa" in result
+            assert "❌" in result
 
     @pytest.mark.asyncio
     async def test_process_notepad_task(self, ghost_agent):
@@ -81,7 +91,10 @@ class TestGhostAgent:
         ghost_agent.input_skill.keyboard_hotkey = AsyncMock(return_value="✅ OK")
         ghost_agent.input_skill.keyboard_type = AsyncMock(return_value="✅ OK")
 
-        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
+        with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab, patch(
+            "venom_core.agents.ghost_agent.SETTINGS"
+        ) as mock_settings:
+            mock_settings.ENABLE_GHOST_AGENT = True
             mock_grab.return_value = Image.new("RGB", (100, 100))
 
             result = await ghost_agent.process("Otwórz notatnik i napisz 'Hello Venom'")
@@ -148,7 +161,7 @@ class TestGhostAgent:
 
         ghost_agent.input_skill.keyboard_type = AsyncMock(return_value="✅ Wpisano")
 
-        result = await ghost_agent._execute_plan(plan)
+        await ghost_agent._execute_plan(plan)
 
         assert len(ghost_agent.action_history) == 1
         assert ghost_agent.action_history[0].status == "success"
@@ -160,7 +173,7 @@ class TestGhostAgent:
 
         ghost_agent.input_skill.keyboard_hotkey = AsyncMock(return_value="✅ Wykonano")
 
-        result = await ghost_agent._execute_plan(plan)
+        await ghost_agent._execute_plan(plan)
 
         assert len(ghost_agent.action_history) == 1
         assert ghost_agent.action_history[0].status == "success"
@@ -170,7 +183,7 @@ class TestGhostAgent:
         """Test wykonania kroku oczekiwania."""
         plan = [ActionStep("wait", "Czekaj 0.1s", {"duration": 0.01})]
 
-        result = await ghost_agent._execute_plan(plan)
+        await ghost_agent._execute_plan(plan)
 
         assert len(ghost_agent.action_history) == 1
         assert ghost_agent.action_history[0].status == "success"
@@ -186,7 +199,7 @@ class TestGhostAgent:
         with patch("venom_core.agents.ghost_agent.ImageGrab.grab") as mock_grab:
             mock_grab.return_value = Image.new("RGB", (100, 100))
 
-            result = await ghost_agent._execute_plan(plan)
+            await ghost_agent._execute_plan(plan)
 
             assert len(ghost_agent.action_history) == 1
             assert "znaleziony" in ghost_agent.action_history[0].result.lower()
@@ -198,7 +211,7 @@ class TestGhostAgent:
         # Stwórz plan z 5 krokami
         plan = [ActionStep("wait", f"Krok {i}", {"duration": 0.01}) for i in range(5)]
 
-        result = await ghost_agent._execute_plan(plan)
+        await ghost_agent._execute_plan(plan)
 
         # Powinno wykonać tylko 3 kroki
         assert len(ghost_agent.action_history) <= 3

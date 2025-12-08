@@ -14,6 +14,7 @@ from PIL import ImageGrab
 from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.execution.skills.input_skill import InputSkill
 from venom_core.perception.vision_grounding import VisionGrounding
 from venom_core.utils.logger import get_logger
@@ -96,27 +97,42 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
     def __init__(
         self,
         kernel: Kernel,
-        max_steps: int = 20,
-        step_delay: float = 1.0,
-        verification_enabled: bool = True,
+        max_steps: Optional[int] = None,
+        step_delay: Optional[float] = None,
+        verification_enabled: Optional[bool] = None,
+        safety_delay: Optional[float] = None,
     ):
         """
         Inicjalizacja Ghost Agent.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel
-            max_steps: Maksymalna liczba kroków do wykonania
-            step_delay: Opóźnienie między krokami (sekundy)
-            verification_enabled: Czy włączyć weryfikację po każdym kroku
+            max_steps: Maksymalna liczba kroków do wykonania (domyślnie z SETTINGS)
+            step_delay: Opóźnienie między krokami w sekundach (domyślnie z SETTINGS)
+            verification_enabled: Czy włączyć weryfikację po każdym kroku (domyślnie z SETTINGS)
+            safety_delay: Opóźnienie bezpieczeństwa dla operacji input (domyślnie z SETTINGS)
         """
         super().__init__(kernel)
-        self.max_steps = max_steps
-        self.step_delay = step_delay
-        self.verification_enabled = verification_enabled
+        
+        # Sprawdź czy Ghost Agent jest włączony w konfiguracji
+        if not SETTINGS.ENABLE_GHOST_AGENT:
+            logger.warning(
+                "Ghost Agent jest wyłączony w konfiguracji (ENABLE_GHOST_AGENT=False). "
+                "Aby go włączyć, ustaw ENABLE_GHOST_AGENT=True w .env lub config.py"
+            )
+        
+        # Użyj wartości z SETTINGS jako domyślnych
+        self.max_steps = max_steps if max_steps is not None else SETTINGS.GHOST_MAX_STEPS
+        self.step_delay = step_delay if step_delay is not None else SETTINGS.GHOST_STEP_DELAY
+        self.verification_enabled = (
+            verification_enabled if verification_enabled is not None 
+            else SETTINGS.GHOST_VERIFICATION_ENABLED
+        )
+        self.safety_delay = safety_delay if safety_delay is not None else SETTINGS.GHOST_SAFETY_DELAY
 
         # Inicjalizuj komponenty
         self.vision = VisionGrounding()
-        self.input_skill = InputSkill(safety_delay=step_delay)
+        self.input_skill = InputSkill(safety_delay=self.safety_delay)
 
         # Historia wykonanych kroków
         self.action_history: List[ActionStep] = []
@@ -126,8 +142,9 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         self.emergency_stop = False
 
         logger.info(
-            f"GhostAgent zainicjalizowany (max_steps={max_steps}, "
-            f"delay={step_delay}s, verification={verification_enabled})"
+            f"GhostAgent zainicjalizowany (max_steps={self.max_steps}, "
+            f"step_delay={self.step_delay}s, verification={self.verification_enabled}, "
+            f"safety_delay={self.safety_delay}s)"
         )
 
     async def process(self, input_text: str) -> str:
@@ -140,6 +157,13 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
         Returns:
             Raport z wykonania zadania
         """
+        # Sprawdź czy agent jest włączony
+        if not SETTINGS.ENABLE_GHOST_AGENT:
+            return (
+                "❌ Ghost Agent jest wyłączony w konfiguracji. "
+                "Ustaw ENABLE_GHOST_AGENT=True w .env aby go włączyć."
+            )
+        
         if self.is_running:
             return (
                 "❌ Ghost Agent już działa. Poczekaj na zakończenie bieżącego zadania."
@@ -349,6 +373,14 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
                     step.status = "failed"
 
                 self.action_history.append(step)
+
+                # TODO: Implementacja weryfikacji po każdym kroku
+                # if self.verification_enabled:
+                #     # Zrób screenshot i sprawdź czy akcja zakończyła się sukcesem
+                #     # Na przykład: czy okno się otworzyło, czy tekst został wpisany itp.
+                #     verification_result = await self._verify_step_result(step, last_screenshot)
+                #     if not verification_result:
+                #         logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
 
                 # Czekaj między krokami
                 if step.action_type != "wait":

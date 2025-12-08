@@ -9,7 +9,8 @@ import pytest
 mock_pyautogui = MagicMock()
 mock_pyautogui.FAILSAFE = True
 mock_pyautogui.PAUSE = 0.1
-mock_pyautogui.size = MagicMock(return_value=(1920, 1080))
+# Make size() callable and return a tuple
+mock_pyautogui.size.return_value = (1920, 1080)
 mock_pyautogui.moveTo = MagicMock()
 mock_pyautogui.click = MagicMock()
 mock_pyautogui.doubleClick = MagicMock()
@@ -29,15 +30,17 @@ class TestInputSkill:
     @pytest.fixture
     def input_skill(self):
         """Fixture do tworzenia InputSkill."""
-        # Reset mock calls
-        mock_pyautogui.reset_mock()
+        # Don't reset the whole mock, just reset call counts
+        # Set up return values properly for each test
         mock_pyautogui.size.return_value = (1920, 1080)
+        mock_pyautogui.position.return_value = (500, 300)
+        
+        # Reset call counts for tracking
         mock_pyautogui.moveTo.reset_mock()
         mock_pyautogui.click.reset_mock()
         mock_pyautogui.doubleClick.reset_mock()
         mock_pyautogui.write.reset_mock()
         mock_pyautogui.hotkey.reset_mock()
-        mock_pyautogui.position.return_value = (500, 300)
 
         skill = InputSkill(safety_delay=0.1)
         return skill

@@ -77,6 +77,12 @@ class VisionGrounding:
         Lokalizuje element używając OpenAI GPT-4o Vision.
 
         GPT-4o może analizować obraz i zwracać przybliżone współrzędne.
+        
+        Args:
+            screenshot: Obraz PIL ze zrzutem ekranu
+            description: Opis elementu do znalezienia
+            confidence_threshold: Próg pewności (0.0-1.0) - TODO: obecnie nieużywane,
+                                   wymaga rozszerzenia promptu o zwracanie pewności
         """
         try:
             # Konwertuj PIL Image do base64
@@ -170,9 +176,7 @@ Przykład odpowiedzi:
         przez lokalny model Florence-2 lub podobny.
         """
         try:
-            # Dla demonstracji - zwracamy środek ekranu
-            # W prawdziwej implementacji tutaj byłby OCR + pattern matching
-            width, height = screenshot.size
+            # Fallback: próbujemy znaleźć element przez OCR, w razie niepowodzenia zwracamy None
 
             # Bardzo prosty fallback: szukamy tekstu przez pytesseract (jeśli dostępny)
             try:

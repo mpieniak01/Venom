@@ -394,8 +394,9 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
             code += "\n"
 
         code += f'    logger.info("Workflow zakończony: %s", {workflow_name_repr})\n'
-        return_message = f'✅ Workflow {escape_string_for_code(workflow.name)} wykonany pomyślnie'
-        code += f'    return {escape_string_for_code(return_message)}\n'
+        # Użyj repr pojedynczo dla bezpieczeństwa, ale bez podwójnego eskejpowania
+        return_msg = f"✅ Workflow {workflow.name} wykonany pomyślnie"
+        code += f'    return {repr(return_msg)}\n'
 
         # Zapisz do pliku
         if not output_path:

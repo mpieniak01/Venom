@@ -102,7 +102,7 @@ class ComplexitySkill:
 
     @kernel_function(
         name="estimate_time",
-        description="Szacuje czas wykonania zadania technicznego w minutach.",
+        description="Szacuje czas wykonania zadania technicznego w minutach i zwraca JSON.",
     )
     async def estimate_time(
         self,
@@ -115,7 +115,7 @@ class ComplexitySkill:
             description: Opis zadania
 
         Returns:
-            Oszacowanie czasu w formacie tekstowym
+            Oszacowanie czasu w formacie JSON i tekstowym
         """
         complexity = self._assess_complexity(description)
         time_estimate = self._complexity_to_time(complexity)
@@ -136,7 +136,12 @@ class ComplexitySkill:
         for reason, multiplier in multipliers:
             total_time *= multiplier
 
-        result = f"Oszacowany czas: {total_time:.0f} minut ({total_time / 60:.1f}h)\n"
+        # Zwróć zarówno JSON jak i czytelny format
+        import json
+        time_json = json.dumps({"minutes": int(total_time)})
+        
+        result = f"{time_json}\n\n"
+        result += f"Oszacowany czas: {total_time:.0f} minut ({total_time / 60:.1f}h)\n"
         result += f"Złożoność: {complexity.value}\n"
         result += f"Podstawowy czas: {time_estimate:.0f} minut\n"
 

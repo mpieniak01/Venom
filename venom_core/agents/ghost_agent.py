@@ -7,6 +7,7 @@ i input skill do wykonywania akcji.
 """
 
 import asyncio
+import re
 from typing import Any, Dict, List, Optional
 
 from PIL import ImageGrab
@@ -219,8 +220,6 @@ Pamiętaj: Działaj POWOLI i OSTROŻNIE. Lepiej zrobić więcej screenshots niż
                 text_to_write = "Hello Venom"  # domyślny
                 if "'" in task or '"' in task:
                     # Spróbuj wyciągnąć tekst z cudzysłowów
-                    import re
-
                     match = re.search(r"['\"](.+?)['\"]", task)
                     if match:
                         text_to_write = match.group(1)

@@ -87,14 +87,14 @@ class TestVisionGrounding:
     @pytest.mark.asyncio
     async def test_locate_element_fallback(self, vision_grounding, sample_image):
         """Test fallback lokalizacji (bez OpenAI)."""
-        # Bez OpenAI i bez pytesseract - powinien zwrócić środek ekranu
+        # Bez OpenAI i bez pytesseract - powinien zwrócić None (bezpieczeństwo)
         with patch.dict("sys.modules", {"pytesseract": None}):
             result = await vision_grounding._locate_with_fallback(
                 sample_image, "button"
             )
 
-            # Fallback zwraca środek ekranu
-            assert result == (50, 50)  # środek obrazu 100x100
+            # Dla bezpieczeństwa fallback zwraca None zamiast środka ekranu
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_locate_element_fallback_with_ocr(

@@ -199,10 +199,11 @@ Przykład odpowiedzi:
 
             except ImportError:
                 logger.warning(
-                    "pytesseract nie jest zainstalowany - zwracam środek ekranu"
+                    "pytesseract nie jest zainstalowany - brak lokalizacji"
                 )
-                # Ostateczny fallback - środek ekranu
-                return (width // 2, height // 2)
+                # BEZPIECZEŃSTWO: NIE zwracamy środka ekranu bo może to być
+                # niebezpieczny element (np. przycisk "Delete"). Lepiej zwrócić None.
+                return None
 
         except Exception as e:
             logger.error(f"Błąd w fallback lokalizacji: {e}")

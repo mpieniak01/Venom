@@ -137,6 +137,10 @@ class PersonaFactory:
         ],
     }
 
+    # Stałe dla obliczeń
+    FRUSTRATION_THRESHOLD_MULTIPLIER = 5  # Mnożnik dla progu frustracji
+    PATIENCE_HIGH_THRESHOLD = 0.6  # Próg dla wysokiej cierpliwości
+
     def __init__(self, kernel: Optional[Kernel] = None):
         """
         Inicjalizacja PersonaFactory.
@@ -183,7 +187,9 @@ class PersonaFactory:
         name = random.choice(self.POLISH_NAMES["male"] + self.POLISH_NAMES["female"])
 
         # Wylicz próg frustracji na podstawie cierpliwości
-        frustration_threshold = max(1, int(template["patience"] * 5) + 1)
+        frustration_threshold = max(
+            1, int(template["patience"] * self.FRUSTRATION_THRESHOLD_MULTIPLIER) + 1
+        )
 
         persona = Persona(
             name=name,
@@ -225,7 +231,7 @@ class PersonaFactory:
 
         backstory = (
             f"{persona.name} ma {persona.age} lat i {tech_level[persona.tech_literacy]}. "
-            f"{'Jest cierpliwy i' if persona.patience > 0.6 else 'Szybko się frustruje i'} "
+            f"{'Jest cierpliwy i' if persona.patience > self.PATIENCE_HIGH_THRESHOLD else 'Szybko się frustruje i'} "
             f"ma jasny cel: {persona.goal}."
         )
 

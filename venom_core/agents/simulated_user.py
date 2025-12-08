@@ -38,6 +38,19 @@ class SimulatedUserAgent(BaseAgent):
     jak prawdziwy użytkownik w przeglądarce.
     """
 
+    # Stałe dla zarządzania emocjami
+    FRUSTRATED_THRESHOLD_RATIO = 0.7  # 70% progu frustracji = frustrated
+
+    # Słowa kluczowe wskazujące na frustrację w odpowiedziach
+    FRUSTRATION_KEYWORDS = [
+        "nie mogę znaleźć",
+        "nie widzę",
+        "gdzie jest",
+        "nie rozumiem",
+        "nie działa",
+        "błąd",
+    ]
+
     SYSTEM_PROMPT_TEMPLATE = """Jesteś użytkownikiem aplikacji webowej o następujących cechach:
 
 TWOJA PERSONA:
@@ -200,7 +213,10 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
         if self.frustration_level >= self.persona.frustration_threshold:
             self.emotional_state = EmotionalState.ANGRY
             self.rage_quit = True
-        elif self.frustration_level >= self.persona.frustration_threshold * 0.7:
+        elif (
+            self.frustration_level
+            >= self.persona.frustration_threshold * self.FRUSTRATED_THRESHOLD_RATIO
+        ):
             self.emotional_state = EmotionalState.FRUSTRATED
         elif self.frustration_level > 0:
             self.emotional_state = EmotionalState.CONFUSED
@@ -266,15 +282,7 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
 
             # Sprawdź czy użytkownik wyraził frustrację w odpowiedzi
             response_lower = str(result).lower()
-            frustration_keywords = [
-                "nie mogę znaleźć",
-                "nie widzę",
-                "gdzie jest",
-                "nie rozumiem",
-                "nie działa",
-                "błąd",
-            ]
-            if any(keyword in response_lower for keyword in frustration_keywords):
+            if any(keyword in response_lower for keyword in self.FRUSTRATION_KEYWORDS):
                 self._increase_frustration("Użytkownik wyraził problem w działaniu")
 
             return str(result)

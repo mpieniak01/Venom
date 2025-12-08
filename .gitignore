@@ -13,6 +13,9 @@ workspace/*
 
 data/memory/
 
+# Chronos timelines and snapshots
+data/timelines/
+
 .env
 
 # Custom skills - generated dynamically, keep only README

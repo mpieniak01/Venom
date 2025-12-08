@@ -324,7 +324,9 @@ class DesktopSensor:
             return buffer.getvalue()
 
         except ImportError:
-            logger.error("PIL/Pillow nie jest zainstalowane - zrzuty ekranu niedostępne")
+            logger.error(
+                "PIL/Pillow nie jest zainstalowane - zrzuty ekranu niedostępne"
+            )
             return None
         except Exception as e:
             logger.error(f"Błąd przy robieniu zrzutu ekranu: {e}")

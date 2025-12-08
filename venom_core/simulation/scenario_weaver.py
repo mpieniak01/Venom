@@ -1,5 +1,7 @@
 """Moduł: scenario_weaver - Tkacz Scenariuszy dla Syntetycznego Uczenia."""
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -205,9 +207,6 @@ PAMIĘTAJ:
             result_text = str(response[0]).strip()
 
             # Parsuj JSON z odpowiedzi (może być opakowany w ```json```)
-            import json
-            import re
-
             # Usuń markdown code blocks jeśli są
             json_match = re.search(r"```json\s*(.*?)\s*```", result_text, re.DOTALL)
             if json_match:

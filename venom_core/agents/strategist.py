@@ -1,5 +1,6 @@
 """Moduł: strategist - agent planowania i zarządzania złożonością zadań."""
 
+import json
 import re
 from typing import Dict, Optional
 
@@ -427,8 +428,6 @@ class StrategistAgent(BaseAgent):
         Returns:
             Szacowany czas w minutach
         """
-        import json
-
         # Najpierw spróbuj wyciągnąć JSON z początku odpowiedzi
         try:
             # Szukaj JSON na początku stringa

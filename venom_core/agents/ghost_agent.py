@@ -7,10 +7,15 @@ i input skill do wykonywania akcji.
 """
 
 import asyncio
+import json
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from PIL import ImageGrab
 from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
@@ -243,10 +248,6 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
 
         try:
             # Użyj LLM do wygenerowania planu
-            from semantic_kernel.contents import ChatHistory
-            from semantic_kernel.contents.chat_message_content import ChatMessageContent
-            from semantic_kernel.contents.utils.author_role import AuthorRole
-
             chat_history = ChatHistory()
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=planning_prompt)
@@ -260,7 +261,6 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
             response_text = str(response).strip()
 
             # Wyciągnij JSON z odpowiedzi (może być otoczony markdown)
-            import json
 
             # Usuń markdown code blocks jeśli istnieją
             if "```json" in response_text:
@@ -433,8 +433,6 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
             elif step.action_type in ["hotkey", "click"]:
                 # Dla kliknięć i skrótów sprawdzamy czy coś się zmieniło na ekranie
                 # Konwertuj na numpy arrays dla porównania
-                import numpy as np
-
                 pre_array = (
                     np.array(pre_action_screenshot) if pre_action_screenshot else None
                 )

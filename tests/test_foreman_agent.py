@@ -1,13 +1,13 @@
 """Testy dla foreman - agent zarządcy klastra."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from semantic_kernel import Kernel
 
 from venom_core.agents.foreman import ForemanAgent, NodeMetrics
-from venom_core.infrastructure.message_broker import MessageBroker, TaskMessage
+from venom_core.infrastructure.message_broker import MessageBroker
 
 
 @pytest.fixture

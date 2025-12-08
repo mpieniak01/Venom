@@ -14,14 +14,16 @@ logger = get_logger(__name__)
 
 
 # Domyślny stack z Redis dla architektury Hive
+# UWAGA: Ta konfiguracja jest dla developmentu. W produkcji użyj zabezpieczonej wersji z dokumentacji.
 DEFAULT_HIVE_STACK = """version: '3.8'
 
 services:
   redis:
     image: redis:alpine
     container_name: venom-hive-redis
+    # Port bind do localhost tylko (bezpieczniejsze dla developmentu)
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes

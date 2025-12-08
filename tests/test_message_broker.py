@@ -1,8 +1,7 @@
 """Testy dla message_broker - infrastruktura kolejkowania zadań."""
 
-import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

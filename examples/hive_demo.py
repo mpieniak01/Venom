@@ -14,7 +14,7 @@ from pathlib import Path
 
 from venom_core.config import SETTINGS
 from venom_core.core.ota_manager import OTAManager
-from venom_core.infrastructure.message_broker import MessageBroker, TaskMessage
+from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)

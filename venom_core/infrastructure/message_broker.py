@@ -1,32 +1,18 @@
 """Moduł: message_broker - infrastruktura kolejkowania zadań (Redis + ARQ).
 
-UWAGA BEZPIECZEŃSTWA:
-Ten moduł używa pickle do serializacji obiektów Python (TaskMessage).
-Pickle umożliwia przechowywanie złożonych struktur, ale może być podatny
-na ataki arbitrary code execution jeśli dane pochodzą z niezaufanych źródeł.
-
-W architekturze Hive:
-- Wszystkie węzły są zaufane (Nexus + Spores w zamkniętej sieci)
-- Redis powinien być chroniony (firewall, hasło, VPN)
-- Alternatywnie można użyć JSON z custom serializers dla prostszych obiektów
-
-Dla publicznych deploymentów zaleca się:
-1. Używanie JSON zamiast pickle gdzie możliwe
-2. Walidację danych przed deserializacją
-3. Izolację sieci Redis (VPN, private network)
-4. Autentykację Redis (REDIS_PASSWORD)
+UWAGA BEZPIECZEŃSTWA: Szczegółowe informacje dotyczące bezpieczeństwa (pickle,
+Redis, architektura Hive) znajdują się w dokumentacji: docs/THE_HIVE.md (sekcja Security).
 """
 
 import asyncio
 import json
 import pickle
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import redis.asyncio as redis
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
-from arq.jobs import Job
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -253,7 +239,7 @@ class MessageBroker:
             )
 
             # Enqueue task do ARQ (używamy pickle dla serializacji)
-            job = await self.arq_pool.enqueue_job(
+            await self.arq_pool.enqueue_job(
                 task_type,
                 task_id,
                 payload,

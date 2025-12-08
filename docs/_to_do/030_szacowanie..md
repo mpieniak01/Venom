@@ -134,3 +134,30 @@ Wyświetla:
 * złożoność licz heurystycznie (ilość plików, modułów, integracji),
 * Strategist powinien działać **przed** kodowaniem i **po** każdej iteracji,
 * Dashboard może używać Plotly/Chart.js.
+
+---
+
+## F. Kontrola Kosztów Zewnętrznych (API Usage Awareness)
+
+Strategist musi rozumieć, kiedy zadania **angażują zewnętrzne API**, które mogą:
+
+* mieć limit szybkości (rate limits),
+* generować opóźnienia,
+* zużywać zasoby,
+* wymagać świadomego zarządzania.
+
+### Dlaczego?
+
+Nawet jeśli nie liczymy finansów, to **zewnętrzne API są zasobem operacyjnym** i należy nimi zarządzać tak, jak każdą inną częścią systemu.
+
+### Funkcje do dodania:
+
+* `record_api_usage(provider: str, tokens: int, ops: int)` – zapis wykorzystania API.
+* `predict_api_pressure()` – czy kolejne zadania spowodują przeciążenie API.
+* `suggest_local_fallback()` – np. *"Generowanie obrazu w OpenAI jest intensywne – proponuję użyć lokalnego Stable Diffusion."*
+* `enforce_api_limits(max_daily_calls)` – automatyczne odcięcie zadań po przekroczeniu limitu.
+
+### Przykłady decyzji:
+
+* *„Wygenerowaliśmy dziś 40 obrazów w OpenAI – sugeruję przełączenie na lokalny backend.”*
+* *„Analiza dużych PDF-ów w LLM jest obciążająca – podziel plik na mniejsze części.”*

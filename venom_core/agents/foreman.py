@@ -215,20 +215,27 @@ class ForemanAgent(BaseAgent):
                             # Bezpieczne pobieranie atrybutów z fallbackiem
                             metrics = NodeMetrics(
                                 node_id=node_id,
-                                node_name=getattr(node_info, 'node_name', node_id),
-                                cpu_usage=getattr(node_info, 'cpu_usage', 0.0),
-                                memory_usage=getattr(node_info, 'memory_usage', 0.0),
-                                active_tasks=getattr(node_info, 'active_tasks', 0),
-                                gpu_available=getattr(
-                                    node_info.capabilities, 'has_gpu', False
-                                ) if hasattr(node_info, 'capabilities') else False,
-                                capabilities=node_info.capabilities.model_dump() 
-                                if hasattr(node_info, 'capabilities') and hasattr(node_info.capabilities, 'model_dump')
-                                else {},
+                                node_name=getattr(node_info, "node_name", node_id),
+                                cpu_usage=getattr(node_info, "cpu_usage", 0.0),
+                                memory_usage=getattr(node_info, "memory_usage", 0.0),
+                                active_tasks=getattr(node_info, "active_tasks", 0),
+                                gpu_available=(
+                                    getattr(node_info.capabilities, "has_gpu", False)
+                                    if hasattr(node_info, "capabilities")
+                                    else False
+                                ),
+                                capabilities=(
+                                    node_info.capabilities.model_dump()
+                                    if hasattr(node_info, "capabilities")
+                                    and hasattr(node_info.capabilities, "model_dump")
+                                    else {}
+                                ),
                             )
                             self.nodes_metrics[node_id] = metrics
                         except Exception as e:
-                            logger.warning(f"Nie można pobrać metryk węzła {node_id}: {e}")
+                            logger.warning(
+                                f"Nie można pobrać metryk węzła {node_id}: {e}"
+                            )
 
                 # Czekaj 30 sekund przed następną aktualizacją
                 await asyncio.sleep(30)
@@ -309,7 +316,9 @@ class ForemanAgent(BaseAgent):
         node_id = self.select_best_node(task_requirements)
 
         if not node_id:
-            logger.error(f"Nie można przypisać zadania {task_id} - brak dostępnych węzłów")
+            logger.error(
+                f"Nie można przypisać zadania {task_id} - brak dostępnych węzłów"
+            )
             return None
 
         # Aktualizuj status zadania

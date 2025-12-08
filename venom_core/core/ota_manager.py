@@ -51,7 +51,9 @@ class OTAPackage:
             "package_path": str(self.package_path),
             "checksum": self.checksum,
             "created_at": self.created_at.isoformat(),
-            "size_bytes": self.package_path.stat().st_size if self.package_path.exists() else 0,
+            "size_bytes": (
+                self.package_path.stat().st_size if self.package_path.exists() else 0
+            ),
         }
 
 
@@ -68,7 +70,9 @@ class OTAManager:
        - Wykonują bezpieczny restart
     """
 
-    def __init__(self, message_broker: MessageBroker, workspace_root: Optional[str] = None):
+    def __init__(
+        self, message_broker: MessageBroker, workspace_root: Optional[str] = None
+    ):
         """
         Inicjalizacja OTAManager.
 
@@ -104,7 +108,9 @@ class OTAManager:
         """
         try:
             # Nazwa pliku paczki
-            package_filename = f"venom_ota_{version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            package_filename = (
+                f"venom_ota_{version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            )
             package_path = self.ota_dir / package_filename
 
             logger.info(f"Tworzenie paczki OTA: {package_filename}")
@@ -326,7 +332,9 @@ class OTAManager:
 
                 # Backup starego pliku jeśli istnieje
                 if target_path.exists():
-                    backup_path = target_path.with_suffix(target_path.suffix + ".backup")
+                    backup_path = target_path.with_suffix(
+                        target_path.suffix + ".backup"
+                    )
                     shutil.copy2(target_path, backup_path)
 
                 # Skopiuj nowy plik
@@ -349,7 +357,7 @@ class OTAManager:
         try:
             # Timeout instalacji zależności konfigurowalny przez SETTINGS
             timeout = getattr(SETTINGS, "OTA_DEPENDENCY_INSTALL_TIMEOUT", 300)
-            
+
             # Uruchom pip install
             result = subprocess.run(
                 ["pip", "install", "-r", str(requirements_path)],
@@ -372,7 +380,7 @@ class OTAManager:
     async def _schedule_restart(self):
         """
         Planuje restart procesu.
-        
+
         UWAGA: W obecnej implementacji tylko loguje ostrzeżenie.
         W produkcji należy użyć systemd/supervisor lub mechanizmu
         zarządzania procesami do bezpiecznego restartu.

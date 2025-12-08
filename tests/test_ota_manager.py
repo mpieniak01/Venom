@@ -167,7 +167,9 @@ async def test_broadcast_update(ota_manager, mock_message_broker, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_broadcast_update_with_target_nodes(ota_manager, mock_message_broker, tmp_path):
+async def test_broadcast_update_with_target_nodes(
+    ota_manager, mock_message_broker, tmp_path
+):
     """Test broadcast update z określonymi węzłami."""
     package_path = tmp_path / "test.zip"
     package_path.touch()
@@ -176,7 +178,9 @@ async def test_broadcast_update_with_target_nodes(ota_manager, mock_message_brok
         version="1.0.0", description="Test", package_path=package_path, checksum="abc"
     )
 
-    result = await ota_manager.broadcast_update(package, target_nodes=["node_1", "node_2"])
+    result = await ota_manager.broadcast_update(
+        package, target_nodes=["node_1", "node_2"]
+    )
 
     assert result is True
 

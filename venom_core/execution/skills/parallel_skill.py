@@ -51,13 +51,15 @@ class ParallelSkill:
             str,
             "Lista elementów do przetworzenia w formacie JSON (np. lista URLi, plików, tekstów). "
             "Każdy element zostanie przekazany jako osobne zadanie. "
-            "Przykład: '[\"url1\", \"url2\", \"url3\"]' lub '[{\"title\": \"doc1\", \"path\": \"/file1\"}, ...]'",
+            'Przykład: \'["url1", "url2", "url3"]\' lub \'[{"title": "doc1", "path": "/file1"}, ...]\'',
         ],
         priority: Annotated[
-            str, "Priorytet zadań: 'high_priority' lub 'background'. Domyślnie 'background'."
+            str,
+            "Priorytet zadań: 'high_priority' lub 'background'. Domyślnie 'background'.",
         ] = "background",
         wait_timeout: Annotated[
-            int, "Maksymalny czas oczekiwania na wyniki w sekundach. Domyślnie 300 (5 minut)."
+            int,
+            "Maksymalny czas oczekiwania na wyniki w sekundach. Domyślnie 300 (5 minut).",
         ] = 300,
     ) -> str:
         """
@@ -204,7 +206,11 @@ class ParallelSkill:
             await asyncio.sleep(POLLING_INTERVAL_SECONDS)
 
         # Sortuj wyniki według item_index
-        results.sort(key=lambda r: r["item_index"] if r["item_index"] is not None else DEFAULT_SORT_INDEX)
+        results.sort(
+            key=lambda r: (
+                r["item_index"] if r["item_index"] is not None else DEFAULT_SORT_INDEX
+            )
+        )
 
         return results
 
@@ -221,13 +227,15 @@ class ParallelSkill:
         subtasks: Annotated[
             str,
             "Lista pod-zadań w formacie JSON, gdzie każde pod-zadanie to opis co należy wykonać. "
-            "Przykład: '[\"Przeskanuj katalog /src\", \"Przeskanuj katalog /tests\"]'",
+            'Przykład: \'["Przeskanuj katalog /src", "Przeskanuj katalog /tests"]\'',
         ],
         priority: Annotated[
-            str, "Priorytet zadań: 'high_priority' lub 'background'. Domyślnie 'high_priority'."
+            str,
+            "Priorytet zadań: 'high_priority' lub 'background'. Domyślnie 'high_priority'.",
         ] = "high_priority",
         wait_timeout: Annotated[
-            int, "Maksymalny czas oczekiwania na wyniki w sekundach. Domyślnie 600 (10 minut)."
+            int,
+            "Maksymalny czas oczekiwania na wyniki w sekundach. Domyślnie 600 (10 minut).",
         ] = 600,
     ) -> str:
         """
@@ -255,9 +263,7 @@ class ParallelSkill:
             if not subtasks_list:
                 return "❌ Lista pod-zadań jest pusta"
 
-            logger.info(
-                f"Rozpoczynam parallel_execute: {len(subtasks_list)} pod-zadań"
-            )
+            logger.info(f"Rozpoczynam parallel_execute: {len(subtasks_list)} pod-zadań")
 
             # Utwórz zadania
             task_ids = []

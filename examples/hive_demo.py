@@ -12,7 +12,6 @@ import asyncio
 import json
 from pathlib import Path
 
-from venom_core.config import SETTINGS
 from venom_core.core.ota_manager import OTAManager
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
@@ -216,7 +215,9 @@ async def demo_ota_package():
     packages = ota.list_packages()
     if packages:
         for pkg in packages[:5]:  # Pokaż max 5
-            print(f"  • {pkg['filename']} ({pkg['version']}) - {pkg['size_bytes']} bytes")
+            print(
+                f"  • {pkg['filename']} ({pkg['version']}) - {pkg['size_bytes']} bytes"
+            )
     else:
         print("  (brak paczek)")
 

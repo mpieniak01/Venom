@@ -65,7 +65,9 @@ def test_node_metrics_creation():
 def test_node_metrics_load_score():
     """Test obliczania load score."""
     # Węzeł bez obciążenia
-    idle_node = NodeMetrics("node_1", "Idle", cpu_usage=0, memory_usage=0, active_tasks=0)
+    idle_node = NodeMetrics(
+        "node_1", "Idle", cpu_usage=0, memory_usage=0, active_tasks=0
+    )
     assert idle_node.get_load_score() == 0.0
 
     # Węzeł z pełnym obciążeniem
@@ -83,7 +85,9 @@ def test_node_metrics_load_score():
 
 def test_node_metrics_to_dict():
     """Test konwersji NodeMetrics do dict."""
-    metrics = NodeMetrics("node_1", "Test", cpu_usage=25, memory_usage=30, active_tasks=2)
+    metrics = NodeMetrics(
+        "node_1", "Test", cpu_usage=25, memory_usage=30, active_tasks=2
+    )
     data = metrics.to_dict()
 
     assert data["node_id"] == "node_1"
@@ -157,12 +161,22 @@ def test_select_best_node_with_gpu_requirement(foreman_agent):
     """Test wyboru węzła z wymaganiem GPU."""
     # Węzeł bez GPU
     foreman_agent.nodes_metrics["node_1"] = NodeMetrics(
-        "node_1", "CPU Node", cpu_usage=10, memory_usage=20, active_tasks=0, gpu_available=False
+        "node_1",
+        "CPU Node",
+        cpu_usage=10,
+        memory_usage=20,
+        active_tasks=0,
+        gpu_available=False,
     )
 
     # Węzeł z GPU
     foreman_agent.nodes_metrics["node_2"] = NodeMetrics(
-        "node_2", "GPU Node", cpu_usage=30, memory_usage=40, active_tasks=0, gpu_available=True
+        "node_2",
+        "GPU Node",
+        cpu_usage=30,
+        memory_usage=40,
+        active_tasks=0,
+        gpu_available=True,
     )
 
     result = foreman_agent.select_best_node(task_requirements={"gpu": True})

@@ -13,7 +13,11 @@ from venom_core.infrastructure.message_broker import MessageBroker, TaskMessage
 def mock_message_broker():
     """Mock MessageBroker."""
     broker = Mock(spec=MessageBroker)
-    broker.enqueue_task = AsyncMock(side_effect=lambda task_type, payload, priority: f"task_{payload.get('item_index', 0)}")
+
+    async def _fake_enqueue(task_type, payload, priority):
+        return f"task_{payload.get('item_index', 0)}"
+
+    broker.enqueue_task = AsyncMock(side_effect=_fake_enqueue)
     broker.get_task_status = AsyncMock()
     return broker
 

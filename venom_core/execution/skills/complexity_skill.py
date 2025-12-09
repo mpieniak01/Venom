@@ -138,6 +138,9 @@ class ComplexitySkill:
             total_time *= multiplier
 
         # Zwróć JSON na początku dla łatwego parsowania
+        # Format: {"estimated_minutes": int, "complexity": str}
+        # Zachowana backward compatibility - parser obsługuje też stary format {"minutes": int}
+        # ensure_ascii=False zapewnia prawidłowe wyświetlanie polskich znaków
         time_json = json.dumps(
             {"estimated_minutes": int(total_time), "complexity": complexity.value},
             ensure_ascii=False,

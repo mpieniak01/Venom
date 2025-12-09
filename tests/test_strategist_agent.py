@@ -270,7 +270,7 @@ class TestStrategistAgent:
 
 Oszacowany czas: 75 minut (1.3h)
 Złożoność: HIGH
-        """
+"""
 
         extracted = agent._extract_time(time_result)
 

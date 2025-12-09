@@ -1,0 +1,126 @@
+"""Moduł: dependencies - Wstrzykiwanie zależności dla FastAPI."""
+
+from functools import lru_cache
+
+from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.state_manager import StateManager
+from venom_core.memory.graph_store import CodeGraphStore
+from venom_core.memory.lessons_store import LessonsStore
+from venom_core.memory.vector_store import VectorStore
+
+# Globalne referencje do serwisów (inicjalizowane w lifespan)
+_orchestrator: Orchestrator = None
+_state_manager: StateManager = None
+_vector_store: VectorStore = None
+_graph_store: CodeGraphStore = None
+_lessons_store: LessonsStore = None
+
+
+def set_orchestrator(orchestrator: Orchestrator):
+    """Ustaw globalną instancję orchestratora."""
+    global _orchestrator
+    _orchestrator = orchestrator
+
+
+def set_state_manager(state_manager: StateManager):
+    """Ustaw globalną instancję state managera."""
+    global _state_manager
+    _state_manager = state_manager
+
+
+def set_vector_store(vector_store: VectorStore):
+    """Ustaw globalną instancję vector store."""
+    global _vector_store
+    _vector_store = vector_store
+
+
+def set_graph_store(graph_store: CodeGraphStore):
+    """Ustaw globalną instancję graph store."""
+    global _graph_store
+    _graph_store = graph_store
+
+
+def set_lessons_store(lessons_store: LessonsStore):
+    """Ustaw globalną instancję lessons store."""
+    global _lessons_store
+    _lessons_store = lessons_store
+
+
+@lru_cache()
+def get_orchestrator() -> Orchestrator:
+    """
+    Pobierz instancję Orchestratora (dependency injection).
+
+    Returns:
+        Orchestrator: Instancja orchestratora
+
+    Raises:
+        RuntimeError: Jeśli orchestrator nie został zainicjalizowany
+    """
+    if _orchestrator is None:
+        raise RuntimeError("Orchestrator nie jest dostępny")
+    return _orchestrator
+
+
+@lru_cache()
+def get_state_manager() -> StateManager:
+    """
+    Pobierz instancję StateManager (dependency injection).
+
+    Returns:
+        StateManager: Instancja state managera
+
+    Raises:
+        RuntimeError: Jeśli state manager nie został zainicjalizowany
+    """
+    if _state_manager is None:
+        raise RuntimeError("StateManager nie jest dostępny")
+    return _state_manager
+
+
+@lru_cache()
+def get_vector_store() -> VectorStore:
+    """
+    Pobierz instancję VectorStore (dependency injection).
+
+    Returns:
+        VectorStore: Instancja vector store
+
+    Raises:
+        RuntimeError: Jeśli vector store nie został zainicjalizowany
+    """
+    if _vector_store is None:
+        raise RuntimeError("VectorStore nie jest dostępny")
+    return _vector_store
+
+
+@lru_cache()
+def get_graph_store() -> CodeGraphStore:
+    """
+    Pobierz instancję CodeGraphStore (dependency injection).
+
+    Returns:
+        CodeGraphStore: Instancja graph store
+
+    Raises:
+        RuntimeError: Jeśli graph store nie został zainicjalizowany
+    """
+    if _graph_store is None:
+        raise RuntimeError("CodeGraphStore nie jest dostępny")
+    return _graph_store
+
+
+@lru_cache()
+def get_lessons_store() -> LessonsStore:
+    """
+    Pobierz instancję LessonsStore (dependency injection).
+
+    Returns:
+        LessonsStore: Instancja lessons store
+
+    Raises:
+        RuntimeError: Jeśli lessons store nie został zainicjalizowany
+    """
+    if _lessons_store is None:
+        raise RuntimeError("LessonsStore nie jest dostępny")
+    return _lessons_store

@@ -568,6 +568,13 @@ class VenomDashboard {
                 }
             });
         }
+        
+        // History: Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.elements.historyModal && this.elements.historyModal.style.display === 'flex') {
+                this.closeHistoryModal();
+            }
+        });
     }
 
     async sendTask() {
@@ -2355,13 +2362,13 @@ class VenomDashboard {
                 <div class="request-info">
                     <div class="request-info-row">
                         <span class="request-info-label">ID:</span>
-                        <span class="request-info-value">${detail.request_id}</span>
+                        <span class="request-info-value">${this.escapeHtml(detail.request_id)}</span>
                     </div>
                     <div class="request-info-row">
                         <span class="request-info-label">Status:</span>
                         <span class="request-info-value">
-                            <span class="status-badge status-${detail.status.toLowerCase()}">
-                                ${this.getStatusIcon(detail.status)} ${detail.status}
+                            <span class="status-badge status-${this.escapeHtml(detail.status.toLowerCase())}">
+                                ${this.getStatusIcon(detail.status)} ${this.escapeHtml(detail.status)}
                             </span>
                         </span>
                     </div>
@@ -2447,6 +2454,12 @@ class VenomDashboard {
     formatTime(date) {
         const now = new Date();
         const diff = now - date;
+        
+        // Handle future dates (clock skew)
+        if (diff < 0) {
+            return 'just now';
+        }
+        
         const seconds = Math.floor(diff / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);

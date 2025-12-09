@@ -339,11 +339,11 @@
     </div>
 
     <!-- History Detail Modal -->
-    <div id="historyModal" class="modal" style="display: none;">
+    <div id="historyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>🔍 Szczegóły Zadania</h2>
-                <button class="modal-close" id="closeHistoryModal">&times;</button>
+                <h2 id="historyModalTitle">🔍 Szczegóły Zadania</h2>
+                <button class="modal-close" id="closeHistoryModal" aria-label="Zamknij modal">&times;</button>
             </div>
             <div class="modal-body" id="historyModalBody">
                 <div class="loading-state">Ładowanie...</div>

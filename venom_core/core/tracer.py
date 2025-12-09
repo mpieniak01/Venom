@@ -82,6 +82,7 @@ class RequestTracer:
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
+                # Oczekiwane anulowanie zadania watchdog przy zatrzymywaniu
                 pass
             self._watchdog_task = None
             logger.info("RequestTracer watchdog zatrzymany")
@@ -111,16 +112,24 @@ class RequestTracer:
                     logger.warning(
                         f"Zadanie {trace_id} oznaczone jako LOST (brak aktywności przez {time_since_activity})"
                     )
-                    trace.status = TraceStatus.LOST
-                    trace.finished_at = now
-                    trace.steps.append(
-                        TraceStep(
-                            component="Watchdog",
-                            action="timeout",
-                            status="error",
-                            details=f"Brak aktywności przez {time_since_activity.total_seconds():.0f}s",
-                        )
-                    )
+                    # Re-acquire lock to safely modify trace
+                    with self._traces_lock:
+                        # Upewnij się, że trace nie został zmodyfikowany przez inny wątek
+                        current_trace = self._traces.get(trace_id)
+                        if (
+                            current_trace
+                            and current_trace.status == TraceStatus.PROCESSING
+                        ):
+                            current_trace.status = TraceStatus.LOST
+                            current_trace.finished_at = now
+                            current_trace.steps.append(
+                                TraceStep(
+                                    component="Watchdog",
+                                    action="timeout",
+                                    status="error",
+                                    details=f"Brak aktywności przez {time_since_activity.total_seconds():.0f}s",
+                                )
+                            )
 
     def create_trace(self, request_id: UUID, prompt: str) -> RequestTrace:
         """

@@ -1,9 +1,10 @@
 # venom/main.py
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,7 +21,7 @@ from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.core.state_manager import StateManager
-from venom_core.core.tracer import RequestTracer
+from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.memory.graph_store import CodeGraphStore
@@ -811,20 +812,42 @@ class HistoryRequestDetail(BaseModel):
 
 
 @app.get("/api/v1/history/requests", response_model=list[HistoryRequestSummary])
-async def get_request_history(limit: int = 50, offset: int = 0, status: str = None):
+async def get_request_history(
+    limit: int = Query(
+        default=50, ge=1, le=1000, description="Maksymalna liczba wyników"
+    ),
+    offset: int = Query(default=0, ge=0, description="Offset dla paginacji"),
+    status: Optional[str] = Query(
+        default=None,
+        description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)",
+    ),
+):
     """
     Pobiera listę requestów z historii (paginowana).
 
     Args:
-        limit: Maksymalna liczba wyników (domyślnie 50)
-        offset: Offset dla paginacji (domyślnie 0)
+        limit: Maksymalna liczba wyników (1-1000, domyślnie 50)
+        offset: Offset dla paginacji (>=0, domyślnie 0)
         status: Opcjonalny filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)
 
     Returns:
         Lista requestów z podstawowymi informacjami
+
+    Raises:
+        HTTPException: 400 jeśli podano nieprawidłowy status
+        HTTPException: 503 jeśli RequestTracer nie jest dostępny
     """
     if request_tracer is None:
         raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
+
+    # Walidacja statusu jeśli podano
+    if status is not None:
+        valid_statuses = [s.value for s in TraceStatus]
+        if status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nieprawidłowy status. Dozwolone wartości: {', '.join(valid_statuses)}",
+            )
 
     traces = request_tracer.get_all_traces(
         limit=limit, offset=offset, status_filter=status

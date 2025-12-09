@@ -1,7 +1,7 @@
 """Moduł: memory_service - serwis konsolidacji pamięci."""
 
 import re
-from typing import List
+from typing import List, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
@@ -134,7 +134,7 @@ LEKCJE:
                 "lessons": ["Nieudana konsolidacja - brak lekcji"],
             }
 
-    def _parse_consolidation_response(self, response: str) -> tuple[str, List[str]]:
+    def _parse_consolidation_response(self, response: str) -> Tuple[str, List[str]]:
         """
         Parsuje odpowiedź LLM na podsumowanie i listę lekcji.
 

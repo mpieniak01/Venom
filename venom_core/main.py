@@ -461,6 +461,10 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)")
 
+    # Ustaw zależności routerów po inicjalizacji wszystkich komponentów
+    setup_router_dependencies()
+    logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
+    
     yield
 
     # Shutdown
@@ -512,12 +516,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 
-# Ustaw zależności dla routerów (będą dostępne po inicjalizacji w lifespan)
-# Używamy callbacków które będą wykonane po startup
-@app.on_event("startup")
-async def setup_routers():
-    """Konfiguracja routerów po inicjalizacji zależności."""
-    # Ustaw zależności dla routerów
+# Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
+def setup_router_dependencies():
+    """Konfiguracja zależności routerów po inicjalizacji."""
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     memory_routes.set_dependencies(vector_store)
     git_routes.set_dependencies(git_skill)

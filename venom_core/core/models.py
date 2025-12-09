@@ -40,6 +40,16 @@ class TaskRequest(BaseModel):
     images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
 
 
+class Intent(BaseModel):
+    """Reprezentacja sparsowanej intencji użytkownika."""
+
+    action: str  # Główna akcja (np. "edit", "create", "delete")
+    targets: List[str] = Field(default_factory=list)  # Pliki/ścieżki będące celem akcji
+    params: Dict[str, Any] = Field(
+        default_factory=dict
+    )  # Dodatkowe parametry wyciągnięte z tekstu
+
+
 class TaskResponse(BaseModel):
     """DTO dla odpowiedzi po utworzeniu zadania."""
 

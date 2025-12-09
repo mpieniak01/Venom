@@ -559,17 +559,16 @@ ODPOWIEDŹ:"""
 
             # Oblicz cosine similarity dla każdej lekcji
             query_vec = np.array(query_embedding)
+            norm_query = np.linalg.norm(query_vec)  # Oblicz raz przed pętlą
             similarities = []
 
             for i, lesson_embedding in enumerate(lesson_embeddings):
                 lesson_vec = np.array(lesson_embedding)
-
-                # Cosine similarity = dot product / (norm1 * norm2)
-                dot_product = np.dot(query_vec, lesson_vec)
-                norm_query = np.linalg.norm(query_vec)
                 norm_lesson = np.linalg.norm(lesson_vec)
 
                 if norm_query > 0 and norm_lesson > 0:
+                    # Cosine similarity = dot product / (norm1 * norm2)
+                    dot_product = np.dot(query_vec, lesson_vec)
                     similarity = dot_product / (norm_query * norm_lesson)
                 else:
                     similarity = 0.0
@@ -583,10 +582,13 @@ ODPOWIEDŹ:"""
                 lesson for similarity, lesson in similarities[:3] if similarity > 0.5
             ]
 
-            logger.info(
-                f"Znaleziono {len(top_lessons)} podobnych lekcji "
-                f"(top similarity: {similarities[0][0]:.3f})"
-            )
+            if similarities:
+                logger.info(
+                    f"Znaleziono {len(top_lessons)} podobnych lekcji "
+                    f"(top similarity: {similarities[0][0]:.3f})"
+                )
+            else:
+                logger.info("Nie znaleziono podobnych lekcji")
 
             return top_lessons
 

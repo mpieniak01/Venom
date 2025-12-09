@@ -207,6 +207,9 @@ class StateManager:
     def set_paid_mode(self, enabled: bool) -> None:
         """
         Ustawia tryb płatny (Global Cost Guard).
+        
+        UWAGA: W środowisku produkcyjnym ta metoda powinna być chroniona 
+        autoryzacją/uwierzytelnianiem. Obecnie brak weryfikacji uprawnień.
 
         Args:
             enabled: True włącza płatne funkcje (Google Grounding), False wyłącza

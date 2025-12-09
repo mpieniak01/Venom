@@ -11,7 +11,7 @@ Wszystkie funkcje posiadają:
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from venom_core.utils.logger import get_logger
 
@@ -140,7 +140,7 @@ def write_file(
 
 def read_json(
     file_path: Union[str, Path], raise_on_error: bool = False
-) -> Optional[dict]:
+) -> Optional[Dict[str, Any]]:
     """
     Odczytuje plik JSON i zwraca jako słownik.
 
@@ -161,7 +161,7 @@ def read_json(
         ...     print(f"Wczytano {len(config)} kluczy")
     """
     try:
-        content = read_file(file_path, raise_on_error=True)
+        content = read_file(file_path, raise_on_error=raise_on_error)
         if content is None:
             return None
 
@@ -215,7 +215,10 @@ def write_json(
 
         # Zapisz używając write_file
         success = write_file(
-            file_path, json_content, create_dirs=create_dirs, raise_on_error=True
+            file_path,
+            json_content,
+            create_dirs=create_dirs,
+            raise_on_error=raise_on_error,
         )
 
         if success:

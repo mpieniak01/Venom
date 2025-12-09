@@ -223,9 +223,7 @@ class Orchestrator:
             # SPECJALNE PRZYPADKI: HELP_REQUEST
             elif intent == "HELP_REQUEST":
                 # Wygeneruj dynamiczną odpowiedź pomocy
-                self.state_manager.add_log(
-                    task_id, "❓ Generuję informacje pomocy"
-                )
+                self.state_manager.add_log(task_id, "❓ Generuję informacje pomocy")
                 result = await self._generate_help_response(task_id)
 
             # DECYZJA: Council mode vs Standard mode

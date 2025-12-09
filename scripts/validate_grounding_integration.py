@@ -188,19 +188,40 @@ def validate_frontend():
         "❌ Missing emoji icons"
     print("✓ Emoji icons exist (🌍 🦆)")
     
-    # Check for badge colors
-    assert '#1e40af' in code, \
-        "❌ Missing Google Grounded badge color"
-    print("✓ Google Grounded badge color exists (#1e40af)")
+    # Check for CSS classes (styles moved to app.css)
+    assert 'google-grounded' in code, \
+        "❌ Missing google-grounded CSS class usage"
+    print("✓ google-grounded CSS class usage exists")
     
-    assert '#6b7280' in code, \
-        "❌ Missing Web Search badge color"
-    print("✓ Web Search badge color exists (#6b7280)")
+    assert 'web-search' in code, \
+        "❌ Missing web-search CSS class usage"
+    print("✓ web-search CSS class usage exists")
     
     # Check for metadata parameter in addChatMessage
     assert 'metadata = null' in code or 'metadata' in code, \
         "❌ Missing metadata parameter in addChatMessage"
     print("✓ metadata parameter in addChatMessage exists")
+    
+    # Validate CSS file
+    css_path = Path("web/static/css/app.css")
+    with open(css_path, 'r') as f:
+        css_code = f.read()
+    
+    assert '.research-source-badge' in css_code, \
+        "❌ Missing research-source-badge CSS class"
+    print("✓ research-source-badge CSS class exists in app.css")
+    
+    assert '.google-grounded' in css_code, \
+        "❌ Missing google-grounded CSS class"
+    print("✓ google-grounded CSS class exists in app.css")
+    
+    assert '#1e40af' in css_code, \
+        "❌ Missing Google Grounded badge color in CSS"
+    print("✓ Google Grounded badge color exists in CSS (#1e40af)")
+    
+    assert '#6b7280' in css_code, \
+        "❌ Missing Web Search badge color in CSS"
+    print("✓ Web Search badge color exists in CSS (#6b7280)")
     
     print("✅ Frontend validation passed!\n")
 

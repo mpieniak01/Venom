@@ -141,7 +141,7 @@ class VoiceSkill:
 
     def _load_model(self):
         """Lazy loading modelu TTS."""
-        if self.voice is None:
+        if self.voice is None and not self.is_fallback_mode:
             try:
                 import piper
 
@@ -152,14 +152,15 @@ class VoiceSkill:
                     logger.warning(
                         "Brak ścieżki do modelu TTS. VoiceSkill będzie działał w trybie mock."
                     )
+                    self.is_fallback_mode = True
             except ImportError:
-                logger.error(
-                    "piper-tts nie jest zainstalowany. Użyj: pip install piper-tts"
+                logger.warning(
+                    "piper-tts nie jest zainstalowany. VoiceSkill działa w trybie mock."
                 )
-                raise
+                self.is_fallback_mode = True
             except Exception as e:
                 logger.error(f"Błąd podczas ładowania modelu TTS: {e}")
-                raise
+                self.is_fallback_mode = True
 
     async def speak(self, text: str) -> Optional[np.ndarray]:
         """

@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 from venom_core.utils.logger import get_logger
 
@@ -248,7 +248,9 @@ PARAMETER top_k 40
             logger.error(f"Błąd podczas tworzenia Modelfile: {e}")
             return None
 
-    def load_adapter_for_kernel(self, version_id: str, kernel_builder) -> bool:
+    def load_adapter_for_kernel(
+        self, version_id: str, kernel_builder
+    ) -> Union[bool, Tuple]:
         """
         Ładuje adapter LoRA do KernelBuilder (dla integracji z PEFT).
 
@@ -257,7 +259,7 @@ PARAMETER top_k 40
             kernel_builder: Instancja KernelBuilder
 
         Returns:
-            True jeśli sukces, False w przeciwnym razie
+            Tuple[model, tokenizer] jeśli sukces, False w przeciwnym razie
         """
         version = self.get_version(version_id)
         if not version:
@@ -289,24 +291,33 @@ PARAMETER top_k 40
 
                 logger.info(f"Model bazowy: {base_model_name}")
 
+                # Sprawdź dostępność bitsandbytes i ustaw load_in_4bit jeśli możliwe
+                try:
+                    import bitsandbytes  # noqa: F401
+
+                    quantization_config = {"load_in_4bit": True}
+                except ImportError:
+                    logger.warning(
+                        "bitsandbytes nie jest zainstalowany, ładowanie bez kwantyzacji"
+                    )
+                    quantization_config = {}
+
                 # Ładuj model bazowy
                 base_model = AutoModelForCausalLM.from_pretrained(
-                    base_model_name,
-                    device_map="auto",
-                    load_in_4bit=True,  # Oszczędność pamięci
+                    base_model_name, device_map="auto", **quantization_config
                 )
 
                 # Załaduj adapter
-                _ = PeftModel.from_pretrained(base_model, version.adapter_path)
+                model = PeftModel.from_pretrained(base_model, version.adapter_path)
 
                 # Ładuj tokenizer
-                _ = AutoTokenizer.from_pretrained(version.adapter_path)
+                tokenizer = AutoTokenizer.from_pretrained(version.adapter_path)
 
                 logger.info(f"✅ Adapter LoRA załadowany pomyślnie: {version_id}")
 
                 # Tutaj można zintegrować z kernel_builder jeśli ma odpowiednie API
-                # Na razie zwracamy sukces
-                return True
+                # Zwracamy model i tokenizer
+                return model, tokenizer
 
             except ImportError:
                 logger.warning(

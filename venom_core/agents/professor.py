@@ -24,6 +24,7 @@ class Professor(BaseAgent):
     # Progi decyzyjne
     MIN_LESSONS_FOR_TRAINING = 100  # Minimum lekcji do rozpoczęcia treningu
     MIN_TRAINING_INTERVAL_HOURS = 24  # Minimum godzin między treningami
+    MIN_NEW_LESSONS = 50  # Minimum nowych lekcji od ostatniego treningu
 
     # Domyślne parametry treningowe
     DEFAULT_LORA_RANK = 16
@@ -198,7 +199,7 @@ class Professor(BaseAgent):
             dataset_size = 0
             try:
                 with open(dataset_path, "r", encoding="utf-8") as f:
-                    dataset_size = sum(1 for _ in f)
+                    dataset_size = sum(1 for line in f if line.strip())
             except Exception as e:
                 logger.warning(f"Nie można policzyć przykładów w datasecie: {e}")
 
@@ -313,7 +314,9 @@ class Professor(BaseAgent):
     async def _evaluate_model(
         self,
         candidate_model: Optional[str] = None,
-        baseline_model: Optional[str] = None,
+        baseline_model: Optional[
+            str
+        ] = None,  # Zarezerwowane na przyszłość (integracja porównania z modelem bazowym)
     ) -> str:
         """
         Ewaluuje nowy model (Arena - porównanie z poprzednią wersją).
@@ -346,13 +349,15 @@ class Professor(BaseAgent):
         # Jeśli nie podano candidate_model, użyj ostatniego z treningu
         if not candidate_model and self.training_history:
             last_training = self.training_history[-1]
-            if last_training["status"] == "completed":
+            if last_training.get("status") == "completed":
                 # Sprawdź czy adapter istnieje
                 from pathlib import Path
 
-                adapter_path = Path(last_training.get("adapter_path", ""))
-                if adapter_path.exists():
-                    candidate_model = str(adapter_path)
+                adapter_path_str = last_training.get("adapter_path")
+                if adapter_path_str:
+                    adapter_path = Path(adapter_path_str)
+                    if adapter_path.exists():
+                        candidate_model = str(adapter_path)
 
         if not candidate_model:
             return "❌ Brak nowego modelu do ewaluacji. Przeprowadź trening najpierw."
@@ -394,6 +399,9 @@ class Professor(BaseAgent):
                 baseline_scores.append(baseline_score)
 
             # Oblicz średnie wyniki
+            if not candidate_scores or not baseline_scores:
+                return "❌ Błąd: Brak wyników ewaluacji"
+
             avg_candidate = sum(candidate_scores) / len(candidate_scores)
             avg_baseline = sum(baseline_scores) / len(baseline_scores)
 
@@ -423,7 +431,10 @@ class Professor(BaseAgent):
             for i, (q, c_score, b_score) in enumerate(
                 zip(golden_questions, candidate_scores, baseline_scores)
             ):
-                report += f"{i + 1}. {q['instruction'][:50]}...\n"
+                instruction_preview = q["instruction"][:50] + (
+                    "..." if len(q["instruction"]) > 50 else ""
+                )
+                report += f"{i + 1}. {instruction_preview}\n"
                 report += f"   Baseline: {b_score}/10, Candidate: {c_score}/10\n"
 
             if winner == "new_model" and improvement_score > 0.1:
@@ -577,12 +588,12 @@ class Professor(BaseAgent):
             last_lessons_count = last_training.get("lessons_count", 0)
             new_lessons = total_lessons - last_lessons_count
 
-            if new_lessons < 50:
+            if new_lessons < self.MIN_NEW_LESSONS:
                 return {
                     "should_train": False,
                     "reason": (
                         f"Za mało nowych lekcji od ostatniego treningu ({new_lessons}). "
-                        f"Potrzeba minimum 50 nowych przykładów."
+                        f"Potrzeba minimum {self.MIN_NEW_LESSONS} nowych przykładów."
                     ),
                 }
 
@@ -617,6 +628,7 @@ class Professor(BaseAgent):
             elif dataset_size < 100:
                 # Mały dataset -> mniejszy batch size, aby uniknąć overfittingu
                 batch_size = 2
+            # Dla 100-500: używamy domyślnych wartości (batch_size=4)
 
             # Heurystyka #2: Dostosuj liczbę epok na podstawie rozmiaru datasetu
             if dataset_size < 100:
@@ -625,6 +637,7 @@ class Professor(BaseAgent):
             elif dataset_size > 1000:
                 # Duży dataset -> mniej epok (model się szybciej uczy)
                 num_epochs = 2
+            # Dla 100-1000: używamy domyślnych wartości (num_epochs=3)
 
         # Heurystyka #3: Sprawdź dostępną VRAM (jeśli gpu_habitat dostępny)
         if self.gpu_habitat:
@@ -646,16 +659,21 @@ class Professor(BaseAgent):
                         check=False,  # Nie rzucaj wyjątku przy niezerowym exit code
                     )
                     if result.returncode == 0 and result.stdout.strip():
-                        vram_mb = int(result.stdout.strip().split("\n")[0])
-                        vram_gb = vram_mb / 1024
+                        vram_lines = result.stdout.strip().split("\n")
+                        vram_values = [int(line) for line in vram_lines if line.strip()]
+                        if vram_values:
+                            vram_mb = min(
+                                vram_values
+                            )  # Użyj minimalnej VRAM dla multi-GPU
+                            vram_gb = vram_mb / 1024
 
-                        if vram_gb < 8:
-                            # Niska VRAM -> wymuś bardzo mały batch size
-                            batch_size = min(batch_size, 1)
-                            logger.info(
-                                f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1"
-                            )
-            except (ValueError, IndexError, subprocess.TimeoutExpired) as e:
+                            if vram_gb < 8:
+                                # Niska VRAM -> wymuś bardzo mały batch size
+                                batch_size = min(batch_size, 1)
+                                logger.info(
+                                    f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1"
+                                )
+            except (ValueError, IndexError, subprocess.TimeoutExpired, OSError) as e:
                 logger.debug(f"Nie można sprawdzić VRAM: {e}")
 
         logger.info(

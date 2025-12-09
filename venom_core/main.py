@@ -539,7 +539,7 @@ def setup_router_dependencies():
     agents_routes.set_dependencies(
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
     )
-    system_routes.set_dependencies(background_scheduler, service_monitor)
+    system_routes.set_dependencies(background_scheduler, service_monitor, state_manager)
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
 

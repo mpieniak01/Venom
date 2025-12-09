@@ -1362,11 +1362,10 @@ body {
 
 .operation-icon {
     font-size: 1.1rem;
-    animation: spin 2s linear infinite;
 }
 
-.operation-badge.thinking .operation-icon {
-    animation: none;
+.operation-badge.system .operation-icon {
+    animation: spin 2s linear infinite;
 }
 
 @keyframes spin {

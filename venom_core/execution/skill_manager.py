@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from semantic_kernel import Kernel
 
-from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
@@ -36,7 +35,7 @@ class SkillManager:
         self,
         kernel: Kernel,
         custom_skills_dir: Optional[str] = None,
-        event_broadcaster=None,
+        event_broadcaster: Optional[Any] = None,
     ):
         """
         Inicjalizacja SkillManager.
@@ -45,7 +44,7 @@ class SkillManager:
             kernel: Skonfigurowane jądro Semantic Kernel
             custom_skills_dir: Ścieżka do katalogu z custom skills
                               (domyślnie venom_core/execution/skills/custom/)
-            event_broadcaster: Opcjonalny broadcaster eventów WebSocket
+            event_broadcaster: Opcjonalny broadcaster eventów WebSocket (EventBroadcaster)
         """
         self.kernel = kernel
         self.event_broadcaster = event_broadcaster
@@ -393,10 +392,15 @@ class SkillManager:
         Emituje event WebSocket o wykonaniu skilla.
 
         Args:
-            event_type: Typ eventu (SKILL_STARTED, SKILL_COMPLETED, SKILL_FAILED)
+            event_type: Typ eventu - należy używać EventType.SKILL_STARTED, 
+                       EventType.SKILL_COMPLETED lub EventType.SKILL_FAILED
             skill_name: Nazwa skilla
             action: Opcjonalnie akcja wykonywana przez skill
             is_external: Czy skill komunikuje się z zewnętrznymi API
+        
+        Note:
+            Ta metoda musi być wywołana przez kod używający skills aby 
+            emitować eventy. Przykład użycia znajduje się w dokumentacji.
         """
         if self.event_broadcaster:
             try:

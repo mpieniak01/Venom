@@ -9,9 +9,9 @@ Odpowiada za:
 
 import asyncio
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 
@@ -171,6 +171,11 @@ class ServiceHealthMonitor:
         """
         self.registry = registry
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
+        
+        # Cache ChromaDB availability
+        self._chromadb_available = None
+        self._chromadb_module = None
+        self._chromadb_client = None
 
     async def check_health(self, service_name: Optional[str] = None) -> List[ServiceInfo]:
         """
@@ -261,17 +266,15 @@ class ServiceHealthMonitor:
         # Dodaj autoryzację dla różnych API
         if "github" in service.name.lower():
             token = SETTINGS.GITHUB_TOKEN.get_secret_value()
-            if token:
+            if token and token.strip():
                 headers["Authorization"] = f"Bearer {token}"
 
         if "openai" in service.name.lower():
             token = SETTINGS.OPENAI_API_KEY
-            if token:
+            if token and token.strip():
                 headers["Authorization"] = f"Bearer {token}"
 
-        if "local llm" in service.name.lower():
-            # Ollama/vLLM nie wymagają autoryzacji domyślnie
-            pass
+        # Ollama/vLLM nie wymagają autoryzacji domyślnie
 
         timeout = aiohttp.ClientTimeout(total=self.check_timeout)
 
@@ -330,25 +333,39 @@ class ServiceHealthMonitor:
         Args:
             service: Usługa do sprawdzenia
         """
-        try:
-            # Sprawdź czy ChromaDB jest dostępne poprzez import
-            import chromadb
+        # Check cache for ChromaDB availability (initialize once)
+        if self._chromadb_available is None:
+            try:
+                import chromadb
+                self._chromadb_available = True
+                self._chromadb_module = chromadb
+                # Initialize client once and reuse
+                self._chromadb_client = chromadb.Client()
+            except ImportError:
+                self._chromadb_available = False
+                self._chromadb_module = None
+                self._chromadb_client = None
 
-            # Spróbuj utworzyć klienta
-            client = chromadb.Client()
-            # Proste sprawdzenie - listuj kolekcje
-            collections = client.list_collections()
+        if not self._chromadb_available:
+            service.status = ServiceStatus.OFFLINE
+            service.error_message = "ChromaDB nie zainstalowane"
+            return
+
+        try:
+            # Reuse the cached client
+            if self._chromadb_client is None:
+                self._chromadb_client = self._chromadb_module.Client()
+            
+            # Simple check - list collections (don't store unused result)
+            self._chromadb_client.list_collections()
 
             service.status = ServiceStatus.ONLINE
             service.error_message = None
-        except ImportError:
-            service.status = ServiceStatus.OFFLINE
-            service.error_message = "ChromaDB nie zainstalowane"
         except Exception as e:
             service.status = ServiceStatus.OFFLINE
             service.error_message = str(e)[:100]
 
-    def get_summary(self) -> Dict[str, any]:
+    def get_summary(self) -> Dict[str, Any]:
         """
         Zwraca podsumowanie zdrowia systemu.
 

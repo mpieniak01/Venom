@@ -2111,16 +2111,21 @@ class VenomDashboard {
         // Fetch immediately
         this.fetchIntegrationsStatus();
 
-        // Then every 30 seconds
-        setInterval(() => {
+        // Then every 30 seconds - store interval ID for cleanup
+        this.integrationsPollingInterval = setInterval(() => {
             this.fetchIntegrationsStatus();
         }, 30000);
     }
 
     handleSkillStarted(data) {
-        if (!data || !data.skill) return;
+        if (!data) return;
+        
+        const skill = data.skill;
+        const action = data.action || '';
+        const is_external = data.is_external || false;
+        
+        if (!skill) return;
 
-        const { skill, action, is_external } = data;
         const operationId = `${skill}-${Date.now()}`;
 
         // Determine operation type
@@ -2152,13 +2157,18 @@ class VenomDashboard {
     }
 
     handleSkillCompleted(data) {
-        if (!data || !data.skill) return;
+        if (!data) return;
+        
+        const skill = data.skill;
+        if (!skill) return;
 
         // Remove matching operation (most recent one)
+        // Note: If the same skill runs concurrently, we remove the most recent.
+        // A timeout mechanism could be added to clean up stale operations.
         const entries = Array.from(this.activeOperations.entries());
         for (let i = entries.length - 1; i >= 0; i--) {
             const [operationId, operation] = entries[i];
-            if (operation.skill === data.skill) {
+            if (operation.skill === skill) {
                 this.activeOperations.delete(operationId);
                 break;
             }

@@ -83,6 +83,12 @@ class MetricsCollector:
 
         Args:
             bytes_count: Liczba wysłanych bajtów
+        
+        Note:
+            Ta metoda musi być wywołana przez kod obsługujący połączenia sieciowe
+            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były 
+            faktycznie zliczane. Obecnie metryka jest dostępna w API ale wymaga
+            instrumentacji kodu sieciowego.
         """
         with self._lock:
             self.metrics["network_bytes_sent"] += bytes_count
@@ -93,6 +99,12 @@ class MetricsCollector:
 
         Args:
             bytes_count: Liczba odebranych bajtów
+        
+        Note:
+            Ta metoda musi być wywołana przez kod obsługujący połączenia sieciowe
+            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były 
+            faktycznie zliczane. Obecnie metryka jest dostępna w API ale wymaga
+            instrumentacji kodu sieciowego.
         """
         with self._lock:
             self.metrics["network_bytes_received"] += bytes_count

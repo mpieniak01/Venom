@@ -12,7 +12,7 @@ Repozytorium Venom zawiera **255 plików Python** zorganizowanych w spójną arc
 
 ### Kluczowe obserwacje:
 
-1. **Koncentracja problémów:** Dług techniczny koncentruje się w:
+1. **Koncentracja problemów:** Dług techniczny koncentruje się w:
    - **venom_core/main.py** (2073 linii) - monolityczna implementacja API z licznymi placeholderami
    - **venom_core/core/orchestrator.py** (1872 linii) - złożona logika orkiestracji wymagająca refaktoryzacji
    - **venom_core/perception/** - niekompletna implementacja nagrywania akcji użytkownika
@@ -49,7 +49,7 @@ Repozytorium Venom zawiera **255 plików Python** zorganizowanych w spójną arc
 | TD-002 | venom_core/perception/vision_grounding.py:84 | TODO_MARKERS | Parametr confidence_threshold jest nieużywany w metodzie | Zaimplementować filtrowanie wyników na podstawie confidence lub usunąć parametr | L | S |
 | TD-003 | venom_core/main.py:348-371 | TODO_MARKERS | Shadow Agent action handlers nie są zintegrowane z Orchestrator, Coder, GoalStore | Podłączyć handle_shadow_action do rzeczywistych metod orchestrator.submit_task, goal_store.update_goal_status | H | M |
 | TD-004 | venom_core/core/evolution_coordinator.py:251 | TODO_MARKERS | Uruchamianie testów w Shadow Instance nie jest zaimplementowane | Dodać integrację z TesterAgent dla weryfikacji eksperymentów | M | M |
-| TD-005 | venom_core/core/evolution_coordinator.py:275 | TODO_MARKERS | Automatyczny merge branchy nie jest zaimplementowany | Dodać metody merge() i create_pull_request() do GitSkill | M | M |
+| TD-005 | venom_core/core/evolution_coordinator.py:275 | TODO_MARKERS | Automatyczny merge brancha nie jest zaimplementowany | Dodać metody merge() i create_pull_request() do GitSkill | M | M |
 | TD-006 | venom_core/core/dispatcher.py:228 | TODO_MARKERS | Brak parsowania content dla operacji na plikach | Dodać ekstrakcję ścieżek plików i parametrów z content używając regex lub LLM | M | S |
 | TD-007 | venom_core/agents/professor.py:303 | TODO_MARKERS | Arena (ewaluacja modeli) jest placeholder z mock results | Stworzyć zestaw benchmark testów, mechanizm porównywania modeli, automated metrics | M | L |
 | TD-008 | venom_core/agents/professor.py:350 | TODO_MARKERS | Brak sprawdzania interwału od ostatniego treningu | Dodać zapisywanie timestampów w training_history, sprawdzanie minimum elapsed time | L | S |
@@ -180,8 +180,8 @@ Uzupełnij brakujące funkcjonalności w venom_core/core/evolution_coordinator.p
 
 2. W metodzie _merge_changes (linia ~275):
    - Dodaj nowe metody do venom_core/execution/skills/git_skill.py: merge(), create_pull_request()
-   - Zaimplementuj faktyczny merge brancha lub tworzenie PR
-   - Obsłuż konflikty merge i błędy git
+   - Zaimplementuj faktyczne mergowanie brancha lub tworzenie PR
+   - Obsłuż konflikty mergowania i błędy git
 
 3. Usuń placeholder komunikaty i TODO comments
 4. Dodaj testy jednostkowe dla obu metod

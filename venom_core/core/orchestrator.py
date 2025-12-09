@@ -6,6 +6,9 @@ from typing import Optional
 from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.code_review import CodeReviewLoop
+from venom_core.core.flows.council import CouncilFlow
+from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.goal_store import GoalStatus
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.metrics import metrics_collector
@@ -18,34 +21,9 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Maksymalna liczba prób naprawy kodu przez pętlę Coder-Critic
-MAX_REPAIR_ATTEMPTS = 2
-
-# Maksymalna długość tekstu w promptach (zabezpieczenie przed prompt injection)
-MAX_PROMPT_LENGTH = 500
-
 # Ustawienia dla pętli meta-uczenia
 ENABLE_META_LEARNING = True  # Flaga do włączania/wyłączania meta-uczenia
 MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
-
-# Ustawienia dla The Council (AutoGen Group Chat)
-ENABLE_COUNCIL_MODE = True  # Flaga do włączania/wyłączania trybu Council
-COUNCIL_TASK_THRESHOLD = (
-    100  # Minimalna długość zadania aby użyć Council (liczba znaków)
-)
-
-# Słowa kluczowe sugerujące potrzebę współpracy agentów (dla decyzji Council vs Standard)
-COUNCIL_COLLABORATION_KEYWORDS = [
-    "projekt",
-    "aplikacja",
-    "system",
-    "stwórz grę",
-    "zbuduj",
-    "zaprojektuj",
-    "zaimplementuj",
-    "kompletny",
-    "cała aplikacja",
-]
 
 
 class Orchestrator:
@@ -93,8 +71,10 @@ class Orchestrator:
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
 
-        # Council mode - inicjalizowane lazy (tylko jeśli włączone i potrzebne)
-        self._council_config = None
+        # Inicjalizuj flows (delegowane logiki biznesowe)
+        self._code_review_loop = None
+        self._council_flow = None
+        self._forge_flow = None
 
         # Tracking ostatniej aktywności dla idle mode
         self.last_activity: Optional[datetime] = None
@@ -447,93 +427,16 @@ class Orchestrator:
         Returns:
             Zaakceptowany kod lub kod po naprawach
         """
-        self.state_manager.add_log(
-            task_id, "Rozpoczynam pętlę Coder-Critic (samonaprawa kodu)"
-        )
-
-        # Pobranie agentów
-        coder = self.task_dispatcher.coder_agent
-        critic = self.task_dispatcher.critic_agent
-
-        generated_code = None
-        critic_feedback = None  # Inicjalizacja zmiennej
-        attempt = 0
-
-        while attempt <= MAX_REPAIR_ATTEMPTS:
-            attempt += 1
-
-            # Krok 1: CoderAgent generuje kod
-            if attempt == 1:
-                self.state_manager.add_log(
-                    task_id, f"Coder: Próba {attempt} - generowanie kodu"
-                )
-                generated_code = await coder.process(user_request)
-            else:
-                # Kolejne próby - przekaż feedback od Krytyka
-                self.state_manager.add_log(
-                    task_id, f"Coder: Próba {attempt} - naprawa na podstawie feedbacku"
-                )
-                # Ogranicz długość poprzedniego kodu w promptcie dla wydajności
-                code_preview = (
-                    generated_code[:MAX_PROMPT_LENGTH] + "..."
-                    if len(generated_code) > MAX_PROMPT_LENGTH
-                    else generated_code
-                )
-                repair_prompt = f"""FEEDBACK OD KRYTYKA:
-{critic_feedback[:MAX_PROMPT_LENGTH]}
-
-ORYGINALNE ŻĄDANIE UŻYTKOWNIKA:
-{user_request[:MAX_PROMPT_LENGTH]}
-
-POPRZEDNI KOD (fragment):
-{code_preview}
-
-Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
-                generated_code = await coder.process(repair_prompt)
-
-            self.state_manager.add_log(
-                task_id, f"Coder wygenerował kod ({len(generated_code)} znaków)"
+        # Lazy init CodeReviewLoop
+        if self._code_review_loop is None:
+            self._code_review_loop = CodeReviewLoop(
+                state_manager=self.state_manager,
+                coder_agent=self.task_dispatcher.coder_agent,
+                critic_agent=self.task_dispatcher.critic_agent,
             )
 
-            # Krok 2: CriticAgent ocenia kod
-            self.state_manager.add_log(task_id, "Critic: Ocena kodu...")
-            review_input = f"USER_REQUEST: {user_request[:MAX_PROMPT_LENGTH]}\n\nCODE:\n{generated_code}"
-            critic_feedback = await critic.process(review_input)
-
-            # Krok 3: Sprawdź czy zaakceptowano
-            if "APPROVED" in critic_feedback:
-                self.state_manager.add_log(
-                    task_id, f"✅ Critic ZAAKCEPTOWAŁ kod po {attempt} próbach"
-                )
-                logger.info(
-                    f"Zadanie {task_id}: Kod zaakceptowany po {attempt} próbach"
-                )
-                return generated_code
-
-            # Jeśli odrzucono
-            self.state_manager.add_log(
-                task_id, f"❌ Critic ODRZUCIŁ kod: {critic_feedback[:100]}..."
-            )
-
-            # Jeśli to była ostatnia próba
-            if attempt > MAX_REPAIR_ATTEMPTS:
-                self.state_manager.add_log(
-                    task_id,
-                    f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
-                )
-                logger.warning(
-                    f"Zadanie {task_id}: Przekroczono limit napraw, zwracam kod z ostrzeżeniem"
-                )
-                # Ogranicz rozmiar feedbacku w finalnej wiadomości
-                feedback_summary = (
-                    critic_feedback[:MAX_PROMPT_LENGTH] + "..."
-                    if len(critic_feedback) > MAX_PROMPT_LENGTH
-                    else critic_feedback
-                )
-                return f"⚠️ OSTRZEŻENIE: Kod nie został w pełni zaakceptowany po {MAX_REPAIR_ATTEMPTS} próbach.\n\nUWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
-
-        # Nie powinno się tu dostać, ale dla bezpieczeństwa
-        return generated_code or "Błąd: nie udało się wygenerować kodu"
+        # Deleguj do CodeReviewLoop
+        return await self._code_review_loop.execute(task_id, user_request)
 
     async def _add_lessons_to_context(self, task_id: UUID, context: str) -> str:
         """
@@ -681,23 +584,16 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         Returns:
             True jeśli należy użyć Council, False dla standardowego flow
         """
-        if not ENABLE_COUNCIL_MODE:
-            return False
+        # Lazy init CouncilFlow
+        if self._council_flow is None:
+            self._council_flow = CouncilFlow(
+                state_manager=self.state_manager,
+                task_dispatcher=self.task_dispatcher,
+                event_broadcaster=self.event_broadcaster,
+            )
 
-        # Council dla złożonych zadań planistycznych
-        if intent == "COMPLEX_PLANNING":
-            return True
-
-        # Council dla długich zadań wymagających współpracy
-        if len(context) > COUNCIL_TASK_THRESHOLD:
-            # Sprawdź czy zadanie zawiera słowa kluczowe sugerujące współpracę
-            context_lower = context.lower()
-            for keyword in COUNCIL_COLLABORATION_KEYWORDS:
-                if keyword in context_lower:
-                    logger.info(f"Wykryto słowo kluczowe '{keyword}' - użyję Council")
-                    return True
-
-        return False
+        # Deleguj decyzję do CouncilFlow
+        return self._council_flow.should_use_council(context, intent)
 
     async def run_council(self, task_id: UUID, context: str) -> str:
         """
@@ -716,111 +612,16 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
         Returns:
             Wynik dyskusji Council
         """
-        logger.info(f"Uruchamiam The Council dla zadania {task_id}")
-
-        self.state_manager.add_log(
-            task_id, "🏛️ THE COUNCIL: Rozpoczynam tryb Group Chat (Swarm Intelligence)"
-        )
-
-        await self._broadcast_event(
-            event_type="COUNCIL_STARTED",
-            message="The Council rozpoczyna dyskusję nad zadaniem",
-            data={"task_id": str(task_id)},
-        )
-
-        try:
-            # Lazy init council config
-            if self._council_config is None:
-                from venom_core.core.council import (
-                    CouncilConfig,
-                    create_local_llm_config,
-                )
-
-                # Pobierz agentów z dispatchera
-                coder = self.task_dispatcher.coder_agent
-                critic = self.task_dispatcher.critic_agent
-                architect = self.task_dispatcher.architect_agent
-
-                # Guardian musimy utworzyć (nie ma go w standardowym dispatcher)
-                from venom_core.agents.guardian import GuardianAgent
-
-                guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
-
-                # Stwórz konfigurację LLM (lokalny model)
-                llm_config = create_local_llm_config()
-
-                # Inicjalizuj Council Config
-                self._council_config = CouncilConfig(
-                    coder_agent=coder,
-                    critic_agent=critic,
-                    architect_agent=architect,
-                    guardian_agent=guardian,
-                    llm_config=llm_config,
-                )
-
-                logger.info("Council Config zainicjalizowany")
-
-            # Stwórz sesję Council
-            # UWAGA: Tworzymy nową sesję przy każdym wywołaniu aby zapewnić czysty stan
-            # i uniknąć kontaminacji historii między różnymi zadaniami.
-            # GroupChat przechowuje historię wiadomości, więc ponowne użycie
-            # mogłoby prowadzić do nieprawidłowych kontekstów dla kolejnych zadań.
-            from venom_core.core.council import CouncilSession
-
-            user_proxy, group_chat, manager = self._council_config.create_council()
-            session = CouncilSession(user_proxy, group_chat, manager)
-
-            # Broadcast informacji o uczestnikach
-            await self._broadcast_event(
-                event_type="COUNCIL_MEMBERS",
-                message=f"Council składa się z {len(group_chat.agents)} członków",
-                data={
-                    "task_id": str(task_id),
-                    "members": [agent.name for agent in group_chat.agents],
-                },
+        # Lazy init CouncilFlow
+        if self._council_flow is None:
+            self._council_flow = CouncilFlow(
+                state_manager=self.state_manager,
+                task_dispatcher=self.task_dispatcher,
+                event_broadcaster=self.event_broadcaster,
             )
 
-            # Uruchom dyskusję
-            result = await session.run(context)
-
-            # Loguj szczegóły dyskusji
-            message_count = session.get_message_count()
-            speakers = session.get_speakers()
-
-            self.state_manager.add_log(
-                task_id,
-                f"🏛️ THE COUNCIL: Dyskusja zakończona - {message_count} wiadomości, "
-                f"uczestnicy: {', '.join(speakers)}",
-            )
-
-            await self._broadcast_event(
-                event_type="COUNCIL_COMPLETED",
-                message=f"Council zakończył dyskusję po {message_count} wiadomościach",
-                data={
-                    "task_id": str(task_id),
-                    "message_count": message_count,
-                    "speakers": speakers,
-                },
-            )
-
-            logger.info(f"Council zakończył zadanie {task_id}")
-            return result
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas działania Council: {e}"
-            logger.error(error_msg)
-
-            self.state_manager.add_log(task_id, error_msg)
-
-            await self._broadcast_event(
-                event_type="COUNCIL_ERROR",
-                message=error_msg,
-                data={"task_id": str(task_id), "error": str(e)},
-            )
-
-            # Fallback do standardowego flow
-            logger.warning("Council zawiódł - powrót do standardowego flow")
-            return f"{error_msg}\n\nPróbuję standardowy flow jako fallback..."
+        # Deleguj do CouncilFlow
+        return await self._council_flow.run(task_id, context)
 
     async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """
@@ -1102,225 +903,16 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
             - message: str - opis wyniku
             - code: str - wygenerowany kod (jeśli sukces)
         """
-        from venom_core.agents.guardian import GuardianAgent
-
-        try:
-            logger.info(f"🔨 THE FORGE: Rozpoczynam tworzenie narzędzia {tool_name}")
-
-            self.state_manager.add_log(
-                task_id,
-                f"🔨 THE FORGE: Tworzę nowe narzędzie '{tool_name}'",
+        # Lazy init ForgeFlow
+        if self._forge_flow is None:
+            self._forge_flow = ForgeFlow(
+                state_manager=self.state_manager,
+                task_dispatcher=self.task_dispatcher,
+                event_broadcaster=self.event_broadcaster,
             )
 
-            await self._broadcast_event(
-                event_type="FORGE_STARTED",
-                message=f"Rozpoczynam tworzenie narzędzia: {tool_name}",
-                agent="Toolmaker",
-                data={"task_id": str(task_id), "tool_name": tool_name},
-            )
-
-            # PHASE 1: CRAFT - Toolmaker generuje kod
-            self.state_manager.add_log(
-                task_id,
-                "⚒️ PHASE 1: Toolmaker generuje kod narzędzia...",
-            )
-
-            toolmaker = self.task_dispatcher.toolmaker_agent
-
-            # Generuj narzędzie
-            success, tool_code = await toolmaker.create_tool(
-                specification=tool_specification,
-                tool_name=tool_name,
-                output_dir=None,  # Zapisze do workspace/custom/
-            )
-
-            if not success:
-                error_msg = f"❌ Toolmaker nie mógł wygenerować narzędzia: {tool_code}"
-                logger.error(error_msg)
-                self.state_manager.add_log(task_id, error_msg)
-
-                await self._broadcast_event(
-                    event_type="FORGE_FAILED",
-                    message=error_msg,
-                    agent="Toolmaker",
-                    data={"task_id": str(task_id), "error": tool_code},
-                )
-
-                return {
-                    "success": False,
-                    "tool_name": tool_name,
-                    "message": error_msg,
-                }
-
-            self.state_manager.add_log(
-                task_id,
-                f"✅ Kod narzędzia wygenerowany ({len(tool_code)} znaków)",
-            )
-
-            # PHASE 2: TEST - Toolmaker generuje test
-            self.state_manager.add_log(
-                task_id,
-                "🧪 PHASE 2: Toolmaker generuje testy...",
-            )
-
-            test_success, test_code = await toolmaker.create_test(
-                tool_name=tool_name,
-                tool_code=tool_code,
-                output_dir=None,
-            )
-
-            if test_success:
-                self.state_manager.add_log(
-                    task_id,
-                    "✅ Test jednostkowy wygenerowany",
-                )
-            else:
-                self.state_manager.add_log(
-                    task_id,
-                    f"⚠️ Nie udało się wygenerować testu: {test_code[:100]}",
-                )
-
-            # PHASE 3: VERIFY - Guardian testuje w Dockerze
-            self.state_manager.add_log(
-                task_id,
-                "🔍 PHASE 3: Guardian weryfikuje narzędzie w Docker Sandbox...",
-            )
-
-            try:
-                guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
-
-                # Sprawdź podstawową składnię - ogranicz kod do bezpiecznego fragmentu
-                # Używamy tylko metadanych, nie całego kodu aby uniknąć prompt injection
-                verify_prompt = f"""Sprawdź czy narzędzie {tool_name} jest poprawne składniowo.
-
-METADANE NARZĘDZIA:
-- Nazwa: {tool_name}
-- Długość kodu: {len(tool_code)} znaków
-- Czy zawiera @kernel_function: {"TAK" if "@kernel_function" in tool_code else "NIE"}
-- Czy zawiera klasę: {"TAK" if "class " in tool_code else "NIE"}
-
-FRAGMENT KODU (pierwsze 500 znaków):
-```python
-{tool_code[:500]}
-```
-
-Zweryfikuj:
-1. Czy fragment kodu jest poprawny składniowo (Python syntax)
-2. Czy ma dekorator @kernel_function
-3. Czy ma odpowiednie type hints
-4. Czy nie widać niebezpiecznych konstrukcji (eval, exec)
-
-Odpowiedz APPROVED jeśli wygląda OK, lub opisz problemy."""
-
-                verification_result = await guardian.process(verify_prompt)
-
-                if "APPROVED" in verification_result.upper():
-                    self.state_manager.add_log(
-                        task_id,
-                        "✅ Narzędzie przeszło weryfikację Guardian",
-                    )
-                else:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"⚠️ Guardian zgłosił uwagi: {verification_result[:200]}",
-                    )
-
-            except Exception as e:
-                logger.warning(f"Nie udało się uruchomić weryfikacji Docker: {e}")
-                self.state_manager.add_log(
-                    task_id,
-                    f"⚠️ Pomijam weryfikację Docker (błąd: {str(e)})",
-                )
-
-            # PHASE 4: LOAD - SkillManager ładuje narzędzie
-            self.state_manager.add_log(
-                task_id,
-                "⚡ PHASE 4: SkillManager ładuje narzędzie do Kernela...",
-            )
-
-            try:
-                skill_manager = self.task_dispatcher.skill_manager
-
-                # Przeładuj narzędzie (jeśli już istniało) lub załaduj nowe
-                reload_success = skill_manager.reload_skill(tool_name)
-
-                if reload_success:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"✅ Narzędzie '{tool_name}' załadowane i gotowe do użycia!",
-                    )
-
-                    await self._broadcast_event(
-                        event_type="FORGE_COMPLETED",
-                        message=f"Narzędzie {tool_name} zostało stworzone i załadowane",
-                        agent="SkillManager",
-                        data={
-                            "task_id": str(task_id),
-                            "tool_name": tool_name,
-                            "success": True,
-                        },
-                    )
-
-                    logger.info(f"🔨 THE FORGE: Narzędzie {tool_name} gotowe!")
-
-                    return {
-                        "success": True,
-                        "tool_name": tool_name,
-                        "message": f"Narzędzie '{tool_name}' zostało pomyślnie stworzone i załadowane. Możesz go teraz użyć!",
-                        "code": tool_code,
-                    }
-                else:
-                    error_msg = "❌ Nie udało się załadować narzędzia do Kernela"
-                    self.state_manager.add_log(task_id, error_msg)
-
-                    await self._broadcast_event(
-                        event_type="FORGE_FAILED",
-                        message=error_msg,
-                        agent="SkillManager",
-                        data={"task_id": str(task_id), "tool_name": tool_name},
-                    )
-
-                    return {
-                        "success": False,
-                        "tool_name": tool_name,
-                        "message": error_msg,
-                        "code": tool_code,
-                    }
-
-            except Exception as e:
-                error_msg = f"❌ Błąd podczas ładowania narzędzia: {str(e)}"
-                logger.error(error_msg)
-                self.state_manager.add_log(task_id, error_msg)
-
-                await self._broadcast_event(
-                    event_type="FORGE_ERROR",
-                    message=error_msg,
-                    agent="SkillManager",
-                    data={"task_id": str(task_id), "error": str(e)},
-                )
-
-                return {
-                    "success": False,
-                    "tool_name": tool_name,
-                    "message": error_msg,
-                }
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas workflow The Forge: {str(e)}"
-            logger.error(error_msg)
-            self.state_manager.add_log(task_id, error_msg)
-
-            await self._broadcast_event(
-                event_type="FORGE_ERROR",
-                message=error_msg,
-                data={"task_id": str(task_id), "error": str(e)},
-            )
-
-            return {
-                "success": False,
-                "tool_name": tool_name,
-                "message": error_msg,
-            }
+        # Deleguj do ForgeFlow
+        return await self._forge_flow.execute(task_id, tool_specification, tool_name)
 
     async def handle_remote_issue(self, issue_number: int) -> dict:
         """

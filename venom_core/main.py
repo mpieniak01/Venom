@@ -811,9 +811,7 @@ class HistoryRequestDetail(BaseModel):
 
 
 @app.get("/api/v1/history/requests", response_model=list[HistoryRequestSummary])
-async def get_request_history(
-    limit: int = 50, offset: int = 0, status: str = None
-):
+async def get_request_history(limit: int = 50, offset: int = 0, status: str = None):
     """
     Pobiera listę requestów z historii (paginowana).
 
@@ -826,9 +824,7 @@ async def get_request_history(
         Lista requestów z podstawowymi informacjami
     """
     if request_tracer is None:
-        raise HTTPException(
-            status_code=503, detail="RequestTracer nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
 
     traces = request_tracer.get_all_traces(
         limit=limit, offset=offset, status_filter=status
@@ -846,7 +842,9 @@ async def get_request_history(
                 prompt=trace.prompt,
                 status=trace.status,
                 created_at=trace.created_at.isoformat(),
-                finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
+                finished_at=(
+                    trace.finished_at.isoformat() if trace.finished_at else None
+                ),
                 duration_seconds=duration,
             )
         )
@@ -869,9 +867,7 @@ async def get_request_detail(request_id: UUID):
         HTTPException: 404 jeśli request nie istnieje
     """
     if request_tracer is None:
-        raise HTTPException(
-            status_code=503, detail="RequestTracer nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
 
     trace = request_tracer.get_trace(request_id)
     if trace is None:

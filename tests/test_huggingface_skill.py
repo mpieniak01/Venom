@@ -166,8 +166,9 @@ def test_get_model_card_success(hf_skill):
 
 def test_get_model_card_not_found(hf_skill):
     """Test pobierania Model Card - model nie znaleziony."""
-    from huggingface_hub.utils import RepositoryNotFoundError
     from unittest.mock import Mock
+
+    from huggingface_hub.utils import RepositoryNotFoundError
 
     # RepositoryNotFoundError wymaga parametru response
     mock_response = Mock()

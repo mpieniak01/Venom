@@ -94,7 +94,7 @@ def test_search_repos_with_language_filter(github_skill):
 
     github_skill.github.search_repositories = MagicMock(return_value=[mock_repo])
 
-    result = github_skill.search_repos(query="test", language="Python")
+    github_skill.search_repos(query="test", language="Python")
 
     # Sprawdź że zapytanie zawiera language:Python
     call_args = github_skill.github.search_repositories.call_args

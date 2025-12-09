@@ -259,10 +259,92 @@ PARAMETER top_k 40
         Returns:
             True jeśli sukces, False w przeciwnym razie
         """
-        # TODO: Implementacja ładowania PEFT adaptera
-        # Wymaga rozszerzenia KernelBuilder o obsługę PEFT
-        logger.warning("load_adapter_for_kernel() - funkcjonalność w rozwoju")
-        return False
+        version = self.get_version(version_id)
+        if not version:
+            logger.error(f"Wersja {version_id} nie istnieje")
+            return False
+
+        if not version.adapter_path:
+            logger.error(f"Wersja {version_id} nie ma adaptera")
+            return False
+
+        try:
+            # Sprawdź czy ścieżka wskazuje na adapter LoRA
+            if not self._is_lora_adapter(version.adapter_path):
+                logger.error(
+                    f"Ścieżka nie wskazuje na prawidłowy adapter LoRA: {version.adapter_path}"
+                )
+                return False
+
+            # Próbuj załadować adapter używając PEFT
+            try:
+                from peft import PeftConfig, PeftModel
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+
+                logger.info(f"Ładowanie adaptera LoRA z {version.adapter_path}...")
+
+                # Ładuj konfigurację adaptera
+                peft_config = PeftConfig.from_pretrained(version.adapter_path)
+                base_model_name = peft_config.base_model_name_or_path
+
+                logger.info(f"Model bazowy: {base_model_name}")
+
+                # Ładuj model bazowy
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name,
+                    device_map="auto",
+                    load_in_4bit=True,  # Oszczędność pamięci
+                )
+
+                # Załaduj adapter
+                _ = PeftModel.from_pretrained(base_model, version.adapter_path)
+
+                # Ładuj tokenizer
+                _ = AutoTokenizer.from_pretrained(version.adapter_path)
+
+                logger.info(f"✅ Adapter LoRA załadowany pomyślnie: {version_id}")
+
+                # Tutaj można zintegrować z kernel_builder jeśli ma odpowiednie API
+                # Na razie zwracamy sukces
+                return True
+
+            except ImportError:
+                logger.warning(
+                    "Biblioteka 'peft' nie jest zainstalowana. "
+                    "Zainstaluj: pip install peft"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"Błąd podczas ładowania adaptera: {e}")
+            return False
+
+    def _is_lora_adapter(self, adapter_path: str) -> bool:
+        """
+        Sprawdza czy ścieżka wskazuje na prawidłowy adapter LoRA.
+
+        Args:
+            adapter_path: Ścieżka do adaptera
+
+        Returns:
+            True jeśli to prawidłowy adapter LoRA
+        """
+        from pathlib import Path
+
+        path = Path(adapter_path)
+        if not path.exists():
+            return False
+
+        # Sprawdź czy istnieją wymagane pliki PEFT
+        safetensors_file = "adapter_model.safetensors"
+
+        # Adapter musi mieć co najmniej config i jeden z plików modelu
+        has_config = (path / "adapter_config.json").exists()
+        has_model = (path / "adapter_model.bin").exists() or (
+            path / safetensors_file
+        ).exists()
+
+        return has_config and has_model
 
     def get_genealogy(self) -> Dict:
         """

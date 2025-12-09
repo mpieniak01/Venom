@@ -272,7 +272,7 @@ async def test_orchestrator_updates_trace_status_during_processing(temp_state_fi
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from venom_core.core.models import TaskRequest
-    from venom_core.core.tracer import RequestTracer, TraceStatus
+    from venom_core.core.tracer import RequestTracer
 
     state_manager = StateManager(state_file_path=temp_state_file)
     request_tracer = RequestTracer()

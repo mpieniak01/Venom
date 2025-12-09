@@ -15,6 +15,9 @@ logger = get_logger(__name__)
 PORT_RANGE_START = 8000
 PORT_RANGE_END = 9000
 
+# Konfiguracja generowania sekretów
+SECRET_KEY_BYTES = 32  # Liczba bajtów dla SECRET_KEY (64 znaki hex)
+
 
 class ComposeSkill:
     """
@@ -338,7 +341,7 @@ class ComposeSkill:
 
         # {{SECRET_KEY}} - generuj silny losowy ciąg znaków
         if "{{SECRET_KEY}}" in processed:
-            secret_key = secrets.token_hex(32)  # 64 znaki hex (32 bajty)
+            secret_key = secrets.token_hex(SECRET_KEY_BYTES)  # 64 znaki hex
             processed = processed.replace("{{SECRET_KEY}}", secret_key)
             logger.info("Wygenerowano SECRET_KEY dla docker-compose")
 

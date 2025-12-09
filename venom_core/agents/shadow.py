@@ -9,13 +9,15 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.core.goal_store import GoalStore
+from venom_core.core.goal_store import GoalStore, GoalStatus
+from venom_core.memory.embedding_service import EmbeddingService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.utils.logger import get_logger
 
@@ -428,28 +430,90 @@ Gdy otrzymujesz dane z sensora:
         if not self.goal_store:
             return None
 
-        # Tutaj można dodać logikę dopasowywania tytułu okna do zadań
-        # Na razie prostą heurystyką
-        confidence = self.CONFIDENCE_TASK_UPDATE
+        try:
+            # Pobierz zadania w trakcie realizacji
+            active_tasks = self.goal_store.get_tasks(status=GoalStatus.IN_PROGRESS)
 
-        if confidence < self.confidence_threshold:
+            if not active_tasks:
+                logger.debug("Brak aktywnych zadań do sprawdzenia")
+                return None
+
+            # Użyj LLM do oceny czy window_title pasuje do któregoś zadania
+            task_titles = [
+                f"- {task.title}" for task in active_tasks[:5]
+            ]  # Max 5 zadań
+            tasks_text = "\n".join(task_titles)
+
+            prompt = f"""Przeanalizuj czy użytkownik pracuje nad jednym z aktywnych zadań.
+
+TYTUŁ OKNA: {window_title}
+
+AKTYWNE ZADANIA:
+{tasks_text}
+
+Czy tytuł okna sugeruje pracę nad którymś z tych zadań?
+Odpowiedz tylko: TAK (i podaj numer zadania) lub NIE
+
+ODPOWIEDŹ:"""
+
+            # Wywołaj LLM
+            chat_history = ChatHistory()
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=prompt)
+            )
+
+            chat_service = self.kernel.get_service()
+            response = await chat_service.get_chat_message_content(
+                chat_history=chat_history, kernel=self.kernel
+            )
+
+            response_text = str(response).strip().upper()
+
+            logger.debug(f"LLM odpowiedź dla task context: {response_text}")
+
+            # Parsuj odpowiedź
+            if "TAK" in response_text:
+                confidence = self.CONFIDENCE_TASK_UPDATE
+
+                if confidence >= self.confidence_threshold:
+                    # Znajdź najbardziej pasujące zadanie
+                    matched_task = None
+                    for i, task in enumerate(active_tasks[:5], 1):
+                        if (
+                            str(i) in response_text
+                            or task.title.lower() in window_title.lower()
+                        ):
+                            matched_task = task
+                            break
+
+                    if not matched_task:
+                        matched_task = active_tasks[0]  # Fallback do pierwszego
+
+                    return Suggestion(
+                        suggestion_type=SuggestionType.TASK_UPDATE,
+                        title="Wykryto pracę nad zadaniem",
+                        message=f"Widzę, że pracujesz nad: '{matched_task.title}'. Czy chcesz zaktualizować jego status?",
+                        confidence=confidence,
+                        action_payload={
+                            "window_title": window_title,
+                            "task_id": str(matched_task.goal_id),
+                            "task_title": matched_task.title,
+                        },
+                        metadata={"source": "window", "task_detected": True},
+                    )
+
             return None
 
-        return Suggestion(
-            suggestion_type=SuggestionType.TASK_UPDATE,
-            title="Wykryto pracę nad zadaniem",
-            message="Widzę, że pracujesz nad zadaniem. Czy chcesz zaktualizować jego status?",
-            confidence=confidence,
-            action_payload={"window_title": window_title},
-            metadata={"source": "window", "task_detected": True},
-        )
+        except Exception as e:
+            logger.error(f"Błąd podczas sprawdzania task context: {e}")
+            return None
 
     async def _find_similar_lessons(self, context: str) -> List[Any]:
         """
-        Szuka podobnych lekcji w LessonsStore.
+        Szuka podobnych lekcji w LessonsStore używając embeddings.
 
         Args:
-            context: Kontekst do wyszukania
+            context: Kontekst do wyszukania (błąd, kod, itp.)
 
         Returns:
             Lista podobnych lekcji
@@ -458,51 +522,78 @@ Gdy otrzymujesz dane z sensora:
             return []
 
         try:
-            # TODO: Użyj embeddings dla lepszego dopasowania
-            # Na razie proste filtrowanie po słowach kluczowych
-            lessons = self.lessons_store.get_all_lessons()
+            # Użyj vector store jeśli dostępny (preferowane)
+            if (
+                hasattr(self.lessons_store, "vector_store")
+                and self.lessons_store.vector_store
+            ):
+                logger.info("Używam vector store do wyszukiwania lekcji")
+                lessons = self.lessons_store.search_lessons(context, limit=3)
+                return lessons
+
+            # Fallback: użyj EmbeddingService do semantycznego wyszukiwania
+            logger.info("Używam EmbeddingService do semantycznego wyszukiwania lekcji")
+
+            embedding_service = EmbeddingService()
+
+            # Pobierz wszystkie lekcje
+            all_lessons = self.lessons_store.get_all_lessons()
 
             # Early return jeśli brak lekcji
-            if not lessons:
+            if not all_lessons:
                 return []
 
             # Early return dla dużej liczby lekcji (optymalizacja)
-            if len(lessons) > 1000:
+            if len(all_lessons) > 1000:
                 logger.warning(
-                    f"Dużo lekcji ({len(lessons)}), limitowanie wyszukiwania"
+                    f"Dużo lekcji ({len(all_lessons)}), limitowanie wyszukiwania"
                 )
-                lessons = lessons[:1000]
+                all_lessons = all_lessons[:1000]
 
-            # Ekstrakuj słowa kluczowe z kontekstu (uproszczona wersja)
-            keywords = set(
-                word.lower()
-                for word in context.split()
-                if len(word) > 3  # Ignoruj krótkie słowa
-            )
+            # Generuj embedding dla kontekstu zapytania
+            query_embedding = embedding_service.get_embedding(context)
 
-            # Early return jeśli brak keywords
-            if not keywords:
-                return []
+            # Generuj embeddingi dla wszystkich lekcji (batch processing dla wydajności)
+            lesson_texts = [lesson.to_text() for lesson in all_lessons]
+            lesson_embeddings = embedding_service.get_embeddings_batch(lesson_texts)
 
-            # Filtruj lekcje zawierające podobne słowa kluczowe
-            similar = []
-            for lesson in lessons:
-                lesson_text = (
-                    lesson.situation + " " + lesson.action + " " + lesson.feedback
-                ).lower()
+            # Oblicz cosine similarity dla każdej lekcji
+            query_vec = np.array(query_embedding)
+            norm_query = np.linalg.norm(query_vec)  # Oblicz raz przed pętlą
+            similarities = []
 
-                # Sprawdź czy zawiera którekolwiek słowo kluczowe
-                if any(keyword in lesson_text for keyword in keywords):
-                    similar.append(lesson)
+            for i, lesson_embedding in enumerate(lesson_embeddings):
+                lesson_vec = np.array(lesson_embedding)
+                norm_lesson = np.linalg.norm(lesson_vec)
 
-                    # Early exit jeśli znaleziono wystarczająco
-                    if len(similar) >= 3:
-                        break
+                if norm_query > 0 and norm_lesson > 0:
+                    # Cosine similarity = dot product / (norm1 * norm2)
+                    dot_product = np.dot(query_vec, lesson_vec)
+                    similarity = dot_product / (norm_query * norm_lesson)
+                else:
+                    similarity = 0.0
 
-            return similar[:3]  # Zwróć max 3 lekcje
+                similarities.append((similarity, all_lessons[i]))
+
+            # Sortuj po similarity (malejąco) i zwróć top 3
+            similarities.sort(key=lambda x: x[0], reverse=True)
+
+            top_lessons = [
+                lesson for similarity, lesson in similarities[:3] if similarity > 0.5
+            ]
+
+            if similarities:
+                logger.info(
+                    f"Znaleziono {len(top_lessons)} podobnych lekcji "
+                    f"(top similarity: {similarities[0][0]:.3f})"
+                )
+            else:
+                logger.info("Nie znaleziono podobnych lekcji")
+
+            return top_lessons
 
         except Exception as e:
-            logger.error(f"Błąd przy szukaniu lekcji: {e}")
+            logger.error(f"Błąd przy szukaniu lekcji przez embeddings: {e}")
             return []
 
     def record_rejection(

@@ -259,7 +259,9 @@ class TestChronoSkillIntegration:
         assert checkpoint_id in list_result
 
         # Usuwanie
-        delete_result = await chrono_skill.delete_checkpoint(checkpoint_id=checkpoint_id)
+        delete_result = await chrono_skill.delete_checkpoint(
+            checkpoint_id=checkpoint_id
+        )
         assert "✓" in delete_result
 
         # Weryfikacja usunięcia

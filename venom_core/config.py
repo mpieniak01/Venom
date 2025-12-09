@@ -200,10 +200,18 @@ class Settings(BaseSettings):
     # Konfiguracja THE_CHRONOMANCER (State Management & Timeline Branching)
     ENABLE_CHRONOS: bool = True  # Włącz system zarządzania stanem
     CHRONOS_TIMELINES_DIR: str = "./data/timelines"  # Katalog dla snapshotów
-    CHRONOS_AUTO_CHECKPOINT: bool = True  # Automatyczne checkpointy przed ryzykownymi operacjami
-    CHRONOS_MAX_CHECKPOINTS_PER_TIMELINE: int = 50  # Maksymalna liczba checkpointów na timeline
-    CHRONOS_CHECKPOINT_RETENTION_DAYS: int = 30  # Czas przechowywania checkpointów (dni)
-    CHRONOS_COMPRESS_SNAPSHOTS: bool = True  # Kompresja snapshotów (oszczędność miejsca)
+    CHRONOS_AUTO_CHECKPOINT: bool = (
+        True  # Automatyczne checkpointy przed ryzykownymi operacjami
+    )
+    CHRONOS_MAX_CHECKPOINTS_PER_TIMELINE: int = (
+        50  # Maksymalna liczba checkpointów na timeline
+    )
+    CHRONOS_CHECKPOINT_RETENTION_DAYS: int = (
+        30  # Czas przechowywania checkpointów (dni)
+    )
+    CHRONOS_COMPRESS_SNAPSHOTS: bool = (
+        True  # Kompresja snapshotów (oszczędność miejsca)
+    )
 
 
 SETTINGS = Settings()

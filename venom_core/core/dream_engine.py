@@ -562,7 +562,9 @@ class DreamEngine:
             "output_directory": str(self.output_dir),
         }
 
-    def _cleanup_empty_timeline(self, timeline_name: str, checkpoint_id: Optional[str] = None) -> None:
+    def _cleanup_empty_timeline(
+        self, timeline_name: str, checkpoint_id: Optional[str] = None
+    ) -> None:
         """
         Usuwa pustą lub nieużywaną timeline po nieudanej sesji śnienia.
 
@@ -577,7 +579,7 @@ class DreamEngine:
 
             # Sprawdź czy timeline jest pusta lub ma tylko checkpoint startowy
             checkpoints = list(timeline_path.iterdir())
-            
+
             if len(checkpoints) == 0:
                 # Pusta timeline - usuń
                 self._remove_timeline_directory(timeline_path, timeline_name, "pustą")
@@ -587,11 +589,15 @@ class DreamEngine:
                 if checkpoint_dir.name == checkpoint_id:
                     # Usuń checkpoint i timeline
                     shutil.rmtree(checkpoint_dir)
-                    self._remove_timeline_directory(timeline_path, timeline_name, "nieużywaną")
+                    self._remove_timeline_directory(
+                        timeline_path, timeline_name, "nieużywaną"
+                    )
         except Exception as e:
             logger.debug(f"Nie udało się wyczyścić timeline {timeline_name}: {e}")
 
-    def _remove_timeline_directory(self, timeline_path: Path, timeline_name: str, description: str) -> None:
+    def _remove_timeline_directory(
+        self, timeline_path: Path, timeline_name: str, description: str
+    ) -> None:
         """
         Usuwa katalog timeline i loguje akcję.
 

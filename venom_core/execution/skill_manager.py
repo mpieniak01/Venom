@@ -35,6 +35,7 @@ class SkillManager:
         self,
         kernel: Kernel,
         custom_skills_dir: Optional[str] = None,
+        event_broadcaster: Optional[Any] = None,
     ):
         """
         Inicjalizacja SkillManager.
@@ -43,8 +44,10 @@ class SkillManager:
             kernel: Skonfigurowane jądro Semantic Kernel
             custom_skills_dir: Ścieżka do katalogu z custom skills
                               (domyślnie venom_core/execution/skills/custom/)
+            event_broadcaster: Opcjonalny broadcaster eventów WebSocket (EventBroadcaster)
         """
         self.kernel = kernel
+        self.event_broadcaster = event_broadcaster
 
         # Ustaw ścieżkę do katalogu custom skills
         if custom_skills_dir:
@@ -381,3 +384,35 @@ class SkillManager:
 
         logger.warning(f"Skill {skill_name} nie był załadowany")
         return False
+
+    async def broadcast_skill_event(
+        self, event_type: str, skill_name: str, action: str = "", is_external: bool = False
+    ):
+        """
+        Emituje event WebSocket o wykonaniu skilla.
+
+        Args:
+            event_type: Typ eventu - należy używać EventType.SKILL_STARTED, 
+                       EventType.SKILL_COMPLETED lub EventType.SKILL_FAILED
+            skill_name: Nazwa skilla
+            action: Opcjonalnie akcja wykonywana przez skill
+            is_external: Czy skill komunikuje się z zewnętrznymi API
+        
+        Note:
+            Ta metoda musi być wywołana przez kod używający skills aby 
+            emitować eventy. Przykład użycia znajduje się w dokumentacji.
+        """
+        if self.event_broadcaster:
+            try:
+                await self.event_broadcaster.broadcast_event(
+                    event_type=event_type,
+                    message=f"Skill: {skill_name}" + (f" - {action}" if action else ""),
+                    agent="SkillManager",
+                    data={
+                        "skill": skill_name,
+                        "action": action,
+                        "is_external": is_external,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Nie udało się wysłać eventu skill: {e}")

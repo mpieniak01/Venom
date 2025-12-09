@@ -237,3 +237,138 @@ def test_compose_skill_has_kernel_functions(compose_skill):
     assert hasattr(compose_skill.destroy_environment, "__kernel_function__") or hasattr(
         compose_skill.destroy_environment, "__kernel_function_name__"
     )
+
+
+@pytest.mark.asyncio
+async def test_process_template_placeholders_secret_key(compose_skill):
+    """Test przetwarzania placeholdera {{SECRET_KEY}}."""
+    content = """
+version: '3.8'
+services:
+  app:
+    environment:
+      - SECRET_KEY={{SECRET_KEY}}
+"""
+    result = await compose_skill._process_template_placeholders(content)
+
+    # Placeholder powinien zostać zastąpiony
+    assert "{{SECRET_KEY}}" not in result
+    # Sprawdź czy wstawiono losowy hex (64 znaki)
+    import re
+
+    matches = re.findall(r"SECRET_KEY=([a-f0-9]{64})", result)
+    assert len(matches) == 1
+
+
+@pytest.mark.asyncio
+async def test_process_template_placeholders_host_ip(compose_skill):
+    """Test przetwarzania placeholdera {{HOST_IP}}."""
+    content = """
+version: '3.8'
+services:
+  app:
+    extra_hosts:
+      - "host.docker.internal:{{HOST_IP}}"
+"""
+    result = await compose_skill._process_template_placeholders(content)
+
+    # Placeholder powinien zostać zastąpiony
+    assert "{{HOST_IP}}" not in result
+    # Sprawdź czy wstawiono adres IP
+    import re
+
+    matches = re.findall(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", result)
+    assert len(matches) >= 1
+
+
+@pytest.mark.asyncio
+async def test_process_template_placeholders_volume_root(compose_skill):
+    """Test przetwarzania placeholdera {{VOLUME_ROOT}}."""
+    content = """
+version: '3.8'
+services:
+  app:
+    volumes:
+      - {{VOLUME_ROOT}}/data:/data
+"""
+    result = await compose_skill._process_template_placeholders(content)
+
+    # Placeholder powinien zostać zastąpiony
+    assert "{{VOLUME_ROOT}}" not in result
+    # Sprawdź czy wstawiono ścieżkę
+    assert "/data:/data" in result
+    # Ścieżka powinna być absolutna
+    from pathlib import Path
+
+    volume_root = str(Path(compose_skill.stack_manager.workspace_root).resolve())
+    assert volume_root in result
+
+
+@pytest.mark.asyncio
+async def test_process_template_placeholders_multiple(compose_skill):
+    """Test przetwarzania wielu placeholderów jednocześnie."""
+    content = """
+version: '3.8'
+services:
+  app:
+    environment:
+      - SECRET_KEY={{SECRET_KEY}}
+    extra_hosts:
+      - "host:{{HOST_IP}}"
+    volumes:
+      - {{VOLUME_ROOT}}/data:/data
+"""
+    result = await compose_skill._process_template_placeholders(content)
+
+    # Wszystkie placeholdery powinny zostać zastąpione
+    assert "{{SECRET_KEY}}" not in result
+    assert "{{HOST_IP}}" not in result
+    assert "{{VOLUME_ROOT}}" not in result
+
+
+def test_validate_yaml_valid(compose_skill):
+    """Test walidacji poprawnego YAML."""
+    content = """
+version: '3.8'
+services:
+  test:
+    image: nginx
+"""
+    result = compose_skill._validate_yaml(content)
+    assert result is True
+
+
+def test_validate_yaml_invalid(compose_skill):
+    """Test walidacji nieprawidłowego YAML."""
+    content = """
+version: '3.8'
+services:
+  test:
+    image: nginx
+  bad indentation
+"""
+    result = compose_skill._validate_yaml(content)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_create_environment_with_secret_key(compose_skill):
+    """Test integracyjny: tworzenie środowiska z placeholderem SECRET_KEY."""
+    compose_content = """
+version: '3.8'
+services:
+  app:
+    image: alpine:latest
+    environment:
+      - SECRET_KEY={{SECRET_KEY}}
+    command: sleep 5
+"""
+    stack_name = "secret-test"
+
+    result = await compose_skill.create_environment(compose_content, stack_name)
+
+    # Sprawdź czy środowisko zostało utworzone
+    assert "✅" in result or "utworzone" in result.lower()
+
+    # Posprzątaj
+    await compose_skill.destroy_environment(stack_name)

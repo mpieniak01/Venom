@@ -37,9 +37,15 @@ class MediaSkill:
         self.service = SETTINGS.IMAGE_GENERATION_SERVICE
         self.default_size = SETTINGS.IMAGE_DEFAULT_SIZE
 
+        # Domyślny endpoint dla Stable Diffusion (Automatic1111)
+        self.sd_endpoint = "http://127.0.0.1:7860"
+
         # Sprawdź czy OpenAI jest dostępny
         self.openai_available = False
-        if self.service == "openai":
+        if self.service in ("openai", "hybrid") or SETTINGS.AI_MODE in (
+            "HYBRID",
+            "CLOUD",
+        ):
             try:
                 from openai import AsyncOpenAI
 
@@ -89,12 +95,117 @@ class MediaSkill:
         """
         logger.info(f"Generowanie obrazu: '{prompt[:50]}...'")
 
-        # Jeśli OpenAI dostępny i skonfigurowany
-        if self.service == "openai" and self.openai_available:
-            return await self._generate_with_dalle(prompt, size, style, filename)
-        else:
-            # Fallback: Placeholder
-            return await self._generate_placeholder(prompt, size, filename)
+        # Krok 1: Spróbuj lokalny Stable Diffusion (Local First)
+        if self.service in ("local-sd", "placeholder"):
+            # Sprawdź czy lokalne API działa
+            sd_result = await self._generate_with_stable_diffusion(
+                prompt, size, filename
+            )
+            if sd_result:
+                return sd_result
+
+        # Krok 2: Fallback do DALL-E (jeśli dostępny i tryb HYBRID/CLOUD)
+        if (
+            self.service in ("openai", "hybrid")
+            or SETTINGS.AI_MODE in ("HYBRID", "CLOUD")
+        ) and self.openai_available:
+            dalle_result = await self._generate_with_dalle(
+                prompt, size, style, filename
+            )
+            if dalle_result:
+                return dalle_result
+
+        # Krok 3: Emergency fallback - Placeholder z Pillow
+        logger.info("Wszystkie AI engines niedostępne, używam Pillow placeholder")
+        return await self._generate_placeholder(prompt, size, filename)
+
+    async def _generate_with_stable_diffusion(
+        self, prompt: str, size: str, filename: str
+    ) -> Optional[str]:
+        """
+        Generuje obraz przez lokalne API Stable Diffusion (Automatic1111).
+
+        Args:
+            prompt: Prompt tekstowy
+            size: Rozmiar obrazu (np. "1024x1024")
+            filename: Nazwa pliku
+
+        Returns:
+            Ścieżka do wygenerowanego obrazu lub None jeśli API niedostępne
+        """
+        try:
+            import base64
+
+            import httpx
+
+            # Parse rozmiaru
+            try:
+                width, height = map(int, size.lower().split("x"))
+            except ValueError:
+                logger.warning(
+                    f"Nieprawidłowy format rozmiaru: {size}. Używam 1024x1024"
+                )
+                width, height = 1024, 1024
+
+            # Sprawdź dostępność API
+            logger.info(f"Próba połączenia z Stable Diffusion API: {self.sd_endpoint}")
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Ping endpoint
+                try:
+                    ping_response = await client.get(f"{self.sd_endpoint}/sdapi/v1/")
+                    if ping_response.status_code != 200:
+                        logger.warning(
+                            f"Stable Diffusion API nie odpowiada (status {ping_response.status_code})"
+                        )
+                        return None
+                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                    logger.info(f"Stable Diffusion API niedostępny: {e}")
+                    return None
+
+            # API dostępne - generuj obraz
+            logger.info("Stable Diffusion API dostępny, generuję obraz...")
+
+            payload = {
+                "prompt": prompt,
+                "negative_prompt": "blurry, bad quality, distorted, ugly",
+                "steps": 20,
+                "width": width,
+                "height": height,
+                "cfg_scale": 7.0,
+                "sampler_name": "DPM++ 2M Karras",
+            }
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.sd_endpoint}/sdapi/v1/txt2img",
+                    json=payload,
+                )
+                response.raise_for_status()
+
+            result = response.json()
+            if not result.get("images"):
+                logger.error("Stable Diffusion nie zwrócił obrazów")
+                return None
+
+            # Zdekoduj base64
+            image_data = base64.b64decode(result["images"][0])
+
+            # Zapisz obraz
+            if not filename:
+                filename = f"sd_{int(time.time())}.png"
+            if not filename.endswith(".png"):
+                filename += ".png"
+
+            output_path = self.assets_dir / filename
+            output_path.write_bytes(image_data)
+
+            logger.info(f"✓ Obraz wygenerowany przez Stable Diffusion: {output_path}")
+            return str(output_path)
+
+        except Exception as e:
+            logger.warning(f"Błąd podczas generowania przez Stable Diffusion: {e}")
+            return None
 
     async def _generate_with_dalle(
         self, prompt: str, size: str, style: str, filename: str
@@ -151,8 +262,7 @@ class MediaSkill:
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania przez DALL-E: {e}")
-            logger.info("Fallback do generatora placeholderów")
-            return await self._generate_placeholder(prompt, size, filename)
+            return None
 
     async def _generate_placeholder(self, prompt: str, size: str, filename: str) -> str:
         """

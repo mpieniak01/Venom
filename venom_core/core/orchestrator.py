@@ -218,6 +218,12 @@ class Orchestrator:
                         task_handle = asyncio.current_task()
                         if task_handle is None:
                             logger.error(f"Nie można uzyskać task handle dla {task_id}")
+                            # Oznacz zadanie jako FAILED aby nie pozostało w PENDING
+                            await self.state_manager.update_status(
+                                task_id,
+                                TaskStatus.FAILED,
+                                result="Błąd systemu: nie można uzyskać task handle"
+                            )
                             return
                         self.active_tasks[task_id] = task_handle
                         break

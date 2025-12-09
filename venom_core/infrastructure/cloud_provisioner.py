@@ -1,11 +1,13 @@
-"""Moduł: cloud_provisioner - zarządzanie zdalnym deploymentem przez SSH."""
+"""Moduł: cloud_provisioner - zarządzanie zdalnym deploymentem przez SSH i lokalną widocznością w sieci."""
 
 import asyncio
 import re
+import socket
 from pathlib import Path
 from typing import Any, Optional
 
 import asyncssh
+from zeroconf import ServiceInfo, Zeroconf
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -22,12 +24,14 @@ class CloudProvisionerError(Exception):
 class CloudProvisioner:
     """
     Zarządca wdrożeń w chmurze - obsługa SSH, deployment i konfiguracja serwerów.
+    Dodatkowo: broadcasting lokalnej widoczności w sieci LAN przez mDNS.
 
     BEZPIECZEŃSTWO:
     - Nigdy nie loguj kluczy prywatnych SSH
     - Używaj tylko ścieżek do kluczy, nie samych kluczy
     - Timeout dla wszystkich operacji SSH
     - Walidacja komend przed wykonaniem
+    - Żadnych połączeń wychodzących do publicznych API DNS (Intranet Mode)
     """
 
     def __init__(
@@ -35,6 +39,7 @@ class CloudProvisioner:
         ssh_key_path: Optional[str] = None,
         default_user: str = "root",
         timeout: int = 300,
+        service_port: int = 8000,
     ):
         """
         Inicjalizacja CloudProvisioner.
@@ -43,10 +48,16 @@ class CloudProvisioner:
             ssh_key_path: Ścieżka do klucza SSH (domyślnie z SETTINGS)
             default_user: Domyślny użytkownik SSH
             timeout: Timeout dla operacji SSH w sekundach
+            service_port: Port usługi dla mDNS broadcasting (domyślnie 8000)
         """
         self.ssh_key_path = ssh_key_path or SETTINGS.DEPLOYMENT_SSH_KEY_PATH
         self.default_user = default_user or SETTINGS.DEPLOYMENT_DEFAULT_USER
         self.timeout = timeout or SETTINGS.DEPLOYMENT_TIMEOUT
+        self.service_port = service_port
+
+        # mDNS / Zeroconf
+        self.zeroconf: Optional[Zeroconf] = None
+        self.service_info: Optional[ServiceInfo] = None
 
         if self.ssh_key_path:
             key_path = Path(self.ssh_key_path)
@@ -60,6 +71,7 @@ class CloudProvisioner:
             f"CloudProvisioner zainicjalizowany (user={self.default_user}, "
             f"timeout={self.timeout}s)"
         )
+        logger.info("[INFO] Network Mode: INTRANET (mDNS active)")
 
     async def _execute_ssh_command(
         self,
@@ -319,26 +331,102 @@ class CloudProvisioner:
                 "message": str(e),
             }
 
-    async def configure_domain(
-        self, domain: str, ip: str, api_token: Optional[str] = None
-    ) -> dict[str, str]:
+    def start_broadcasting(self, service_name: Optional[str] = None) -> dict[str, str]:
         """
-        Konfiguruje DNS (placeholder - wymaga integracji z Cloudflare API).
+        Rozpoczyna broadcasting usługi w sieci lokalnej przez mDNS (Zeroconf).
 
         Args:
-            domain: Nazwa domeny
-            ip: Adres IP serwera
-            api_token: Token API do DNS providera
+            service_name: Nazwa usługi (domyślnie: venom-{hostname})
 
         Returns:
-            Dict ze statusem konfiguracji DNS
+            Dict ze statusem konfiguracji mDNS
         """
-        logger.warning(
-            "configure_domain jest funkcją placeholder - wymaga integracji z DNS API"
-        )
-        return {
-            "status": "not_implemented",
-            "message": f"DNS dla {domain} -> {ip} wymaga ręcznej konfiguracji",
-            "domain": domain,
-            "ip": ip,
-        }
+        try:
+            hostname = socket.gethostname()
+            service_name = service_name or f"venom-{hostname}"
+            service_type = "_venom._tcp.local."
+
+            # Pobierz lokalny adres IP
+            local_ip = socket.gethostbyname(hostname)
+
+            # Utwórz ServiceInfo
+            self.service_info = ServiceInfo(
+                service_type,
+                f"{service_name}.{service_type}",
+                port=self.service_port,
+                addresses=[socket.inet_aton(local_ip)],
+                properties={
+                    "version": "1.0",
+                    "hostname": hostname,
+                },
+                server=f"{service_name}.local.",
+            )
+
+            # Uruchom Zeroconf
+            self.zeroconf = Zeroconf()
+            self.zeroconf.register_service(self.service_info)
+
+            logger.info(
+                f"mDNS broadcasting uruchomiony: {service_name}.local na {local_ip}:{self.service_port}"
+            )
+
+            return {
+                "status": "active",
+                "service_name": f"{service_name}.local",
+                "ip": local_ip,
+                "port": self.service_port,
+                "service_url": self.get_service_url(service_name),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Błąd podczas uruchamiania mDNS broadcasting: {e}", exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def stop_broadcasting(self) -> dict[str, str]:
+        """
+        Zatrzymuje broadcasting usługi mDNS.
+
+        Returns:
+            Dict ze statusem
+        """
+        try:
+            if self.zeroconf and self.service_info:
+                self.zeroconf.unregister_service(self.service_info)
+                self.zeroconf.close()
+                self.zeroconf = None
+                self.service_info = None
+                logger.info("mDNS broadcasting zatrzymany")
+                return {"status": "stopped"}
+            else:
+                logger.warning("mDNS broadcasting nie był uruchomiony")
+                return {"status": "not_running"}
+
+        except Exception as e:
+            logger.error(
+                f"Błąd podczas zatrzymywania mDNS broadcasting: {e}", exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def get_service_url(self, service_name: Optional[str] = None) -> str:
+        """
+        Zwraca URL usługi dla lokalnej sieci.
+
+        Args:
+            service_name: Nazwa usługi (domyślnie: venom)
+
+        Returns:
+            URL usługi w formacie http://venom.local:8000
+        """
+        service_name = service_name or "venom"
+        # Usuń .local jeśli już jest
+        if service_name.endswith(".local"):
+            service_name = service_name[:-6]
+        return f"http://{service_name}.local:{self.service_port}"

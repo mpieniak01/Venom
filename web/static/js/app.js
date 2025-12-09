@@ -38,6 +38,8 @@ class VenomDashboard {
         this.startMetricsPolling();
         this.startRepositoryStatusPolling();
         this.startIntegrationsPolling(); // Dashboard v2.1
+        this.startQueueStatusPolling(); // Dashboard v2.3
+        this.startTokenomicsPolling(); // Dashboard v2.3
         this.initNotificationContainer();
     }
 
@@ -111,6 +113,18 @@ class VenomDashboard {
             historyModal: document.getElementById('historyModal'),
             historyModalBody: document.getElementById('historyModalBody'),
             closeHistoryModal: document.getElementById('closeHistoryModal'),
+            // Dashboard v2.3: Queue Governance
+            queueActive: document.getElementById('queueActive'),
+            queuePending: document.getElementById('queuePending'),
+            queueLimit: document.getElementById('queueLimit'),
+            sessionCost: document.getElementById('sessionCost'),
+            pauseResumeBtn: document.getElementById('pauseResumeBtn'),
+            purgeQueueBtn: document.getElementById('purgeQueueBtn'),
+            emergencyStopBtn: document.getElementById('emergencyStopBtn'),
+            governancePanel: document.querySelector('.queue-governance-panel'),
+            // Dashboard v2.3: Live Terminal
+            liveTerminal: document.getElementById('liveTerminal'),
+            clearTerminalBtn: document.getElementById('clearTerminalBtn'),
         };
     }
 
@@ -240,6 +254,21 @@ class VenomDashboard {
                 break;
             case 'SKILL_FAILED':
                 this.handleSkillFailed(eventData);
+                break;
+            // Dashboard v2.3: System logs
+            case 'SYSTEM_LOG':
+                this.handleSystemLog(eventData, message);
+                break;
+            // Dashboard v2.3: Queue events
+            case 'QUEUE_PAUSED':
+            case 'QUEUE_RESUMED':
+            case 'QUEUE_PURGED':
+            case 'TASK_ABORTED':
+                // Just refresh queue status
+                fetch('/api/v1/queue/status')
+                    .then(r => r.json())
+                    .then(status => this.updateQueueStatus(status))
+                    .catch(e => console.error('Error refreshing queue:', e));
                 break;
         }
     }
@@ -476,8 +505,10 @@ class VenomDashboard {
             // Create task item using DOM methods
             const taskItem = document.createElement('div');
             taskItem.className = `task-item ${statusClass}`;
+            taskItem.dataset.taskId = task.id;
 
             const contentDiv = document.createElement('div');
+            contentDiv.style.flex = '1';
             const strong = document.createElement('strong');
             strong.textContent = `${statusEmoji} ${truncatedContent}...`;
             contentDiv.appendChild(strong);
@@ -488,6 +519,16 @@ class VenomDashboard {
 
             taskItem.appendChild(contentDiv);
             taskItem.appendChild(statusDiv);
+
+            // Dashboard v2.3: Add abort button for PROCESSING tasks
+            if (task.status === 'PROCESSING') {
+                const abortBtn = document.createElement('button');
+                abortBtn.className = 'task-abort-btn';
+                abortBtn.textContent = '⛔ Stop';
+                abortBtn.dataset.taskId = task.id;
+                abortBtn.title = 'Przerwij zadanie';
+                taskItem.appendChild(abortBtn);
+            }
 
             this.elements.taskList.appendChild(taskItem);
         });
@@ -575,6 +616,41 @@ class VenomDashboard {
                 this.closeHistoryModal();
             }
         });
+
+        // Dashboard v2.3: Queue Governance
+        if (this.elements.pauseResumeBtn) {
+            this.elements.pauseResumeBtn.addEventListener('click', () => {
+                this.handlePauseResume();
+            });
+        }
+
+        if (this.elements.purgeQueueBtn) {
+            this.elements.purgeQueueBtn.addEventListener('click', () => {
+                this.handlePurgeQueue();
+            });
+        }
+
+        if (this.elements.emergencyStopBtn) {
+            this.elements.emergencyStopBtn.addEventListener('click', () => {
+                this.handleEmergencyStop();
+            });
+        }
+
+        if (this.elements.clearTerminalBtn) {
+            this.elements.clearTerminalBtn.addEventListener('click', () => {
+                this.clearTerminal();
+            });
+        }
+
+        // Task list delegation for abort buttons
+        if (this.elements.taskList) {
+            this.elements.taskList.addEventListener('click', (e) => {
+                if (e.target.closest('.task-abort-btn')) {
+                    const taskId = e.target.closest('.task-abort-btn').dataset.taskId;
+                    this.handleAbortTask(taskId);
+                }
+            });
+        }
     }
 
     async sendTask() {
@@ -2225,6 +2301,12 @@ class VenomDashboard {
         this.handleSkillCompleted(data);
     }
 
+    handleSystemLog(data, message) {
+        // Dashboard v2.3: Live Terminal
+        const level = data?.level || 'INFO';
+        this.addTerminalEntry(level, message);
+    }
+
     renderActiveOperations() {
         const container = document.getElementById('activeOperations');
         if (!container) return;
@@ -2475,6 +2557,262 @@ class VenomDashboard {
             return `${seconds}s ago`;
         } else {
             return 'just now';
+        }
+    }
+
+    // ============================================
+    // Dashboard v2.3: Queue Governance
+    // ============================================
+
+    async startQueueStatusPolling() {
+        const pollQueue = async () => {
+            try {
+                const response = await fetch('/api/v1/queue/status');
+                if (response.ok) {
+                    const status = await response.json();
+                    this.updateQueueStatus(status);
+                }
+            } catch (error) {
+                console.error('Error polling queue status:', error);
+            }
+        };
+
+        // Initial poll
+        await pollQueue();
+        
+        // Poll every 2 seconds
+        setInterval(pollQueue, 2000);
+    }
+
+    updateQueueStatus(status) {
+        try {
+            if (this.elements.queueActive) {
+                this.elements.queueActive.textContent = status.active || 0;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queueActive:', err);
+        }
+        
+        try {
+            if (this.elements.queuePending) {
+                this.elements.queuePending.textContent = status.pending || 0;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queuePending:', err);
+        }
+        
+        try {
+            if (this.elements.queueLimit && status.limit) {
+                this.elements.queueLimit.textContent = status.limit;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queueLimit:', err);
+        }
+
+        // Update button state
+        try {
+            if (this.elements.pauseResumeBtn) {
+                if (status.paused) {
+                    this.elements.pauseResumeBtn.classList.remove('pause');
+                    this.elements.pauseResumeBtn.classList.add('resume');
+                    this.elements.pauseResumeBtn.dataset.state = 'paused';
+                    const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
+                    if (btnIcon) btnIcon.textContent = '▶️';
+                    const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
+                    if (btnText) btnText.textContent = 'RESUME';
+                    
+                    // Visual feedback - yellow mode
+                    if (this.elements.governancePanel) {
+                        this.elements.governancePanel.classList.add('paused');
+                    }
+                } else {
+                    this.elements.pauseResumeBtn.classList.remove('resume');
+                    this.elements.pauseResumeBtn.classList.add('pause');
+                    this.elements.pauseResumeBtn.dataset.state = 'running';
+                    const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
+                    if (btnIcon) btnIcon.textContent = '⏸️';
+                    const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
+                    if (btnText) btnText.textContent = 'PAUSE';
+                    
+                    // Remove yellow mode
+                    if (this.elements.governancePanel) {
+                        this.elements.governancePanel.classList.remove('paused');
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji stanu przycisku kolejki:', err);
+        }
+    }
+
+    async handlePauseResume() {
+        const btn = this.elements.pauseResumeBtn;
+        const currentState = btn.dataset.state;
+        
+        try {
+            const endpoint = currentState === 'running' ? '/api/v1/queue/pause' : '/api/v1/queue/resume';
+            const response = await fetch(endpoint, { method: 'POST' });
+            
+            if (response.ok) {
+                const result = await response.json();
+                this.showNotification(result.message, 'info');
+                // Force immediate update
+                const statusResponse = await fetch('/api/v1/queue/status');
+                if (statusResponse.ok) {
+                    const status = await statusResponse.json();
+                    this.updateQueueStatus(status);
+                }
+            } else {
+                throw new Error('Failed to toggle queue state');
+            }
+        } catch (error) {
+            console.error('Error toggling queue:', error);
+            this.showNotification('Błąd podczas zmiany stanu kolejki', 'error');
+        }
+    }
+
+    async handlePurgeQueue() {
+        if (!confirm('Czy na pewno chcesz usunąć wszystkie oczekujące zadania? Ta operacja jest nieodwracalna.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/queue/purge', { method: 'POST' });
+            
+            if (response.ok) {
+                const result = await response.json();
+                this.showNotification(`Kolejka wyczyszczona: ${result.removed} zadań usuniętych`, 'warning');
+                // Refresh task list
+                await this.refreshTaskList();
+            } else {
+                throw new Error('Failed to purge queue');
+            }
+        } catch (error) {
+            console.error('Error purging queue:', error);
+            this.showNotification('Błąd podczas czyszczenia kolejki', 'error');
+        }
+    }
+
+    async handleEmergencyStop() {
+        if (!confirm('🚨 EMERGENCY STOP! Czy na pewno chcesz zatrzymać WSZYSTKIE zadania? System zostanie wstrzymany.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/queue/emergency-stop', { method: 'POST' });
+            
+            if (response.ok) {
+                const result = await response.json();
+                this.showNotification(`Emergency Stop: ${result.cancelled} zadań anulowanych, ${result.purged} usuniętych`, 'error');
+                // Refresh task list
+                await this.refreshTaskList();
+            } else {
+                throw new Error('Failed to execute emergency stop');
+            }
+        } catch (error) {
+            console.error('Error executing emergency stop:', error);
+            this.showNotification('Błąd podczas Emergency Stop', 'error');
+        }
+    }
+
+    async handleAbortTask(taskId) {
+        if (!confirm('Czy na pewno chcesz przerwać to zadanie?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/queue/task/${taskId}/abort`, { method: 'POST' });
+            
+            if (response.ok) {
+                await response.json();
+                this.showNotification('Zadanie przerwane', 'warning');
+                // Update task in list
+                // Uwaga: `element.dataset.taskId` w JS mapuje się na atrybut HTML `data-task-id`.
+                // Selector CSS `[data-task-id="${taskId}"]` jest poprawny i zgodny ze standardem.
+                const taskCard = document.querySelector(`[data-task-id="${taskId}"]`);
+                if (taskCard) {
+                    taskCard.remove();
+                }
+            } else {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to abort task');
+            }
+        } catch (error) {
+            console.error('Error aborting task:', error);
+            this.showNotification(`Błąd: ${error.detail || error.message || 'Failed to abort task'}`, 'error');
+        }
+    }
+
+    // ============================================
+    // Dashboard v2.3: Tokenomics
+    // ============================================
+
+    async startTokenomicsPolling() {
+        const pollTokenomics = async () => {
+            try {
+                const response = await fetch('/api/v1/metrics/tokens');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.updateTokenomics(data);
+                }
+            } catch (error) {
+                console.error('Error polling tokenomics:', error);
+            }
+        };
+
+        // Initial poll
+        await pollTokenomics();
+        
+        // Poll every 5 seconds
+        setInterval(pollTokenomics, 5000);
+    }
+
+    updateTokenomics(data) {
+        if (this.elements.sessionCost) {
+            const cost = data.session_cost_usd || 0;
+            this.elements.sessionCost.textContent = `$${cost.toFixed(4)}`;
+        }
+    }
+
+    // ============================================
+    // Dashboard v2.3: Live Terminal
+    // ============================================
+
+    addTerminalEntry(level, message) {
+        const terminal = this.elements.liveTerminal;
+        if (!terminal) return;
+
+        const entry = document.createElement('div');
+        entry.className = 'terminal-entry';
+        
+        const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+        
+        entry.innerHTML = `
+            <span class="terminal-timestamp">[${timestamp}]</span>
+            <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
+            <span class="terminal-message">${this.escapeHtml(message)}</span>
+        `;
+        
+        terminal.appendChild(entry);
+        
+        // Auto-scroll
+        terminal.scrollTop = terminal.scrollHeight;
+        
+        // Limit entries
+        while (terminal.children.length > 100) {
+            terminal.removeChild(terminal.firstChild);
+        }
+    }
+
+    clearTerminal() {
+        if (this.elements.liveTerminal) {
+            this.elements.liveTerminal.innerHTML = `
+                <div class="terminal-entry">
+                    <span class="terminal-timestamp">[--:--:--]</span>
+                    <span class="terminal-level info">INFO</span>
+                    <span class="terminal-message">Terminal cleared</span>
+                </div>
+            `;
         }
     }
 

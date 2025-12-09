@@ -38,6 +38,43 @@
             </div>
         </header>
 
+        <!-- Queue Governance Panel (Dashboard v2.3) -->
+        <div class="queue-governance-panel">
+            <div class="governance-header">
+                <h3>🎛️ Queue Governance</h3>
+                <div class="governance-controls">
+                    <button id="emergencyStopBtn" class="btn-emergency" title="Emergency Stop - anuluj wszystkie zadania">
+                        🚨 Emergency Stop
+                    </button>
+                </div>
+            </div>
+            <div class="governance-metrics">
+                <div class="governance-metric">
+                    <span class="governance-label">Active Tasks</span>
+                    <span class="governance-value" id="queueActive">0</span>
+                    <span class="governance-limit">/ <span id="queueLimit">5</span></span>
+                </div>
+                <div class="governance-metric">
+                    <span class="governance-label">Queue Depth</span>
+                    <span class="governance-value" id="queuePending">0</span>
+                </div>
+                <div class="governance-metric tokenomics">
+                    <span class="governance-label">Session Cost</span>
+                    <span class="governance-value cost" id="sessionCost">$0.00</span>
+                </div>
+            </div>
+            <div class="governance-actions">
+                <button id="pauseResumeBtn" class="btn-queue-action pause" data-state="running">
+                    <span class="btn-icon">⏸️</span>
+                    <span class="btn-text">PAUSE</span>
+                </button>
+                <button id="purgeQueueBtn" class="btn-queue-action danger">
+                    <span class="btn-icon">🗑️</span>
+                    <span class="btn-text">PURGE QUEUE</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Main Layout -->
         <div class="main-layout">
             <!-- Left Panel: Task Monitor -->
@@ -165,6 +202,19 @@
                     </div>
                     <div class="active-operations" id="activeOperations">
                         <div class="empty-state">Brak aktywnych operacji</div>
+                    </div>
+
+                    <!-- Live Terminal (Dashboard v2.3) -->
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>💻 Live Terminal</h2>
+                        <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
+                    </div>
+                    <div class="live-terminal" id="liveTerminal">
+                        <div class="terminal-entry">
+                            <span class="terminal-timestamp">[--:--:--]</span>
+                            <span class="terminal-level info">INFO</span>
+                            <span class="terminal-message">Waiting for system logs...</span>
+                        </div>
                     </div>
                 </div>
 

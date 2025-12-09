@@ -5,7 +5,6 @@ Odpowiedzialny za nagrywanie demonstracji użytkownika - synchroniczne
 rejestrowanie zrzutów ekranu i zdarzeń wejścia (mysz/klawiatura).
 """
 
-import json
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -17,6 +16,7 @@ from PIL import Image
 from pynput import keyboard, mouse
 
 from venom_core.config import SETTINGS
+from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -345,12 +345,12 @@ class DemonstrationRecorder:
 
         self.screenshot_buffer.clear()
 
-    def _save_session(self) -> str:
+    def _save_session(self) -> Optional[str]:
         """
         Zapisuje sesję do pliku JSON.
 
         Returns:
-            Ścieżka do pliku JSON
+            Ścieżka do pliku JSON, lub None jeśli wystąpił błąd
         """
         session_dir = self.sessions_dir / self.current_session.session_id
         session_file = session_dir / "session.json"
@@ -358,9 +358,10 @@ class DemonstrationRecorder:
         # Konwertuj sesję do dict
         session_dict = asdict(self.current_session)
 
-        # Zapisz do JSON
-        with open(session_file, "w", encoding="utf-8") as f:
-            json.dump(session_dict, f, indent=2, ensure_ascii=False)
+        # Zapisz do JSON używając helpers (Venom Standard Library)
+        if not helpers.write_json(session_file, session_dict, raise_on_error=False):
+            logger.error(f"Nie udało się zapisać sesji: {session_file}")
+            return None
 
         logger.info(f"Sesja zapisana: {session_file}")
         return str(session_file)
@@ -397,8 +398,8 @@ class DemonstrationRecorder:
             return None
 
         try:
-            with open(session_file, "r", encoding="utf-8") as f:
-                session_dict = json.load(f)
+            # Odczytaj JSON używając helpers (Venom Standard Library)
+            session_dict = helpers.read_json(session_file, raise_on_error=True)
 
             # Konwertuj events z dict do InputEvent
             events = [

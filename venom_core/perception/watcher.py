@@ -187,17 +187,17 @@ class FileWatcher:
             debounce_seconds=SETTINGS.WATCHER_DEBOUNCE_SECONDS,
         )
 
-        logger.info(f"FileWatcher zainicjalizowany dla: {self.workspace_root}")
+        logger.info(f"[WATCHER] Zainicjalizowany dla: {self.workspace_root}")
 
     async def start(self) -> None:
         """Uruchamia obserwatora."""
         if self.is_running:
-            logger.warning("FileWatcher już działa")
+            logger.warning("[WATCHER] Już działa")
             return
 
         if not self.workspace_root.exists():
             logger.warning(
-                f"Katalog workspace nie istnieje: {self.workspace_root}, tworzę..."
+                f"[WATCHER] Katalog workspace nie istnieje: {self.workspace_root}, tworzę..."
             )
             self.workspace_root.mkdir(parents=True, exist_ok=True)
 
@@ -210,7 +210,7 @@ class FileWatcher:
             self.observer.start()
             self.is_running = True
 
-            logger.info(f"FileWatcher uruchomiony, monitoruje: {self.workspace_root}")
+            logger.info(f"[WATCHER] Uruchomiony, monitoruje: {self.workspace_root}")
 
             if self.event_broadcaster:
                 await self.event_broadcaster.broadcast_event(
@@ -220,13 +220,13 @@ class FileWatcher:
                 )
 
         except Exception as e:
-            logger.error(f"Błąd podczas uruchamiania FileWatcher: {e}")
+            logger.error(f"[WATCHER] Błąd podczas uruchamiania: {e}")
             raise
 
     async def stop(self) -> None:
         """Zatrzymuje obserwatora."""
         if not self.is_running:
-            logger.warning("FileWatcher nie działa")
+            logger.warning("[WATCHER] Nie działa")
             return
 
         try:
@@ -235,7 +235,7 @@ class FileWatcher:
                 self.observer.join(timeout=5)
 
             self.is_running = False
-            logger.info("FileWatcher zatrzymany")
+            logger.info("[WATCHER] Zatrzymany")
 
             if self.event_broadcaster:
                 await self.event_broadcaster.broadcast_event(
@@ -245,7 +245,7 @@ class FileWatcher:
                 )
 
         except Exception as e:
-            logger.error(f"Błąd podczas zatrzymywania FileWatcher: {e}")
+            logger.error(f"[WATCHER] Błąd podczas zatrzymywania: {e}")
             raise
 
     async def _handle_file_change(self, file_path: str) -> None:
@@ -255,7 +255,13 @@ class FileWatcher:
         Args:
             file_path: Ścieżka do zmienionego pliku
         """
-        logger.info(f"Wykryto zmianę w pliku: {file_path}")
+        # Loguj z prefiksem [WATCHER] dla observability (zgodnie z TD-042)
+        try:
+            relative_path = Path(file_path).relative_to(self.workspace_root)
+        except ValueError:
+            # Jeśli file_path nie jest podścieżką workspace_root
+            relative_path = Path(file_path)
+        logger.info(f"[WATCHER] File modified: {relative_path}")
 
         # Broadcast zdarzenia CODE_CHANGED
         if self.event_broadcaster:
@@ -264,9 +270,7 @@ class FileWatcher:
                 message=f"File changed: {Path(file_path).name}",
                 data={
                     "file_path": file_path,
-                    "relative_path": str(
-                        Path(file_path).relative_to(self.workspace_root)
-                    ),
+                    "relative_path": str(relative_path),
                     "timestamp": time.time(),
                 },
             )
@@ -276,7 +280,9 @@ class FileWatcher:
             try:
                 await self.on_change_callback(file_path)
             except Exception as e:
-                logger.error(f"Błąd w callback użytkownika dla {file_path}: {e}")
+                logger.error(
+                    f"[WATCHER] Błąd w callback użytkownika dla {file_path}: {e}"
+                )
 
     def get_status(self) -> dict:
         """

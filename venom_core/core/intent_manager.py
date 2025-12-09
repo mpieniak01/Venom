@@ -28,6 +28,7 @@ class IntentManager:
 9. RELEASE_PROJECT - użytkownik chce wydać nową wersję projektu, wygenerować changelog, stworzyć tag
 10. START_CAMPAIGN - użytkownik chce uruchomić tryb autonomiczny (kampania), gdzie system sam realizuje roadmapę
 11. STATUS_REPORT - użytkownik pyta o status projektu, postęp realizacji celów, aktualny milestone
+12. HELP_REQUEST - użytkownik prosi o pomoc, pytania o możliwości systemu, dostępne funkcje
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
@@ -91,6 +92,16 @@ KIEDY WYBIERAĆ STATUS_REPORT:
 - "Pokaż postęp"
 - "Raport statusu"
 - Zapytania zawierające: "status", "postęp", "gdzie jesteśmy", "raport", "jak idzie projekt"
+
+KIEDY WYBIERAĆ HELP_REQUEST:
+- "Co potrafisz?"
+- "Pomoc"
+- "Help"
+- "Jakie masz możliwości?"
+- "Jakie umiejętności posiadasz?"
+- "Pokaż dostępne funkcje"
+- "Co umiesz robić?"
+- Zapytania zawierające: "pomoc", "help", "możliwości", "umiejętności", "co potrafisz", "funkcje"
 
 Przykłady:
 - "Napisz funkcję w Pythonie do sortowania" → CODE_GENERATION

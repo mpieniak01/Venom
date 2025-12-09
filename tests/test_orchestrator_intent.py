@@ -215,3 +215,231 @@ async def test_orchestrator_result_contains_intent_and_content(
     assert "Sklasyfikowana intencja: CODE_GENERATION" in log_text
     # Wynik powinien zawierać pracę agenta
     assert "sort_func" in task.result
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_help_request_intent(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test obsługi intencji HELP_REQUEST."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    # Mockuj odpowiedź klasyfikacji jako HELP_REQUEST
+    mock_intent_manager.classify_intent.return_value = "HELP_REQUEST"
+
+    # Mock agent_map dla _generate_help_response
+    mock_task_dispatcher.agent_map = {
+        "CODE_GENERATION": MagicMock(__class__=MagicMock(__name__="CoderAgent")),
+        "RESEARCH": MagicMock(__class__=MagicMock(__name__="ResearcherAgent")),
+        "KNOWLEDGE_SEARCH": MagicMock(__class__=MagicMock(__name__="ProfessorAgent")),
+    }
+
+    # Mock kernel z plugins
+    mock_kernel = MagicMock()
+    mock_kernel.plugins = {
+        "FileSkill": MagicMock(),
+        "GitSkill": MagicMock(),
+        "_InternalSkill": MagicMock(),  # Should be filtered out
+    }
+    mock_task_dispatcher.kernel = mock_kernel
+
+    # Mock event broadcaster
+    mock_broadcaster = AsyncMock()
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+        event_broadcaster=mock_broadcaster,
+    )
+
+    response = await orchestrator.submit_task(TaskRequest(content="Co potrafisz?"))
+    await asyncio.sleep(1)
+
+    task = state_manager.get_task(response.task_id)
+    assert task.status == TaskStatus.COMPLETED
+
+    # Sprawdź logi
+    log_text = " ".join(task.logs)
+    assert "Sklasyfikowana intencja: HELP_REQUEST" in log_text
+    assert "Generuję informacje pomocy" in log_text
+
+    # Sprawdź wynik pomocy
+    assert task.result is not None
+    assert "Venom - System Pomocy" in task.result
+    assert "Dostępni Agenci" in task.result
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_help_response_content(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test zawartości odpowiedzi pomocy."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    mock_intent_manager.classify_intent.return_value = "HELP_REQUEST"
+
+    # Mock agent_map z różnymi agentami
+    mock_task_dispatcher.agent_map = {
+        "CODE_GENERATION": MagicMock(__class__=MagicMock(__name__="CoderAgent")),
+        "RESEARCH": MagicMock(__class__=MagicMock(__name__="ResearcherAgent")),
+        "COMPLEX_PLANNING": MagicMock(__class__=MagicMock(__name__="ArchitectAgent")),
+    }
+
+    # Mock kernel z plugins
+    mock_kernel = MagicMock()
+    mock_kernel.plugins = {
+        "FileSkill": MagicMock(),
+        "GitSkill": MagicMock(),
+        "ResearchSkill": MagicMock(),
+    }
+    mock_task_dispatcher.kernel = mock_kernel
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+    )
+
+    response = await orchestrator.submit_task(TaskRequest(content="Pomoc"))
+    await asyncio.sleep(1)
+
+    task = state_manager.get_task(response.task_id)
+    result = task.result
+
+    # Sprawdź że odpowiedź zawiera opisy agentów
+    assert "Coder" in result
+    assert "Researcher" in result
+    assert "Architect" in result
+
+    # Sprawdź że odpowiedź zawiera sekcje
+    assert "Tryby Pracy" in result
+    assert "Umiejętności (Skills)" in result
+    assert "Przykłady Użycia" in result
+
+    # Sprawdź że lista pluginów jest wyświetlona
+    assert "FileSkill" in result
+    assert "GitSkill" in result
+    assert "ResearchSkill" in result
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_help_filters_internal_plugins(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test że pomoc filtruje wewnętrzne pluginy."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    mock_intent_manager.classify_intent.return_value = "HELP_REQUEST"
+    mock_task_dispatcher.agent_map = {}
+
+    # Mock kernel z mieszanką publicznych i prywatnych pluginów
+    mock_kernel = MagicMock()
+    mock_kernel.plugins = {
+        "FileSkill": MagicMock(),  # Publiczny
+        "_InternalSkill": MagicMock(),  # Powinien być filtrowany
+        "__PrivateSkill": MagicMock(),  # Powinien być filtrowany
+        "InternalDebugger": MagicMock(),  # Powinien być filtrowany (zawiera 'internal')
+        "GitSkill": MagicMock(),  # Publiczny
+    }
+    mock_task_dispatcher.kernel = mock_kernel
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+    )
+
+    response = await orchestrator.submit_task(TaskRequest(content="Help"))
+    await asyncio.sleep(1)
+
+    task = state_manager.get_task(response.task_id)
+    result = task.result
+
+    # Sprawdź że publiczne pluginy są wyświetlone
+    assert "FileSkill" in result
+    assert "GitSkill" in result
+
+    # Sprawdź że prywatne pluginy są filtrowane
+    assert "_InternalSkill" not in result
+    assert "__PrivateSkill" not in result
+    assert "InternalDebugger" not in result
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_help_with_no_plugins(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test pomocy gdy brak dostępnych pluginów."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    mock_intent_manager.classify_intent.return_value = "HELP_REQUEST"
+    mock_task_dispatcher.agent_map = {"CODE_GENERATION": MagicMock()}
+
+    # Mock kernel bez plugins (None)
+    mock_kernel = MagicMock()
+    mock_kernel.plugins = None
+    mock_task_dispatcher.kernel = mock_kernel
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+    )
+
+    response = await orchestrator.submit_task(TaskRequest(content="Co umiesz?"))
+    await asyncio.sleep(1)
+
+    task = state_manager.get_task(response.task_id)
+    result = task.result
+
+    # Powinien zawierać podstawową wiadomość
+    assert "Podstawowe umiejętności" in result
+    assert task.status == TaskStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_help_broadcasts_widget(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test że pomoc broadcastuje widget pomocy."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    mock_intent_manager.classify_intent.return_value = "HELP_REQUEST"
+    mock_task_dispatcher.agent_map = {"CODE_GENERATION": MagicMock()}
+
+    mock_kernel = MagicMock()
+    mock_kernel.plugins = {"FileSkill": MagicMock()}
+    mock_task_dispatcher.kernel = mock_kernel
+
+    # Mock event broadcaster
+    mock_broadcaster = AsyncMock()
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+        event_broadcaster=mock_broadcaster,
+    )
+
+    await orchestrator.submit_task(TaskRequest(content="Pokaż możliwości"))
+    await asyncio.sleep(1)
+
+    # Sprawdź czy widget został broadcastowany
+    assert mock_broadcaster.broadcast_event.called
+
+    # Znajdź wywołanie z RENDER_WIDGET
+    calls = mock_broadcaster.broadcast_event.call_args_list
+    widget_call = None
+    for call in calls:
+        if call.kwargs.get("event_type") == "RENDER_WIDGET":
+            widget_call = call
+            break
+
+    assert widget_call is not None
+    # Sprawdź strukturę widgetu
+    widget_data = widget_call.kwargs.get("data", {})
+    assert "widget" in widget_data
+    widget = widget_data["widget"]
+    assert widget["type"] == "markdown"
+    assert "content" in widget["data"]

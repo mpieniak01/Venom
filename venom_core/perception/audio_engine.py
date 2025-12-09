@@ -120,23 +120,32 @@ class VoiceSkill:
         self.audio_queue = queue.Queue()
         self._playback_thread = None
         self._stop_playback = threading.Event()
-        self.is_fallback_mode = False
+        
+        # Walidacja modelu i ustawienie trybu fallback
+        self.is_fallback_mode = self._validate_model_path()
 
-        # Walidacja ścieżki modelu
-        if model_path:
-            model_file = Path(model_path)
-            if not model_file.exists():
-                logger.warning(
-                    f"Model TTS nie istnieje: {model_path}. VoiceSkill będzie działał w trybie mock."
-                )
-                self.is_fallback_mode = True
-            else:
-                logger.info(f"Inicjalizacja VoiceSkill: model_path={model_path}")
-        else:
+    def _validate_model_path(self) -> bool:
+        """
+        Waliduje ścieżkę do modelu i określa czy należy użyć trybu fallback.
+        
+        Returns:
+            True jeśli tryb fallback jest wymagany, False w przeciwnym razie
+        """
+        if not self.model_path:
             logger.warning(
                 "Brak ścieżki do modelu TTS. VoiceSkill będzie działał w trybie mock."
             )
-            self.is_fallback_mode = True
+            return True
+        
+        model_file = Path(self.model_path)
+        if not model_file.exists():
+            logger.warning(
+                f"Model TTS nie istnieje: {self.model_path}. VoiceSkill będzie działał w trybie mock."
+            )
+            return True
+        
+        logger.info(f"Inicjalizacja VoiceSkill: model_path={self.model_path}")
+        return False
 
     def _load_model(self):
         """Lazy loading modelu TTS."""
@@ -144,14 +153,8 @@ class VoiceSkill:
             try:
                 import piper
 
-                if self.model_path:
-                    self.voice = piper.PiperVoice.load(self.model_path)
-                    logger.info("Model Piper TTS załadowany pomyślnie")
-                else:
-                    logger.warning(
-                        "Brak ścieżki do modelu TTS. VoiceSkill będzie działał w trybie mock."
-                    )
-                    self.is_fallback_mode = True
+                self.voice = piper.PiperVoice.load(self.model_path)
+                logger.info("Model Piper TTS załadowany pomyślnie")
             except ImportError:
                 logger.warning(
                     "piper-tts nie jest zainstalowany. VoiceSkill działa w trybie mock."

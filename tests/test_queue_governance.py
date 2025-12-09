@@ -3,10 +3,11 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
-from venom_core.core.models import TaskRequest, TaskStatus
+from venom_core.core.models import TaskStatus
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 
@@ -119,13 +120,14 @@ async def test_abort_task(orchestrator):
     try:
         await mock_task_handle
     except asyncio.CancelledError:
+        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
         pass
 
 
 @pytest.mark.asyncio
 async def test_abort_nonexistent_task(orchestrator):
     """Test przerywania nieistniejącego zadania."""
-    fake_id = "00000000-0000-0000-0000-000000000000"
+    fake_id = UUID("00000000-0000-0000-0000-000000000000")
     
     result = await orchestrator.abort_task(fake_id)
     
@@ -143,6 +145,57 @@ async def test_abort_non_processing_task(orchestrator):
     
     assert not result["success"]
     assert "nie jest aktywne" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop(orchestrator):
+    """Test awaryjnego zatrzymania systemu."""
+    # Utwórz kilka zadań
+    task1 = orchestrator.state_manager.create_task("Task 1")
+    task2 = orchestrator.state_manager.create_task("Task 2")
+    task3 = orchestrator.state_manager.create_task("Task 3")
+    
+    # Symuluj aktywne zadania
+    mock_task1 = asyncio.create_task(asyncio.sleep(10))
+    mock_task2 = asyncio.create_task(asyncio.sleep(10))
+    orchestrator.active_tasks[task1.id] = mock_task1
+    orchestrator.active_tasks[task2.id] = mock_task2
+    
+    # Zmień statusy
+    await orchestrator.state_manager.update_status(task1.id, TaskStatus.PROCESSING)
+    await orchestrator.state_manager.update_status(task2.id, TaskStatus.PROCESSING)
+    # task3 pozostaje PENDING
+    
+    # Emergency stop
+    result = await orchestrator.emergency_stop()
+    
+    assert result["success"]
+    assert result["paused"] is True
+    assert result["cancelled"] == 2  # task1 i task2
+    assert result["purged"] == 1  # task3
+    assert orchestrator.is_paused is True
+    assert len(orchestrator.active_tasks) == 0
+    
+    # Sprawdź statusy zadań
+    task1_updated = orchestrator.state_manager.get_task(task1.id)
+    task2_updated = orchestrator.state_manager.get_task(task2.id)
+    task3_updated = orchestrator.state_manager.get_task(task3.id)
+    
+    assert task1_updated.status == TaskStatus.FAILED
+    assert task2_updated.status == TaskStatus.FAILED
+    assert task3_updated.status == TaskStatus.FAILED
+    
+    # Cleanup
+    try:
+        await mock_task1
+    except asyncio.CancelledError:
+        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
+        pass
+    try:
+        await mock_task2
+    except asyncio.CancelledError:
+        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
+        pass
 
 
 if __name__ == "__main__":

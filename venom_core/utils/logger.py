@@ -30,11 +30,14 @@ def log_sink(message):
         message: LogRecord z loguru - obiekt zawierający informacje o logu
     """
     if _event_broadcaster is not None:
+        # Walidacja typu
+        if not hasattr(message, 'record'):
+            return
+            
         # Parsuj rekord loga
         record = message.record
         level = record["level"].name
         msg = record["message"]
-        timestamp = record["time"].isoformat()
 
         # Wyślij przez WebSocket (async, ale w sync kontekście)
         # Używamy asyncio.create_task aby nie blokować loggera
@@ -43,9 +46,13 @@ def log_sink(message):
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                asyncio.create_task(
-                    _event_broadcaster.broadcast_log(level=level, message=msg)
-                )
+                try:
+                    asyncio.create_task(
+                        _event_broadcaster.broadcast_log(level=level, message=msg)
+                    )
+                except Exception as exc:
+                    # Błąd przy tworzeniu zadania - pomijamy aby nie zablokować loggera
+                    pass
         except RuntimeError:
             # Brak event loop - pomijamy broadcast
             pass

@@ -201,24 +201,28 @@ class Orchestrator:
         """
         # Czekaj na dostępny slot jeśli potrzeba
         while True:
-            # Sprawdź pauzę
-            if self.is_paused:
-                await asyncio.sleep(1)
-                continue
-
-            # Sprawdź limit
+            # Sprawdź pauzę i limit atomowo pod lockiem
             async with self._queue_lock:
-                active_count = len(self.active_tasks)
-                if (
-                    not SETTINGS.ENABLE_QUEUE_LIMITS
-                    or active_count < SETTINGS.MAX_CONCURRENT_TASKS
-                ):
-                    # Utwórz task handle
-                    task_handle = asyncio.current_task()
-                    self.active_tasks[task_id] = task_handle
-                    break
+                # Sprawdź pauzę
+                if self.is_paused:
+                    # Pauza aktywna, zwolnij lock i czekaj
+                    pass
+                else:
+                    # Sprawdź limit
+                    active_count = len(self.active_tasks)
+                    if (
+                        not SETTINGS.ENABLE_QUEUE_LIMITS
+                        or active_count < SETTINGS.MAX_CONCURRENT_TASKS
+                    ):
+                        # Utwórz task handle
+                        task_handle = asyncio.current_task()
+                        if task_handle is None:
+                            logger.error(f"Nie można uzyskać task handle dla {task_id}")
+                            return
+                        self.active_tasks[task_id] = task_handle
+                        break
 
-            # Czekaj na zwolnienie slotu
+            # Czekaj na zwolnienie slotu lub zakończenie pauzy
             await asyncio.sleep(0.5)
 
         try:
@@ -448,19 +452,13 @@ class Orchestrator:
 
         Returns:
             TokenEconomist lub None jeśli nie jest dostępny
+            
+        Raises:
+            NotImplementedError: Funkcja nie jest jeszcze w pełni zaimplementowana
         """
-        try:
-            from venom_core.execution.kernel_builder import KernelBuilder
-
-            # Spróbuj pobrać z task_dispatcher
-            if hasattr(self.task_dispatcher, "kernel"):
-                kernel = self.task_dispatcher.kernel
-                # KernelBuilder przechowuje token_economist
-                # Ale musimy go pobrać z kernel_builder instancji
-                # Na razie zwróć None - potrzebujemy dodać getter w KernelBuilder
-                return None
-        except Exception:
-            return None
+        raise NotImplementedError(
+            "get_token_economist niezaimplementowane - dodać getter w KernelBuilder"
+        )
 
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """

@@ -17,10 +17,13 @@ logger = get_logger(__name__)
 # Import dla Google Gemini
 try:
     import google.generativeai as genai
+
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
-    logger.warning("google-generativeai nie jest zainstalowany - obsługa Gemini niedostępna")
+    logger.warning(
+        "google-generativeai nie jest zainstalowany - obsługa Gemini niedostępna"
+    )
 
 
 class KernelBuilder:
@@ -203,7 +206,7 @@ class KernelBuilder:
                     "google-generativeai nie jest zainstalowany. "
                     "Zainstaluj: pip install google-generativeai"
                 )
-            
+
             if not self.settings.GOOGLE_API_KEY:
                 raise ValueError(
                     "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
@@ -213,7 +216,7 @@ class KernelBuilder:
 
             # Konfiguruj Google Gemini
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            
+
             # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
             # Używamy OpenAI-compatible wrapper lub bezpośrednie API
             # Dla uproszczenia, logujemy że Gemini jest skonfigurowany
@@ -230,22 +233,24 @@ class KernelBuilder:
             logger.info(
                 "Azure OpenAI: konfiguracja zapasowa (wymaga Azure endpoint i klucza)"
             )
-            
+
             # Sprawdź czy mamy wymagane parametry Azure
             # Jeśli nie - logujemy warning i pomijamy
             azure_endpoint = getattr(self.settings, "AZURE_OPENAI_ENDPOINT", None)
             azure_key = getattr(self.settings, "AZURE_OPENAI_KEY", None)
-            
+
             if not azure_endpoint or not azure_key:
                 logger.warning(
                     "Azure OpenAI: brak AZURE_OPENAI_ENDPOINT lub AZURE_OPENAI_KEY. "
                     "Konfiguracja dostępna, ale nieaktywna. Użyj 'local' lub 'openai'."
                 )
                 return  # Pomijamy rejestrację bez rzucania błędem
-            
+
             # Jeśli mamy parametry, możemy zarejestrować Azure
-            logger.info(f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}")
-            
+            logger.info(
+                f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}"
+            )
+
             # Tutaj byłaby faktyczna konfiguracja Azure OpenAI
             # chat_service = AzureOpenAIChatCompletion(...)
             # kernel.add_service(chat_service)

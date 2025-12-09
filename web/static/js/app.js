@@ -2585,41 +2585,63 @@ class VenomDashboard {
     }
 
     updateQueueStatus(status) {
-        if (this.elements.queueActive) {
-            this.elements.queueActive.textContent = status.active || 0;
+        try {
+            if (this.elements.queueActive) {
+                this.elements.queueActive.textContent = status.active || 0;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queueActive:', err);
         }
-        if (this.elements.queuePending) {
-            this.elements.queuePending.textContent = status.pending || 0;
+        
+        try {
+            if (this.elements.queuePending) {
+                this.elements.queuePending.textContent = status.pending || 0;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queuePending:', err);
         }
-        if (this.elements.queueLimit && status.limit) {
-            this.elements.queueLimit.textContent = status.limit;
+        
+        try {
+            if (this.elements.queueLimit && status.limit) {
+                this.elements.queueLimit.textContent = status.limit;
+            }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji queueLimit:', err);
         }
 
         // Update button state
-        if (this.elements.pauseResumeBtn) {
-            if (status.paused) {
-                this.elements.pauseResumeBtn.classList.remove('pause');
-                this.elements.pauseResumeBtn.classList.add('resume');
-                this.elements.pauseResumeBtn.dataset.state = 'paused';
-                this.elements.pauseResumeBtn.querySelector('.btn-icon').textContent = '▶️';
-                this.elements.pauseResumeBtn.querySelector('.btn-text').textContent = 'RESUME';
-                
-                // Visual feedback - yellow mode
-                if (this.elements.governancePanel) {
-                    this.elements.governancePanel.classList.add('paused');
-                }
-            } else {
-                this.elements.pauseResumeBtn.classList.remove('resume');
-                this.elements.pauseResumeBtn.classList.add('pause');
-                this.elements.pauseResumeBtn.dataset.state = 'running';
-                this.elements.pauseResumeBtn.querySelector('.btn-icon').textContent = '⏸️';
-                this.elements.pauseResumeBtn.querySelector('.btn-text').textContent = 'PAUSE';
-                
-                // Remove yellow mode
-                if (this.elements.governancePanel) {
-                    this.elements.governancePanel.classList.remove('paused');
+        try {
+            if (this.elements.pauseResumeBtn) {
+                if (status.paused) {
+                    this.elements.pauseResumeBtn.classList.remove('pause');
+                    this.elements.pauseResumeBtn.classList.add('resume');
+                    this.elements.pauseResumeBtn.dataset.state = 'paused';
+                    const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
+                    if (btnIcon) btnIcon.textContent = '▶️';
+                    const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
+                    if (btnText) btnText.textContent = 'RESUME';
+                    
+                    // Visual feedback - yellow mode
+                    if (this.elements.governancePanel) {
+                        this.elements.governancePanel.classList.add('paused');
+                    }
+                } else {
+                    this.elements.pauseResumeBtn.classList.remove('resume');
+                    this.elements.pauseResumeBtn.classList.add('pause');
+                    this.elements.pauseResumeBtn.dataset.state = 'running';
+                    const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
+                    if (btnIcon) btnIcon.textContent = '⏸️';
+                    const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
+                    if (btnText) btnText.textContent = 'PAUSE';
+                    
+                    // Remove yellow mode
+                    if (this.elements.governancePanel) {
+                        this.elements.governancePanel.classList.remove('paused');
+                    }
                 }
             }
+        } catch (err) {
+            console.error('Błąd przy aktualizacji stanu przycisku kolejki:', err);
         }
     }
 
@@ -2702,9 +2724,11 @@ class VenomDashboard {
             const response = await fetch(`/api/v1/queue/task/${taskId}/abort`, { method: 'POST' });
             
             if (response.ok) {
-                const result = await response.json();
+                await response.json();
                 this.showNotification('Zadanie przerwane', 'warning');
                 // Update task in list
+                // Uwaga: `element.dataset.taskId` w JS mapuje się na atrybut HTML `data-task-id`.
+                // Selector CSS `[data-task-id="${taskId}"]` jest poprawny i zgodny ze standardem.
                 const taskCard = document.querySelector(`[data-task-id="${taskId}"]`);
                 if (taskCard) {
                     taskCard.remove();
@@ -2715,7 +2739,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error aborting task:', error);
-            this.showNotification(`Błąd: ${error.message}`, 'error');
+            this.showNotification(`Błąd: ${error.detail || error.message || 'Failed to abort task'}`, 'error');
         }
     }
 

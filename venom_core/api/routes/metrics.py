@@ -75,7 +75,7 @@ async def get_token_metrics():
             model_name=cost_model,
         )
 
-        # TODO: W przyszłości dodać tracking per-model w TokenEconomist
+        # TODO: W przyszłości dodać śledzenie per-model w TokenEconomist
         # Na razie zwracamy szacunkowe dane
         return {
             "session_total_tokens": total_tokens,
@@ -87,7 +87,7 @@ async def get_token_metrics():
                     "cost_usd": estimated_cost.get("total_cost_usd", 0.0),
                 }
             },
-            "note": "Koszty są szacunkowe. Tracking per-model zostanie dodany w przyszłej wersji.",
+            "note": "Koszty są szacunkowe. Śledzenie per-model zostanie dodane w przyszłej wersji.",
         }
     except Exception as e:
         logger.exception("Błąd podczas pobierania metryk tokenów")

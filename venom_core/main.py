@@ -529,7 +529,10 @@ def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)
-    metrics_routes.set_dependencies(token_economist=None)  # Token economist będzie dostępny later
+    # TokenEconomist nie jest jeszcze zainicjalizowany — przekazujemy None.
+    # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
+    # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie dostępny (np. po dodaniu obsługi w lifespan).
+    metrics_routes.set_dependencies(token_economist=None)
     memory_routes.set_dependencies(vector_store)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)

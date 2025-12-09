@@ -1682,7 +1682,7 @@ Status roadmapy:
 
             # Pobierz informacje o umiejętnościach z kernela
             kernel = self.task_dispatcher.kernel
-            plugins = kernel.plugins if hasattr(kernel, "plugins") else {}
+            plugins = getattr(kernel, "plugins", {})
 
             # Buduj odpowiedź pomocy
             help_text = """# 🕷️ Venom - System Pomocy
@@ -1729,8 +1729,8 @@ Jestem Venom - wieloagentowy system AI wspierający rozwój oprogramowania. Oto 
             if plugins:
                 skill_count = 0
                 for plugin_name in plugins:
-                    # Pomiń wewnętrzne pluginy
-                    if not plugin_name.startswith("_"):
+                    # Filtruj wewnętrzne pluginy
+                    if self._is_public_plugin(plugin_name):
                         skill_count += 1
                         help_text += f"- **{plugin_name}**\n"
 
@@ -1797,4 +1797,21 @@ Wygeneruj dokumentację projektu
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania pomocy: {e}")
-            return f"Wystąpił błąd podczas generowania pomocy: {str(e)}\n\nSkontaktuj się z administratorem systemu."
+            return "Wystąpił błąd podczas generowania pomocy. Spróbuj ponownie lub skontaktuj się z administratorem."
+
+    def _is_public_plugin(self, plugin_name: str) -> bool:
+        """
+        Sprawdza czy plugin jest publiczny (nie wewnętrzny).
+
+        Args:
+            plugin_name: Nazwa pluginu
+
+        Returns:
+            True jeśli plugin jest publiczny
+        """
+        # Filtruj wewnętrzne pluginy (zaczynające się od _ lub zawierające 'internal')
+        return not (
+            plugin_name.startswith("_")
+            or "internal" in plugin_name.lower()
+            or plugin_name.startswith("__")
+        )

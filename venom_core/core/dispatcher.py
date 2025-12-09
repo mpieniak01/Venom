@@ -33,6 +33,20 @@ logger = get_logger(__name__)
 class TaskDispatcher:
     """Dyspozytornia zadań - kieruje zadania do odpowiednich agentów."""
 
+    # Wzorzec regex dla ścieżek plików - skompilowany raz dla wydajności
+    FILE_PATH_PATTERN = re.compile(
+        r"[\w/\-]+(?:\.[\w\-]+)*\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)",
+        re.IGNORECASE,
+    )
+
+    # Słowa kluczowe do wykrywania akcji
+    ACTION_KEYWORDS = {
+        "edit": ["edytuj", "popraw", "zmień", "edit", "fix", "modify"],
+        "create": ["stwórz", "utwórz", "create"],
+        "delete": ["usuń", "delete", "remove"],
+        "read": ["czytaj", "pokaż", "read", "show"],
+    }
+
     def __init__(
         self,
         kernel: Kernel,
@@ -121,33 +135,19 @@ class TaskDispatcher:
         logger.debug(f"Parsowanie intencji z treści: {content[:100]}...")
 
         # Krok 1: Regex - próba znalezienia ścieżek plików
-        # Wzorce dla ścieżek:
-        # - relatywne: src/main.py, venom_core/core/dispatcher.py
-        # - z rozszerzeniami: .py, .js, .txt, .md, .json, .yaml, .yml
-        file_path_pattern = (
-            r"[\w/\-\.]+\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)"
-        )
-
-        # Wyciągnij pełne ścieżki
+        # Używamy skompilowanego wzorca z klasy
         targets = []
-        for match in re.finditer(file_path_pattern, content, re.IGNORECASE):
+        for match in self.FILE_PATH_PATTERN.finditer(content):
             targets.append(match.group(0))
 
         # Próba wykrycia akcji z prostych słów kluczowych
         action = "unknown"
         content_lower = content.lower()
 
-        if any(
-            word in content_lower
-            for word in ["edytuj", "popraw", "zmień", "edit", "fix", "modify"]
-        ):
-            action = "edit"
-        elif any(word in content_lower for word in ["stwórz", "utwórz", "create"]):
-            action = "create"
-        elif any(word in content_lower for word in ["usuń", "delete", "remove"]):
-            action = "delete"
-        elif any(word in content_lower for word in ["czytaj", "pokaż", "read", "show"]):
-            action = "read"
+        for action_name, keywords in self.ACTION_KEYWORDS.items():
+            if any(word in content_lower for word in keywords):
+                action = action_name
+                break
 
         # Krok 2: LLM Fallback - jeśli nie znaleziono ścieżek lub akcji, użyj LLM
         if not targets or action == "unknown":
@@ -215,7 +215,7 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             response_text = str(response).strip()
             # Usuń markdown code blocks jeśli są
             response_text = re.sub(r"```json\s*", "", response_text)
-            response_text = re.sub(r"```\s*$", "", response_text)
+            response_text = re.sub(r"```\s*", "", response_text)
 
             parsed = json.loads(response_text)
             return Intent(

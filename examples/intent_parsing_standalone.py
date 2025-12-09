@@ -1,10 +1,24 @@
 """
 Przykład użycia: Intent Parsing - Standalone Demo
 
-Демонstracja parsowania intencji bez pełnych zależności.
+Demonstracja parsowania intencji bez pełnych zależności.
 """
 
 import re
+
+# Wzorzec i słowa kluczowe zdefiniowane lokalnie dla standalone demo
+# W produkcji używane są te z venom_core.core.dispatcher.TaskDispatcher
+FILE_PATH_PATTERN = re.compile(
+    r"[\w/\-]+(?:\.[\w\-]+)*\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)",
+    re.IGNORECASE,
+)
+
+ACTION_KEYWORDS = {
+    "edit": ["edytuj", "popraw", "zmień", "edit", "fix", "modify"],
+    "create": ["stwórz", "utwórz", "create"],
+    "delete": ["usuń", "delete", "remove"],
+    "read": ["czytaj", "pokaż", "read", "show"],
+}
 
 
 def parse_intent_simple(content: str) -> dict:
@@ -17,29 +31,19 @@ def parse_intent_simple(content: str) -> dict:
     Returns:
         Dict z action i targets
     """
-    # Wzorzec dla ścieżek plików
-    file_path_pattern = r"[\w/\-\.]+\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)"
-
     # Wyciągnij ścieżki
     targets = []
-    for match in re.finditer(file_path_pattern, content, re.IGNORECASE):
+    for match in FILE_PATH_PATTERN.finditer(content):
         targets.append(match.group(0))
 
     # Wykryj akcję
     action = "unknown"
     content_lower = content.lower()
 
-    if any(
-        word in content_lower
-        for word in ["edytuj", "popraw", "zmień", "edit", "fix", "modify"]
-    ):
-        action = "edit"
-    elif any(word in content_lower for word in ["stwórz", "utwórz", "create"]):
-        action = "create"
-    elif any(word in content_lower for word in ["usuń", "delete", "remove"]):
-        action = "delete"
-    elif any(word in content_lower for word in ["czytaj", "pokaż", "read", "show"]):
-        action = "read"
+    for action_name, keywords in ACTION_KEYWORDS.items():
+        if any(word in content_lower for word in keywords):
+            action = action_name
+            break
 
     return {"action": action, "targets": targets}
 
@@ -71,7 +75,7 @@ def demo_intent_parsing():
         if intent["targets"]:
             print(f"   → Cele:  {', '.join(intent['targets'])}")
         else:
-            print(f"   → Cele:  (brak wykrytych plików)")
+            print("   → Cele:  (brak wykrytych plików)")
         print()
 
     print("=" * 70)

@@ -489,6 +489,23 @@ class VenomDashboard {
             }
         });
 
+        // Suggestion chips click handlers - use delegation on chat messages container
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.addEventListener('click', (e) => {
+                const chip = e.target.closest('.suggestion-chip');
+                if (chip) {
+                    const suggestion = chip.getAttribute('data-suggestion');
+                    if (suggestion) {
+                        this.elements.taskInput.value = suggestion;
+                        this.elements.taskInput.focus();
+                        // Optionally auto-submit
+                        // this.sendTask();
+                    }
+                }
+            });
+        }
+
         // Repository quick actions
         const syncBtn = document.getElementById('syncRepoBtn');
         if (syncBtn) {
@@ -1877,7 +1894,8 @@ class VenomDashboard {
                 btn.textContent = action.label || action.id;
                 btn.addEventListener('click', () => {
                     console.log('Action clicked:', action.intent);
-                    // TODO: Trigger intent
+                    // Send action intent as a new task
+                    this.submitIntent(action.intent);
                 });
                 actionsDiv.appendChild(btn);
             });
@@ -1887,6 +1905,36 @@ class VenomDashboard {
 
         container.appendChild(cardContent);
         this.elements.widgetsGrid.appendChild(container);
+    }
+
+    async submitIntent(intent) {
+        /**
+         * Sends an intent (command) to the backend as a new task.
+         * 
+         * Args:
+         *     intent: Content of the command to execute (e.g., "Show more details")
+         */
+        try {
+            this.showNotification('Wysyłam polecenie...', 'info');
+            
+            // Use standard task API to submit intent
+            const response = await fetch('/api/v1/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: intent }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            this.showNotification('Polecenie wysłane', 'success');
+        } catch (error) {
+            console.error('Error submitting intent:', error);
+            this.showNotification('Błąd wysyłania polecenia', 'error');
+        }
     }
 
     renderCustomHTMLWidget(widget) {

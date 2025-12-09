@@ -175,3 +175,19 @@ async def test_intent_manager_creates_kernel_if_none_provided(mock_builder_class
     # Sprawdź czy KernelBuilder został użyty
     assert mock_builder_class.called
     assert manager.kernel == mock_kernel
+
+
+@pytest.mark.asyncio
+async def test_intent_manager_classify_help_request(mock_kernel, mock_chat_service):
+    """Test klasyfikacji intencji HELP_REQUEST."""
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(return_value="HELP_REQUEST")
+    mock_chat_service.get_chat_message_content.return_value = mock_response
+
+    mock_kernel.get_service.return_value = mock_chat_service
+
+    manager = IntentManager(kernel=mock_kernel)
+    intent = await manager.classify_intent("Co potrafisz?")
+
+    assert intent == "HELP_REQUEST"
+    assert mock_chat_service.get_chat_message_content.called

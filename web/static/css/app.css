@@ -232,6 +232,58 @@ body {
     color: var(--text-secondary);
 }
 
+/* Suggestion Grid */
+.suggestion-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 0 1rem;
+}
+
+.suggestion-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.25rem 1rem;
+    background: linear-gradient(135deg, var(--bg-medium), var(--bg-light));
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.suggestion-chip:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(139, 92, 246, 0.3);
+    background: linear-gradient(135deg, var(--bg-light), var(--primary-color));
+}
+
+.suggestion-chip:active {
+    transform: translateY(-2px);
+}
+
+.chip-icon {
+    font-size: 2rem;
+    margin-bottom: 0.25rem;
+}
+
+.chip-text {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.chip-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.2;
+}
+
 .message {
     margin-bottom: 1rem;
     padding: 1rem;

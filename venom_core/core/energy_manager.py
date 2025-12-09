@@ -65,6 +65,7 @@ class EnergyManager:
         self.last_activity_time = time.time()
         self._monitor_task: Optional[asyncio.Task] = None
         self._alert_callbacks: List[Callable] = []
+        self.sensors_active = True  # Flaga aktywności sensorów sprzętowych
 
         logger.info(
             f"EnergyManager zainicjalizowany (CPU threshold={self.cpu_threshold}, "
@@ -89,9 +90,11 @@ class EnergyManager:
                 # Średnia temperatura z rdzeni
                 core_temps = [temp.current for temp in temps["coretemp"]]
                 temperature = sum(core_temps) / len(core_temps) if core_temps else None
-        except (AttributeError, Exception):
+        except (AttributeError, OSError, KeyError) as e:
             # sensors_temperatures może nie być dostępne na wszystkich platformach
-            pass
+            # lub sensor może być niedostępny (OSError, KeyError)
+            logger.warning(f"Hardware sensor failure: {e}")
+            self.sensors_active = False
 
         return SystemMetrics(
             cpu_percent=cpu_percent,
@@ -151,7 +154,9 @@ class EnergyManager:
             return True
 
         except Exception as e:
-            logger.warning(f"Nie udało się ustawić priorytetu procesu: {e}")
+            logger.warning(
+                f"Nie udało się ustawić priorytetu procesu: {e}", exc_info=True
+            )
             return False
 
     def register_alert_callback(self, callback: Callable) -> None:
@@ -205,7 +210,7 @@ class EnergyManager:
                             else:
                                 callback()
                         except Exception as e:
-                            logger.error(f"Błąd w alert callback: {e}")
+                            logger.error(f"Błąd w alert callback: {e}", exc_info=True)
 
                 # Czekaj przed następnym sprawdzeniem
                 await asyncio.sleep(self.check_interval)
@@ -214,7 +219,7 @@ class EnergyManager:
                 logger.debug("Monitoring loop anulowany")
                 break
             except Exception as e:
-                logger.error(f"Błąd w monitoring loop: {e}")
+                logger.error(f"Błąd w monitoring loop: {e}", exc_info=True)
                 await asyncio.sleep(self.check_interval)
 
     def get_idle_time(self) -> float:

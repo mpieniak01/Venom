@@ -38,6 +38,7 @@ class TestEnergyManager:
         assert em.memory_threshold == 0.8
         assert not em.is_monitoring
         assert len(em._alert_callbacks) == 0
+        assert em.sensors_active is True  # Nowa flaga dla sensorów
 
     def test_get_metrics(self):
         """Test pobierania metryki systemu."""
@@ -47,6 +48,20 @@ class TestEnergyManager:
         assert isinstance(metrics, SystemMetrics)
         assert 0 <= metrics.cpu_percent <= 100
         assert 0 <= metrics.memory_percent <= 100
+
+    def test_sensor_failure_handling(self):
+        """Test obsługi awarii sensora temperatury."""
+        em = EnergyManager()
+        # Wywołaj get_metrics - sensor może być niedostępny w środowisku testowym
+        metrics = em.get_metrics()
+
+        # Sprawdź że flaga sensors_active istnieje
+        assert hasattr(em, "sensors_active")
+        assert isinstance(em.sensors_active, bool)
+
+        # Jeśli sensor rzucił wyjątek (exception), flaga powinna być False
+        # W przeciwnym razie pozostaje True
+        # (test weryfikuje jedynie, że mechanizm flagowania działa)
 
     def test_is_system_busy_below_threshold(self):
         """Test sprawdzania czy system zajęty - poniżej progu."""

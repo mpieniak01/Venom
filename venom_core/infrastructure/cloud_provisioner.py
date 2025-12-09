@@ -1,11 +1,15 @@
-"""Moduł: cloud_provisioner - zarządzanie zdalnym deploymentem przez SSH."""
+"""Moduł: cloud_provisioner - zarządzanie zdalnym deploymentem przez SSH i lokalną widocznością w sieci."""
 
 import asyncio
 import re
+import socket
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 import asyncssh
+import httpx
+from zeroconf import ServiceInfo, Zeroconf
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -22,12 +26,14 @@ class CloudProvisionerError(Exception):
 class CloudProvisioner:
     """
     Zarządca wdrożeń w chmurze - obsługa SSH, deployment i konfiguracja serwerów.
+    Dodatkowo: broadcasting lokalnej widoczności w sieci LAN przez mDNS.
 
     BEZPIECZEŃSTWO:
     - Nigdy nie loguj kluczy prywatnych SSH
     - Używaj tylko ścieżek do kluczy, nie samych kluczy
     - Timeout dla wszystkich operacji SSH
     - Walidacja komend przed wykonaniem
+    - Żadnych połączeń wychodzących do publicznych API DNS (Intranet Mode)
     """
 
     def __init__(
@@ -35,6 +41,8 @@ class CloudProvisioner:
         ssh_key_path: Optional[str] = None,
         default_user: str = "root",
         timeout: int = 300,
+        service_port: int = 8000,
+        agent_id: Optional[str] = None,
     ):
         """
         Inicjalizacja CloudProvisioner.
@@ -43,10 +51,22 @@ class CloudProvisioner:
             ssh_key_path: Ścieżka do klucza SSH (domyślnie z SETTINGS)
             default_user: Domyślny użytkownik SSH
             timeout: Timeout dla operacji SSH w sekundach
+            service_port: Port usługi dla mDNS broadcasting (domyślnie 8000)
+            agent_id: Unikalny identyfikator agenta (UUID), generowany automatycznie jeśli nie podano
         """
         self.ssh_key_path = ssh_key_path or SETTINGS.DEPLOYMENT_SSH_KEY_PATH
         self.default_user = default_user or SETTINGS.DEPLOYMENT_DEFAULT_USER
         self.timeout = timeout or SETTINGS.DEPLOYMENT_TIMEOUT
+        self.service_port = service_port
+
+        # mDNS / Zeroconf
+        self.zeroconf: Optional[Zeroconf] = None
+        self.service_info: Optional[ServiceInfo] = None
+
+        # Hive Registration
+        self.agent_id = agent_id or str(uuid.uuid4())
+        self.hive_url = SETTINGS.HIVE_URL
+        self.hive_registered = False
 
         if self.ssh_key_path:
             key_path = Path(self.ssh_key_path)
@@ -58,8 +78,13 @@ class CloudProvisioner:
 
         logger.info(
             f"CloudProvisioner zainicjalizowany (user={self.default_user}, "
-            f"timeout={self.timeout}s)"
+            f"timeout={self.timeout}s, agent_id={self.agent_id})"
         )
+        logger.info("Network Mode: INTRANET (mDNS active)")
+
+        # Automatyczna rejestracja w Ulu jeśli HIVE_URL jest skonfigurowany
+        if self.hive_url:
+            logger.info(f"HIVE_URL skonfigurowany: {self.hive_url}")
 
     async def _execute_ssh_command(
         self,
@@ -319,26 +344,249 @@ class CloudProvisioner:
                 "message": str(e),
             }
 
-    async def configure_domain(
-        self, domain: str, ip: str, api_token: Optional[str] = None
-    ) -> dict[str, str]:
+    def start_broadcasting(self, service_name: Optional[str] = None) -> dict[str, str]:
         """
-        Konfiguruje DNS (placeholder - wymaga integracji z Cloudflare API).
+        Rozpoczyna broadcasting usługi w sieci lokalnej przez mDNS (Zeroconf).
 
         Args:
-            domain: Nazwa domeny
-            ip: Adres IP serwera
-            api_token: Token API do DNS providera
+            service_name: Nazwa usługi (domyślnie: venom-{hostname})
 
         Returns:
-            Dict ze statusem konfiguracji DNS
+            Dict ze statusem konfiguracji mDNS
         """
-        logger.warning(
-            "configure_domain jest funkcją placeholder - wymaga integracji z DNS API"
-        )
-        return {
-            "status": "not_implemented",
-            "message": f"DNS dla {domain} -> {ip} wymaga ręcznej konfiguracji",
-            "domain": domain,
-            "ip": ip,
+        try:
+            hostname = socket.gethostname()
+            service_name = service_name or f"venom-{hostname}"
+            service_type = "_venom._tcp.local."
+
+            # Pobierz lokalny adres IP (unikaj localhost/127.0.0.1)
+            # Próbujemy się połączyć z zewnętrznym adresem, aby wykryć lokalny IP
+            local_ip = None
+            try:
+                # Metoda 1: Połącz się z zewnętrznym adresem (nie wysyła danych)
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+            except Exception:
+                # Metoda 2: Fallback do gethostbyname
+                try:
+                    local_ip = socket.gethostbyname(hostname)
+                    # Unikaj localhost
+                    if local_ip.startswith("127."):
+                        local_ip = None
+                except Exception as ex:
+                    logger.debug(
+                        f"Nie udało się pobrać IP przez gethostbyname: {ex}",
+                        exc_info=True,
+                    )
+
+            if not local_ip:
+                raise CloudProvisionerError(
+                    "Nie można wykryć lokalnego adresu IP. "
+                    "Sprawdź konfigurację sieci."
+                )
+
+            # Utwórz ServiceInfo
+            self.service_info = ServiceInfo(
+                service_type,
+                f"{service_name}.{service_type}",
+                port=self.service_port,
+                addresses=[socket.inet_aton(local_ip)],
+                properties={
+                    "version": "1.0",
+                    "hostname": hostname,
+                },
+                server=f"{service_name}.local.",
+            )
+
+            # Uruchom Zeroconf
+            self.zeroconf = Zeroconf()
+            self.zeroconf.register_service(self.service_info)
+
+            logger.info(
+                f"mDNS broadcasting uruchomiony: {service_name}.local na {local_ip}:{self.service_port}"
+            )
+
+            return {
+                "status": "active",
+                "service_name": f"{service_name}.local",
+                "ip": local_ip,
+                "port": self.service_port,
+                "service_url": self.get_service_url(service_name),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Błąd podczas uruchamiania mDNS broadcasting: {e}", exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def stop_broadcasting(self) -> dict[str, str]:
+        """
+        Zatrzymuje broadcasting usługi mDNS.
+
+        Returns:
+            Dict ze statusem
+        """
+        try:
+            if self.zeroconf and self.service_info:
+                self.zeroconf.unregister_service(self.service_info)
+                self.zeroconf.close()
+                self.zeroconf = None
+                self.service_info = None
+                logger.info("mDNS broadcasting zatrzymany")
+                return {"status": "stopped"}
+            else:
+                logger.warning("mDNS broadcasting nie był uruchomiony")
+                return {"status": "not_running"}
+
+        except Exception as e:
+            logger.error(
+                f"Błąd podczas zatrzymywania mDNS broadcasting: {e}", exc_info=True
+            )
+            return {
+                "status": "error",
+                "message": str(e),
+            }
+
+    def get_service_url(self, service_name: Optional[str] = None) -> str:
+        """
+        Zwraca URL usługi dla lokalnej sieci.
+
+        Args:
+            service_name: Nazwa usługi (domyślnie: venom)
+
+        Returns:
+            URL usługi w formacie http://venom.local:8000
+        """
+        service_name = service_name or "venom"
+        # Usuń .local jeśli już jest
+        local_suffix = ".local"
+        if service_name.endswith(local_suffix):
+            service_name = service_name[: -len(local_suffix)]
+        return f"http://{service_name}.local:{self.service_port}"
+
+    async def register_in_hive(
+        self, hive_url: Optional[str] = None, metadata: Optional[dict] = None
+    ) -> dict[str, Any]:
+        """
+        Rejestruje agenta w centralnym Ulu (Hive Server).
+
+        Agent inicjuje połączenie wychodzące do Ula, dzięki czemu działa za NAT/Firewallem.
+        Ul otrzymuje metadane agenta i może przydzielić mu zadania.
+
+        Args:
+            hive_url: URL Ula (domyślnie z SETTINGS.HIVE_URL), np. https://hive.example.com:8080
+            metadata: Dodatkowe metadane agenta (opcjonalne)
+
+        Returns:
+            Dict ze statusem rejestracji i informacjami zwróconymi przez Ul
+        """
+        hive_url = hive_url or self.hive_url
+
+        if not hive_url:
+            logger.warning(
+                "HIVE_URL nie jest skonfigurowany. Rejestracja w Ulu pominięta."
+            )
+            return {
+                "status": "skipped",
+                "message": "HIVE_URL not configured",
+            }
+
+        # Przygotuj payload z metadanymi agenta
+        hostname = socket.gethostname()
+        payload = {
+            "agent_id": self.agent_id,
+            "hostname": hostname,
+            "service_port": self.service_port,
+            "status": "online",
+            "capabilities": ["ssh_deployment", "mdns_discovery"],
+            "version": "1.0",
         }
+
+        # Dodaj opcjonalne metadane użytkownika, ale kluczowe pola mają priorytet
+        if metadata:
+            payload = {**metadata, **payload}
+
+        # Przygotuj nagłówki autoryzacji
+        headers = {"Content-Type": "application/json"}
+        if SETTINGS.HIVE_REGISTRATION_TOKEN:
+            token = SETTINGS.HIVE_REGISTRATION_TOKEN.get_secret_value()
+            headers["Authorization"] = f"Bearer {token}"
+
+        try:
+            # Wykonaj POST do Ula z timeoutem
+            registration_endpoint = f"{hive_url.rstrip('/')}/api/agents/register"
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                logger.info(
+                    f"Rejestracja w Ulu: {registration_endpoint} (agent_id={self.agent_id})"
+                )
+
+                response = await client.post(
+                    registration_endpoint, json=payload, headers=headers
+                )
+
+                # Sprawdź status odpowiedzi
+                if response.status_code in (200, 201):
+                    self.hive_registered = True
+                    try:
+                        response_data = response.json()
+                    except Exception as e:
+                        logger.error(
+                            f"Błąd parsowania JSON odpowiedzi z Ula: {e}",
+                            exc_info=True,
+                        )
+                        return {
+                            "status": "error",
+                            "message": "Invalid JSON response from Hive",
+                        }
+
+                    logger.info(
+                        f"✓ Agent zarejestrowany w Ulu: {hive_url} (agent_id={self.agent_id})"
+                    )
+
+                    return {
+                        "status": "registered",
+                        "agent_id": self.agent_id,
+                        "hive_url": hive_url,
+                        "hive_response": response_data,
+                    }
+                else:
+                    error_msg = (
+                        f"Ul zwrócił status {response.status_code}: {response.text}"
+                    )
+                    logger.error(f"Błąd rejestracji w Ulu: {error_msg}")
+
+                    return {
+                        "status": "error",
+                        "message": error_msg,
+                        "status_code": response.status_code,
+                    }
+
+        except httpx.TimeoutException:
+            error_msg = f"Timeout podczas rejestracji w Ulu: {hive_url}"
+            logger.error(error_msg)
+            return {
+                "status": "timeout",
+                "message": error_msg,
+            }
+
+        except httpx.RequestError as e:
+            error_msg = f"Błąd połączenia z Ulem: {e}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                "status": "connection_error",
+                "message": error_msg,
+            }
+
+        except Exception as e:
+            error_msg = f"Nieoczekiwany błąd podczas rejestracji w Ulu: {e}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "message": error_msg,
+            }

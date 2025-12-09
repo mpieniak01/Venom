@@ -16,11 +16,22 @@ class Settings(BaseSettings):
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"
 
     # Konfiguracja LLM (Local-First Brain)
-    LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure"
+    LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure", "google"
     LLM_LOCAL_ENDPOINT: str = "http://localhost:11434/v1"  # Ollama/vLLM
     LLM_MODEL_NAME: str = "phi3:latest"
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
+    GOOGLE_API_KEY: str = ""  # Opcjonalne, wymagane dla Google Gemini
+    
+    # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)
+    AI_MODE: str = "LOCAL"  # Opcje: "LOCAL", "HYBRID", "CLOUD"
+    # LOCAL - tylko lokalne modele, chmura zablokowana
+    # HYBRID - lokalne do prostych zadań, chmura do trudnych
+    # CLOUD - wszystko w chmurze
+    HYBRID_CLOUD_PROVIDER: str = "google"  # Opcje: "google", "openai" (używane w trybie HYBRID/CLOUD)
+    HYBRID_LOCAL_MODEL: str = "llama3"  # Model lokalny dla prostych zadań
+    HYBRID_CLOUD_MODEL: str = "gemini-1.5-pro"  # Model chmurowy dla trudnych zadań (gemini-1.5-pro, gpt-4o)
+    SENSITIVE_DATA_LOCAL_ONLY: bool = True  # ZAWSZE kieruj wrażliwe dane do lokalnego modelu
 
     # Konfiguracja Model Router (THE_STRATEGIST)
     ENABLE_MODEL_ROUTING: bool = True  # Włącz inteligentny routing modeli

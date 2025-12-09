@@ -405,7 +405,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
     async def _llm_response(self, request: str) -> str:
         """
-        Deleguje żądanie do LLM.
+        Deleguje żądanie do LLM przez hybrydowy router.
 
         Args:
             request: Żądanie użytkownika
@@ -413,8 +413,15 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         Returns:
             Odpowiedź LLM
         """
-        # Dodaj kontekst o dostępnych komendach
-        context = """
+        try:
+            # Import hybrydowego routera
+            from venom_core.execution.model_router import HybridModelRouter, TaskType
+            
+            # Inicjalizuj router
+            hybrid_router = HybridModelRouter()
+            
+            # Dodaj kontekst o dostępnych komendach
+            context = """
 Dostępne komendy:
 - "Rozpocznij nagrywanie" / "REC" - rozpoczyna nagrywanie demonstracji
 - "Zatrzymaj nagrywanie" / "STOP" - kończy nagrywanie
@@ -423,21 +430,41 @@ Dostępne komendy:
 
 Obecnie:
 """
-        if self.recorder.is_recording:
-            context += f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
-        else:
-            context += "- Nagrywanie nieaktywne\n"
+            if self.recorder.is_recording:
+                context += f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
+            else:
+                context += "- Nagrywanie nieaktywne\n"
 
-        sessions = self.recorder.list_sessions()
-        context += f"- Dostępne sesje: {', '.join(sessions)}\n"
-
-        # Wywołaj LLM przez kernel (placeholder - obecnie nie używamy full_prompt)
-        try:
-            # Prosta odpowiedź bez LLM (placeholder)
-            return (
-                f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
-                f"{context}"
+            sessions = self.recorder.list_sessions()
+            context += f"- Dostępne sesje: {', '.join(sessions)}\n"
+            
+            # Przygotuj pełny prompt
+            full_prompt = f"{context}\n\nPytanie użytkownika: {request}"
+            
+            # Wywołaj router (określamy typ zadania jako CHAT)
+            response, routing_info = await hybrid_router.process(
+                prompt=full_prompt,
+                task_type=TaskType.CHAT
             )
+            
+            # Loguj użyty model
+            logger.info(
+                f"[ApprenticeAgent] Użyto modelu: {routing_info['provider']} "
+                f"({routing_info['model_name']})"
+            )
+            
+            # Jeśli mamy odpowiedź z LLM, zwróć ją
+            # W przeciwnym razie (placeholder) zwróć domyślną odpowiedź
+            if response:
+                return response
+            else:
+                # Fallback na prosty response (do czasu pełnej integracji)
+                return (
+                    f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
+                    f"{context}\n\n"
+                    f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
+                )
+                
         except Exception as e:
-            logger.error(f"Błąd LLM: {e}")
+            logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
             return f"❌ Błąd podczas przetwarzania żądania: {e}"

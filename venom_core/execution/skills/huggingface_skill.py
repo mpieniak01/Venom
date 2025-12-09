@@ -14,6 +14,9 @@ logger = get_logger(__name__)
 MAX_MODELS_RESULTS = 5
 MAX_DATASETS_RESULTS = 5
 MAX_MODEL_CARD_LENGTH = 8000
+# Mnożnik dla filtrowania modeli ONNX/GGUF
+# Pobieramy więcej wyników niż potrzeba, aby móc wyfiltrować i preferować ONNX/GGUF
+FILTER_MULTIPLIER = 3
 
 
 class HuggingFaceSkill:
@@ -65,7 +68,7 @@ class HuggingFaceSkill:
         try:
             # Parametry wyszukiwania
             search_params = {
-                "limit": MAX_MODELS_RESULTS * 3,  # Pobierz więcej, żeby móc filtrować
+                "limit": MAX_MODELS_RESULTS * FILTER_MULTIPLIER,
                 "sort": sort,
             }
 
@@ -192,6 +195,8 @@ class HuggingFaceSkill:
                 # Jeśli card_data jest puste, spróbuj pobrać bezpośrednio
                 if not card_content:
                     # Pobierz plik README.md
+                    from pathlib import Path
+
                     from huggingface_hub import hf_hub_download
 
                     try:
@@ -200,8 +205,8 @@ class HuggingFaceSkill:
                             filename="README.md",
                             repo_type="model",
                         )
-                        with open(readme_path, "r", encoding="utf-8") as f:
-                            card_content = f.read()
+                        # Użyj pathlib do bezpiecznego czytania pliku
+                        card_content = Path(readme_path).read_text(encoding="utf-8")
                     except Exception:
                         card_content = "Brak dostępnego Model Card"
                 else:

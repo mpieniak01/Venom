@@ -193,9 +193,13 @@ class GitHubSkill:
         logger.info(f"GitHubSkill: get_trending dla topic='{topic}'")
 
         try:
-            # Wyszukaj repozytoria utworzone w ostatnim roku, posortowane według gwiazdek
-            # To daje nam "trending" - nowe, popularne projekty
-            search_query = f"{topic} created:>2023-01-01"
+            # Wyszukaj repozytoria utworzone w ostatnim roku
+            # Dynamicznie oblicz datę sprzed roku
+            from datetime import datetime, timedelta
+
+            one_year_ago = datetime.now() - timedelta(days=365)
+            date_filter = one_year_ago.strftime("%Y-%m-%d")
+            search_query = f"{topic} created:>{date_filter}"
 
             repos = self.github.search_repositories(
                 query=search_query, sort="stars", order="desc"

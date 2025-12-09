@@ -256,7 +256,11 @@ class FileWatcher:
             file_path: Ścieżka do zmienionego pliku
         """
         # Loguj z prefiksem [WATCHER] dla observability (zgodnie z TD-042)
-        relative_path = Path(file_path).relative_to(self.workspace_root)
+        try:
+            relative_path = Path(file_path).relative_to(self.workspace_root)
+        except ValueError:
+            # Jeśli file_path nie jest podścieżką workspace_root
+            relative_path = Path(file_path)
         logger.info(f"[WATCHER] File modified: {relative_path}")
 
         # Broadcast zdarzenia CODE_CHANGED

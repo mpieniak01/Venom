@@ -1810,8 +1810,4 @@ Wygeneruj dokumentację projektu
             True jeśli plugin jest publiczny
         """
         # Filtruj wewnętrzne pluginy (zaczynające się od _ lub zawierające 'internal')
-        return not (
-            plugin_name.startswith("_")
-            or "internal" in plugin_name.lower()
-            or plugin_name.startswith("__")
-        )
+        return not (plugin_name.startswith("_") or "internal" in plugin_name.lower())

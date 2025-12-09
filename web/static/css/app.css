@@ -1671,3 +1671,231 @@ body {
 .request-info-value {
     color: var(--text-primary);
 }
+
+/* ============================================
+   Dashboard v2.3: Queue Governance & Tokenomics
+   ============================================ */
+
+/* Queue Governance Panel */
+.queue-governance-panel {
+    background: linear-gradient(135deg, var(--bg-medium) 0%, var(--bg-light) 100%);
+    border-bottom: 2px solid var(--border-color);
+    padding: 1rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: background 0.3s ease;
+}
+
+.queue-governance-panel.paused {
+    background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+    border-bottom-color: var(--warning-color);
+}
+
+.governance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.governance-header h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.btn-emergency {
+    background-color: var(--error-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-emergency:hover {
+    background-color: #dc2626;
+    transform: scale(1.05);
+}
+
+.governance-metrics {
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+
+.governance-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.governance-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.governance-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.governance-value.cost {
+    color: var(--success-color);
+}
+
+.governance-limit {
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.governance-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn-queue-action {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-queue-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.btn-queue-action.pause {
+    border-color: var(--warning-color);
+}
+
+.btn-queue-action.pause:hover {
+    background-color: var(--warning-color);
+    border-color: var(--warning-color);
+}
+
+.btn-queue-action.resume {
+    border-color: var(--success-color);
+}
+
+.btn-queue-action.resume:hover {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.btn-queue-action.danger {
+    border-color: var(--error-color);
+}
+
+.btn-queue-action.danger:hover {
+    background-color: var(--error-color);
+    border-color: var(--error-color);
+}
+
+.btn-queue-action .btn-icon {
+    font-size: 1.2rem;
+}
+
+/* Live Terminal */
+.live-terminal {
+    background-color: #000;
+    color: #00ff00;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    padding: 1rem;
+    border-radius: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #333;
+}
+
+.terminal-entry {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    line-height: 1.4;
+}
+
+.terminal-timestamp {
+    color: #666;
+    font-size: 0.8rem;
+}
+
+.terminal-level {
+    font-weight: 600;
+    min-width: 60px;
+}
+
+.terminal-level.info {
+    color: #00ff00;
+}
+
+.terminal-level.warning {
+    color: #ffaa00;
+}
+
+.terminal-level.error {
+    color: #ff0000;
+}
+
+.terminal-level.debug {
+    color: #00aaff;
+}
+
+.terminal-message {
+    color: #ccc;
+    flex: 1;
+}
+
+/* Abort button in task list */
+.task-abort-btn {
+    background-color: var(--error-color);
+    color: white;
+    border: none;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-left: auto;
+}
+
+.task-abort-btn:hover {
+    background-color: #dc2626;
+    transform: scale(1.05);
+}
+
+/* Scrollbar styling for terminal */
+.live-terminal::-webkit-scrollbar {
+    width: 8px;
+}
+
+.live-terminal::-webkit-scrollbar-track {
+    background: #111;
+}
+
+.live-terminal::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.live-terminal::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}

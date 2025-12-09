@@ -1,9 +1,10 @@
 # venom/main.py
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,6 +21,7 @@ from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.core.state_manager import StateManager
+from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.infrastructure.hardware_pi import HardwareBridge
 from venom_core.memory.graph_store import CodeGraphStore
@@ -36,6 +38,9 @@ state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
 
 # Note: orchestrator zostanie zainicjalizowany w lifespan po utworzeniu node_manager
 orchestrator = None
+
+# Inicjalizacja RequestTracer
+request_tracer = None
 
 # Inicjalizacja VectorStore dla API
 vector_store = None
@@ -76,13 +81,22 @@ async def lifespan(app: FastAPI):
     global vector_store, graph_store, lessons_store, gardener_agent, git_skill
     global background_scheduler, file_watcher, documenter_agent
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
-    global node_manager, orchestrator
+    global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
     global service_registry, service_monitor
 
     # Startup
     # Inicjalizuj MetricsCollector
     init_metrics_collector()
+
+    # Inicjalizuj RequestTracer
+    try:
+        request_tracer = RequestTracer(watchdog_timeout_minutes=5)
+        await request_tracer.start_watchdog()
+        logger.info("RequestTracer zainicjalizowany z watchdog")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować RequestTracer: {e}")
+        request_tracer = None
 
     # Inicjalizuj Service Health Monitor
     try:
@@ -126,6 +140,7 @@ async def lifespan(app: FastAPI):
         state_manager,
         event_broadcaster=event_broadcaster,
         node_manager=node_manager,
+        request_tracer=request_tracer,
     )
     logger.info(
         "Orchestrator zainicjalizowany"
@@ -434,6 +449,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Zamykanie aplikacji...")
+
+    # Zatrzymaj RequestTracer watchdog
+    if request_tracer:
+        await request_tracer.stop_watchdog()
+        logger.info("RequestTracer watchdog zatrzymany")
 
     # Zatrzymaj Shadow Agent components
     if desktop_sensor:
@@ -763,6 +783,147 @@ async def get_all_tasks():
         Lista wszystkich zadań w systemie
     """
     return state_manager.get_all_tasks()
+
+
+# --- History API Endpoints ---
+
+
+class HistoryRequestSummary(BaseModel):
+    """Skrócony widok requestu dla listy historii."""
+
+    request_id: UUID
+    prompt: str
+    status: str
+    created_at: str
+    finished_at: str = None
+    duration_seconds: float = None
+
+
+class HistoryRequestDetail(BaseModel):
+    """Szczegółowy widok requestu z krokami."""
+
+    request_id: UUID
+    prompt: str
+    status: str
+    created_at: str
+    finished_at: str = None
+    duration_seconds: float = None
+    steps: list
+
+
+@app.get("/api/v1/history/requests", response_model=list[HistoryRequestSummary])
+async def get_request_history(
+    limit: int = Query(
+        default=50, ge=1, le=1000, description="Maksymalna liczba wyników"
+    ),
+    offset: int = Query(default=0, ge=0, description="Offset dla paginacji"),
+    status: Optional[str] = Query(
+        default=None,
+        description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)",
+    ),
+):
+    """
+    Pobiera listę requestów z historii (paginowana).
+
+    Args:
+        limit: Maksymalna liczba wyników (1-1000, domyślnie 50)
+        offset: Offset dla paginacji (>=0, domyślnie 0)
+        status: Opcjonalny filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)
+
+    Returns:
+        Lista requestów z podstawowymi informacjami
+
+    Raises:
+        HTTPException: 400 jeśli podano nieprawidłowy status
+        HTTPException: 503 jeśli RequestTracer nie jest dostępny
+    """
+    if request_tracer is None:
+        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
+
+    # Walidacja statusu jeśli podano
+    if status is not None:
+        valid_statuses = [s.value for s in TraceStatus]
+        if status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nieprawidłowy status. Dozwolone wartości: {', '.join(valid_statuses)}",
+            )
+
+    traces = request_tracer.get_all_traces(
+        limit=limit, offset=offset, status_filter=status
+    )
+
+    result = []
+    for trace in traces:
+        duration = None
+        if trace.finished_at:
+            duration = (trace.finished_at - trace.created_at).total_seconds()
+
+        result.append(
+            HistoryRequestSummary(
+                request_id=trace.request_id,
+                prompt=trace.prompt,
+                status=trace.status,
+                created_at=trace.created_at.isoformat(),
+                finished_at=(
+                    trace.finished_at.isoformat() if trace.finished_at else None
+                ),
+                duration_seconds=duration,
+            )
+        )
+
+    return result
+
+
+@app.get("/api/v1/history/requests/{request_id}", response_model=HistoryRequestDetail)
+async def get_request_detail(request_id: UUID):
+    """
+    Pobiera szczegóły requestu z pełną listą kroków.
+
+    Args:
+        request_id: UUID requestu
+
+    Returns:
+        Szczegółowe informacje o requestie wraz z timeline kroków
+
+    Raises:
+        HTTPException: 404 jeśli request nie istnieje
+    """
+    if request_tracer is None:
+        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
+
+    trace = request_tracer.get_trace(request_id)
+    if trace is None:
+        raise HTTPException(
+            status_code=404, detail=f"Request {request_id} nie istnieje w historii"
+        )
+
+    duration = None
+    if trace.finished_at:
+        duration = (trace.finished_at - trace.created_at).total_seconds()
+
+    # Konwertuj steps do słowników dla serializacji
+    steps_list = []
+    for step in trace.steps:
+        steps_list.append(
+            {
+                "component": step.component,
+                "action": step.action,
+                "timestamp": step.timestamp.isoformat(),
+                "status": step.status,
+                "details": step.details,
+            }
+        )
+
+    return HistoryRequestDetail(
+        request_id=trace.request_id,
+        prompt=trace.prompt,
+        status=trace.status,
+        created_at=trace.created_at.isoformat(),
+        finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
+        duration_seconds=duration,
+        steps=steps_list,
+    )
 
 
 # --- Memory API Endpoints ---

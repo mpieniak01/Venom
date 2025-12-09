@@ -236,3 +236,208 @@ def test_add_log_to_nonexistent_task(temp_state_file):
 
     # Nie powinno wyrzucić błędu, tylko zalogować warning
     state_manager.add_log(fake_id, "Test log")
+
+
+# --- Testy integracji Orchestrator z RequestTracer ---
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_creates_trace_on_submit(temp_state_file):
+    """Test że Orchestrator tworzy trace przy submit_task."""
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.tracer import RequestTracer, TraceStatus
+
+    state_manager = StateManager(state_file_path=temp_state_file)
+    request_tracer = RequestTracer()
+    orchestrator = Orchestrator(state_manager, request_tracer=request_tracer)
+
+    # Submit task
+    request = TaskRequest(content="Test task")
+    response = await orchestrator.submit_task(request)
+
+    # Verify trace was created
+    trace = request_tracer.get_trace(response.task_id)
+    assert trace is not None
+    assert trace.request_id == response.task_id
+    assert trace.prompt == "Test task"
+    assert trace.status == TraceStatus.PENDING or trace.status == TraceStatus.PROCESSING
+    assert len(trace.steps) >= 1
+    assert trace.steps[0].component == "User"
+    assert trace.steps[0].action == "submit_request"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_updates_trace_status_during_processing(temp_state_file):
+    """Test że Orchestrator aktualizuje status trace podczas przetwarzania."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.tracer import RequestTracer
+
+    state_manager = StateManager(state_file_path=temp_state_file)
+    request_tracer = RequestTracer()
+
+    # Mock task_dispatcher to avoid actual agent execution
+    with patch("venom_core.core.orchestrator.TaskDispatcher") as mock_dispatcher_class:
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.dispatch = AsyncMock(return_value="Mocked result")
+        mock_dispatcher.agent_map = {}
+        mock_dispatcher_class.return_value = mock_dispatcher
+
+        orchestrator = Orchestrator(
+            state_manager,
+            task_dispatcher=mock_dispatcher,
+            request_tracer=request_tracer,
+        )
+
+        # Submit task and wait a bit for processing
+        request = TaskRequest(content="Test processing")
+        response = await orchestrator.submit_task(request)
+
+        # Give it time to process
+        await asyncio.sleep(0.5)
+
+        # Verify trace status progression
+        trace = request_tracer.get_trace(response.task_id)
+        assert trace is not None
+
+        # Should have multiple steps
+        assert len(trace.steps) >= 2
+
+        # Should have User submit step
+        user_steps = [s for s in trace.steps if s.component == "User"]
+        assert len(user_steps) >= 1
+
+        # Should have Orchestrator steps
+        orchestrator_steps = [s for s in trace.steps if s.component == "Orchestrator"]
+        assert len(orchestrator_steps) >= 1
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_adds_steps_for_key_moments(temp_state_file):
+    """Test że Orchestrator dodaje kroki dla kluczowych momentów."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.tracer import RequestTracer
+
+    state_manager = StateManager(state_file_path=temp_state_file)
+    request_tracer = RequestTracer()
+
+    with patch("venom_core.core.orchestrator.TaskDispatcher") as mock_dispatcher_class:
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.dispatch = AsyncMock(return_value="Mocked result")
+        mock_dispatcher.agent_map = {}
+        mock_dispatcher_class.return_value = mock_dispatcher
+
+        with patch(
+            "venom_core.core.orchestrator.IntentManager"
+        ) as mock_intent_manager_class:
+            mock_intent_manager = MagicMock()
+            mock_intent_manager.classify_intent = AsyncMock(return_value="GENERAL_CHAT")
+            mock_intent_manager_class.return_value = mock_intent_manager
+
+            orchestrator = Orchestrator(
+                state_manager,
+                task_dispatcher=mock_dispatcher,
+                intent_manager=mock_intent_manager,
+                request_tracer=request_tracer,
+            )
+
+            request = TaskRequest(content="Test steps")
+            response = await orchestrator.submit_task(request)
+
+            # Wait for processing
+            await asyncio.sleep(0.5)
+
+            trace = request_tracer.get_trace(response.task_id)
+            assert trace is not None
+
+            # Check for classify_intent step
+            classify_steps = [
+                s
+                for s in trace.steps
+                if s.component == "Orchestrator" and s.action == "classify_intent"
+            ]
+            assert len(classify_steps) >= 1
+            assert "Intent:" in classify_steps[0].details
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_sets_failed_status_on_error(temp_state_file):
+    """Test że Orchestrator ustawia status FAILED przy błędzie."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from venom_core.core.models import TaskRequest
+    from venom_core.core.tracer import RequestTracer, TraceStatus
+
+    state_manager = StateManager(state_file_path=temp_state_file)
+    request_tracer = RequestTracer()
+
+    with patch("venom_core.core.orchestrator.TaskDispatcher") as mock_dispatcher_class:
+        mock_dispatcher = MagicMock()
+        # Make dispatch raise an error
+        mock_dispatcher.dispatch = AsyncMock(
+            side_effect=Exception("Test error message")
+        )
+        mock_dispatcher.agent_map = {}
+        mock_dispatcher_class.return_value = mock_dispatcher
+
+        orchestrator = Orchestrator(
+            state_manager,
+            task_dispatcher=mock_dispatcher,
+            request_tracer=request_tracer,
+        )
+
+        request = TaskRequest(content="Test error handling")
+        response = await orchestrator.submit_task(request)
+
+        # Wait for processing
+        await asyncio.sleep(0.5)
+
+        trace = request_tracer.get_trace(response.task_id)
+        assert trace is not None
+
+        # Should be marked as FAILED
+        assert trace.status == TraceStatus.FAILED
+
+        # Should have error step
+        error_steps = [s for s in trace.steps if s.status == "error"]
+        assert len(error_steps) >= 1
+        assert "error" in error_steps[-1].action.lower()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_works_without_tracer(temp_state_file):
+    """Test że Orchestrator działa bez tracera (backward compatibility)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from venom_core.core.models import TaskRequest
+
+    state_manager = StateManager(state_file_path=temp_state_file)
+
+    with patch("venom_core.core.orchestrator.TaskDispatcher") as mock_dispatcher_class:
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.dispatch = AsyncMock(return_value="Mocked result")
+        mock_dispatcher.agent_map = {}
+        mock_dispatcher_class.return_value = mock_dispatcher
+
+        # Initialize without tracer
+        orchestrator = Orchestrator(
+            state_manager, task_dispatcher=mock_dispatcher, request_tracer=None
+        )
+
+        request = TaskRequest(content="Test without tracer")
+        response = await orchestrator.submit_task(request)
+
+        # Should still work
+        assert response.task_id is not None
+        assert response.status == TaskStatus.PENDING
+
+        # Wait for processing
+        await asyncio.sleep(0.5)
+
+        # Task should complete
+        task = state_manager.get_task(response.task_id)
+        # Status might be COMPLETED or PROCESSING depending on timing
+        assert task is not None

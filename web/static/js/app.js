@@ -489,19 +489,22 @@ class VenomDashboard {
             }
         });
 
-        // Suggestion chips click handlers
-        document.addEventListener('click', (e) => {
-            const chip = e.target.closest('.suggestion-chip');
-            if (chip) {
-                const suggestion = chip.getAttribute('data-suggestion');
-                if (suggestion) {
-                    this.elements.taskInput.value = suggestion;
-                    this.elements.taskInput.focus();
-                    // Optionally auto-submit
-                    // this.sendTask();
+        // Suggestion chips click handlers - use delegation on chat messages container
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.addEventListener('click', (e) => {
+                const chip = e.target.closest('.suggestion-chip');
+                if (chip) {
+                    const suggestion = chip.getAttribute('data-suggestion');
+                    if (suggestion) {
+                        this.elements.taskInput.value = suggestion;
+                        this.elements.taskInput.focus();
+                        // Optionally auto-submit
+                        // this.sendTask();
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // Repository quick actions
         const syncBtn = document.getElementById('syncRepoBtn');

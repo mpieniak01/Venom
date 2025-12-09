@@ -60,11 +60,19 @@ async def get_token_metrics():
         metrics = metrics_collector.get_metrics()
         total_tokens = metrics.get("tokens_used_session", 0)
 
-        # Szacunkowy koszt (zakładając GPT-3.5 jako fallback)
+        # Szacunkowy koszt (zakładając konfigurowalny split i model)
         # W produkcji: TokenEconomist powinien śledzić rzeczywiste użycie per-model
+        from venom_core.config import SETTINGS
+
+        split_ratio = SETTINGS.TOKEN_COST_ESTIMATION_SPLIT
+        cost_model = SETTINGS.DEFAULT_COST_MODEL
+
         estimated_cost = _token_economist.calculate_cost(
-            usage={"input_tokens": total_tokens // 2, "output_tokens": total_tokens // 2},
-            model_name="gpt-3.5-turbo",
+            usage={
+                "input_tokens": int(total_tokens * split_ratio),
+                "output_tokens": int(total_tokens * (1 - split_ratio)),
+            },
+            model_name=cost_model,
         )
 
         # TODO: W przyszłości dodać tracking per-model w TokenEconomist

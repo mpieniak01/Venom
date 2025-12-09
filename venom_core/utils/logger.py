@@ -27,7 +27,7 @@ def log_sink(message):
     Custom sink dla loguru który przekazuje logi do EventBroadcaster.
 
     Args:
-        message: Wiadomość z loguru
+        message: LogRecord z loguru - obiekt zawierający informacje o logu
     """
     if _event_broadcaster is not None:
         # Parsuj rekord loga

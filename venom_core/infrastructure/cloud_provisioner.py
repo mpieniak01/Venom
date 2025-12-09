@@ -80,7 +80,7 @@ class CloudProvisioner:
             f"CloudProvisioner zainicjalizowany (user={self.default_user}, "
             f"timeout={self.timeout}s, agent_id={self.agent_id})"
         )
-        logger.info("[INFO] Network Mode: INTRANET (mDNS active)")
+        logger.info("Network Mode: INTRANET (mDNS active)")
 
         # Automatyczna rejestracja w Ulu jeśli HIVE_URL jest skonfigurowany
         if self.hive_url:
@@ -374,11 +374,14 @@ class CloudProvisioner:
                     # Unikaj localhost
                     if local_ip.startswith("127."):
                         local_ip = None
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.debug(
+                        f"Nie udało się pobrać IP przez gethostbyname: {ex}",
+                        exc_info=True,
+                    )
 
             if not local_ip:
-                raise Exception(
+                raise CloudProvisionerError(
                     "Nie można wykryć lokalnego adresu IP. "
                     "Sprawdź konfigurację sieci."
                 )
@@ -481,9 +484,6 @@ class CloudProvisioner:
 
         Returns:
             Dict ze statusem rejestracji i informacjami zwróconymi przez Ul
-
-        Raises:
-            CloudProvisionerError: Jeśli rejestracja nie powiedzie się
         """
         hive_url = hive_url or self.hive_url
 
@@ -507,9 +507,9 @@ class CloudProvisioner:
             "version": "1.0",
         }
 
-        # Dodaj opcjonalne metadane użytkownika
+        # Dodaj opcjonalne metadane użytkownika, ale kluczowe pola mają priorytet
         if metadata:
-            payload.update(metadata)
+            payload = {**metadata, **payload}
 
         # Przygotuj nagłówki autoryzacji
         headers = {"Content-Type": "application/json"}
@@ -533,7 +533,18 @@ class CloudProvisioner:
                 # Sprawdź status odpowiedzi
                 if response.status_code in (200, 201):
                     self.hive_registered = True
-                    response_data = response.json()
+                    try:
+                        response_data = response.json()
+                    except Exception as e:
+                        logger.error(
+                            f"Błąd parsowania JSON odpowiedzi z Ula: {e}",
+                            exc_info=True,
+                        )
+                        return {
+                            "status": "error",
+                            "message": "Invalid JSON response from Hive",
+                        }
+
                     logger.info(
                         f"✓ Agent zarejestrowany w Ulu: {hive_url} (agent_id={self.agent_id})"
                     )

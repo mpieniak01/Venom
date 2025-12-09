@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -521,12 +522,17 @@ class WorkLedger:
             return
 
         try:
-            with open(self.storage_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.tasks = {
-                    task_id: TaskRecord.from_dict(task_data)
-                    for task_id, task_data in data.items()
-                }
+            # Odczytaj JSON używając helpers (Venom Standard Library)
+            data = helpers.read_json(self.storage_path, raise_on_error=False)
+            if data is None:
+                logger.warning("Nie można wczytać work_ledger - start z pustą bazą")
+                self.tasks = {}
+                return
+
+            self.tasks = {
+                task_id: TaskRecord.from_dict(task_data)
+                for task_id, task_data in data.items()
+            }
             logger.info(f"Załadowano {len(self.tasks)} zadań z {self.storage_path}")
         except Exception as e:
             logger.error(f"Błąd wczytywania work_ledger: {e}")
@@ -536,7 +542,11 @@ class WorkLedger:
         """Zapisuje zadania do pliku."""
         try:
             data = {task_id: task.to_dict() for task_id, task in self.tasks.items()}
-            with open(self.storage_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            # Zapisz JSON używając helpers (Venom Standard Library)
+            if not helpers.write_json(
+                self.storage_path, data, indent=2, raise_on_error=False
+            ):
+                logger.error(f"Nie udało się zapisać work_ledger do {self.storage_path}")
         except Exception as e:
             logger.error(f"Błąd zapisywania work_ledger: {e}")

@@ -8,6 +8,7 @@ from typing import Annotated, Optional
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -110,12 +111,12 @@ class DocsSkill:
                 ]
             )
 
-            # Zapisz plik
+            # Zapisz plik używając helpers (Venom Standard Library)
             config_path = self.workspace_root / "mkdocs.yml"
             config_content = "\n".join(config_lines)
 
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.write(config_content)
+            if not helpers.write_file(config_path, config_content, raise_on_error=True):
+                raise IOError(f"Nie udało się zapisać pliku {config_path}")
 
             logger.info(f"Plik mkdocs.yml utworzony: {config_path}")
             return (

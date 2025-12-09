@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from semantic_kernel import Kernel
 
 from venom_core.config import SETTINGS
+from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -215,8 +216,10 @@ class SkillManager:
             SkillValidationError: Jeśli walidacja nie przeszła
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                source_code = f.read()
+            # Odczytaj plik używając helpers (Venom Standard Library)
+            source_code = helpers.read_file(file_path, raise_on_error=True)
+            if source_code is None:
+                raise SkillValidationError(f"Nie można odczytać pliku: {file_path}")
 
             # Parsuj kod do AST
             tree = ast.parse(source_code, filename=file_path)

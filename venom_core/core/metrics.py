@@ -83,10 +83,10 @@ class MetricsCollector:
 
         Args:
             bytes_count: Liczba wysłanych bajtów
-        
+
         Note:
             Ta metoda musi być wywołana przez kod obsługujący połączenia sieciowe
-            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były 
+            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były
             faktycznie zliczane. Obecnie metryka jest dostępna w API ale wymaga
             instrumentacji kodu sieciowego.
         """
@@ -99,10 +99,10 @@ class MetricsCollector:
 
         Args:
             bytes_count: Liczba odebranych bajtów
-        
+
         Note:
             Ta metoda musi być wywołana przez kod obsługujący połączenia sieciowe
-            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były 
+            (np. w aiohttp middleware lub HTTP client wrapper) aby metryki były
             faktycznie zliczane. Obecnie metryka jest dostępna w API ale wymaga
             instrumentacji kodu sieciowego.
         """

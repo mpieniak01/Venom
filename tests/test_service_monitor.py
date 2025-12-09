@@ -198,7 +198,9 @@ async def test_check_health_specific_service(service_monitor, service_registry):
 
         mock_check.side_effect = create_mock_service
 
-        services = await service_monitor.check_health(service_name="Specific Test Service")
+        services = await service_monitor.check_health(
+            service_name="Specific Test Service"
+        )
 
         assert len(services) == 1
         assert services[0].name == "Specific Test Service"

@@ -69,6 +69,11 @@ class EventType:
     UPDATE_WIDGET = "UPDATE_WIDGET"
     REMOVE_WIDGET = "REMOVE_WIDGET"
 
+    # Zdarzenia Skill Execution (Dashboard v2.1)
+    SKILL_STARTED = "SKILL_STARTED"
+    SKILL_COMPLETED = "SKILL_COMPLETED"
+    SKILL_FAILED = "SKILL_FAILED"
+
 
 class Event(BaseModel):
     """Model zdarzenia WebSocket."""

@@ -19,6 +19,9 @@ class MetricsCollector:
             "tasks_completed": 0,
             "tasks_failed": 0,
             "tokens_used_session": 0,
+            "network_bytes_sent": 0,
+            "network_bytes_received": 0,
+            "network_connections_active": 0,
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
@@ -74,6 +77,36 @@ class MetricsCollector:
                 self.agent_usage[agent_name] = 0
             self.agent_usage[agent_name] += 1
 
+    def add_network_bytes_sent(self, bytes_count: int):
+        """
+        Dodaje wysłane bajty do sumy.
+
+        Args:
+            bytes_count: Liczba wysłanych bajtów
+        """
+        with self._lock:
+            self.metrics["network_bytes_sent"] += bytes_count
+
+    def add_network_bytes_received(self, bytes_count: int):
+        """
+        Dodaje odebrane bajty do sumy.
+
+        Args:
+            bytes_count: Liczba odebranych bajtów
+        """
+        with self._lock:
+            self.metrics["network_bytes_received"] += bytes_count
+
+    def set_network_connections_active(self, count: int):
+        """
+        Ustawia liczbę aktywnych połączeń sieciowych.
+
+        Args:
+            count: Liczba aktywnych połączeń
+        """
+        with self._lock:
+            self.metrics["network_connections_active"] = count
+
     def _calculate_success_rate(self) -> float:
         """
         Oblicza wskaźnik sukcesu zadań.
@@ -110,6 +143,13 @@ class MetricsCollector:
                     "success_rate": self._calculate_success_rate(),
                 },
                 "tokens_used_session": self.metrics["tokens_used_session"],
+                "network": {
+                    "bytes_sent": self.metrics["network_bytes_sent"],
+                    "bytes_received": self.metrics["network_bytes_received"],
+                    "connections_active": self.metrics["network_connections_active"],
+                    "total_bytes": self.metrics["network_bytes_sent"]
+                    + self.metrics["network_bytes_received"],
+                },
                 "tool_usage": self.tool_usage.copy(),
                 "agent_usage": self.agent_usage.copy(),
             }

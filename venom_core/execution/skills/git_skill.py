@@ -523,6 +523,13 @@ class GitSkill:
             Zwraca błąd jeśli są niezatwierdzone zmiany i force=False
         """
         try:
+            # Walidacja mode
+            allowed_modes = {"soft", "mixed", "hard"}
+            if mode not in allowed_modes:
+                error_msg = f"❌ Błąd: Nieprawidłowy tryb resetu '{mode}'. Dozwolone wartości: {', '.join(sorted(allowed_modes))}"
+                logger.error(error_msg)
+                return error_msg
+
             repo = self._get_repo()
 
             # SAFETY GUARD: Sprawdź czy są niezatwierdzone zmiany
@@ -581,6 +588,8 @@ class GitSkill:
             repo.git.merge(source_branch)
 
             # Sprawdź czy wystąpiły konflikty
+            # Notatka: W niektórych przypadkach merge może się powieść
+            # ale pozostawić unmerged blobs (np. przy auto-merge z konfliktami)
             conflict_msg = self._format_conflict_message(
                 repo, "merge", f"{source_branch} → {current_branch}"
             )
@@ -627,6 +636,12 @@ class GitSkill:
         """
         try:
             repo = self._get_repo()
+
+            # Sprawdź czy branch już istnieje
+            if branch_name in [b.name for b in repo.branches]:
+                error_msg = f"❌ Branch '{branch_name}' już istnieje"
+                logger.error(error_msg)
+                return error_msg
 
             logger.info(f"Tworzenie nowego brancha: {branch_name}")
             repo.create_head(branch_name)

@@ -229,3 +229,49 @@ class TestStrategistAgent:
         result = await agent.process("check_api:openai")
 
         assert "API USAGE" in result
+
+    def test_extract_time_from_new_json_format(self, agent):
+        """Test parsowania czasu z nowego formatu JSON."""
+        time_result = '{"estimated_minutes": 45, "complexity": "MEDIUM"}\n\nOszacowany czas: 45 minut'
+
+        extracted = agent._extract_time(time_result)
+
+        assert extracted == 45.0
+
+    def test_extract_time_from_old_json_format(self, agent):
+        """Test parsowania czasu ze starego formatu JSON."""
+        time_result = '{"minutes": 60}\n\nOszacowany czas: 60 minut'
+
+        extracted = agent._extract_time(time_result)
+
+        assert extracted == 60.0
+
+    def test_extract_time_from_text_fallback(self, agent):
+        """Test parsowania czasu z tekstu (fallback)."""
+        time_result = "Oszacowany czas: 120 minut (2.0h)"
+
+        extracted = agent._extract_time(time_result)
+
+        assert extracted == 120.0
+
+    def test_extract_time_default_on_error(self, agent):
+        """Test domyślnej wartości gdy parsowanie się nie uda."""
+        time_result = "Niepoprawny format bez liczb"
+
+        extracted = agent._extract_time(time_result)
+
+        assert extracted == 30.0  # Domyślna wartość
+
+    def test_extract_time_with_multiline_json(self, agent):
+        """Test parsowania JSON z wieloliniowego wyniku."""
+        time_result = """
+
+{"estimated_minutes": 75, "complexity": "HIGH"}
+
+Oszacowany czas: 75 minut (1.3h)
+Złożoność: HIGH
+        """
+
+        extracted = agent._extract_time(time_result)
+
+        assert extracted == 75.0

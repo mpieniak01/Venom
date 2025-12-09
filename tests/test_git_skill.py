@@ -256,6 +256,33 @@ async def test_reset_clean_repo(git_skill, temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_reset_with_untracked_files(git_skill, temp_workspace):
+    """Test resetu z nietrackonymi plikami - powinien działać bez force."""
+    # Zainicjalizuj repo i utwórz commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("initial content")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Dodaj nietrackowany plik (nie stage'owany)
+    untracked_file = Path(temp_workspace) / "untracked.txt"
+    untracked_file.write_text("untracked content")
+
+    # Reset powinien działać bez force, bo nietrackowane pliki nie są zagrożone
+    result = await git_skill.reset(mode="hard", commit_hash="HEAD", force=False)
+
+    assert "✅" in result
+    assert "Reset" in result
+
+    # Nietrackowany plik powinien nadal istnieć
+    assert untracked_file.exists()
+    assert untracked_file.read_text() == "untracked content"
+
+
+@pytest.mark.asyncio
 async def test_merge_success(git_skill, temp_workspace):
     """Test pomyślnego merge dwóch branchy."""
     # Zainicjalizuj repo i utwórz initial commit

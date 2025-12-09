@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from enum import Enum
+from threading import Lock
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -64,6 +65,7 @@ class RequestTracer:
                                      bez aktywności jest oznaczane jako LOST
         """
         self._traces: Dict[UUID, RequestTrace] = {}
+        self._traces_lock = Lock()  # Thread safety
         self._watchdog_timeout = timedelta(minutes=watchdog_timeout_minutes)
         self._watchdog_task: Optional[asyncio.Task] = None
 
@@ -98,7 +100,11 @@ class RequestTracer:
     async def _check_lost_requests(self):
         """Sprawdza i oznacza zadania, które przekroczyły timeout."""
         now = datetime.now()
-        for trace_id, trace in self._traces.items():
+        # Create a snapshot of traces to avoid holding lock during iteration
+        with self._traces_lock:
+            traces_snapshot = list(self._traces.items())
+
+        for trace_id, trace in traces_snapshot:
             if trace.status == TraceStatus.PROCESSING:
                 time_since_activity = now - trace.last_activity
                 if time_since_activity > self._watchdog_timeout:
@@ -135,7 +141,8 @@ class RequestTracer:
             prompt=prompt_truncated,
             status=TraceStatus.PENDING,
         )
-        self._traces[request_id] = trace
+        with self._traces_lock:
+            self._traces[request_id] = trace
         logger.debug(f"Utworzono trace dla zadania {request_id}")
         return trace
 
@@ -157,16 +164,19 @@ class RequestTracer:
             status: Status kroku ("ok" lub "error")
             details: Opcjonalne dodatkowe informacje
         """
-        trace = self._traces.get(request_id)
-        if trace is None:
-            logger.warning(f"Próba dodania kroku do nieistniejącego trace {request_id}")
-            return
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba dodania kroku do nieistniejącego trace {request_id}"
+                )
+                return
 
-        step = TraceStep(
-            component=component, action=action, status=status, details=details
-        )
-        trace.steps.append(step)
-        trace.last_activity = datetime.now()
+            step = TraceStep(
+                component=component, action=action, status=status, details=details
+            )
+            trace.steps.append(step)
+            trace.last_activity = datetime.now()
 
         logger.debug(
             f"Dodano krok do trace {request_id}: {component}.{action} ({status})"
@@ -180,19 +190,20 @@ class RequestTracer:
             request_id: UUID zadania
             status: Nowy status
         """
-        trace = self._traces.get(request_id)
-        if trace is None:
-            logger.warning(
-                f"Próba aktualizacji statusu nieistniejącego trace {request_id}"
-            )
-            return
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba aktualizacji statusu nieistniejącego trace {request_id}"
+                )
+                return
 
-        trace.status = status
-        trace.last_activity = datetime.now()
+            trace.status = status
+            trace.last_activity = datetime.now()
 
-        # Ustaw finished_at dla stanów końcowych
-        if status in (TraceStatus.COMPLETED, TraceStatus.FAILED, TraceStatus.LOST):
-            trace.finished_at = datetime.now()
+            # Ustaw finished_at dla stanów końcowych
+            if status in (TraceStatus.COMPLETED, TraceStatus.FAILED, TraceStatus.LOST):
+                trace.finished_at = datetime.now()
 
         logger.debug(f"Zaktualizowano status trace {request_id}: {status}")
 
@@ -206,7 +217,8 @@ class RequestTracer:
         Returns:
             Ślad zadania lub None jeśli nie istnieje
         """
-        return self._traces.get(request_id)
+        with self._traces_lock:
+            return self._traces.get(request_id)
 
     def get_all_traces(
         self, limit: int = 50, offset: int = 0, status_filter: Optional[str] = None
@@ -222,7 +234,8 @@ class RequestTracer:
         Returns:
             Lista śladów posortowana od najnowszych
         """
-        traces = list(self._traces.values())
+        with self._traces_lock:
+            traces = list(self._traces.values())
 
         # Filtruj po statusie jeśli podano
         if status_filter:
@@ -241,7 +254,8 @@ class RequestTracer:
         Returns:
             Liczba śladów w systemie
         """
-        return len(self._traces)
+        with self._traces_lock:
+            return len(self._traces)
 
     def clear_old_traces(self, days: int = 7):
         """
@@ -251,14 +265,15 @@ class RequestTracer:
             days: Liczba dni - ślady starsze zostaną usunięte
         """
         cutoff = datetime.now() - timedelta(days=days)
-        to_remove = []
 
-        for trace_id, trace in self._traces.items():
-            if trace.created_at < cutoff:
-                to_remove.append(trace_id)
+        with self._traces_lock:
+            to_remove = []
+            for trace_id, trace in self._traces.items():
+                if trace.created_at < cutoff:
+                    to_remove.append(trace_id)
 
-        for trace_id in to_remove:
-            del self._traces[trace_id]
+            for trace_id in to_remove:
+                del self._traces[trace_id]
 
         if to_remove:
             logger.info(f"Usunięto {len(to_remove)} starych śladów")

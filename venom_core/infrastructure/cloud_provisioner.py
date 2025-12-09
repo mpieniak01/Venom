@@ -346,8 +346,29 @@ class CloudProvisioner:
             service_name = service_name or f"venom-{hostname}"
             service_type = "_venom._tcp.local."
 
-            # Pobierz lokalny adres IP
-            local_ip = socket.gethostbyname(hostname)
+            # Pobierz lokalny adres IP (unikaj localhost/127.0.0.1)
+            # Próbujemy się połączyć z zewnętrznym adresem, aby wykryć lokalny IP
+            local_ip = None
+            try:
+                # Metoda 1: Połącz się z zewnętrznym adresem (nie wysyła danych)
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+            except Exception:
+                # Metoda 2: Fallback do gethostbyname
+                try:
+                    local_ip = socket.gethostbyname(hostname)
+                    # Unikaj localhost
+                    if local_ip.startswith("127."):
+                        local_ip = None
+                except Exception:
+                    pass
+
+            if not local_ip:
+                raise Exception(
+                    "Nie można wykryć lokalnego adresu IP. "
+                    "Sprawdź konfigurację sieci."
+                )
 
             # Utwórz ServiceInfo
             self.service_info = ServiceInfo(
@@ -427,6 +448,7 @@ class CloudProvisioner:
         """
         service_name = service_name or "venom"
         # Usuń .local jeśli już jest
-        if service_name.endswith(".local"):
-            service_name = service_name[:-6]
+        local_suffix = ".local"
+        if service_name.endswith(local_suffix):
+            service_name = service_name[: -len(local_suffix)]
         return f"http://{service_name}.local:{self.service_port}"

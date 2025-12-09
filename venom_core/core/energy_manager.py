@@ -90,8 +90,9 @@ class EnergyManager:
                 # Średnia temperatura z rdzeni
                 core_temps = [temp.current for temp in temps["coretemp"]]
                 temperature = sum(core_temps) / len(core_temps) if core_temps else None
-        except (AttributeError, Exception) as e:
+        except (AttributeError, OSError, KeyError) as e:
             # sensors_temperatures może nie być dostępne na wszystkich platformach
+            # lub sensor może być niedostępny (OSError, KeyError)
             logger.warning(f"Hardware sensor failure: {e}")
             self.sensors_active = False
 

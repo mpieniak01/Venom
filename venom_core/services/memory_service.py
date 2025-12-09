@@ -23,7 +23,7 @@ class MemoryConsolidator:
         r"api[_\s]?key[:\s=]+\S+",  # api_key: xxx, apikey=xxx
         r"token[:\s=]+\S+",  # token: xxx
         r"secret[:\s=]+\S+",  # secret: xxx
-        r"\b[A-Za-z0-9]{16,}\b",  # Długie hashe/tokeny (16+ znaków)
+        r"\b[A-Za-z0-9]{32,}\b",  # Długie hashe/tokeny (32+ znaków)
     ]
 
     def __init__(self, kernel: Kernel):

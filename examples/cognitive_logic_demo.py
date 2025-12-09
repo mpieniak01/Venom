@@ -1,7 +1,7 @@
 """
 Przykład użycia: Memory Consolidation & Intent Parsing
 
-Демонstracja nowych funkcjonalności z PR #7:
+Demonstracja nowych funkcjonalności z PR #7:
 1. Parsowanie intencji z tekstu (dispatcher.parse_intent)
 2. Konsolidacja pamięci (MemoryConsolidator)
 """

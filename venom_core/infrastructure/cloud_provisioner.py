@@ -3,10 +3,12 @@
 import asyncio
 import re
 import socket
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 import asyncssh
+import httpx
 from zeroconf import ServiceInfo, Zeroconf
 
 from venom_core.config import SETTINGS
@@ -40,6 +42,7 @@ class CloudProvisioner:
         default_user: str = "root",
         timeout: int = 300,
         service_port: int = 8000,
+        agent_id: Optional[str] = None,
     ):
         """
         Inicjalizacja CloudProvisioner.
@@ -49,6 +52,7 @@ class CloudProvisioner:
             default_user: Domyślny użytkownik SSH
             timeout: Timeout dla operacji SSH w sekundach
             service_port: Port usługi dla mDNS broadcasting (domyślnie 8000)
+            agent_id: Unikalny identyfikator agenta (UUID), generowany automatycznie jeśli nie podano
         """
         self.ssh_key_path = ssh_key_path or SETTINGS.DEPLOYMENT_SSH_KEY_PATH
         self.default_user = default_user or SETTINGS.DEPLOYMENT_DEFAULT_USER
@@ -58,6 +62,11 @@ class CloudProvisioner:
         # mDNS / Zeroconf
         self.zeroconf: Optional[Zeroconf] = None
         self.service_info: Optional[ServiceInfo] = None
+
+        # Hive Registration
+        self.agent_id = agent_id or str(uuid.uuid4())
+        self.hive_url = SETTINGS.HIVE_URL
+        self.hive_registered = False
 
         if self.ssh_key_path:
             key_path = Path(self.ssh_key_path)
@@ -69,9 +78,13 @@ class CloudProvisioner:
 
         logger.info(
             f"CloudProvisioner zainicjalizowany (user={self.default_user}, "
-            f"timeout={self.timeout}s)"
+            f"timeout={self.timeout}s, agent_id={self.agent_id})"
         )
         logger.info("[INFO] Network Mode: INTRANET (mDNS active)")
+
+        # Automatyczna rejestracja w Ulu jeśli HIVE_URL jest skonfigurowany
+        if self.hive_url:
+            logger.info(f"HIVE_URL skonfigurowany: {self.hive_url}")
 
     async def _execute_ssh_command(
         self,
@@ -452,3 +465,117 @@ class CloudProvisioner:
         if service_name.endswith(local_suffix):
             service_name = service_name[: -len(local_suffix)]
         return f"http://{service_name}.local:{self.service_port}"
+
+    async def register_in_hive(
+        self, hive_url: Optional[str] = None, metadata: Optional[dict] = None
+    ) -> dict[str, Any]:
+        """
+        Rejestruje agenta w centralnym Ulu (Hive Server).
+
+        Agent inicjuje połączenie wychodzące do Ula, dzięki czemu działa za NAT/Firewallem.
+        Ul otrzymuje metadane agenta i może przydzielić mu zadania.
+
+        Args:
+            hive_url: URL Ula (domyślnie z SETTINGS.HIVE_URL), np. https://hive.example.com:8080
+            metadata: Dodatkowe metadane agenta (opcjonalne)
+
+        Returns:
+            Dict ze statusem rejestracji i informacjami zwróconymi przez Ul
+
+        Raises:
+            CloudProvisionerError: Jeśli rejestracja nie powiedzie się
+        """
+        hive_url = hive_url or self.hive_url
+
+        if not hive_url:
+            logger.warning(
+                "HIVE_URL nie jest skonfigurowany. Rejestracja w Ulu pominięta."
+            )
+            return {
+                "status": "skipped",
+                "message": "HIVE_URL not configured",
+            }
+
+        # Przygotuj payload z metadanymi agenta
+        hostname = socket.gethostname()
+        payload = {
+            "agent_id": self.agent_id,
+            "hostname": hostname,
+            "service_port": self.service_port,
+            "status": "online",
+            "capabilities": ["ssh_deployment", "mdns_discovery"],
+            "version": "1.0",
+        }
+
+        # Dodaj opcjonalne metadane użytkownika
+        if metadata:
+            payload.update(metadata)
+
+        # Przygotuj nagłówki autoryzacji
+        headers = {"Content-Type": "application/json"}
+        if SETTINGS.HIVE_REGISTRATION_TOKEN:
+            token = SETTINGS.HIVE_REGISTRATION_TOKEN.get_secret_value()
+            headers["Authorization"] = f"Bearer {token}"
+
+        try:
+            # Wykonaj POST do Ula z timeoutem
+            registration_endpoint = f"{hive_url.rstrip('/')}/api/agents/register"
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                logger.info(
+                    f"Rejestracja w Ulu: {registration_endpoint} (agent_id={self.agent_id})"
+                )
+
+                response = await client.post(
+                    registration_endpoint, json=payload, headers=headers
+                )
+
+                # Sprawdź status odpowiedzi
+                if response.status_code in (200, 201):
+                    self.hive_registered = True
+                    response_data = response.json()
+                    logger.info(
+                        f"✓ Agent zarejestrowany w Ulu: {hive_url} (agent_id={self.agent_id})"
+                    )
+
+                    return {
+                        "status": "registered",
+                        "agent_id": self.agent_id,
+                        "hive_url": hive_url,
+                        "hive_response": response_data,
+                    }
+                else:
+                    error_msg = (
+                        f"Ul zwrócił status {response.status_code}: {response.text}"
+                    )
+                    logger.error(f"Błąd rejestracji w Ulu: {error_msg}")
+
+                    return {
+                        "status": "error",
+                        "message": error_msg,
+                        "status_code": response.status_code,
+                    }
+
+        except httpx.TimeoutException:
+            error_msg = f"Timeout podczas rejestracji w Ulu: {hive_url}"
+            logger.error(error_msg)
+            return {
+                "status": "timeout",
+                "message": error_msg,
+            }
+
+        except httpx.RequestError as e:
+            error_msg = f"Błąd połączenia z Ulem: {e}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                "status": "connection_error",
+                "message": error_msg,
+            }
+
+        except Exception as e:
+            error_msg = f"Nieoczekiwany błąd podczas rejestracji w Ulu: {e}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                "status": "error",
+                "message": error_msg,
+            }

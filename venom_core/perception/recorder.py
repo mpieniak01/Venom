@@ -17,6 +17,7 @@ from PIL import Image
 from pynput import keyboard, mouse
 
 from venom_core.config import SETTINGS
+from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -358,9 +359,11 @@ class DemonstrationRecorder:
         # Konwertuj sesję do dict
         session_dict = asdict(self.current_session)
 
-        # Zapisz do JSON
-        with open(session_file, "w", encoding="utf-8") as f:
-            json.dump(session_dict, f, indent=2, ensure_ascii=False)
+        # Zapisz do JSON używając helpers (Venom Standard Library)
+        json_content = json.dumps(session_dict, indent=2, ensure_ascii=False)
+        if not helpers.write_file(session_file, json_content, raise_on_error=False):
+            logger.error(f"Nie udało się zapisać sesji: {session_file}")
+            return None
 
         logger.info(f"Sesja zapisana: {session_file}")
         return str(session_file)
@@ -397,8 +400,12 @@ class DemonstrationRecorder:
             return None
 
         try:
-            with open(session_file, "r", encoding="utf-8") as f:
-                session_dict = json.load(f)
+            # Odczytaj JSON używając helpers (Venom Standard Library)
+            content = helpers.read_file(session_file, raise_on_error=True)
+            if content is None:
+                return None
+
+            session_dict = json.loads(content)
 
             # Konwertuj events z dict do InputEvent
             events = [

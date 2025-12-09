@@ -221,18 +221,58 @@ async def test_check_deployment_health(mock_connect, temp_ssh_key):
     assert "app_container" in result["containers"]
 
 
-@pytest.mark.asyncio
-async def test_configure_domain_placeholder():
-    """Test funkcji placeholder configure_domain."""
-    provisioner = CloudProvisioner()
-    result = await provisioner.configure_domain(
-        domain="example.com",
-        ip="1.2.3.4",
-    )
+def test_start_broadcasting():
+    """Test uruchamiania mDNS broadcasting."""
+    provisioner = CloudProvisioner(service_port=8000)
+    result = provisioner.start_broadcasting(service_name="test-venom")
 
-    assert result["status"] == "not_implemented"
-    assert result["domain"] == "example.com"
-    assert result["ip"] == "1.2.3.4"
+    # Broadcasting może nie działać w środowisku testowym bez pełnej sieci
+    # Ale powinien zwrócić odpowiedź
+    assert "status" in result
+    assert result["status"] in ["active", "error"]
+
+    if result["status"] == "active":
+        assert "service_name" in result
+        assert "ip" in result
+        assert "port" in result
+        assert result["port"] == 8000
+        assert "service_url" in result
+
+    # Cleanup
+    provisioner.stop_broadcasting()
+
+
+def test_stop_broadcasting():
+    """Test zatrzymywania mDNS broadcasting."""
+    provisioner = CloudProvisioner()
+
+    # Spróbuj zatrzymać bez uruchomienia
+    result = provisioner.stop_broadcasting()
+    assert result["status"] in ["stopped", "not_running"]
+
+
+def test_get_service_url():
+    """Test pobierania URL usługi."""
+    provisioner = CloudProvisioner(service_port=8000)
+
+    # Test domyślnej nazwy
+    url = provisioner.get_service_url()
+    assert url == "http://venom.local:8000"
+
+    # Test z własną nazwą
+    url = provisioner.get_service_url("test-agent")
+    assert url == "http://test-agent.local:8000"
+
+    # Test z nazwą zawierającą .local
+    url = provisioner.get_service_url("agent.local")
+    assert url == "http://agent.local:8000"
+
+
+def test_get_service_url_with_custom_port():
+    """Test URL usługi z niestandardowym portem."""
+    provisioner = CloudProvisioner(service_port=9000)
+    url = provisioner.get_service_url("custom")
+    assert url == "http://custom.local:9000"
 
 
 @pytest.mark.asyncio
@@ -286,3 +326,128 @@ async def test_check_deployment_health_invalid_stack_name():
             host="test.example.com",
             stack_name="../etc/passwd",
         )
+
+
+@pytest.mark.asyncio
+async def test_register_in_hive_no_url():
+    """Test rejestracji w Ulu bez skonfigurowanego URL."""
+    provisioner = CloudProvisioner()
+    provisioner.hive_url = ""
+
+    result = await provisioner.register_in_hive()
+
+    assert result["status"] == "skipped"
+    assert "not configured" in result["message"]
+    assert not provisioner.hive_registered
+
+
+@pytest.mark.asyncio
+@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
+async def test_register_in_hive_success(mock_client_class):
+    """Test pomyślnej rejestracji w Ulu."""
+    # Mock response
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "registered",
+        "agent_id": "test-agent-123",
+        "message": "Agent registered successfully",
+    }
+
+    # Mock client
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client_class.return_value = mock_client
+
+    provisioner = CloudProvisioner()
+    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+
+    assert result["status"] == "registered"
+    assert result["hive_url"] == "https://hive.example.com"
+    assert "hive_response" in result
+    assert provisioner.hive_registered is True
+
+
+@pytest.mark.asyncio
+@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
+async def test_register_in_hive_error_status(mock_client_class):
+    """Test rejestracji w Ulu z błędnym statusem odpowiedzi."""
+    # Mock response z błędem
+    mock_response = MagicMock()
+    mock_response.status_code = 403
+    mock_response.text = "Forbidden: Invalid token"
+
+    # Mock client
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client_class.return_value = mock_client
+
+    provisioner = CloudProvisioner()
+    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+
+    assert result["status"] == "error"
+    assert result["status_code"] == 403
+    assert "Forbidden" in result["message"]
+    assert provisioner.hive_registered is False
+
+
+@pytest.mark.asyncio
+@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
+async def test_register_in_hive_timeout(mock_client_class):
+    """Test timeout podczas rejestracji w Ulu."""
+    # Mock client który rzuca TimeoutException
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=__import__("httpx").TimeoutException(""))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client_class.return_value = mock_client
+
+    provisioner = CloudProvisioner()
+    result = await provisioner.register_in_hive(hive_url="https://hive.example.com")
+
+    assert result["status"] == "timeout"
+    assert "Timeout" in result["message"]
+
+
+@pytest.mark.asyncio
+@patch("venom_core.infrastructure.cloud_provisioner.httpx.AsyncClient")
+async def test_register_in_hive_with_metadata(mock_client_class):
+    """Test rejestracji w Ulu z dodatkowymi metadanymi."""
+    # Mock response
+    mock_response = MagicMock()
+    mock_response.status_code = 201
+    mock_response.json.return_value = {"status": "ok"}
+
+    # Mock client
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client_class.return_value = mock_client
+
+    provisioner = CloudProvisioner()
+    custom_metadata = {
+        "location": "datacenter-1",
+        "environment": "production",
+    }
+
+    result = await provisioner.register_in_hive(
+        hive_url="https://hive.example.com", metadata=custom_metadata
+    )
+
+    assert result["status"] == "registered"
+
+    # Sprawdź czy metadata została przekazana w POST
+    call_args = mock_client.post.call_args
+    payload = call_args[1]["json"]
+    assert "location" in payload
+    assert payload["location"] == "datacenter-1"
+    assert payload["environment"] == "production"

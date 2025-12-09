@@ -135,6 +135,10 @@ class Settings(BaseSettings):
 
     # Konfiguracja THE_HIVE (Distributed Processing & Task Queue)
     ENABLE_HIVE: bool = False  # Włącz architekturę rozproszonego przetwarzania
+    HIVE_URL: str = ""  # URL centralnego Ula (np. https://hive.example.com:8080)
+    HIVE_REGISTRATION_TOKEN: SecretStr = SecretStr(
+        ""
+    )  # Token autoryzacji dla rejestracji w Ulu
     REDIS_HOST: str = "localhost"  # Host Redis (dla Docker: 'redis')
     REDIS_PORT: int = 6379  # Port Redis
     REDIS_DB: int = 0  # Numer bazy danych Redis

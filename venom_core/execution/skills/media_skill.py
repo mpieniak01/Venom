@@ -12,6 +12,15 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Konfiguracja timeoutów dla Stable Diffusion API
+SD_PING_TIMEOUT = 5.0  # Timeout dla sprawdzenia dostępności API (sekundy)
+SD_GENERATION_TIMEOUT = 120.0  # Timeout dla generowania obrazu (sekundy)
+
+# Konfiguracja Stable Diffusion (domyślne parametry)
+SD_DEFAULT_STEPS = 20
+SD_DEFAULT_CFG_SCALE = 7.0
+SD_DEFAULT_SAMPLER = "DPM++ 2M Karras"
+
 
 class MediaSkill:
     """
@@ -150,7 +159,7 @@ class MediaSkill:
             # Sprawdź dostępność API
             logger.info(f"Próba połączenia z Stable Diffusion API: {self.sd_endpoint}")
 
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=SD_PING_TIMEOUT) as client:
                 # Ping endpoint
                 try:
                     ping_response = await client.get(f"{self.sd_endpoint}/sdapi/v1/")
@@ -169,14 +178,14 @@ class MediaSkill:
             payload = {
                 "prompt": prompt,
                 "negative_prompt": "blurry, bad quality, distorted, ugly",
-                "steps": 20,
+                "steps": SD_DEFAULT_STEPS,
                 "width": width,
                 "height": height,
-                "cfg_scale": 7.0,
-                "sampler_name": "DPM++ 2M Karras",
+                "cfg_scale": SD_DEFAULT_CFG_SCALE,
+                "sampler_name": SD_DEFAULT_SAMPLER,
             }
 
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=SD_GENERATION_TIMEOUT) as client:
                 response = await client.post(
                     f"{self.sd_endpoint}/sdapi/v1/txt2img",
                     json=payload,

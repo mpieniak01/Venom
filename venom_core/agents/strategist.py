@@ -420,7 +420,8 @@ class StrategistAgent(BaseAgent):
     def _extract_time(self, time_result: str) -> float:
         """
         Wyciąga szacowany czas z wyniku tekstowego.
-        Obsługuje format JSON {"minutes": X} oraz tekstowy "Oszacowany czas: X".
+        Obsługuje format JSON {"estimated_minutes": X, "complexity": Y} oraz
+        starszy format {"minutes": X} oraz tekstowy "Oszacowany czas: X".
 
         Args:
             time_result: Wynik tekstowy z estimate_time
@@ -434,9 +435,12 @@ class StrategistAgent(BaseAgent):
             lines = time_result.strip().split("\n")
             for line in lines:
                 line = line.strip()
-                if line.startswith("{") and "minutes" in line:
+                if line.startswith("{") and (
+                    "minutes" in line or "estimated_minutes" in line
+                ):
                     data = json.loads(line)
-                    minutes = data.get("minutes")
+                    # Preferuj nowy format z "estimated_minutes"
+                    minutes = data.get("estimated_minutes") or data.get("minutes")
                     if minutes is not None:
                         logger.debug(f"Wyciągnięto czas z JSON: {minutes} minut")
                         return float(minutes)

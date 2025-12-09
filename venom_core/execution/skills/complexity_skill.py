@@ -137,8 +137,11 @@ class ComplexitySkill:
         for reason, multiplier in multipliers:
             total_time *= multiplier
 
-        # Zwróć zarówno JSON jak i czytelny format
-        time_json = json.dumps({"minutes": int(total_time)})
+        # Zwróć JSON na początku dla łatwego parsowania
+        time_json = json.dumps(
+            {"estimated_minutes": int(total_time), "complexity": complexity.value},
+            ensure_ascii=False,
+        )
 
         result = f"{time_json}\n\n"
         result += f"Oszacowany czas: {total_time:.0f} minut ({total_time / 60:.1f}h)\n"

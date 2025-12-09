@@ -74,14 +74,32 @@ def test_kernel_builder_openai_without_api_key():
 
 
 def test_kernel_builder_azure_not_implemented():
-    """Test budowania kernela Azure - powinno rzucić NotImplementedError."""
+    """Test budowania kernela Azure bez credentials - powinno rzucić NotImplementedError."""
     settings = MockSettings(
         LLM_SERVICE_TYPE="azure",
         LLM_MODEL_NAME="gpt-4",
     )
     builder = KernelBuilder(settings=settings)
 
-    with pytest.raises(NotImplementedError, match="Azure OpenAI nie jest jeszcze"):
+    with pytest.raises(NotImplementedError, match="Azure OpenAI wymaga konfiguracji"):
+        builder.build_kernel()
+
+
+def test_kernel_builder_azure_with_credentials():
+    """Test budowania kernela Azure z credentials - obecnie nie zaimplementowane."""
+
+    class AzureSettings(MockSettings):
+        AZURE_OPENAI_ENDPOINT: str = "https://test.openai.azure.com/"
+        AZURE_OPENAI_KEY: str = "test-azure-key"
+
+    settings = AzureSettings(
+        LLM_SERVICE_TYPE="azure",
+        LLM_MODEL_NAME="gpt-4",
+    )
+    builder = KernelBuilder(settings=settings)
+
+    # Nawet z credentials, Azure nie jest jeszcze w pełni zaimplementowany
+    with pytest.raises(NotImplementedError, match="Azure OpenAI connector"):
         builder.build_kernel()
 
 
@@ -108,3 +126,38 @@ def test_kernel_builder_case_insensitive_service_type():
     kernel = builder.build_kernel()
 
     assert kernel is not None
+
+
+def test_kernel_builder_google_without_api_key():
+    """Test budowania kernela Google Gemini bez API key."""
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = ""
+
+    settings = GoogleSettings(
+        LLM_SERVICE_TYPE="google",
+        LLM_MODEL_NAME="gemini-1.5-pro",
+    )
+    builder = KernelBuilder(settings=settings)
+
+    # Może rzucić ValueError o brakującej bibliotece lub o brakującym kluczu API
+    with pytest.raises(ValueError):
+        builder.build_kernel()
+
+
+def test_kernel_builder_google_not_implemented():
+    """Test budowania kernela Google Gemini - obecnie nie w pełni zaimplementowane."""
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = "test-google-key"
+
+    settings = GoogleSettings(
+        LLM_SERVICE_TYPE="google",
+        LLM_MODEL_NAME="gemini-1.5-pro",
+    )
+    builder = KernelBuilder(settings=settings)
+
+    # Google Gemini wymaga biblioteki i dedykowanego connectora dla Semantic Kernel
+    # Może rzucić ValueError (brak biblioteki) lub NotImplementedError (brak connectora)
+    with pytest.raises((ValueError, NotImplementedError)):
+        builder.build_kernel()

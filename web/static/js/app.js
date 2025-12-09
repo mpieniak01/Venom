@@ -481,7 +481,8 @@ class VenomDashboard {
         }
 
         // Dashboard v2.4: Model Attribution Badge
-        if (metadata && metadata.model_name) {
+        // metadata jest opcjonalne - backward compatibility
+        if (metadata && typeof metadata === 'object' && metadata.model_name) {
             const badge = document.createElement('span');
             badge.className = metadata.is_paid ? 'model-badge paid' : 'model-badge free';
             

@@ -194,8 +194,8 @@ class HybridModelRouter:
         Returns:
             Dict z informacjami o routingu
         """
-        # Sprawdź czy Cost Guard jest włączony (state_manager dostępny)
-        if self.state_manager and not self.state_manager.is_paid_mode_enabled():
+        # Sprawdź czy Cost Guard jest aktywny
+        if self._is_cost_guard_blocking():
             logger.warning(
                 f"🔒 COST GUARD: Zablokowano dostęp do Cloud API. "
                 f"Fallback do LOCAL. Powód: {reason}"
@@ -207,6 +207,20 @@ class HybridModelRouter:
         
         # Tryb płatny włączony lub brak state_manager - przepuść do chmury
         return self._route_to_cloud(reason)
+
+    def _is_cost_guard_blocking(self) -> bool:
+        """
+        Sprawdza czy Cost Guard blokuje dostęp do chmury.
+        
+        Returns:
+            True jeśli dostęp zablokowany, False jeśli dozwolony
+        """
+        # Jeśli brak state_manager - nie blokuj (backward compatibility)
+        if not self.state_manager:
+            return False
+        
+        # Jeśli paid_mode wyłączony - blokuj
+        return not self.state_manager.is_paid_mode_enabled()
 
     def _has_cloud_access(self) -> bool:
         """

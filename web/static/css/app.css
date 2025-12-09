@@ -1975,6 +1975,22 @@ input:checked + .toggle-slider:before {
     transform: translateX(26px);
 }
 
+/* Accessibility: Add icons to toggle */
+.toggle-slider:after {
+    content: "🌿";
+    position: absolute;
+    right: 6px;
+    top: 2px;
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+input:checked + .toggle-slider:after {
+    content: "💸";
+    left: 6px;
+    right: auto;
+}
+
 /* Cost Mode Modal */
 .modal .warning-message {
     background-color: rgba(245, 158, 11, 0.1);

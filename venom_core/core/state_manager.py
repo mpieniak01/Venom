@@ -222,13 +222,6 @@ class StateManager:
         logger.info(f"Paid Mode {'włączony' if enabled else 'wyłączony'}")
         self._schedule_save()
     
-    def is_paid_mode_enabled(self) -> bool:
-        """
-        Sprawdza czy tryb płatny jest włączony.
-
-        Returns:
-            True jeśli paid mode jest aktywny
-
     # ========================================
     # Global Cost Guard Methods
     # ========================================

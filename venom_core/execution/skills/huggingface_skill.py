@@ -2,7 +2,7 @@
 
 from typing import Annotated, Optional
 
-from huggingface_hub import HfApi, hf_hub_url
+from huggingface_hub import HfApi
 from huggingface_hub.utils import RepositoryNotFoundError
 from semantic_kernel.functions import kernel_function
 
@@ -146,7 +146,9 @@ class HuggingFaceSkill:
 
             for r in results:
                 output += f"[{r['rank']}] {r['id']}\n"
-                output += f"📊 Pobrania: {r['downloads']:,} | ❤️ Polubienia: {r['likes']}\n"
+                output += (
+                    f"📊 Pobrania: {r['downloads']:,} | ❤️ Polubienia: {r['likes']}\n"
+                )
                 output += f"🎯 Zadanie: {r['task']}\n"
                 output += f"{r['compatibility']}\n"
                 output += f"🏷️ Tagi: {r['tags']}\n"
@@ -211,9 +213,13 @@ class HuggingFaceSkill:
                 card_content = "Brak dostępnego Model Card"
 
             # Ogranicz długość
-            if isinstance(card_content, str) and len(card_content) > MAX_MODEL_CARD_LENGTH:
+            if (
+                isinstance(card_content, str)
+                and len(card_content) > MAX_MODEL_CARD_LENGTH
+            ):
                 card_content = (
-                    card_content[:MAX_MODEL_CARD_LENGTH] + "\n\n[...Model Card obcięty...]"
+                    card_content[:MAX_MODEL_CARD_LENGTH]
+                    + "\n\n[...Model Card obcięty...]"
                 )
 
             # Formatuj wynik
@@ -289,14 +295,18 @@ class HuggingFaceSkill:
                     "downloads": getattr(dataset, "downloads", 0),
                     "likes": getattr(dataset, "likes", 0),
                     "url": f"https://huggingface.co/datasets/{dataset.id}",
-                    "tags": ", ".join(dataset.tags[:5]) if dataset.tags else "Brak tagów",
+                    "tags": (
+                        ", ".join(dataset.tags[:5]) if dataset.tags else "Brak tagów"
+                    ),
                 }
                 results.append(dataset_info)
 
             output = f"🗂️ TOP {len(results)} zbiorów danych dla: '{query}'\n\n"
             for r in results:
                 output += f"[{r['rank']}] {r['id']}\n"
-                output += f"📊 Pobrania: {r['downloads']:,} | ❤️ Polubienia: {r['likes']}\n"
+                output += (
+                    f"📊 Pobrania: {r['downloads']:,} | ❤️ Polubienia: {r['likes']}\n"
+                )
                 output += f"🏷️ Tagi: {r['tags']}\n"
                 output += f"🔗 URL: {r['url']}\n\n"
 

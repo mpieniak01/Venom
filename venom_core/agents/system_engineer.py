@@ -13,6 +13,8 @@ from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.execution.skills.github_skill import GitHubSkill
+from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.utils.logger import get_logger
 
@@ -42,6 +44,8 @@ Twoje odpowiedzialności:
 Masz dostęp do:
 - FileSkill: czytanie/zapisywanie plików
 - GitSkill: operacje git (branching, commit, merge)
+- GitHubSkill: wyszukiwanie repozytoriów, README, popularne projekty
+- HuggingFaceSkill: wyszukiwanie modeli AI i zbiorów danych
 - GraphStore: mapa zależności i struktura kodu
 
 ZASADY BEZPIECZEŃSTWA:
@@ -110,6 +114,14 @@ Ty:
         # Zarejestruj GitSkill (pracuje na katalogu projektu, nie workspace)
         self.git_skill = GitSkill(workspace_root=str(self.project_root))
         self.kernel.add_plugin(self.git_skill, plugin_name="GitSkill")
+
+        # Zarejestruj GitHubSkill
+        github_skill = GitHubSkill()
+        self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
+
+        # Zarejestruj HuggingFaceSkill
+        hf_skill = HuggingFaceSkill()
+        self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
 
         # Graf kodu (opcjonalny)
         self.graph_store = graph_store

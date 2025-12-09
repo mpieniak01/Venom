@@ -244,7 +244,7 @@ Szablon: `workspace/MARKETING_KIT_TEMPLATE.md`
 ### Planowane (v1.1):
 - ⏳ DALL-E 3 integration (wymaga OPENAI_API_KEY)
 - ⏳ Stable Diffusion lokalnie (ONNX + GPU)
-- ⏳ DNS configuration (Cloudflare API)
+- ❌ DNS configuration (Cloudflare API) - **USUNIĘTE**: Zastąpione przez mDNS (venom.local)
 - ⏳ SSL certificates (Let's Encrypt/Certbot automation)
 - ⏳ Kubernetes deployment
 - ⏳ Dashboard: Deployments view (web UI)

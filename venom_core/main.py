@@ -16,7 +16,9 @@ from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import memory as memory_routes
+from venom_core.api.routes import metrics as metrics_routes
 from venom_core.api.routes import nodes as nodes_routes
+from venom_core.api.routes import queue as queue_routes
 from venom_core.api.routes import strategy as strategy_routes
 from venom_core.api.routes import system as system_routes
 from venom_core.api.routes import tasks as tasks_routes
@@ -95,6 +97,12 @@ async def lifespan(app: FastAPI):
     # Startup
     # Inicjalizuj MetricsCollector
     init_metrics_collector()
+
+    # Ustaw EventBroadcaster dla live log streaming
+    from venom_core.utils import logger as logger_module
+
+    logger_module.set_event_broadcaster(event_broadcaster)
+    logger.info("Live log streaming włączony")
 
     # Inicjalizuj RequestTracer
     try:
@@ -520,6 +528,8 @@ app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
+    queue_routes.set_dependencies(orchestrator)
+    metrics_routes.set_dependencies(token_economist=None)  # Token economist będzie dostępny later
     memory_routes.set_dependencies(vector_store)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)
@@ -533,6 +543,8 @@ def setup_router_dependencies():
 
 # Montowanie routerów
 app.include_router(tasks_routes.router)
+app.include_router(queue_routes.router)
+app.include_router(metrics_routes.router)
 app.include_router(memory_routes.router)
 app.include_router(git_routes.router)
 app.include_router(knowledge_routes.router)

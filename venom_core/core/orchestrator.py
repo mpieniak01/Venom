@@ -136,7 +136,11 @@ class Orchestrator:
         if self.request_tracer:
             self.request_tracer.create_trace(task.id, request.content)
             self.request_tracer.add_step(
-                task.id, "User", "submit_request", status="ok", details="Request received"
+                task.id,
+                "User",
+                "submit_request",
+                status="ok",
+                details="Request received",
             )
 
         # Zaloguj event

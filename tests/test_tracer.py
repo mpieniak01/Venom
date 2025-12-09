@@ -1,12 +1,11 @@
 """Testy jednostkowe dla modułu RequestTracer."""
 
-import asyncio
 from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
 
-from venom_core.core.tracer import RequestTrace, RequestTracer, TraceStatus
+from venom_core.core.tracer import RequestTracer, TraceStatus
 
 
 @pytest.fixture
@@ -159,7 +158,7 @@ def test_get_all_traces_empty(tracer):
 def test_get_all_traces_returns_sorted(tracer):
     """Test że traces są sortowane od najnowszych."""
     import time
-    
+
     id1 = uuid4()
     id2 = uuid4()
     id3 = uuid4()

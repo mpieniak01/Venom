@@ -24,12 +24,18 @@ from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.infrastructure.hardware_pi import HardwareBridge
+from venom_core.jobs import scheduler as job_scheduler
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.utils.logger import get_logger
+
+# Import routers
+from venom_core.api.routes import git as git_routes
+from venom_core.api.routes import memory as memory_routes
+from venom_core.api.routes import tasks as tasks_routes
 
 logger = get_logger(__name__)
 
@@ -218,8 +224,13 @@ async def lifespan(app: FastAPI):
 
         # Rejestruj domyślne zadania
         if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
+            
+            # Wrapper do przekazania event_broadcaster
+            async def _consolidate_memory_wrapper():
+                await job_scheduler.consolidate_memory(event_broadcaster)
+            
             background_scheduler.add_interval_job(
-                func=_consolidate_memory,
+                func=_consolidate_memory_wrapper,
                 minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
                 job_id="consolidate_memory",
                 description="Konsolidacja pamięci i analiza logów (placeholder)",
@@ -229,8 +240,13 @@ async def lifespan(app: FastAPI):
             )
 
         if SETTINGS.ENABLE_HEALTH_CHECKS:
+            
+            # Wrapper do przekazania event_broadcaster
+            async def _check_health_wrapper():
+                await job_scheduler.check_health(event_broadcaster)
+            
             background_scheduler.add_interval_job(
-                func=_check_health,
+                func=_check_health_wrapper,
                 minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
                 job_id="check_health",
                 description="Sprawdzanie zdrowia systemu (placeholder)",
@@ -494,66 +510,22 @@ async def lifespan(app: FastAPI):
     logger.info("Aplikacja zamknięta")
 
 
-# Funkcje pomocnicze dla scheduled jobs
-async def _consolidate_memory():
-    """Konsolidacja pamięci - analiza logów i zapis wniosków (PLACEHOLDER)."""
-    logger.info("Uruchamiam konsolidację pamięci (placeholder)...")
-    if event_broadcaster:
-        await event_broadcaster.broadcast_event(
-            event_type=EventType.BACKGROUND_JOB_STARTED,
-            message="Memory consolidation started (placeholder)",
-            data={"job": "consolidate_memory"},
-        )
-
-    try:
-        # PLACEHOLDER: W przyszłości tutaj będzie analiza logów i zapis do GraphRAG
-        logger.debug("Konsolidacja pamięci - placeholder, brak implementacji")
-
-        if event_broadcaster:
-            await event_broadcaster.broadcast_event(
-                event_type=EventType.MEMORY_CONSOLIDATED,
-                message="Memory consolidation completed (placeholder)",
-                data={"job": "consolidate_memory"},
-            )
-
-    except Exception as e:
-        logger.error(f"Błąd podczas konsolidacji pamięci: {e}")
-        if event_broadcaster:
-            await event_broadcaster.broadcast_event(
-                event_type=EventType.BACKGROUND_JOB_FAILED,
-                message=f"Memory consolidation failed: {e}",
-                data={"job": "consolidate_memory", "error": str(e)},
-            )
-
-
-async def _check_health():
-    """Sprawdzenie zdrowia systemu (PLACEHOLDER)."""
-    logger.debug("Sprawdzanie zdrowia systemu (placeholder)...")
-
-    try:
-        from datetime import datetime
-
-        # Placeholder: W przyszłości tutaj będzie sprawdzanie Docker, LLM endpoints, etc.
-        health_status = {"status": "ok", "timestamp": datetime.now().isoformat()}
-
-        if event_broadcaster:
-            await event_broadcaster.broadcast_event(
-                event_type=EventType.BACKGROUND_JOB_COMPLETED,
-                message="Health check completed",
-                data={"job": "check_health", "status": health_status},
-            )
-
-    except Exception as e:
-        logger.error(f"Błąd podczas sprawdzania zdrowia: {e}")
-        if event_broadcaster:
-            await event_broadcaster.broadcast_event(
-                event_type=EventType.BACKGROUND_JOB_FAILED,
-                message=f"Health check failed: {e}",
-                data={"job": "check_health", "error": str(e)},
-            )
-
-
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
+
+# Ustaw zależności dla routerów (będą dostępne po inicjalizacji w lifespan)
+# Używamy callbacków które będą wykonane po startup
+@app.on_event("startup")
+async def setup_routers():
+    """Konfiguracja routerów po inicjalizacji zależności."""
+    # Ustaw zależności dla routerów
+    tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
+    memory_routes.set_dependencies(vector_store)
+    git_routes.set_dependencies(git_skill)
+
+# Montowanie routerów
+app.include_router(tasks_routes.router)
+app.include_router(memory_routes.router)
+app.include_router(git_routes.router)
 
 # Montowanie plików statycznych
 web_dir = Path(__file__).parent.parent / "web"
@@ -726,336 +698,12 @@ def healthz():
     return {"status": "ok", "component": "venom-core"}
 
 
-@app.post("/api/v1/tasks", response_model=TaskResponse, status_code=201)
-async def create_task(request: TaskRequest):
-    """
-    Tworzy nowe zadanie i uruchamia je w tle.
+# Tasks endpoints moved to venom_core/api/routes/tasks.py
 
-    Args:
-        request: Żądanie z treścią zadania
 
-    Returns:
-        Odpowiedź z ID zadania i statusem
+# History endpoints moved to venom_core/api/routes/tasks.py,
 
-    Raises:
-        HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
-    """
-    try:
-        # Inkrementuj licznik zadań
-        if metrics_collector:
-            metrics_collector.increment_task_created()
-
-        response = await orchestrator.submit_task(request)
-        return response
-    except Exception as e:
-        logger.exception("Błąd podczas tworzenia zadania")
-        raise HTTPException(
-            status_code=500, detail="Błąd wewnętrzny podczas tworzenia zadania"
-        ) from e
-
-
-@app.get("/api/v1/tasks/{task_id}", response_model=VenomTask)
-async def get_task(task_id: UUID):
-    """
-    Pobiera szczegóły zadania po ID.
-
-    Args:
-        task_id: UUID zadania
-
-    Returns:
-        Szczegóły zadania
-
-    Raises:
-        HTTPException: 404 jeśli zadanie nie istnieje
-    """
-    task = state_manager.get_task(task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
-    return task
-
-
-@app.get("/api/v1/tasks", response_model=list[VenomTask])
-async def get_all_tasks():
-    """
-    Pobiera listę wszystkich zadań.
-
-    Returns:
-        Lista wszystkich zadań w systemie
-    """
-    return state_manager.get_all_tasks()
-
-
-# --- History API Endpoints ---
-
-
-class HistoryRequestSummary(BaseModel):
-    """Skrócony widok requestu dla listy historii."""
-
-    request_id: UUID
-    prompt: str
-    status: str
-    created_at: str
-    finished_at: str = None
-    duration_seconds: float = None
-
-
-class HistoryRequestDetail(BaseModel):
-    """Szczegółowy widok requestu z krokami."""
-
-    request_id: UUID
-    prompt: str
-    status: str
-    created_at: str
-    finished_at: str = None
-    duration_seconds: float = None
-    steps: list
-
-
-@app.get("/api/v1/history/requests", response_model=list[HistoryRequestSummary])
-async def get_request_history(
-    limit: int = Query(
-        default=50, ge=1, le=1000, description="Maksymalna liczba wyników"
-    ),
-    offset: int = Query(default=0, ge=0, description="Offset dla paginacji"),
-    status: Optional[str] = Query(
-        default=None,
-        description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)",
-    ),
-):
-    """
-    Pobiera listę requestów z historii (paginowana).
-
-    Args:
-        limit: Maksymalna liczba wyników (1-1000, domyślnie 50)
-        offset: Offset dla paginacji (>=0, domyślnie 0)
-        status: Opcjonalny filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)
-
-    Returns:
-        Lista requestów z podstawowymi informacjami
-
-    Raises:
-        HTTPException: 400 jeśli podano nieprawidłowy status
-        HTTPException: 503 jeśli RequestTracer nie jest dostępny
-    """
-    if request_tracer is None:
-        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
-
-    # Walidacja statusu jeśli podano
-    if status is not None:
-        valid_statuses = [s.value for s in TraceStatus]
-        if status not in valid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Nieprawidłowy status. Dozwolone wartości: {', '.join(valid_statuses)}",
-            )
-
-    traces = request_tracer.get_all_traces(
-        limit=limit, offset=offset, status_filter=status
-    )
-
-    result = []
-    for trace in traces:
-        duration = None
-        if trace.finished_at:
-            duration = (trace.finished_at - trace.created_at).total_seconds()
-
-        result.append(
-            HistoryRequestSummary(
-                request_id=trace.request_id,
-                prompt=trace.prompt,
-                status=trace.status,
-                created_at=trace.created_at.isoformat(),
-                finished_at=(
-                    trace.finished_at.isoformat() if trace.finished_at else None
-                ),
-                duration_seconds=duration,
-            )
-        )
-
-    return result
-
-
-@app.get("/api/v1/history/requests/{request_id}", response_model=HistoryRequestDetail)
-async def get_request_detail(request_id: UUID):
-    """
-    Pobiera szczegóły requestu z pełną listą kroków.
-
-    Args:
-        request_id: UUID requestu
-
-    Returns:
-        Szczegółowe informacje o requestie wraz z timeline kroków
-
-    Raises:
-        HTTPException: 404 jeśli request nie istnieje
-    """
-    if request_tracer is None:
-        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
-
-    trace = request_tracer.get_trace(request_id)
-    if trace is None:
-        raise HTTPException(
-            status_code=404, detail=f"Request {request_id} nie istnieje w historii"
-        )
-
-    duration = None
-    if trace.finished_at:
-        duration = (trace.finished_at - trace.created_at).total_seconds()
-
-    # Konwertuj steps do słowników dla serializacji
-    steps_list = []
-    for step in trace.steps:
-        steps_list.append(
-            {
-                "component": step.component,
-                "action": step.action,
-                "timestamp": step.timestamp.isoformat(),
-                "status": step.status,
-                "details": step.details,
-            }
-        )
-
-    return HistoryRequestDetail(
-        request_id=trace.request_id,
-        prompt=trace.prompt,
-        status=trace.status,
-        created_at=trace.created_at.isoformat(),
-        finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
-        duration_seconds=duration,
-        steps=steps_list,
-    )
-
-
-# --- Memory API Endpoints ---
-
-
-class MemoryIngestRequest(BaseModel):
-    """Model żądania ingestion do pamięci."""
-
-    text: str
-    category: str = "general"
-    collection: str = "default"
-
-
-class MemoryIngestResponse(BaseModel):
-    """Model odpowiedzi po ingestion."""
-
-    status: str
-    message: str
-    chunks_count: int = 0
-
-
-class MemorySearchRequest(BaseModel):
-    """Model żądania wyszukiwania w pamięci."""
-
-    query: str
-    limit: int = 3
-    collection: str = "default"
-
-
-@app.post("/api/v1/memory/ingest", response_model=MemoryIngestResponse, status_code=201)
-async def ingest_to_memory(request: MemoryIngestRequest):
-    """
-    Zapisuje tekst do pamięci wektorowej.
-
-    Args:
-        request: Żądanie z tekstem do zapamiętania
-
-    Returns:
-        Potwierdzenie zapisu z liczbą fragmentów
-
-    Raises:
-        HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
-    """
-    if vector_store is None:
-        raise HTTPException(
-            status_code=503,
-            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        )
-
-    try:
-        if not request.text or not request.text.strip():
-            raise HTTPException(status_code=400, detail="Tekst nie może być pusty")
-
-        # Zapisz do pamięci
-        metadata = {"category": request.category}
-        result = vector_store.upsert(
-            text=request.text,
-            metadata=metadata,
-            collection_name=request.collection,
-            chunk_text=True,
-        )
-
-        logger.info(
-            f"Ingestion pomyślny: {result['chunks_count']} fragmentów do '{request.collection}'"
-        )
-
-        return MemoryIngestResponse(
-            status="success",
-            message=result["message"],
-            chunks_count=result["chunks_count"],
-        )
-
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception("Błąd podczas ingestion do pamięci")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-
-
-@app.post("/api/v1/memory/search")
-async def search_memory(request: MemorySearchRequest):
-    """
-    Wyszukuje informacje w pamięci wektorowej.
-
-    Args:
-        request: Żądanie z zapytaniem
-
-    Returns:
-        Wyniki wyszukiwania
-
-    Raises:
-        HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
-    """
-    if vector_store is None:
-        raise HTTPException(
-            status_code=503,
-            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        )
-
-    try:
-        if not request.query or not request.query.strip():
-            raise HTTPException(status_code=400, detail="Zapytanie nie może być puste")
-
-        results = vector_store.search(
-            query=request.query,
-            limit=request.limit,
-            collection_name=request.collection,
-        )
-
-        logger.info(
-            f"Wyszukiwanie w pamięci: znaleziono {len(results)} wyników dla '{request.query[:50]}...'"
-        )
-
-        return {
-            "status": "success",
-            "query": request.query,
-            "results": results,
-            "count": len(results),
-        }
-
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception("Błąd podczas wyszukiwania w pamięci")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-
-
-# --- Metrics API Endpoint ---
+# Memory endpoints moved to venom_core/api/routes/memory.py
 
 
 @app.get("/api/v1/metrics")
@@ -1305,130 +953,7 @@ async def get_gardener_status():
 # --- Git & Repository API Endpoints ---
 
 
-@app.get("/api/v1/git/status")
-async def get_git_status():
-    """
-    Zwraca status repozytorium Git (aktualny branch, zmiany, liczba zmodyfikowanych plików).
-
-    Returns:
-        Status repozytorium Git
-
-    Raises:
-        HTTPException: 503 jeśli GitSkill nie jest dostępny lub workspace nie jest repozytorium Git
-    """
-    if git_skill is None:
-        raise HTTPException(
-            status_code=503,
-            detail="GitSkill nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        )
-
-    try:
-        # Pobierz aktualny branch
-        branch = await git_skill.get_current_branch()
-
-        # Sprawdź czy to błąd
-        if branch.startswith("❌"):
-            return {
-                "status": "error",
-                "is_git_repo": False,
-                "message": "Workspace nie jest repozytorium Git",
-            }
-
-        # Pobierz status
-        status_output = await git_skill.get_status()
-
-        # Parsuj status aby określić czy są zmiany
-        has_changes = (
-            "nothing to commit" not in status_output
-            and "working tree clean" not in status_output
-        )
-
-        # Użyj GitPython do dokładniejszego liczenia zmian
-        modified_count = 0
-        if has_changes:
-            try:
-                # Pobierz obiekt Repo i policz zmiany
-                from git import GitCommandError, Repo
-
-                repo = Repo(git_skill.workspace_root)
-                # Sprawdź czy HEAD istnieje (czy repo ma commity)
-                if repo.head.is_valid():
-                    # Zmodyfikowane i staged pliki względem HEAD
-                    modified_count = len(repo.index.diff("HEAD"))
-                else:
-                    # Brak HEAD — policz tylko nieśledzone pliki
-                    modified_count = len(repo.untracked_files)
-                # Dodaj nieśledzone pliki (jeśli HEAD istnieje)
-                if repo.head.is_valid():
-                    modified_count += len(repo.untracked_files)
-            except (GitCommandError, ValueError):
-                # Fallback: proste parsowanie jeśli GitPython zawiedzie (np. HEAD nie istnieje)
-                lines = status_output.split("\n")
-                for line in lines:
-                    if (
-                        "modified:" in line
-                        or "new file:" in line
-                        or "deleted:" in line
-                        or "renamed:" in line
-                    ):
-                        modified_count += 1
-
-        return {
-            "status": "success",
-            "is_git_repo": True,
-            "branch": branch,
-            "has_changes": has_changes,
-            "modified_count": modified_count,
-            "status_output": status_output,
-        }
-
-    except Exception as e:
-        logger.exception("Błąd podczas pobierania statusu Git")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
-
-
-@app.post("/api/v1/git/sync")
-async def sync_repository():
-    """
-    Synchronizuje repozytorium (pull z remote).
-
-    Returns:
-        Wynik synchronizacji
-
-    Raises:
-        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
-    """
-    if git_skill is None:
-        raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
-
-    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody pull() do GitSkill
-    raise HTTPException(
-        status_code=501,
-        detail="Synchronizacja (git pull) nie jest jeszcze zaimplementowana. Użyj Integrator Agent lub wykonaj manualnie.",
-    )
-
-
-@app.post("/api/v1/git/undo")
-async def undo_changes():
-    """
-    Cofa wszystkie niezapisane zmiany (git reset --hard).
-
-    UWAGA: To jest destrukcyjna operacja!
-
-    Returns:
-        Wynik cofnięcia zmian
-
-    Raises:
-        HTTPException: 501 jeśli nie zaimplementowano, 503 jeśli GitSkill nie jest dostępny
-    """
-    if git_skill is None:
-        raise HTTPException(status_code=503, detail="GitSkill nie jest dostępny")
-
-    # Feature nie jest jeszcze zaimplementowana - wymaga dodania metody reset() do GitSkill
-    raise HTTPException(
-        status_code=501,
-        detail="Cofnięcie zmian (git reset) nie jest jeszcze zaimplementowane. Użyj Integrator Agent z odpowiednim potwierdzeniem.",
-    )
+# Git endpoints moved to venom_core/api/routes/git.py
 
 
 # --- Background Jobs API Endpoints (THE_OVERMIND) ---

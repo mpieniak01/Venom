@@ -482,9 +482,7 @@ class DesktopSensor:
             logger.info("DesktopSensor: tryb nagrywania WŁĄCZONY (pynput aktywne)")
 
         except ImportError:
-            logger.error(
-                "pynput nie jest zainstalowany - nagrywanie akcji niedostępne"
-            )
+            logger.error("pynput nie jest zainstalowany - nagrywanie akcji niedostępne")
             self._recording_mode = False
             raise
         except Exception as e:

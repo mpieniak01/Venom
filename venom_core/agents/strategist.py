@@ -440,7 +440,9 @@ class StrategistAgent(BaseAgent):
                     try:
                         data = json.loads(line)
                         # Preferuj nowy format z "estimated_minutes"
-                        minutes = data.get("estimated_minutes") or data.get("minutes")
+                        minutes = data.get("estimated_minutes")
+                        if minutes is None:
+                            minutes = data.get("minutes")
                         if minutes is not None:
                             logger.debug(f"Wyciągnięto czas z JSON: {minutes} minut")
                             return float(minutes)

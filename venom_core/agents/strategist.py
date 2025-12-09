@@ -435,17 +435,20 @@ class StrategistAgent(BaseAgent):
             lines = time_result.strip().split("\n")
             for line in lines:
                 line = line.strip()
-                if line.startswith("{") and (
-                    "minutes" in line or "estimated_minutes" in line
-                ):
-                    data = json.loads(line)
-                    # Preferuj nowy format z "estimated_minutes"
-                    minutes = data.get("estimated_minutes") or data.get("minutes")
-                    if minutes is not None:
-                        logger.debug(f"Wyciągnięto czas z JSON: {minutes} minut")
-                        return float(minutes)
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.debug(f"Nie udało się sparsować JSON z time_result: {e}")
+                # Sprawdź czy linia wygląda jak JSON przed parsowaniem
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        data = json.loads(line)
+                        # Preferuj nowy format z "estimated_minutes"
+                        minutes = data.get("estimated_minutes") or data.get("minutes")
+                        if minutes is not None:
+                            logger.debug(f"Wyciągnięto czas z JSON: {minutes} minut")
+                            return float(minutes)
+                    except json.JSONDecodeError:
+                        # Jeśli to nie jest JSON, kontynuuj do następnej linii
+                        continue
+        except (ValueError, AttributeError) as e:
+            logger.debug(f"Błąd podczas iteracji po liniach: {e}")
 
         # Fallback: szukaj wzorca tekstowego "Oszacowany czas: X"
         match = re.search(r"Oszacowany czas:\s*(\d+)", time_result)

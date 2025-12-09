@@ -105,6 +105,12 @@ class VenomDashboard {
             // THE_CANVAS: Widget elements
             widgetsGrid: document.getElementById('widgetsGrid'),
             clearWidgetsBtn: document.getElementById('clearWidgetsBtn'),
+            // History elements
+            historyTableBody: document.getElementById('historyTableBody'),
+            refreshHistory: document.getElementById('refreshHistory'),
+            historyModal: document.getElementById('historyModal'),
+            historyModalBody: document.getElementById('historyModalBody'),
+            closeHistoryModal: document.getElementById('closeHistoryModal'),
         };
     }
 
@@ -539,6 +545,29 @@ class VenomDashboard {
                 this.clearAllWidgets();
             });
         }
+
+        // History: Refresh button
+        if (this.elements.refreshHistory) {
+            this.elements.refreshHistory.addEventListener('click', () => {
+                this.loadHistory();
+            });
+        }
+
+        // History: Close modal button
+        if (this.elements.closeHistoryModal) {
+            this.elements.closeHistoryModal.addEventListener('click', () => {
+                this.closeHistoryModal();
+            });
+        }
+
+        // History: Click outside modal to close
+        if (this.elements.historyModal) {
+            this.elements.historyModal.addEventListener('click', (e) => {
+                if (e.target === this.elements.historyModal) {
+                    this.closeHistoryModal();
+                }
+            });
+        }
     }
 
     async sendTask() {
@@ -737,6 +766,8 @@ class VenomDashboard {
 
         if (tabName === 'feed') {
             document.getElementById('feedTab').classList.add('active');
+        } else if (tabName === 'voice') {
+            document.getElementById('voiceTab').classList.add('active');
         } else if (tabName === 'jobs') {
             document.getElementById('jobsTab').classList.add('active');
             // Refresh data when switching to jobs tab
@@ -746,6 +777,10 @@ class VenomDashboard {
             // Refresh data when switching to memory tab
             this.fetchLessons();
             this.fetchGraphSummary();
+        } else if (tabName === 'history') {
+            document.getElementById('historyTab').classList.add('active');
+            // Load history when switching to history tab
+            this.loadHistory();
         }
     }
 
@@ -2214,6 +2249,226 @@ class VenomDashboard {
 
             container.appendChild(badge);
         });
+    }
+
+    // History Tab Methods
+    async loadHistory() {
+        if (!this.elements.historyTableBody) return;
+
+        try {
+            const response = await fetch('/api/v1/history/requests?limit=50');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const requests = await response.json();
+
+            if (requests.length === 0) {
+                this.elements.historyTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="3" class="empty-state">Brak historii żądań</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            this.elements.historyTableBody.innerHTML = '';
+
+            requests.forEach(request => {
+                const row = document.createElement('tr');
+                row.className = `status-${request.status.toLowerCase()}`;
+                row.style.cursor = 'pointer';
+                row.dataset.requestId = request.request_id;
+
+                // Status badge
+                const statusCell = document.createElement('td');
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `status-badge status-${request.status.toLowerCase()}`;
+                statusBadge.textContent = this.getStatusIcon(request.status) + ' ' + request.status;
+                statusCell.appendChild(statusBadge);
+                row.appendChild(statusCell);
+
+                // Prompt
+                const promptCell = document.createElement('td');
+                const promptText = document.createElement('div');
+                promptText.className = 'prompt-text';
+                promptText.textContent = request.prompt;
+                promptText.title = request.prompt;
+                promptCell.appendChild(promptText);
+                row.appendChild(promptCell);
+
+                // Time
+                const timeCell = document.createElement('td');
+                const timeText = document.createElement('div');
+                timeText.className = 'time-text';
+                const createdDate = new Date(request.created_at);
+                const duration = request.duration_seconds 
+                    ? `(${request.duration_seconds.toFixed(1)}s)` 
+                    : '';
+                timeText.textContent = `${this.formatTime(createdDate)} ${duration}`;
+                timeCell.appendChild(timeText);
+                row.appendChild(timeCell);
+
+                // Click handler
+                row.addEventListener('click', () => {
+                    this.showHistoryDetail(request.request_id);
+                });
+
+                this.elements.historyTableBody.appendChild(row);
+            });
+
+        } catch (error) {
+            console.error('Error loading history:', error);
+            this.elements.historyTableBody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="empty-state">Błąd ładowania historii</td>
+                </tr>
+            `;
+        }
+    }
+
+    async showHistoryDetail(requestId) {
+        if (!this.elements.historyModal || !this.elements.historyModalBody) return;
+
+        // Show modal
+        this.elements.historyModal.style.display = 'flex';
+        this.elements.historyModalBody.innerHTML = '<div class="loading-state">Ładowanie szczegółów...</div>';
+
+        try {
+            const response = await fetch(`/api/v1/history/requests/${requestId}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const detail = await response.json();
+
+            // Render request info
+            const createdDate = new Date(detail.created_at);
+            const finishedDate = detail.finished_at ? new Date(detail.finished_at) : null;
+            const duration = detail.duration_seconds 
+                ? `${detail.duration_seconds.toFixed(2)}s` 
+                : 'N/A';
+
+            let html = `
+                <div class="request-info">
+                    <div class="request-info-row">
+                        <span class="request-info-label">ID:</span>
+                        <span class="request-info-value">${detail.request_id}</span>
+                    </div>
+                    <div class="request-info-row">
+                        <span class="request-info-label">Status:</span>
+                        <span class="request-info-value">
+                            <span class="status-badge status-${detail.status.toLowerCase()}">
+                                ${this.getStatusIcon(detail.status)} ${detail.status}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="request-info-row">
+                        <span class="request-info-label">Polecenie:</span>
+                        <span class="request-info-value">${this.escapeHtml(detail.prompt)}</span>
+                    </div>
+                    <div class="request-info-row">
+                        <span class="request-info-label">Utworzono:</span>
+                        <span class="request-info-value">${this.formatTime(createdDate)}</span>
+                    </div>
+                    ${finishedDate ? `
+                    <div class="request-info-row">
+                        <span class="request-info-label">Zakończono:</span>
+                        <span class="request-info-value">${this.formatTime(finishedDate)}</span>
+                    </div>
+                    ` : ''}
+                    <div class="request-info-row">
+                        <span class="request-info-label">Czas trwania:</span>
+                        <span class="request-info-value">${duration}</span>
+                    </div>
+                </div>
+
+                <h3 style="margin-bottom: 1rem; color: var(--text-primary);">⏱️ Timeline Wykonania</h3>
+                <div class="request-timeline">
+            `;
+
+            // Render timeline
+            if (detail.steps && detail.steps.length > 0) {
+                detail.steps.forEach(step => {
+                    const stepDate = new Date(step.timestamp);
+                    const isError = step.status === 'error';
+                    
+                    html += `
+                        <div class="timeline-item">
+                            <div class="timeline-dot ${isError ? 'status-error' : ''}"></div>
+                            <div class="timeline-content ${isError ? 'status-error' : ''}">
+                                <div class="timeline-header">
+                                    <span class="timeline-component">${this.escapeHtml(step.component)}</span>
+                                    <span class="timeline-timestamp">${this.formatTime(stepDate)}</span>
+                                </div>
+                                <div class="timeline-action">${this.escapeHtml(step.action)}</div>
+                                ${step.details ? `
+                                <div class="timeline-details">${this.escapeHtml(step.details)}</div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<div class="empty-state">Brak kroków w timeline</div>';
+            }
+
+            html += '</div>';
+
+            this.elements.historyModalBody.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error loading history detail:', error);
+            this.elements.historyModalBody.innerHTML = `
+                <div class="empty-state">Błąd ładowania szczegółów: ${error.message}</div>
+            `;
+        }
+    }
+
+    closeHistoryModal() {
+        if (this.elements.historyModal) {
+            this.elements.historyModal.style.display = 'none';
+        }
+    }
+
+    getStatusIcon(status) {
+        const icons = {
+            'PENDING': '⚪',
+            'PROCESSING': '🟡',
+            'COMPLETED': '🟢',
+            'FAILED': '🔴',
+            'LOST': '🔴'
+        };
+        return icons[status] || '⚪';
+    }
+
+    formatTime(date) {
+        const now = new Date();
+        const diff = now - date;
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) {
+            return `${days}d ago`;
+        } else if (hours > 0) {
+            return `${hours}h ago`;
+        } else if (minutes > 0) {
+            return `${minutes}m ago`;
+        } else if (seconds > 0) {
+            return `${seconds}s ago`;
+        } else {
+            return 'just now';
+        }
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 

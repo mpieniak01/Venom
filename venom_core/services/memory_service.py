@@ -48,7 +48,9 @@ class MemoryConsolidator:
         """
         filtered_text = text
         for pattern in self.SENSITIVE_PATTERNS:
-            filtered_text = re.sub(pattern, "[FILTERED]", filtered_text, flags=re.IGNORECASE)
+            filtered_text = re.sub(
+                pattern, "[FILTERED]", filtered_text, flags=re.IGNORECASE
+            )
 
         return filtered_text
 
@@ -155,7 +157,10 @@ LEKCJE:
             if "PODSUMOWANIE:" in line_stripped.upper():
                 current_section = "summary"
                 continue
-            elif "LEKCJE:" in line_stripped.upper() or "LESSONS:" in line_stripped.upper():
+            elif (
+                "LEKCJE:" in line_stripped.upper()
+                or "LESSONS:" in line_stripped.upper()
+            ):
                 current_section = "lessons"
                 continue
 

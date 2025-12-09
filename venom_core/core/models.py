@@ -44,9 +44,7 @@ class Intent(BaseModel):
     """Reprezentacja sparsowanej intencji użytkownika."""
 
     action: str  # Główna akcja (np. "edit", "create", "delete")
-    targets: List[str] = Field(
-        default_factory=list
-    )  # Pliki/ścieżki będące celem akcji
+    targets: List[str] = Field(default_factory=list)  # Pliki/ścieżki będące celem akcji
     params: Dict[str, Any] = Field(
         default_factory=dict
     )  # Dodatkowe parametry wyciągnięte z tekstu

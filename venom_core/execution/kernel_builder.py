@@ -14,6 +14,17 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Import dla Google Gemini
+try:
+    import google.generativeai as genai
+
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+    logger.warning(
+        "google-generativeai nie jest zainstalowany - obsługa Gemini niedostępna"
+    )
+
 
 class KernelBuilder:
     """Builder do tworzenia Semantic Kernel z konfiguracją local-first i inteligentnym routingiem."""
@@ -144,7 +155,7 @@ class KernelBuilder:
 
         Args:
             kernel: Jądro Semantic Kernel
-            service_type: Typ serwisu ('local', 'openai', 'azure')
+            service_type: Typ serwisu ('local', 'openai', 'azure', 'google')
             service_id: Opcjonalny ID serwisu (domyślnie typ)
             model_name: Opcjonalna nazwa modelu (domyślnie z ustawień)
         """
@@ -188,15 +199,69 @@ class KernelBuilder:
 
             kernel.add_service(chat_service)
 
-        elif service_type == "azure":
-            # Placeholder dla Azure OpenAI (można rozszerzyć w przyszłości)
+        elif service_type == "google":
+            # Konfiguracja dla Google Gemini
+            if not GOOGLE_AVAILABLE:
+                raise ValueError(
+                    "google-generativeai nie jest zainstalowany. "
+                    "Zainstaluj: pip install google-generativeai"
+                )
+
+            if not self.settings.GOOGLE_API_KEY:
+                raise ValueError(
+                    "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
+                )
+
+            logger.debug(f"Konfiguracja Google Gemini: model={model_name}")
+
+            # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
+            # Wymagana jest implementacja dedykowanego wrappera/adaptera
             raise NotImplementedError(
-                "Azure OpenAI nie jest jeszcze zaimplementowany. Użyj 'local' lub 'openai'."
+                "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
+                "Wymagana jest implementacja dedykowanego connectora/wrappera. "
+                "Na razie użyj 'local' lub 'openai'. "
+                "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
+            )
+
+        elif service_type == "azure":
+            # Konfiguracja dla Azure OpenAI (opcja zapasowa)
+            # Sprawdź czy mamy wymagane parametry Azure
+            azure_endpoint = getattr(self.settings, "AZURE_OPENAI_ENDPOINT", None)
+            azure_key = getattr(self.settings, "AZURE_OPENAI_KEY", None)
+
+            if not azure_endpoint or not azure_key:
+                # Brak konfiguracji Azure - rzuć błąd informujący użytkownika
+                raise NotImplementedError(
+                    "Azure OpenAI wymaga konfiguracji AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_KEY. "
+                    "Obecnie wspierane: 'local', 'openai'. "
+                    "Azure jest dostępny jako opcja zapasowa po skonfigurowaniu credentials."
+                )
+
+            # Jeśli mamy parametry, możemy zarejestrować Azure
+            logger.info(
+                f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}"
+            )
+
+            # Faktyczna implementacja Azure connector
+            # TODO: Implementacja Azure OpenAI connector
+            # from semantic_kernel.connectors.ai.open_ai import AzureOpenAIChatCompletion
+            # chat_service = AzureOpenAIChatCompletion(
+            #     service_id=service_id,
+            #     deployment_name=model_name,
+            #     endpoint=azure_endpoint,
+            #     api_key=azure_key,
+            # )
+            # kernel.add_service(chat_service)
+
+            raise NotImplementedError(
+                "Azure OpenAI connector jest w trakcie implementacji. "
+                "Credentials zostały wykryte, ale faktyczny serwis nie jest jeszcze zarejestrowany. "
+                "Użyj 'local' lub 'openai'."
             )
 
         else:
             raise ValueError(
-                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, openai, azure"
+                f"Nieznany typ serwisu LLM: {service_type}. Dostępne: local, openai, google, azure"
             )
 
     def get_model_router(self) -> ModelRouter:

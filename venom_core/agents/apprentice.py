@@ -13,6 +13,7 @@ from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.model_router import HybridModelRouter, TaskType
 from venom_core.learning.demonstration_analyzer import (
     ActionIntent,
     DemonstrationAnalyzer,
@@ -90,6 +91,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         self.analyzer = DemonstrationAnalyzer()
 
         self.current_session_id: Optional[str] = None
+
+        # Inicjalizuj hybrydowy router modeli
+        self.hybrid_router = HybridModelRouter()
 
         logger.info(
             f"ApprenticeAgent zainicjalizowany (skills: {self.custom_skills_dir})"
@@ -405,7 +409,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
     async def _llm_response(self, request: str) -> str:
         """
-        Deleguje żądanie do LLM.
+        Deleguje żądanie do LLM przez hybrydowy router.
 
         Args:
             request: Żądanie użytkownika
@@ -413,8 +417,9 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         Returns:
             Odpowiedź LLM
         """
-        # Dodaj kontekst o dostępnych komendach
-        context = """
+        try:
+            # Dodaj kontekst o dostępnych komendach
+            context = """
 Dostępne komendy:
 - "Rozpocznij nagrywanie" / "REC" - rozpoczyna nagrywanie demonstracji
 - "Zatrzymaj nagrywanie" / "STOP" - kończy nagrywanie
@@ -423,21 +428,38 @@ Dostępne komendy:
 
 Obecnie:
 """
-        if self.recorder.is_recording:
-            context += f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
-        else:
-            context += "- Nagrywanie nieaktywne\n"
+            if self.recorder.is_recording:
+                context += (
+                    f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
+                )
+            else:
+                context += "- Nagrywanie nieaktywne\n"
 
-        sessions = self.recorder.list_sessions()
-        context += f"- Dostępne sesje: {', '.join(sessions)}\n"
+            sessions = self.recorder.list_sessions()
+            context += f"- Dostępne sesje: {', '.join(sessions)}\n"
 
-        # Wywołaj LLM przez kernel (placeholder - obecnie nie używamy full_prompt)
-        try:
-            # Prosta odpowiedź bez LLM (placeholder)
+            # Przygotuj pełny prompt
+            full_prompt = f"{context}\n\nPytanie użytkownika: {request}"
+
+            # Pobierz informacje o routingu (określamy typ zadania jako CHAT)
+            routing_info = self.hybrid_router.get_routing_info_for_task(
+                task_type=TaskType.CHAT, prompt=full_prompt
+            )
+
+            # Loguj użyty model
+            logger.info(
+                f"[ApprenticeAgent] Routing do modelu: {routing_info['provider']} "
+                f"({routing_info['model_name']})"
+            )
+
+            # TODO: Faktyczne wywołanie LLM przez KernelBuilder z routing_info
+            # Na razie zwracamy fallback response
             return (
                 f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
-                f"{context}"
+                f"{context}\n\n"
+                f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
             )
+
         except Exception as e:
-            logger.error(f"Błąd LLM: {e}")
+            logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
             return f"❌ Błąd podczas przetwarzania żądania: {e}"

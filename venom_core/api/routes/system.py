@@ -1,6 +1,7 @@
 """Moduł: routes/system - Endpointy API dla systemu (metrics, scheduler, services)."""
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from venom_core.core.metrics import metrics_collector
 from venom_core.utils.logger import get_logger
@@ -12,13 +13,28 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 # Dependencies - będą ustawione w main.py
 _background_scheduler = None
 _service_monitor = None
+_state_manager = None  # Nowa zależność dla Cost Guard
 
 
-def set_dependencies(background_scheduler, service_monitor):
+class CostModeRequest(BaseModel):
+    """Request do zmiany trybu kosztowego."""
+
+    enable: bool
+
+
+class CostModeResponse(BaseModel):
+    """Response z informacją o trybie kosztowym."""
+
+    enabled: bool
+    provider: str
+
+
+def set_dependencies(background_scheduler, service_monitor, state_manager=None):
     """Ustaw zależności dla routera."""
-    global _background_scheduler, _service_monitor
+    global _background_scheduler, _service_monitor, _state_manager
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
+    _state_manager = state_manager
 
 
 @router.get("/metrics")
@@ -215,4 +231,82 @@ async def get_service_status(service_name: str):
         raise
     except Exception as e:
         logger.exception(f"Błąd podczas sprawdzania statusu usługi {service_name}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ========================================
+# Global Cost Guard Endpoints
+# ========================================
+
+
+@router.get("/system/cost-mode", response_model=CostModeResponse)
+async def get_cost_mode():
+    """
+    Zwraca aktualny stan Global Cost Guard.
+
+    Returns:
+        Informacja czy tryb płatny jest włączony i jaki provider jest używany
+
+    Raises:
+        HTTPException: 503 jeśli StateManager nie jest dostępny
+    """
+    if _state_manager is None:
+        raise HTTPException(
+            status_code=503, detail="StateManager nie jest dostępny (Cost Guard)"
+        )
+
+    try:
+        from venom_core.config import SETTINGS
+
+        enabled = _state_manager.is_paid_mode_enabled()
+        provider = "hybrid" if SETTINGS.AI_MODE == "HYBRID" else SETTINGS.AI_MODE.lower()
+
+        return CostModeResponse(enabled=enabled, provider=provider)
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu Cost Guard")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.post("/system/cost-mode")
+async def set_cost_mode(request: CostModeRequest):
+    """
+    Ustawia tryb kosztowy (Eco/Pro).
+
+    Args:
+        request: Żądanie z flagą enable (True = Pro Mode, False = Eco Mode)
+
+    Returns:
+        Potwierdzenie zmiany trybu
+
+    Raises:
+        HTTPException: 503 jeśli StateManager nie jest dostępny
+    """
+    if _state_manager is None:
+        raise HTTPException(
+            status_code=503, detail="StateManager nie jest dostępny (Cost Guard)"
+        )
+
+    try:
+        if request.enable:
+            _state_manager.enable_paid_mode()
+            logger.warning(
+                "🔓 Paid Mode ENABLED przez API - użytkownik zaakceptował koszty"
+            )
+            return {
+                "status": "success",
+                "message": "Paid Mode (Pro) włączony - dostęp do Cloud API otwarty",
+                "enabled": True,
+            }
+        else:
+            _state_manager.disable_paid_mode()
+            logger.info("🔒 Paid Mode DISABLED przez API - tryb Eco aktywny")
+            return {
+                "status": "success",
+                "message": "Paid Mode (Pro) wyłączony - tylko lokalne modele",
+                "enabled": False,
+            }
+
+    except Exception as e:
+        logger.exception("Błąd podczas zmiany trybu kosztowego")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

@@ -40,6 +40,7 @@ class VenomDashboard {
         this.startIntegrationsPolling(); // Dashboard v2.1
         this.startQueueStatusPolling(); // Dashboard v2.3
         this.startTokenomicsPolling(); // Dashboard v2.3
+        this.startCostModePolling(); // Dashboard v2.4: Cost Guard
         this.initNotificationContainer();
     }
 
@@ -125,6 +126,13 @@ class VenomDashboard {
             // Dashboard v2.3: Live Terminal
             liveTerminal: document.getElementById('liveTerminal'),
             clearTerminalBtn: document.getElementById('clearTerminalBtn'),
+            // Dashboard v2.4: Cost Mode (Global Cost Guard)
+            costModeToggle: document.getElementById('costModeToggle'),
+            costModeLabel: document.getElementById('costModeLabel'),
+            costModeModal: document.getElementById('costModeModal'),
+            closeCostModeModal: document.getElementById('closeCostModeModal'),
+            confirmCostMode: document.getElementById('confirmCostMode'),
+            cancelCostMode: document.getElementById('cancelCostMode'),
         };
     }
 
@@ -456,7 +464,7 @@ class VenomDashboard {
         }
     }
 
-    addChatMessage(role, content, agent = null) {
+    addChatMessage(role, content, agent = null, metadata = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
 
@@ -470,6 +478,21 @@ class VenomDashboard {
             messageDiv.appendChild(contentSpan);
         } else {
             messageDiv.textContent = content;
+        }
+
+        // Dashboard v2.4: Model Attribution Badge
+        // metadata jest opcjonalne - backward compatibility
+        if (metadata && typeof metadata === 'object' && metadata.model_name) {
+            const badge = document.createElement('span');
+            badge.className = metadata.is_paid ? 'model-badge paid' : 'model-badge free';
+            
+            const icon = metadata.is_paid ? '⚡' : '🤖';
+            const modelName = metadata.model_name || 'Unknown';
+            
+            badge.textContent = `${icon} ${modelName}`;
+            badge.title = `Provider: ${metadata.provider || 'unknown'}`;
+            
+            messageDiv.appendChild(badge);
         }
 
         this.elements.chatMessages.appendChild(messageDiv);
@@ -651,6 +674,38 @@ class VenomDashboard {
                 }
             });
         }
+
+        // Dashboard v2.4: Cost Mode (Global Cost Guard)
+        if (this.elements.costModeToggle) {
+            this.elements.costModeToggle.addEventListener('change', (e) => {
+                this.handleCostModeToggle(e.target.checked);
+            });
+        }
+
+        if (this.elements.closeCostModeModal) {
+            this.elements.closeCostModeModal.addEventListener('click', () => {
+                this.closeCostModeModal();
+            });
+        }
+
+        if (this.elements.confirmCostMode) {
+            this.elements.confirmCostMode.addEventListener('click', () => {
+                this.confirmCostModeChange();
+            });
+        }
+
+        if (this.elements.cancelCostMode) {
+            this.elements.cancelCostMode.addEventListener('click', () => {
+                this.cancelCostModeChange();
+            });
+        }
+
+        // Close cost mode modal on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.elements.costModeModal && this.elements.costModeModal.style.display === 'flex') {
+                this.cancelCostModeChange();
+            }
+        });
     }
 
     async sendTask() {
@@ -2820,6 +2875,122 @@ class VenomDashboard {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // ============================================
+    // Dashboard v2.4: Global Cost Guard
+    // ============================================
+
+    async startCostModePolling() {
+        const pollCostMode = async () => {
+            try {
+                const response = await fetch('/api/v1/system/cost-mode');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.updateCostModeUI(data.enabled);
+                }
+            } catch (error) {
+                console.error('Error polling cost mode:', error);
+            }
+        };
+
+        // Initial poll
+        await pollCostMode();
+        
+        // Poll every 5 seconds
+        setInterval(pollCostMode, 5000);
+    }
+
+    updateCostModeUI(enabled) {
+        if (!this.elements.costModeToggle || !this.elements.costModeLabel) return;
+
+        // Ustaw checkbox bez triggerowania eventu
+        this.elements.costModeToggle.checked = enabled;
+
+        // Zaktualizuj label i style
+        if (enabled) {
+            this.elements.costModeLabel.textContent = '💸 Pro Mode';
+            this.elements.costModeLabel.classList.add('pro-mode');
+            this.elements.costModeLabel.classList.remove('eco-mode');
+        } else {
+            this.elements.costModeLabel.textContent = '🌿 Eco Mode';
+            this.elements.costModeLabel.classList.add('eco-mode');
+            this.elements.costModeLabel.classList.remove('pro-mode');
+        }
+    }
+
+    handleCostModeToggle(wantsToEnable) {
+        if (wantsToEnable) {
+            // Pokazuje modal potwierdzenia
+            this.showCostModeModal();
+        } else {
+            // Wyłączanie - bezpośrednia zmiana
+            this.setCostMode(false);
+        }
+    }
+
+    showCostModeModal() {
+        if (this.elements.costModeModal) {
+            this.elements.costModeModal.style.display = 'flex';
+        }
+    }
+
+    closeCostModeModal() {
+        if (this.elements.costModeModal) {
+            this.elements.costModeModal.style.display = 'none';
+        }
+    }
+
+    async confirmCostModeChange() {
+        // Użytkownik potwierdził - włącz Paid Mode
+        this.closeCostModeModal();
+        await this.setCostMode(true);
+    }
+
+    cancelCostModeChange() {
+        // Użytkownik anulował - przywróć checkbox do stanu wyłączonego
+        if (this.elements.costModeToggle) {
+            this.elements.costModeToggle.checked = false;
+        }
+        this.closeCostModeModal();
+    }
+
+    async setCostMode(enable) {
+        try {
+            const response = await fetch('/api/v1/system/cost-mode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ enable }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            // Zaktualizuj UI
+            this.updateCostModeUI(enable);
+            
+            // Pokaż notyfikację
+            if (enable) {
+                this.showNotification('💸 Pro Mode włączony - Cloud API dostępne', 'warning');
+            } else {
+                this.showNotification('🌿 Eco Mode włączony - tylko lokalne modele', 'info');
+            }
+
+            console.log('Cost mode changed:', result);
+        } catch (error) {
+            console.error('Error setting cost mode:', error);
+            this.showNotification('Błąd zmiany trybu kosztowego', 'error');
+            
+            // Przywróć poprzedni stan UI
+            if (this.elements.costModeToggle) {
+                this.elements.costModeToggle.checked = !enable;
+            }
+        }
     }
 }
 

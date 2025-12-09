@@ -20,6 +20,14 @@
         <header class="header">
             <h1>🕷️ Venom Cockpit</h1>
             <div class="header-info">
+                <!-- Cost Mode Switch (Global Cost Guard) -->
+                <div class="cost-mode-switch" id="costModeSwitch">
+                    <span class="cost-mode-label" id="costModeLabel">🌿 Eco Mode</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="costModeToggle" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <!-- Repository Status -->
                 <div class="repo-status" id="repoStatus">
                     <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
@@ -397,6 +405,27 @@
             </div>
             <div class="modal-body" id="historyModalBody">
                 <div class="loading-state">Ładowanie...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cost Mode Confirmation Modal -->
+    <div id="costModeModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="costModeModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="costModeModalTitle">💸 Włączenie Trybu Pro (Paid Mode)</h2>
+                <button class="modal-close" id="closeCostModeModal" aria-label="Zamknij modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message">
+                    <p><strong>⚠️ UWAGA:</strong> Włączasz dostęp do płatnych API (OpenAI, Google Gemini).</p>
+                    <p>System będzie generował koszty za każde zapytanie do modeli chmurowych.</p>
+                    <p>Czy akceptujesz, że możesz ponieść koszty generowane przez dostawców AI?</p>
+                </div>
+                <div class="modal-actions">
+                    <button id="confirmCostMode" class="btn-primary">✅ Potwierdzam i Akceptuję Koszty</button>
+                    <button id="cancelCostMode" class="btn-secondary">❌ Anuluj</button>
+                </div>
             </div>
         </div>
     </div>

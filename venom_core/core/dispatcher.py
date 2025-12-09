@@ -123,10 +123,11 @@ class TaskDispatcher:
         # Wzorce dla ścieżek:
         # - relatywne: src/main.py, venom_core/core/dispatcher.py
         # - z rozszerzeniami: .py, .js, .txt, .md, .json, .yaml, .yml
-        file_path_pattern = r"[\w/\-\.]+\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)"
-        found_paths = re.findall(file_path_pattern, content, re.IGNORECASE)
+        file_path_pattern = (
+            r"[\w/\-\.]+\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)"
+        )
 
-        # Wyciągnij pełne ścieżki (bez samego rozszerzenia)
+        # Wyciągnij pełne ścieżki
         targets = []
         for match in re.finditer(file_path_pattern, content, re.IGNORECASE):
             targets.append(match.group(0))

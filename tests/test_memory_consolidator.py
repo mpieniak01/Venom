@@ -89,13 +89,15 @@ async def test_consolidate_daily_logs_success(consolidator, mock_kernel):
     # Mock LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = (
+        lambda self: """PODSUMOWANIE:
 Użytkownik stworzył nowy plik i edytował konfigurację. System wykrył zależności między plikami.
 
 LEKCJE:
 1. Plik main.py wymaga utils.py
 2. Użytkownik pracuje nad konfiguracją systemu
 3. System może automatycznie wykrywać zależności"""
+    )
     mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
     mock_kernel.get_service = MagicMock(return_value=mock_service)
 
@@ -120,11 +122,13 @@ async def test_consolidate_daily_logs_with_sensitive_data(consolidator, mock_ker
     # Mock LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = (
+        lambda self: """PODSUMOWANIE:
 Użytkownik zalogował się i skonfigurował system.
 
 LEKCJE:
 1. Konfiguracja jest kluczowa"""
+    )
     mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
     mock_kernel.get_service = MagicMock(return_value=mock_service)
 
@@ -239,7 +243,8 @@ async def test_consolidate_integration_with_real_logs(consolidator, mock_kernel)
     # Mock realistic LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = (
+        lambda self: """PODSUMOWANIE:
 Dzisiaj użytkownik pracował nad refaktoryzacją kodu. Stworzono nowy plik utils.py 
 z funkcjami pomocniczymi i zrefaktoryzowano main.py. Wszystkie testy przeszły pomyślnie.
 
@@ -248,6 +253,7 @@ LEKCJE:
 2. Testy są kluczowe dla bezpieczeństwa refaktoryzacji
 3. Funkcje pomocnicze powinny być w osobnym module utils
 4. Użytkownik preferuje małe, skoncentrowane funkcje"""
+    )
     mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
     mock_kernel.get_service = MagicMock(return_value=mock_service)
 

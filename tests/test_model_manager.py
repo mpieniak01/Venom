@@ -182,3 +182,56 @@ def test_model_manager_compare_nonexistent_versions(tmp_path):
 
     comparison = manager.compare_versions("v1.0", "v1.1")
     assert comparison is None
+
+
+def test_model_manager_is_lora_adapter_nonexistent(tmp_path):
+    """Test sprawdzania nieistniejącego adaptera."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    assert manager._is_lora_adapter("/nonexistent/path") is False
+
+
+def test_model_manager_is_lora_adapter_valid(tmp_path):
+    """Test sprawdzania prawidłowego adaptera LoRA."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Utwórz katalog z plikami adaptera
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+
+    # Utwórz wymagane pliki
+    (adapter_dir / "adapter_config.json").write_text('{"peft_type": "LORA"}')
+    (adapter_dir / "adapter_model.bin").write_text("dummy model data")
+
+    assert manager._is_lora_adapter(str(adapter_dir)) is True
+
+
+def test_model_manager_is_lora_adapter_missing_files(tmp_path):
+    """Test sprawdzania adaptera z brakującymi plikami."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Utwórz katalog tylko z config (bez modelu)
+    adapter_dir = tmp_path / "adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text('{"peft_type": "LORA"}')
+
+    assert manager._is_lora_adapter(str(adapter_dir)) is False
+
+
+def test_model_manager_load_adapter_nonexistent_version(tmp_path):
+    """Test ładowania adaptera dla nieistniejącej wersji."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    result = manager.load_adapter_for_kernel("v999", None)
+    assert result is False
+
+
+def test_model_manager_load_adapter_no_adapter_path(tmp_path):
+    """Test ładowania adaptera bez ścieżki."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Zarejestruj wersję bez adaptera
+    manager.register_version("v1.0", "phi3:latest", adapter_path=None)
+
+    result = manager.load_adapter_for_kernel("v1.0", None)
+    assert result is False

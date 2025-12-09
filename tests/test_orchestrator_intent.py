@@ -422,7 +422,7 @@ async def test_orchestrator_help_broadcasts_widget(
         event_broadcaster=mock_broadcaster,
     )
 
-    response = await orchestrator.submit_task(TaskRequest(content="Pokaż możliwości"))
+    await orchestrator.submit_task(TaskRequest(content="Pokaż możliwości"))
     await asyncio.sleep(1)
 
     # Sprawdź czy widget został broadcastowany

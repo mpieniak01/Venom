@@ -216,8 +216,14 @@ class KernelBuilder:
             logger.debug(f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}")
 
             # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
-            # Z Google Search Grounding. Wymagana jest implementacja dedykowanego
-            # wrappera, który wykorzysta google.generativeai API bezpośrednio.
+            # z Google Search Grounding. Kod poniżej pokazuje jak będzie wyglądać
+            # konfiguracja gdy wrapper będzie gotowy.
+            #
+            # STATUS IMPLEMENTACJI:
+            # ✅ Parametr enable_grounding - zaimplementowany
+            # ✅ Logika routingu RESEARCH - zaimplementowana
+            # ✅ Formatowanie źródeł grounding - zaimplementowane
+            # ⏳ Dedykowany Semantic Kernel connector - WYMAGA IMPLEMENTACJI
             #
             # Przykładowa konfiguracja (gdy wrapper będzie gotowy):
             # import google.generativeai as genai
@@ -236,6 +242,7 @@ class KernelBuilder:
             raise NotImplementedError(
                 "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
                 "Wymagana jest implementacja dedykowanego connectora/wrappera. "
+                "Infrastruktura (enable_grounding, routing, formatowanie) jest GOTOWA. "
                 "Na razie użyj 'local' lub 'openai'. "
                 "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
             )

@@ -41,8 +41,12 @@ def format_grounding_sources(response_metadata: dict) -> str:
         for idx, chunk in enumerate(chunks, 1):
             title = chunk.get("title", "Brak tytułu")
             uri = chunk.get("uri", "")
+            # Dodaj źródło tylko jeśli ma URI (link)
             if uri:
                 sources.append(f"[{idx}] {title} - {uri}")
+            # Jeśli jest tytuł ale brak URI, dodaj bez linku
+            elif title and title != "Brak tytułu":
+                sources.append(f"[{idx}] {title}")
     
     # Sprawdź web_search_queries (alternatywne źródło metadanych)
     web_queries = response_metadata.get("web_search_queries", [])

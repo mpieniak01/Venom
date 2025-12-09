@@ -114,6 +114,12 @@ class HybridModelRouter:
             )
         
         # RESEARCH - routing zależy od paid_mode (będzie sprawdzane przez KernelBuilder)
+        # DESIGN NOTE: Router wybiera cloud/local, ale faktyczna decyzja o Google Grounding
+        # vs DuckDuckGo jest podejmowana przez KernelBuilder bazując na:
+        # 1. state_manager.paid_mode_enabled (sprawdzany przez KernelBuilder)
+        # 2. Dostępność GOOGLE_API_KEY
+        # 3. Zainstalowana biblioteka google-generativeai
+        # Ta separacja pozwala na elastyczną konfigurację bez modyfikacji routera.
         if task_type == TaskType.RESEARCH:
             # Tutaj zawsze zwracamy cloud, ale faktyczna decyzja o grounding
             # będzie podjęta w KernelBuilder na podstawie paid_mode

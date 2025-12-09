@@ -482,31 +482,11 @@ class VenomDashboard {
             badge.className = 'research-source-badge';
             
             if (metadata.search_source === 'google_grounding') {
-                badge.className += ' google-grounded';
+                badge.classList.add('google-grounded');
                 badge.textContent = '🌍 Google Grounded';
-                badge.style.cssText = `
-                    display: inline-block;
-                    margin-left: 8px;
-                    padding: 2px 8px;
-                    background-color: #1e40af;
-                    color: white;
-                    border-radius: 4px;
-                    font-size: 0.85em;
-                    font-weight: 500;
-                `;
             } else if (metadata.search_source === 'duckduckgo') {
-                badge.className += ' web-search';
+                badge.classList.add('web-search');
                 badge.textContent = '🦆 Web Search';
-                badge.style.cssText = `
-                    display: inline-block;
-                    margin-left: 8px;
-                    padding: 2px 8px;
-                    background-color: #6b7280;
-                    color: white;
-                    border-radius: 4px;
-                    font-size: 0.85em;
-                    font-weight: 500;
-                `;
             }
             
             messageDiv.appendChild(badge);

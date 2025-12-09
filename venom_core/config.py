@@ -234,5 +234,13 @@ class Settings(BaseSettings):
         True  # Kompresja snapshotów (oszczędność miejsca)
     )
 
+    # Konfiguracja Queue Governance (Dashboard v2.3)
+    MAX_CONCURRENT_TASKS: int = 5  # Maksymalna liczba równoczesnych zadań
+    ENABLE_QUEUE_LIMITS: bool = True  # Włącz limity kolejki zadań
+
+    # Konfiguracja Tokenomics (Dashboard v2.3)
+    TOKEN_COST_ESTIMATION_SPLIT: float = 0.5  # Stosunek input/output dla estymacji kosztów
+    DEFAULT_COST_MODEL: str = "gpt-3.5-turbo"  # Domyślny model dla estymacji kosztów
+
 
 SETTINGS = Settings()

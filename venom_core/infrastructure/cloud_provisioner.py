@@ -382,8 +382,7 @@ class CloudProvisioner:
 
             if not local_ip:
                 raise CloudProvisionerError(
-                    "Nie można wykryć lokalnego adresu IP. "
-                    "Sprawdź konfigurację sieci."
+                    "Nie można wykryć lokalnego adresu IP. Sprawdź konfigurację sieci."
                 )
 
             # Utwórz ServiceInfo

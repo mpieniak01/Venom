@@ -1,7 +1,5 @@
 """Testy dla HybridModelRouter."""
 
-import pytest
-
 from venom_core.config import Settings
 from venom_core.execution.model_router import AIMode, HybridModelRouter, TaskType
 

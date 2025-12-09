@@ -1,7 +1,6 @@
 """Moduł: routes/agents - Endpointy API dla agentów (gardener, shadow, watcher, documenter)."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from venom_core.core.models import TaskRequest
 from venom_core.utils.logger import get_logger
@@ -18,9 +17,16 @@ _documenter_agent = None
 _orchestrator = None
 
 
-def set_dependencies(gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator):
+def set_dependencies(
+    gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
+):
     """Ustaw zależności dla routera."""
-    global _gardener_agent, _shadow_agent, _file_watcher, _documenter_agent, _orchestrator
+    global _gardener_agent
+    global _shadow_agent
+    global _file_watcher
+    global _documenter_agent
+    global _orchestrator
+
     _gardener_agent = gardener_agent
     _shadow_agent = shadow_agent
     _file_watcher = file_watcher

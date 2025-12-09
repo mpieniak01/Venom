@@ -54,6 +54,7 @@ class TestEnergyManager:
         em = EnergyManager()
         # Wywołaj get_metrics - sensor może być niedostępny w środowisku testowym
         metrics = em.get_metrics()
+        assert isinstance(metrics, SystemMetrics)
 
         # Sprawdź że flaga sensors_active istnieje
         assert hasattr(em, "sensors_active")

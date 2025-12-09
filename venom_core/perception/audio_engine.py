@@ -120,14 +120,14 @@ class VoiceSkill:
         self.audio_queue = queue.Queue()
         self._playback_thread = None
         self._stop_playback = threading.Event()
-        
+
         # Walidacja modelu i ustawienie trybu fallback
         self.is_fallback_mode = self._validate_model_path()
 
     def _validate_model_path(self) -> bool:
         """
         Waliduje ścieżkę do modelu i określa czy należy użyć trybu fallback.
-        
+
         Returns:
             True jeśli tryb fallback jest wymagany, False w przeciwnym razie
         """
@@ -136,14 +136,14 @@ class VoiceSkill:
                 "Brak ścieżki do modelu TTS. VoiceSkill będzie działał w trybie mock."
             )
             return True
-        
+
         model_file = Path(self.model_path)
         if not model_file.exists():
             logger.warning(
                 f"Model TTS nie istnieje: {self.model_path}. VoiceSkill będzie działał w trybie mock."
             )
             return True
-        
+
         logger.info(f"Inicjalizacja VoiceSkill: model_path={self.model_path}")
         return False
 

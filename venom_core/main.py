@@ -1,36 +1,15 @@
 # venom/main.py
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
-from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.operator import OperatorAgent
 from venom_core.api.audio_stream import AudioStreamHandler
-from venom_core.api.stream import EventType, connection_manager, event_broadcaster
-from venom_core.config import SETTINGS
-from venom_core.core.metrics import init_metrics_collector, metrics_collector
-from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
-from venom_core.core.orchestrator import Orchestrator
-from venom_core.core.scheduler import BackgroundScheduler
-from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
-from venom_core.core.state_manager import StateManager
-from venom_core.core.tracer import RequestTracer, TraceStatus
-from venom_core.execution.skills.git_skill import GitSkill
-from venom_core.infrastructure.hardware_pi import HardwareBridge
-from venom_core.jobs import scheduler as job_scheduler
-from venom_core.memory.graph_store import CodeGraphStore
-from venom_core.memory.lessons_store import LessonsStore
-from venom_core.memory.vector_store import VectorStore
-from venom_core.perception.audio_engine import AudioEngine
-from venom_core.perception.watcher import FileWatcher
-from venom_core.utils.logger import get_logger
 
 # Import routers
 from venom_core.api.routes import agents as agents_routes
@@ -41,6 +20,23 @@ from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import strategy as strategy_routes
 from venom_core.api.routes import system as system_routes
 from venom_core.api.routes import tasks as tasks_routes
+from venom_core.api.stream import EventType, connection_manager, event_broadcaster
+from venom_core.config import SETTINGS
+from venom_core.core.metrics import init_metrics_collector
+from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.scheduler import BackgroundScheduler
+from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
+from venom_core.core.state_manager import StateManager
+from venom_core.core.tracer import RequestTracer
+from venom_core.execution.skills.git_skill import GitSkill
+from venom_core.infrastructure.hardware_pi import HardwareBridge
+from venom_core.jobs import scheduler as job_scheduler
+from venom_core.memory.graph_store import CodeGraphStore
+from venom_core.memory.lessons_store import LessonsStore
+from venom_core.memory.vector_store import VectorStore
+from venom_core.perception.audio_engine import AudioEngine
+from venom_core.perception.watcher import FileWatcher
+from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -229,11 +225,10 @@ async def lifespan(app: FastAPI):
 
         # Rejestruj domyślne zadania
         if vector_store and SETTINGS.ENABLE_MEMORY_CONSOLIDATION:
-            
             # Wrapper do przekazania event_broadcaster
             async def _consolidate_memory_wrapper():
                 await job_scheduler.consolidate_memory(event_broadcaster)
-            
+
             background_scheduler.add_interval_job(
                 func=_consolidate_memory_wrapper,
                 minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
@@ -245,11 +240,10 @@ async def lifespan(app: FastAPI):
             )
 
         if SETTINGS.ENABLE_HEALTH_CHECKS:
-            
             # Wrapper do przekazania event_broadcaster
             async def _check_health_wrapper():
                 await job_scheduler.check_health(event_broadcaster)
-            
+
             background_scheduler.add_interval_job(
                 func=_check_health_wrapper,
                 minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
@@ -469,7 +463,7 @@ async def lifespan(app: FastAPI):
     # Ustaw zależności routerów po inicjalizacji wszystkich komponentów
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
-    
+
     yield
 
     # Shutdown
@@ -521,6 +515,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 
+
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
@@ -528,10 +523,13 @@ def setup_router_dependencies():
     memory_routes.set_dependencies(vector_store)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)
-    agents_routes.set_dependencies(gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator)
+    agents_routes.set_dependencies(
+        gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
+    )
     system_routes.set_dependencies(background_scheduler, service_monitor)
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
+
 
 # Montowanie routerów
 app.include_router(tasks_routes.router)
@@ -747,5 +745,3 @@ def healthz():
 # Strategy endpoints (roadmap, campaign) moved to venom_core/api/routes/strategy.py
 
 # === SYSTEM HEALTH API (Dashboard v2.1) ===
-
-

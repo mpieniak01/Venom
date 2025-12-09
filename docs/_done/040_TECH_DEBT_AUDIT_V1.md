@@ -1,7 +1,7 @@
 # TECH_DEBT_AUDIT_V1 - Audyt Długu Technicznego Venom
 
-**Data audytu:** 2025-12-09  
-**Zakres:** Całe repozytorium Venom (255 plików Python)  
+**Data audytu:** 2025-12-09
+**Zakres:** Całe repozytorium Venom (255 plików Python)
 **Metodologia:** Automatyczne skanowanie + manualna analiza krytycznych komponentów
 
 ---
@@ -121,8 +121,8 @@ Poniżej przedstawiono pogrupowane zadania gotowe do realizacji. Każde ziarno z
 
 ### TS-001 – Uzupełnienie nagrywania akcji użytkownika (Apprentice/DesktopSensor)
 
-**Powiązane:** TD-001, TD-002  
-**Priorytet:** WYSOKI  
+**Powiązane:** TD-001, TD-002
+**Priorytet:** WYSOKI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -143,8 +143,8 @@ Kod powinien być zgodny z istniejącym stylem, używać get_logger(__name__) i 
 
 ### TS-002 – Integracja Shadow Agent Actions z systemem
 
-**Powiązane:** TD-003  
-**Priorytet:** WYSOKI  
+**Powiązane:** TD-003
+**Priorytet:** WYSOKI
 **Nakład:** ŚREDNI
 
 **Prompt:**
@@ -165,8 +165,8 @@ Upewnij się że callback jest async i obsługuje wszystkie edge cases.
 
 ### TS-003 – Implementacja Evolution Coordinator test running i merge
 
-**Powiązane:** TD-004, TD-005  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-004, TD-005
+**Priorytet:** ŚREDNI
 **Nakład:** ŚREDNI
 
 **Prompt:**
@@ -193,8 +193,8 @@ Kod powinien być defensywny i logować wszystkie kroki operacji.
 
 ### TS-004 – Dodanie Azure OpenAI i brakujących integracji LLM
 
-**Powiązane:** TD-011, TD-018  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-011, TD-018
+**Priorytet:** ŚREDNI
 **Nakład:** MAŁY
 
 **Prompt:**
@@ -220,8 +220,8 @@ Upewnij się że kod działa zarówno z OpenAI jak i Azure OpenAI.
 
 ### TS-005 – Implementacja placeholder API endpoints (git sync/undo)
 
-**Powiązane:** TD-012, TD-013  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-012, TD-013
+**Priorytet:** ŚREDNI
 **Nakład:** ŚREDNI
 
 **Prompt:**
@@ -250,8 +250,8 @@ Kod powinien być bezpieczny - reset wymaga explicit confirmation.
 
 ### TS-006 – Implementacja scheduled jobs (memory consolidation, health check)
 
-**Powiązane:** TD-014, TD-015, TD-024, TD-025  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-014, TD-015, TD-024, TD-025
+**Priorytet:** ŚREDNI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -281,8 +281,8 @@ Jobs powinny być odporne na błędy i logować problemy zamiast crashować.
 
 ### TS-007 – Refaktoryzacja main.py - wydzielenie modułów
 
-**Powiązane:** TD-027, TD-045  
-**Priorytet:** WYSOKI  
+**Powiązane:** TD-027, TD-045
+**Priorytet:** WYSOKI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -313,8 +313,8 @@ Refaktoryzacja powinna być bezpieczna - nie zmieniać logiki, tylko organizacj�
 
 ### TS-008 – Refaktoryzacja orchestrator.py - wydzielenie concerns
 
-**Powiązane:** TD-028, TD-031  
-**Priorytet:** WYSOKI  
+**Powiązane:** TD-028, TD-031
+**Priorytet:** WYSOKI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -331,7 +331,7 @@ Zrefaktoryzuj venom_core/core/orchestrator.py (1872 linii) przez wydzielenie log
    - Metody specyficzne dla AutoGen Group Chat
 
 3. Wydziel Forge flow:
-   - Rozważ venom_core/core/forge_orchestrator.py  
+   - Rozważ venom_core/core/forge_orchestrator.py
    - Workflow tworzenia narzędzi
 
 4. Orchestrator główny powinien delegować do tych komponentów
@@ -345,8 +345,8 @@ Zachowaj backward compatibility - public API orchestratora nie może się zmieni
 
 ### TS-009 – Ustandaryzowanie interfejsów Agents i Skills
 
-**Powiązane:** TD-026, TD-029, TD-032  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-026, TD-029, TD-032
+**Priorytet:** ŚREDNI
 **Nakład:** ŚREDNI
 
 **Prompt:**
@@ -376,8 +376,8 @@ Zachowaj backward compatibility - używaj @deprecated dla starych metod jeśli p
 
 ### TS-010 – Implementacja Professor Agent features (Arena, params selection)
 
-**Powiązane:** TD-007, TD-008, TD-009, TD-040  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-007, TD-008, TD-009, TD-040
+**Priorytet:** ŚREDNI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -415,8 +415,8 @@ Kod powinien być konfigurowalny przez SETTINGS i dobrze udokumentowany.
 
 ### TS-011 – Cleanup pustych pass statements i error handling
 
-**Powiązane:** TD-034, TD-035, TD-036, TD-037, TD-038, TD-039  
-**Priorytet:** NISKI  
+**Powiązane:** TD-034, TD-035, TD-036, TD-037, TD-038, TD-039
+**Priorytet:** NISKI
 **Nakład:** MAŁY
 
 **Prompt:**
@@ -449,8 +449,8 @@ Uruchom testy aby upewnić się że nic się nie zepsuło.
 
 ### TS-012 – Audit i aktualizacja dokumentacji
 
-**Powiązane:** TD-041  
-**Priorytet:** ŚREDNI  
+**Powiązane:** TD-041
+**Priorytet:** ŚREDNI
 **Nakład:** DUŻY
 
 **Prompt:**
@@ -483,8 +483,8 @@ Nie zmieniaj kodu - tylko dokumentacja. Raport powinien być gotowy do wykorzyst
 
 ### TS-013 – Code quality improvements (helpers, watcher, tests coverage)
 
-**Powiązane:** TD-042, TD-043, TD-044  
-**Priorytet:** NISKI  
+**Powiązane:** TD-042, TD-043, TD-044
+**Priorytet:** NISKI
 **Nakład:** DUŻY
 
 **Prompt:**

@@ -273,12 +273,22 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
             # Parsuj JSON
             plan_data = json.loads(response_text)
 
+            # Walidacja typu
+            if not isinstance(plan_data, list):
+                logger.error(
+                    f"LLM zwrócił niepoprawny format (oczekiwano listy): {type(plan_data)}"
+                )
+                raise ValueError("LLM nie zwrócił JSON array")
+
             # Konwertuj na ActionSteps
             plan = []
             for step_data in plan_data:
+                if not isinstance(step_data, dict):
+                    logger.warning(f"Pomijam niepoprawny krok: {step_data}")
+                    continue
                 step = ActionStep(
-                    action_type=step_data["action_type"],
-                    description=step_data["description"],
+                    action_type=step_data.get("action_type"),
+                    description=step_data.get("description", ""),
                     params=step_data.get("params", {}),
                 )
                 plan.append(step)
@@ -442,14 +452,14 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                     logger.debug("Brak pre-screenshot, zakładam sukces")
                     return True
 
-                # Oblicz różnicę między obrazami
-                diff = np.sum(
-                    np.abs(post_array.astype(float) - pre_array.astype(float))
+                # Oblicz średnią różnicę między obrazami (stabilne numerycznie)
+                diff = np.mean(
+                    np.abs(post_array.astype(np.float32) - pre_array.astype(np.float32))
                 )
-                total_pixels = post_array.size
+                # diff to średnia różnica na piksel (0-255)
 
-                # Jeśli różnica > 0.5% pixeli, uznajemy że coś się zmieniło
-                change_percent = (diff / total_pixels) * 100
+                # Jeśli różnica > 0.5% (średnia zmiana piksela), uznajemy że coś się zmieniło
+                change_percent = (diff / 255.0) * 100  # Normalizuj do 0-100%
                 logger.debug(f"Zmiana ekranu: {change_percent:.2f}%")
 
                 if change_percent > 0.5:

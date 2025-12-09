@@ -171,13 +171,15 @@ class ServiceHealthMonitor:
         """
         self.registry = registry
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
-        
+
         # Cache ChromaDB availability
         self._chromadb_available = None
         self._chromadb_module = None
         self._chromadb_client = None
 
-    async def check_health(self, service_name: Optional[str] = None) -> List[ServiceInfo]:
+    async def check_health(
+        self, service_name: Optional[str] = None
+    ) -> List[ServiceInfo]:
         """
         Sprawdza zdrowie usług.
 
@@ -337,6 +339,7 @@ class ServiceHealthMonitor:
         if self._chromadb_available is None:
             try:
                 import chromadb
+
                 self._chromadb_available = True
                 self._chromadb_module = chromadb
                 # Initialize client once and reuse
@@ -355,7 +358,7 @@ class ServiceHealthMonitor:
             # Reuse the cached client
             if self._chromadb_client is None:
                 self._chromadb_client = self._chromadb_module.Client()
-            
+
             # Simple check - list collections (don't store unused result)
             self._chromadb_client.list_collections()
 

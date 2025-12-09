@@ -55,11 +55,13 @@ class TestEnergyManager:
         # Wywołaj get_metrics - sensor może być niedostępny w środowisku testowym
         metrics = em.get_metrics()
 
-        # Jeśli sensor nie działa, flaga powinna być ustawiona na False
-        # (w środowisku testowym często sensory nie są dostępne)
-        if metrics.temperature is None:
-            # Sprawdź czy flaga została prawidłowo ustawiona w przypadku awarii
-            assert em.sensors_active is not None  # Flaga istnieje
+        # Sprawdź że flaga sensors_active istnieje
+        assert hasattr(em, "sensors_active")
+        assert isinstance(em.sensors_active, bool)
+
+        # Jeśli sensor rzucił wyjątek (exception), flaga powinna być False
+        # W przeciwnym razie pozostaje True
+        # (test weryfikuje jedynie, że mechanizm flagowania działa)
 
     def test_is_system_busy_below_threshold(self):
         """Test sprawdzania czy system zajęty - poniżej progu."""

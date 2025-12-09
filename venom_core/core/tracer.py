@@ -96,7 +96,7 @@ class RequestTracer:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Błąd w watchdog loop: {e}")
+                logger.error(f"Błąd w watchdog loop: {e}", exc_info=True)
 
     async def _check_lost_requests(self):
         """Sprawdza i oznacza zadania, które przekroczyły timeout."""

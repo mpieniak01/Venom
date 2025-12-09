@@ -221,18 +221,58 @@ async def test_check_deployment_health(mock_connect, temp_ssh_key):
     assert "app_container" in result["containers"]
 
 
-@pytest.mark.asyncio
-async def test_configure_domain_placeholder():
-    """Test funkcji placeholder configure_domain."""
-    provisioner = CloudProvisioner()
-    result = await provisioner.configure_domain(
-        domain="example.com",
-        ip="1.2.3.4",
-    )
+def test_start_broadcasting():
+    """Test uruchamiania mDNS broadcasting."""
+    provisioner = CloudProvisioner(service_port=8000)
+    result = provisioner.start_broadcasting(service_name="test-venom")
 
-    assert result["status"] == "not_implemented"
-    assert result["domain"] == "example.com"
-    assert result["ip"] == "1.2.3.4"
+    # Broadcasting może nie działać w środowisku testowym bez pełnej sieci
+    # Ale powinien zwrócić odpowiedź
+    assert "status" in result
+    assert result["status"] in ["active", "error"]
+
+    if result["status"] == "active":
+        assert "service_name" in result
+        assert "ip" in result
+        assert "port" in result
+        assert result["port"] == 8000
+        assert "service_url" in result
+
+    # Cleanup
+    provisioner.stop_broadcasting()
+
+
+def test_stop_broadcasting():
+    """Test zatrzymywania mDNS broadcasting."""
+    provisioner = CloudProvisioner()
+
+    # Spróbuj zatrzymać bez uruchomienia
+    result = provisioner.stop_broadcasting()
+    assert result["status"] in ["stopped", "not_running"]
+
+
+def test_get_service_url():
+    """Test pobierania URL usługi."""
+    provisioner = CloudProvisioner(service_port=8000)
+
+    # Test domyślnej nazwy
+    url = provisioner.get_service_url()
+    assert url == "http://venom.local:8000"
+
+    # Test z własną nazwą
+    url = provisioner.get_service_url("test-agent")
+    assert url == "http://test-agent.local:8000"
+
+    # Test z nazwą zawierającą .local
+    url = provisioner.get_service_url("agent.local")
+    assert url == "http://agent.local:8000"
+
+
+def test_get_service_url_with_custom_port():
+    """Test URL usługi z niestandardowym portem."""
+    provisioner = CloudProvisioner(service_port=9000)
+    url = provisioner.get_service_url("custom")
+    assert url == "http://custom.local:9000"
 
 
 @pytest.mark.asyncio

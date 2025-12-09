@@ -148,6 +148,7 @@ class KernelBuilder:
         service_type: str,
         service_id: Optional[str] = None,
         model_name: Optional[str] = None,
+        enable_grounding: bool = False,
     ) -> None:
         """
         Rejestruje pojedynczy serwis LLM w kernelu.
@@ -157,6 +158,7 @@ class KernelBuilder:
             service_type: Typ serwisu ('local', 'openai', 'azure', 'google')
             service_id: Opcjonalny ID serwisu (domyślnie typ)
             model_name: Opcjonalna nazwa modelu (domyślnie z ustawień)
+            enable_grounding: Czy włączyć Google Search Grounding (tylko dla Google Gemini)
         """
         service_id = service_id or service_type
         model_name = model_name or self.settings.LLM_MODEL_NAME
@@ -211,10 +213,26 @@ class KernelBuilder:
                     "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
                 )
 
-            logger.debug(f"Konfiguracja Google Gemini: model={model_name}")
+            logger.debug(f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}")
 
             # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
-            # Wymagana jest implementacja dedykowanego wrappera/adaptera
+            # Z Google Search Grounding. Wymagana jest implementacja dedykowanego
+            # wrappera, który wykorzysta google.generativeai API bezpośrednio.
+            #
+            # Przykładowa konfiguracja (gdy wrapper będzie gotowy):
+            # import google.generativeai as genai
+            # genai.configure(api_key=self.settings.GOOGLE_API_KEY)
+            # 
+            # if enable_grounding:
+            #     # Konfiguracja z Google Search Grounding
+            #     tools = [{"google_search": {}}]
+            #     model = genai.GenerativeModel(
+            #         model_name=model_name or "gemini-1.5-pro",
+            #         tools=tools
+            #     )
+            # else:
+            #     model = genai.GenerativeModel(model_name=model_name)
+            
             raise NotImplementedError(
                 "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
                 "Wymagana jest implementacja dedykowanego connectora/wrappera. "

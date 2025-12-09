@@ -1,8 +1,9 @@
 """Moduł: huggingface_skill - Skill do wyszukiwania modeli i datasets na Hugging Face."""
 
+from pathlib import Path
 from typing import Annotated, Optional
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.utils import RepositoryNotFoundError
 from semantic_kernel.functions import kernel_function
 
@@ -92,15 +93,18 @@ class HuggingFaceSkill:
             other_models = []
 
             for model in models:
-                tags = [tag.lower() for tag in (model.tags or [])]
-                model_id = model.id
+                tags_lower = [tag.lower() for tag in (model.tags or [])]
+                model_id_lower = model.id.lower()
 
-                # Sprawdź tagi
-                if "onnx" in tags or "onnx" in model_id.lower():
+                # Klasyfikuj i zapisz typ kompatybilności
+                if "onnx" in tags_lower or "onnx" in model_id_lower:
+                    model._venom_compat = "✅ ONNX (lokalne uruchamianie)"
                     onnx_models.append(model)
-                elif "gguf" in tags or "gguf" in model_id.lower():
+                elif "gguf" in tags_lower or "gguf" in model_id_lower:
+                    model._venom_compat = "✅ GGUF (lokalne uruchamianie)"
                     gguf_models.append(model)
                 else:
+                    model._venom_compat = "⚠️ Standard (wymaga GPU/transformers)"
                     other_models.append(model)
 
             # Preferuj kolejność: ONNX > GGUF > inne
@@ -123,16 +127,8 @@ class HuggingFaceSkill:
                     "likes": getattr(model, "likes", 0),
                     "url": f"https://huggingface.co/{model.id}",
                     "tags": ", ".join(model.tags[:5]) if model.tags else "Brak tagów",
+                    "compatibility": model._venom_compat,
                 }
-
-                # Sprawdź czy ONNX/GGUF
-                tags_lower = [tag.lower() for tag in (model.tags or [])]
-                if "onnx" in tags_lower or "onnx" in model.id.lower():
-                    model_info["compatibility"] = "✅ ONNX (lokalne uruchamianie)"
-                elif "gguf" in tags_lower or "gguf" in model.id.lower():
-                    model_info["compatibility"] = "✅ GGUF (lokalne uruchamianie)"
-                else:
-                    model_info["compatibility"] = "⚠️ Standard (wymaga GPU/transformers)"
 
                 results.append(model_info)
 
@@ -195,10 +191,6 @@ class HuggingFaceSkill:
                 # Jeśli card_data jest puste, spróbuj pobrać bezpośrednio
                 if not card_content:
                     # Pobierz plik README.md
-                    from pathlib import Path
-
-                    from huggingface_hub import hf_hub_download
-
                     try:
                         readme_path = hf_hub_download(
                             repo_id=model_id,
@@ -207,7 +199,8 @@ class HuggingFaceSkill:
                         )
                         # Użyj pathlib do bezpiecznego czytania pliku
                         card_content = Path(readme_path).read_text(encoding="utf-8")
-                    except Exception:
+                    except (FileNotFoundError, PermissionError, OSError) as e:
+                        logger.debug(f"Nie można pobrać README dla {model_id}: {e}")
                         card_content = "Brak dostępnego Model Card"
                 else:
                     # Konwertuj card_data na string

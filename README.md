@@ -44,6 +44,18 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 
 ## 🏗️ Architektura
 
+### Struktura projektu
+```
+venom_core/
+├── api/routes/          # REST API endpoints (agents, tasks, memory, nodes)
+├── core/flows/          # Przepływy biznesowe i orkiestracja
+├── agents/              # Wyspecjalizowani agenci AI
+├── execution/           # Warstwa wykonawcza i model routing
+├── perception/          # Sensory (desktop_sensor, audio)
+├── memory/              # Pamięć długoterminowa (vector, graph, workflow)
+└── infrastructure/      # Infrastruktura (hardware, cloud, message broker)
+```
+
 ### Główne komponenty
 
 #### 1. **Strategic Layer** (Warstwa Planowania)
@@ -63,13 +75,20 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 - **GhostAgent** - Automatyzacja GUI (RPA - Robotic Process Automation)
 - **ApprenticeAgent** - Uczenie się workflow poprzez obserwację (NOWOŚĆ!)
 
-#### 4. **Visual Imitation Learning** (Uczenie przez Demonstrację) 🎓
+#### 4. **Hybrid AI Engine** (Silnik Hybrydowy) 🧠
+- **HybridModelRouter** (`venom_core/execution/model_router.py`) - Inteligentny routing między Local LLM a Cloud
+- **Tryby pracy**: LOCAL (tylko lokalne), HYBRID (mix), CLOUD (głównie chmura)
+- **Local First**: Prywatność i $0 kosztów operacyjnych
+- **Providerzy**: Ollama/vLLM (local), Google Gemini, OpenAI
+- Wrażliwe dane **NIGDY** nie trafiają do chmury
+
+#### 5. **Visual Imitation Learning** (Uczenie przez Demonstrację) 🎓
 - **DemonstrationRecorder** - Nagrywanie akcji użytkownika (mysz, klawiatura, zrzuty ekranu)
 - **DemonstrationAnalyzer** - Analiza behawioralna i transformacja pikseli → semantyka
 - **WorkflowStore** - Magazyn procedur z możliwością edycji
 - **Integration z GhostAgent** - Wykonywanie wygenerowanych workflow
 
-#### 5. **Orchestration** (Orkiestracja)
+#### 6. **Orchestration** (Orkiestracja)
 - **Orchestrator** - Główny koordynator systemu
 - **IntentManager** - Klasyfikacja intencji (5 typów: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Routing zadań do odpowiednich agentów
@@ -127,31 +146,76 @@ Python 3.10+ (zalecane 3.11)
 - `beautifulsoup4` - Parsowanie HTML
 - `lancedb` - Baza wektorowa dla pamięci
 - `fastapi` - API serwera
-- `openai` / `anthropic` / `google-generativeai` - Modele LLM (opcjonalne)
+- `zeroconf` - mDNS service discovery dla lokalnej sieci
+- `pynput` - Nagrywanie akcji użytkownika (THE_APPRENTICE)
+- `google-generativeai` - Google Gemini (opcjonalne)
+- `openai` / `anthropic` - Modele LLM (opcjonalne)
 
 Pełna lista w [requirements.txt](requirements.txt)
 
 ### Konfiguracja
 
-Stwórz plik `.env`:
+Stwórz plik `.env` na podstawie `.env.example`:
 
 ```bash
-# LLM Configuration
-LLM_SERVICE_TYPE=local              # Opcje: local, openai, azure
-LLM_LOCAL_ENDPOINT=http://localhost:11434/v1  # Ollama/vLLM
-LLM_MODEL_NAME=phi3:latest
+cp .env.example .env
+```
 
-# Opcjonalne (dla chmurowych modeli)
+#### Kluczowe zmienne środowiskowe:
+
+**AI Configuration (Hybrid Engine):**
+```bash
+# Tryb AI: LOCAL (tylko lokalne), HYBRID (mix), CLOUD (głównie chmura)
+AI_MODE=LOCAL
+
+# Local LLM (Ollama/vLLM)
+LLM_SERVICE_TYPE=local
+LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
+LLM_MODEL_NAME=llama3
+
+# Cloud Providers (opcjonalne, wymagane dla HYBRID/CLOUD)
+GOOGLE_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
 
-# External Integrations (NEW v2.0)
+# Hybrid Settings
+HYBRID_CLOUD_PROVIDER=google        # google lub openai
+HYBRID_LOCAL_MODEL=llama3
+HYBRID_CLOUD_MODEL=gemini-1.5-pro
+SENSITIVE_DATA_LOCAL_ONLY=true     # Wrażliwe dane ZAWSZE local
+```
+
+**Network & Discovery (Local First):**
+```bash
+# mDNS (Zeroconf) dla lokalnej sieci - venom.local
+# UWAGA: Cloudflare został usunięty, używamy lokalnego discovery
+```
+
+**The Hive (Distributed Processing):**
+```bash
+ENABLE_HIVE=false
+HIVE_URL=https://hive.example.com:8080
+HIVE_REGISTRATION_TOKEN=your_token
+REDIS_HOST=localhost
+```
+
+**The Nexus (Distributed Mesh):**
+```bash
+ENABLE_NEXUS=false
+NEXUS_SHARED_TOKEN=your_secret_token
+NEXUS_PORT=8765
+```
+
+**External Integrations:**
+```bash
 GITHUB_TOKEN=ghp_your_token         # Personal Access Token
 GITHUB_REPO_NAME=username/repo      # Nazwa repozytorium
 DISCORD_WEBHOOK_URL=https://...     # Opcjonalne
 ENABLE_ISSUE_POLLING=false          # Włącz auto-polling Issues
 ```
 
-📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
+📖 **Pełna lista zmiennych:** [.env.example](.env.example)  
+📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)  
+📖 **Dokumentacja Hybrid AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
 
 ### Uruchomienie
 
@@ -281,6 +345,7 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md) aby d
 ### Cechy distributed mesh:
 - 🔗 **Master-Worker Architecture** - Nexus (mózg) + Spores (wykonawcy)
 - 📡 **WebSocket Communication** - Szybka, dwukierunkowa komunikacja
+- 🔍 **mDNS Service Discovery** - Automatyczne wykrywanie węzłów w sieci lokalnej (venom.local)
 - ⚖️ **Load Balancing** - Automatyczny wybór najmniej obciążonego węzła
 - 🔄 **Hot-Plug** - Dynamiczne dodawanie/usuwanie węzłów
 - 💓 **Healthcheck & Failover** - Automatyczne wykrywanie offline nodes
@@ -295,7 +360,7 @@ cd venom_core && python main.py
 
 # 2. Uruchom Venom Spore na zdalnej maszynie
 cd venom_spore
-export SPORE_NEXUS_HOST=192.168.1.10
+export SPORE_NEXUS_HOST=venom.local  # lub 192.168.1.10
 export SPORE_SHARED_TOKEN=your-secret-token
 python main.py
 
@@ -317,7 +382,8 @@ docker-compose -f docker-compose.spores.yml up
 python examples/nexus_demo.py
 ```
 
-📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)
+📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)  
+📖 **Architektura Hive:** [docs/THE_HIVE.md](docs/THE_HIVE.md)
 
 ## 👥 Zespół
 

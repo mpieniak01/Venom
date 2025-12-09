@@ -389,20 +389,24 @@ class SkillManager:
         return False
 
     async def broadcast_skill_event(
-        self, event_type: str, skill_name: str, action: str = "", is_external: bool = False
+        self,
+        event_type: str,
+        skill_name: str,
+        action: str = "",
+        is_external: bool = False,
     ):
         """
         Emituje event WebSocket o wykonaniu skilla.
 
         Args:
-            event_type: Typ eventu - należy używać EventType.SKILL_STARTED, 
+            event_type: Typ eventu - należy używać EventType.SKILL_STARTED,
                        EventType.SKILL_COMPLETED lub EventType.SKILL_FAILED
             skill_name: Nazwa skilla
             action: Opcjonalnie akcja wykonywana przez skill
             is_external: Czy skill komunikuje się z zewnętrznymi API
-        
+
         Note:
-            Ta metoda musi być wywołana przez kod używający skills aby 
+            Ta metoda musi być wywołana przez kod używający skills aby
             emitować eventy. Przykład użycia znajduje się w dokumentacji.
         """
         if self.event_broadcaster:

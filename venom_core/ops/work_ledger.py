@@ -1,6 +1,5 @@
 """Moduł: work_ledger - system śledzenia zadań z metrykami operacyjnymi."""
 
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -547,6 +546,8 @@ class WorkLedger:
             if not helpers.write_json(
                 self.storage_path, data, indent=2, raise_on_error=False
             ):
-                logger.error(f"Nie udało się zapisać work_ledger do {self.storage_path}")
+                logger.error(
+                    f"Nie udało się zapisać work_ledger do {self.storage_path}"
+                )
         except Exception as e:
             logger.error(f"Błąd zapisywania work_ledger: {e}")

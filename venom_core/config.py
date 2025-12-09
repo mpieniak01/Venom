@@ -234,5 +234,9 @@ class Settings(BaseSettings):
         True  # Kompresja snapshotów (oszczędność miejsca)
     )
 
+    # Konfiguracja Queue Governance (Dashboard v2.3)
+    MAX_CONCURRENT_TASKS: int = 5  # Maksymalna liczba równoczesnych zadań
+    ENABLE_QUEUE_LIMITS: bool = True  # Włącz limity kolejki zadań
+
 
 SETTINGS = Settings()

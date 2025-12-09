@@ -29,34 +29,34 @@ def test_consolidator_initialization(mock_kernel):
 
 def test_filter_sensitive_data_passwords(consolidator):
     """Test filtrowania haseł."""
-    text = "User logged in with password: secret123"
+    text = "User logged in with password: EXAMPLE_SECRET_123"
     filtered = consolidator._filter_sensitive_data(text)
     assert "[FILTERED]" in filtered
-    assert "secret123" not in filtered
+    assert "EXAMPLE_SECRET_123" not in filtered
 
 
 def test_filter_sensitive_data_api_keys(consolidator):
     """Test filtrowania kluczy API."""
-    text = "Using api_key=abcd1234efgh5678"
+    text = "Using api_key=FAKE_API_KEY_1234567890"
     filtered = consolidator._filter_sensitive_data(text)
     assert "[FILTERED]" in filtered
-    assert "abcd1234efgh5678" not in filtered
+    assert "FAKE_API_KEY_1234567890" not in filtered
 
 
 def test_filter_sensitive_data_tokens(consolidator):
     """Test filtrowania tokenów."""
-    text = "Authorization token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    text = "Authorization token: EXAMPLE_JWT_TOKEN_FOR_TESTING"
     filtered = consolidator._filter_sensitive_data(text)
     assert "[FILTERED]" in filtered
 
 
 def test_filter_sensitive_data_multiple_patterns(consolidator):
     """Test filtrowania wielu wzorców wrażliwych danych."""
-    text = "password=pass123 and api_key=key456 and token=tok789"
+    text = "password=EXAMPLE_PASS and api_key=FAKE_KEY_123 and token=TEST_TOKEN_789"
     filtered = consolidator._filter_sensitive_data(text)
-    assert "pass123" not in filtered
-    assert "key456" not in filtered
-    assert "tok789" not in filtered
+    assert "EXAMPLE_PASS" not in filtered
+    assert "FAKE_KEY_123" not in filtered
+    assert "TEST_TOKEN_789" not in filtered
     assert "[FILTERED]" in filtered
 
 
@@ -114,8 +114,8 @@ LEKCJE:
 async def test_consolidate_daily_logs_with_sensitive_data(consolidator, mock_kernel):
     """Test że wrażliwe dane są filtrowane przed wysłaniem do LLM."""
     logs = [
-        "User logged in with password: secret123",
-        "API key configured: abcd1234",
+        "User logged in with password: EXAMPLE_SECRET_123",
+        "API key configured: FAKE_API_KEY_TEST",
         "User created file test.py",
     ]
 
@@ -132,7 +132,7 @@ LEKCJE:
     mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
     mock_kernel.get_service = MagicMock(return_value=mock_service)
 
-    result = await consolidator.consolidate_daily_logs(logs)
+    await consolidator.consolidate_daily_logs(logs)
 
     # Sprawdź że wywołano LLM
     mock_service.get_chat_message_content.assert_called_once()
@@ -143,8 +143,8 @@ LEKCJE:
     messages = chat_history.messages
     prompt_content = messages[0].content
 
-    assert "secret123" not in prompt_content
-    assert "abcd1234" not in prompt_content
+    assert "EXAMPLE_SECRET_123" not in prompt_content
+    assert "FAKE_API_KEY_TEST" not in prompt_content
     assert "[FILTERED]" in prompt_content
 
 

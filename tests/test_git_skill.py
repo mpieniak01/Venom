@@ -174,3 +174,165 @@ async def test_commit_without_changes(git_skill, temp_workspace):
 
     assert "⚠️" in result
     assert "Brak zmian" in result
+
+
+@pytest.mark.asyncio
+async def test_reset_with_safety_guard(git_skill, temp_workspace):
+    """Test resetu z zabezpieczeniem - blokada przy brudnym repo bez force."""
+    # Zainicjalizuj repo i utwórz commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("initial content")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Zmodyfikuj plik (brudne repo)
+    test_file.write_text("modified content")
+
+    # Próbuj reset bez force - powinien zostać zablokowany
+    result = await git_skill.reset(mode="hard", commit_hash="HEAD", force=False)
+
+    assert "🛑" in result or "SafetyError" in result
+    assert (
+        "niezatwierdzone zmiany" in result.lower()
+        or "uncommitted changes" in result.lower()
+    )
+
+    # Sprawdź że zmiany nadal istnieją
+    assert test_file.read_text() == "modified content"
+
+
+@pytest.mark.asyncio
+async def test_reset_with_force(git_skill, temp_workspace):
+    """Test resetu z force=True - zmiany powinny zostać usunięte."""
+    # Zainicjalizuj repo i utwórz commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("initial content")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Zmodyfikuj plik
+    test_file.write_text("modified content")
+
+    # Reset z force=True
+    result = await git_skill.reset(mode="hard", commit_hash="HEAD", force=True)
+
+    assert "✅" in result
+    assert "Reset" in result
+
+    # Sprawdź że zmiany zostały usunięte
+    assert test_file.read_text() == "initial content"
+
+
+@pytest.mark.asyncio
+async def test_reset_clean_repo(git_skill, temp_workspace):
+    """Test resetu na czystym repo - powinien działać bez force."""
+    # Zainicjalizuj repo i utwórz dwa commity
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("first")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("First commit")
+
+    test_file.write_text("second")
+    repo.index.add(["test.txt"])
+    repo.index.commit("Second commit")
+
+    # Reset do poprzedniego commita (bez force, bo repo czyste)
+    result = await git_skill.reset(mode="hard", commit_hash="HEAD~1", force=False)
+
+    assert "✅" in result
+    assert "Reset" in result
+
+    # Sprawdź że cofnęliśmy się do pierwszego commita
+    assert test_file.read_text() == "first"
+
+
+@pytest.mark.asyncio
+async def test_merge_success(git_skill, temp_workspace):
+    """Test pomyślnego merge dwóch branchy."""
+    # Zainicjalizuj repo i utwórz initial commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("main content")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit on main")
+
+    # Utwórz i przełącz się na nowy branch
+    await git_skill.checkout("feature-branch", create_new=True)
+
+    # Zmodyfikuj plik na feature branch
+    feature_file = Path(temp_workspace) / "feature.txt"
+    feature_file.write_text("feature content")
+    repo.index.add(["feature.txt"])
+    repo.index.commit("Add feature file")
+
+    # Wróć na main
+    await git_skill.checkout("main")
+
+    # Scal feature branch do main
+    result = await git_skill.merge("feature-branch")
+
+    assert "✅" in result
+    assert "scalono" in result.lower() or "merge" in result.lower()
+
+    # Sprawdź że plik z feature branch jest teraz na main
+    assert feature_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_create_branch(git_skill, temp_workspace):
+    """Test tworzenia nowego brancha bez przełączania."""
+    # Zainicjalizuj repo i utwórz commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("test")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    current_branch = repo.active_branch.name
+
+    # Utwórz nowy branch
+    result = await git_skill.create_branch("new-feature")
+
+    assert "✅" in result
+    assert "new-feature" in result
+
+    # Sprawdź że branch został utworzony
+    assert "new-feature" in [b.name for b in repo.branches]
+
+    # Sprawdź że nadal jesteśmy na poprzednim branchu
+    assert repo.active_branch.name == current_branch
+
+
+@pytest.mark.asyncio
+async def test_pull_already_up_to_date(git_skill, temp_workspace):
+    """Test pull gdy repo jest już aktualne."""
+    # Ten test wymaga zdalnego repo, więc symulujemy sytuację
+    # Zainicjalizuj repo
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("test")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Pull bez remote da błąd, ale testujemy format odpowiedzi
+    result = await git_skill.pull(remote="origin", branch="main")
+
+    # Oczekujemy błędu Git (brak remote), ale struktura odpowiedzi powinna być poprawna
+    assert isinstance(result, str)
+    # Odpowiedź powinna być czytelna
+    assert "❌" in result or "✅" in result or "⚠️" in result

@@ -371,3 +371,267 @@ class GitSkill:
             error_msg = f"❌ Błąd podczas pobierania brancha: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    @kernel_function(
+        name="pull",
+        description="Pobiera i scala zmiany ze zdalnego repozytorium (git pull).",
+    )
+    async def pull(
+        self,
+        remote: Annotated[str, "Nazwa remote (domyślnie 'origin')"] = "origin",
+        branch: Annotated[
+            Optional[str], "Nazwa brancha (domyślnie aktualny branch)"
+        ] = None,
+    ) -> str:
+        """
+        Pobiera i scala zmiany ze zdalnego repozytorium.
+
+        Args:
+            remote: Nazwa remote
+            branch: Nazwa brancha (jeśli None, używa aktualnego)
+
+        Returns:
+            Komunikat o wyniku operacji. W przypadku konfliktu zwraca
+            status CONFLICT wraz z listą plików w konflikcie.
+        """
+        try:
+            repo = self._get_repo()
+
+            # Pobierz aktualny branch jeśli nie podano
+            if branch is None:
+                branch = repo.active_branch.name
+
+            logger.info(f"Pulling z {remote}/{branch}")
+
+            # Wykonaj pull
+            origin = repo.remote(name=remote)
+            pull_info = origin.pull(branch)
+
+            # Sprawdź czy wystąpiły konflikty
+            conflicts = []
+            for info in pull_info:
+                if info.flags & info.ERROR:
+                    # Sprawdź czy to konflikt merge
+                    if repo.index.unmerged_blobs():
+                        # Pobierz pliki w konflikcie
+                        conflicts = list(repo.index.unmerged_blobs().keys())
+                        break
+
+            if conflicts:
+                conflict_list = "\n".join(f"  - {f}" for f in conflicts)
+                error_msg = (
+                    f"⚠️ CONFLICT: Wystąpiły konflikty podczas pull z {remote}/{branch}.\n"
+                    f"Pliki w konflikcie:\n{conflict_list}\n"
+                    f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
+                )
+                logger.warning(error_msg)
+                return error_msg
+
+            # Sukces
+            logger.info(f"Pomyślnie zaktualizowano z {remote}/{branch}")
+            changed_files = []
+            for info in pull_info:
+                if hasattr(info, "commit") and info.commit:
+                    # Pobierz zmienione pliki z commita
+                    if info.old_commit:
+                        changed_files.extend(
+                            [item.a_path for item in info.commit.diff(info.old_commit)]
+                        )
+
+            if changed_files:
+                files_list = "\n".join(f"  - {f}" for f in changed_files[:10])
+                if len(changed_files) > 10:
+                    files_list += f"\n  ... i {len(changed_files) - 10} więcej"
+                return (
+                    f"✅ Pomyślnie zaktualizowano z {remote}/{branch}\n"
+                    f"Zmienione pliki:\n{files_list}"
+                )
+            else:
+                return f"✅ Zaktualizowano z {remote}/{branch} (już aktualne)"
+
+        except GitCommandError as e:
+            # Sprawdź czy to konflikt
+            if "CONFLICT" in str(e) or "conflict" in str(e).lower():
+                repo = self._get_repo()
+                if repo.index.unmerged_blobs():
+                    conflicts = list(repo.index.unmerged_blobs().keys())
+                    conflict_list = "\n".join(f"  - {f}" for f in conflicts)
+                    error_msg = (
+                        f"⚠️ CONFLICT: Wystąpiły konflikty podczas pull.\n"
+                        f"Pliki w konflikcie:\n{conflict_list}\n"
+                        f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
+                    )
+                    logger.warning(error_msg)
+                    return error_msg
+
+            error_msg = f"❌ Błąd Git podczas pull: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Błąd podczas pull: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+
+    @kernel_function(
+        name="reset",
+        description="Cofa zmiany w repozytorium (git reset). UWAGA: Operacja destrukcyjna!",
+    )
+    async def reset(
+        self,
+        mode: Annotated[
+            str, "Tryb resetu: 'soft', 'mixed', lub 'hard' (domyślnie 'hard')"
+        ] = "hard",
+        commit_hash: Annotated[
+            str, "Hash commita lub referencja (np. 'HEAD', 'HEAD~1')"
+        ] = "HEAD",
+        force: Annotated[
+            bool,
+            "Wymuś reset nawet jeśli są niezatwierdzone zmiany (domyślnie False)",
+        ] = False,
+    ) -> str:
+        """
+        Cofa zmiany w repozytorium Git.
+
+        UWAGA: To operacja destrukcyjna! Tryb 'hard' USUWA wszystkie
+        niezatwierdzone zmiany bez możliwości odzyskania.
+
+        Args:
+            mode: Tryb resetu ('soft', 'mixed', 'hard')
+            commit_hash: Hash commita lub referencja (np. 'HEAD', 'HEAD~1')
+            force: Czy wymusić reset mimo niezatwierdzonych zmian
+
+        Returns:
+            Komunikat o wyniku operacji
+
+        Raises:
+            Zwraca błąd jeśli są niezatwierdzone zmiany i force=False
+        """
+        try:
+            repo = self._get_repo()
+
+            # SAFETY GUARD: Sprawdź czy są niezatwierdzone zmiany
+            if not force and repo.is_dirty(untracked_files=True):
+                error_msg = (
+                    f"🛑 SafetyError: Nie można wykonać reset --{mode}.\n"
+                    f"Repozytorium zawiera niezatwierdzone zmiany, które zostałyby utracone.\n"
+                    f"Użyj force=True aby wymusić reset (UWAGA: utracisz zmiany!)\n"
+                    f"Lub użyj get_status() aby sprawdzić status i add_files()/commit() aby zapisać zmiany."
+                )
+                logger.error(error_msg)
+                return error_msg
+
+            # Wykonaj reset
+            logger.warning(f"Wykonywanie reset --{mode} {commit_hash} (force={force})")
+            repo.git.reset(f"--{mode}", commit_hash)
+
+            logger.info(f"Reset --{mode} {commit_hash} wykonany pomyślnie")
+            return f"✅ Reset --{mode} {commit_hash} wykonany pomyślnie"
+
+        except GitCommandError as e:
+            error_msg = f"❌ Błąd Git podczas reset: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Błąd podczas reset: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+
+    @kernel_function(
+        name="merge",
+        description="Scala zmiany z innego brancha do aktualnego brancha (git merge).",
+    )
+    async def merge(
+        self,
+        source_branch: Annotated[str, "Nazwa brancha źródłowego do scalenia"],
+    ) -> str:
+        """
+        Scala zmiany z innego brancha do aktualnego brancha.
+
+        Args:
+            source_branch: Nazwa brancha źródłowego
+
+        Returns:
+            Komunikat o wyniku operacji. W przypadku konfliktu zwraca
+            listę plików wymagających rozwiązania.
+        """
+        try:
+            repo = self._get_repo()
+            current_branch = repo.active_branch.name
+
+            logger.info(f"Scalanie {source_branch} do {current_branch}")
+
+            # Wykonaj merge
+            repo.git.merge(source_branch)
+
+            # Sprawdź czy wystąpiły konflikty
+            if repo.index.unmerged_blobs():
+                conflicts = list(repo.index.unmerged_blobs().keys())
+                conflict_list = "\n".join(f"  - {f}" for f in conflicts)
+                error_msg = (
+                    f"⚠️ CONFLICT: Wystąpiły konflikty podczas merge {source_branch} → {current_branch}.\n"
+                    f"Pliki w konflikcie:\n{conflict_list}\n"
+                    f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
+                )
+                logger.warning(error_msg)
+                return error_msg
+
+            logger.info(f"Pomyślnie scalono {source_branch} do {current_branch}")
+            return f"✅ Pomyślnie scalono {source_branch} do {current_branch}"
+
+        except GitCommandError as e:
+            # Sprawdź czy to konflikt
+            if "CONFLICT" in str(e) or "conflict" in str(e).lower():
+                repo = self._get_repo()
+                if repo.index.unmerged_blobs():
+                    conflicts = list(repo.index.unmerged_blobs().keys())
+                    conflict_list = "\n".join(f"  - {f}" for f in conflicts)
+                    error_msg = (
+                        f"⚠️ CONFLICT: Wystąpiły konflikty podczas merge.\n"
+                        f"Pliki w konflikcie:\n{conflict_list}\n"
+                        f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
+                    )
+                    logger.warning(error_msg)
+                    return error_msg
+
+            error_msg = f"❌ Błąd Git podczas merge: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Błąd podczas merge: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+
+    @kernel_function(
+        name="create_branch",
+        description="Tworzy nowy branch (bez przełączania się na niego).",
+    )
+    async def create_branch(
+        self,
+        branch_name: Annotated[str, "Nazwa nowego brancha"],
+    ) -> str:
+        """
+        Tworzy nowy branch bez przełączania się na niego.
+
+        Args:
+            branch_name: Nazwa nowego brancha
+
+        Returns:
+            Komunikat o wyniku operacji
+        """
+        try:
+            repo = self._get_repo()
+
+            logger.info(f"Tworzenie nowego brancha: {branch_name}")
+            repo.create_head(branch_name)
+
+            logger.info(f"Branch {branch_name} utworzony pomyślnie")
+            return f"✅ Branch {branch_name} utworzony pomyślnie"
+
+        except GitCommandError as e:
+            error_msg = f"❌ Błąd Git podczas tworzenia brancha: {str(e)}"
+            logger.error(error_msg)
+            return error_msg
+        except Exception as e:
+            error_msg = f"❌ Błąd podczas tworzenia brancha: {str(e)}"
+            logger.error(error_msg)
+            return error_msg

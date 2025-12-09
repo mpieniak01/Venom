@@ -1,5 +1,6 @@
 """Moduł: dispatcher - dyspozytornia zadań."""
 
+import json
 import re
 from typing import Dict, Optional
 
@@ -211,8 +212,6 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             )
 
             # Parse odpowiedzi JSON
-            import json
-
             response_text = str(response).strip()
             # Usuń markdown code blocks jeśli są
             response_text = re.sub(r"```json\s*", "", response_text)

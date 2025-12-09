@@ -179,3 +179,55 @@ async def test_resize_image_auto_output_name(temp_assets_dir):
 
     assert Path(result).exists()
     assert "50x50" in result
+
+
+@pytest.mark.asyncio
+async def test_stable_diffusion_unavailable_fallback(temp_assets_dir):
+    """Test fallbacku gdy Stable Diffusion jest niedostępny."""
+    skill = MediaSkill(assets_dir=temp_assets_dir)
+    skill.service = "local-sd"
+    skill.openai_available = False  # Wyłącz DALL-E
+
+    # SD jest niedostępny, więc powinien użyć placeholder
+    result = await skill.generate_image(
+        prompt="Test image",
+        size="256x256",
+        filename="sd_test.png",
+    )
+
+    assert Path(result).exists()
+    # Powinien wygenerować placeholder
+    img = Image.open(result)
+    assert img.size == (256, 256)
+
+
+@pytest.mark.asyncio
+async def test_generate_image_service_priority(temp_assets_dir):
+    """Test priorytetu serwisów generowania (Local First)."""
+    skill = MediaSkill(assets_dir=temp_assets_dir)
+    skill.service = "local-sd"  # Priorytet: Stable Diffusion
+    skill.openai_available = False
+
+    result = await skill.generate_image(
+        prompt="Priority test",
+        size="512x512",
+        filename="priority_test.png",
+    )
+
+    # Powinien spróbować SD (ale fallback do placeholder bo SD niedostępny)
+    assert Path(result).exists()
+    assert result.endswith(".png")
+
+
+@pytest.mark.asyncio
+async def test_stable_diffusion_method_returns_none_on_error(temp_assets_dir):
+    """Test że _generate_with_stable_diffusion zwraca None przy błędzie."""
+    skill = MediaSkill(assets_dir=temp_assets_dir)
+
+    # Wywołaj bezpośrednio metodę SD (która nie ma dostępu do API)
+    result = await skill._generate_with_stable_diffusion(
+        "test prompt", "512x512", "test.png"
+    )
+
+    # Powinien zwrócić None bo API niedostępny
+    assert result is None

@@ -15,6 +15,9 @@ logger = get_logger(__name__)
 PORT_RANGE_START = 8000
 PORT_RANGE_END = 9000
 
+# Konfiguracja generowania sekretów
+SECRET_KEY_BYTES = 32  # Liczba bajtów dla SECRET_KEY (64 znaki hex)
+
 
 class ComposeSkill:
     """
@@ -75,6 +78,18 @@ class ComposeSkill:
 
             # Znajdź i zastąp placeholdery portów
             processed_content = await self._process_port_placeholders(compose_content)
+
+            # Znajdź i zastąp inne placeholdery (SECRET_KEY, HOST_IP, VOLUME_ROOT)
+            processed_content = await self._process_template_placeholders(
+                processed_content
+            )
+
+            # Walidacja YAML
+            if not self._validate_yaml(processed_content):
+                return (
+                    "❌ Błąd: Wygenerowany docker-compose.yml ma nieprawidłową składnię YAML. "
+                    "Sprawdź poprawność szablonu."
+                )
 
             # Wdróż stack
             success, message = self.stack_manager.deploy_stack(
@@ -303,6 +318,79 @@ class ComposeSkill:
             processed = processed.replace(placeholder, str(free_port), 1)
 
         return processed
+
+    async def _process_template_placeholders(self, compose_content: str) -> str:
+        """
+        Przetwarza placeholdery szablonów w docker-compose.yml.
+
+        Obsługuje:
+        - {{SECRET_KEY}} - generuje losowy klucz (32 bajty hex)
+        - {{HOST_IP}} - wstawia adres IP hosta
+        - {{VOLUME_ROOT}} - wstawia absolutną ścieżkę do workspace
+
+        Args:
+            compose_content: Zawartość docker-compose.yml
+
+        Returns:
+            Przetworzona zawartość z zastąpionymi placeholderami
+        """
+        import secrets
+        import socket
+
+        processed = compose_content
+
+        # {{SECRET_KEY}} - generuj silny losowy ciąg znaków
+        if "{{SECRET_KEY}}" in processed:
+            secret_key = secrets.token_hex(SECRET_KEY_BYTES)  # 64 znaki hex
+            processed = processed.replace("{{SECRET_KEY}}", secret_key)
+            logger.info("Wygenerowano SECRET_KEY dla docker-compose")
+
+        # {{HOST_IP}} - wstaw adres IP hosta
+        if "{{HOST_IP}}" in processed:
+            try:
+                # Pobierz lokalny adres IP hosta
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                host_ip = s.getsockname()[0]
+                s.close()
+            except Exception as e:
+                logger.warning(f"Nie można pobrać HOST_IP: {e}. Używam 127.0.0.1")
+                host_ip = "127.0.0.1"
+
+            processed = processed.replace("{{HOST_IP}}", host_ip)
+            logger.info(f"Wstawiono HOST_IP: {host_ip}")
+
+        # {{VOLUME_ROOT}} - wstaw absolutną ścieżkę do workspace
+        if "{{VOLUME_ROOT}}" in processed:
+            from pathlib import Path
+
+            volume_root = str(Path(self.stack_manager.workspace_root).resolve())
+            processed = processed.replace("{{VOLUME_ROOT}}", volume_root)
+            logger.info(f"Wstawiono VOLUME_ROOT: {volume_root}")
+
+        return processed
+
+    def _validate_yaml(self, compose_content: str) -> bool:
+        """
+        Waliduje składnię YAML pliku docker-compose.
+
+        Args:
+            compose_content: Zawartość docker-compose.yml do walidacji
+
+        Returns:
+            True jeśli YAML jest poprawny, False w przeciwnym razie
+        """
+        try:
+            import yaml
+
+            yaml.safe_load(compose_content)
+            return True
+        except yaml.YAMLError as e:
+            logger.error(f"Błąd walidacji YAML: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Nieoczekiwany błąd podczas walidacji YAML: {e}")
+            return False
 
     def _find_unique_free_port(self, start: int, assigned_ports: set) -> int:
         """

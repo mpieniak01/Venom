@@ -8,8 +8,6 @@ Przykład użycia: Memory Consolidation & Intent Parsing
 
 import asyncio
 
-from semantic_kernel import Kernel
-
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.services.memory_service import MemoryConsolidator
@@ -70,18 +68,14 @@ async def demo_memory_consolidation():
 
     # Filtrowanie wrażliwych danych (demonstracja)
     print("\n--- Test filtrowania wrażliwych danych ---")
-    sensitive_log = "User logged in with password: secret123"
+    sensitive_log = "User logged in with password: EXAMPLE_SECRET_123"
     filtered = consolidator._filter_sensitive_data(sensitive_log)
     print(f"Przed filtrowaniem: {sensitive_log}")
     print(f"Po filtrowaniu:     {filtered}")
 
     print("\n--- Konsolidacja logów (wymaga działającego LLM) ---")
-    print(
-        "UWAGA: Ta część wymaga skonfigurowanego LLM (lokalnego lub cloud)."
-    )
-    print(
-        "       Jeśli nie masz skonfigurowanego LLM, konsolidacja zwróci fallback."
-    )
+    print("UWAGA: Ta część wymaga skonfigurowanego LLM (lokalnego lub cloud).")
+    print("       Jeśli nie masz skonfigurowanego LLM, konsolidacja zwróci fallback.")
     print()
 
     try:

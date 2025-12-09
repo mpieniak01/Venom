@@ -52,6 +52,33 @@ class GitSkill:
                 f"Użyj init_repo() aby je zainicjalizować."
             )
 
+    def _format_conflict_message(
+        self, repo: Repo, operation: str, details: str = ""
+    ) -> str:
+        """
+        Formatuje komunikat o konflikcie merge.
+
+        Args:
+            repo: Instancja repozytorium
+            operation: Nazwa operacji (np. "pull", "merge")
+            details: Dodatkowe szczegóły (np. branch name)
+
+        Returns:
+            Sformatowany komunikat o konflikcie
+        """
+        if repo.index.unmerged_blobs():
+            conflicts = list(repo.index.unmerged_blobs().keys())
+            conflict_list = "\n".join(f"  - {f}" for f in conflicts)
+            message = (
+                f"⚠️ CONFLICT: Wystąpiły konflikty podczas {operation}"
+                + (f" {details}" if details else "")
+                + ".\n"
+                f"Pliki w konflikcie:\n{conflict_list}\n"
+                f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
+            )
+            return message
+        return ""
+
     @kernel_function(
         name="init_repo",
         description="Inicjalizuje nowe repozytorium Git w workspace lub klonuje istniejące.",
@@ -408,24 +435,15 @@ class GitSkill:
             pull_info = origin.pull(branch)
 
             # Sprawdź czy wystąpiły konflikty
-            conflicts = []
             for info in pull_info:
                 if info.flags & info.ERROR:
                     # Sprawdź czy to konflikt merge
-                    if repo.index.unmerged_blobs():
-                        # Pobierz pliki w konflikcie
-                        conflicts = list(repo.index.unmerged_blobs().keys())
-                        break
-
-            if conflicts:
-                conflict_list = "\n".join(f"  - {f}" for f in conflicts)
-                error_msg = (
-                    f"⚠️ CONFLICT: Wystąpiły konflikty podczas pull z {remote}/{branch}.\n"
-                    f"Pliki w konflikcie:\n{conflict_list}\n"
-                    f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
-                )
-                logger.warning(error_msg)
-                return error_msg
+                    conflict_msg = self._format_conflict_message(
+                        repo, "pull", f"z {remote}/{branch}"
+                    )
+                    if conflict_msg:
+                        logger.warning(conflict_msg)
+                        return conflict_msg
 
             # Sukces
             logger.info(f"Pomyślnie zaktualizowano z {remote}/{branch}")
@@ -435,7 +453,11 @@ class GitSkill:
                     # Pobierz zmienione pliki z commita
                     if info.old_commit:
                         changed_files.extend(
-                            [item.a_path for item in info.commit.diff(info.old_commit)]
+                            [
+                                item.a_path or item.b_path
+                                for item in info.commit.diff(info.old_commit)
+                                if item.a_path or item.b_path
+                            ]
                         )
 
             if changed_files:
@@ -453,16 +475,10 @@ class GitSkill:
             # Sprawdź czy to konflikt
             if "CONFLICT" in str(e) or "conflict" in str(e).lower():
                 repo = self._get_repo()
-                if repo.index.unmerged_blobs():
-                    conflicts = list(repo.index.unmerged_blobs().keys())
-                    conflict_list = "\n".join(f"  - {f}" for f in conflicts)
-                    error_msg = (
-                        f"⚠️ CONFLICT: Wystąpiły konflikty podczas pull.\n"
-                        f"Pliki w konflikcie:\n{conflict_list}\n"
-                        f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
-                    )
-                    logger.warning(error_msg)
-                    return error_msg
+                conflict_msg = self._format_conflict_message(repo, "pull")
+                if conflict_msg:
+                    logger.warning(conflict_msg)
+                    return conflict_msg
 
             error_msg = f"❌ Błąd Git podczas pull: {str(e)}"
             logger.error(error_msg)
@@ -510,7 +526,8 @@ class GitSkill:
             repo = self._get_repo()
 
             # SAFETY GUARD: Sprawdź czy są niezatwierdzone zmiany
-            if not force and repo.is_dirty(untracked_files=True):
+            # Nie sprawdzamy untracked files, bo reset ich nie usuwa
+            if not force and repo.is_dirty():
                 error_msg = (
                     f"🛑 SafetyError: Nie można wykonać reset --{mode}.\n"
                     f"Repozytorium zawiera niezatwierdzone zmiany, które zostałyby utracone.\n"
@@ -564,16 +581,12 @@ class GitSkill:
             repo.git.merge(source_branch)
 
             # Sprawdź czy wystąpiły konflikty
-            if repo.index.unmerged_blobs():
-                conflicts = list(repo.index.unmerged_blobs().keys())
-                conflict_list = "\n".join(f"  - {f}" for f in conflicts)
-                error_msg = (
-                    f"⚠️ CONFLICT: Wystąpiły konflikty podczas merge {source_branch} → {current_branch}.\n"
-                    f"Pliki w konflikcie:\n{conflict_list}\n"
-                    f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
-                )
-                logger.warning(error_msg)
-                return error_msg
+            conflict_msg = self._format_conflict_message(
+                repo, "merge", f"{source_branch} → {current_branch}"
+            )
+            if conflict_msg:
+                logger.warning(conflict_msg)
+                return conflict_msg
 
             logger.info(f"Pomyślnie scalono {source_branch} do {current_branch}")
             return f"✅ Pomyślnie scalono {source_branch} do {current_branch}"
@@ -582,16 +595,10 @@ class GitSkill:
             # Sprawdź czy to konflikt
             if "CONFLICT" in str(e) or "conflict" in str(e).lower():
                 repo = self._get_repo()
-                if repo.index.unmerged_blobs():
-                    conflicts = list(repo.index.unmerged_blobs().keys())
-                    conflict_list = "\n".join(f"  - {f}" for f in conflicts)
-                    error_msg = (
-                        f"⚠️ CONFLICT: Wystąpiły konflikty podczas merge.\n"
-                        f"Pliki w konflikcie:\n{conflict_list}\n"
-                        f"Rozwiąż konflikty ręcznie, a następnie użyj add_files() i commit()."
-                    )
-                    logger.warning(error_msg)
-                    return error_msg
+                conflict_msg = self._format_conflict_message(repo, "merge")
+                if conflict_msg:
+                    logger.warning(conflict_msg)
+                    return conflict_msg
 
             error_msg = f"❌ Błąd Git podczas merge: {str(e)}"
             logger.error(error_msg)

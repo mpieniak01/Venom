@@ -1,6 +1,7 @@
 """Moduł: github_skill - Skill do wyszukiwania i analizy repozytoriów GitHub."""
 
 import os
+from datetime import datetime, timedelta
 from typing import Annotated, Optional
 
 from github import Auth, Github, GithubException
@@ -195,8 +196,6 @@ class GitHubSkill:
         try:
             # Wyszukaj repozytoria utworzone w ostatnim roku
             # Dynamicznie oblicz datę sprzed roku
-            from datetime import datetime, timedelta
-
             one_year_ago = datetime.now() - timedelta(days=365)
             date_filter = one_year_ago.strftime("%Y-%m-%d")
             search_query = f"{topic} created:>{date_filter}"
@@ -263,7 +262,14 @@ class GitHubSkill:
 
         raise ValueError(f"Nieprawidłowy format URL repozytorium: {repo_url}")
 
-    def __del__(self):
+    def close(self):
         """Zamknięcie połączenia z GitHub API."""
         if hasattr(self, "github") and self.github:
             self.github.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False

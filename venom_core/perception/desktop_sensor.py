@@ -8,6 +8,7 @@ zapewnienia kontekstowej pomocy przez Shadow Agent.
 import asyncio
 import platform
 import re
+import threading
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
@@ -395,6 +396,7 @@ class DesktopSensor:
         self._mouse_listener = None
         self._keyboard_listener = None
         self._mouse_move_counter = 0  # Licznik dla próbkowania ruchów myszy
+        self._mouse_move_lock = threading.Lock()  # Lock dla thread-safe dostępu do licznika
 
         try:
             from pynput import keyboard, mouse
@@ -428,15 +430,16 @@ class DesktopSensor:
             def on_move(x, y):
                 # Zapisuj tylko co 10-ty ruch myszy, aby nie zaśmiecać logów
                 if self._recording_mode:
-                    self._mouse_move_counter += 1
-                    if self._mouse_move_counter % 10 == 0:
-                        self._recorded_actions.append(
-                            {
-                                "timestamp": datetime.now().isoformat(),
-                                "event_type": "mouse_move",
-                                "payload": {"x": x, "y": y},
-                            }
-                        )
+                    with self._mouse_move_lock:
+                        self._mouse_move_counter += 1
+                        if self._mouse_move_counter % 10 == 0:
+                            self._recorded_actions.append(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "event_type": "mouse_move",
+                                    "payload": {"x": x, "y": y},
+                                }
+                            )
 
             # Callback dla klawiatury - bezpieczne logowanie
             def on_press(key):

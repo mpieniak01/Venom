@@ -1918,4 +1918,160 @@ body {
 .research-source-badge.web-search {
     background-color: #6b7280;
     color: white;
+/* ============================================
+   Dashboard v2.4: Global Cost Guard
+   ============================================ */
+
+/* Cost Mode Switch */
+.cost-mode-switch {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    border: 2px solid var(--border-color);
+}
+
+.cost-mode-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.cost-mode-label.eco-mode {
+    color: var(--success-color);
+}
+
+.cost-mode-label.pro-mode {
+    color: var(--warning-color);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--success-color);
+    transition: 0.4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--warning-color);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* Accessibility: Add icons to toggle */
+.toggle-slider:after {
+    content: "🌿";
+    position: absolute;
+    right: 6px;
+    top: 2px;
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+input:checked + .toggle-slider:after {
+    content: "💸";
+    left: 6px;
+    right: auto;
+}
+
+/* Cost Mode Modal */
+.modal .warning-message {
+    background-color: rgba(245, 158, 11, 0.1);
+    border: 2px solid var(--warning-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.modal .warning-message p {
+    margin-bottom: 0.75rem;
+}
+
+.modal .warning-message p:last-child {
+    margin-bottom: 0;
+}
+
+.modal .modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.modal .btn-secondary {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.modal .btn-secondary:hover {
+    background-color: var(--bg-medium);
+    border-color: var(--text-secondary);
+}
+
+/* Model Attribution Badges */
+.model-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.model-badge.free {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.model-badge.paid {
+    background-color: rgba(139, 92, 246, 0.2);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+}
+
+.message.assistant .model-badge {
+    margin-left: 0.5rem;
 }

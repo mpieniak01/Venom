@@ -42,15 +42,17 @@ class HybridModelRouter:
     priorytetując prywatność i oszczędność kosztów.
     """
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, state_manager=None):
         """
         Inicjalizacja routera.
 
         Args:
             settings: Konfiguracja (domyślnie SETTINGS)
+            state_manager: StateManager dla Cost Guard (opcjonalny)
         """
         self.settings = settings or SETTINGS
         self.ai_mode = AIMode(self.settings.AI_MODE.upper())
+        self.state_manager = state_manager  # Opcjonalna integracja z Cost Guard
 
         logger.info(
             f"HybridModelRouter zainicjalizowany (mode={self.ai_mode.value}, "
@@ -71,6 +73,7 @@ class HybridModelRouter:
             - model_name: nazwa modelu
             - provider: 'local', 'google', 'openai'
             - reason: uzasadnienie decyzji
+            - is_paid: czy to płatny model (boolean)
         """
         # PRIORYTET 1: Dane wrażliwe ZAWSZE idą do lokalnego modelu
         if task_type == TaskType.SENSITIVE or (
@@ -91,7 +94,10 @@ class HybridModelRouter:
                 return self._route_to_local(
                     "Dane wrażliwe - wymuszenie lokalnego modelu"
                 )
-            return self._route_to_cloud(f"Tryb CLOUD - zadanie {task_type.value}")
+            # GLOBAL COST GUARD: Sprawdź czy tryb płatny jest włączony
+            return self._route_to_cloud_with_guard(
+                f"Tryb CLOUD - zadanie {task_type.value}"
+            )
 
         # PRIORYTET 4: Tryb HYBRID - inteligentny routing
         return self._hybrid_route(task_type, prompt)
@@ -132,7 +138,7 @@ class HybridModelRouter:
                     "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo fallback)"
                 )
 
-        # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja)
+        # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)
         if task_type in [
             TaskType.CODING_COMPLEX,
             TaskType.ANALYSIS,
@@ -140,7 +146,7 @@ class HybridModelRouter:
         ]:
             # Sprawdź czy mamy klucz API dla chmury
             if self._has_cloud_access():
-                return self._route_to_cloud(
+                return self._route_to_cloud_with_guard(
                     f"Tryb HYBRID: złożone zadanie {task_type.value} -> CLOUD"
                 )
             else:
@@ -169,6 +175,7 @@ class HybridModelRouter:
             "provider": "local",
             "endpoint": self.settings.LLM_LOCAL_ENDPOINT,
             "reason": reason,
+            "is_paid": False,  # Model lokalny = darmowy
         }
 
     def _route_to_cloud(self, reason: str) -> dict:
@@ -192,7 +199,48 @@ class HybridModelRouter:
             "provider": provider,
             "endpoint": None,  # Endpoint jest domyślny dla providera
             "reason": reason,
+            "is_paid": True,  # Model chmurowy = płatny
         }
+
+    def _route_to_cloud_with_guard(self, reason: str) -> dict:
+        """
+        Tworzy routing do chmury z Global Cost Guard.
+        
+        Sprawdza czy tryb płatny jest włączony. Jeśli nie, wykonuje fallback do lokalnego modelu.
+
+        Args:
+            reason: Uzasadnienie decyzji
+
+        Returns:
+            Dict z informacjami o routingu
+        """
+        # Sprawdź czy Cost Guard jest aktywny
+        if self._is_cost_guard_blocking():
+            logger.warning(
+                f"🔒 COST GUARD: Zablokowano dostęp do Cloud API. "
+                f"Fallback do LOCAL. Powód: {reason}"
+            )
+            return self._route_to_local(
+                f"COST GUARD: Paid Mode wyłączony - fallback do LOCAL. "
+                f"Pierwotny powód: {reason}"
+            )
+        
+        # Tryb płatny włączony lub brak state_manager - przepuść do chmury
+        return self._route_to_cloud(reason)
+
+    def _is_cost_guard_blocking(self) -> bool:
+        """
+        Sprawdza czy Cost Guard blokuje dostęp do chmury.
+        
+        Returns:
+            True jeśli dostęp zablokowany, False jeśli dozwolony
+        """
+        # Jeśli brak state_manager - nie blokuj (backward compatibility)
+        if not self.state_manager:
+            return False
+        
+        # Jeśli paid_mode wyłączony - blokuj
+        return not self.state_manager.is_paid_mode_enabled()
 
     def _has_cloud_access(self) -> bool:
         """

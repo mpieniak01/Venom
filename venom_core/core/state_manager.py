@@ -33,6 +33,10 @@ class StateManager:
         # Global Cost Guard - flaga płatnego trybu (dla Google Grounding itp.)
         self.paid_mode_enabled: bool = False
 
+        # Global Cost Guard: Domyślnie tryb Eco (tylko lokalne modele)
+        # UWAGA: Ten stan NIE jest persystowany - zawsze startuje jako False
+        self.paid_mode_enabled: bool = False
+
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -224,5 +228,32 @@ class StateManager:
 
         Returns:
             True jeśli paid mode jest aktywny
+
+    # ========================================
+    # Global Cost Guard Methods
+    # ========================================
+
+    def enable_paid_mode(self) -> None:
+        """
+        Włącza tryb płatny (Pro Mode) - umożliwia dostęp do chmurowych API.
+        
+        UWAGA: Ten stan jest tymczasowy i resetuje się przy restarcie aplikacji.
+        """
+        self.paid_mode_enabled = True
+        logger.warning("🔓 Paid Mode ENABLED - Cloud API access unlocked")
+
+    def disable_paid_mode(self) -> None:
+        """
+        Wyłącza tryb płatny (Eco Mode) - blokuje dostęp do chmurowych API.
+        """
+        self.paid_mode_enabled = False
+        logger.info("🔒 Paid Mode DISABLED - Cloud API access blocked")
+
+    def is_paid_mode_enabled(self) -> bool:
+        """
+        Sprawdza czy tryb płatny jest włączony.
+        
+        Returns:
+            True jeśli tryb płatny jest włączony, False w przeciwnym wypadku
         """
         return self.paid_mode_enabled

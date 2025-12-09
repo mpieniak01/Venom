@@ -73,7 +73,8 @@ class HybridModelRouter:
         """
         # PRIORYTET 1: Dane wrażliwe ZAWSZE idą do lokalnego modelu
         if task_type == TaskType.SENSITIVE or (
-            self.settings.SENSITIVE_DATA_LOCAL_ONLY and self._is_sensitive_content(prompt)
+            self.settings.SENSITIVE_DATA_LOCAL_ONLY
+            and self._is_sensitive_content(prompt)
         ):
             return self._route_to_local(
                 "Wrażliwe dane - HARD BLOCK na wyjście do sieci"

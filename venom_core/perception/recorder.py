@@ -5,7 +5,6 @@ Odpowiedzialny za nagrywanie demonstracji użytkownika - synchroniczne
 rejestrowanie zrzutów ekranu i zdarzeń wejścia (mysz/klawiatura).
 """
 
-import json
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -360,8 +359,7 @@ class DemonstrationRecorder:
         session_dict = asdict(self.current_session)
 
         # Zapisz do JSON używając helpers (Venom Standard Library)
-        json_content = json.dumps(session_dict, indent=2, ensure_ascii=False)
-        if not helpers.write_file(session_file, json_content, raise_on_error=False):
+        if not helpers.write_json(session_file, session_dict, raise_on_error=False):
             logger.error(f"Nie udało się zapisać sesji: {session_file}")
             return None
 
@@ -401,11 +399,9 @@ class DemonstrationRecorder:
 
         try:
             # Odczytaj JSON używając helpers (Venom Standard Library)
-            content = helpers.read_file(session_file, raise_on_error=True)
-            if content is None:
+            session_dict = helpers.read_json(session_file, raise_on_error=True)
+            if session_dict is None:
                 return None
-
-            session_dict = json.loads(content)
 
             # Konwertuj events z dict do InputEvent
             events = [

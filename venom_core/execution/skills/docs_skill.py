@@ -115,7 +115,9 @@ class DocsSkill:
             config_path = self.workspace_root / "mkdocs.yml"
             config_content = "\n".join(config_lines)
 
-            if not helpers.write_file(config_path, config_content, raise_on_error=True):
+            if not helpers.write_file(
+                config_path, config_content, raise_on_error=False
+            ):
                 raise IOError(f"Nie udało się zapisać pliku {config_path}")
 
             logger.info(f"Plik mkdocs.yml utworzony: {config_path}")

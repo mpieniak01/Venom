@@ -11,7 +11,7 @@ Wszystkie funkcje posiadają:
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 from venom_core.utils.logger import get_logger
 
@@ -63,11 +63,10 @@ def read_file(
 
         logger.debug(f"Odczytano plik: {file_path} ({len(content)} znaków)")
         return content
-
-    except FileNotFoundError:
+    except (FileNotFoundError, IOError):
+        # Re-raise FileNotFoundError i IOError jeśli raise_on_error=True
         if raise_on_error:
             raise
-        logger.error(f"Nie znaleziono pliku: {file_path}")
         return None
     except UnicodeDecodeError as e:
         logger.error(f"Błąd dekodowania pliku {file_path} z encoding={encoding}: {e}")
@@ -140,25 +139,26 @@ def write_file(
 
 def read_json(
     file_path: Union[str, Path], raise_on_error: bool = False
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Any]:
     """
-    Odczytuje plik JSON i zwraca jako słownik.
+    Odczytuje plik JSON i zwraca jako dowolną strukturę danych.
 
     Args:
         file_path: Ścieżka do pliku JSON
         raise_on_error: Czy rzucić wyjątek przy błędzie (domyślnie False)
 
     Returns:
-        Słownik z danymi JSON, lub None jeśli wystąpił błąd
+        Struktura danych z pliku JSON (dict, list, str, int, float, bool, None),
+        lub None jeśli wystąpił błąd
 
     Raises:
         FileNotFoundError: Jeśli plik nie istnieje (tylko gdy raise_on_error=True)
         json.JSONDecodeError: Jeśli plik nie jest poprawnym JSON (tylko gdy raise_on_error=True)
 
     Example:
-        >>> config = read_json("config.json")
-        >>> if config:
-        ...     print(f"Wczytano {len(config)} kluczy")
+        >>> data = read_json("config.json")
+        >>> if isinstance(data, dict):
+        ...     print(f"Wczytano {len(data)} kluczy")
     """
     try:
         content = read_file(file_path, raise_on_error=raise_on_error)
@@ -283,6 +283,9 @@ def generate_hash(
         logger.debug(f"Wygenerowano hash {algorithm}: {hash_value[:16]}...")
         return hash_value
 
+    except ValueError:
+        # ValueError dla nieprawidłowego algorytmu - zawsze rzucamy
+        raise
     except Exception as e:
         logger.error(f"Błąd podczas generowania hashu: {e}")
         raise

@@ -345,12 +345,12 @@ class DemonstrationRecorder:
 
         self.screenshot_buffer.clear()
 
-    def _save_session(self) -> str:
+    def _save_session(self) -> Optional[str]:
         """
         Zapisuje sesję do pliku JSON.
 
         Returns:
-            Ścieżka do pliku JSON
+            Ścieżka do pliku JSON, lub None jeśli wystąpił błąd
         """
         session_dir = self.sessions_dir / self.current_session.session_id
         session_file = session_dir / "session.json"
@@ -400,8 +400,6 @@ class DemonstrationRecorder:
         try:
             # Odczytaj JSON używając helpers (Venom Standard Library)
             session_dict = helpers.read_json(session_file, raise_on_error=True)
-            if session_dict is None:
-                return None
 
             # Konwertuj events z dict do InputEvent
             events = [

@@ -81,7 +81,8 @@ class ServiceRegistry:
             )
 
         # GitHub API (jeśli skonfigurowane)
-        if SETTINGS.GITHUB_TOKEN.get_secret_value():
+        github_token = SETTINGS.GITHUB_TOKEN.get_secret_value()
+        if github_token and github_token.strip():
             self.register_service(
                 ServiceInfo(
                     name="GitHub API",

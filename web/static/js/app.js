@@ -1894,7 +1894,7 @@ class VenomDashboard {
                 btn.textContent = action.label || action.id;
                 btn.addEventListener('click', () => {
                     console.log('Action clicked:', action.intent);
-                    // Submit intent back to backend
+                    // Send action intent as a new task
                     this.submitIntent(action.intent);
                 });
                 actionsDiv.appendChild(btn);
@@ -1909,15 +1909,15 @@ class VenomDashboard {
 
     async submitIntent(intent) {
         /**
-         * Wysyła intencję (komendę) zwrotną do backendu.
+         * Sends an intent (command) to the backend as a new task.
          * 
          * Args:
-         *     intent: Treść komendy do wykonania (np. "Pokaż więcej szczegółów")
+         *     intent: Content of the command to execute (e.g., "Show more details")
          */
         try {
             this.showNotification('Wysyłam polecenie...', 'info');
             
-            // Użyj standardowego API zadań do wysłania intencji
+            // Use standard task API to submit intent
             const response = await fetch('/api/v1/tasks', {
                 method: 'POST',
                 headers: {

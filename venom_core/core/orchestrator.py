@@ -1682,7 +1682,7 @@ Status roadmapy:
 
             # Pobierz informacje o umiejętnościach z kernela
             kernel = self.task_dispatcher.kernel
-            plugins = getattr(kernel, "plugins", {})
+            plugins = getattr(kernel, "plugins", None)
 
             # Buduj odpowiedź pomocy
             help_text = """# 🕷️ Venom - System Pomocy
@@ -1726,7 +1726,7 @@ Jestem Venom - wieloagentowy system AI wspierający rozwój oprogramowania. Oto 
 """
 
             # Dodaj listę dostępnych pluginów
-            if plugins:
+            if plugins is not None:
                 skill_count = 0
                 for plugin_name in plugins:
                     # Filtruj wewnętrzne pluginy

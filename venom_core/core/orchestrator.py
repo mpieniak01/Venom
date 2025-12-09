@@ -11,6 +11,7 @@ from venom_core.core.intent_manager import IntentManager
 from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
+from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
 from venom_core.utils.logger import get_logger
@@ -58,6 +59,7 @@ class Orchestrator:
         event_broadcaster=None,
         lessons_store=None,
         node_manager=None,
+        request_tracer: RequestTracer = None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -69,12 +71,14 @@ class Orchestrator:
             event_broadcaster: Opcjonalny broadcaster zdarzeń do WebSocket
             lessons_store: Opcjonalny magazyn lekcji (dla meta-uczenia)
             node_manager: Opcjonalny menedżer węzłów (dla distributed execution)
+            request_tracer: Opcjonalny tracer do śledzenia przepływu zadań
         """
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
         self.event_broadcaster = event_broadcaster
         self.lessons_store = lessons_store  # Magazyn lekcji dla meta-uczenia
         self.node_manager = node_manager  # Menedżer węzłów dla distributed execution
+        self.request_tracer = request_tracer  # Tracer do śledzenia przepływu
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
         if task_dispatcher is None:
@@ -128,6 +132,17 @@ class Orchestrator:
         # Utwórz zadanie przez StateManager
         task = self.state_manager.create_task(content=request.content)
 
+        # Utwórz trace dla zadania jeśli tracer jest dostępny
+        if self.request_tracer:
+            self.request_tracer.create_trace(task.id, request.content)
+            self.request_tracer.add_step(
+                task.id,
+                "User",
+                "submit_request",
+                status="ok",
+                details="Request received",
+            )
+
         # Zaloguj event
         log_message = f"Zadanie uruchomione: {datetime.now().isoformat()}"
         self.state_manager.add_log(task.id, log_message)
@@ -178,6 +193,13 @@ class Orchestrator:
                 task_id, f"Rozpoczęto przetwarzanie: {datetime.now().isoformat()}"
             )
 
+            # Aktualizuj tracer
+            if self.request_tracer:
+                self.request_tracer.update_status(task_id, TraceStatus.PROCESSING)
+                self.request_tracer.add_step(
+                    task_id, "Orchestrator", "start_processing", status="ok"
+                )
+
             # Broadcast rozpoczęcia zadania
             await self._broadcast_event(
                 event_type="TASK_STARTED",
@@ -201,6 +223,16 @@ class Orchestrator:
                 task_id,
                 f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}",
             )
+
+            # Dodaj krok do tracera
+            if self.request_tracer:
+                self.request_tracer.add_step(
+                    task_id,
+                    "Orchestrator",
+                    "classify_intent",
+                    status="ok",
+                    details=f"Intent: {intent}",
+                )
 
             # Broadcast intencji
             await self._broadcast_event(
@@ -262,6 +294,15 @@ class Orchestrator:
                     task_id,
                     f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
                 )
+                # Dodaj krok do tracera
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        agent_name,
+                        "process_task",
+                        status="ok",
+                        details="Task processed successfully",
+                    )
                 # Inkrementuj licznik użycia agenta
                 if metrics_collector:
                     metrics_collector.increment_agent_usage(agent_name)
@@ -277,6 +318,13 @@ class Orchestrator:
             self.state_manager.add_log(
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
             )
+
+            # Aktualizuj tracer
+            if self.request_tracer:
+                self.request_tracer.update_status(task_id, TraceStatus.COMPLETED)
+                self.request_tracer.add_step(
+                    task_id, "System", "complete", status="ok", details="Response sent"
+                )
 
             # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone)
             await self._save_task_lesson(
@@ -303,6 +351,17 @@ class Orchestrator:
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
+
+            # Aktualizuj tracer
+            if self.request_tracer:
+                self.request_tracer.update_status(task_id, TraceStatus.FAILED)
+                self.request_tracer.add_step(
+                    task_id,
+                    "System",
+                    "error",
+                    status="error",
+                    details=f"Error: {str(e)}",
+                )
 
             # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone)
             await self._save_task_lesson(

@@ -117,6 +117,7 @@
                     <button class="tab-button" data-tab="voice">🎤 Voice</button>
                     <button class="tab-button" data-tab="jobs">⚙️ Jobs</button>
                     <button class="tab-button" data-tab="memory">🧠 Memory</button>
+                    <button class="tab-button" data-tab="history">📜 History</button>
                 </div>
 
                 <!-- Live Feed Tab -->
@@ -307,7 +308,46 @@
                         <p class="empty-state">Ładowanie grafu...</p>
                     </div>
                 </div>
+
+                <!-- History Tab -->
+                <div class="tab-content" id="historyTab">
+                    <div class="panel-header">
+                        <h2>📜 Historia Żądań</h2>
+                        <button id="refreshHistory" class="btn-small" title="Odśwież historię">🔄</button>
+                    </div>
+                    <div class="history-container">
+                        <div class="history-table-wrapper">
+                            <table class="history-table" id="historyTable">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Polecenie</th>
+                                        <th>Czas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <tr>
+                                        <td colspan="3" class="empty-state">Ładowanie historii...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </aside>
+        </div>
+    </div>
+
+    <!-- History Detail Modal -->
+    <div id="historyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="historyModalTitle">🔍 Szczegóły Zadania</h2>
+                <button class="modal-close" id="closeHistoryModal" aria-label="Zamknij modal">&times;</button>
+            </div>
+            <div class="modal-body" id="historyModalBody">
+                <div class="loading-state">Ładowanie...</div>
+            </div>
         </div>
     </div>
 

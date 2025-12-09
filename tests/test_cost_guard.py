@@ -1,10 +1,8 @@
 """Testy dla Global Cost Guard (Feature v2.4)."""
 
-import pytest
-
 from venom_core.config import Settings
 from venom_core.core.state_manager import StateManager
-from venom_core.execution.model_router import AIMode, HybridModelRouter, TaskType
+from venom_core.execution.model_router import HybridModelRouter, TaskType
 
 
 class TestCostGuardStateManager:

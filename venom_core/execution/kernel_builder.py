@@ -214,47 +214,50 @@ class KernelBuilder:
 
             logger.debug(f"Konfiguracja Google Gemini: model={model_name}")
 
-            # Konfiguruj Google Gemini
-            genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-
             # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
-            # Używamy OpenAI-compatible wrapper lub bezpośrednie API
-            # Dla uproszczenia, logujemy że Gemini jest skonfigurowany
-            # ale faktyczne wywołania będą przez wrapper
-            logger.warning(
-                "Google Gemini: używanie bezpośredniego API. "
-                "Semantic Kernel connector w przygotowaniu."
+            # Wymagana jest implementacja dedykowanego wrappera/adaptera
+            raise NotImplementedError(
+                "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
+                "Wymagana jest implementacja dedykowanego connectora/wrappera. "
+                "Na razie użyj 'local' lub 'openai'. "
+                "Gemini może być używany poprzez bezpośrednie wywołania google.generativeai API."
             )
-            # TODO: Implementacja Gemini connector dla Semantic Kernel
-            # Na razie oznaczamy jako dostępny, faktyczne wywołania przez google.generativeai
 
         elif service_type == "azure":
-            # Konfiguracja dla Azure OpenAI (opcja zapasowa, nieużywana domyślnie)
-            logger.info(
-                "Azure OpenAI: konfiguracja zapasowa (wymaga Azure endpoint i klucza)"
-            )
-
+            # Konfiguracja dla Azure OpenAI (opcja zapasowa)
             # Sprawdź czy mamy wymagane parametry Azure
-            # Jeśli nie - logujemy warning i pomijamy
             azure_endpoint = getattr(self.settings, "AZURE_OPENAI_ENDPOINT", None)
             azure_key = getattr(self.settings, "AZURE_OPENAI_KEY", None)
 
             if not azure_endpoint or not azure_key:
-                logger.warning(
-                    "Azure OpenAI: brak AZURE_OPENAI_ENDPOINT lub AZURE_OPENAI_KEY. "
-                    "Konfiguracja dostępna, ale nieaktywna. Użyj 'local' lub 'openai'."
+                # Brak konfiguracji Azure - rzuć błąd informujący użytkownika
+                raise NotImplementedError(
+                    "Azure OpenAI wymaga konfiguracji AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_KEY. "
+                    "Obecnie wspierane: 'local', 'openai'. "
+                    "Azure jest dostępny jako opcja zapasowa po skonfigurowaniu credentials."
                 )
-                return  # Pomijamy rejestrację bez rzucania błędem
 
             # Jeśli mamy parametry, możemy zarejestrować Azure
             logger.info(
                 f"Konfiguracja Azure OpenAI: endpoint={azure_endpoint}, model={model_name}"
             )
 
-            # Tutaj byłaby faktyczna konfiguracja Azure OpenAI
-            # chat_service = AzureOpenAIChatCompletion(...)
+            # Faktyczna implementacja Azure connector
+            # TODO: Implementacja Azure OpenAI connector
+            # from semantic_kernel.connectors.ai.open_ai import AzureOpenAIChatCompletion
+            # chat_service = AzureOpenAIChatCompletion(
+            #     service_id=service_id,
+            #     deployment_name=model_name,
+            #     endpoint=azure_endpoint,
+            #     api_key=azure_key,
+            # )
             # kernel.add_service(chat_service)
-            logger.info("Azure OpenAI skonfigurowane (serwis zapasowy)")
+
+            raise NotImplementedError(
+                "Azure OpenAI connector jest w trakcie implementacji. "
+                "Credentials zostały wykryte, ale faktyczny serwis nie jest jeszcze zarejestrowany. "
+                "Użyj 'local' lub 'openai'."
+            )
 
         else:
             raise ValueError(

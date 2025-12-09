@@ -226,30 +226,35 @@ class HybridModelRouter:
 
         return False
 
-    async def process(
+    def get_routing_decision(
         self, prompt: str, task_type: TaskType = TaskType.STANDARD
-    ) -> tuple[str, dict]:
+    ) -> dict:
         """
-        Przetwarza prompt przez odpowiedni model.
+        Określa decyzję routingu dla zadania (nie wykonuje faktycznego wywołania LLM).
+
+        UWAGA: Ta metoda tylko decyduje o routingu. Faktyczne wywołanie LLM
+        powinno być wykonane przez KernelBuilder z użyciem informacji o routingu.
 
         Args:
-            prompt: Prompt do przetworzenia
+            prompt: Prompt do analizy
             task_type: Typ zadania
 
         Returns:
-            Tuple (odpowiedź, routing_info)
+            Dict z informacjami o routingu:
+            - target: 'local' lub 'cloud'
+            - model_name: nazwa modelu
+            - provider: 'local', 'google', 'openai'
+            - endpoint: endpoint (jeśli dotyczy)
+            - reason: uzasadnienie decyzji
         """
         routing_info = self.route_task(task_type, prompt)
 
         logger.info(
-            f"[{task_type.value}] Routing: {routing_info['provider']} "
+            f"[{task_type.value}] Routing decision: {routing_info['provider']} "
             f"({routing_info['model_name']}) - {routing_info['reason']}"
         )
 
-        # W tym miejscu faktyczne wywołanie modelu będzie przez KernelBuilder
-        # To jest interfejs, który ApprenticeAgent będzie używać
-
-        return "", routing_info
+        return routing_info
 
     def get_routing_info_for_task(self, task_type: TaskType, prompt: str = "") -> dict:
         """

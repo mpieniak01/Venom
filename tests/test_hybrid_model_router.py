@@ -144,11 +144,10 @@ class TestHybridModelRouter:
         routing = router.route_task(TaskType.SENSITIVE, "password: test")
         assert routing["target"] == "local"
 
-    @pytest.mark.asyncio
-    async def test_process_method(self):
-        """Test metody process."""
+    def test_get_routing_decision(self):
+        """Test metody get_routing_decision."""
         router = HybridModelRouter()
-        response, routing_info = await router.process("Hello", TaskType.CHAT)
+        routing_info = router.get_routing_decision("Hello", TaskType.CHAT)
 
         # Sprawdź że zwraca routing info
         assert "target" in routing_info

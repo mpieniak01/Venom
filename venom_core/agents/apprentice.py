@@ -13,6 +13,7 @@ from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
 from venom_core.config import SETTINGS
+from venom_core.execution.model_router import HybridModelRouter, TaskType
 from venom_core.learning.demonstration_analyzer import (
     ActionIntent,
     DemonstrationAnalyzer,
@@ -90,6 +91,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
         self.analyzer = DemonstrationAnalyzer()
 
         self.current_session_id: Optional[str] = None
+
+        # Inicjalizuj hybrydowy router modeli
+        self.hybrid_router = HybridModelRouter()
 
         logger.info(
             f"ApprenticeAgent zainicjalizowany (skills: {self.custom_skills_dir})"
@@ -414,12 +418,6 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
             Odpowiedź LLM
         """
         try:
-            # Import hybrydowego routera
-            from venom_core.execution.model_router import HybridModelRouter, TaskType
-
-            # Inicjalizuj router
-            hybrid_router = HybridModelRouter()
-
             # Dodaj kontekst o dostępnych komendach
             context = """
 Dostępne komendy:
@@ -443,28 +441,24 @@ Obecnie:
             # Przygotuj pełny prompt
             full_prompt = f"{context}\n\nPytanie użytkownika: {request}"
 
-            # Wywołaj router (określamy typ zadania jako CHAT)
-            response, routing_info = await hybrid_router.process(
-                prompt=full_prompt, task_type=TaskType.CHAT
+            # Pobierz informacje o routingu (określamy typ zadania jako CHAT)
+            routing_info = self.hybrid_router.get_routing_info_for_task(
+                task_type=TaskType.CHAT, prompt=full_prompt
             )
 
             # Loguj użyty model
             logger.info(
-                f"[ApprenticeAgent] Użyto modelu: {routing_info['provider']} "
+                f"[ApprenticeAgent] Routing do modelu: {routing_info['provider']} "
                 f"({routing_info['model_name']})"
             )
 
-            # Jeśli mamy odpowiedź z LLM, zwróć ją
-            # W przeciwnym razie (placeholder) zwróć domyślną odpowiedź
-            if response:
-                return response
-            else:
-                # Fallback na prosty response (do czasu pełnej integracji)
-                return (
-                    f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
-                    f"{context}\n\n"
-                    f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
-                )
+            # TODO: Faktyczne wywołanie LLM przez KernelBuilder z routing_info
+            # Na razie zwracamy fallback response
+            return (
+                f"Jestem ApprenticeAgent. Mogę pomóc Ci nauczyć nowe umiejętności poprzez demonstrację.\n\n"
+                f"{context}\n\n"
+                f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
+            )
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")

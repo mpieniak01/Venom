@@ -130,42 +130,73 @@ HYBRID_CLOUD_MODEL=gpt-4o
 ```python
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
-# Inicjalizacja
+# Inicjalizacja (zwykle w __init__ agenta)
 router = HybridModelRouter()
 
-# Proste zapytanie (local)
-response, routing_info = await router.process(
-    prompt="Hello, how are you?",
-    task_type=TaskType.CHAT
+# Pobierz decyzję routingu dla prostego zapytania
+routing_info = router.get_routing_info_for_task(
+    task_type=TaskType.CHAT,
+    prompt="Hello, how are you?"
 )
+print(f"Would use: {routing_info['provider']} ({routing_info['model_name']})")
 
-# Złożone zadanie (może iść do chmury w trybie HYBRID)
-response, routing_info = await router.process(
-    prompt="Analyze architecture of 10 microservices...",
-    task_type=TaskType.CODING_COMPLEX
+# Pobierz decyzję routingu dla złożonego zadania
+routing_info = router.get_routing_info_for_task(
+    task_type=TaskType.CODING_COMPLEX,
+    prompt="Analyze architecture of 10 microservices..."
 )
+print(f"Would use: {routing_info['provider']} ({routing_info['model_name']})")
 
-# Wrażliwe dane (ZAWSZE local)
-response, routing_info = await router.process(
-    prompt="Store password: secret123",
-    task_type=TaskType.SENSITIVE
+# Pobierz decyzję dla wrażliwych danych (ZAWSZE local)
+routing_info = router.get_routing_info_for_task(
+    task_type=TaskType.SENSITIVE,
+    prompt="Store password: secret123"
 )
+print(f"Would use: {routing_info['provider']} (always local for sensitive)")
 
-print(f"Used model: {routing_info['provider']} ({routing_info['model_name']})")
+# UWAGA: Router tylko podejmuje decyzję o routingu.
+# Faktyczne wywołanie LLM powinno być wykonane przez KernelBuilder
+# używając informacji z routing_info.
 ```
 
-### Sprawdzenie Routingu bez Wykonania
+### Używanie Decyzji Routingu z KernelBuilder
+
+```python
+from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.execution.model_router import HybridModelRouter, TaskType
+
+# Pobierz decyzję routingu
+router = HybridModelRouter()
+routing_info = router.get_routing_info_for_task(
+    task_type=TaskType.CODING_COMPLEX,
+    prompt="Complex coding task..."
+)
+
+# Użyj informacji do budowy odpowiedniego kernela
+builder = KernelBuilder()
+if routing_info['target'] == 'local':
+    # Buduj kernel z lokalnym LLM
+    kernel = builder.build_kernel()
+elif routing_info['target'] == 'cloud':
+    # Buduj kernel z cloud providerem
+    # (wymaga dalszej implementacji dla pełnej integracji)
+    pass
+```
+
+### Bezpośrednia Analiza Routingu
 
 ```python
 router = HybridModelRouter()
 
-# Pobierz info o routingu
+# Pobierz info o routingu bez wykonywania
 info = router.get_routing_info_for_task(
     task_type=TaskType.CODING_COMPLEX,
     prompt="Complex task..."
 )
 
 print(f"Would route to: {info['target']}")  # 'local' lub 'cloud'
+print(f"Provider: {info['provider']}")
+print(f"Model: {info['model_name']}")
 print(f"Reason: {info['reason']}")
 ```
 

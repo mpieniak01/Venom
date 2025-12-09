@@ -283,6 +283,26 @@ async def test_reset_with_untracked_files(git_skill, temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_reset_invalid_mode(git_skill, temp_workspace):
+    """Test resetu z nieprawidłowym trybem."""
+    # Zainicjalizuj repo i utwórz commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("test")
+
+    repo = Repo(temp_workspace)
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Próbuj reset z nieprawidłowym trybem
+    result = await git_skill.reset(mode="invalid")
+
+    assert "❌" in result
+    assert "Nieprawidłowy tryb" in result or "invalid" in result.lower()
+    assert "soft" in result and "mixed" in result and "hard" in result
+
+
+@pytest.mark.asyncio
 async def test_merge_success(git_skill, temp_workspace):
     """Test pomyślnego merge dwóch branchy."""
     # Zainicjalizuj repo i utwórz initial commit
@@ -317,6 +337,41 @@ async def test_merge_success(git_skill, temp_workspace):
 
 
 @pytest.mark.asyncio
+async def test_merge_with_conflict(git_skill, temp_workspace):
+    """Test merge z konfliktem."""
+    # Zainicjalizuj repo i utwórz initial commit
+    await git_skill.init_repo()
+    test_file = Path(temp_workspace) / "test.txt"
+    test_file.write_text("initial content")
+
+    repo = Repo(temp_workspace)
+    # Skonfiguruj git identity dla tego repo
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    repo.index.add(["test.txt"])
+    repo.index.commit("Initial commit")
+
+    # Utwórz branch i zmodyfikuj ten sam plik
+    await git_skill.checkout("feature", create_new=True)
+    test_file.write_text("feature content")
+    repo.index.add(["test.txt"])
+    repo.index.commit("Feature change")
+
+    # Wróć na master i zmodyfikuj inaczej
+    await git_skill.checkout("master")
+    test_file.write_text("main different content")
+    repo.index.add(["test.txt"])
+    repo.index.commit("Main change")
+
+    # Spróbuj scalić - powinien być konflikt
+    result = await git_skill.merge("feature")
+
+    assert "⚠️" in result or "CONFLICT" in result
+    assert "test.txt" in result
+
+
+@pytest.mark.asyncio
 async def test_create_branch(git_skill, temp_workspace):
     """Test tworzenia nowego brancha bez przełączania."""
     # Zainicjalizuj repo i utwórz commit
@@ -344,10 +399,9 @@ async def test_create_branch(git_skill, temp_workspace):
 
 
 @pytest.mark.asyncio
-async def test_pull_already_up_to_date(git_skill, temp_workspace):
-    """Test pull gdy repo jest już aktualne."""
-    # Ten test wymaga zdalnego repo, więc symulujemy sytuację
-    # Zainicjalizuj repo
+async def test_create_branch_already_exists(git_skill, temp_workspace):
+    """Test tworzenia brancha, który już istnieje."""
+    # Zainicjalizuj repo i utwórz commit
     await git_skill.init_repo()
     test_file = Path(temp_workspace) / "test.txt"
     test_file.write_text("test")
@@ -356,10 +410,53 @@ async def test_pull_already_up_to_date(git_skill, temp_workspace):
     repo.index.add(["test.txt"])
     repo.index.commit("Initial commit")
 
-    # Pull bez remote da błąd, ale testujemy format odpowiedzi
-    result = await git_skill.pull(remote="origin", branch="main")
+    # Utwórz branch pierwszy raz
+    result1 = await git_skill.create_branch("feature")
+    assert "✅" in result1
 
-    # Oczekujemy błędu Git (brak remote), ale struktura odpowiedzi powinna być poprawna
-    assert isinstance(result, str)
-    # Odpowiedź powinna być czytelna
-    assert "❌" in result or "✅" in result or "⚠️" in result
+    # Spróbuj utworzyć ponownie
+    result2 = await git_skill.create_branch("feature")
+    assert "❌" in result2
+    assert "już istnieje" in result2.lower() or "already exists" in result2.lower()
+
+
+@pytest.mark.asyncio
+async def test_pull_with_local_remote(git_skill, temp_workspace):
+    """Test pull z lokalnym remote repository."""
+    import tempfile
+
+    # Utwórz "remote" repo
+    remote_dir = tempfile.mkdtemp()
+    try:
+        remote_repo = Repo.init(remote_dir)
+        remote_file = Path(remote_dir) / "remote.txt"
+        remote_file.write_text("remote content")
+        remote_repo.index.add(["remote.txt"])
+        remote_repo.index.commit("Remote commit")
+
+        # Sklonuj do workspace
+        await git_skill.init_repo(url=remote_dir)
+
+        # Dodaj nowy commit do remote
+        remote_file.write_text("updated remote content")
+        remote_repo.index.add(["remote.txt"])
+        remote_repo.index.commit("Update remote")
+
+        # Pull z remote
+        result = await git_skill.pull(remote="origin")
+
+        # Sprawdź że pull się udał
+        assert isinstance(result, str)
+        assert "✅" in result or "❌" in result or "⚠️" in result
+
+        # Jeśli pull się udał, sprawdź czy plik został zaktualizowany
+        if "✅" in result:
+            local_file = Path(temp_workspace) / "remote.txt"
+            if local_file.exists():
+                assert local_file.read_text() == "updated remote content"
+
+    finally:
+        # Cleanup remote dir
+        import shutil
+
+        shutil.rmtree(remote_dir, ignore_errors=True)

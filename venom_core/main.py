@@ -18,6 +18,7 @@ from venom_core.core.metrics import init_metrics_collector, metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.scheduler import BackgroundScheduler
+from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.skills.git_skill import GitSkill
 from venom_core.infrastructure.hardware_pi import HardwareBridge
@@ -64,6 +65,10 @@ shadow_agent = None
 desktop_sensor = None
 notifier = None
 
+# Inicjalizacja Service Health Monitor
+service_registry = None
+service_monitor = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,10 +78,21 @@ async def lifespan(app: FastAPI):
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
     global node_manager, orchestrator
     global shadow_agent, desktop_sensor, notifier
+    global service_registry, service_monitor
 
     # Startup
     # Inicjalizuj MetricsCollector
     init_metrics_collector()
+
+    # Inicjalizuj Service Health Monitor
+    try:
+        service_registry = ServiceRegistry()
+        service_monitor = ServiceHealthMonitor(service_registry)
+        logger.info("Service Health Monitor zainicjalizowany")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {e}")
+        service_registry = None
+        service_monitor = None
 
     # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
     if SETTINGS.ENABLE_NEXUS:
@@ -1790,4 +1806,107 @@ async def start_campaign():
 
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania kampanii")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# === SYSTEM HEALTH API (Dashboard v2.1) ===
+
+
+@app.get("/api/v1/system/services")
+async def get_system_services():
+    """
+    Zwraca status wszystkich usług systemowych.
+
+    Returns:
+        Lista usług z ich statusem, opóźnieniem i ostatnim sprawdzeniem
+
+    Raises:
+        HTTPException: 503 jeśli Service Monitor nie jest dostępny
+    """
+    if service_monitor is None or service_registry is None:
+        raise HTTPException(
+            status_code=503, detail="Service Health Monitor nie jest dostępny"
+        )
+
+    try:
+        # Sprawdź zdrowie wszystkich usług
+        services = await service_monitor.check_health()
+
+        # Pobierz podsumowanie
+        summary = service_monitor.get_summary()
+
+        # Konwertuj usługi do dict
+        services_data = [
+            {
+                "name": s.name,
+                "type": s.service_type,
+                "status": s.status.value,
+                "latency_ms": s.latency_ms,
+                "last_check": s.last_check,
+                "is_critical": s.is_critical,
+                "error_message": s.error_message,
+                "description": s.description,
+            }
+            for s in services
+        ]
+
+        return {
+            "status": "success",
+            "summary": summary,
+            "services": services_data,
+        }
+
+    except Exception as e:
+        logger.exception("Błąd podczas sprawdzania statusu usług")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@app.get("/api/v1/system/services/{service_name}")
+async def get_service_status(service_name: str):
+    """
+    Zwraca status konkretnej usługi.
+
+    Args:
+        service_name: Nazwa usługi
+
+    Returns:
+        Status usługi
+
+    Raises:
+        HTTPException: 404 jeśli usługa nie istnieje, 503 jeśli Service Monitor nie jest dostępny
+    """
+    if service_monitor is None or service_registry is None:
+        raise HTTPException(
+            status_code=503, detail="Service Health Monitor nie jest dostępny"
+        )
+
+    try:
+        # Sprawdź zdrowie konkretnej usługi
+        services = await service_monitor.check_health(service_name=service_name)
+
+        if not services:
+            raise HTTPException(
+                status_code=404, detail=f"Usługa '{service_name}' nie znaleziona"
+            )
+
+        service = services[0]
+
+        return {
+            "status": "success",
+            "service": {
+                "name": service.name,
+                "type": service.service_type,
+                "status": service.status.value,
+                "latency_ms": service.latency_ms,
+                "last_check": service.last_check,
+                "is_critical": service.is_critical,
+                "error_message": service.error_message,
+                "description": service.description,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas sprawdzania statusu usługi {service_name}")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

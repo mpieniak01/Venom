@@ -36,6 +36,22 @@ class TestVoiceSkill:
         assert skill.model_path is None
         assert skill.speaker_id == 0
         assert skill.voice is None  # Lazy loading
+        assert skill.is_fallback_mode is True  # Brak modelu = fallback mode
+
+    def test_initialization_with_valid_path(self, tmp_path):
+        """Test inicjalizacji z poprawną ścieżką do modelu."""
+        # Utwórz tymczasowy plik modelu
+        model_file = tmp_path / "test_model.onnx"
+        model_file.write_text("fake model")
+
+        skill = VoiceSkill(model_path=str(model_file), speaker_id=0)
+        assert skill.model_path == str(model_file)
+        assert skill.is_fallback_mode is False
+
+    def test_initialization_with_invalid_path(self):
+        """Test inicjalizacji z niepoprawną ścieżką do modelu."""
+        skill = VoiceSkill(model_path="/nonexistent/path/model.onnx", speaker_id=0)
+        assert skill.is_fallback_mode is True
 
     @pytest.mark.asyncio
     async def test_speak_empty_text(self):
@@ -75,6 +91,18 @@ class TestVoiceSkill:
         assert result is not None
         assert isinstance(result, np.ndarray)
         # Sprawdź czy zwrócona cisza ma odpowiednią długość (1 sekunda)
+        assert len(result) == 16000
+
+    @pytest.mark.asyncio
+    async def test_speak_fallback_mode_with_invalid_path(self):
+        """Test TTS w trybie fallback z niepoprawną ścieżką."""
+        skill = VoiceSkill(model_path="/invalid/path.onnx")
+        assert skill.is_fallback_mode is True
+
+        # Powinien zwrócić ciszę w trybie fallback
+        result = await skill.speak("Test text")
+        assert result is not None
+        assert isinstance(result, np.ndarray)
         assert len(result) == 16000
 
 

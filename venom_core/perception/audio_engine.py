@@ -119,7 +119,25 @@ class VoiceSkill:
         self.audio_queue = queue.Queue()
         self._playback_thread = None
         self._stop_playback = threading.Event()
-        logger.info(f"Inicjalizacja VoiceSkill: model_path={model_path}")
+        self.is_fallback_mode = False
+
+        # Walidacja ścieżki modelu
+        if model_path:
+            from pathlib import Path
+
+            model_file = Path(model_path)
+            if not model_file.exists():
+                logger.warning(
+                    f"Model TTS nie istnieje: {model_path}. VoiceSkill będzie działał w trybie mock."
+                )
+                self.is_fallback_mode = True
+            else:
+                logger.info(f"Inicjalizacja VoiceSkill: model_path={model_path}")
+        else:
+            logger.warning(
+                "Brak ścieżki do modelu TTS. VoiceSkill będzie działał w trybie mock."
+            )
+            self.is_fallback_mode = True
 
     def _load_model(self):
         """Lazy loading modelu TTS."""
@@ -162,9 +180,9 @@ class VoiceSkill:
         try:
             self._load_model()
 
-            if self.voice is None:
+            if self.voice is None or self.is_fallback_mode:
                 # Mock mode - zwróć ciszę
-                logger.warning("TTS w trybie mock - zwracam ciszę")
+                logger.warning("TTS w trybie mock (fallback) - zwracam ciszę")
                 return np.zeros(16000, dtype=np.int16)  # 1 sekunda ciszy
 
             # Wykonaj syntezę w osobnym wątku

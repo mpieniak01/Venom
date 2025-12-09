@@ -173,10 +173,73 @@ class TestVisionGrounding:
             mock_settings.OPENAI_API_KEY = "test-key"
             vg = VisionGrounding()
 
-            result = await vg.locate_element(
-                sample_image, "button", confidence_threshold=0.9
-            )
+            # Mock odpowiedzi z niską pewnością
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "450,230,0.5"}}]  # Niska pewność
+            }
 
-            # Dla testu zakładamy że nie ma implementacji confidence
-            # więc po prostu sprawdzamy czy parametr jest akceptowany
-            assert result is None or isinstance(result, tuple)
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+
+                # Próg wyższy niż pewność - powinno zwrócić None
+                result = await vg.locate_element(
+                    sample_image, "button", confidence_threshold=0.7
+                )
+
+                assert result is None
+
+    @pytest.mark.asyncio
+    async def test_locate_element_with_high_confidence(self, sample_image):
+        """Test lokalizacji z wysoką pewnością powyżej progu."""
+        with patch("venom_core.perception.vision_grounding.SETTINGS") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            vg = VisionGrounding()
+
+            # Mock odpowiedzi z wysoką pewnością
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "450,230,0.95"}}]  # Wysoka pewność
+            }
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+
+                # Próg niższy niż pewność - powinno zwrócić współrzędne
+                result = await vg.locate_element(
+                    sample_image, "button", confidence_threshold=0.7
+                )
+
+                assert result == (450, 230)
+
+    @pytest.mark.asyncio
+    async def test_locate_element_without_confidence_in_response(self, sample_image):
+        """Test lokalizacji gdy odpowiedź nie zawiera confidence."""
+        with patch("venom_core.perception.vision_grounding.SETTINGS") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            vg = VisionGrounding()
+
+            # Mock odpowiedzi bez confidence (stary format)
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "450,230"}}]  # Brak confidence
+            }
+
+            with patch("httpx.AsyncClient") as mock_client:
+                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                    return_value=mock_response
+                )
+
+                # Domyślnie confidence = 1.0, więc powinno przejść
+                result = await vg.locate_element(
+                    sample_image, "button", confidence_threshold=0.7
+                )
+
+                assert result == (450, 230)

@@ -10,6 +10,8 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.execution.skills.github_skill import GitHubSkill
+from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
@@ -26,6 +28,12 @@ TWOJE NARZĘDZIA:
 - search: Wyszukaj informacje w Internecie (DuckDuckGo)
 - scrape_text: Pobierz i oczyść treść konkretnej strony WWW
 - search_and_scrape: Wyszukaj i automatycznie pobierz treść z najlepszych wyników
+- search_repos: Wyszukaj repozytoria na GitHub (biblioteki, narzędzia)
+- get_readme: Pobierz README z repozytorium GitHub
+- get_trending: Znajdź popularne projekty na GitHub
+- search_models: Wyszukaj modele AI na Hugging Face
+- get_model_card: Pobierz szczegóły modelu z Hugging Face
+- search_datasets: Wyszukaj zbiory danych na Hugging Face
 - memorize: Zapisz ważne informacje do pamięci długoterminowej
 - recall: Przywołaj informacje z pamięci
 
@@ -85,11 +93,21 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         web_skill = WebSearchSkill()
         self.kernel.add_plugin(web_skill, plugin_name="WebSearchSkill")
 
+        # Zarejestruj GitHubSkill
+        github_skill = GitHubSkill()
+        self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
+
+        # Zarejestruj HuggingFaceSkill
+        hf_skill = HuggingFaceSkill()
+        self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
+
         # Zarejestruj MemorySkill
         memory_skill = MemorySkill()
         self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
 
-        logger.info("ResearcherAgent zainicjalizowany z WebSearchSkill i MemorySkill")
+        logger.info(
+            "ResearcherAgent zainicjalizowany z WebSearchSkill, GitHubSkill, HuggingFaceSkill i MemorySkill"
+        )
 
     async def process(self, input_text: str) -> str:
         """

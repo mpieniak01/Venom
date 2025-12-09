@@ -1,6 +1,6 @@
 """Testy jednostkowe dla DesktopSensor."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -176,3 +176,187 @@ class TestDesktopSensor:
 
         # Sprawdź czy wykrycie działa (wynik zależny od środowiska)
         assert isinstance(sensor._is_wsl, bool)
+
+
+class TestDesktopSensorRecording:
+    """Testy dla funkcji nagrywania DesktopSensor."""
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_start_recording_success(self, mock_keyboard_module, mock_mouse_module):
+        """Test pomyślnego uruchomienia nagrywania."""
+        # Mock listenery
+        mock_mouse_listener = MagicMock()
+        mock_keyboard_listener = MagicMock()
+        mock_mouse_module.Listener.return_value = mock_mouse_listener
+        mock_keyboard_module.Listener.return_value = mock_keyboard_listener
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        assert sensor.is_recording() is True
+        assert sensor._recorded_actions == []
+        mock_mouse_listener.start.assert_called_once()
+        mock_keyboard_listener.start.assert_called_once()
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_start_recording_already_running(
+        self, mock_keyboard_module, mock_mouse_module
+    ):
+        """Test ponownego uruchomienia nagrywania."""
+        mock_mouse_listener = MagicMock()
+        mock_keyboard_listener = MagicMock()
+        mock_mouse_module.Listener.return_value = mock_mouse_listener
+        mock_keyboard_module.Listener.return_value = mock_keyboard_listener
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        # Próba ponownego uruchomienia
+        sensor.start_recording()
+
+        assert sensor.is_recording() is True
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_stop_recording(self, mock_keyboard_module, mock_mouse_module):
+        """Test zatrzymania nagrywania."""
+        mock_mouse_listener = MagicMock()
+        mock_keyboard_listener = MagicMock()
+        mock_mouse_module.Listener.return_value = mock_mouse_listener
+        mock_keyboard_module.Listener.return_value = mock_keyboard_listener
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        # Dodaj kilka akcji
+        sensor._recorded_actions = [
+            {"timestamp": "2024-01-01T00:00:00", "event_type": "mouse_click"},
+            {"timestamp": "2024-01-01T00:00:01", "event_type": "keyboard_press"},
+        ]
+
+        actions = sensor.stop_recording()
+
+        assert sensor.is_recording() is False
+        assert len(actions) == 2
+        assert sensor._recorded_actions == []
+        mock_mouse_listener.stop.assert_called_once()
+        mock_keyboard_listener.stop.assert_called_once()
+
+    def test_stop_recording_not_started(self):
+        """Test zatrzymania nagrywania gdy nie było uruchomione."""
+        sensor = DesktopSensor()
+
+        actions = sensor.stop_recording()
+
+        assert actions == []
+        assert sensor.is_recording() is False
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_recording_mouse_click(self, mock_keyboard_module, mock_mouse_module):
+        """Test nagrywania kliknięć myszy."""
+        sensor = DesktopSensor()
+
+        # Przechwyć callback on_click
+        on_click_callback = None
+
+        def capture_listeners(**kwargs):
+            nonlocal on_click_callback
+            on_click_callback = kwargs.get("on_click")
+            return MagicMock()
+
+        mock_mouse_module.Listener.side_effect = capture_listeners
+        mock_keyboard_module.Listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj kliknięcie myszy
+        if on_click_callback:
+            on_click_callback(100, 200, "Button.left", True)
+
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "mouse_click"
+        assert action["payload"]["x"] == 100
+        assert action["payload"]["y"] == 200
+        assert action["payload"]["pressed"] is True
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_recording_keyboard_with_privacy_filter(
+        self, mock_keyboard_module, mock_mouse_module
+    ):
+        """Test nagrywania klawiatury z filtrem prywatności."""
+        sensor = DesktopSensor(privacy_filter=True)
+
+        # Przechwyć callback on_press
+        on_press_callback = None
+
+        def capture_listeners(**kwargs):
+            nonlocal on_press_callback
+            on_press_callback = kwargs.get("on_press")
+            return MagicMock()
+
+        mock_keyboard_module.Listener.side_effect = capture_listeners
+        mock_mouse_module.Listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj wciśnięcie klawisza funkcyjnego (powinien być zapisany)
+        class MockKey:
+            def __init__(self, name):
+                self.name = name
+
+        if on_press_callback:
+            on_press_callback(MockKey("enter"))
+
+        # Sprawdź że klawisz funkcyjny został zapisany
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "keyboard_press"
+        assert action["payload"]["key"] == "enter"
+
+    @patch("venom_core.perception.desktop_sensor.mouse")
+    @patch("venom_core.perception.desktop_sensor.keyboard")
+    def test_recording_keyboard_without_privacy_filter(
+        self, mock_keyboard_module, mock_mouse_module
+    ):
+        """Test nagrywania klawiatury bez filtra prywatności."""
+        sensor = DesktopSensor(privacy_filter=False)
+
+        # Przechwyć callback on_press
+        on_press_callback = None
+
+        def capture_listeners(**kwargs):
+            nonlocal on_press_callback
+            on_press_callback = kwargs.get("on_press")
+            return MagicMock()
+
+        mock_keyboard_module.Listener.side_effect = capture_listeners
+        mock_mouse_module.Listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj wciśnięcie zwykłego klawisza
+        class MockKey:
+            def __init__(self, char):
+                self.char = char
+
+        if on_press_callback:
+            on_press_callback(MockKey("a"))
+
+        # Sprawdź że klawisz został zapisany
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "keyboard_press"
+
+    def test_is_recording(self):
+        """Test metody is_recording."""
+        sensor = DesktopSensor()
+
+        assert sensor.is_recording() is False
+
+        sensor._recording_mode = True
+        assert sensor.is_recording() is True

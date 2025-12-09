@@ -6,7 +6,6 @@ priorytetyzując prywatność i zerowy koszt operacyjny.
 """
 
 from enum import Enum
-from typing import Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -37,7 +36,7 @@ class AIMode(str, Enum):
 class HybridModelRouter:
     """
     Hybrydowy router modeli AI.
-    
+
     Zarządza routingiem zapytań między lokalnym LLM a chmurą,
     priorytetując prywatność i oszczędność kosztów.
     """
@@ -51,7 +50,7 @@ class HybridModelRouter:
         """
         self.settings = settings or SETTINGS
         self.ai_mode = AIMode(self.settings.AI_MODE.upper())
-        
+
         logger.info(
             f"HybridModelRouter zainicjalizowany (mode={self.ai_mode.value}, "
             f"provider={self.settings.HYBRID_CLOUD_PROVIDER})"
@@ -75,7 +74,9 @@ class HybridModelRouter:
         # PRIORYTET 1: Dane wrażliwe ZAWSZE idą do lokalnego modelu
         if task_type == TaskType.SENSITIVE or self.settings.SENSITIVE_DATA_LOCAL_ONLY:
             if self._is_sensitive_content(prompt):
-                return self._route_to_local("Wrażliwe dane - HARD BLOCK na wyjście do sieci")
+                return self._route_to_local(
+                    "Wrażliwe dane - HARD BLOCK na wyjście do sieci"
+                )
 
         # PRIORYTET 2: Tryb LOCAL - wszystko lokalnie
         if self.ai_mode == AIMode.LOCAL:
@@ -84,7 +85,9 @@ class HybridModelRouter:
         # PRIORYTET 3: Tryb CLOUD - wszystko do chmury (jeśli nie wrażliwe)
         if self.ai_mode == AIMode.CLOUD:
             if task_type == TaskType.SENSITIVE:
-                return self._route_to_local("Dane wrażliwe - wymuszenie lokalnego modelu")
+                return self._route_to_local(
+                    "Dane wrażliwe - wymuszenie lokalnego modelu"
+                )
             return self._route_to_cloud(f"Tryb CLOUD - zadanie {task_type.value}")
 
         # PRIORYTET 4: Tryb HYBRID - inteligentny routing
@@ -108,7 +111,11 @@ class HybridModelRouter:
             )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja)
-        if task_type in [TaskType.CODING_COMPLEX, TaskType.ANALYSIS, TaskType.GENERATION]:
+        if task_type in [
+            TaskType.CODING_COMPLEX,
+            TaskType.ANALYSIS,
+            TaskType.GENERATION,
+        ]:
             # Sprawdź czy mamy klucz API dla chmury
             if self._has_cloud_access():
                 return self._route_to_cloud(
@@ -116,11 +123,11 @@ class HybridModelRouter:
                 )
             else:
                 return self._route_to_local(
-                    f"Tryb HYBRID: brak dostępu do chmury -> LOCAL (fallback)"
+                    "Tryb HYBRID: brak dostępu do chmury -> LOCAL (fallback)"
                 )
 
         # Domyślnie -> LOCAL
-        return self._route_to_local(f"Tryb HYBRID: domyślny routing -> LOCAL")
+        return self._route_to_local("Tryb HYBRID: domyślny routing -> LOCAL")
 
     def _route_to_local(self, reason: str) -> dict:
         """
@@ -135,7 +142,8 @@ class HybridModelRouter:
         logger.debug(f"Routing do LOCAL: {reason}")
         return {
             "target": "local",
-            "model_name": self.settings.HYBRID_LOCAL_MODEL or self.settings.LLM_MODEL_NAME,
+            "model_name": self.settings.HYBRID_LOCAL_MODEL
+            or self.settings.LLM_MODEL_NAME,
             "provider": "local",
             "endpoint": self.settings.LLM_LOCAL_ENDPOINT,
             "reason": reason,
@@ -152,10 +160,10 @@ class HybridModelRouter:
             Dict z informacjami o routingu
         """
         logger.debug(f"Routing do CLOUD: {reason}")
-        
+
         provider = self.settings.HYBRID_CLOUD_PROVIDER.lower()
         model_name = self.settings.HYBRID_CLOUD_MODEL
-        
+
         return {
             "target": "cloud",
             "model_name": model_name,
@@ -172,7 +180,7 @@ class HybridModelRouter:
             True jeśli mamy klucz API do chmury
         """
         provider = self.settings.HYBRID_CLOUD_PROVIDER.lower()
-        
+
         if provider == "google":
             return bool(self.settings.GOOGLE_API_KEY)
         elif provider == "openai":
@@ -230,7 +238,7 @@ class HybridModelRouter:
             Tuple (odpowiedź, routing_info)
         """
         routing_info = self.route_task(task_type, prompt)
-        
+
         logger.info(
             f"[{task_type.value}] Routing: {routing_info['provider']} "
             f"({routing_info['model_name']}) - {routing_info['reason']}"
@@ -238,12 +246,10 @@ class HybridModelRouter:
 
         # W tym miejscu faktyczne wywołanie modelu będzie przez KernelBuilder
         # To jest interfejs, który ApprenticeAgent będzie używać
-        
+
         return "", routing_info
 
-    def get_routing_info_for_task(
-        self, task_type: TaskType, prompt: str = ""
-    ) -> dict:
+    def get_routing_info_for_task(self, task_type: TaskType, prompt: str = "") -> dict:
         """
         Pobiera informacje o routingu bez wykonywania zadania.
 

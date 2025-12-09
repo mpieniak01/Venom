@@ -416,10 +416,10 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         try:
             # Import hybrydowego routera
             from venom_core.execution.model_router import HybridModelRouter, TaskType
-            
+
             # Inicjalizuj router
             hybrid_router = HybridModelRouter()
-            
+
             # Dodaj kontekst o dostępnych komendach
             context = """
 Dostępne komendy:
@@ -431,28 +431,29 @@ Dostępne komendy:
 Obecnie:
 """
             if self.recorder.is_recording:
-                context += f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
+                context += (
+                    f"- Nagrywanie w trakcie (sesja: {self.current_session_id})\n"
+                )
             else:
                 context += "- Nagrywanie nieaktywne\n"
 
             sessions = self.recorder.list_sessions()
             context += f"- Dostępne sesje: {', '.join(sessions)}\n"
-            
+
             # Przygotuj pełny prompt
             full_prompt = f"{context}\n\nPytanie użytkownika: {request}"
-            
+
             # Wywołaj router (określamy typ zadania jako CHAT)
             response, routing_info = await hybrid_router.process(
-                prompt=full_prompt,
-                task_type=TaskType.CHAT
+                prompt=full_prompt, task_type=TaskType.CHAT
             )
-            
+
             # Loguj użyty model
             logger.info(
                 f"[ApprenticeAgent] Użyto modelu: {routing_info['provider']} "
                 f"({routing_info['model_name']})"
             )
-            
+
             # Jeśli mamy odpowiedź z LLM, zwróć ją
             # W przeciwnym razie (placeholder) zwróć domyślną odpowiedź
             if response:
@@ -464,7 +465,7 @@ Obecnie:
                     f"{context}\n\n"
                     f"[INFO] Routing: {routing_info['provider']} ({routing_info['model_name']})"
                 )
-                
+
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania przez LLM: {e}")
             return f"❌ Błąd podczas przetwarzania żądania: {e}"

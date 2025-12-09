@@ -38,12 +38,8 @@ class ChronoSkill:
     async def create_checkpoint(
         self,
         name: Annotated[str, "Nazwa checkpointu (user-friendly)"],
-        description: Annotated[
-            str, "Opcjonalny opis checkpointu"
-        ] = "",
-        timeline: Annotated[
-            str, "Nazwa linii czasowej (domyślnie 'main')"
-        ] = "main",
+        description: Annotated[str, "Opcjonalny opis checkpointu"] = "",
+        timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
         """
         Tworzy checkpoint całego stanu systemu.
@@ -77,9 +73,7 @@ class ChronoSkill:
     async def restore_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do przywrócenia"],
-        timeline: Annotated[
-            str, "Nazwa linii czasowej (domyślnie 'main')"
-        ] = "main",
+        timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
         """
         Przywraca system do stanu z checkpointu.
@@ -118,9 +112,7 @@ class ChronoSkill:
     )
     async def list_checkpoints(
         self,
-        timeline: Annotated[
-            str, "Nazwa linii czasowej (domyślnie 'main')"
-        ] = "main",
+        timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
         """
         Wyświetla listę checkpointów.
@@ -160,9 +152,7 @@ class ChronoSkill:
     async def delete_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do usunięcia"],
-        timeline: Annotated[
-            str, "Nazwa linii czasowej (domyślnie 'main')"
-        ] = "main",
+        timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
         """
         Usuwa checkpoint.

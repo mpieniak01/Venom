@@ -166,7 +166,11 @@ class HistorianAgent(BaseAgent):
                 tags=["error", "checkpoint", "risk_management"],
                 metadata={
                     "checkpoint_id": checkpoint_before,
-                    "error_type": type(error).__name__ if isinstance(error, Exception) else "unknown",
+                    "error_type": (
+                        type(error).__name__
+                        if isinstance(error, Exception)
+                        else "unknown"
+                    ),
                 },
             )
 
@@ -196,7 +200,9 @@ class HistorianAgent(BaseAgent):
 
         return operation_name.lower() in risky_operations
 
-    def create_safety_checkpoint(self, name: str, description: str = "") -> Optional[str]:
+    def create_safety_checkpoint(
+        self, name: str, description: str = ""
+    ) -> Optional[str]:
         """
         Tworzy checkpoint bezpieczeństwa przed ryzykowną operacją.
 

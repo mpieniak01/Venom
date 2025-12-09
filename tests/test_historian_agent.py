@@ -179,7 +179,9 @@ class TestHistorianAgent:
         assert checkpoint_id in lesson.feedback
 
     @pytest.mark.asyncio
-    async def test_analyze_failure_without_checkpoint(self, historian_agent, lessons_store):
+    async def test_analyze_failure_without_checkpoint(
+        self, historian_agent, lessons_store
+    ):
         """Test analizy błędu bez checkpointu."""
         await historian_agent.analyze_failure(
             operation="Test operation", error="Test error", checkpoint_before=None

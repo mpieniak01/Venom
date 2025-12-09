@@ -177,9 +177,7 @@ class ChronosEngine:
         Returns:
             True jeśli przywracanie się powiodło, False w przeciwnym razie
         """
-        logger.info(
-            f"Przywracanie checkpointu {checkpoint_id} z timeline: {timeline}"
-        )
+        logger.info(f"Przywracanie checkpointu {checkpoint_id} z timeline: {timeline}")
 
         checkpoint_dir = self.timelines_dir / timeline / checkpoint_id
         if not checkpoint_dir.exists():
@@ -353,9 +351,7 @@ class ChronosEngine:
                 logger.warning(
                     "UWAGA: Wykryto nieucommitowane zmiany. Zostaną one nadpisane podczas przywracania."
                 )
-                logger.warning(
-                    f"Nieucommitowane pliki:\n{status_result.stdout[:500]}"
-                )
+                logger.warning(f"Nieucommitowane pliki:\n{status_result.stdout[:500]}")
 
             # Zresetuj do czystego stanu
             subprocess.run(
@@ -388,7 +384,9 @@ class ChronosEngine:
             ) from e
         except FileNotFoundError:
             logger.error("Git nie jest zainstalowany lub niedostępny w PATH")
-            raise RuntimeError("Git jest wymagany do przywracania checkpointów") from None
+            raise RuntimeError(
+                "Git jest wymagany do przywracania checkpointów"
+            ) from None
 
     def _backup_memory(self, checkpoint_dir: Path) -> None:
         """Tworzy backup baz danych pamięci."""
@@ -406,9 +404,7 @@ class ChronosEngine:
                     shutil.copy2(item, memory_backup / item.name)
                 elif item.is_dir() and not item.name.startswith("."):
                     # Kopiuj katalogi (np. LanceDB)
-                    shutil.copytree(
-                        item, memory_backup / item.name, dirs_exist_ok=True
-                    )
+                    shutil.copytree(item, memory_backup / item.name, dirs_exist_ok=True)
 
             logger.debug(f"Backup pamięci zapisany: {memory_backup}")
 
@@ -425,7 +421,10 @@ class ChronosEngine:
         try:
             # Utwórz backup obecnego stanu przed nadpisaniem
             if self.memory_root.exists():
-                temp_backup = self.memory_root.parent / f"memory_backup_temp_{uuid.uuid4().hex[:8]}"
+                temp_backup = (
+                    self.memory_root.parent
+                    / f"memory_backup_temp_{uuid.uuid4().hex[:8]}"
+                )
                 logger.debug(f"Tworzę tymczasowy backup: {temp_backup}")
                 shutil.copytree(self.memory_root, temp_backup)
 
@@ -458,7 +457,9 @@ class ChronosEngine:
                     shutil.copytree(temp_backup, self.memory_root)
                     shutil.rmtree(temp_backup)
 
-                    raise RuntimeError("Nie udało się przywrócić pamięci, przywrócono poprzedni stan") from e
+                    raise RuntimeError(
+                        "Nie udało się przywrócić pamięci, przywrócono poprzedni stan"
+                    ) from e
             else:
                 # Brak obecnego stanu - po prostu przywróć
                 self.memory_root.mkdir(parents=True, exist_ok=True)

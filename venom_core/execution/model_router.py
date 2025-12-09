@@ -23,6 +23,7 @@ class TaskType(str, Enum):
     SENSITIVE = "SENSITIVE"  # Wrażliwe dane (hasła, klucze) - ZAWSZE local
     ANALYSIS = "ANALYSIS"  # Analiza danych
     GENERATION = "GENERATION"  # Generowanie treści
+    RESEARCH = "RESEARCH"  # Badania, wyszukiwanie w Internecie
 
 
 class AIMode(str, Enum):
@@ -111,6 +112,19 @@ class HybridModelRouter:
             return self._route_to_local(
                 f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
             )
+        
+        # RESEARCH - routing zależy od paid_mode (będzie sprawdzane przez KernelBuilder)
+        if task_type == TaskType.RESEARCH:
+            # Tutaj zawsze zwracamy cloud, ale faktyczna decyzja o grounding
+            # będzie podjęta w KernelBuilder na podstawie paid_mode
+            if self._has_cloud_access():
+                return self._route_to_cloud(
+                    f"Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google/DuckDuckGo)"
+                )
+            else:
+                return self._route_to_local(
+                    "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo fallback)"
+                )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja)
         if task_type in [

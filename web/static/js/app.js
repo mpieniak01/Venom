@@ -233,7 +233,11 @@ class VenomDashboard {
                 break;
             case 'AGENT_ACTION':
             case 'AGENT_THOUGHT':
-                this.addChatMessage('assistant', message, agent);
+                // Pass metadata if available for research source badges
+                const metadata = eventData ? {
+                    search_source: eventData.search_source
+                } : null;
+                this.addChatMessage('assistant', message, agent, metadata);
                 break;
             // THE_CANVAS: Widget rendering events
             case 'RENDER_WIDGET':
@@ -456,7 +460,7 @@ class VenomDashboard {
         }
     }
 
-    addChatMessage(role, content, agent = null) {
+    addChatMessage(role, content, agent = null, metadata = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
 
@@ -470,6 +474,42 @@ class VenomDashboard {
             messageDiv.appendChild(contentSpan);
         } else {
             messageDiv.textContent = content;
+        }
+        
+        // Dashboard v2.5: Research source badge
+        if (metadata && metadata.search_source) {
+            const badge = document.createElement('span');
+            badge.className = 'research-source-badge';
+            
+            if (metadata.search_source === 'google_grounding') {
+                badge.className += ' google-grounded';
+                badge.textContent = '🌍 Google Grounded';
+                badge.style.cssText = `
+                    display: inline-block;
+                    margin-left: 8px;
+                    padding: 2px 8px;
+                    background-color: #1e40af;
+                    color: white;
+                    border-radius: 4px;
+                    font-size: 0.85em;
+                    font-weight: 500;
+                `;
+            } else if (metadata.search_source === 'duckduckgo') {
+                badge.className += ' web-search';
+                badge.textContent = '🦆 Web Search';
+                badge.style.cssText = `
+                    display: inline-block;
+                    margin-left: 8px;
+                    padding: 2px 8px;
+                    background-color: #6b7280;
+                    color: white;
+                    border-radius: 4px;
+                    font-size: 0.85em;
+                    font-weight: 500;
+                `;
+            }
+            
+            messageDiv.appendChild(badge);
         }
 
         this.elements.chatMessages.appendChild(messageDiv);

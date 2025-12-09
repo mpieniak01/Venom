@@ -8,6 +8,7 @@ class VenomDashboard {
         this.tasks = new Map();
         this.widgets = new Map(); // THE_CANVAS: Widget storage
         this.chartInstances = new Map(); // Chart.js instances
+        this.activeOperations = new Map(); // Track active skill operations
 
         // Constants
         this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
@@ -36,6 +37,7 @@ class VenomDashboard {
         this.initEventHandlers();
         this.startMetricsPolling();
         this.startRepositoryStatusPolling();
+        this.startIntegrationsPolling(); // Dashboard v2.1
         this.initNotificationContainer();
     }
 
@@ -222,6 +224,16 @@ class VenomDashboard {
                 break;
             case 'REMOVE_WIDGET':
                 this.handleRemoveWidget(eventData);
+                break;
+            // Dashboard v2.1: Skill execution events
+            case 'SKILL_STARTED':
+                this.handleSkillStarted(eventData);
+                break;
+            case 'SKILL_COMPLETED':
+                this.handleSkillCompleted(eventData);
+                break;
+            case 'SKILL_FAILED':
+                this.handleSkillFailed(eventData);
                 break;
         }
     }
@@ -598,6 +610,17 @@ class VenomDashboard {
 
         if (metrics.uptime_seconds !== undefined) {
             this.elements.metricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
+        }
+
+        // Dashboard v2.1: Network I/O
+        if (metrics.network && metrics.network.total_bytes !== undefined) {
+            const totalKB = Math.round(metrics.network.total_bytes / 1024);
+            const metricNetwork = document.getElementById('metricNetwork');
+            if (metricNetwork) {
+                metricNetwork.textContent = totalKB >= 1024 
+                    ? `${(totalKB / 1024).toFixed(1)} MB` 
+                    : `${totalKB} KB`;
+            }
         }
     }
 
@@ -1969,6 +1992,218 @@ class VenomDashboard {
         }
 
         this.showNotification('Wszystkie widgety zostały wyczyszczone', 'info');
+    }
+
+    // ========================================
+    // Dashboard v2.1: Integrations Matrix & Active Operations
+    // ========================================
+
+    async fetchIntegrationsStatus() {
+        try {
+            const response = await fetch('/api/v1/system/services');
+            
+            if (!response.ok) {
+                console.error('Failed to fetch integrations status');
+                return;
+            }
+
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                this.renderIntegrationsMatrix(data.services, data.summary);
+            }
+        } catch (error) {
+            console.error('Error fetching integrations status:', error);
+        }
+    }
+
+    renderIntegrationsMatrix(services, summary) {
+        const container = document.getElementById('integrationsMatrix');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        // Show critical warning if any critical service is offline
+        if (summary.critical_offline && summary.critical_offline.length > 0) {
+            const warning = document.createElement('div');
+            warning.className = 'critical-warning';
+            warning.textContent = `⚠️ Krytyczne usługi offline: ${summary.critical_offline.join(', ')}`;
+            container.appendChild(warning);
+        }
+
+        // Create table
+        const table = document.createElement('table');
+        table.className = 'integrations-table';
+
+        // Header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        ['Usługa', 'Status', 'Opóźnienie', 'Ostatni Test'].forEach(header => {
+            const th = document.createElement('th');
+            th.textContent = header;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Body
+        const tbody = document.createElement('tbody');
+        services.forEach(service => {
+            const row = document.createElement('tr');
+
+            // Service name
+            const nameCell = document.createElement('td');
+            nameCell.textContent = service.name;
+            row.appendChild(nameCell);
+
+            // Status
+            const statusCell = document.createElement('td');
+            const statusBadge = document.createElement('span');
+            statusBadge.className = 'service-status-badge';
+            
+            const statusDot = document.createElement('span');
+            statusDot.className = `service-status-dot ${service.status}`;
+            
+            const statusText = document.createElement('span');
+            statusText.textContent = service.status.toUpperCase();
+            
+            statusBadge.appendChild(statusDot);
+            statusBadge.appendChild(statusText);
+            statusCell.appendChild(statusBadge);
+            row.appendChild(statusCell);
+
+            // Latency
+            const latencyCell = document.createElement('td');
+            const latencySpan = document.createElement('span');
+            latencySpan.className = 'service-latency';
+            
+            if (service.status === 'online') {
+                const latency = service.latency_ms;
+                if (latency < 100) {
+                    latencySpan.className += ' good';
+                } else if (latency < 500) {
+                    latencySpan.className += ' warning';
+                } else {
+                    latencySpan.className += ' critical';
+                }
+                latencySpan.textContent = `${latency} ms`;
+            } else {
+                latencySpan.textContent = '-';
+            }
+            
+            latencyCell.appendChild(latencySpan);
+            row.appendChild(latencyCell);
+
+            // Last check
+            const lastCheckCell = document.createElement('td');
+            lastCheckCell.textContent = service.last_check || '-';
+            lastCheckCell.style.fontSize = '0.8rem';
+            row.appendChild(lastCheckCell);
+
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+
+        container.appendChild(table);
+    }
+
+    startIntegrationsPolling() {
+        // Fetch immediately
+        this.fetchIntegrationsStatus();
+
+        // Then every 30 seconds
+        setInterval(() => {
+            this.fetchIntegrationsStatus();
+        }, 30000);
+    }
+
+    handleSkillStarted(data) {
+        if (!data || !data.skill) return;
+
+        const { skill, action, is_external } = data;
+        const operationId = `${skill}-${Date.now()}`;
+
+        // Determine operation type
+        let operationType = 'system';
+        let icon = '⚙️';
+
+        if (skill.toLowerCase().includes('llm') || skill.toLowerCase().includes('gpt')) {
+            operationType = 'thinking';
+            icon = '🧠';
+        } else if (skill.toLowerCase().includes('file') || skill.toLowerCase().includes('code')) {
+            operationType = 'coding';
+            icon = '⌨️';
+        } else if (is_external || skill.toLowerCase().includes('browser') || skill.toLowerCase().includes('search')) {
+            operationType = 'api-call';
+            icon = '🌐';
+        }
+
+        // Store operation
+        this.activeOperations.set(operationId, {
+            skill,
+            action,
+            type: operationType,
+            icon,
+            startTime: Date.now()
+        });
+
+        // Render active operations
+        this.renderActiveOperations();
+    }
+
+    handleSkillCompleted(data) {
+        if (!data || !data.skill) return;
+
+        // Remove matching operation (most recent one)
+        const entries = Array.from(this.activeOperations.entries());
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const [operationId, operation] = entries[i];
+            if (operation.skill === data.skill) {
+                this.activeOperations.delete(operationId);
+                break;
+            }
+        }
+
+        // Render active operations
+        this.renderActiveOperations();
+    }
+
+    handleSkillFailed(data) {
+        // Same as completed - remove operation
+        this.handleSkillCompleted(data);
+    }
+
+    renderActiveOperations() {
+        const container = document.getElementById('activeOperations');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (this.activeOperations.size === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'empty-state';
+            emptyState.textContent = 'Brak aktywnych operacji';
+            container.appendChild(emptyState);
+            return;
+        }
+
+        // Render badges for each operation
+        this.activeOperations.forEach((operation) => {
+            const badge = document.createElement('div');
+            badge.className = `operation-badge ${operation.type}`;
+
+            const icon = document.createElement('span');
+            icon.className = 'operation-icon';
+            icon.textContent = operation.icon;
+
+            const text = document.createElement('span');
+            text.textContent = operation.action || operation.skill;
+
+            badge.appendChild(icon);
+            badge.appendChild(text);
+
+            container.appendChild(badge);
+        });
     }
 }
 

@@ -1203,3 +1203,185 @@ body {
     background-color: var(--bg-light);
     border-bottom: 1px solid var(--border-color);
 }
+
+/* ========================================
+   Dashboard v2.1 - Integrations Matrix & Active Operations
+   ======================================== */
+
+/* Integrations Matrix */
+.integrations-matrix {
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.integrations-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.integrations-table th,
+.integrations-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.integrations-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.integrations-table td {
+    font-size: 0.9rem;
+}
+
+.integrations-table tr:last-child td {
+    border-bottom: none;
+}
+
+.service-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+}
+
+.service-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.service-status-dot.online {
+    background-color: var(--success-color);
+    box-shadow: 0 0 6px var(--success-color);
+}
+
+.service-status-dot.offline {
+    background-color: var(--error-color);
+    box-shadow: 0 0 6px var(--error-color);
+}
+
+.service-status-dot.degraded {
+    background-color: var(--warning-color);
+    box-shadow: 0 0 6px var(--warning-color);
+}
+
+.service-status-dot.unknown {
+    background-color: var(--text-secondary);
+}
+
+.service-latency {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.service-latency.good {
+    color: var(--success-color);
+}
+
+.service-latency.warning {
+    color: var(--warning-color);
+}
+
+.service-latency.critical {
+    color: var(--error-color);
+}
+
+.critical-warning {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid var(--error-color);
+    border-radius: 4px;
+    padding: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--error-color);
+}
+
+/* Active Operations */
+.active-operations {
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    min-height: 60px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.operation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.operation-badge.thinking {
+    background-color: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    border: 1px solid #8b5cf6;
+}
+
+.operation-badge.coding {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid #10b981;
+}
+
+.operation-badge.api-call {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid #3b82f6;
+}
+
+.operation-badge.system {
+    background-color: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+    border: 1px solid #6b7280;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.operation-icon {
+    font-size: 1.1rem;
+    animation: spin 2s linear infinite;
+}
+
+.operation-badge.thinking .operation-icon {
+    animation: none;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-state,
+.empty-state {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 0.75rem;
+}

@@ -144,10 +144,10 @@ async def demo_fallback():
 
     routing = router.route_task(TaskType.CODING_COMPLEX, "Design complex architecture")
 
-    print(f"\nZłożone zadanie BEZ dostępu do chmury:")
+    print("\nZłożone zadanie BEZ dostępu do chmury:")
     print(f"  Target: {routing['target']} ← Fallback do Local")
     print(f"  Reason: {routing['reason']}")
-    print(f"  ✅ System nadal działa!")
+    print("  ✅ System nadal działa!")
 
 
 async def main():

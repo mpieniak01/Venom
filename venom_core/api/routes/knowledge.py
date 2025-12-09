@@ -32,9 +32,7 @@ async def get_graph_summary():
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
     if _graph_store is None:
-        raise HTTPException(
-            status_code=503, detail="CodeGraphStore nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
 
     try:
         summary = _graph_store.get_summary()
@@ -59,9 +57,7 @@ async def get_file_graph_info(file_path: str):
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
     if _graph_store is None:
-        raise HTTPException(
-            status_code=503, detail="CodeGraphStore nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
 
     try:
         info = _graph_store.get_file_info(file_path)
@@ -92,9 +88,7 @@ async def get_impact_analysis(file_path: str):
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
     if _graph_store is None:
-        raise HTTPException(
-            status_code=503, detail="CodeGraphStore nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
 
     try:
         impact = _graph_store.analyze_impact(file_path)
@@ -122,9 +116,7 @@ async def trigger_graph_scan():
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
     if _graph_store is None:
-        raise HTTPException(
-            status_code=503, detail="CodeGraphStore nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
 
     try:
         _graph_store.scan_codebase()

@@ -1,5 +1,6 @@
 """Moduł: kernel_builder - dynamiczne budowanie Semantic Kernel."""
 
+import importlib.util
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -14,12 +15,10 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Import dla Google Gemini
-try:
-    import google.generativeai as genai
-
+# Import dla Google Gemini (bezpośredni import tylko, jeśli biblioteka istnieje)
+if importlib.util.find_spec("google.generativeai"):
     GOOGLE_AVAILABLE = True
-except ImportError:
+else:
     GOOGLE_AVAILABLE = False
     logger.warning(
         "google-generativeai nie jest zainstalowany - obsługa Gemini niedostępna"

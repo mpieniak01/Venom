@@ -1,11 +1,12 @@
 name: Lint Venom
 
 on:
-  push:
-    # możesz ograniczyć do konkretnych branchy, np. main
-    branches: [ main, master ]
+  # tylko PR-y na main
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
+
+  # opcjonalnie: ręczne odpalenie z UI
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -18,8 +19,8 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"   # zmień jeśli inna wersja
-          cache: 'pip'
+          python-version: "3.11"
+          cache: pip
 
       - name: Install Flake8
         run: |
@@ -28,7 +29,5 @@ jobs:
 
       - name: Run Flake8 linter
         run: |
-          # Sprawdź składnię i podstawowe błędy
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # (opcjonalnie) Sprawdź style, nie blokując budowy
           flake8 . --count --exit-zero --max-line-length=127 --statistics

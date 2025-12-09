@@ -396,7 +396,9 @@ class DesktopSensor:
         self._mouse_listener = None
         self._keyboard_listener = None
         self._mouse_move_counter = 0  # Licznik dla próbkowania ruchów myszy
-        self._mouse_move_lock = threading.Lock()  # Lock dla thread-safe dostępu do licznika
+        self._mouse_move_lock = (
+            threading.Lock()
+        )  # Lock dla thread-safe dostępu do licznika
 
         try:
             from pynput import keyboard, mouse

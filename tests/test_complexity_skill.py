@@ -1,5 +1,7 @@
 """Testy dla ComplexitySkill."""
 
+import json
+
 import pytest
 
 from venom_core.execution.skills.complexity_skill import ComplexitySkill
@@ -158,3 +160,36 @@ class TestComplexitySkill:
         assert skill._complexity_to_time(TaskComplexity.MEDIUM) == 45
         assert skill._complexity_to_time(TaskComplexity.HIGH) == 120
         assert skill._complexity_to_time(TaskComplexity.EPIC) == 300
+
+    @pytest.mark.asyncio
+    async def test_estimate_time_json_format(self, skill):
+        """Test czy estimate_time zwraca poprawny format JSON."""
+        result = await skill.estimate_time("Stwórz REST API endpoint")
+
+        # Sprawdź czy pierwsza linia to JSON
+        lines = result.strip().split("\n")
+        first_line = lines[0].strip()
+
+        # Spróbuj sparsować JSON
+        data = json.loads(first_line)
+
+        # Sprawdź czy zawiera wymagane pola
+        assert "estimated_minutes" in data
+        assert "complexity" in data
+
+        # Sprawdź typy wartości
+        assert isinstance(data["estimated_minutes"], int)
+        assert isinstance(data["complexity"], str)
+        assert data["estimated_minutes"] > 0
+
+    @pytest.mark.asyncio
+    async def test_estimate_time_json_with_multipliers(self, skill):
+        """Test czy JSON zawiera prawidłowe wartości z mnożnikami."""
+        result = await skill.estimate_time("Stwórz REST API z testami i dokumentacją")
+
+        lines = result.strip().split("\n")
+        data = json.loads(lines[0].strip())
+
+        # Z testami i dokumentacją czas powinien być większy
+        # Podstawowy czas dla MEDIUM to 45 minut, z mnożnikami: 45 * 1.3 * 1.2 = 70.2
+        assert data["estimated_minutes"] >= 45

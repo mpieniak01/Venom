@@ -275,3 +275,12 @@ Złożoność: HIGH
         extracted = agent._extract_time(time_result)
 
         assert extracted == 75.0
+
+    def test_extract_time_zero_minutes(self, agent):
+        """Test parsowania JSON gdy estimated_minutes wynosi 0 (edge case)."""
+        time_result = '{"estimated_minutes": 0, "complexity": "TRIVIAL"}\n\nOszacowany czas: 0 minut'
+
+        extracted = agent._extract_time(time_result)
+
+        # Powinno zwrócić 0, a nie fallback do "minutes"
+        assert extracted == 0.0

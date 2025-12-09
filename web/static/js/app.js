@@ -241,7 +241,11 @@ class VenomDashboard {
                 break;
             case 'AGENT_ACTION':
             case 'AGENT_THOUGHT':
-                this.addChatMessage('assistant', message, agent);
+                // Pass metadata if available for research source badges
+                const metadata = eventData ? {
+                    search_source: eventData.search_source
+                } : null;
+                this.addChatMessage('assistant', message, agent, metadata);
                 break;
             // THE_CANVAS: Widget rendering events
             case 'RENDER_WIDGET':
@@ -478,6 +482,22 @@ class VenomDashboard {
             messageDiv.appendChild(contentSpan);
         } else {
             messageDiv.textContent = content;
+        }
+        
+        // Dashboard v2.5: Research source badge
+        if (metadata && metadata.search_source) {
+            const badge = document.createElement('span');
+            badge.className = 'research-source-badge';
+            
+            if (metadata.search_source === 'google_grounding') {
+                badge.classList.add('google-grounded');
+                badge.textContent = '🌍 Google Grounded';
+            } else if (metadata.search_source === 'duckduckgo') {
+                badge.classList.add('web-search');
+                badge.textContent = '🦆 Web Search';
+            }
+            
+            messageDiv.appendChild(badge);
         }
 
         // Dashboard v2.4: Model Attribution Badge

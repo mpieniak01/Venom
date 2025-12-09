@@ -161,3 +161,62 @@ class TestHybridModelRouter:
         assert "provider" in info
         assert "model_name" in info
         assert "reason" in info
+
+    def test_route_research_task_in_hybrid_mode_with_cloud(self):
+        """Test routingu zadania RESEARCH w trybie HYBRID z dostępem do chmury i paid_mode ON."""
+        from venom_core.core.state_manager import StateManager
+        
+        settings = Settings(
+            AI_MODE="HYBRID", GOOGLE_API_KEY="test-key", HYBRID_CLOUD_PROVIDER="google"
+        )
+        state_manager = StateManager(state_file_path="/tmp/test_state_research.json")
+        state_manager.set_paid_mode(True)  # Enable paid mode
+        
+        router = HybridModelRouter(settings=settings, state_manager=state_manager)
+        routing = router.route_task(TaskType.RESEARCH, "Co to jest Python?")
+
+        # RESEARCH powinno iść do chmury gdy paid_mode=True i jest dostęp
+        assert routing["target"] == "cloud"
+        assert routing["provider"] == "google"
+        assert "RESEARCH" in routing["reason"] or "Grounding" in routing["reason"]
+
+    def test_route_research_task_in_hybrid_mode_without_cloud(self):
+        """Test routingu RESEARCH w HYBRID bez dostępu do chmury (fallback)."""
+        from venom_core.core.state_manager import StateManager
+        
+        settings = Settings(AI_MODE="HYBRID", GOOGLE_API_KEY="")
+        state_manager = StateManager(state_file_path="/tmp/test_state_research_no_cloud.json")
+        state_manager.set_paid_mode(True)  # Even with paid mode, no API key = fallback
+        
+        router = HybridModelRouter(settings=settings, state_manager=state_manager)
+        routing = router.route_task(TaskType.RESEARCH, "Aktualna cena BTC")
+
+        # Bez klucza API powinno wrócić do LOCAL z DuckDuckGo
+        assert routing["target"] == "local"
+        assert "RESEARCH" in routing["reason"] or "DuckDuckGo" in routing["reason"]
+    
+    def test_route_research_task_paid_mode_off(self):
+        """Test routingu RESEARCH gdy paid_mode jest wyłączony."""
+        from venom_core.core.state_manager import StateManager
+        
+        settings = Settings(
+            AI_MODE="HYBRID", GOOGLE_API_KEY="test-key", HYBRID_CLOUD_PROVIDER="google"
+        )
+        state_manager = StateManager(state_file_path="/tmp/test_state_research_off.json")
+        state_manager.set_paid_mode(False)  # Disable paid mode
+        
+        router = HybridModelRouter(settings=settings, state_manager=state_manager)
+        routing = router.route_task(TaskType.RESEARCH, "Aktualna cena BTC")
+
+        # Paid mode OFF -> zawsze LOCAL (DuckDuckGo)
+        assert routing["target"] == "local"
+        assert "DuckDuckGo" in routing["reason"]
+
+    def test_route_research_task_in_local_mode(self):
+        """Test routingu RESEARCH w trybie LOCAL (zawsze DuckDuckGo)."""
+        settings = Settings(AI_MODE="LOCAL")
+        router = HybridModelRouter(settings=settings)
+        routing = router.route_task(TaskType.RESEARCH, "Najnowsze wiadomości")
+
+        assert routing["target"] == "local"
+        assert routing["provider"] == "local"

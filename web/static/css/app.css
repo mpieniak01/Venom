@@ -1900,6 +1900,26 @@ body {
     background: #555;
 }
 
+/* Research Source Badges (Dashboard v2.5) */
+.research-source-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.research-source-badge.google-grounded {
+    background-color: #1e40af;
+    color: white;
+}
+
+.research-source-badge.web-search {
+    background-color: #6b7280;
+    color: white;
+}
+
 /* ============================================
    Dashboard v2.4: Global Cost Guard
    ============================================ */

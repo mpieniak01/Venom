@@ -76,7 +76,7 @@ venom_core/
 - **ApprenticeAgent** - Uczenie się workflow poprzez obserwację (NOWOŚĆ!)
 
 #### 4. **Hybrid AI Engine** (Silnik Hybrydowy) 🧠
-- **HybridModelRouter** - Inteligentny routing między Local LLM a Cloud
+- **HybridModelRouter** (`venom_core/execution/model_router.py`) - Inteligentny routing między Local LLM a Cloud
 - **Tryby pracy**: LOCAL (tylko lokalne), HYBRID (mix), CLOUD (głównie chmura)
 - **Local First**: Prywatność i $0 kosztów operacyjnych
 - **Providerzy**: Ollama/vLLM (local), Google Gemini, OpenAI

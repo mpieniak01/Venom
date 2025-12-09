@@ -1,8 +1,12 @@
 """Moduł: dispatcher - dyspozytornia zadań."""
 
+import re
 from typing import Dict, Optional
 
 from semantic_kernel import Kernel
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.base import BaseAgent
@@ -18,6 +22,7 @@ from venom_core.agents.researcher import ResearcherAgent
 from venom_core.agents.tester import TesterAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 from venom_core.core.goal_store import GoalStore
+from venom_core.core.models import Intent
 from venom_core.execution.skill_manager import SkillManager
 from venom_core.utils.logger import get_logger
 
@@ -98,6 +103,129 @@ class TaskDispatcher:
         }
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ Executive layer)")
+
+    async def parse_intent(self, content: str) -> Intent:
+        """
+        Parsuje intencję użytkownika - hybrydowe podejście (regex + LLM fallback).
+
+        Krok 1: Próbuje wyciągnąć ścieżki plików za pomocą regex.
+        Krok 2: Jeśli regex nie znalazł wystarczających danych, używa LLM.
+
+        Args:
+            content: Tekst od użytkownika
+
+        Returns:
+            Intent: Sparsowana intencja z akcją, celami i parametrami
+        """
+        logger.debug(f"Parsowanie intencji z treści: {content[:100]}...")
+
+        # Krok 1: Regex - próba znalezienia ścieżek plików
+        # Wzorce dla ścieżek:
+        # - relatywne: src/main.py, venom_core/core/dispatcher.py
+        # - z rozszerzeniami: .py, .js, .txt, .md, .json, .yaml, .yml
+        file_path_pattern = r"[\w/\-\.]+\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)"
+        found_paths = re.findall(file_path_pattern, content, re.IGNORECASE)
+
+        # Wyciągnij pełne ścieżki (bez samego rozszerzenia)
+        targets = []
+        for match in re.finditer(file_path_pattern, content, re.IGNORECASE):
+            targets.append(match.group(0))
+
+        # Próba wykrycia akcji z prostych słów kluczowych
+        action = "unknown"
+        content_lower = content.lower()
+
+        if any(
+            word in content_lower
+            for word in ["edytuj", "popraw", "zmień", "edit", "fix", "modify"]
+        ):
+            action = "edit"
+        elif any(word in content_lower for word in ["stwórz", "utwórz", "create"]):
+            action = "create"
+        elif any(word in content_lower for word in ["usuń", "delete", "remove"]):
+            action = "delete"
+        elif any(word in content_lower for word in ["czytaj", "pokaż", "read", "show"]):
+            action = "read"
+
+        # Krok 2: LLM Fallback - jeśli nie znaleziono ścieżek lub akcji, użyj LLM
+        if not targets or action == "unknown":
+            logger.debug(
+                "Regex nie znalazł wystarczających danych, używam LLM fallback..."
+            )
+            try:
+                llm_result = await self._parse_with_llm(content)
+                # Jeśli LLM znalazł coś lepszego, użyj tego
+                if llm_result.targets:
+                    targets = llm_result.targets
+                if llm_result.action != "unknown":
+                    action = llm_result.action
+            except Exception as e:
+                logger.warning(f"LLM fallback failed: {e}, używam wyniku regex")
+
+        logger.info(
+            f"Sparsowana intencja: action={action}, targets={targets}, params={{}}"
+        )
+        return Intent(action=action, targets=targets, params={})
+
+    async def _parse_with_llm(self, content: str) -> Intent:
+        """
+        Użyj LLM do wyciągnięcia intencji z tekstu.
+
+        Args:
+            content: Tekst użytkownika
+
+        Returns:
+            Intent: Sparsowana intencja
+        """
+        prompt = f"""Wyciągnij z poniższego tekstu:
+1. Akcję (edit/create/delete/read)
+2. Ścieżki plików (jeśli są wymienione)
+
+Tekst użytkownika: "{content}"
+
+Odpowiedz w formacie JSON:
+{{
+  "action": "edit",
+  "targets": ["venom_core/main.py"]
+}}
+
+Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma jasnej akcji, użyj "unknown"."""
+
+        # Przygotuj historię rozmowy
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.USER,
+                content=prompt,
+            )
+        )
+
+        try:
+            # Pobierz serwis chat completion
+            chat_service = self.kernel.get_service()
+
+            # Wywołaj model
+            response = await chat_service.get_chat_message_content(
+                chat_history=chat_history, settings=None
+            )
+
+            # Parse odpowiedzi JSON
+            import json
+
+            response_text = str(response).strip()
+            # Usuń markdown code blocks jeśli są
+            response_text = re.sub(r"```json\s*", "", response_text)
+            response_text = re.sub(r"```\s*$", "", response_text)
+
+            parsed = json.loads(response_text)
+            return Intent(
+                action=parsed.get("action", "unknown"),
+                targets=parsed.get("targets", []),
+                params={},
+            )
+        except Exception as e:
+            logger.error(f"Błąd podczas parsowania LLM: {e}")
+            return Intent(action="unknown", targets=[], params={})
 
     async def dispatch(
         self, intent: str, content: str, node_preference: dict = None

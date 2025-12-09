@@ -195,7 +195,6 @@ class Professor(BaseAgent):
                 return f"⚠️ Nie spełniono kryteriów dla treningu:\n{decision['reason']}"
 
             # Policz liczbę przykładów w datasecie
-
             dataset_size = 0
             try:
                 with open(dataset_path, "r", encoding="utf-8") as f:
@@ -398,9 +397,15 @@ class Professor(BaseAgent):
             avg_candidate = sum(candidate_scores) / len(candidate_scores)
             avg_baseline = sum(baseline_scores) / len(baseline_scores)
 
-            improvement_score = (
-                (avg_candidate - avg_baseline) / avg_baseline if avg_baseline > 0 else 0
-            )
+            # Oblicz improvement score z obsługą zerowej baseline
+            if avg_baseline > 0:
+                improvement_score = (avg_candidate - avg_baseline) / avg_baseline
+            elif avg_candidate > 0:
+                # Jeśli baseline=0 ale candidate>0, to 100% improvement
+                improvement_score = 1.0
+            else:
+                # Oba zero - brak poprawy
+                improvement_score = 0.0
 
             winner = "new_model" if avg_candidate > avg_baseline else "baseline_model"
 
@@ -624,30 +629,33 @@ class Professor(BaseAgent):
         # Heurystyka #3: Sprawdź dostępną VRAM (jeśli gpu_habitat dostępny)
         if self.gpu_habitat:
             try:
-                # Próbujemy sprawdzić dostępność GPU przez uruchomienie nvidia-smi
+                import shutil
                 import subprocess
 
-                result = subprocess.run(
-                    [
-                        "nvidia-smi",
-                        "--query-gpu=memory.total",
-                        "--format=csv,noheader,nounits",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    vram_mb = int(result.stdout.strip().split("\n")[0])
-                    vram_gb = vram_mb / 1024
+                # Sprawdź czy nvidia-smi jest dostępny
+                if shutil.which("nvidia-smi"):
+                    result = subprocess.run(
+                        [
+                            "nvidia-smi",
+                            "--query-gpu=memory.total",
+                            "--format=csv,noheader,nounits",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        check=False,  # Nie rzucaj wyjątku przy niezerowym exit code
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        vram_mb = int(result.stdout.strip().split("\n")[0])
+                        vram_gb = vram_mb / 1024
 
-                    if vram_gb < 8:
-                        # Niska VRAM -> wymuś bardzo mały batch size
-                        batch_size = min(batch_size, 1)
-                        logger.info(
-                            f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1"
-                        )
-            except Exception as e:
+                        if vram_gb < 8:
+                            # Niska VRAM -> wymuś bardzo mały batch size
+                            batch_size = min(batch_size, 1)
+                            logger.info(
+                                f"Wykryto niską VRAM ({vram_gb:.1f}GB), ustawiono batch_size=1"
+                            )
+            except (ValueError, IndexError, subprocess.TimeoutExpired) as e:
                 logger.debug(f"Nie można sprawdzić VRAM: {e}")
 
         logger.info(

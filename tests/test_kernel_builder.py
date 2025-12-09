@@ -161,3 +161,35 @@ def test_kernel_builder_google_not_implemented():
     # Może rzucić ValueError (brak biblioteki) lub NotImplementedError (brak connectora)
     with pytest.raises((ValueError, NotImplementedError)):
         builder.build_kernel()
+
+
+def test_kernel_builder_enable_grounding_parameter():
+    """Test dodania parametru enable_grounding do _register_service."""
+    from semantic_kernel import Kernel
+
+    class GoogleSettings(MockSettings):
+        GOOGLE_API_KEY: str = "test-google-key"
+
+    settings = GoogleSettings(
+        LLM_SERVICE_TYPE="google",
+        LLM_MODEL_NAME="gemini-1.5-pro",
+    )
+    builder = KernelBuilder(settings=settings)
+    kernel = Kernel()
+
+    # Test że parametr enable_grounding jest akceptowany
+    # Spodziewamy się NotImplementedError bo Google connector nie jest gotowy
+    with pytest.raises((ValueError, NotImplementedError)):
+        builder._register_service(
+            kernel, "google", enable_grounding=True
+        )
+
+    # Parametr powinien być akceptowany bez błędu składniowego
+    # Sprawdzamy tylko że funkcja przyjmuje parametr
+    try:
+        builder._register_service(
+            kernel, "google", enable_grounding=False
+        )
+    except (ValueError, NotImplementedError):
+        # To jest oczekiwane - Google nie jest jeszcze zaimplementowany
+        pass

@@ -489,6 +489,20 @@ class VenomDashboard {
             }
         });
 
+        // Suggestion chips click handlers
+        document.addEventListener('click', (e) => {
+            const chip = e.target.closest('.suggestion-chip');
+            if (chip) {
+                const suggestion = chip.getAttribute('data-suggestion');
+                if (suggestion) {
+                    this.elements.taskInput.value = suggestion;
+                    this.elements.taskInput.focus();
+                    // Optionally auto-submit
+                    // this.sendTask();
+                }
+            }
+        });
+
         // Repository quick actions
         const syncBtn = document.getElementById('syncRepoBtn');
         if (syncBtn) {
@@ -1877,7 +1891,8 @@ class VenomDashboard {
                 btn.textContent = action.label || action.id;
                 btn.addEventListener('click', () => {
                     console.log('Action clicked:', action.intent);
-                    // TODO: Trigger intent
+                    // Submit intent back to backend
+                    this.submitIntent(action.intent);
                 });
                 actionsDiv.appendChild(btn);
             });
@@ -1887,6 +1902,36 @@ class VenomDashboard {
 
         container.appendChild(cardContent);
         this.elements.widgetsGrid.appendChild(container);
+    }
+
+    async submitIntent(intent) {
+        /**
+         * Wysyła intencję (komendę) zwrotną do backendu.
+         * 
+         * Args:
+         *     intent: Treść komendy do wykonania (np. "Pokaż więcej szczegółów")
+         */
+        try {
+            this.showNotification('Wysyłam polecenie...', 'info');
+            
+            // Użyj standardowego API zadań do wysłania intencji
+            const response = await fetch('/api/v1/tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content: intent }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            this.showNotification('Polecenie wysłane', 'success');
+        } catch (error) {
+            console.error('Error submitting intent:', error);
+            this.showNotification('Błąd wysyłania polecenia', 'error');
+        }
     }
 
     renderCustomHTMLWidget(widget) {

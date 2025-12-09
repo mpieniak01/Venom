@@ -220,6 +220,14 @@ class Orchestrator:
                 )
                 result = campaign_result.get("summary", str(campaign_result))
 
+            # SPECJALNE PRZYPADKI: HELP_REQUEST
+            elif intent == "HELP_REQUEST":
+                # Wygeneruj dynamiczną odpowiedź pomocy
+                self.state_manager.add_log(
+                    task_id, "❓ Generuję informacje pomocy"
+                )
+                result = await self._generate_help_response(task_id)
+
             # DECYZJA: Council mode vs Standard mode
             elif self._should_use_council(context, intent):
                 # Tryb Council - autonomiczna dyskusja agentów
@@ -1659,3 +1667,136 @@ Status roadmapy:
                 "iterations": iteration,
                 "tasks_completed": tasks_completed,
             }
+
+    async def _generate_help_response(self, task_id: UUID) -> str:
+        """
+        Generuje dynamiczną odpowiedź pomocy z informacjami o dostępnych umiejętnościach.
+
+        Args:
+            task_id: ID zadania
+
+        Returns:
+            Sformatowana odpowiedź pomocy w formacie Markdown
+        """
+        try:
+            # Pobierz informacje o dostępnych agentach z dispatcher
+            agent_map = self.task_dispatcher.agent_map
+
+            # Pobierz informacje o umiejętnościach z kernela
+            kernel = self.task_dispatcher.kernel
+            plugins = kernel.plugins if hasattr(kernel, "plugins") else {}
+
+            # Buduj odpowiedź pomocy
+            help_text = """# 🕷️ Venom - System Pomocy
+
+## Dostępne Możliwości
+
+Jestem Venom - wieloagentowy system AI wspierający rozwój oprogramowania. Oto co mogę dla Ciebie zrobić:
+
+### 🤖 Dostępni Agenci
+
+"""
+
+            # Dodaj informacje o agentach
+            agent_descriptions = {
+                "CODE_GENERATION": "💻 **Coder** - Generowanie, refaktoryzacja i naprawa kodu",
+                "RESEARCH": "🔍 **Researcher** - Wyszukiwanie aktualnych informacji w Internecie",
+                "KNOWLEDGE_SEARCH": "📚 **Professor** - Odpowiedzi na pytania o wiedzę i technologie",
+                "COMPLEX_PLANNING": "🏗️ **Architect** - Projektowanie złożonych systemów i aplikacji",
+                "VERSION_CONTROL": "🌿 **Git Master** - Zarządzanie gałęziami, commitami i synchronizacją",
+                "E2E_TESTING": "🧪 **Tester** - Testowanie aplikacji webowych end-to-end",
+                "DOCUMENTATION": "📖 **Publisher** - Generowanie i publikacja dokumentacji",
+                "RELEASE_PROJECT": "🚀 **Release Manager** - Zarządzanie wydaniami i changelog",
+                "STATUS_REPORT": "📊 **Executive** - Raportowanie statusu i postępu projektu",
+                "GENERAL_CHAT": "💬 **Assistant** - Ogólna konwersacja i wsparcie",
+            }
+
+            for intent, description in agent_descriptions.items():
+                if intent in agent_map:
+                    help_text += f"- {description}\n"
+
+            # Dodaj informacje o trybach pracy
+            help_text += """
+### 🎯 Tryby Pracy
+
+- **🏛️ The Council** - Autonomiczna współpraca agentów dla złożonych projektów
+- **🚀 Tryb Kampanii** - Automatyczna realizacja roadmapy projektu
+- **🔄 Pętla Samonaprawy** - Automatyczne testowanie i naprawianie kodu
+
+### 🛠️ Umiejętności (Skills)
+
+"""
+
+            # Dodaj listę dostępnych pluginów
+            if plugins:
+                skill_count = 0
+                for plugin_name in plugins:
+                    # Pomiń wewnętrzne pluginy
+                    if not plugin_name.startswith("_"):
+                        skill_count += 1
+                        help_text += f"- **{plugin_name}**\n"
+
+                if skill_count == 0:
+                    help_text += "- Trwa ładowanie umiejętności...\n"
+            else:
+                help_text += "- Podstawowe umiejętności: manipulacja plikami, Git, shell, research, renderowanie\n"
+
+            # Dodaj przykłady użycia
+            help_text += """
+### 💡 Przykłady Użycia
+
+**Generowanie kodu:**
+```
+Napisz funkcję w Pythonie do sortowania listy
+```
+
+**Research:**
+```
+Znajdź najnowsze informacje o FastAPI 0.100
+```
+
+**Projekt aplikacji:**
+```
+Stwórz aplikację webową z FastAPI i React
+```
+
+**Git:**
+```
+Utwórz nowy branch feat/new-feature
+```
+
+**Dokumentacja:**
+```
+Wygeneruj dokumentację projektu
+```
+
+### ℹ️ Dodatkowe Informacje
+
+- Wspieramy lokalne modele (Ollama) oraz API chmurowe (OpenAI, Azure)
+- Automatyczne zarządzanie pamięcią i uczenie się z błędów
+- Integracja z GitHub, Docker i systemami CI/CD
+- Voice interface (gdy włączony)
+- Distributed execution (tryb Nexus)
+
+**Potrzebujesz pomocy?** Zapytaj o konkretną funkcjonalność lub wyślij zadanie do wykonania!
+"""
+
+            # Broadcast zdarzenia renderowania widgetu pomocy
+            if self.event_broadcaster:
+                await self._broadcast_event(
+                    event_type="RENDER_WIDGET",
+                    message="Wyświetlam system pomocy",
+                    data={
+                        "widget": {
+                            "id": f"help-{task_id}",
+                            "type": "markdown",
+                            "data": {"content": help_text},
+                        }
+                    },
+                )
+
+            return help_text
+
+        except Exception as e:
+            logger.error(f"Błąd podczas generowania pomocy: {e}")
+            return f"Wystąpił błąd podczas generowania pomocy: {str(e)}\n\nSkontaktuj się z administratorem systemu."

@@ -1,6 +1,6 @@
 """Testy jednostkowe dla DesktopSensor."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -176,3 +176,187 @@ class TestDesktopSensor:
 
         # Sprawdź czy wykrycie działa (wynik zależny od środowiska)
         assert isinstance(sensor._is_wsl, bool)
+
+
+class TestDesktopSensorRecording:
+    """Testy dla funkcji nagrywania DesktopSensor."""
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_start_recording_success(self, mock_keyboard_listener, mock_mouse_listener):
+        """Test pomyślnego uruchomienia nagrywania."""
+        # Mock listenery
+        mock_mouse_instance = MagicMock()
+        mock_keyboard_instance = MagicMock()
+        mock_mouse_listener.return_value = mock_mouse_instance
+        mock_keyboard_listener.return_value = mock_keyboard_instance
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        assert sensor.is_recording() is True
+        assert sensor._recorded_actions == []
+        mock_mouse_instance.start.assert_called_once()
+        mock_keyboard_instance.start.assert_called_once()
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_start_recording_already_running(
+        self, mock_keyboard_listener, mock_mouse_listener
+    ):
+        """Test ponownego uruchomienia nagrywania."""
+        mock_mouse_instance = MagicMock()
+        mock_keyboard_instance = MagicMock()
+        mock_mouse_listener.return_value = mock_mouse_instance
+        mock_keyboard_listener.return_value = mock_keyboard_instance
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        # Próba ponownego uruchomienia
+        sensor.start_recording()
+
+        assert sensor.is_recording() is True
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_stop_recording(self, mock_keyboard_listener, mock_mouse_listener):
+        """Test zatrzymania nagrywania."""
+        mock_mouse_instance = MagicMock()
+        mock_keyboard_instance = MagicMock()
+        mock_mouse_listener.return_value = mock_mouse_instance
+        mock_keyboard_listener.return_value = mock_keyboard_instance
+
+        sensor = DesktopSensor()
+        sensor.start_recording()
+
+        # Dodaj kilka akcji
+        sensor._recorded_actions = [
+            {"timestamp": "2024-01-01T00:00:00", "event_type": "mouse_click"},
+            {"timestamp": "2024-01-01T00:00:01", "event_type": "keyboard_press"},
+        ]
+
+        actions = sensor.stop_recording()
+
+        assert sensor.is_recording() is False
+        assert len(actions) == 2
+        assert sensor._recorded_actions == []
+        mock_mouse_instance.stop.assert_called_once()
+        mock_keyboard_instance.stop.assert_called_once()
+
+    def test_stop_recording_not_started(self):
+        """Test zatrzymania nagrywania gdy nie było uruchomione."""
+        sensor = DesktopSensor()
+
+        actions = sensor.stop_recording()
+
+        assert actions == []
+        assert sensor.is_recording() is False
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_recording_mouse_click(self, mock_keyboard_listener, mock_mouse_listener):
+        """Test nagrywania kliknięć myszy."""
+        sensor = DesktopSensor()
+
+        # Przechwyć callback on_click
+        on_click_callback = None
+
+        def capture_mouse_listeners(**kwargs):
+            nonlocal on_click_callback
+            on_click_callback = kwargs.get("on_click")
+            return MagicMock()
+
+        mock_mouse_listener.side_effect = capture_mouse_listeners
+        mock_keyboard_listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj kliknięcie myszy
+        if on_click_callback:
+            on_click_callback(100, 200, "Button.left", True)
+
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "mouse_click"
+        assert action["payload"]["x"] == 100
+        assert action["payload"]["y"] == 200
+        assert action["payload"]["pressed"] is True
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_recording_keyboard_with_privacy_filter(
+        self, mock_keyboard_listener, mock_mouse_listener
+    ):
+        """Test nagrywania klawiatury z filtrem prywatności."""
+        sensor = DesktopSensor(privacy_filter=True)
+
+        # Przechwyć callback on_press
+        on_press_callback = None
+
+        def capture_keyboard_listeners(**kwargs):
+            nonlocal on_press_callback
+            on_press_callback = kwargs.get("on_press")
+            return MagicMock()
+
+        mock_keyboard_listener.side_effect = capture_keyboard_listeners
+        mock_mouse_listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj wciśnięcie klawisza funkcyjnego (powinien być zapisany)
+        class MockKey:
+            def __init__(self, name):
+                self.name = name
+
+        if on_press_callback:
+            on_press_callback(MockKey("enter"))
+
+        # Sprawdź że klawisz funkcyjny został zapisany
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "keyboard_press"
+        assert action["payload"]["key"] == "enter"
+
+    @patch("pynput.mouse.Listener")
+    @patch("pynput.keyboard.Listener")
+    def test_recording_keyboard_without_privacy_filter(
+        self, mock_keyboard_listener, mock_mouse_listener
+    ):
+        """Test nagrywania klawiatury bez filtra prywatności."""
+        sensor = DesktopSensor(privacy_filter=False)
+
+        # Przechwyć callback on_press
+        on_press_callback = None
+
+        def capture_keyboard_listeners(**kwargs):
+            nonlocal on_press_callback
+            on_press_callback = kwargs.get("on_press")
+            return MagicMock()
+
+        mock_keyboard_listener.side_effect = capture_keyboard_listeners
+        mock_mouse_listener.return_value = MagicMock()
+
+        sensor.start_recording()
+
+        # Symuluj wciśnięcie zwykłego klawisza
+        class MockKey:
+            def __init__(self, char):
+                self.char = char
+
+        if on_press_callback:
+            on_press_callback(MockKey("a"))
+
+        # Sprawdź że klawisz został zapisany
+        assert len(sensor._recorded_actions) == 1
+        action = sensor._recorded_actions[0]
+        assert action["event_type"] == "keyboard_press"
+
+    def test_is_recording(self):
+        """Test metody is_recording."""
+        sensor = DesktopSensor()
+
+        assert sensor.is_recording() is False
+
+        sensor._recording_mode = True
+        assert sensor.is_recording() is True

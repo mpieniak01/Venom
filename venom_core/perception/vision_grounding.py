@@ -81,8 +81,7 @@ class VisionGrounding:
         Args:
             screenshot: Obraz PIL ze zrzutem ekranu
             description: Opis elementu do znalezienia
-            confidence_threshold: Próg pewności (0.0-1.0) - TODO: obecnie nieużywane,
-                                   wymaga rozszerzenia promptu o zwracanie pewności
+            confidence_threshold: Próg pewności (0.0-1.0) - wyniki poniżej progu są odrzucane
         """
         try:
             # Konwertuj PIL Image do base64
@@ -96,12 +95,12 @@ class VisionGrounding:
 
 Znajdź element opisany jako: "{description}"
 
-Jeśli element istnieje, zwróć TYLKO współrzędne środka elementu w formacie: X,Y
-Jeśli elementu nie ma, zwróć: BRAK
+Jeśli element istnieje i jesteś pewien lokalizacji (confidence >= {confidence_threshold}), zwróć współrzędne środka elementu i poziom pewności w formacie: X,Y,CONFIDENCE
+Jeśli elementu nie ma lub pewność jest za niska, zwróć: BRAK
 
 Przykład odpowiedzi:
-- Jeśli znaleziono: 450,230
-- Jeśli nie znaleziono: BRAK"""
+- Jeśli znaleziono z wysoką pewnością: 450,230,0.95
+- Jeśli nie znaleziono lub niska pewność: BRAK"""
 
             # Wywołaj OpenAI API
             api_key = SETTINGS.OPENAI_API_KEY
@@ -148,13 +147,39 @@ Przykład odpowiedzi:
                     logger.info(f"Element '{description}' nie został znaleziony")
                     return None
 
-                # Spróbuj wyciągnąć współrzędne
+                # Spróbuj wyciągnąć współrzędne i confidence
                 try:
                     parts = answer.replace(" ", "").split(",")
                     if len(parts) >= 2:
                         x = int(parts[0])
                         y = int(parts[1])
-                        logger.info(f"Element '{description}' znaleziony: ({x}, {y})")
+
+                        # Sprawdź czy jest confidence w odpowiedzi
+                        confidence = 1.0  # Domyślna wartość jeśli brak
+                        if len(parts) >= 3:
+                            try:
+                                confidence = float(parts[2])
+                                # Waliduj zakres confidence (0.0-1.0)
+                                if not 0.0 <= confidence <= 1.0:
+                                    logger.warning(
+                                        f"Confidence poza zakresem [0.0, 1.0]: {confidence}. Używam wartości domyślnej 1.0"
+                                    )
+                                    confidence = 1.0
+                            except ValueError:
+                                logger.warning(
+                                    f"Nie można sparsować confidence: {parts[2]}"
+                                )
+
+                        # Filtruj wyniki poniżej progu confidence
+                        if confidence < confidence_threshold:
+                            logger.info(
+                                f"Element '{description}' znaleziony ale poniżej progu pewności: {confidence} < {confidence_threshold}"
+                            )
+                            return None
+
+                        logger.info(
+                            f"Element '{description}' znaleziony: ({x}, {y}) z pewnością {confidence}"
+                        )
                         return (x, y)
                 except (ValueError, IndexError):
                     logger.warning(f"Nie można sparsować współrzędnych: {answer}")

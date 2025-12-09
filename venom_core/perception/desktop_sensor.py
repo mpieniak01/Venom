@@ -8,6 +8,7 @@ zapewnienia kontekstowej pomocy przez Shadow Agent.
 import asyncio
 import platform
 import re
+import threading
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
@@ -86,6 +87,36 @@ class DesktopSensor:
     - Wykrywanie aktywnego okna (z limitacjami na WSL2)
     - Filtrowanie wrażliwych danych
     """
+
+    # Klawisze bezpieczne do logowania (funkcyjne/nawigacyjne)
+    SAFE_KEYS = {
+        "enter",
+        "tab",
+        "space",
+        "backspace",
+        "delete",
+        "esc",
+        "up",
+        "down",
+        "left",
+        "right",
+        "home",
+        "end",
+        "page_up",
+        "page_down",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12",
+    }
 
     def __init__(
         self,
@@ -354,27 +385,152 @@ class DesktopSensor:
         W tym trybie sensor zapisuje wszystkie akcje użytkownika
         które mogą być później odtworzone przez GhostAgent.
 
-        TODO: Implementacja faktycznego nagrywania akcji (mouse clicks, keyboard events)
-        wymaga integracji z pynput lub podobną biblioteką do przechwytywania zdarzeń.
-        Obecnie metoda tylko inicjalizuje stan, ale nie nagrywa akcji.
+        Używa biblioteki pynput do przechwytywania zdarzeń myszy i klawiatury.
         """
+        if getattr(self, "_recording_mode", False):
+            logger.warning("Nagrywanie już jest włączone")
+            return
+
         self._recording_mode = True
         self._recorded_actions = []
-        logger.info("DesktopSensor: tryb nagrywania WŁĄCZONY")
-        logger.warning(
-            "UWAGA: Faktyczne nagrywanie akcji nie jest jeszcze zaimplementowane (TODO)"
-        )
+        self._mouse_listener = None
+        self._keyboard_listener = None
+        self._mouse_move_counter = 0  # Licznik dla próbkowania ruchów myszy
+        self._mouse_move_lock = threading.Lock()  # Lock dla thread-safe dostępu do licznika
+
+        try:
+            from pynput import keyboard, mouse
+
+            # Callback dla myszy
+            def on_click(x, y, button, pressed):
+                if self._recording_mode:
+                    self._recorded_actions.append(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "event_type": "mouse_click",
+                            "payload": {
+                                "x": x,
+                                "y": y,
+                                "button": str(button),
+                                "pressed": pressed,
+                            },
+                        }
+                    )
+
+            def on_scroll(x, y, dx, dy):
+                if self._recording_mode:
+                    self._recorded_actions.append(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "event_type": "mouse_scroll",
+                            "payload": {"x": x, "y": y, "dx": dx, "dy": dy},
+                        }
+                    )
+
+            def on_move(x, y):
+                # Zapisuj tylko co 10-ty ruch myszy, aby nie zaśmiecać logów
+                if self._recording_mode:
+                    with self._mouse_move_lock:
+                        self._mouse_move_counter += 1
+                        if self._mouse_move_counter % 10 == 0:
+                            self._recorded_actions.append(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "event_type": "mouse_move",
+                                    "payload": {"x": x, "y": y},
+                                }
+                            )
+
+            # Callback dla klawiatury - bezpieczne logowanie
+            def on_press(key):
+                if not self._recording_mode:
+                    return
+
+                # Bezpieczeństwo: nie loguj normalnych klawiszy jeśli privacy_filter włączony
+                # Loguj tylko klawisze funkcyjne i specjalne
+                if self.privacy_filter:
+                    # Sprawdź czy to klawisz specjalny/funkcyjny
+                    try:
+                        key_name = key.name if hasattr(key, "name") else None
+                        # Użyj stałej klasy SAFE_KEYS
+                        if key_name and key_name.lower() in self.SAFE_KEYS:
+                            self._recorded_actions.append(
+                                {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "event_type": "keyboard_press",
+                                    "payload": {"key": key_name},
+                                }
+                            )
+                    except AttributeError:
+                        # Ignoruj zwykłe znaki w trybie bezpiecznym
+                        pass
+                else:
+                    # Bez filtra prywatności - loguj wszystko
+                    try:
+                        key_str = key.char if hasattr(key, "char") else str(key)
+                        self._recorded_actions.append(
+                            {
+                                "timestamp": datetime.now().isoformat(),
+                                "event_type": "keyboard_press",
+                                "payload": {"key": key_str},
+                            }
+                        )
+                    except AttributeError:
+                        pass
+
+            # Uruchom listenery w osobnych wątkach
+            self._mouse_listener = mouse.Listener(
+                on_click=on_click, on_scroll=on_scroll, on_move=on_move
+            )
+            self._keyboard_listener = keyboard.Listener(on_press=on_press)
+
+            self._mouse_listener.start()
+            self._keyboard_listener.start()
+
+            logger.info("DesktopSensor: tryb nagrywania WŁĄCZONY (pynput aktywne)")
+
+        except ImportError:
+            logger.error("pynput nie jest zainstalowany - nagrywanie akcji niedostępne")
+            self._recording_mode = False
+            raise
+        except Exception as e:
+            logger.error(f"Błąd podczas uruchamiania nagrywania: {e}")
+            self._recording_mode = False
+            raise
 
     def stop_recording(self) -> List[Dict[str, Any]]:
         """
         Zatrzymuje tryb nagrywania i zwraca nagrane akcje.
 
         Returns:
-            Lista nagranych akcji (obecnie pusta - implementacja TODO)
+            Lista nagranych akcji ze strukturą:
+            {
+                "timestamp": str (ISO 8601),
+                "event_type": str (mouse_click, mouse_scroll, mouse_move, keyboard_press),
+                "payload": dict (szczegóły zdarzenia)
+            }
         """
+        if not getattr(self, "_recording_mode", False):
+            logger.warning("Nagrywanie nie jest włączone")
+            return []
+
         self._recording_mode = False
-        actions = self._recorded_actions.copy()
+
+        # Zatrzymaj listenery
+        try:
+            if hasattr(self, "_mouse_listener") and self._mouse_listener:
+                self._mouse_listener.stop()
+                self._mouse_listener = None
+            if hasattr(self, "_keyboard_listener") and self._keyboard_listener:
+                self._keyboard_listener.stop()
+                self._keyboard_listener = None
+        except Exception as e:
+            logger.error(f"Błąd podczas zatrzymywania listenerów: {e}")
+
+        # Zwróć kopię i wyczyść bufor
+        actions = getattr(self, "_recorded_actions", []).copy()
         self._recorded_actions = []
+
         logger.info(f"DesktopSensor: tryb nagrywania WYŁĄCZONY ({len(actions)} akcji)")
         return actions
 

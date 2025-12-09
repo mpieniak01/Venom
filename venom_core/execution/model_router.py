@@ -23,6 +23,7 @@ class TaskType(str, Enum):
     SENSITIVE = "SENSITIVE"  # Wrażliwe dane (hasła, klucze) - ZAWSZE local
     ANALYSIS = "ANALYSIS"  # Analiza danych
     GENERATION = "GENERATION"  # Generowanie treści
+    RESEARCH = "RESEARCH"  # Badania, wyszukiwanie w Internecie
 
 
 class AIMode(str, Enum):
@@ -117,6 +118,27 @@ class HybridModelRouter:
             return self._route_to_local(
                 f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
             )
+        
+        # RESEARCH - routing zależy od paid_mode
+        # Router sprawdza paid_mode_enabled i decyduje o użyciu Google Grounding vs DuckDuckGo
+        if task_type == TaskType.RESEARCH:
+            # Sprawdź czy paid mode jest włączony
+            paid_mode_enabled = False
+            if self.state_manager:
+                paid_mode_enabled = self.state_manager.is_paid_mode_enabled()
+            
+            if paid_mode_enabled and self._has_cloud_access():
+                # Paid mode ON + API key available -> Google Grounding
+                logger.info("[Router] Research mode: GROUNDING (Paid)")
+                return self._route_to_cloud(
+                    f"Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
+                )
+            else:
+                # Paid mode OFF or no API key -> DuckDuckGo
+                logger.info("[Router] Research mode: DUCKDUCKGO (Free)")
+                return self._route_to_local(
+                    "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo)"
+                )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)
         if task_type in [

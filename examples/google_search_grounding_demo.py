@@ -12,7 +12,6 @@ Wymagania:
 - export GOOGLE_API_KEY=your-key (opcjonalne, dla Google Grounding)
 """
 
-import asyncio
 import sys
 from pathlib import Path
 

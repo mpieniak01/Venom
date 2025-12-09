@@ -119,23 +119,25 @@ class HybridModelRouter:
                 f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
             )
         
-        # RESEARCH - routing zależy od paid_mode (będzie sprawdzane przez KernelBuilder)
-        # DESIGN NOTE: Router wybiera cloud/local, ale faktyczna decyzja o Google Grounding
-        # vs DuckDuckGo jest podejmowana przez KernelBuilder bazując na:
-        # 1. state_manager.paid_mode_enabled (sprawdzany przez KernelBuilder)
-        # 2. Dostępność GOOGLE_API_KEY
-        # 3. Zainstalowana biblioteka google-generativeai
-        # Ta separacja pozwala na elastyczną konfigurację bez modyfikacji routera.
+        # RESEARCH - routing zależy od paid_mode
+        # Router sprawdza paid_mode_enabled i decyduje o użyciu Google Grounding vs DuckDuckGo
         if task_type == TaskType.RESEARCH:
-            # Tutaj zawsze zwracamy cloud, ale faktyczna decyzja o grounding
-            # będzie podjęta w KernelBuilder na podstawie paid_mode
-            if self._has_cloud_access():
+            # Sprawdź czy paid mode jest włączony
+            paid_mode_enabled = False
+            if self.state_manager:
+                paid_mode_enabled = self.state_manager.is_paid_mode_enabled()
+            
+            if paid_mode_enabled and self._has_cloud_access():
+                # Paid mode ON + API key available -> Google Grounding
+                logger.info("[Router] Research mode: GROUNDING (Paid)")
                 return self._route_to_cloud(
-                    f"Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google/DuckDuckGo)"
+                    f"Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
                 )
             else:
+                # Paid mode OFF or no API key -> DuckDuckGo
+                logger.info("[Router] Research mode: DUCKDUCKGO (Free)")
                 return self._route_to_local(
-                    "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo fallback)"
+                    "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo)"
                 )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)

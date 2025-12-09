@@ -87,6 +87,36 @@ class DesktopSensor:
     - Filtrowanie wrażliwych danych
     """
 
+    # Klawisze bezpieczne do logowania (funkcyjne/nawigacyjne)
+    SAFE_KEYS = {
+        "enter",
+        "tab",
+        "space",
+        "backspace",
+        "delete",
+        "esc",
+        "up",
+        "down",
+        "left",
+        "right",
+        "home",
+        "end",
+        "page_up",
+        "page_down",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12",
+    }
+
     def __init__(
         self,
         clipboard_callback: Optional[Callable] = None,
@@ -364,6 +394,7 @@ class DesktopSensor:
         self._recorded_actions = []
         self._mouse_listener = None
         self._keyboard_listener = None
+        self._mouse_move_counter = 0  # Licznik dla próbkowania ruchów myszy
 
         try:
             from pynput import keyboard, mouse
@@ -395,15 +426,17 @@ class DesktopSensor:
                     )
 
             def on_move(x, y):
-                # Zapisuj tylko co N-ty ruch, aby nie zaśmiecać logów
-                if self._recording_mode and len(self._recorded_actions) % 10 == 0:
-                    self._recorded_actions.append(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "event_type": "mouse_move",
-                            "payload": {"x": x, "y": y},
-                        }
-                    )
+                # Zapisuj tylko co 10-ty ruch myszy, aby nie zaśmiecać logów
+                if self._recording_mode:
+                    self._mouse_move_counter += 1
+                    if self._mouse_move_counter % 10 == 0:
+                        self._recorded_actions.append(
+                            {
+                                "timestamp": datetime.now().isoformat(),
+                                "event_type": "mouse_move",
+                                "payload": {"x": x, "y": y},
+                            }
+                        )
 
             # Callback dla klawiatury - bezpieczne logowanie
             def on_press(key):
@@ -416,36 +449,8 @@ class DesktopSensor:
                     # Sprawdź czy to klawisz specjalny/funkcyjny
                     try:
                         key_name = key.name if hasattr(key, "name") else None
-                        # Dozwolone klawisze specjalne
-                        safe_keys = [
-                            "enter",
-                            "tab",
-                            "space",
-                            "backspace",
-                            "delete",
-                            "esc",
-                            "up",
-                            "down",
-                            "left",
-                            "right",
-                            "home",
-                            "end",
-                            "page_up",
-                            "page_down",
-                            "f1",
-                            "f2",
-                            "f3",
-                            "f4",
-                            "f5",
-                            "f6",
-                            "f7",
-                            "f8",
-                            "f9",
-                            "f10",
-                            "f11",
-                            "f12",
-                        ]
-                        if key_name and key_name.lower() in safe_keys:
+                        # Użyj stałej klasy SAFE_KEYS
+                        if key_name and key_name.lower() in self.SAFE_KEYS:
                             self._recorded_actions.append(
                                 {
                                     "timestamp": datetime.now().isoformat(),

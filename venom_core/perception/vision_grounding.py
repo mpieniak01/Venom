@@ -159,6 +159,12 @@ Przykład odpowiedzi:
                         if len(parts) >= 3:
                             try:
                                 confidence = float(parts[2])
+                                # Waliduj zakres confidence (0.0-1.0)
+                                if not 0.0 <= confidence <= 1.0:
+                                    logger.warning(
+                                        f"Confidence poza zakresem [0.0, 1.0]: {confidence}. Używam wartości domyślnej 1.0"
+                                    )
+                                    confidence = 1.0
                             except ValueError:
                                 logger.warning(
                                     f"Nie można sparsować confidence: {parts[2]}"

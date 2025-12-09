@@ -3,6 +3,7 @@
 import asyncio
 import queue
 import threading
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -123,8 +124,6 @@ class VoiceSkill:
 
         # Walidacja ścieżki modelu
         if model_path:
-            from pathlib import Path
-
             model_file = Path(model_path)
             if not model_file.exists():
                 logger.warning(

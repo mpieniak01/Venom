@@ -548,6 +548,15 @@ class Orchestrator:
                 self.state_manager.add_log(
                     task_id, "🚀 Uruchamiam Tryb Kampanii (Campaign Mode)"
                 )
+                # Decision Gate: START_CAMPAIGN
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "route_campaign",
+                        status="ok",
+                        details="🚀 Routing to Campaign Mode",
+                    )
                 campaign_result = await self.execute_campaign_mode(
                     goal_store=self.task_dispatcher.goal_store
                 )
@@ -557,6 +566,15 @@ class Orchestrator:
             elif intent == "HELP_REQUEST":
                 # Wygeneruj dynamiczną odpowiedź pomocy
                 self.state_manager.add_log(task_id, "❓ Generuję informacje pomocy")
+                # Decision Gate: HELP_REQUEST
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "route_help",
+                        status="ok",
+                        details="❓ Routing to Help System",
+                    )
                 result = await self._generate_help_response(task_id)
 
             # DECYZJA: Council mode vs Standard mode
@@ -566,9 +584,27 @@ class Orchestrator:
                     task_id,
                     "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
                 )
+                # Decision Gate: Council mode
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "select_council_mode",
+                        status="ok",
+                        details=f"🏛️ Complex task detected (intent={intent}) -> Council Mode",
+                    )
                 result = await self.run_council(task_id, context)
             elif intent == "CODE_GENERATION":
                 # Standardowy tryb - pętla Coder-Critic
+                # Decision Gate: Code Generation with Review Loop
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "select_code_review_loop",
+                        status="ok",
+                        details="💻 Routing to Coder-Critic Review Loop",
+                    )
                 result = await self._code_generation_with_review(task_id, context)
             elif intent == "COMPLEX_PLANNING":
                 # Standardowy tryb - delegacja do Architekta
@@ -576,6 +612,15 @@ class Orchestrator:
                     task_id,
                     "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
                 )
+                # Decision Gate: Complex Planning -> Architect
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "route_to_architect",
+                        status="ok",
+                        details="🏗️ Routing to Architect for Complex Planning",
+                    )
                 await self._broadcast_event(
                     event_type="AGENT_ACTION",
                     message="Przekazuję zadanie do Architekta (Complex Planning)",
@@ -585,6 +630,17 @@ class Orchestrator:
                 result = await self.task_dispatcher.dispatch(intent, context)
             else:
                 # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
+                # Decision Gate: Standard dispatch
+                if self.request_tracer:
+                    agent = self.task_dispatcher.agent_map.get(intent)
+                    agent_name = agent.__class__.__name__ if agent else "UnknownAgent"
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "route_to_agent",
+                        status="ok",
+                        details=f"📤 Routing to {agent_name} (intent={intent})",
+                    )
                 result = await self.task_dispatcher.dispatch(intent, context)
 
             # Zaloguj które agent przejął zadanie

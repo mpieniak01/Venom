@@ -1,9 +1,10 @@
 """Moduł: routes/models - Endpointy API dla zarządzania modelami AI."""
 
+import re
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
 from venom_core.utils.logger import get_logger
@@ -21,12 +22,28 @@ class ModelInstallRequest(BaseModel):
 
     name: str
 
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or len(v) > 100:
+            raise ValueError('Nazwa modelu musi mieć 1-100 znaków')
+        if not re.match(r'^[\w\-.:]+$', v):
+            raise ValueError('Nazwa modelu zawiera niedozwolone znaki')
+        return v
+
 
 class ModelSwitchRequest(BaseModel):
     """Request do zmiany aktywnego modelu."""
 
     name: str
     role: Optional[str] = None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or len(v) > 100:
+            raise ValueError('Nazwa modelu musi mieć 1-100 znaków')
+        if not re.match(r'^[\w\-.:]+$', v):
+            raise ValueError('Nazwa modelu zawiera niedozwolone znaki')
+        return v
 
 
 def set_dependencies(model_manager):
@@ -182,11 +199,15 @@ async def delete_model(model_name: str):
 
     Raises:
         HTTPException: 503 jeśli ModelManager nie jest dostępny
-        HTTPException: 400 jeśli model jest aktywny (Safety Check)
+        HTTPException: 400 jeśli model jest aktywny (Safety Check) lub nieprawidłowa nazwa
         HTTPException: 404 jeśli model nie istnieje
     """
     if _model_manager is None:
         raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+
+    # Walidacja nazwy modelu
+    if not model_name or len(model_name) > 100 or not re.match(r'^[\w\-.:]+$', model_name):
+        raise HTTPException(status_code=400, detail="Nieprawidłowa nazwa modelu")
 
     try:
         success = await _model_manager.delete_model(model_name)

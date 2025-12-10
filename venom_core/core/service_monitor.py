@@ -177,6 +177,15 @@ class ServiceHealthMonitor:
         self._chromadb_module = None
         self._chromadb_client = None
 
+    def get_all_services(self) -> List[ServiceInfo]:
+        """
+        Zwraca wszystkie zarejestrowane usługi wraz z ostatnim znanym statusem.
+
+        Returns:
+            Lista obiektów ServiceInfo
+        """
+        return self.registry.get_all_services()
+
     async def check_health(
         self, service_name: Optional[str] = None
     ) -> List[ServiceInfo]:

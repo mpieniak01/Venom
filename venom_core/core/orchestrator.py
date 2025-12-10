@@ -468,6 +468,18 @@ class Orchestrator:
             "get_token_economist niezaimplementowane - dodać getter w KernelBuilder"
         )
 
+    def _should_store_lesson(self, request: TaskRequest) -> bool:
+        """
+        Sprawdza czy należy zapisać lekcję dla danego zadania.
+
+        Args:
+            request: Oryginalne żądanie zadania
+
+        Returns:
+            True jeśli lekcja powinna być zapisana
+        """
+        return request.store_knowledge and ENABLE_META_LEARNING
+
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
         Wykonuje zadanie w tle.
@@ -683,14 +695,19 @@ class Orchestrator:
                     task_id, "System", "complete", status="ok", details="Response sent"
                 )
 
-            # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone)
-            await self._save_task_lesson(
-                task_id=task_id,
-                context=context,
-                intent=intent,
-                result=result,
-                success=True,
-            )
+            # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone i store_knowledge=True)
+            if self._should_store_lesson(request):
+                await self._save_task_lesson(
+                    task_id=task_id,
+                    context=context,
+                    intent=intent,
+                    result=result,
+                    success=True,
+                )
+            else:
+                logger.info(
+                    f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
 
             # Inkrementuj licznik ukończonych zadań
             if metrics_collector:
@@ -720,15 +737,20 @@ class Orchestrator:
                     details=f"Error: {str(e)}",
                 )
 
-            # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone)
-            await self._save_task_lesson(
-                task_id=task_id,
-                context=context,
-                intent=intent,
-                result=f"Błąd: {str(e)}",
-                success=False,
-                error=str(e),
-            )
+            # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone i store_knowledge=True)
+            if self._should_store_lesson(request):
+                await self._save_task_lesson(
+                    task_id=task_id,
+                    context=context,
+                    intent=intent,
+                    result=f"Błąd: {str(e)}",
+                    success=False,
+                    error=str(e),
+                )
+            else:
+                logger.info(
+                    f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
 
             # Inkrementuj licznik nieudanych zadań
             if metrics_collector:

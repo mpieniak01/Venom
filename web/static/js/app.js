@@ -750,13 +750,25 @@ class VenomDashboard {
             // Add user message to chat
             this.addChatMessage('user', content);
 
+            // Pobierz stan Lab Mode
+            const labModeCheckbox = document.getElementById('labModeCheckbox');
+            const isLabModeEnabled = labModeCheckbox ? labModeCheckbox.checked : false;
+
+            // Jeśli Lab Mode jest włączony, pokaż wizualne wskazanie
+            if (isLabModeEnabled) {
+                this.showNotification('🧪 Lab Mode: To zadanie nie zapisze lekcji', 'info');
+            }
+
             // Send via API
             const response = await fetch('/api/v1/tasks', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ content }),
+                body: JSON.stringify({
+                    content: content,
+                    store_knowledge: !isLabModeEnabled, // Jeśli Lab Mode ON, store_knowledge OFF
+                }),
             });
 
             if (!response.ok) {

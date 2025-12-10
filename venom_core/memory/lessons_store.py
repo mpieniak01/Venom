@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -295,6 +295,33 @@ class LessonsStore:
             matching_lessons, key=lambda lesson: lesson.timestamp, reverse=True
         )
 
+    def _normalize_datetime_for_comparison(
+        self, dt: datetime, reference_dt: datetime
+    ) -> datetime:
+        """
+        Normalizuje datetime dla porównania z referencyjnym datetime.
+
+        Args:
+            dt: Datetime do znormalizowania
+            reference_dt: Referencyjny datetime określający czy używać naive/aware
+
+        Returns:
+            Znormalizowany datetime gotowy do porównania
+        """
+        # Jeśli referencja jest naive, konwertuj dt do naive UTC
+        if reference_dt.tzinfo is None and dt.tzinfo is not None:
+            dt_utc = dt.astimezone(timezone.utc)
+            return dt_utc.replace(tzinfo=None)
+        # Jeśli referencja jest aware, konwertuj dt do aware UTC
+        elif reference_dt.tzinfo is not None and dt.tzinfo is None:
+            # Zakładamy że naive timestamp jest w UTC
+            return dt.replace(tzinfo=timezone.utc)
+        # Jeśli oba aware, normalizuj do UTC
+        elif reference_dt.tzinfo is not None and dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+        # Oba naive - zwróć bez zmian
+        return dt
+
     def delete_lesson(self, lesson_id: str) -> bool:
         """
         Usuwa lekcję.
@@ -314,6 +341,159 @@ class LessonsStore:
 
         logger.warning(f"Nie znaleziono lekcji do usunięcia: {lesson_id}")
         return False
+
+    def delete_last_n(self, n: int) -> int:
+        """
+        Usuwa n najnowszych lekcji (na podstawie timestamp).
+
+        Args:
+            n: Liczba lekcji do usunięcia
+
+        Returns:
+            Liczba usuniętych lekcji
+        """
+        if n <= 0:
+            logger.warning(f"delete_last_n wywołano z niepoprawną wartością n: {n}")
+            return 0
+
+        # Pobierz wszystkie lekcje posortowane po timestamp (od najnowszych)
+        sorted_lessons = sorted(
+            self.lessons.values(), key=lambda lesson: lesson.timestamp, reverse=True
+        )
+
+        # Weź n najnowszych
+        lessons_to_delete = sorted_lessons[:n]
+
+        # Usuń używając kopii kluczy aby uniknąć RuntimeError
+        deleted_count = 0
+        for lesson in lessons_to_delete:
+            if lesson.lesson_id in self.lessons:
+                del self.lessons[lesson.lesson_id]
+                deleted_count += 1
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(f"Usunięto {deleted_count} najnowszych lekcji")
+
+        return deleted_count
+
+    def delete_by_time_range(
+        self, start: datetime, end: datetime
+    ) -> int:
+        """
+        Usuwa lekcje z podanego zakresu czasu.
+
+        Args:
+            start: Data początkowa zakresu (inclusive)
+            end: Data końcowa zakresu (inclusive)
+
+        Returns:
+            Liczba usuniętych lekcji
+
+        Note:
+            Jeśli start > end, daty zostaną automatycznie zamienione
+            i operacja będzie kontynuowana.
+        """
+        # Automatycznie zamień daty jeśli są w złej kolejności
+        if start > end:
+            logger.warning(
+                f"Daty w złej kolejności (start={start.isoformat()}, end={end.isoformat()}). "
+                f"Automatyczne zamienienie na (start={end.isoformat()}, end={start.isoformat()})"
+            )
+            start, end = end, start
+
+        # Normalizuj zakres raz przed pętlą
+        # Jeśli tylko start lub end jest aware, normalizuj oba do aware UTC
+        if (start.tzinfo is None) != (end.tzinfo is None):
+            # Mixed timezone scenario - normalizuj oba do aware UTC
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+        # Jeśli oba aware, normalizuj do UTC
+        if start.tzinfo is not None and end.tzinfo is not None:
+            start = start.astimezone(timezone.utc)
+            end = end.astimezone(timezone.utc)
+
+        deleted_count = 0
+        # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
+        for lesson_id in list(self.lessons.keys()):
+            lesson = self.lessons[lesson_id]
+            try:
+                # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix i innych offsetów)
+                timestamp_str = lesson.timestamp.replace('Z', '+00:00')
+                lesson_time = datetime.fromisoformat(timestamp_str)
+
+                # Normalizuj lesson_time do formatu zgodnego z zakresem
+                lesson_time = self._normalize_datetime_for_comparison(lesson_time, start)
+
+                # Sprawdź czy jest w zakresie
+                if start <= lesson_time <= end:
+                    del self.lessons[lesson_id]
+                    deleted_count += 1
+            except (ValueError, AttributeError) as e:
+                logger.warning(
+                    f"Nie można sparsować timestamp dla lekcji {lesson_id}: {e}"
+                )
+                continue
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(
+                f"Usunięto {deleted_count} lekcji z zakresu {start.isoformat()} - {end.isoformat()}"
+            )
+
+        return deleted_count
+
+    def delete_by_tag(self, tag: str) -> int:
+        """
+        Usuwa lekcje zawierające dany tag.
+
+        Args:
+            tag: Tag do wyszukania
+
+        Returns:
+            Liczba usuniętych lekcji
+        """
+        if not tag:
+            logger.warning("delete_by_tag wywołano z pustym tagiem")
+            return 0
+
+        deleted_count = 0
+        # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
+        for lesson_id in list(self.lessons.keys()):
+            lesson = self.lessons[lesson_id]
+            if tag in lesson.tags:
+                del self.lessons[lesson_id]
+                deleted_count += 1
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(f"Usunięto {deleted_count} lekcji z tagiem '{tag}'")
+
+        return deleted_count
+
+    def clear_all(self) -> bool:
+        """
+        Czyści całą bazę lekcji (opcja nuklearna).
+
+        Returns:
+            True jeśli operacja się powiodła
+        """
+        lesson_count = len(self.lessons)
+
+        # Wyczyść słownik
+        self.lessons.clear()
+
+        # Zapisz zmiany
+        if self.auto_save:
+            self.save_lessons()
+
+        logger.warning(f"💣 Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)")
+        return True
 
     def flush(self) -> None:
         """

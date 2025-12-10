@@ -397,6 +397,12 @@ async def set_autonomy_level(request: AutonomyLevelRequest):
             )
 
         level_info = permission_guard.get_level_info(request.level)
+        
+        if not level_info:
+            raise HTTPException(
+                status_code=500,
+                detail="Nie można pobrać informacji o poziomie po zmianie"
+            )
 
         return {
             "status": "success",

@@ -3119,7 +3119,7 @@ class VenomDashboard {
         const errorMsg = document.getElementById('autonomyErrorMessage');
         const increaseBtn = document.getElementById('increaseAutonomyBtn');
 
-        if (!modal || !errorMsg) return;
+        if (!modal || !errorMsg || !increaseBtn) return;
 
         errorMsg.textContent = `Zablokowano akcję! Wymagany poziom: ${errorData.required_level_name} (${errorData.required_level})`;
 
@@ -3164,6 +3164,8 @@ class VenomDashboard {
 
     increaseAutonomyLevel() {
         const increaseBtn = document.getElementById('increaseAutonomyBtn');
+        if (!increaseBtn) return;
+        
         const requiredLevel = parseInt(increaseBtn.dataset.requiredLevel || '0');
 
         if (requiredLevel > 0) {
@@ -3182,4 +3184,38 @@ document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard.initBackgroundJobsTab();
     // Initialize voice tab
     window.venomDashboard.initVoiceTab();
+    
+    // Initialize autonomy polling
+    window.venomDashboard.startAutonomyPolling();
+
+    // Initialize autonomy selector handler
+    const autonomyLevel = document.getElementById('autonomyLevel');
+    if (autonomyLevel) {
+        autonomyLevel.addEventListener('change', (e) => {
+            window.venomDashboard.setAutonomyLevel(e.target.value);
+        });
+    }
+
+    // Initialize autonomy modal handlers
+    const closeAutonomyModal = document.getElementById('closeAutonomyModal');
+    if (closeAutonomyModal) {
+        closeAutonomyModal.addEventListener('click', () => {
+            window.venomDashboard.closeAutonomyModal();
+        });
+    }
+
+    const increaseAutonomyBtn = document.getElementById('increaseAutonomyBtn');
+    if (increaseAutonomyBtn) {
+        increaseAutonomyBtn.addEventListener('click', () => {
+            window.venomDashboard.increaseAutonomyLevel();
+        });
+    }
+
+    const cancelAutonomyBtn = document.getElementById('cancelAutonomyBtn');
+    if (cancelAutonomyBtn) {
+        cancelAutonomyBtn.addEventListener('click', () => {
+            window.venomDashboard.closeAutonomyModal();
+        });
+    }
+});
 

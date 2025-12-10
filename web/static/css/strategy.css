@@ -1,6 +1,7 @@
 /* Venom Strategy / War Room - Styles */
 
-body:has(.war-room-container) {
+/* Style dla War Room - wymagana klasa war-room-page na body */
+body.war-room-page {
     background: #000;
     color: #0f0;
     font-family: monospace;

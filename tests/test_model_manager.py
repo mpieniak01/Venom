@@ -235,3 +235,169 @@ def test_model_manager_load_adapter_no_adapter_path(tmp_path):
 
     result = manager.load_adapter_for_kernel("v1.0", None)
     assert result is False
+
+
+# Testy dla nowych metod zarządzania modelami (THE_ARMORY)
+
+
+def test_model_manager_get_models_size_gb_empty(tmp_path):
+    """Test obliczania rozmiaru przy pustym katalogu."""
+    manager = ModelManager(models_dir=str(tmp_path))
+    size = manager.get_models_size_gb()
+    assert size == 0.0
+
+
+def test_model_manager_get_models_size_gb_with_files(tmp_path):
+    """Test obliczania rozmiaru z plikami."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Utwórz plik testowy o rozmiarze 1MB
+    test_file = tmp_path / "test_model.gguf"
+    test_file.write_bytes(b"x" * (1024 * 1024))  # 1MB
+
+    size = manager.get_models_size_gb()
+    # 1MB = ~0.001 GB
+    assert size > 0.0
+    assert size < 0.01  # Powinno być około 0.001 GB
+
+
+def test_model_manager_check_storage_quota_within_limit(tmp_path):
+    """Test Resource Guard - w limicie."""
+    manager = ModelManager(models_dir=str(tmp_path))
+    # Przy pustym katalogu, powinno być OK
+    result = manager.check_storage_quota(additional_size_gb=1.0)
+    assert result is True
+
+
+def test_model_manager_check_storage_quota_exceeds_limit(tmp_path):
+    """Test Resource Guard - przekroczenie limitu."""
+    from venom_core.core.model_manager import MAX_STORAGE_GB
+
+    manager = ModelManager(models_dir=str(tmp_path))
+    # Próba dodania więcej niż limit
+    result = manager.check_storage_quota(additional_size_gb=MAX_STORAGE_GB + 1)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_model_manager_list_local_models_empty(tmp_path):
+    """Test listowania modeli przy pustym katalogu."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    with patch("httpx.AsyncClient") as mock_client:
+        # Mock Ollama API response (empty)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"models": []}
+
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_response
+        )
+
+        models = await manager.list_local_models()
+        assert isinstance(models, list)
+        assert len(models) >= 0
+
+
+@pytest.mark.asyncio
+async def test_model_manager_list_local_models_with_local_file(tmp_path):
+    """Test listowania modeli z lokalnym plikiem."""
+    from unittest.mock import AsyncMock, patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Utwórz plik modelu
+    test_file = tmp_path / "test_model.gguf"
+    test_file.write_bytes(b"x" * 1000)
+
+    with patch("httpx.AsyncClient") as mock_client:
+        # Mock Ollama API response (error)
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            side_effect=Exception("Connection error")
+        )
+
+        models = await manager.list_local_models()
+        assert len(models) >= 1
+
+        # Sprawdź czy nasz model jest na liście
+        model_names = [m["name"] for m in models]
+        assert "test_model.gguf" in model_names
+
+
+@pytest.mark.asyncio
+async def test_model_manager_pull_model_no_space(tmp_path):
+    """Test pobierania modelu bez miejsca (Resource Guard)."""
+    from unittest.mock import patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    with patch.object(manager, "check_storage_quota", return_value=False) as mock_check:
+        result = await manager.pull_model("test-model")
+        assert result is False
+        mock_check.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_model_manager_delete_model_active(tmp_path):
+    """Test usuwania aktywnego modelu (powinno być zablokowane)."""
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Zarejestruj i aktywuj model
+    manager.register_version("test-v1", "test-model")
+    manager.activate_version("test-v1")
+
+    result = await manager.delete_model("test-v1")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_model_manager_unload_all(tmp_path):
+    """Test panic button - zwolnienie wszystkich zasobów."""
+    from unittest.mock import MagicMock, patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Ustaw aktywną wersję
+    manager.register_version("test-v1", "test-model")
+    manager.activate_version("test-v1")
+    assert manager.active_version is not None
+
+    # Mock subprocess
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+
+        result = await manager.unload_all()
+        assert result is True
+        assert manager.active_version is None
+
+
+@pytest.mark.asyncio
+async def test_model_manager_get_usage_metrics(tmp_path):
+    """Test pobierania metryk użycia."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    manager = ModelManager(models_dir=str(tmp_path))
+
+    # Utwórz plik testowy
+    test_file = tmp_path / "test_model.gguf"
+    test_file.write_bytes(b"x" * (1024 * 1024))  # 1MB
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"models": []}
+
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            return_value=mock_response
+        )
+
+        metrics = await manager.get_usage_metrics()
+
+        assert "disk_usage_gb" in metrics
+        assert "disk_limit_gb" in metrics
+        assert "disk_usage_percent" in metrics
+        assert "vram_usage_mb" in metrics
+        assert "models_count" in metrics
+        assert metrics["disk_usage_gb"] > 0

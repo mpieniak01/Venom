@@ -17,6 +17,7 @@ from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import metrics as metrics_routes
+from venom_core.api.routes import models as models_routes
 from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import queue as queue_routes
 from venom_core.api.routes import strategy as strategy_routes
@@ -87,6 +88,9 @@ notifier = None
 service_registry = None
 service_monitor = None
 
+# Inicjalizacja Model Manager (THE_ARMORY)
+model_manager = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,7 +100,7 @@ async def lifespan(app: FastAPI):
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
     global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
-    global service_registry, service_monitor
+    global service_registry, service_monitor, model_manager
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -126,6 +130,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {e}")
         service_registry = None
         service_monitor = None
+
+    # Inicjalizuj Model Manager (THE_ARMORY)
+    from venom_core.core.model_manager import ModelManager
+
+    try:
+        model_manager = ModelManager(models_dir=str(Path(SETTINGS.ACADEMY_MODELS_DIR)))
+        logger.info(f"ModelManager zainicjalizowany (models_dir={model_manager.models_dir})")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować ModelManager: {e}")
+        model_manager = None
 
     # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
     if SETTINGS.ENABLE_NEXUS:
@@ -546,6 +560,7 @@ def setup_router_dependencies():
     system_routes.set_dependencies(background_scheduler, service_monitor, state_manager)
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
+    models_routes.set_dependencies(model_manager)
 
 
 # Montowanie routerów
@@ -559,6 +574,7 @@ app.include_router(agents_routes.router)
 app.include_router(system_routes.router)
 app.include_router(nodes_routes.router)
 app.include_router(strategy_routes.router)
+app.include_router(models_routes.router)
 
 # Montowanie plików statycznych
 web_dir = Path(__file__).parent.parent / "web"

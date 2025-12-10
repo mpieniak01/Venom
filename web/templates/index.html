@@ -10,20 +10,6 @@
     <header class="header">
         <h1>🕷️ Venom Cockpit</h1>
         <div class="header-info">
-            <!-- Autonomy Level Selector (AutonomyGate) -->
-            <div class="autonomy-selector">
-                <label for="autonomyLevel" class="autonomy-label">
-                    <span class="autonomy-icon">🔐</span>
-                    <span class="autonomy-text">Autonomia:</span>
-                </label>
-                <select id="autonomyLevel" class="autonomy-select">
-                    <option value="0" data-color="green">🟢 ISOLATED</option>
-                    <option value="10" data-color="blue">🔵 CONNECTED</option>
-                    <option value="20" data-color="yellow">🟡 FUNDED</option>
-                    <option value="30" data-color="orange">🟠 BUILDER</option>
-                    <option value="40" data-color="red">🔴 ROOT</option>
-                </select>
-            </div>
             <!-- Cost Mode Switch (Global Cost Guard) -->
             <div class="cost-mode-switch" id="costModeSwitch">
                 <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
@@ -40,6 +26,7 @@
                 <div class="repo-actions">
                     <button id="syncRepoBtn" class="btn-repo-action" title="Synchronizuj repozytorium">🔄</button>
                     <button id="undoChangesBtn" class="btn-repo-action" title="Cofnij wszystkie zmiany">↩️</button>
+                    <button id="initRepoBtn" class="btn-repo-action" title="Zainicjalizuj lokalne repozytorium" style="display: none;">✨</button>
                 </div>
             </div>
             <!-- Connection Status -->
@@ -89,16 +76,6 @@
 
     <!-- Main Layout -->
     <div class="main-layout">
-        <!-- Left Panel: Task Monitor -->
-        <aside class="left-panel">
-            <div class="panel-header">
-                <h2>📋 Monitor zadań</h2>
-            </div>
-            <div class="task-list" id="taskList">
-                <p class="empty-state">Brak aktywnych zadań</p>
-            </div>
-        </aside>
-
         <!-- Center Panel: Chat Console -->
         <main class="center-panel">
             <div class="panel-header">
@@ -389,12 +366,27 @@
                 <!-- Usage Metrics -->
                 <div class="usage-metrics" style="margin-bottom: 15px;">
                     <div class="metric">
-                        <span class="metric-label">Dysk</span>
-                        <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
+                        <span class="metric-label">CPU</span>
+                        <span class="metric-value" id="modelsCpuUsage">--%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">GPU</span>
+                        <span class="metric-value" id="modelsGpuUsage">N/A</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">RAM</span>
+                        <span class="metric-value" id="modelsRamUsage">-- / -- GB</span>
+                        <span class="metric-subtext" id="modelsRamPercent">--%</span>
                     </div>
                     <div class="metric">
                         <span class="metric-label">VRAM</span>
-                        <span class="metric-value" id="modelsVramUsage">-- MB</span>
+                        <span class="metric-value" id="modelsVramUsage">-- / -- GB</span>
+                        <span class="metric-subtext" id="modelsVramPercent">--%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Dysk</span>
+                        <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
+                        <span class="metric-subtext" id="modelsDiskPercent">--%</span>
                     </div>
                     <div class="metric">
                         <span class="metric-label">Modele</span>

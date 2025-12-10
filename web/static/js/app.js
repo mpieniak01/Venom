@@ -42,6 +42,10 @@ class VenomDashboard {
         this.startTokenomicsPolling(); // Dashboard v2.3
         this.startCostModePolling(); // Dashboard v2.4: Cost Guard
         this.initNotificationContainer();
+
+        // History auto-refresh state
+        this.historyRefreshTimer = null;
+        this.historyLoading = false;
     }
 
     initNotificationContainer() {
@@ -105,6 +109,9 @@ class VenomDashboard {
             branchName: document.getElementById('branchName'),
             changesText: document.getElementById('changesText'),
             repoChanges: document.getElementById('repoChanges'),
+            syncRepoBtn: document.getElementById('syncRepoBtn'),
+            undoChangesBtn: document.getElementById('undoChangesBtn'),
+            initRepoBtn: document.getElementById('initRepoBtn'),
             // THE_CANVAS: Widget elements
             widgetsGrid: document.getElementById('widgetsGrid'),
             clearWidgetsBtn: document.getElementById('clearWidgetsBtn'),
@@ -436,7 +443,7 @@ class VenomDashboard {
         `;
 
         // Auto-scroll
-        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+        this.scrollChatToBottom();
     }
 
     addLogEntry(level, message) {
@@ -476,13 +483,14 @@ class VenomDashboard {
             const agentSpan = document.createElement('strong');
             agentSpan.textContent = agent + ': ';
             messageDiv.appendChild(agentSpan);
-
-            const contentSpan = document.createElement('span');
-            contentSpan.textContent = content;
-            messageDiv.appendChild(contentSpan);
         } else {
-            messageDiv.textContent = content;
+            messageDiv.classList.add('no-agent');
         }
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        contentDiv.innerHTML = this.formatMessageContent(content);
+        messageDiv.appendChild(contentDiv);
 
         // Dashboard v2.5: Research source badge
         if (metadata && metadata.search_source) {
@@ -516,19 +524,38 @@ class VenomDashboard {
         }
 
         this.elements.chatMessages.appendChild(messageDiv);
-        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+        this.scrollChatToBottom();
+    }
+
+    formatMessageContent(text) {
+        if (!text) {
+            return '';
+        }
+        const safeText = this.escapeHtml(text);
+        return safeText.replace(/(?:\r\n|\r|\n)/g, '<br>');
+    }
+
+    scrollChatToBottom() {
+        if (this.elements.chatMessages) {
+            this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+        }
     }
 
     updateTaskList() {
+        if (!this.elements.taskList) {
+            return;
+        }
+
+        const taskList = this.elements.taskList;
         // Clear task list
-        this.elements.taskList.innerHTML = '';
+        taskList.innerHTML = '';
 
         if (this.tasks.size === 0) {
             // Brak aktywnych zadań - use DOM methods for consistency
             const emptyState = document.createElement('p');
             emptyState.className = 'empty-state';
             emptyState.textContent = 'Brak aktywnych zadań';
-            this.elements.taskList.appendChild(emptyState);
+            taskList.appendChild(emptyState);
             return;
         }
 
@@ -580,7 +607,7 @@ class VenomDashboard {
                 taskItem.appendChild(abortBtn);
             }
 
-            this.elements.taskList.appendChild(taskItem);
+            taskList.appendChild(taskItem);
         });
     }
 
@@ -616,17 +643,24 @@ class VenomDashboard {
         }
 
         // Repository quick actions
-        const syncBtn = document.getElementById('syncRepoBtn');
+        const syncBtn = this.elements.syncRepoBtn;
         if (syncBtn) {
             syncBtn.addEventListener('click', () => {
                 this.handleSyncRepo();
             });
         }
 
-        const undoBtn = document.getElementById('undoChangesBtn');
+        const undoBtn = this.elements.undoChangesBtn;
         if (undoBtn) {
             undoBtn.addEventListener('click', () => {
                 this.handleUndoChanges();
+            });
+        }
+
+        const initBtn = this.elements.initRepoBtn;
+        if (initBtn) {
+            initBtn.addEventListener('click', () => {
+                this.initRepositoryFlow();
             });
         }
 
@@ -882,6 +916,8 @@ class VenomDashboard {
                     data.has_changes,
                     data.modified_count
                 );
+            } else if (data.message) {
+                this.updateRepositoryStatus('-', false, 0, data.message);
             } else {
                 // Not a git repo or error
                 this.updateRepositoryStatus('-', false, 0);
@@ -943,26 +979,30 @@ class VenomDashboard {
 
         if (tabName === 'feed') {
             document.getElementById('feedTab').classList.add('active');
+            this.stopHistoryAutoRefresh();
         } else if (tabName === 'voice') {
             document.getElementById('voiceTab').classList.add('active');
+            this.stopHistoryAutoRefresh();
         } else if (tabName === 'jobs') {
             document.getElementById('jobsTab').classList.add('active');
             // Refresh data when switching to jobs tab
             this.fetchBackgroundJobsStatus();
+            this.stopHistoryAutoRefresh();
         } else if (tabName === 'memory') {
             document.getElementById('memoryTab').classList.add('active');
             // Refresh data when switching to memory tab
             this.fetchLessons();
             this.fetchGraphSummary();
+            this.stopHistoryAutoRefresh();
         } else if (tabName === 'models') {
             document.getElementById('modelsTab').classList.add('active');
             // Load models when switching to models tab
             this.fetchModels();
             this.fetchModelsUsage();
+            this.stopHistoryAutoRefresh();
         } else if (tabName === 'history') {
             document.getElementById('historyTab').classList.add('active');
-            // Load history when switching to history tab
-            this.loadHistory();
+            this.startHistoryAutoRefresh();
         }
     }
 
@@ -1248,16 +1288,80 @@ class VenomDashboard {
             if (data.success && data.usage) {
                 const usage = data.usage;
 
+                const cpuUsageEl = document.getElementById('modelsCpuUsage');
+                if (cpuUsageEl) {
+                    cpuUsageEl.textContent = typeof usage.cpu_usage_percent === 'number'
+                        ? `${usage.cpu_usage_percent.toFixed(1)}%`
+                        : 'N/A';
+                }
+
+                const gpuUsageEl = document.getElementById('modelsGpuUsage');
+                if (gpuUsageEl) {
+                    if (typeof usage.gpu_usage_percent === 'number') {
+                        gpuUsageEl.textContent = `${usage.gpu_usage_percent.toFixed(1)}%`;
+                    } else if (typeof usage.vram_usage_mb === 'number' && usage.vram_usage_mb > 0) {
+                        gpuUsageEl.textContent = 'Aktywne';
+                    } else {
+                        gpuUsageEl.textContent = 'N/A';
+                    }
+                }
+
+                const ramUsageEl = document.getElementById('modelsRamUsage');
+                const ramPercentEl = document.getElementById('modelsRamPercent');
+                if (ramUsageEl) {
+                    if (typeof usage.memory_used_gb === 'number' && typeof usage.memory_total_gb === 'number') {
+                        ramUsageEl.textContent = `${usage.memory_used_gb.toFixed(1)} GB / ${usage.memory_total_gb.toFixed(1)} GB`;
+                    } else {
+                        ramUsageEl.textContent = 'N/A';
+                    }
+                }
+                if (ramPercentEl) {
+                    ramPercentEl.textContent = typeof usage.memory_usage_percent === 'number'
+                        ? `${usage.memory_usage_percent.toFixed(0)}%`
+                        : 'N/A';
+                }
+
                 // Update disk usage
                 const diskUsageEl = document.getElementById('modelsDiskUsage');
+                const diskPercentEl = document.getElementById('modelsDiskPercent');
                 if (diskUsageEl) {
                     diskUsageEl.textContent = `${usage.disk_usage_gb.toFixed(2)} GB / ${usage.disk_limit_gb} GB`;
+                }
+                if (diskPercentEl) {
+                    diskPercentEl.textContent = typeof usage.disk_usage_percent === 'number'
+                        ? `${usage.disk_usage_percent.toFixed(1)}%`
+                        : 'N/A';
                 }
 
                 // Update VRAM usage
                 const vramUsageEl = document.getElementById('modelsVramUsage');
+                const vramPercentEl = document.getElementById('modelsVramPercent');
                 if (vramUsageEl) {
-                    vramUsageEl.textContent = usage.vram_usage_mb > 0 ? `${usage.vram_usage_mb} MB` : 'N/A';
+                    if (typeof usage.vram_usage_mb === 'number' && usage.vram_usage_mb > 0) {
+                        const usedGb = usage.vram_usage_mb / 1024;
+                        if (typeof usage.vram_total_mb === 'number' && usage.vram_total_mb > 0) {
+                            const totalGb = usage.vram_total_mb / 1024;
+                            vramUsageEl.textContent = `${usedGb.toFixed(1)} GB / ${totalGb.toFixed(1)} GB`;
+                        } else {
+                            vramUsageEl.textContent = `${usedGb.toFixed(1)} GB`;
+                        }
+                    } else {
+                        vramUsageEl.textContent = 'N/A';
+                    }
+                }
+                if (vramPercentEl) {
+                    if (typeof usage.vram_usage_percent === 'number') {
+                        vramPercentEl.textContent = `${usage.vram_usage_percent.toFixed(0)}%`;
+                    } else if (
+                        typeof usage.vram_usage_mb === 'number' &&
+                        typeof usage.vram_total_mb === 'number' &&
+                        usage.vram_total_mb > 0
+                    ) {
+                        const percent = (usage.vram_usage_mb / usage.vram_total_mb) * 100;
+                        vramPercentEl.textContent = `${percent.toFixed(0)}%`;
+                    } else {
+                        vramPercentEl.textContent = 'N/A';
+                    }
                 }
 
                 // Update models count
@@ -1455,13 +1559,39 @@ class VenomDashboard {
     }
 
     // Update repository status in header
-    updateRepositoryStatus(branch, hasChanges, changeCount = 0) {
+    updateRepositoryStatus(branch, hasChanges, changeCount = 0, message = null) {
         if (!this.elements.branchName || !this.elements.repoChanges) {
             return;
         }
 
+        const hasRepo = !message;
+
+        if (this.elements.syncRepoBtn) {
+            this.elements.syncRepoBtn.disabled = !hasRepo;
+            this.elements.syncRepoBtn.title = hasRepo
+                ? 'Synchronizuj repozytorium'
+                : 'Synchronizacja dostępna po utworzeniu repozytorium';
+        }
+
+        if (this.elements.undoChangesBtn) {
+            this.elements.undoChangesBtn.disabled = !hasRepo;
+            this.elements.undoChangesBtn.title = hasRepo
+                ? 'Cofnij wszystkie zmiany'
+                : 'Brak repozytorium - najpierw je zainicjalizuj';
+        }
+
+        if (this.elements.initRepoBtn) {
+            this.elements.initRepoBtn.style.display = hasRepo ? 'none' : 'inline-flex';
+        }
+
         // Update branch name
         this.elements.branchName.textContent = branch || '-';
+
+        if (message) {
+            this.elements.repoChanges.classList.remove('dirty');
+            this.elements.repoChanges.textContent = `ℹ️ ${message}`;
+            return;
+        }
 
         // Update changes status
         if (hasChanges) {
@@ -1475,6 +1605,46 @@ class VenomDashboard {
 
         // Re-cache the changesText reference after innerHTML update
         this.elements.changesText = document.getElementById('changesText');
+    }
+
+    async initRepositoryFlow() {
+        const promptMessage = [
+            'Workspace nie jest repozytorium Git.',
+            'Podaj nazwę lub URL repozytorium do sklonowania.',
+            'Pozostaw puste aby utworzyć lokalne repozytorium.'
+        ].join('\n');
+
+        const userInput = window.prompt(promptMessage, '');
+        if (userInput === null) {
+            return;
+        }
+
+        const trimmed = userInput.trim();
+        const payload = trimmed ? { url: trimmed } : {};
+
+        try {
+            const response = await fetch('/api/v1/git/init', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.status === 'error') {
+                const message = data.message || data.detail || 'Nie udało się zainicjalizować repozytorium';
+                this.showNotification(message, 'error');
+                return;
+            }
+
+            this.showNotification(data.message || 'Repozytorium zainicjalizowane', 'success');
+            this.fetchRepositoryStatus();
+        } catch (error) {
+            console.error('Error initializing repository:', error);
+            this.showNotification('Błąd podczas inicjalizacji repozytorium', 'error');
+        }
     }
 
     async handleSyncRepo() {
@@ -2779,7 +2949,9 @@ class VenomDashboard {
 
     // History Tab Methods
     async loadHistory() {
-        if (!this.elements.historyTableBody) return;
+        if (!this.elements.historyTableBody || this.historyLoading) return;
+
+        this.historyLoading = true;
 
         try {
             const response = await fetch('/api/v1/history/requests?limit=50');
@@ -2851,6 +3023,24 @@ class VenomDashboard {
                     <td colspan="3" class="empty-state">Błąd ładowania historii</td>
                 </tr>
             `;
+        }
+        finally {
+            this.historyLoading = false;
+        }
+    }
+
+    startHistoryAutoRefresh() {
+        if (this.historyRefreshTimer) {
+            return;
+        }
+        this.loadHistory();
+        this.historyRefreshTimer = setInterval(() => this.loadHistory(), 5000);
+    }
+
+    stopHistoryAutoRefresh() {
+        if (this.historyRefreshTimer) {
+            clearInterval(this.historyRefreshTimer);
+            this.historyRefreshTimer = null;
         }
     }
 
@@ -3520,7 +3710,7 @@ class VenomDashboard {
     increaseAutonomyLevel() {
         const increaseBtn = document.getElementById('increaseAutonomyBtn');
         if (!increaseBtn) return;
-        
+
         const requiredLevel = parseInt(increaseBtn.dataset.requiredLevel || '0');
 
         if (requiredLevel > 0) {
@@ -3541,7 +3731,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard.initVoiceTab();
     // Initialize models tab (THE_ARMORY)
     window.venomDashboard.initModelsTab();
-    
+
     // Initialize autonomy polling
     window.venomDashboard.startAutonomyPolling();
 
@@ -3575,4 +3765,3 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-

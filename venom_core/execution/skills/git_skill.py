@@ -33,6 +33,28 @@ class GitSkill:
 
         # Upewnij się, że katalog workspace istnieje
         self.workspace_root.mkdir(parents=True, exist_ok=True)
+        self._missing_repo_reported = False
+
+    def _has_git_repository(self) -> bool:
+        """Sprawdza, czy workspace zawiera repozytorium Git."""
+        has_repo = (self.workspace_root / ".git").exists()
+        if has_repo and self._missing_repo_reported:
+            # Zresetuj flagę gdy repo pojawi się po inicjalizacji
+            self._missing_repo_reported = False
+        return has_repo
+
+    def _workspace_not_repo_message(self) -> str:
+        """Komunikat zwracany, gdy workspace nie ma repozytorium."""
+        return (
+            f"ℹ️ Workspace '{self.workspace_root}' nie jest repozytorium Git. "
+            "Użyj init_repo() aby je zainicjalizować."
+        )
+
+    def _notify_missing_repo_once(self):
+        """Publikuje log o braku repo tylko raz."""
+        if not self._missing_repo_reported:
+            logger.info(self._workspace_not_repo_message())
+            self._missing_repo_reported = True
 
     def _get_repo(self) -> Repo:
         """
@@ -45,12 +67,12 @@ class GitSkill:
             InvalidGitRepositoryError: Jeśli workspace nie jest repozytorium Git
         """
         try:
+            if not self._has_git_repository():
+                self._notify_missing_repo_once()
+                raise InvalidGitRepositoryError(self._workspace_not_repo_message())
             return Repo(self.workspace_root)
         except InvalidGitRepositoryError:
-            raise InvalidGitRepositoryError(
-                f"Workspace '{self.workspace_root}' nie jest repozytorium Git. "
-                f"Użyj init_repo() aby je zainicjalizować."
-            )
+            raise InvalidGitRepositoryError(self._workspace_not_repo_message())
 
     def _format_conflict_message(
         self, repo: Repo, operation: str, details: str = ""
@@ -181,15 +203,17 @@ class GitSkill:
             Status repozytorium jako string
         """
         try:
+            if not self._has_git_repository():
+                self._notify_missing_repo_once()
+                return self._workspace_not_repo_message()
+
             repo = self._get_repo()
             status = repo.git.status()
             logger.debug(f"Status repozytorium: {status}")
             return status
 
         except InvalidGitRepositoryError as e:
-            message = f"⚠️ Workspace nie jest repozytorium Git: {e}"
-            logger.debug(message)
-            return message
+            return str(e)
         except Exception as e:
             error_msg = f"❌ Błąd podczas pobierania statusu: {str(e)}"
             logger.error(error_msg)
@@ -393,15 +417,17 @@ class GitSkill:
             Nazwa aktualnego brancha
         """
         try:
+            if not self._has_git_repository():
+                self._notify_missing_repo_once()
+                return self._workspace_not_repo_message()
+
             repo = self._get_repo()
             branch = repo.active_branch.name
             logger.debug(f"Aktualny branch: {branch}")
             return branch
 
         except InvalidGitRepositoryError as e:
-            message = f"⚠️ Workspace nie jest repozytorium Git: {e}"
-            logger.debug(message)
-            return message
+            return str(e)
         except Exception as e:
             error_msg = f"❌ Błąd podczas pobierania brancha: {str(e)}"
             logger.error(error_msg)

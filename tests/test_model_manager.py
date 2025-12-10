@@ -1,5 +1,7 @@
 """Testy jednostkowe dla ModelManager."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from venom_core.core.model_manager import ModelManager, ModelVersion
@@ -384,7 +386,18 @@ async def test_model_manager_get_usage_metrics(tmp_path):
     test_file = tmp_path / "test_model.gguf"
     test_file.write_bytes(b"x" * (1024 * 1024))  # 1MB
 
-    with patch("httpx.AsyncClient") as mock_client:
+    with (
+        patch("httpx.AsyncClient") as mock_client,
+        patch("venom_core.core.model_manager.psutil.cpu_percent", return_value=25.0),
+        patch("venom_core.core.model_manager.psutil.virtual_memory") as mock_vm,
+        patch("subprocess.run") as mock_run,
+    ):
+        mock_vm.return_value = SimpleNamespace(
+            total=16 * 1024**3, used=8 * 1024**3, percent=50.0
+        )
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="10, 5120, 10240\n")
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"models": []}
@@ -400,4 +413,15 @@ async def test_model_manager_get_usage_metrics(tmp_path):
         assert "disk_usage_percent" in metrics
         assert "vram_usage_mb" in metrics
         assert "models_count" in metrics
+        assert "cpu_usage_percent" in metrics
+        assert "memory_total_gb" in metrics
+        assert "memory_usage_percent" in metrics
+        assert "gpu_usage_percent" in metrics
+        assert "vram_total_mb" in metrics
         assert metrics["disk_usage_gb"] > 0
+        assert metrics["cpu_usage_percent"] == 25.0
+        assert metrics["memory_total_gb"] == pytest.approx(16.0, rel=1e-2)
+        assert metrics["memory_usage_percent"] == 50.0
+        assert metrics["gpu_usage_percent"] == 10.0
+        assert metrics["vram_total_mb"] == 10240
+        assert metrics["vram_usage_percent"] == pytest.approx(50.0)

@@ -2351,7 +2351,7 @@ body[class*="theme-"] .header {
 }
 
 .lab-mode-toggle:hover {
-    background: var(--bg-hover);
+    background: var(--bg-medium);
     border-color: var(--primary-color);
 }
 

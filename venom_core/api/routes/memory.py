@@ -217,9 +217,9 @@ async def prune_lessons_by_range(
         HTTPException: 400 przy błędnym formacie daty, 503 jeśli LessonsStore niedostępny
     """
     try:
-        # Parsuj daty ISO 8601
-        start_dt = datetime.fromisoformat(start)
-        end_dt = datetime.fromisoformat(end)
+        # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
+        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
 
     except ValueError as e:
         raise HTTPException(

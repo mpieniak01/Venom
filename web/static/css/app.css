@@ -2132,3 +2132,203 @@ input:checked + .toggle-slider:after {
 .message.assistant .model-badge {
     margin-left: 0.5rem;
 }
+
+/* ========================================
+   AUTONOMY GATE - NAVBAR & THEMING
+   ======================================== */
+
+/* Navbar Styles */
+.navbar {
+    background-color: var(--bg-medium);
+    border-bottom: 2px solid var(--primary-color);
+    padding: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.navbar-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 2rem;
+    max-width: 100%;
+}
+
+.navbar-brand {
+    display: flex;
+    align-items: center;
+}
+
+.brand-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.brand-icon {
+    font-size: 1.5rem;
+}
+
+.navbar-menu {
+    display: flex;
+    gap: 1rem;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    color: var(--text-secondary);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+.nav-link.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.nav-icon {
+    font-size: 1.1rem;
+}
+
+/* Autonomy Selector */
+.autonomy-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    border: 2px solid var(--border-color);
+}
+
+.autonomy-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.autonomy-select {
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.autonomy-select:hover {
+    border-color: var(--primary-color);
+}
+
+.autonomy-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.navbar-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-light);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+/* Theme Classes for Autonomy Levels */
+body.theme-isolated {
+    --autonomy-color: #22c55e;
+    --autonomy-glow: rgba(34, 197, 94, 0.3);
+}
+
+body.theme-connected {
+    --autonomy-color: #3b82f6;
+    --autonomy-glow: rgba(59, 130, 246, 0.3);
+}
+
+body.theme-funded {
+    --autonomy-color: #eab308;
+    --autonomy-glow: rgba(234, 179, 8, 0.3);
+}
+
+body.theme-builder {
+    --autonomy-color: #f97316;
+    --autonomy-glow: rgba(249, 115, 22, 0.3);
+}
+
+body.theme-root {
+    --autonomy-color: #ef4444;
+    --autonomy-glow: rgba(239, 68, 68, 0.3);
+}
+
+/* Apply autonomy color to key elements */
+body[class*="theme-"] .navbar {
+    border-bottom-color: var(--autonomy-color);
+}
+
+body[class*="theme-"] .autonomy-selector {
+    border-color: var(--autonomy-color);
+    box-shadow: 0 0 8px var(--autonomy-glow);
+}
+
+body[class*="theme-"] .header {
+    border-bottom-color: var(--autonomy-color);
+}
+
+/* Pulse animation for autonomy violations */
+@keyframes autonomyPulse {
+    0%, 100% {
+        box-shadow: 0 0 8px var(--autonomy-glow);
+    }
+    50% {
+        box-shadow: 0 0 20px var(--autonomy-glow), 0 0 30px var(--autonomy-glow);
+    }
+}
+
+.autonomy-pulse {
+    animation: autonomyPulse 1.5s ease-in-out 3;
+}
+
+/* Main Content adjustment for navbar */
+.main-content {
+    flex: 1;
+    overflow: auto;
+}
+
+/* Autonomy Modal specific styles */
+#autonomyModal .warning-message {
+    background-color: var(--bg-light);
+    border-left: 4px solid var(--warning-color);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+}
+
+#autonomyModal .warning-message p {
+    margin: 0.5rem 0;
+}
+
+#autonomyModal #autonomyErrorMessage {
+    font-weight: 600;
+    color: var(--warning-color);
+}

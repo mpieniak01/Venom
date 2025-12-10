@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VENOM OS // Deep Space</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- 1. DESIGN TOKENS (DEEP SPACE) --- */
+        :root {
+            /* Palette */
+            --bg-dark: #030407;
+            --bg-panel: rgba(16, 20, 28, 0.6); /* Bardziej przezroczyste dla efektu szkła */
+
+            /* GŁÓWNY GRADIENT TŁA - Mocny, "kosmiczny" */
+            --bg-gradient-body: radial-gradient(
+                circle at 50% -20%,
+                #1e2a45 0%,
+                #0f1319 40%,
+                #030407 100%
+            );
+
+            /* Akcenty - NEON */
+            --primary: #00ff9d;
+            --secondary: #00b8ff;
+            --accent-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+
+            /* Glow Effects */
+            --glow-strong: 0 0 20px rgba(0, 255, 157, 0.25);
+            --glow-border: 0 0 0 1px rgba(0, 255, 157, 0.15);
+
+            /* Text */
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+
+            /* Borders */
+            --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+
+            --font-ui: 'Inter', sans-serif;
+            --font-tech: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: var(--bg-gradient-body);
+            background-attachment: fixed; /* Gradient zostaje w miejscu przy scrollowaniu */
+            color: var(--text-main);
+            font-family: var(--font-ui);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Dodatek: Tekstura "Noise" na całą stronę dla filmowego efektu */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0.7;
+        }
+
+        /* --- 2. SIDEBAR --- */
+        .sidebar {
+            width: 280px;
+            background: rgba(5, 6, 8, 0.85); /* Ciemniejsze szkło */
+            backdrop-filter: blur(15px);
+            border-right: var(--border-glass);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            position: relative;
+        }
+
+        /* Ozdobna linia gradientowa przy sidebarze */
+        .sidebar::after {
+            content: '';
+            position: absolute;
+            top: 0; right: 0; bottom: 0; width: 1px;
+            background: linear-gradient(to bottom, transparent, var(--primary), transparent);
+            opacity: 0.3;
+        }
+
+        .brand {
+            font-family: var(--font-tech);
+            font-weight: 800;
+            font-size: 1.6rem;
+            letter-spacing: -1px;
+            color: white;
+            margin-bottom: 50px;
+            text-transform: uppercase;
+            position: relative;
+            display: inline-block;
+        }
+
+        .brand span { color: var(--primary); text-shadow: var(--glow-strong); }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Dla wskaźnika po prawej */
+            padding: 14px 18px;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+            font-family: var(--font-tech); /* Techniczny font w menu */
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        .nav-link.active {
+            background: rgba(0, 255, 157, 0.08);
+            border-color: rgba(0, 255, 157, 0.3);
+            color: var(--primary);
+            box-shadow: 0 0 15px rgba(0, 255, 157, 0.05);
+        }
+
+        /* Mała kropka "live" przy aktywnym elemencie */
+        .nav-link.active::after {
+            content: '●';
+            font-size: 0.6rem;
+            color: var(--primary);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; text-shadow: 0 0 5px var(--primary); }
+            100% { opacity: 0.5; }
+        }
+
+        /* --- 3. MAIN AREA --- */
+        .main {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+            position: relative;
+            z-index: 1; /* Nad noise texture */
+        }
+
+        header {
+            margin-bottom: 50px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-weight: 300;
+            font-size: 2.2rem;
+            color: white;
+            text-shadow: 0 0 20px rgba(255,255,255,0.1);
+        }
+
+        /* --- 4. NEON CARDS --- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px);
+            border: var(--border-glass);
+            border-radius: 4px; /* Bardziej kanciaste, techniczne rogi */
+            padding: 30px;
+            position: relative;
+            transition: 0.3s ease;
+            overflow: hidden;
+        }
+
+        /* Subtelny gradientowy obrys po najechaniu */
+        .card:hover {
+            border-color: rgba(0, 255, 157, 0.3);
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+            transform: translateY(-3px);
+        }
+
+        /* Dekoracyjne narożniki (HUD Style) */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, var(--primary), transparent 10%, transparent 90%, var(--secondary));
+            opacity: 0.6;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .card-title {
+            color: var(--text-muted);
+            font-family: var(--font-tech);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Ikona przy tytule */
+        .icon-box {
+            width: 6px; height: 6px; background: var(--secondary);
+            box-shadow: 0 0 8px var(--secondary);
+        }
+
+        .metric-big {
+            font-family: var(--font-tech);
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(180deg, #fff 0%, #aaa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metric-label {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* --- 5. BUTTONS (Cyberpunk Style) --- */
+        .btn {
+            background: transparent;
+            color: var(--primary);
+            font-family: var(--font-tech);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 10px 24px;
+            border: 1px solid var(--primary);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: 0.3s;
+            z-index: 1;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: var(--primary);
+            transition: 0.3s;
+            z-index: -1;
+            opacity: 0.1;
+        }
+
+        .btn:hover {
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.4);
+            text-shadow: 0 0 5px var(--primary);
+            background: rgba(0, 255, 157, 0.1);
+        }
+
+        .btn-fill {
+            background: var(--primary);
+            color: black;
+            font-weight: 700;
+            box-shadow: 0 0 15px rgba(0, 255, 157, 0.3);
+        }
+        .btn-fill:hover {
+            background: #00e68e;
+            box-shadow: 0 0 30px rgba(0, 255, 157, 0.6);
+        }
+
+        /* --- 6. VISUALIZATIONS --- */
+        .progress-container {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            margin-top: 20px;
+            position: relative;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-gradient);
+            width: 75%;
+            box-shadow: 0 0 10px var(--secondary);
+            position: relative;
+        }
+        /* Błysk na pasku postępu */
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0; right: 0; bottom: 0; width: 5px;
+            background: white;
+            box-shadow: 0 0 10px white;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px; height: 10px;
+            background: var(--primary);
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="brand">VENOM <span>OS</span></div>
+
+        <nav>
+            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 10px; font-family: var(--font-tech);">Core Modules</div>
+            <a href="#" class="nav-link active">Dashboard</a>
+            <a href="#" class="nav-link">Neural Network</a>
+            <a href="#" class="nav-link">Memory Bank</a>
+
+            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin: 20px 0 10px 0; font-family: var(--font-tech);">Tools</div>
+            <a href="#" class="nav-link">Code Inspector</a>
+            <a href="#" class="nav-link">Terminal</a>
+            <a href="#" class="nav-link">Settings</a>
+        </nav>
+
+        <div style="margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+            <div style="font-family: var(--font-tech); font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center;">
+                <span class="status-dot"></span> SYSTEM ONLINE
+            </div>
+            <div style="font-size: 0.7rem; color: #555; margin-top: 5px;">Latency: 12ms | Stable</div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header>
+            <div>
+                <div style="color: var(--primary); font-family: var(--font-tech); font-size: 0.9rem; margin-bottom: 5px;">// WELCOME BACK, OPERATOR</div>
+                <h1>Panel Kontrolny</h1>
+            </div>
+            <div>
+                <button class="btn">Raport</button>
+                <button class="btn btn-fill" style="margin-left: 15px;">Nowa Sesja</button>
+            </div>
+        </header>
+
+        <div class="grid">
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><div class="icon-box"></div>CPU Usage</div>
+                    <div style="font-family: var(--font-tech); color: var(--secondary);">LIVE</div>
+                </div>
+                <div class="metric-big">42%</div>
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: 42%;"></div>
+                </div>
+                <div class="metric-label">All cores active</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><div class="icon-box" style="background: var(--primary); box-shadow: 0 0 8px var(--primary);"></div>Active Agents</div>
+                </div>
+                <div class="metric-big" style="color: var(--primary);">8</div>
+                <div style="display: flex; gap: 5px; margin-top: 20px;">
+                    <div style="width: 20px; height: 4px; background: var(--primary); box-shadow: 0 0 5px var(--primary);"></div>
+                    <div style="width: 20px; height: 4px; background: var(--primary); box-shadow: 0 0 5px var(--primary);"></div>
+                    <div style="width: 20px; height: 4px; background: var(--primary); box-shadow: 0 0 5px var(--primary);"></div>
+                    <div style="width: 20px; height: 4px; background: #333;"></div>
+                </div>
+                <div class="metric-label">Swarm health: Optimal</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><div class="icon-box" style="background: #bd00ff; box-shadow: 0 0 8px #bd00ff;"></div>Vector Memory</div>
+                </div>
+                <div class="metric-big">1.2<span style="font-size: 1.5rem; color: #666;">GB</span></div>
+                <div class="metric-label">ChromaDB Indexed</div>
+                <div style="font-family: var(--font-tech); font-size: 0.8rem; color: var(--secondary); margin-top: 15px;">
+                    > Re-indexing scheduled
+                </div>
+            </div>
+
+        </div>
+
+        <div class="grid" style="grid-template-columns: 2fr 1fr; margin-top: 30px;">
+
+            <div class="card" style="min-height: 300px; display: flex; flex-direction: column;">
+                <div class="card-header">
+                    <div class="card-title">Analityka Zadań (Ostatnie 24h)</div>
+                </div>
+                <div style="flex: 1; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 20px 0;">
+                    <div style="width: 100%; height: 30%; background: rgba(0, 184, 255, 0.1); border-top: 2px solid var(--secondary);"></div>
+                    <div style="width: 100%; height: 50%; background: rgba(0, 184, 255, 0.15); border-top: 2px solid var(--secondary);"></div>
+                    <div style="width: 100%; height: 45%; background: rgba(0, 184, 255, 0.1); border-top: 2px solid var(--secondary);"></div>
+                    <div style="width: 100%; height: 80%; background: rgba(0, 255, 157, 0.2); border-top: 2px solid var(--primary); box-shadow: 0 0 20px rgba(0,255,157,0.1);"></div>
+                    <div style="width: 100%; height: 60%; background: rgba(0, 184, 255, 0.1); border-top: 2px solid var(--secondary);"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">System Log</div>
+                </div>
+                <div style="font-family: var(--font-tech); font-size: 0.8rem; color: #888; line-height: 1.8;">
+                    <div><span style="color: #444;">14:02:10</span> <span style="color: var(--primary);">[INFO]</span> Init sequence start</div>
+                    <div><span style="color: #444;">14:02:11</span> <span style="color: var(--primary);">[INFO]</span> Connecting to Brain...</div>
+                    <div><span style="color: #444;">14:02:15</span> <span style="color: #bd00ff;">[WARN]</span> High memory usage detected</div>
+                    <div><span style="color: #444;">14:02:22</span> <span style="color: var(--primary);">[INFO]</span> Agent 'Architect' deployed</div>
+                    <div style="border-top: 1px dashed #333; margin-top: 10px; padding-top: 5px; color: var(--secondary);">
+                        > Waiting for input...<span style="animation: pulse 1s infinite">_</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+</body>
+</html>

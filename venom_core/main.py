@@ -614,6 +614,12 @@ async def serve_inspector(request: Request):
     return templates.TemplateResponse("inspector.html", {"request": request})
 
 
+@app.get("/brain")
+async def serve_brain(request: Request):
+    """Serwuje The Brain - interaktywny graf wiedzy (Cytoscape.js)."""
+    return templates.TemplateResponse("brain.html", {"request": request})
+
+
 @app.websocket("/ws/events")
 async def websocket_endpoint(websocket: WebSocket):
     """

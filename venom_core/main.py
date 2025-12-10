@@ -1,8 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -137,7 +136,9 @@ async def lifespan(app: FastAPI):
 
     try:
         model_manager = ModelManager(models_dir=str(Path(SETTINGS.ACADEMY_MODELS_DIR)))
-        logger.info(f"ModelManager zainicjalizowany (models_dir={model_manager.models_dir})")
+        logger.info(
+            f"ModelManager zainicjalizowany (models_dir={model_manager.models_dir})"
+        )
     except Exception as e:
         logger.warning(f"Nie udało się zainicjalizować ModelManager: {e}")
         model_manager = None

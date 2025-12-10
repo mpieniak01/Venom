@@ -1,4 +1,4 @@
-# Venom v2.0 🐍
+InternetuyciatomatycznetomatyczneVenom v2.0 🐍
 
 **Venom Meta-Intelligence System** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
@@ -7,7 +7,7 @@
 Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
 
 ### ✨ Kluczowe funkcjonalności
-
+- 🎨 Tworzenie nowych narzędzi i autonaprawa
 - 🌐 **Dostęp do Internetu** - Wyszukiwanie aktualnych informacji (ceny, wiadomości, dokumentacja)
 - 🧠 **Planowanie strategiczne** - Automatyczna dekompozycja złożonych projektów na kroki
 - 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł

@@ -1,4 +1,4 @@
-// brain.js - Logika grafu wiedzy z Cytoscape.js
+// Logika grafu wiedzy z Cytoscape.js
 
 let cy = null; // Instancja Cytoscape
 let graphData = null; // Dane grafu
@@ -34,14 +34,13 @@ function brainControls() {
                 cy.nodes('[type="memory"]').style('display', 'none');
             }
             
-            // Ukryj krawędzie, których źródło lub cel jest ukryte
-            cy.edges().forEach(edge => {
+            // Ukryj krawędzie, których źródło lub cel jest ukryte (batchowo)
+            const edgesToHide = cy.edges().filter(edge => {
                 const source = edge.source();
                 const target = edge.target();
-                if (source.style('display') === 'none' || target.style('display') === 'none') {
-                    edge.style('display', 'none');
-                }
+                return source.style('display') === 'none' || target.style('display') === 'none';
             });
+            edgesToHide.style('display', 'none');
         }
     };
 }
@@ -247,7 +246,7 @@ async function initGraph() {
         console.error('Błąd podczas inicjalizacji grafu:', error);
         updateStatus('Błąd');
         hideLoading();
-        alert('Nie udało się załadować grafu wiedzy. Sprawdź konsolę.');
+        showError('Nie udało się załadować grafu wiedzy. Sprawdź konsolę.');
     }
 }
 
@@ -327,7 +326,7 @@ function showNodeDetails(node) {
     title.textContent = data.label;
     
     // Buduj zawartość
-    // Helper function do escapowania HTML
+    // Funkcja pomocnicza do escapowania HTML (bezpiecznie konwertuje tekst na HTML-escaped string)
     const escapeHtml = (text) => {
         const div = document.createElement('div');
         div.textContent = text;
@@ -378,24 +377,18 @@ function hideNodeDetails() {
     clearHighlights();
 }
 
-// Aktualizuj statystyki w Alpine
+// Aktualizuj statystyki w Alpine Store
 function updateStats(stats) {
-    // Bezpośrednia aktualizacja DOM - kompatybilne z Alpine.js v3
-    const statsContainer = document.querySelector('.brain-controls');
-    if (statsContainer && statsContainer.__x) {
-        const alpineData = statsContainer.__x.$data;
-        alpineData.stats.nodes = stats.nodes || 0;
-        alpineData.stats.edges = stats.edges || 0;
+    if (window.Alpine && Alpine.store('brain')) {
+        Alpine.store('brain').stats.nodes = stats.nodes || 0;
+        Alpine.store('brain').stats.edges = stats.edges || 0;
     }
 }
 
-// Aktualizuj status w Alpine
+// Aktualizuj status w Alpine Store
 function updateStatus(status) {
-    // Bezpośrednia aktualizacja DOM - kompatybilne z Alpine.js v3
-    const statsContainer = document.querySelector('.brain-controls');
-    if (statsContainer && statsContainer.__x) {
-        const alpineData = statsContainer.__x.$data;
-        alpineData.status = status;
+    if (window.Alpine && Alpine.store('brain')) {
+        Alpine.store('brain').status = status;
     }
 }
 
@@ -407,6 +400,31 @@ function showLoading() {
 // Schowaj loading overlay
 function hideLoading() {
     document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+// Wyświetl komunikat błędu w sposób nieinwazyjny
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = `
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: rgba(239, 68, 68, 0.95);
+        color: #fff;
+        padding: 16px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 3000;
+        max-width: 400px;
+        font-size: 14px;
+        animation: slideIn 0.3s ease-out;
+    `;
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+    setTimeout(() => {
+        errorDiv.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => errorDiv.remove(), 300);
+    }, 5000);
 }
 
 // Inicjalizacja po załadowaniu DOM

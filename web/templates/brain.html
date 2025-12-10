@@ -219,7 +219,7 @@
 {% endblock %}
 
 {% block content %}
-<div id="cy"></div>
+<div id="cy" role="application" aria-label="Graf wiedzy - interaktywna wizualizacja relacji między elementami systemu" tabindex="0"></div>
 
 <!-- Panel sterowania (Alpine.js) -->
 <div class="brain-controls" x-data="brainControls()">
@@ -244,16 +244,16 @@
     </div>
     
     <div class="filters">
-        <label class="filter-label">
-            <input type="checkbox" x-model="filters.agents" @change="applyFilters()">
+        <label class="filter-label" for="filter-agents">
+            <input type="checkbox" id="filter-agents" x-model="filters.agents" @change="applyFilters()">
             <span>🔷 Agenci</span>
         </label>
-        <label class="filter-label">
-            <input type="checkbox" x-model="filters.files" @change="applyFilters()">
+        <label class="filter-label" for="filter-files">
+            <input type="checkbox" id="filter-files" x-model="filters.files" @change="applyFilters()">
             <span>📄 Pliki</span>
         </label>
-        <label class="filter-label">
-            <input type="checkbox" x-model="filters.memories" @change="applyFilters()">
+        <label class="filter-label" for="filter-memories">
+            <input type="checkbox" id="filter-memories" x-model="filters.memories" @change="applyFilters()">
             <span>💡 Lekcje</span>
         </label>
     </div>
@@ -286,6 +286,17 @@
         integrity="sha512-pJXTUPWanXZSZ/+s6/QJBZxdXgLZQ6k8uKRTHW5mS5G5EqrBKHZvLw4VgVqaLCpxf/TFvYJtpCZ7KJpLKO0lZw==" 
         crossorigin="anonymous" 
         referrerpolicy="no-referrer"></script>
+
+<!-- Inicjalizacja Alpine Store (musi być przed brain.js) -->
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.store('brain', {
+        stats: { nodes: 0, edges: 0 },
+        status: 'Ładowanie...',
+        filters: { agents: true, files: true, memories: true }
+    });
+});
+</script>
 
 <!-- Brain Logic -->
 <script src="/static/js/brain.js"></script>

@@ -166,6 +166,7 @@
                 <button class="tab-button" data-tab="voice">🎤 Głos</button>
                 <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
                 <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
+                <button class="tab-button" data-tab="models">🔫 Modele</button>
                 <button class="tab-button" data-tab="history">📜 Historia</button>
             </div>
 
@@ -368,6 +369,64 @@
                 </div>
                 <div class="graph-summary" id="graphSummary">
                     <p class="empty-state">Ładowanie grafu...</p>
+                </div>
+            </div>
+
+            <!-- Models Tab (THE_ARMORY) -->
+            <div class="tab-content" id="modelsTab">
+                <div class="panel-header">
+                    <h2>🔫 Zbrojownia AI</h2>
+                    <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
+                </div>
+
+                <!-- Usage Metrics -->
+                <div class="usage-metrics" style="margin-bottom: 15px;">
+                    <div class="metric">
+                        <span class="metric-label">Dysk</span>
+                        <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">VRAM</span>
+                        <span class="metric-value" id="modelsVramUsage">-- MB</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Modele</span>
+                        <span class="metric-value" id="modelsCount">0</span>
+                    </div>
+                </div>
+
+                <!-- Model Installer -->
+                <div class="model-installer" style="margin-bottom: 15px;">
+                    <h3>📥 Instalator</h3>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input
+                            type="text"
+                            id="modelNameInput"
+                            placeholder="Nazwa modelu (np. llama3)"
+                            style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
+                        />
+                        <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
+                            📥 Pobierz
+                        </button>
+                    </div>
+                    <div id="downloadProgress" style="display: none; margin-top: 8px;">
+                        <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
+                            <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                        <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
+                    </div>
+                </div>
+
+                <!-- Panic Button -->
+                <div style="margin-bottom: 15px;">
+                    <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
+                        🚨 PANIC: Zwolnij zasoby
+                    </button>
+                </div>
+
+                <!-- Models List -->
+                <div class="models-list" id="modelsList">
+                    <p class="empty-state">Ładowanie modeli...</p>
                 </div>
             </div>
 

@@ -569,7 +569,7 @@ PARAMETER top_k 40
             return False
 
         # Walidacja nazwy modelu przed subprocess
-        if not model_name or not re.match(r'^[\w\-.:]+$', model_name):
+        if not model_name or not re.match(r"^[\w\-.:]+$", model_name):
             logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
@@ -635,7 +635,7 @@ PARAMETER top_k 40
             return False
 
         # Walidacja nazwy modelu przed subprocess
-        if not model_name or not re.match(r'^[\w\-.:]+$', model_name):
+        if not model_name or not re.match(r"^[\w\-.:]+$", model_name):
             logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
@@ -670,7 +670,7 @@ PARAMETER top_k 40
                 if not model_path.is_relative_to(self.models_dir):
                     logger.error(f"Nieprawidłowa ścieżka modelu: {model_path}")
                     return False
-                    
+
                 if model_path.exists():
                     if model_path.is_dir():
                         shutil.rmtree(model_path)
@@ -759,7 +759,9 @@ PARAMETER top_k 40
             if result.returncode == 0:
                 output = result.stdout.strip()
                 # Walidacja: tylko linie z liczbami, obsługa wielu GPU
-                vram_lines = [line for line in output.split("\n") if line.strip().isdigit()]
+                vram_lines = [
+                    line for line in output.split("\n") if line.strip().isdigit()
+                ]
                 if vram_lines:
                     # Użyj max z dostępnych GPU (najbardziej obciążony)
                     vram_used = max(int(line) for line in vram_lines)

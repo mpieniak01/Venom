@@ -22,12 +22,12 @@ class ModelInstallRequest(BaseModel):
 
     name: str
 
-    @validator('name')
+    @validator("name")
     def validate_name(cls, v):
         if not v or len(v) > 100:
-            raise ValueError('Nazwa modelu musi mieć 1-100 znaków')
-        if not re.match(r'^[\w\-.:]+$', v):
-            raise ValueError('Nazwa modelu zawiera niedozwolone znaki')
+            raise ValueError("Nazwa modelu musi mieć 1-100 znaków")
+        if not re.match(r"^[\w\-.:]+$", v):
+            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
         return v
 
 
@@ -35,14 +35,16 @@ class ModelSwitchRequest(BaseModel):
     """Request do zmiany aktywnego modelu."""
 
     name: str
-    role: Optional[str] = None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
+    role: Optional[str] = (
+        None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
+    )
 
-    @validator('name')
+    @validator("name")
     def validate_name(cls, v):
         if not v or len(v) > 100:
-            raise ValueError('Nazwa modelu musi mieć 1-100 znaków')
-        if not re.match(r'^[\w\-.:]+$', v):
-            raise ValueError('Nazwa modelu zawiera niedozwolone znaki')
+            raise ValueError("Nazwa modelu musi mieć 1-100 znaków")
+        if not re.match(r"^[\w\-.:]+$", v):
+            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
         return v
 
 
@@ -79,7 +81,9 @@ async def list_models():
 
 
 @router.post("/models/install")
-async def install_model(request: ModelInstallRequest, background_tasks: BackgroundTasks):
+async def install_model(
+    request: ModelInstallRequest, background_tasks: BackgroundTasks
+):
     """
     Uruchamia pobieranie modelu w tle.
 
@@ -206,7 +210,11 @@ async def delete_model(model_name: str):
         raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
 
     # Walidacja nazwy modelu
-    if not model_name or len(model_name) > 100 or not re.match(r'^[\w\-.:]+$', model_name):
+    if (
+        not model_name
+        or len(model_name) > 100
+        or not re.match(r"^[\w\-.:]+$", model_name)
+    ):
         raise HTTPException(status_code=400, detail="Nieprawidłowa nazwa modelu")
 
     try:

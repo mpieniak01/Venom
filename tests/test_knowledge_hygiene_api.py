@@ -1,13 +1,8 @@
 """Testy API dla Knowledge Hygiene Suite endpoints."""
 
-import json
 from datetime import datetime, timedelta
-from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 from venom_core.memory.lessons_store import Lesson, LessonsStore
 

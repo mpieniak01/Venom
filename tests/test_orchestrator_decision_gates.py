@@ -1,7 +1,6 @@
 """Testy dla wzbogaconego logowania Decision Gates w Orchestrator."""
 
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
 
 import pytest
 

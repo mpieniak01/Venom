@@ -19,11 +19,11 @@ Wydzielono klasy:
 - **`CodeReviewLoop`** → `venom_core/core/flows/code_review.py`
   - Pętla Coder-Critic dla generowania i naprawy kodu
   - Metoda: `execute(task_id, user_request)`
-  
+
 - **`CouncilFlow`** → `venom_core/core/flows/council.py`
   - Logika The Council (AutoGen Group Chat)
   - Metody: `should_use_council()`, `run()`
-  
+
 - **`ForgeFlow`** → `venom_core/core/flows/forge.py`
   - Workflow tworzenia nowych narzędzi
   - Metoda: `execute(task_id, tool_specification, tool_name)`
@@ -138,7 +138,7 @@ Pozostałe endpointy (5) są minimalne i odpowiednie dla entry pointa:
 ```python
 # Import routerów
 from venom_core.api.routes import (
-    agents, git, knowledge, memory, 
+    agents, git, knowledge, memory,
     nodes, strategy, system, tasks
 )
 
@@ -156,7 +156,7 @@ app.include_router(strategy.router)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ... component initialization ...
-    
+
     # Setup router dependencies
     tasks.set_dependencies(orchestrator, state_manager, request_tracer)
     memory.set_dependencies(vector_store)
@@ -166,7 +166,7 @@ async def lifespan(app: FastAPI):
     system.set_dependencies(background_scheduler, service_monitor)
     nodes.set_dependencies(node_manager)
     strategy.set_dependencies(orchestrator)
-    
+
     yield
     # ... cleanup ...
 ```

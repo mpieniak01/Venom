@@ -218,8 +218,8 @@ async def prune_lessons_by_range(
     """
     try:
         # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
-        start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
-        end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
 
     except ValueError as e:
         raise HTTPException(
@@ -319,7 +319,9 @@ async def purge_all_lessons(
                 status_code=500, detail="Nie udało się wyczyścić bazy lekcji"
             )
 
-        logger.warning(f"💣 PURGE: Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)")
+        logger.warning(
+            f"💣 PURGE: Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)"
+        )
 
         return {
             "status": "success",

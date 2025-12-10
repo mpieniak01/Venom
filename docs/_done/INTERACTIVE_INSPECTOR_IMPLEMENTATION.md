@@ -100,15 +100,15 @@ Decision Gates are rendered with distinctive styling:
 sequenceDiagram
     autonumber
     User->>Orchestrator: Generate sorting function
-    
+
     rect rgb(255, 245, 224)
         Note over Orchestrator: 🔀 classify_intent<br/>Intent: CODE_GENERATION
     end
-    
+
     rect rgb(255, 245, 224)
         Note over Orchestrator: 🔀 select_code_review_loop<br/>Routing to Coder-Critic Review Loop
     end
-    
+
     Orchestrator->>CoderAgent: process_task
     CoderAgent->>User: ✅ Task completed
 ```
@@ -152,7 +152,7 @@ sequenceDiagram
 
 **Trace Status:**
 - 🟢 Green border - COMPLETED
-- 🔴 Red border - FAILED  
+- 🔴 Red border - FAILED
 - 🟠 Orange border - PROCESSING
 - 🔵 Blue border - PENDING
 
@@ -202,7 +202,7 @@ Due to the full system dependencies (FastAPI, StateManager, RequestTracer, etc.)
    ```bash
    # Start server
    uvicorn venom_core.main:app --reload
-   
+
    # Navigate to http://localhost:8000/inspector
    # Verify: Page loads without errors
    ```
@@ -345,6 +345,6 @@ The implementation is ready for production use.
 
 ---
 
-**Implementation Date:** 2024-12-10  
-**Author:** GitHub Copilot (with mpieniak01)  
+**Implementation Date:** 2024-12-10
+**Author:** GitHub Copilot (with mpieniak01)
 **PR:** copilot/add-interactive-flow-inspector

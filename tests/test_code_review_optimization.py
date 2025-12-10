@@ -47,9 +47,7 @@ def mock_critic_agent():
 def mock_token_economist():
     """Fixture dla mockowego TokenEconomist."""
     economist = MagicMock(spec=TokenEconomist)
-    economist.estimate_request_cost = MagicMock(
-        return_value={"total_cost_usd": 0.01}
-    )
+    economist.estimate_request_cost = MagicMock(return_value={"total_cost_usd": 0.01})
     return economist
 
 
@@ -240,9 +238,7 @@ async def test_approval_first_attempt_with_cost_tracking(
     # Mock
     mock_coder_agent.process.return_value = "good_code"
     mock_critic_agent.process.return_value = "APPROVED"
-    mock_token_economist.estimate_request_cost.return_value = {
-        "total_cost_usd": 0.005
-    }
+    mock_token_economist.estimate_request_cost.return_value = {"total_cost_usd": 0.005}
 
     # Execute
     result = await loop.execute(task_id, "Napisz funkcję")
@@ -343,5 +339,7 @@ async def test_max_attempts_exceeded_with_new_features(
 
     # Assert
     assert "⚠️ OSTRZEŻENIE" in result
-    assert "Wyczerpano limit prób" in result or f"{MAX_REPAIR_ATTEMPTS} próbach" in result
+    assert (
+        "Wyczerpano limit prób" in result or f"{MAX_REPAIR_ATTEMPTS} próbach" in result
+    )
     assert mock_coder_agent.process.call_count == MAX_REPAIR_ATTEMPTS + 1

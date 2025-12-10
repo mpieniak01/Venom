@@ -144,7 +144,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             # Estymuj koszt tej iteracji (użyj modelu z konfiguracji lub domyślnego)
             model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
-            
+
             # Użyj rzeczywistego prompta do estymacji kosztów
             actual_prompt = user_request if attempt == 1 else repair_prompt
             estimated_cost = self.token_economist.estimate_request_cost(

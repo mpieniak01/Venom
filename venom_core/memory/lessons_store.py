@@ -378,9 +378,7 @@ class LessonsStore:
 
         return deleted_count
 
-    def delete_by_time_range(
-        self, start: datetime, end: datetime
-    ) -> int:
+    def delete_by_time_range(self, start: datetime, end: datetime) -> int:
         """
         Usuwa lekcje z podanego zakresu czasu.
 
@@ -422,11 +420,13 @@ class LessonsStore:
             lesson = self.lessons[lesson_id]
             try:
                 # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix i innych offsetów)
-                timestamp_str = lesson.timestamp.replace('Z', '+00:00')
+                timestamp_str = lesson.timestamp.replace("Z", "+00:00")
                 lesson_time = datetime.fromisoformat(timestamp_str)
 
                 # Normalizuj lesson_time do formatu zgodnego z zakresem
-                lesson_time = self._normalize_datetime_for_comparison(lesson_time, start)
+                lesson_time = self._normalize_datetime_for_comparison(
+                    lesson_time, start
+                )
 
                 # Sprawdź czy jest w zakresie
                 if start <= lesson_time <= end:

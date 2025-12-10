@@ -270,9 +270,7 @@ class PermissionGuard:
             # Jeśli poziom >= 20 (FUNDED), włącz paid mode dla Token Economist
             if level.permissions.get("paid_api_enabled", False):
                 self._state_manager.enable_paid_mode()
-                logger.info(
-                    "💰 Paid Mode włączony - dostęp do płatnych API (FUNDED+)"
-                )
+                logger.info("💰 Paid Mode włączony - dostęp do płatnych API (FUNDED+)")
             else:
                 self._state_manager.disable_paid_mode()
                 logger.info("🌿 Paid Mode wyłączony - tylko lokalne/darmowe API")

@@ -1,0 +1,93 @@
+# Skill Permissions - Mapowanie każdego Skilla na minimalny wymagany poziom autonomii
+# Format: skill_name: required_level_id
+
+# ========================================
+# Poziom 0: ISOLATED - Tylko lokalne, read-only
+# ========================================
+
+FileReadSkill: 0
+MemoryRecallSkill: 0
+LocalLlmSkill: 0
+GraphQuerySkill: 0
+LessonsSkill: 0
+KnowledgeSkill: 0
+
+# ========================================
+# Poziom 10: CONNECTED - Internet (Free)
+# ========================================
+
+WebSearchSkill: 10
+BrowserSkill: 10
+WebSkill: 10
+DuckDuckGoSkill: 10
+WeatherSkill: 10
+RSSReaderSkill: 10
+WikipediaSkill: 10
+
+# ========================================
+# Poziom 20: FUNDED - Płatne API (Cloud)
+# ========================================
+
+OpenAISkill: 20
+GeminiSkill: 20
+ClaudeSkill: 20
+DeepLSkill: 20
+DALLESkill: 20
+StableDiffusionSkill: 20
+GoogleGroundingSkill: 20
+HuggingFaceSkill: 20
+
+# ========================================
+# Poziom 30: BUILDER - Edycja Plików
+# ========================================
+
+FileWriteSkill: 30
+FileEditSkill: 30
+FileSkill: 30
+GitSkill: 30
+GitCommitSkill: 30
+CodeSkill: 30
+RefactorSkill: 30
+DocsSkill: 30
+TestSkill: 30
+ComplexitySkill: 30
+
+# ========================================
+# Poziom 40: ROOT - Pełna Władza
+# ========================================
+
+ShellSkill: 40
+ShellExecuteSkill: 40
+DockerSkill: 40
+ComposeSkill: 40
+DockerHabitatSkill: 40
+PipInstallSkill: 40
+SystemSkill: 40
+ChronoSkill: 40
+
+# ========================================
+# Skills które mogą być używane na różnych poziomach
+# ========================================
+
+# Skill bazowy - używany przez wiele agentów (bezpieczny)
+ParallelSkill: 0
+InputSkill: 0
+
+# Skill renderowania - tylko prezentacja (bezpieczny)
+RenderSkill: 0
+
+# Media skills - zależą od kontekstu
+MediaSkill: 20  # Domyślnie wymaga płatnego API jeśli używa chmury
+
+# Deployment i cloud provisioning - wymaga ROOT
+CloudProvisionerSkill: 40
+LaunchpadSkill: 40
+
+# Ghost Agent (GUI automation) - wymaga ROOT (może kontrolować desktop)
+GhostSkill: 40
+
+# ========================================
+# Domyślna zasada bezpieczeństwa
+# ========================================
+# Nowe, nieskategoryzowane narzędzia domyślnie wymagają poziomu 40 (ROOT)
+# dla maksymalnego bezpieczeństwa

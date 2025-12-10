@@ -26,6 +26,7 @@ from venom_core.api.stream import EventType, connection_manager, event_broadcast
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import init_metrics_collector
 from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.permission_guard import permission_guard
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.core.state_manager import StateManager
@@ -44,6 +45,9 @@ logger = get_logger(__name__)
 
 # Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
+
+# Inicjalizacja PermissionGuard z StateManager
+permission_guard.set_state_manager(state_manager)
 
 # Note: orchestrator zostanie zainicjalizowany w lifespan po utworzeniu node_manager
 orchestrator = None

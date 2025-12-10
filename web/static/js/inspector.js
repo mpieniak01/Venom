@@ -3,23 +3,51 @@
  * Alpine.js + Mermaid.js + svg-pan-zoom
  */
 
+// Sprawdź dostępność wymaganych bibliotek
+if (typeof mermaid === 'undefined') {
+    console.error('❌ Mermaid.js not loaded from CDN');
+}
+
+if (typeof svgPanZoom === 'undefined') {
+    console.error('❌ svg-pan-zoom not loaded from CDN');
+}
+
 // Inicjalizacja Mermaid
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'loose', // Potrzebne dla interaktywności
-    sequence: {
-        showSequenceNumbers: true,
-        actorMargin: 50,
-        width: 150,
-        height: 65,
-        boxMargin: 10,
-        noteMargin: 10
-    }
-});
+if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'strict', // Bezpieczniejszy tryb - zapobiega XSS
+        sequence: {
+            showSequenceNumbers: true,
+            actorMargin: 50,
+            width: 150,
+            height: 65,
+            boxMargin: 10,
+            noteMargin: 10
+        }
+    });
+}
 
 // Globalna zmienna dla svg-pan-zoom
 let panZoomInstance = null;
+
+/**
+ * Sanityzuje tekst dla diagramu Mermaid aby zapobiec injection attacks
+ * @param {string} text - Tekst do sanityzacji
+ * @returns {string} - Bezpieczny tekst
+ */
+function sanitizeMermaidText(text) {
+    if (!text) return '';
+    
+    // Usuń potencjalnie niebezpieczne znaki dla Mermaid
+    return text
+        .replace(/[<>]/g, '') // Usuń znaki HTML
+        .replace(/[;\n\r]/g, ' ') // Usuń znaki nowej linii i średniki
+        .replace(/\|/g, '│') // Zamień pipe na podobny znak (pipe ma specjalne znaczenie w Mermaid)
+        .replace(/--/g, '−') // Zamień podwójny myślnik na minus
+        .trim();
+}
 
 /**
  * Główny komponent Alpine.js dla Inspectora
@@ -95,7 +123,11 @@ function inspectorApp() {
             
             for (const step of flowData.steps) {
                 if (step.component !== 'DecisionGate') {
-                    participants.add(step.component);
+                    // Sanityzuj nazwę komponentu
+                    const safeComponent = sanitizeMermaidText(step.component);
+                    if (safeComponent) {
+                        participants.add(safeComponent);
+                    }
                 }
             }
             
@@ -106,11 +138,12 @@ function inspectorApp() {
                 }
             }
             
-            // Prompt użytkownika
+            // Prompt użytkownika - sanityzuj
             lines.push('');
-            const promptText = flowData.prompt.length > 50 
-                ? flowData.prompt.slice(0, 50) + '...' 
-                : flowData.prompt;
+            const safePrompt = sanitizeMermaidText(flowData.prompt);
+            const promptText = safePrompt.length > 50 
+                ? safePrompt.slice(0, 50) + '...' 
+                : safePrompt;
             lines.push(`    User->>Orchestrator: ${promptText}`);
             
             let lastComponent = 'Orchestrator';
@@ -121,23 +154,27 @@ function inspectorApp() {
                 
                 if (step.is_decision_gate) {
                     // Decision Gate - wyróżnij jako notatka z tłem
-                    const details = step.details || '';
-                    const detailText = details.length > 40 ? details.slice(0, 40) + '...' : details;
+                    const safeDetails = sanitizeMermaidText(step.details || '');
+                    const safeAction = sanitizeMermaidText(step.action);
+                    const detailText = safeDetails.length > 40 ? safeDetails.slice(0, 40) + '...' : safeDetails;
                     lines.push(`    rect rgb(255, 245, 224)`);
-                    lines.push(`        Note over Orchestrator: 🔀 ${step.action}<br/>${detailText}`);
+                    lines.push(`        Note over Orchestrator: 🔀 ${safeAction}<br/>${detailText}`);
                     lines.push(`    end`);
                 } else {
-                    // Standardowy krok
-                    const arrow = step.status === 'ok' ? '->>' : '--x';
-                    const details = step.details || '';
-                    const detailText = details.length > 40 ? details.slice(0, 40) + '...' : details;
-                    const message = detailText ? `${step.action}: ${detailText}` : step.action;
+                    // Standardowy krok - sanityzuj wszystkie dane
+                    const safeComponent = sanitizeMermaidText(step.component);
+                    const safeAction = sanitizeMermaidText(step.action);
+                    const safeDetails = sanitizeMermaidText(step.details || '');
                     
-                    if (step.component !== lastComponent) {
-                        lines.push(`    ${lastComponent}${arrow}${step.component}: ${message}`);
-                        lastComponent = step.component;
-                    } else {
-                        lines.push(`    Note right of ${step.component}: ${message}`);
+                    const arrow = step.status === 'ok' ? '->>' : '--x';
+                    const detailText = safeDetails.length > 40 ? safeDetails.slice(0, 40) + '...' : safeDetails;
+                    const message = detailText ? `${safeAction}: ${detailText}` : safeAction;
+                    
+                    if (safeComponent && safeComponent !== lastComponent) {
+                        lines.push(`    ${lastComponent}${arrow}${safeComponent}: ${message}`);
+                        lastComponent = safeComponent;
+                    } else if (safeComponent) {
+                        lines.push(`    Note right of ${safeComponent}: ${message}`);
                     }
                 }
             }
@@ -159,6 +196,19 @@ function inspectorApp() {
          */
         async renderDiagram() {
             if (!this.currentFlowData) return;
+            
+            // Sprawdź dostępność Mermaid
+            if (typeof mermaid === 'undefined') {
+                console.error('❌ Mermaid.js library not available');
+                const container = document.getElementById('mermaidSvgContainer');
+                container.innerHTML = `
+                    <div style="padding: 2rem; text-align: center; color: #f44336;">
+                        <p>❌ Błąd: Biblioteka Mermaid.js nie jest dostępna</p>
+                        <p style="font-size: 0.9rem; color: #666;">Sprawdź połączenie internetowe i odśwież stronę.</p>
+                    </div>
+                `;
+                return;
+            }
             
             const container = document.getElementById('mermaidSvgContainer');
             
@@ -250,6 +300,12 @@ function inspectorApp() {
          * Inicjalizuje svg-pan-zoom
          */
         initPanZoom() {
+            // Sprawdź dostępność biblioteki
+            if (typeof svgPanZoom === 'undefined') {
+                console.error('❌ svg-pan-zoom library not available');
+                return;
+            }
+            
             // Zniszcz poprzednią instancję jeśli istnieje
             if (panZoomInstance) {
                 panZoomInstance.destroy();

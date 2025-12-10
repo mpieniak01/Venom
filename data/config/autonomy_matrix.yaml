@@ -1,0 +1,83 @@
+# Autonomy Matrix - 5-stopniowy system kontroli uprawnień agenta
+# Każdy wyższy poziom dziedziczy uprawnienia niższych poziomów
+
+levels:
+  - id: 0
+    name: "ISOLATED"
+    description: "Lokalny Odczyt - Tylko localhost, brak wyjścia na świat"
+    color: "#22c55e"  # Zielony
+    color_name: "green"
+    permissions:
+      network_enabled: false
+      paid_api_enabled: false
+      filesystem_mode: "read_only"
+      shell_enabled: false
+    risk_level: "zero"
+    examples:
+      - "FileRead"
+      - "MemoryRecall"
+      - "LocalLlm"
+
+  - id: 10
+    name: "CONNECTED"
+    description: "Internet (Free) - Dostęp do publicznej sieci, darmowe API"
+    color: "#3b82f6"  # Niebieski
+    color_name: "blue"
+    permissions:
+      network_enabled: true
+      paid_api_enabled: false
+      filesystem_mode: "read_only"
+      shell_enabled: false
+    risk_level: "low"
+    examples:
+      - "DuckDuckGo"
+      - "BrowserVisit"
+      - "WeatherApi"
+
+  - id: 20
+    name: "FUNDED"
+    description: "Płatne API (Cloud) - Autoryzacja wydatków, dostęp do SOTA AI"
+    color: "#eab308"  # Żółty
+    color_name: "yellow"
+    permissions:
+      network_enabled: true
+      paid_api_enabled: true
+      filesystem_mode: "read_only"
+      shell_enabled: false
+    risk_level: "medium"
+    examples:
+      - "GPT-4o"
+      - "Gemini Pro"
+      - "DeepL"
+
+  - id: 30
+    name: "BUILDER"
+    description: "Edycja Plików - Agent może tworzyć i modyfikować kod w projekcie"
+    color: "#f97316"  # Pomarańczowy
+    color_name: "orange"
+    permissions:
+      network_enabled: true
+      paid_api_enabled: true
+      filesystem_mode: "read_write"
+      shell_enabled: false
+    risk_level: "high"
+    examples:
+      - "FileWrite"
+      - "FileEdit"
+      - "GitCommit"
+
+  - id: 40
+    name: "ROOT"
+    description: "Pełna Władza - Dostęp do powłoki systemowej, Docker, instalacji pakietów"
+    color: "#ef4444"  # Czerwony
+    color_name: "red"
+    permissions:
+      network_enabled: true
+      paid_api_enabled: true
+      filesystem_mode: "read_write"
+      shell_enabled: true
+    risk_level: "critical"
+    examples:
+      - "ShellExecute"
+      - "DockerRun"
+      - "PipInstall"

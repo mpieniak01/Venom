@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from venom_core.core.metrics import metrics_collector
+from venom_core.core.permission_guard import permission_guard
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -311,4 +312,135 @@ async def set_cost_mode(request: CostModeRequest):
 
     except Exception as e:
         logger.exception("Błąd podczas zmiany trybu kosztowego")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ========================================
+# AutonomyGate Endpoints
+# ========================================
+
+
+class AutonomyLevelRequest(BaseModel):
+    """Request do zmiany poziomu autonomii."""
+
+    level: int
+
+
+class AutonomyLevelResponse(BaseModel):
+    """Response z informacją o poziomie autonomii."""
+
+    current_level: int
+    current_level_name: str
+    color: str
+    color_name: str
+    description: str
+    permissions: dict
+    risk_level: str
+
+
+@router.get("/system/autonomy", response_model=AutonomyLevelResponse)
+async def get_autonomy_level():
+    """
+    Zwraca aktualny poziom autonomii AutonomyGate.
+
+    Returns:
+        Informacje o aktualnym poziomie autonomii
+
+    Raises:
+        HTTPException: 500 jeśli wystąpi błąd
+    """
+    try:
+        current_level = permission_guard.get_current_level()
+        level_info = permission_guard.get_level_info(current_level)
+
+        if not level_info:
+            raise HTTPException(
+                status_code=500, detail="Nie można pobrać informacji o poziomie"
+            )
+
+        return AutonomyLevelResponse(
+            current_level=current_level,
+            current_level_name=level_info.name,
+            color=level_info.color,
+            color_name=level_info.color_name,
+            description=level_info.description,
+            permissions=level_info.permissions,
+            risk_level=level_info.risk_level,
+        )
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania poziomu autonomii")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.post("/system/autonomy")
+async def set_autonomy_level(request: AutonomyLevelRequest):
+    """
+    Ustawia nowy poziom autonomii.
+
+    Args:
+        request: Żądanie z nowym poziomem (0, 10, 20, 30, 40)
+
+    Returns:
+        Potwierdzenie zmiany poziomu
+
+    Raises:
+        HTTPException: 400 jeśli poziom nieprawidłowy, 500 jeśli wystąpi błąd
+    """
+    try:
+        success = permission_guard.set_level(request.level)
+
+        if not success:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nieprawidłowy poziom: {request.level}. Dostępne: 0, 10, 20, 30, 40",
+            )
+
+        level_info = permission_guard.get_level_info(request.level)
+
+        return {
+            "status": "success",
+            "message": f"Poziom autonomii zmieniony na {level_info.name}",
+            "level": request.level,
+            "level_name": level_info.name,
+            "color": level_info.color,
+            "permissions": level_info.permissions,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Błąd podczas zmiany poziomu autonomii")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get("/system/autonomy/levels")
+async def get_all_autonomy_levels():
+    """
+    Zwraca listę wszystkich dostępnych poziomów autonomii.
+
+    Returns:
+        Lista poziomów z ich konfiguracją
+    """
+    try:
+        levels = permission_guard.get_all_levels()
+
+        levels_data = [
+            {
+                "id": level.id,
+                "name": level.name,
+                "description": level.description,
+                "color": level.color,
+                "color_name": level.color_name,
+                "permissions": level.permissions,
+                "risk_level": level.risk_level,
+                "examples": level.examples,
+            }
+            for level in levels.values()
+        ]
+
+        return {"status": "success", "levels": levels_data, "count": len(levels_data)}
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania listy poziomów")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

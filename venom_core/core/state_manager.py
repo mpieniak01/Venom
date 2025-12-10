@@ -33,9 +33,8 @@ class StateManager:
         # Global Cost Guard - flaga płatnego trybu (dla Google Grounding itp.)
         self.paid_mode_enabled: bool = False
 
-        # Global Cost Guard: Domyślnie tryb Eco (tylko lokalne modele)
-        # UWAGA: Ten stan NIE jest persystowany - zawsze startuje jako False
-        self.paid_mode_enabled: bool = False
+        # AutonomyGate - poziom autonomii (0, 10, 20, 30, 40)
+        self.autonomy_level: int = 0  # Domyślnie ISOLATED
 
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +70,9 @@ class StateManager:
             # Załaduj paid_mode_enabled jeśli istnieje
             self.paid_mode_enabled = data.get("paid_mode_enabled", False)
 
+            # Załaduj autonomy_level jeśli istnieje (nowa funkcjonalność)
+            self.autonomy_level = data.get("autonomy_level", 0)
+
             logger.info(
                 f"Załadowano {len(self._tasks)} zadań z pliku {self._state_file_path}"
             )
@@ -92,6 +94,7 @@ class StateManager:
                 data = {
                     "tasks": tasks_list,
                     "paid_mode_enabled": self.paid_mode_enabled,
+                    "autonomy_level": self.autonomy_level,
                 }
 
                 # Zapisz do pliku

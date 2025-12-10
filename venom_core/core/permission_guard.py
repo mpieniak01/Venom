@@ -237,12 +237,13 @@ class PermissionGuard:
             )
             return False
 
+        old_level = self._current_level
         old_level_name = self.get_current_level_name()
         self._current_level = level_id
         new_level_name = self.get_current_level_name()
 
         logger.warning(
-            f"🔐 Poziom autonomii zmieniony: {old_level_name} ({self._current_level}) → {new_level_name} ({level_id})"
+            f"🔐 Poziom autonomii zmieniony: {old_level_name} ({old_level}) → {new_level_name} ({level_id})"
         )
 
         # Synchronizuj z StateManager

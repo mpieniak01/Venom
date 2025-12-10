@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}War Room - Strategy{% endblock %}
+
+{% block nav_strategy_active %}active{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/strategy.css">
+{% endblock %}
+
+{% block content %}
+<div class="war-room-container">
+    <!-- Header -->
+    <div class="war-room-header">
+        <h1>🎯 WAR ROOM - Zarządzanie Strategiczne</h1>
+        <p>Executive Dashboard: Wizja → Milestones → Tasks</p>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+        <button class="btn btn-primary" onclick="loadRoadmap()">🔄 Odśwież Roadmapę</button>
+        <button class="btn" onclick="showDefineVisionDialog()">✨ Zdefiniuj Wizję</button>
+        <button class="btn" onclick="startCampaign()">🚀 Uruchom Kampanię</button>
+        <button class="btn" onclick="requestStatusReport()">📊 Raport Statusu</button>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="war-room-grid">
+        <!-- Vision Panel -->
+        <div class="war-room-panel">
+            <div class="panel-title">🎯 VISION (Wizja)</div>
+            <div id="visionContent" class="vision-box">
+                <div class="empty-state">Brak zdefiniowanej wizji. Kliknij "Zdefiniuj Wizję" aby rozpocząć.</div>
+            </div>
+        </div>
+
+        <!-- KPIs Panel -->
+        <div class="war-room-panel">
+            <div class="panel-title">📊 Key Performance Indicators</div>
+            <div id="kpisContent" class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-value" id="completionRate">0%</div>
+                    <div class="kpi-label">Postęp Ogólny</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" id="milestonesCompleted">0/0</div>
+                    <div class="kpi-label">Milestones</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value" id="tasksCompleted">0/0</div>
+                    <div class="kpi-label">Tasks</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Milestones Panel (Full Width) -->
+    <div class="war-room-panel" style="grid-column: 1 / -1;">
+        <div class="panel-title">📋 MILESTONES (Kamienie Milowe)</div>
+        <div id="milestonesContent">
+            <div class="empty-state">Brak kamieni milowych. Zdefiniuj wizję aby automatycznie wygenerować roadmapę.</div>
+        </div>
+    </div>
+
+    <!-- Roadmap Report (Full Width) -->
+    <div class="war-room-panel" style="grid-column: 1 / -1;">
+        <div class="panel-title">📝 Pełny Raport Roadmapy</div>
+        <div id="roadmapReportContent" class="roadmap-report">
+            <div class="empty-state">Brak danych do wyświetlenia</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/strategy.js"></script>
+{% endblock %}

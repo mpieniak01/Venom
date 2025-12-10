@@ -42,8 +42,15 @@ class CodeReviewLoop:
             state_manager: Menedżer stanu zadań
             coder_agent: Agent generujący kod
             critic_agent: Agent sprawdzający kod
-            token_economist: Token Economist do monitorowania kosztów (opcjonalny)
-            file_skill: FileSkill do operacji na plikach (opcjonalny)
+            token_economist: Token Economist do monitorowania kosztów (opcjonalny).
+                Jeśli None, zostanie utworzona domyślna instancja.
+            file_skill: FileSkill do operacji na plikach (opcjonalny).
+                Jeśli None, zostanie utworzona domyślna instancja.
+
+        Note:
+            TokenEconomist i FileSkill używają domyślnej konfiguracji z SETTINGS
+            jeśli nie są przekazane jawnie. Jest to bezpieczne dla większości przypadków,
+            ale można przekazać skonfigurowane instancje dla specjalnych scenariuszy.
         """
         self.state_manager = state_manager
         self.coder_agent = coder_agent
@@ -134,11 +141,14 @@ POPRZEDNI KOD (fragment):
 Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 generated_code = await self.coder_agent.process(repair_prompt)
 
-            # Estymuj koszt tej iteracji
+            # Estymuj koszt tej iteracji (użyj modelu z konfiguracji lub domyślnego)
+            from venom_core.config import SETTINGS
+
+            model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
             estimated_cost = self.token_economist.estimate_request_cost(
                 prompt=user_request + (critic_feedback or ""),
                 expected_output_tokens=len(generated_code) // 4,
-                model_name="gpt-3.5-turbo",
+                model_name=model_name,
             )
             self.session_cost += estimated_cost.get("total_cost_usd", 0.0)
 
@@ -177,14 +187,14 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
             diagnostic = self.critic_agent.analyze_error(critic_feedback)
 
             # Jeśli odrzucono
+            analysis_preview = diagnostic.get("analysis", "Brak analizy")[:100]
             self.state_manager.add_log(
-                task_id, f"❌ Critic ODRZUCIŁ kod: {diagnostic['analysis'][:100]}..."
+                task_id, f"❌ Critic ODRZUCIŁ kod: {analysis_preview}..."
             )
 
             # Sprawdź czy Krytyk wskazuje na inny plik
-            if diagnostic.get("target_file_change") and diagnostic[
-                "target_file_change"
-            ] != current_file:
+            target_file_change = diagnostic.get("target_file_change")
+            if target_file_change and target_file_change != current_file:
                 new_file = diagnostic["target_file_change"]
                 self.state_manager.add_log(
                     task_id,

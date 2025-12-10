@@ -13,6 +13,7 @@ from venom_core.api.audio_stream import AudioStreamHandler
 
 # Import routers
 from venom_core.api.routes import agents as agents_routes
+from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import memory as memory_routes
@@ -561,6 +562,7 @@ def setup_router_dependencies():
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
     models_routes.set_dependencies(model_manager)
+    flow_routes.set_dependencies(request_tracer)
 
 
 # Montowanie routerów
@@ -575,6 +577,7 @@ app.include_router(system_routes.router)
 app.include_router(nodes_routes.router)
 app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
+app.include_router(flow_routes.router)
 
 # Montowanie plików statycznych
 web_dir = Path(__file__).parent.parent / "web"
@@ -596,6 +599,12 @@ async def serve_dashboard(request: Request):
 async def serve_strategy(request: Request):
     """Serwuje War Room (Strategy Dashboard)."""
     return templates.TemplateResponse("strategy.html", {"request": request})
+
+
+@app.get("/flow-inspector")
+async def serve_flow_inspector(request: Request):
+    """Serwuje Flow Inspector - wizualizację procesów decyzyjnych."""
+    return templates.TemplateResponse("flow_inspector.html", {"request": request})
 
 
 @app.websocket("/ws/events")

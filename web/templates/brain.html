@@ -276,10 +276,16 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Cytoscape.js CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-<!-- Alpine.js CDN (potrzebne dla panelu kontrolnego) -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+<!-- Cytoscape.js CDN with integrity check -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" 
+        integrity="sha512-gt0OGsN5GWmK4eZTdepGEyDGRaXXALaxw7svEQ+bVXwPJ2JJXmBmF0DaYqRvDVXOvTiXUflQcTznRdLGiCJnXw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer"></script>
+<!-- Alpine.js CDN (potrzebne dla panelu kontrolnego) with integrity check -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" 
+        integrity="sha512-pJXTUPWanXZSZ/+s6/QJBZxdXgLZQ6k8uKRTHW5mS5G5EqrBKHZvLw4VgVqaLCpxf/TFvYJtpCZ7KJpLKO0lZw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer"></script>
 
 <!-- Brain Logic -->
 <script src="/static/js/brain.js"></script>

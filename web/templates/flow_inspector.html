@@ -339,6 +339,14 @@
     // Konfiguracja
     const AUTO_REFRESH_INTERVAL_MS = 3000; // Co 3 sekundy dla zadań w trakcie
     
+    // Helper function do escapowania HTML
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
     // Inicjalizacja Mermaid
     mermaid.initialize({ 
         startOnLoad: false,
@@ -374,13 +382,13 @@
             }
 
             container.innerHTML = tasks.map(task => `
-                <div class="task-item status-${task.status.toLowerCase()}" data-task-id="${task.request_id}">
+                <div class="task-item status-${escapeHtml(task.status.toLowerCase())}" data-task-id="${escapeHtml(task.request_id)}">
                     <div class="task-item-header">
-                        <span class="task-item-id">${task.request_id.substring(0, 8)}...</span>
-                        <span class="task-item-status status-${task.status.toLowerCase()}">${task.status}</span>
+                        <span class="task-item-id">${escapeHtml(task.request_id?.slice(0, 8) || 'unknown')}...</span>
+                        <span class="task-item-status status-${escapeHtml(task.status.toLowerCase())}">${escapeHtml(task.status)}</span>
                     </div>
-                    <div class="task-item-prompt">${task.prompt}</div>
-                    <div class="task-item-time">${new Date(task.created_at).toLocaleString('pl-PL')}</div>
+                    <div class="task-item-prompt">${escapeHtml(task.prompt)}</div>
+                    <div class="task-item-time">${escapeHtml(new Date(task.created_at).toLocaleString('pl-PL'))}</div>
                 </div>
             `).join('');
 
@@ -409,7 +417,10 @@
         document.querySelectorAll('.task-item').forEach(item => {
             item.classList.remove('selected');
         });
-        document.querySelector(`[data-task-id="${taskId}"]`).classList.add('selected');
+        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+        if (taskElement) {
+            taskElement.classList.add('selected');
+        }
         
         // Załaduj dane przepływu
         loadFlowData(taskId);
@@ -474,13 +485,13 @@
             <li class="flow-step ${step.is_decision_gate ? 'decision-gate' : ''} ${step.status === 'error' ? 'error' : ''}">
                 <div class="flow-step-header">
                     <span class="flow-step-component">
-                        ${step.component}
+                        ${escapeHtml(step.component)}
                         ${step.is_decision_gate ? '<span class="decision-gate-badge">🔀 Decision Gate</span>' : ''}
                     </span>
-                    <span class="flow-step-time">${new Date(step.timestamp).toLocaleTimeString('pl-PL')}</span>
+                    <span class="flow-step-time">${escapeHtml(new Date(step.timestamp).toLocaleTimeString('pl-PL'))}</span>
                 </div>
-                <div class="flow-step-action">${step.action}</div>
-                ${step.details ? `<div class="flow-step-details">${step.details}</div>` : ''}
+                <div class="flow-step-action">${escapeHtml(step.action)}</div>
+                ${step.details ? `<div class="flow-step-details">${escapeHtml(step.details)}</div>` : ''}
             </li>
         `).join('');
     }

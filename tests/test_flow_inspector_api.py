@@ -32,7 +32,7 @@ def sample_task_with_flow(tracer):
     task_id = uuid4()
 
     # Utwórz trace
-    trace = tracer.create_trace(task_id, "Wygeneruj kod funkcji sortującej")
+    tracer.create_trace(task_id, "Wygeneruj kod funkcji sortującej")
 
     # Dodaj kroki symulujące przepływ decyzyjny
     tracer.add_step(

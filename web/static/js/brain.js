@@ -327,25 +327,34 @@ function showNodeDetails(node) {
     title.textContent = data.label;
     
     // Buduj zawartość
+    // Helper function do escapowania HTML
+    const escapeHtml = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+    
     let html = '';
     
     html += `<div class="detail-row">
         <div class="detail-label">Typ</div>
-        <div class="detail-value"><code>${data.type}</code></div>
+        <div class="detail-value"><code>${escapeHtml(data.type)}</code></div>
     </div>`;
     
     html += `<div class="detail-row">
         <div class="detail-label">ID</div>
-        <div class="detail-value"><code>${data.id}</code></div>
+        <div class="detail-value"><code>${escapeHtml(data.id)}</code></div>
     </div>`;
     
     // Dodatkowe właściwości
     if (data.properties) {
         for (const [key, value] of Object.entries(data.properties)) {
             if (key !== 'id' && key !== 'label' && key !== 'type') {
+                const safeKey = escapeHtml(key);
+                const safeValue = escapeHtml(JSON.stringify(value));
                 html += `<div class="detail-row">
-                    <div class="detail-label">${key}</div>
-                    <div class="detail-value">${JSON.stringify(value)}</div>
+                    <div class="detail-label">${safeKey}</div>
+                    <div class="detail-value">${safeValue}</div>
                 </div>`;
             }
         }
@@ -371,9 +380,10 @@ function hideNodeDetails() {
 
 // Aktualizuj statystyki w Alpine
 function updateStats(stats) {
-    // Alpine reactive update
-    const alpineData = Alpine.$data(document.querySelector('.brain-controls'));
-    if (alpineData) {
+    // Bezpośrednia aktualizacja DOM - kompatybilne z Alpine.js v3
+    const statsContainer = document.querySelector('.brain-controls');
+    if (statsContainer && statsContainer.__x) {
+        const alpineData = statsContainer.__x.$data;
         alpineData.stats.nodes = stats.nodes || 0;
         alpineData.stats.edges = stats.edges || 0;
     }
@@ -381,8 +391,10 @@ function updateStats(stats) {
 
 // Aktualizuj status w Alpine
 function updateStatus(status) {
-    const alpineData = Alpine.$data(document.querySelector('.brain-controls'));
-    if (alpineData) {
+    // Bezpośrednia aktualizacja DOM - kompatybilne z Alpine.js v3
+    const statsContainer = document.querySelector('.brain-controls');
+    if (statsContainer && statsContainer.__x) {
+        const alpineData = statsContainer.__x.$data;
         alpineData.status = status;
     }
 }

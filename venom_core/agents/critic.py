@@ -28,13 +28,24 @@ TWOJA ROLA:
 - Sprawdzaj poprawność typowania
 - Weryfikuj obecność dokumentacji (docstringi)
 - Oceniaj czytelność i zgodność z best practices
+- DIAGNOZUJ źródło błędu - jeśli błąd wskazuje na problem w innym pliku (np. ImportError, błąd w importowanym module), wskaż dokładną ścieżkę do problematycznego pliku
 
 ZASADY OCENY:
 1. Jeśli kod jest BEZPIECZNY i DOBREJ JAKOŚCI → odpowiedz: "APPROVED"
-2. Jeśli znajdziesz problemy → wylistuj je precyzyjnie w formie:
+
+2. Jeśli znajdziesz problemy TYLKO W ANALIZOWANYM KODZIE (błędy składni, logiki, bezpieczeństwa w tym pliku) → 
+   wylistuj je precyzyjnie w formie tekstowej:
    - Opis problemu
    - Lokalizacja (numer linii jeśli możliwe)
    - Sugerowana poprawa
+
+3. Jeśli błąd pochodzi z INNEGO PLIKU niż analizowany kod (np. ImportError z brakującej funkcji w module, 
+   AttributeError z importowanego obiektu) → odpowiedz TYLKO w formacie JSON:
+   {
+     "analysis": "Szczegółowa analiza problemu i wskazanie źródłowego pliku",
+     "suggested_fix": "Konkretna sugestia naprawy w pliku źródłowym",
+     "target_file_change": "ścieżka/do/pliku.py"
+   }
 
 PRZYKŁADY PROBLEMÓW DO WYKRYCIA:
 ❌ Hardcoded API keys (np. api_key = "sk-...")
@@ -44,8 +55,19 @@ PRZYKŁADY PROBLEMÓW DO WYKRYCIA:
 ❌ Brak docstringów
 ❌ SQL queries bez parametryzacji
 ❌ Niebezpieczne komendy shell (rm -rf, eval)
+❌ ImportError - brakująca funkcja/klasa w module
+❌ AttributeError - brak atrybutu w importowanym obiekcie
 
-PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstruktywny."""
+PRZYKŁAD DIAGNOSTYKI:
+Jeśli test `test_api.py` pada z błędem: "ImportError: cannot import name 'process_data' from 'api'"
+→ Odpowiedz JSON-em wskazując plik źródłowy:
+{
+  "analysis": "Test failed because function 'process_data' is missing in api.py",
+  "suggested_fix": "Implement function 'process_data' in api.py",
+  "target_file_change": "api.py"
+}
+
+PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstruktywny i precyzyjny."""
 
     def __init__(self, kernel: Kernel):
         """
@@ -152,3 +174,62 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
 
         report += "\nPOPRAW powyższe problemy i wygeneruj kod ponownie."
         return report
+
+    def analyze_error(self, error_output: str) -> dict:
+        """
+        Analizuje błąd i próbuje wyciągnąć diagnostykę w formacie JSON.
+
+        Args:
+            error_output: Output z błędem (np. stderr z testów)
+
+        Returns:
+            Dict z kluczami:
+            - analysis: str - analiza błędu
+            - suggested_fix: str - sugerowana naprawa
+            - target_file_change: str | None - ścieżka do pliku wymagającego naprawy
+        """
+        import json
+
+        # Domyślna odpowiedź jeśli nie uda się sparsować JSON
+        default_response = {
+            "analysis": error_output[:500] if error_output else "Brak szczegółów błędu",
+            "suggested_fix": "Przeanalizuj błąd i popraw kod",
+            "target_file_change": None,
+        }
+
+        if not error_output:
+            return default_response
+
+        # Szukaj JSON w odpowiedzi - próbuj znaleźć kompletne obiekty JSON
+        # Strategia: szukaj { i próbuj sparsować od tego miejsca do najbliższego }
+        start_idx = error_output.find("{")
+        if start_idx == -1:
+            return default_response
+
+        # Próbuj różne końcówki (od najbliższego } do najdalszego)
+        # Ogranicz liczbę prób do ostatnich 10 pozycji dla wydajności
+        end_positions = [
+            i for i, char in enumerate(error_output[start_idx:], start_idx)
+            if char == "}"
+        ]
+
+        for end_idx in reversed(end_positions[-10:]):
+            try:
+                json_str = error_output[start_idx : end_idx + 1]
+                parsed = json.loads(json_str)
+
+                # Walidacja wymaganych pól
+                if (
+                    isinstance(parsed, dict)
+                    and "analysis" in parsed
+                    and "suggested_fix" in parsed
+                ):
+                    return {
+                        "analysis": parsed.get("analysis", ""),
+                        "suggested_fix": parsed.get("suggested_fix", ""),
+                        "target_file_change": parsed.get("target_file_change"),
+                    }
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        return default_response

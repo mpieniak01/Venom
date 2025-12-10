@@ -376,6 +376,13 @@ class LessonsStore:
             )
             start, end = end, start
 
+        # Normalizuj zakres do UTC jeśli aware - tylko raz przed pętlą
+        start_normalized = start
+        end_normalized = end
+        if start.tzinfo is not None and end.tzinfo is not None:
+            start_normalized = start.astimezone(timezone.utc)
+            end_normalized = end.astimezone(timezone.utc)
+
         deleted_count = 0
         # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
         for lesson_id in list(self.lessons.keys()):
@@ -387,28 +394,25 @@ class LessonsStore:
 
                 # Normalizuj datetime dla porównania - konwertuj oba do naive UTC
                 # jeśli są w różnych strefach czasowych
-                if start.tzinfo is None and lesson_time.tzinfo is not None:
+                if start_normalized.tzinfo is None and lesson_time.tzinfo is not None:
                     # Konwertuj aware lesson_time do naive UTC zachowując wartość czasu
                     lesson_time_utc = lesson_time.astimezone(timezone.utc)
                     lesson_time = lesson_time_utc.replace(tzinfo=None)
                     logger.debug(
                         f"Konwersja lekcji {lesson_id} z aware do naive UTC dla porównania"
                     )
-                elif start.tzinfo is not None and lesson_time.tzinfo is None:
+                elif start_normalized.tzinfo is not None and lesson_time.tzinfo is None:
                     # Zakres jest aware, ale lekcja naive - zakładamy że lekcja jest w UTC
                     logger.info(
                         f"Lekcja {lesson_id} ma naive timestamp - zakładam UTC dla porównania"
                     )
                     lesson_time = lesson_time.replace(tzinfo=timezone.utc)
-                    # Teraz możemy porównywać aware datetime
-                elif start.tzinfo is not None and lesson_time.tzinfo is not None:
-                    # Oba aware - normalizuj do UTC dla spójności
-                    start = start.astimezone(timezone.utc)
-                    end = end.astimezone(timezone.utc)
+                elif start_normalized.tzinfo is not None and lesson_time.tzinfo is not None:
+                    # Oba aware - normalizuj lesson_time do UTC
                     lesson_time = lesson_time.astimezone(timezone.utc)
 
-                # Sprawdź czy jest w zakresie
-                if start <= lesson_time <= end:
+                # Sprawdź czy jest w zakresie (użyj normalized values)
+                if start_normalized <= lesson_time <= end_normalized:
                     del self.lessons[lesson_id]
                     deleted_count += 1
             except (ValueError, AttributeError) as e:

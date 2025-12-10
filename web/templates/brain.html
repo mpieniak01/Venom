@@ -256,6 +256,14 @@
             <input type="checkbox" id="filter-memories" x-model="filters.memories" @change="applyFilters()">
             <span>💡 Lekcje</span>
         </label>
+        <label class="filter-label" for="filter-functions">
+            <input type="checkbox" id="filter-functions" x-model="filters.functions" @change="applyFilters()">
+            <span>⚙️ Funkcje</span>
+        </label>
+        <label class="filter-label" for="filter-classes">
+            <input type="checkbox" id="filter-classes" x-model="filters.classes" @change="applyFilters()">
+            <span>🔶 Klasy</span>
+        </label>
     </div>
 </div>
 
@@ -293,7 +301,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.store('brain', {
         stats: { nodes: 0, edges: 0 },
         status: 'Ładowanie...',
-        filters: { agents: true, files: true, memories: true }
+        filters: { agents: true, files: true, memories: true, functions: true, classes: true }
     });
 });
 </script>

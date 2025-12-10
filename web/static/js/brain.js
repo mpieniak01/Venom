@@ -14,7 +14,9 @@ function brainControls() {
         filters: {
             agents: true,
             files: true,
-            memories: true
+            memories: true,
+            functions: true,
+            classes: true
         },
         
         applyFilters() {
@@ -32,6 +34,12 @@ function brainControls() {
             }
             if (!this.filters.memories) {
                 cy.nodes('[type="memory"]').style('display', 'none');
+            }
+            if (!this.filters.functions) {
+                cy.nodes('[type="function"]').style('display', 'none');
+            }
+            if (!this.filters.classes) {
+                cy.nodes('[type="class"]').style('display', 'none');
             }
             
             // Ukryj krawędzie, których źródło lub cel jest ukryte (batchowo)
@@ -123,6 +131,30 @@ async function initGraph() {
                         'border-color': '#34d399',
                         'width': 70,
                         'height': 70
+                    }
+                },
+                
+                // Funkcje/Metody - okrąg, pomarańczowy
+                {
+                    selector: 'node[type="function"]',
+                    style: {
+                        'shape': 'round-rectangle',
+                        'background-color': '#f59e0b',
+                        'border-color': '#fbbf24',
+                        'width': 55,
+                        'height': 55
+                    }
+                },
+                
+                // Klasy - sześciokąt, różowy
+                {
+                    selector: 'node[type="class"]',
+                    style: {
+                        'shape': 'hexagon',
+                        'background-color': '#ec4899',
+                        'border-color': '#f472b6',
+                        'width': 65,
+                        'height': 65
                     }
                 },
                 
@@ -320,7 +352,9 @@ function showNodeDetails(node) {
     const icons = {
         'agent': '🔷',
         'file': '📄',
-        'memory': '💡'
+        'memory': '💡',
+        'function': '⚙️',
+        'class': '🔶'
     };
     icon.textContent = icons[data.type] || '📦';
     title.textContent = data.label;

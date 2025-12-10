@@ -158,7 +158,7 @@ class StrategyDashboard {
             if (!response.ok) {
                 throw new Error('Failed to create roadmap');
             }
-            const data = await response.json();
+            await response.json();
             this.showNotification('Roadmapa utworzona! Milestones i Tasks zostały wygenerowane.', 'success');
             this.loadRoadmap();
         } catch (error) {

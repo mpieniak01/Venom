@@ -38,6 +38,9 @@ class TaskRequest(BaseModel):
 
     content: str
     images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
+    store_knowledge: bool = Field(
+        default=True, description="Czy zapisywać lekcje i wnioski z tego zadania"
+    )
 
 
 class Intent(BaseModel):

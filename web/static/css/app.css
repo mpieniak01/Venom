@@ -2332,3 +2332,57 @@ body[class*="theme-"] .header {
     font-weight: 600;
     color: var(--warning-color);
 }
+
+/* ============================================ */
+/* Lab Mode Toggle (Knowledge Hygiene Suite) */
+/* ============================================ */
+
+.lab-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 8px 12px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    user-select: none;
+}
+
+.lab-mode-toggle:hover {
+    background: var(--bg-hover);
+    border-color: var(--primary-color);
+}
+
+.lab-mode-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--secondary-color);
+}
+
+.lab-mode-icon {
+    font-size: 1.2rem;
+}
+
+.lab-mode-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.lab-mode-toggle input[type="checkbox"]:checked + .lab-mode-icon {
+    filter: brightness(1.2);
+}
+
+.lab-mode-toggle input[type="checkbox"]:checked ~ .lab-mode-text {
+    color: var(--secondary-color);
+}
+
+/* Responsive adjustment */
+@media (max-width: 768px) {
+    .lab-mode-text {
+        display: none;
+    }
+}

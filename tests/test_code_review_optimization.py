@@ -1,6 +1,6 @@
 """Testy dla optymalizacji samo-naprawy w CodeReviewLoop."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -101,8 +101,8 @@ async def test_error_loop_detection(
     # Assert - powinno wykryć pętlę i przerwać
     assert "🔄 Wykryto pętlę błędów" in result
     assert f"{MAX_ERROR_REPEATS} razy" in result
-    # Nie powinno wykonać wszystkich MAX_REPAIR_ATTEMPTS
-    assert mock_coder_agent.process.call_count <= MAX_ERROR_REPEATS
+    # Powinno wykonać dokładnie MAX_ERROR_REPEATS wywołań (pierwsze + naprawy do wykrycia pętli)
+    assert mock_coder_agent.process.call_count == MAX_ERROR_REPEATS
 
 
 # --- Test limitu budżetu ---

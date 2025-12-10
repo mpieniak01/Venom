@@ -4,6 +4,7 @@ from uuid import UUID
 
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
+from venom_core.config import SETTINGS
 from venom_core.core.state_manager import StateManager
 from venom_core.core.token_economist import TokenEconomist
 from venom_core.execution.skills.file_skill import FileSkill
@@ -142,11 +143,12 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 generated_code = await self.coder_agent.process(repair_prompt)
 
             # Estymuj koszt tej iteracji (użyj modelu z konfiguracji lub domyślnego)
-            from venom_core.config import SETTINGS
-
             model_name = getattr(SETTINGS, "DEFAULT_COST_MODEL", "gpt-3.5-turbo")
+            
+            # Użyj rzeczywistego prompta do estymacji kosztów
+            actual_prompt = user_request if attempt == 1 else repair_prompt
             estimated_cost = self.token_economist.estimate_request_cost(
-                prompt=user_request + (critic_feedback or ""),
+                prompt=actual_prompt,
                 expected_output_tokens=len(generated_code) // 4,
                 model_name=model_name,
             )
@@ -175,6 +177,8 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
 
             # Krok 4: Wykrywanie pętli błędów (Loop Detection)
             error_hash = hash(critic_feedback)
+            # Wykrywamy pętlę, jeśli ten sam błąd pojawił się już MAX_ERROR_REPEATS-1 razy
+            # (łącznie z bieżącym wystąpieniem będzie MAX_ERROR_REPEATS)
             if self.previous_errors.count(error_hash) >= MAX_ERROR_REPEATS - 1:
                 loop_msg = f"🔄 Wykryto pętlę błędów: ten sam błąd wystąpił {MAX_ERROR_REPEATS} razy. Model nie potrafi tego naprawić."
                 self.state_manager.add_log(task_id, loop_msg)
@@ -195,7 +199,7 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
             # Sprawdź czy Krytyk wskazuje na inny plik
             target_file_change = diagnostic.get("target_file_change")
             if target_file_change and target_file_change != current_file:
-                new_file = diagnostic["target_file_change"]
+                new_file = target_file_change
                 self.state_manager.add_log(
                     task_id,
                     f"🔀 Zmiana celu naprawy: {current_file or '(brak)'} -> {new_file}",

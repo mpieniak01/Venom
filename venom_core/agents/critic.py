@@ -32,14 +32,18 @@ TWOJA ROLA:
 
 ZASADY OCENY:
 1. Jeśli kod jest BEZPIECZNY i DOBREJ JAKOŚCI → odpowiedz: "APPROVED"
-2. Jeśli znajdziesz problemy → wylistuj je precyzyjnie w formie:
+
+2. Jeśli znajdziesz problemy TYLKO W ANALIZOWANYM KODZIE (błędy składni, logiki, bezpieczeństwa w tym pliku) → 
+   wylistuj je precyzyjnie w formie tekstowej:
    - Opis problemu
    - Lokalizacja (numer linii jeśli możliwe)
    - Sugerowana poprawa
-3. Jeśli błąd pochodzi z INNEGO PLIKU (np. ImportError, błędna funkcja w module) → odpowiedz w formacie JSON:
+
+3. Jeśli błąd pochodzi z INNEGO PLIKU niż analizowany kod (np. ImportError z brakującej funkcji w module, 
+   AttributeError z importowanego obiektu) → odpowiedz TYLKO w formacie JSON:
    {
-     "analysis": "Szczegółowa analiza problemu",
-     "suggested_fix": "Konkretna sugestia naprawy",
+     "analysis": "Szczegółowa analiza problemu i wskazanie źródłowego pliku",
+     "suggested_fix": "Konkretna sugestia naprawy w pliku źródłowym",
      "target_file_change": "ścieżka/do/pliku.py"
    }
 
@@ -203,12 +207,13 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
             return default_response
 
         # Próbuj różne końcówki (od najbliższego } do najdalszego)
+        # Ogranicz liczbę prób do ostatnich 10 pozycji dla wydajności
         end_positions = [
             i for i, char in enumerate(error_output[start_idx:], start_idx)
             if char == "}"
         ]
 
-        for end_idx in reversed(end_positions):
+        for end_idx in reversed(end_positions[-10:]):
             try:
                 json_str = error_output[start_idx : end_idx + 1]
                 parsed = json.loads(json_str)

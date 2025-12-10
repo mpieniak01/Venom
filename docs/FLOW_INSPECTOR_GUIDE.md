@@ -4,6 +4,15 @@
 
 Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom w czasie rzeczywistym. Pozwala zrozumieć, dlaczego system podjął daną decyzję (np. wybrał konkretnego agenta, wszedł w tryb The Council).
 
+### Dostępne wersje:
+
+1. **Flow Inspector** (`/flow-inspector`) - podstawowa wersja z automatycznym odświeżaniem
+2. **Interactive Inspector** (`/inspector`) - zaawansowana wersja z pełną interaktywnością:
+   - Alpine.js do zarządzania stanem
+   - svg-pan-zoom do nawigacji po diagramach
+   - Klikalne elementy z panelem szczegółów JSON
+   - Interaktywne kontrolki zoom (przyciski + kółko myszy)
+
 ## ✨ Główne Funkcje
 
 - **Dynamiczna wizualizacja** - diagramy Mermaid.js Sequence Diagram pokazujące przepływ zadania
@@ -15,13 +24,48 @@ Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom
 
 ### 1. Dostęp do Flow Inspector
 
-Przejdź do Flow Inspector klikając na link **🔀 Flow Inspector** w nawigacji lub bezpośrednio pod adresem:
+Przejdź do Flow Inspector klikając na link w nawigacji:
 
-```
-http://localhost:8000/flow-inspector
-```
+- **🔀 Flow Inspector** - podstawowa wersja: `http://localhost:8000/flow-inspector`
+- **🔍 Inspector** - interaktywna wersja: `http://localhost:8000/inspector`
 
-### 2. Wybór zadania do analizy
+### 2. Interactive Inspector - Zaawansowane funkcje
+
+#### Układ interfejsu:
+
+1. **Sidebar (lewy panel)** - Lista śladów zadań
+   - Wyświetla ostatnie 50 zadań
+   - Kolorowe ramki wg statusu (zielona/czerwona/pomarańczowa/niebieska)
+   - Przycisk "🔄" do odświeżania listy
+
+2. **Diagram Panel (górny panel główny)** - Interaktywny diagram sekwencji
+   - Kontrolki zoom: 🔍+ (Zoom In), 🔍- (Zoom Out), ↺ (Reset)
+   - Zoom kółkiem myszy
+   - Przeciąganie myszą (pan) do nawigacji
+   - Klikalne elementy
+
+3. **Details Panel (dolny panel główny)** - Szczegóły kroku
+   - Surowy JSON wybranego kroku
+   - Aktualizowany po kliknięciu elementu na diagramie
+
+#### Interaktywność:
+
+✅ **Zoom & Pan:**
+- Kółko myszy - zoom in/out
+- Przeciąganie myszą - przesuwanie diagramu
+- Przyciski 🔍+/🔍-/↺ - kontrolki zoom
+
+✅ **Klikalne elementy:**
+- Kliknij na strzałkę (message) - pokaż szczegóły kroku
+- Kliknij na notatkę (note) - pokaż szczegóły Decision Gate
+- Kliknij na aktora - pokaż informacje o komponencie
+
+✅ **Decision Gates:**
+- Wyróżnione żółtym tłem na diagramie
+- Emoji 🔀 w opisie
+- Dodatkowe informacje w panelu szczegółów
+
+### 3. Wybór zadania do analizy (obie wersje)
 
 W sekcji "📋 Wybierz zadanie do analizy" zobaczysz listę ostatnich zadań:
 
@@ -60,7 +104,18 @@ Decision Gates są wyróżnione **pomarańczowym tłem** i mają badge **🔀 De
 
 ### 4. Auto-refresh
 
-Jeśli zadanie jest nadal w trakcie (PROCESSING), Flow Inspector automatycznie odświeża dane co 3 sekundy.
+**Flow Inspector (podstawowy):** Jeśli zadanie jest nadal w trakcie (PROCESSING), automatycznie odświeża dane co 3 sekundy.
+
+**Interactive Inspector:** Wymaga ręcznego odświeżenia przyciskiem.
+
+## 🔒 Bezpieczeństwo
+
+Interactive Inspector implementuje następujące mechanizmy bezpieczeństwa:
+
+- **Input sanitization** - wszystkie dane użytkownika (nazwy komponentów, akcje, szczegóły) są sanityzowane przed renderowaniem
+- **Mermaid securityLevel: 'strict'** - zapobiega atakom XSS
+- **Library validation** - sprawdzanie dostępności bibliotek CDN (Mermaid.js, svg-pan-zoom, Alpine.js)
+- **Error handling** - graceful degradation gdy biblioteki nie są dostępne
 
 ## 🎯 Przykłady użycia
 
@@ -150,10 +205,19 @@ System rozpoznaje następujące typy Decision Gates:
 
 ## 💡 Tips & Tricks
 
+### Flow Inspector (podstawowy):
 1. **Filtrowanie** - użyj przycisku "🔄 Odśwież" aby załadować najnowsze zadania
-2. **Live monitoring** - pozostaw otwartą stronę Flow Inspector podczas wykonywania zadania, aby zobaczyć przepływ w czasie rzeczywistym
-3. **Debugging** - Decision Gates pomagają zrozumieć, dlaczego system wybrał konkretną ścieżkę wykonania
-4. **Historia** - wszystkie zadania są zapisywane, możesz wrócić do analizy starszych zadań
+2. **Live monitoring** - pozostaw otwartą stronę podczas wykonywania zadania
+
+### Interactive Inspector:
+1. **Nawigacja** - użyj kółka myszy i przeciągania dla dużych diagramów
+2. **Eksploracja** - klikaj elementy aby zobaczyć szczegóły JSON
+3. **Reset widoku** - przycisk ↺ przywraca początkowe ustawienie zoom
+4. **Debugging** - panel szczegółów pokazuje pełne dane każdego kroku
+
+### Obie wersje:
+1. **Debugging** - Decision Gates pomagają zrozumieć, dlaczego system wybrał konkretną ścieżkę wykonania
+2. **Historia** - wszystkie zadania są zapisywane, możesz wrócić do analizy starszych zadań
 
 ## 🐛 Troubleshooting
 
@@ -162,12 +226,21 @@ System rozpoznaje następujące typy Decision Gates:
 - Wykonaj przynajmniej jedno zadanie przez system
 
 ### Diagram nie renderuje się
-- Sprawdź konsolę JavaScript w przeglądarce
+- Sprawdź konsolę JavaScript w przeglądarce (F12)
 - Upewnij się, że Mermaid.js jest załadowany (powinien być w base.html)
+- **Interactive Inspector:** Sprawdź czy biblioteki CDN są dostępne (Alpine.js, svg-pan-zoom)
 
 ### Brak Decision Gates w diagramie
 - Upewnij się, że używasz najnowszej wersji Orchestrator z wzbogaconym logowaniem
 - Decision Gates są dodawane tylko dla zadań wykonanych po wdrożeniu tej funkcji
+
+### Interactive Inspector - brak interaktywności
+- Sprawdź konsolę JavaScript - powinny być komunikaty o inicjalizacji
+- Sprawdź połączenie internetowe (CDN libraries)
+- Odśwież stronę (Ctrl+F5)
+
+### Błędy bezpieczeństwa CSP (Content Security Policy)
+- Interactive Inspector używa CDN - upewnij się, że CSP pozwala na `cdn.jsdelivr.net`
 
 ## 🔗 Powiązane dokumenty
 
@@ -206,6 +279,21 @@ Rezultat: Coder generuje -> Critic sprawdza -> iteracje -> akceptacja
 
 ---
 
-**Wersja:** 1.0  
+## 📚 Technologie
+
+### Flow Inspector (podstawowy):
+- Vanilla JavaScript
+- Mermaid.js (sequence diagrams)
+- Fetch API
+
+### Interactive Inspector:
+- **Alpine.js 3.13.3** - reactive state management
+- **svg-pan-zoom 3.6.1** - interactive diagram navigation
+- **Mermaid.js 10.6.1** - sequence diagram rendering
+- **Pure CSS3** - flexbox layout, no build tools required
+
+---
+
+**Wersja:** 2.0  
 **Data:** 2024-12-10  
 **Autor:** Venom Team

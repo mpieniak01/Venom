@@ -1,5 +1,6 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
+from openai import BadRequestError
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
@@ -88,10 +89,28 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                 function_choice_behavior=FunctionChoiceBehavior.Auto()
             )
 
-            # Wywołaj model z możliwością auto-wywołania funkcji
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
-            )
+            try:
+                # Wywołaj model z możliwością auto-wywołania funkcji
+                response = await chat_service.get_chat_message_content(
+                    chat_history=chat_history,
+                    settings=settings,
+                    kernel=self.kernel,
+                )
+            except BadRequestError as api_error:
+                message = str(api_error)
+                if "does not support tools" in message.lower():
+                    logger.warning(
+                        "Model nie wspiera function calling - przełączam na tryb bez funkcji."
+                    )
+                    fallback_settings = OpenAIChatPromptExecutionSettings(
+                        function_choice_behavior=FunctionChoiceBehavior.Disabled()
+                    )
+                    response = await chat_service.get_chat_message_content(
+                        chat_history=chat_history,
+                        settings=fallback_settings,
+                    )
+                else:
+                    raise
 
             result = str(response).strip()
             logger.info(f"ChatAgent wygenerował odpowiedź ({len(result)} znaków)")

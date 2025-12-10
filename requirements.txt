@@ -107,7 +107,7 @@ bleach                  # HTML sanitization for safe widget rendering
 
 # Desktop Awareness & Proactive Assistance (THE_SHADOW)
 pyperclip               # Cross-platform clipboard access
-win10toast              # Windows 10/11 Toast Notifications (Windows only)
+win10toast; platform_system == "Windows"  # Toast notifications dostępne tylko na Windows
 
 # Visual GUI Automation (THE_GHOST)
 pyautogui>=0.9.54       # GUI automation (mouse, keyboard) - stable version

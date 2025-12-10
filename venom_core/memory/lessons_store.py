@@ -326,6 +326,7 @@ class LessonsStore:
             Liczba usuniętych lekcji
         """
         if n <= 0:
+            logger.warning(f"delete_last_n wywołano z niepoprawną wartością n: {n}")
             return 0
 
         # Pobierz wszystkie lekcje posortowane po timestamp (od najnowszych)
@@ -406,6 +407,7 @@ class LessonsStore:
             Liczba usuniętych lekcji
         """
         if not tag:
+            logger.warning("delete_by_tag wywołano z pustym tagiem")
             return 0
 
         deleted_count = 0

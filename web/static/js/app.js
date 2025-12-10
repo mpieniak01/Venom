@@ -144,10 +144,10 @@ class VenomDashboard {
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
-                console.log('WebSocket connected');
+                console.log('Połączono z WebSocket');
                 this.updateConnectionStatus(true);
                 this.reconnectAttempts = 0;
-                this.addLogEntry('info', 'Connected to Venom Telemetry');
+                this.addLogEntry('info', 'Połączono z telemetrią Venoma');
             };
 
             this.ws.onmessage = (event) => {
@@ -160,17 +160,17 @@ class VenomDashboard {
             };
 
             this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.addLogEntry('error', 'WebSocket connection error');
+                console.error('Błąd WebSocket:', error);
+                this.addLogEntry('error', 'Błąd połączenia WebSocket');
             };
 
             this.ws.onclose = () => {
-                console.log('WebSocket closed');
+                console.log('Połączenie WebSocket zamknięte');
                 this.updateConnectionStatus(false);
                 this.attemptReconnect();
             };
         } catch (error) {
-            console.error('Cannot create WebSocket:', error);
+            console.error('Nie można utworzyć WebSocket:', error);
             this.updateConnectionStatus(false);
         }
     }
@@ -180,23 +180,23 @@ class VenomDashboard {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
-            this.addLogEntry('warning', `Reconnecting in ${delay/1000}s... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            this.addLogEntry('warning', `Ponowna próba za ${delay/1000}s... (podejście ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
             setTimeout(() => {
                 this.initWebSocket();
             }, delay);
         } else {
-            this.addLogEntry('error', 'Cannot connect to server. Please refresh the page.');
+            this.addLogEntry('error', 'Nie można połączyć z serwerem. Odśwież stronę.');
         }
     }
 
     updateConnectionStatus(connected) {
         if (connected) {
             this.elements.connectionStatus.classList.add('connected');
-            this.elements.statusText.textContent = 'Connected';
+            this.elements.statusText.textContent = 'Połączono';
         } else {
             this.elements.connectionStatus.classList.remove('connected');
-            this.elements.statusText.textContent = 'Disconnected';
+            this.elements.statusText.textContent = 'Rozłączono';
         }
     }
 
@@ -299,7 +299,7 @@ class VenomDashboard {
         if (data && data.task_id) {
             this.tasks.set(data.task_id, {
                 id: data.task_id,
-                content: data.content || 'New task',
+                content: data.content || 'Nowe zadanie',
                 status: 'PENDING',
                 created: new Date()
             });
@@ -340,20 +340,20 @@ class VenomDashboard {
 
     handlePlanCreated(data) {
         // Could add plan visualization here
-        this.addChatMessage('assistant', 'Plan created - details in Live Feed', 'Architect');
+        this.addChatMessage('assistant', 'Plan utworzony - szczegóły w transmisji na żywo', 'Architekt');
     }
 
     handleHealingStarted(data) {
         if (data && data.task_id) {
             this.showNotification('🔄 Rozpoczynam automatyczne testy i naprawy', 'info');
-            this.addChatMessage('assistant', `Uruchamiam pętlę samonaprawy (max ${data.max_iterations} iteracji)`, 'Guardian');
+            this.addChatMessage('assistant', `Uruchamiam pętlę samonaprawy (max ${data.max_iterations} iteracji)`, 'Strażnik');
         }
     }
 
     handleTestRunning(data) {
         if (data && data.task_id) {
             const iterationInfo = data.iteration ? ` - Próba ${data.iteration}` : '';
-            this.addChatMessage('assistant', `🔍 Uruchamiam testy${iterationInfo}`, 'Guardian');
+            this.addChatMessage('assistant', `🔍 Uruchamiam testy${iterationInfo}`, 'Strażnik');
         }
     }
 
@@ -362,13 +362,13 @@ class VenomDashboard {
             if (data.success) {
                 // Testy przeszły ✅
                 this.showNotification('✅ Wszystkie testy przeszły pomyślnie!', 'success');
-                this.addChatMessage('assistant', `✅ ${message}`, 'Guardian');
+                this.addChatMessage('assistant', `✅ ${message}`, 'Strażnik');
 
                 // Pokaż zielony pasek
                 this.showTestProgressBar(data.task_id, true, data.iterations || 1);
             } else {
                 // Testy nie przeszły ❌
-                this.addChatMessage('assistant', `❌ ${message}`, 'Guardian');
+                this.addChatMessage('assistant', `❌ ${message}`, 'Strażnik');
 
                 // Pokaż czerwony pasek
                 this.showTestProgressBar(data.task_id, false, data.iteration || 1);
@@ -381,13 +381,13 @@ class VenomDashboard {
             this.showNotification('⚠️ Nie udało się naprawić kodu automatycznie', 'warning');
             this.addChatMessage('assistant',
                 `⚠️ FAIL FAST: Nie udało się naprawić kodu w ${data.iterations} iteracjach. Wymagana interwencja ręczna.`,
-                'Guardian'
+                'Strażnik'
             );
 
             // Pokaż fragment raportu jeśli dostępny
             if (data.final_report) {
                 const reportPreview = data.final_report.substring(0, 200);
-                this.addChatMessage('assistant', `Ostatni raport: ${reportPreview}...`, 'Guardian');
+                this.addChatMessage('assistant', `Ostatni raport: ${reportPreview}...`, 'Strażnik');
             }
         }
     }
@@ -395,7 +395,7 @@ class VenomDashboard {
     handleHealingError(data) {
         if (data && data.task_id) {
             this.showNotification('❌ Błąd podczas pętli samonaprawy', 'error');
-            this.addChatMessage('assistant', `❌ Błąd: ${data.error}`, 'Guardian');
+            this.addChatMessage('assistant', `❌ Błąd: ${data.error}`, 'Strażnik');
         }
     }
 
@@ -483,20 +483,20 @@ class VenomDashboard {
         } else {
             messageDiv.textContent = content;
         }
-        
+
         // Dashboard v2.5: Research source badge
         if (metadata && metadata.search_source) {
             const badge = document.createElement('span');
             badge.className = 'research-source-badge';
-            
+
             if (metadata.search_source === 'google_grounding') {
                 badge.classList.add('google-grounded');
-                badge.textContent = '🌍 Google Grounded';
+                badge.textContent = '🌍 Źródło: Google Grounding';
             } else if (metadata.search_source === 'duckduckgo') {
                 badge.classList.add('web-search');
-                badge.textContent = '🦆 Web Search';
+                badge.textContent = '🦆 Wyszukiwanie w sieci';
             }
-            
+
             messageDiv.appendChild(badge);
         }
 
@@ -505,13 +505,13 @@ class VenomDashboard {
         if (metadata && typeof metadata === 'object' && metadata.model_name) {
             const badge = document.createElement('span');
             badge.className = metadata.is_paid ? 'model-badge paid' : 'model-badge free';
-            
+
             const icon = metadata.is_paid ? '⚡' : '🤖';
-            const modelName = metadata.model_name || 'Unknown';
-            
+            const modelName = metadata.model_name || 'Nieznany';
+
             badge.textContent = `${icon} ${modelName}`;
-            badge.title = `Provider: ${metadata.provider || 'unknown'}`;
-            
+            badge.title = `Dostawca: ${metadata.provider || 'nieznany'}`;
+
             messageDiv.appendChild(badge);
         }
 
@@ -558,7 +558,14 @@ class VenomDashboard {
 
             const statusDiv = document.createElement('div');
             statusDiv.className = 'task-status';
-            statusDiv.textContent = `Status: ${task.status}`;
+            const statusLabels = {
+                'PENDING': 'Oczekuje',
+                'PROCESSING': 'W toku',
+                'COMPLETED': 'Zakończone',
+                'FAILED': 'Błąd'
+            };
+            const statusLabel = statusLabels[task.status] || task.status;
+            statusDiv.textContent = `Status: ${statusLabel}`;
 
             taskItem.appendChild(contentDiv);
             taskItem.appendChild(statusDiv);
@@ -567,7 +574,7 @@ class VenomDashboard {
             if (task.status === 'PROCESSING') {
                 const abortBtn = document.createElement('button');
                 abortBtn.className = 'task-abort-btn';
-                abortBtn.textContent = '⛔ Stop';
+                abortBtn.textContent = '⛔ Zatrzymaj';
                 abortBtn.dataset.taskId = task.id;
                 abortBtn.title = 'Przerwij zadanie';
                 taskItem.appendChild(abortBtn);
@@ -652,7 +659,7 @@ class VenomDashboard {
                 }
             });
         }
-        
+
         // History: Close modal on Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.elements.historyModal && this.elements.historyModal.style.display === 'flex') {
@@ -761,12 +768,12 @@ class VenomDashboard {
             // Clear input
             this.elements.taskInput.value = '';
 
-            this.addLogEntry('info', `Task sent: ${result.task_id}`);
+        this.addLogEntry('info', `Zadanie wysłane: ${result.task_id}`);
             this.showNotification('Zadanie wysłane pomyślnie', 'success');
 
         } catch (error) {
             console.error('Error sending task:', error);
-            this.addLogEntry('error', `Cannot send task: ${error.message}`);
+            this.addLogEntry('error', `Nie można wysłać zadania: ${error.message}`);
             this.showNotification('Błąd wysyłania zadania. Sprawdź konsolę.', 'error');
         } finally {
             this.elements.sendButton.disabled = false;
@@ -804,8 +811,8 @@ class VenomDashboard {
             const totalKB = Math.round(metrics.network.total_bytes / 1024);
             const metricNetwork = document.getElementById('metricNetwork');
             if (metricNetwork) {
-                metricNetwork.textContent = totalKB >= 1024 
-                    ? `${(totalKB / 1024).toFixed(1)} MB` 
+                metricNetwork.textContent = totalKB >= 1024
+                    ? `${(totalKB / 1024).toFixed(1)} MB`
                     : `${totalKB} KB`;
             }
         }
@@ -1104,11 +1111,11 @@ class VenomDashboard {
         // Update changes status
         if (hasChanges) {
             this.elements.repoChanges.classList.add('dirty');
-            const filesText = changeCount === 1 ? 'file' : 'files';
-            this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} modified ${filesText}</span>`;
+            const filesText = changeCount === 1 ? 'zmodyfikowany plik' : 'zmodyfikowanych plików';
+            this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} ${filesText}</span>`;
         } else {
             this.elements.repoChanges.classList.remove('dirty');
-            this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Clean</span>`;
+            this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Brak zmian</span>`;
         }
 
         // Re-cache the changesText reference after innerHTML update
@@ -1221,16 +1228,16 @@ class VenomDashboard {
                     <div class="status-item">
                         <span class="status-label">Status:</span>
                         <span class="status-value ${scheduler.is_running ? 'status-active' : 'status-inactive'}">
-                            ${scheduler.is_running ? '🟢 Running' : '🔴 Stopped'}
+                            ${scheduler.is_running ? '🟢 Działa' : '🔴 Zatrzymany'}
                         </span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Jobs Count:</span>
+                        <span class="status-label">Liczba zadań:</span>
                         <span class="status-value">${scheduler.jobs_count}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Paused:</span>
-                        <span class="status-value">${scheduler.paused ? '⏸️ Yes' : '▶️ No'}</span>
+                        <span class="status-label">Wstrzymany:</span>
+                        <span class="status-value">${scheduler.paused ? '⏸️ Tak' : '▶️ Nie'}</span>
                     </div>
                 `;
             }
@@ -1252,7 +1259,7 @@ class VenomDashboard {
             if (data.jobs && data.jobs.length > 0) {
                 jobsDiv.innerHTML = data.jobs.map(job => {
                     // Walidacja i formatowanie daty
-                    let nextRunText = 'N/A';
+                    let nextRunText = 'brak danych';
                     if (job.next_run_time) {
                         try {
                             const date = new Date(job.next_run_time);
@@ -1268,11 +1275,11 @@ class VenomDashboard {
                     <div class="job-item">
                         <div class="job-header">
                             <span class="job-id">${job.id}</span>
-                            <span class="job-type">${job.type || 'interval'}</span>
+                            <span class="job-type">${job.type || 'interwał'}</span>
                         </div>
-                        <div class="job-description">${job.description || 'No description'}</div>
+                        <div class="job-description">${job.description || 'Brak opisu'}</div>
                         <div class="job-next-run">
-                            Next run: ${nextRunText}
+                            Następne uruchomienie: ${nextRunText}
                         </div>
                     </div>
                 `}).join('');
@@ -1300,15 +1307,15 @@ class VenomDashboard {
                     <div class="status-item">
                         <span class="status-label">Status:</span>
                         <span class="status-value ${watcher.is_running ? 'status-active' : 'status-inactive'}">
-                            ${watcher.is_running ? '🟢 Watching' : '🔴 Stopped'}
+                            ${watcher.is_running ? '🟢 Aktywny' : '🔴 Zatrzymany'}
                         </span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Workspace:</span>
+                        <span class="status-label">Katalog roboczy:</span>
                         <span class="status-value">${watcher.workspace_root}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Monitoring:</span>
+                        <span class="status-label">Monitorowane rozszerzenia:</span>
                         <span class="status-value">${watcher.monitoring_extensions.join(', ')}</span>
                     </div>
                 `;
@@ -1332,13 +1339,13 @@ class VenomDashboard {
                 const documenter = data.documenter;
                 statusDiv.innerHTML = `
                     <div class="status-item">
-                        <span class="status-label">Enabled:</span>
+                        <span class="status-label">Włączony:</span>
                         <span class="status-value ${documenter.enabled ? 'status-active' : 'status-inactive'}">
-                            ${documenter.enabled ? '🟢 Yes' : '🔴 No'}
+                            ${documenter.enabled ? '🟢 Tak' : '🔴 Nie'}
                         </span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Processing Files:</span>
+                        <span class="status-label">Przetwarzane pliki:</span>
                         <span class="status-value">${documenter.processing_files}</span>
                     </div>
                 `;
@@ -1362,22 +1369,22 @@ class VenomDashboard {
                 const gardener = data.gardener;
                 statusDiv.innerHTML = `
                     <div class="status-item">
-                        <span class="status-label">Running:</span>
+                        <span class="status-label">Uruchomiony:</span>
                         <span class="status-value ${gardener.is_running ? 'status-active' : 'status-inactive'}">
-                            ${gardener.is_running ? '🟢 Yes' : '🔴 No'}
+                            ${gardener.is_running ? '🟢 Tak' : '🔴 Nie'}
                         </span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Idle Refactoring:</span>
-                        <span class="status-value">${gardener.idle_refactoring_enabled ? '✅ Enabled' : '❌ Disabled'}</span>
+                        <span class="status-label">Refaktoryzacja w bezczynności:</span>
+                        <span class="status-value">${gardener.idle_refactoring_enabled ? '✅ Aktywna' : '❌ Wyłączona'}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">In Progress:</span>
-                        <span class="status-value">${gardener.idle_refactoring_in_progress ? '🔄 Yes' : '✅ No'}</span>
+                        <span class="status-label">W trakcie:</span>
+                        <span class="status-value">${gardener.idle_refactoring_in_progress ? '🔄 Tak' : '✅ Nie'}</span>
                     </div>
                     <div class="status-item">
-                        <span class="status-label">Last Scan:</span>
-                        <span class="status-value">${gardener.last_scan_time ? new Date(gardener.last_scan_time).toLocaleString() : 'Never'}</span>
+                        <span class="status-label">Ostatnie skanowanie:</span>
+                        <span class="status-value">${gardener.last_scan_time ? new Date(gardener.last_scan_time).toLocaleString() : 'Nigdy'}</span>
                     </div>
                 `;
             }
@@ -1586,7 +1593,7 @@ class VenomDashboard {
         // Update UI
         const micButton = document.getElementById('micButton');
         micButton.classList.remove('recording');
-        micButton.querySelector('.mic-text').textContent = 'Push to Talk';
+        micButton.querySelector('.mic-text').textContent = 'Przytrzymaj i mów';
 
         // Stop audio processing
         if (this.audioProcessor) {
@@ -2126,13 +2133,13 @@ class VenomDashboard {
     async submitIntent(intent) {
         /**
          * Sends an intent (command) to the backend as a new task.
-         * 
+         *
          * Args:
          *     intent: Content of the command to execute (e.g., "Show more details")
          */
         try {
             this.showNotification('Wysyłam polecenie...', 'info');
-            
+
             // Use standard task API to submit intent
             const response = await fetch('/api/v1/tasks', {
                 method: 'POST',
@@ -2194,14 +2201,14 @@ class VenomDashboard {
     async fetchIntegrationsStatus() {
         try {
             const response = await fetch('/api/v1/system/services');
-            
+
             if (!response.ok) {
                 console.error('Failed to fetch integrations status');
                 return;
             }
 
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 this.renderIntegrationsMatrix(data.services, data.summary);
             }
@@ -2253,13 +2260,13 @@ class VenomDashboard {
             const statusCell = document.createElement('td');
             const statusBadge = document.createElement('span');
             statusBadge.className = 'service-status-badge';
-            
+
             const statusDot = document.createElement('span');
             statusDot.className = `service-status-dot ${service.status}`;
-            
+
             const statusText = document.createElement('span');
             statusText.textContent = service.status.toUpperCase();
-            
+
             statusBadge.appendChild(statusDot);
             statusBadge.appendChild(statusText);
             statusCell.appendChild(statusBadge);
@@ -2269,7 +2276,7 @@ class VenomDashboard {
             const latencyCell = document.createElement('td');
             const latencySpan = document.createElement('span');
             latencySpan.className = 'service-latency';
-            
+
             if (service.status === 'online') {
                 const latency = service.latency_ms;
                 if (latency < 100) {
@@ -2283,7 +2290,7 @@ class VenomDashboard {
             } else {
                 latencySpan.textContent = '-';
             }
-            
+
             latencyCell.appendChild(latencySpan);
             row.appendChild(latencyCell);
 
@@ -2312,11 +2319,11 @@ class VenomDashboard {
 
     handleSkillStarted(data) {
         if (!data) return;
-        
+
         const skill = data.skill;
         const action = data.action || '';
         const is_external = data.is_external || false;
-        
+
         if (!skill) return;
 
         const operationId = `${skill}-${Date.now()}`;
@@ -2351,7 +2358,7 @@ class VenomDashboard {
 
     handleSkillCompleted(data) {
         if (!data) return;
-        
+
         const skill = data.skill;
         if (!skill) return;
 
@@ -2421,7 +2428,7 @@ class VenomDashboard {
 
         try {
             const response = await fetch('/api/v1/history/requests?limit=50');
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -2467,8 +2474,8 @@ class VenomDashboard {
                 const timeText = document.createElement('div');
                 timeText.className = 'time-text';
                 const createdDate = new Date(request.created_at);
-                const duration = request.duration_seconds 
-                    ? `(${request.duration_seconds.toFixed(1)}s)` 
+                const duration = request.duration_seconds
+                    ? `(${request.duration_seconds.toFixed(1)}s)`
                     : '';
                 timeText.textContent = `${this.formatTime(createdDate)} ${duration}`;
                 timeCell.appendChild(timeText);
@@ -2501,7 +2508,7 @@ class VenomDashboard {
 
         try {
             const response = await fetch(`/api/v1/history/requests/${requestId}`);
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -2511,9 +2518,9 @@ class VenomDashboard {
             // Render request info
             const createdDate = new Date(detail.created_at);
             const finishedDate = detail.finished_at ? new Date(detail.finished_at) : null;
-            const duration = detail.duration_seconds 
-                ? `${detail.duration_seconds.toFixed(2)}s` 
-                : 'N/A';
+            const duration = detail.duration_seconds
+                ? `${detail.duration_seconds.toFixed(2)}s`
+                : 'brak danych';
 
             let html = `
                 <div class="request-info">
@@ -2558,7 +2565,7 @@ class VenomDashboard {
                 detail.steps.forEach(step => {
                     const stepDate = new Date(step.timestamp);
                     const isError = step.status === 'error';
-                    
+
                     html += `
                         <div class="timeline-item">
                             <div class="timeline-dot ${isError ? 'status-error' : ''}"></div>
@@ -2611,12 +2618,12 @@ class VenomDashboard {
     formatTime(date) {
         const now = new Date();
         const diff = now - date;
-        
+
         // Handle future dates (clock skew)
         if (diff < 0) {
             return 'just now';
         }
-        
+
         const seconds = Math.floor(diff / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
@@ -2654,7 +2661,7 @@ class VenomDashboard {
 
         // Initial poll
         await pollQueue();
-        
+
         // Poll every 2 seconds
         setInterval(pollQueue, 2000);
     }
@@ -2667,7 +2674,7 @@ class VenomDashboard {
         } catch (err) {
             console.error('Błąd przy aktualizacji queueActive:', err);
         }
-        
+
         try {
             if (this.elements.queuePending) {
                 this.elements.queuePending.textContent = status.pending || 0;
@@ -2675,7 +2682,7 @@ class VenomDashboard {
         } catch (err) {
             console.error('Błąd przy aktualizacji queuePending:', err);
         }
-        
+
         try {
             if (this.elements.queueLimit && status.limit) {
                 this.elements.queueLimit.textContent = status.limit;
@@ -2694,8 +2701,8 @@ class VenomDashboard {
                     const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
                     if (btnIcon) btnIcon.textContent = '▶️';
                     const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
-                    if (btnText) btnText.textContent = 'RESUME';
-                    
+                    if (btnText) btnText.textContent = 'WZNÓW';
+
                     // Visual feedback - yellow mode
                     if (this.elements.governancePanel) {
                         this.elements.governancePanel.classList.add('paused');
@@ -2707,8 +2714,8 @@ class VenomDashboard {
                     const btnIcon = this.elements.pauseResumeBtn.querySelector('.btn-icon');
                     if (btnIcon) btnIcon.textContent = '⏸️';
                     const btnText = this.elements.pauseResumeBtn.querySelector('.btn-text');
-                    if (btnText) btnText.textContent = 'PAUSE';
-                    
+                    if (btnText) btnText.textContent = 'PAUZA';
+
                     // Remove yellow mode
                     if (this.elements.governancePanel) {
                         this.elements.governancePanel.classList.remove('paused');
@@ -2723,11 +2730,11 @@ class VenomDashboard {
     async handlePauseResume() {
         const btn = this.elements.pauseResumeBtn;
         const currentState = btn.dataset.state;
-        
+
         try {
             const endpoint = currentState === 'running' ? '/api/v1/queue/pause' : '/api/v1/queue/resume';
             const response = await fetch(endpoint, { method: 'POST' });
-            
+
             if (response.ok) {
                 const result = await response.json();
                 this.showNotification(result.message, 'info');
@@ -2753,7 +2760,7 @@ class VenomDashboard {
 
         try {
             const response = await fetch('/api/v1/queue/purge', { method: 'POST' });
-            
+
             if (response.ok) {
                 const result = await response.json();
                 this.showNotification(`Kolejka wyczyszczona: ${result.removed} zadań usuniętych`, 'warning');
@@ -2769,16 +2776,16 @@ class VenomDashboard {
     }
 
     async handleEmergencyStop() {
-        if (!confirm('🚨 EMERGENCY STOP! Czy na pewno chcesz zatrzymać WSZYSTKIE zadania? System zostanie wstrzymany.')) {
+        if (!confirm('🚨 AWARYJNE ZATRZYMANIE! Czy na pewno chcesz zatrzymać WSZYSTKIE zadania? System zostanie wstrzymany.')) {
             return;
         }
 
         try {
             const response = await fetch('/api/v1/queue/emergency-stop', { method: 'POST' });
-            
+
             if (response.ok) {
                 const result = await response.json();
-                this.showNotification(`Emergency Stop: ${result.cancelled} zadań anulowanych, ${result.purged} usuniętych`, 'error');
+                this.showNotification(`Awaryjne zatrzymanie: ${result.cancelled} zadań anulowanych, ${result.purged} usuniętych`, 'error');
                 // Refresh task list
                 await this.refreshTaskList();
             } else {
@@ -2786,7 +2793,7 @@ class VenomDashboard {
             }
         } catch (error) {
             console.error('Error executing emergency stop:', error);
-            this.showNotification('Błąd podczas Emergency Stop', 'error');
+            this.showNotification('Błąd podczas awaryjnego zatrzymania', 'error');
         }
     }
 
@@ -2797,7 +2804,7 @@ class VenomDashboard {
 
         try {
             const response = await fetch(`/api/v1/queue/task/${taskId}/abort`, { method: 'POST' });
-            
+
             if (response.ok) {
                 await response.json();
                 this.showNotification('Zadanie przerwane', 'warning');
@@ -2810,11 +2817,11 @@ class VenomDashboard {
                 }
             } else {
                 const error = await response.json();
-                throw new Error(error.detail || 'Failed to abort task');
+                throw new Error(error.detail || 'Nie udało się przerwać zadania');
             }
         } catch (error) {
             console.error('Error aborting task:', error);
-            this.showNotification(`Błąd: ${error.detail || error.message || 'Failed to abort task'}`, 'error');
+            this.showNotification(`Błąd: ${error.detail || error.message || 'Nie udało się przerwać zadania'}`, 'error');
         }
     }
 
@@ -2837,7 +2844,7 @@ class VenomDashboard {
 
         // Initial poll
         await pollTokenomics();
-        
+
         // Poll every 5 seconds
         setInterval(pollTokenomics, 5000);
     }
@@ -2859,20 +2866,20 @@ class VenomDashboard {
 
         const entry = document.createElement('div');
         entry.className = 'terminal-entry';
-        
+
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
-        
+
         entry.innerHTML = `
             <span class="terminal-timestamp">[${timestamp}]</span>
             <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
             <span class="terminal-message">${this.escapeHtml(message)}</span>
         `;
-        
+
         terminal.appendChild(entry);
-        
+
         // Auto-scroll
         terminal.scrollTop = terminal.scrollHeight;
-        
+
         // Limit entries
         while (terminal.children.length > 100) {
             terminal.removeChild(terminal.firstChild);
@@ -2916,7 +2923,7 @@ class VenomDashboard {
 
         // Initial poll
         await pollCostMode();
-        
+
         // Poll every 5 seconds
         setInterval(pollCostMode, 5000);
     }
@@ -2929,11 +2936,11 @@ class VenomDashboard {
 
         // Zaktualizuj label i style
         if (enabled) {
-            this.elements.costModeLabel.textContent = '💸 Pro Mode';
+            this.elements.costModeLabel.textContent = '💸 Tryb Pro';
             this.elements.costModeLabel.classList.add('pro-mode');
             this.elements.costModeLabel.classList.remove('eco-mode');
         } else {
-            this.elements.costModeLabel.textContent = '🌿 Eco Mode';
+            this.elements.costModeLabel.textContent = '🌿 Tryb Eco';
             this.elements.costModeLabel.classList.add('eco-mode');
             this.elements.costModeLabel.classList.remove('pro-mode');
         }
@@ -2990,22 +2997,22 @@ class VenomDashboard {
             }
 
             const result = await response.json();
-            
+
             // Zaktualizuj UI
             this.updateCostModeUI(enable);
-            
+
             // Pokaż notyfikację
             if (enable) {
-                this.showNotification('💸 Pro Mode włączony - Cloud API dostępne', 'warning');
+                this.showNotification('💸 Tryb Pro włączony - dostęp do modeli chmurowych', 'warning');
             } else {
-                this.showNotification('🌿 Eco Mode włączony - tylko lokalne modele', 'info');
+                this.showNotification('🌿 Tryb Eco włączony - tylko lokalne modele', 'info');
             }
 
             console.log('Cost mode changed:', result);
         } catch (error) {
             console.error('Error setting cost mode:', error);
             this.showNotification('Błąd zmiany trybu kosztowego', 'error');
-            
+
             // Przywróć poprzedni stan UI
             if (this.elements.costModeToggle) {
                 this.elements.costModeToggle.checked = !enable;

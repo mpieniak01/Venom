@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Venom Cockpit - Dashboard</title>
+    <title>Venom Cockpit - Panel sterowania</title>
     <link rel="stylesheet" href="/static/css/app.css">
     <!-- Chart.js for data visualization -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -22,7 +22,7 @@
             <div class="header-info">
                 <!-- Cost Mode Switch (Global Cost Guard) -->
                 <div class="cost-mode-switch" id="costModeSwitch">
-                    <span class="cost-mode-label" id="costModeLabel">🌿 Eco Mode</span>
+                    <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
                     <label class="toggle-switch">
                         <input type="checkbox" id="costModeToggle" />
                         <span class="toggle-slider"></span>
@@ -31,11 +31,11 @@
                 <!-- Repository Status -->
                 <div class="repo-status" id="repoStatus">
                     <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
-                    <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Clean</span></span>
+                    <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Brak zmian</span></span>
                     <!-- Quick Actions -->
                     <div class="repo-actions">
-                        <button id="syncRepoBtn" class="btn-repo-action" title="Synchronize repository">🔄</button>
-                        <button id="undoChangesBtn" class="btn-repo-action" title="Undo all changes">↩️</button>
+                        <button id="syncRepoBtn" class="btn-repo-action" title="Synchronizuj repozytorium">🔄</button>
+                        <button id="undoChangesBtn" class="btn-repo-action" title="Cofnij wszystkie zmiany">↩️</button>
                     </div>
                 </div>
                 <!-- Connection Status -->
@@ -46,39 +46,39 @@
             </div>
         </header>
 
-        <!-- Queue Governance Panel (Dashboard v2.3) -->
+        <!-- Panel zarządzania kolejką -->
         <div class="queue-governance-panel">
             <div class="governance-header">
-                <h3>🎛️ Queue Governance</h3>
+                <h3>🎛️ Zarządzanie kolejką</h3>
                 <div class="governance-controls">
-                    <button id="emergencyStopBtn" class="btn-emergency" title="Emergency Stop - anuluj wszystkie zadania">
-                        🚨 Emergency Stop
+                    <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
+                        🚨 Awaryjne zatrzymanie
                     </button>
                 </div>
             </div>
             <div class="governance-metrics">
                 <div class="governance-metric">
-                    <span class="governance-label">Active Tasks</span>
+                    <span class="governance-label">Aktywne zadania</span>
                     <span class="governance-value" id="queueActive">0</span>
                     <span class="governance-limit">/ <span id="queueLimit">5</span></span>
                 </div>
                 <div class="governance-metric">
-                    <span class="governance-label">Queue Depth</span>
+                    <span class="governance-label">Zadania w kolejce</span>
                     <span class="governance-value" id="queuePending">0</span>
                 </div>
                 <div class="governance-metric tokenomics">
-                    <span class="governance-label">Session Cost</span>
+                    <span class="governance-label">Koszt sesji</span>
                     <span class="governance-value cost" id="sessionCost">$0.00</span>
                 </div>
             </div>
             <div class="governance-actions">
                 <button id="pauseResumeBtn" class="btn-queue-action pause" data-state="running">
                     <span class="btn-icon">⏸️</span>
-                    <span class="btn-text">PAUSE</span>
+                    <span class="btn-text">PAUZA</span>
                 </button>
                 <button id="purgeQueueBtn" class="btn-queue-action danger">
                     <span class="btn-icon">🗑️</span>
-                    <span class="btn-text">PURGE QUEUE</span>
+                    <span class="btn-text">WYCZYŚĆ KOLEJKĘ</span>
                 </button>
             </div>
         </div>
@@ -88,7 +88,7 @@
             <!-- Left Panel: Task Monitor -->
             <aside class="left-panel">
                 <div class="panel-header">
-                    <h2>📋 Task Monitor</h2>
+                    <h2>📋 Monitor zadań</h2>
                 </div>
                 <div class="task-list" id="taskList">
                     <p class="empty-state">Brak aktywnych zadań</p>
@@ -98,8 +98,8 @@
             <!-- Center Panel: Chat Console -->
             <main class="center-panel">
                 <div class="panel-header">
-                    <h2>💬 Chat Console</h2>
-                    <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Clear Widgets</button>
+                    <h2>💬 Konsola czatu</h2>
+                    <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
                 </div>
                 <div class="chat-container">
                     <div class="chat-messages" id="chatMessages">
@@ -154,15 +154,15 @@
                 </div>
             </main>
 
-            <!-- Right Panel: Live Feed & Metrics -->
+            <!-- Panel z telemetrią i metrykami -->
             <aside class="right-panel">
                 <!-- Tabs for switching between views -->
                 <div class="panel-tabs">
-                    <button class="tab-button active" data-tab="feed">📡 Live Feed</button>
-                    <button class="tab-button" data-tab="voice">🎤 Voice</button>
-                    <button class="tab-button" data-tab="jobs">⚙️ Jobs</button>
-                    <button class="tab-button" data-tab="memory">🧠 Memory</button>
-                    <button class="tab-button" data-tab="history">📜 History</button>
+                    <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
+                    <button class="tab-button" data-tab="voice">🎤 Głos</button>
+                    <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
+                    <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
+                    <button class="tab-button" data-tab="history">📜 Historia</button>
                 </div>
 
                 <!-- Live Feed Tab -->
@@ -175,7 +175,7 @@
                     </div>
 
                     <div class="panel-header" style="margin-top: 20px;">
-                        <h2>📊 Metrics</h2>
+                        <h2>📊 Metryki</h2>
                     </div>
                     <div class="metrics-container" id="metricsContainer">
                         <div class="metric">
@@ -191,14 +191,14 @@
                             <span class="metric-value" id="metricUptime">0s</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Network I/O</span>
+                            <span class="metric-label">Sieć I/O</span>
                             <span class="metric-value" id="metricNetwork">0 KB</span>
                         </div>
                     </div>
 
                     <!-- Integrations Matrix (Dashboard v2.1) -->
                     <div class="panel-header" style="margin-top: 20px;">
-                        <h2>🔗 Integrations</h2>
+                        <h2>🔗 Integracje</h2>
                     </div>
                     <div class="integrations-matrix" id="integrationsMatrix">
                         <div class="loading-state">Ładowanie...</div>
@@ -206,7 +206,7 @@
 
                     <!-- Active Operations (Dashboard v2.1) -->
                     <div class="panel-header" style="margin-top: 20px;">
-                        <h2>⚡ Active Operations</h2>
+                        <h2>⚡ Aktywne operacje</h2>
                     </div>
                     <div class="active-operations" id="activeOperations">
                         <div class="empty-state">Brak aktywnych operacji</div>
@@ -214,14 +214,14 @@
 
                     <!-- Live Terminal (Dashboard v2.3) -->
                     <div class="panel-header" style="margin-top: 20px;">
-                        <h2>💻 Live Terminal</h2>
+                        <h2>💻 Terminal na żywo</h2>
                         <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
                     </div>
                     <div class="live-terminal" id="liveTerminal">
                         <div class="terminal-entry">
                             <span class="terminal-timestamp">[--:--:--]</span>
                             <span class="terminal-level info">INFO</span>
-                            <span class="terminal-message">Waiting for system logs...</span>
+                            <span class="terminal-message">Oczekiwanie na logi systemowe...</span>
                         </div>
                     </div>
                 </div>
@@ -229,7 +229,7 @@
                 <!-- Voice Command Center Tab -->
                 <div class="tab-content" id="voiceTab">
                     <div class="panel-header">
-                        <h2>🎤 Voice Command Center</h2>
+                        <h2>🎤 Centrum poleceń głosowych</h2>
                     </div>
 
                     <!-- Voice Status -->
@@ -244,7 +244,7 @@
                     <div class="voice-control">
                         <button id="micButton" class="btn-mic" disabled>
                             <span class="mic-icon">🎤</span>
-                            <span class="mic-text">Push to Talk</span>
+                            <span class="mic-text">Przytrzymaj i mów</span>
                         </button>
                         <div class="voice-hint">Trzymaj przycisk i mów</div>
                     </div>
@@ -273,7 +273,7 @@
                     <!-- IoT Status Panel -->
                     <div class="iot-panel" style="margin-top: 20px;">
                         <div class="panel-header">
-                            <h2>🔌 Rider-Pi Status</h2>
+                            <h2>🔌 Status Rider-Pi</h2>
                             <button id="refreshIoTBtn" class="btn-small">🔄</button>
                         </div>
                         <div id="iotStatus" class="iot-status">
@@ -281,15 +281,15 @@
                         </div>
                         <div id="iotMetrics" class="iot-metrics" style="display: none;">
                             <div class="metric">
-                                <span class="metric-label">CPU Temp</span>
+                                <span class="metric-label">Temperatura CPU</span>
                                 <span class="metric-value" id="iotCpuTemp">--°C</span>
                             </div>
                             <div class="metric">
-                                <span class="metric-label">Memory</span>
+                                <span class="metric-label">Pamięć</span>
                                 <span class="metric-value" id="iotMemory">--%</span>
                             </div>
                             <div class="metric">
-                                <span class="metric-label">Disk</span>
+                                <span class="metric-label">Dysk</span>
                                 <span class="metric-value" id="iotDisk">--%</span>
                             </div>
                         </div>
@@ -299,17 +299,17 @@
                 <!-- Background Jobs Tab -->
                 <div class="tab-content" id="jobsTab">
                     <div class="panel-header">
-                        <h2>⚙️ Background Jobs</h2>
+                        <h2>⚙️ Zadania w tle</h2>
                         <div class="job-controls">
-                            <button id="pauseJobsBtn" class="btn-small">⏸️ Pause</button>
-                            <button id="resumeJobsBtn" class="btn-small">▶️ Resume</button>
-                            <button id="refreshJobsBtn" class="btn-small">🔄 Refresh</button>
+                            <button id="pauseJobsBtn" class="btn-small">⏸️ Wstrzymaj</button>
+                            <button id="resumeJobsBtn" class="btn-small">▶️ Wznów</button>
+                            <button id="refreshJobsBtn" class="btn-small">🔄 Odśwież</button>
                         </div>
                     </div>
 
                     <!-- Scheduler Status -->
                     <div class="status-section">
-                        <h3>Scheduler Status</h3>
+                        <h3>Status harmonogramu</h3>
                         <div id="schedulerStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
@@ -317,7 +317,7 @@
 
                     <!-- Active Jobs -->
                     <div class="jobs-section" style="margin-top: 15px;">
-                        <h3>Active Jobs</h3>
+                        <h3>Aktywne zadania</h3>
                         <div id="jobsList" class="jobs-list">
                             <p class="empty-state">Ładowanie zadań...</p>
                         </div>
@@ -325,7 +325,7 @@
 
                     <!-- Watchers Status -->
                     <div class="status-section" style="margin-top: 15px;">
-                        <h3>File Watcher</h3>
+                        <h3>Monitor plików</h3>
                         <div id="watcherStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
@@ -333,7 +333,7 @@
 
                     <!-- Documenter Status -->
                     <div class="status-section" style="margin-top: 15px;">
-                        <h3>Auto-Documentation</h3>
+                        <h3>Auto-dokumentacja</h3>
                         <div id="documenterStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
@@ -341,7 +341,7 @@
 
                     <!-- Gardener Status -->
                     <div class="status-section" style="margin-top: 15px;">
-                        <h3>Auto-Gardening</h3>
+                        <h3>Auto-porządkowanie</h3>
                         <div id="gardenerStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
@@ -413,7 +413,7 @@
     <div id="costModeModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="costModeModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="costModeModalTitle">💸 Włączenie Trybu Pro (Paid Mode)</h2>
+                <h2 id="costModeModalTitle">💸 Włączenie Trybu Pro (tryb płatny)</h2>
                 <button class="modal-close" id="closeCostModeModal" aria-label="Zamknij modal">&times;</button>
             </div>
             <div class="modal-body">

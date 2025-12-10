@@ -478,10 +478,11 @@ body {
     padding: 0.5rem;
     background-color: var(--bg-medium);
     border-bottom: 1px solid var(--border-color);
+    flex-wrap: wrap;
 }
 
 .tab-button {
-    flex: 1;
+    flex: 1 1 120px;
     padding: 0.5rem 1rem;
     background-color: var(--bg-light);
     color: var(--text-secondary);

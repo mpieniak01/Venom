@@ -191,7 +191,9 @@ class EventBroadcaster:
         )
 
         await self.connection_manager.broadcast(event)
-        logger.debug(f"Broadcast: [{event_type}] {message}")
+        # Nie spamuj logami dla standardowych logów systemowych
+        if event_type != EventType.SYSTEM_LOG:
+            logger.debug(f"Broadcast: [{event_type}] {message}")
 
     async def broadcast_log(self, level: str, message: str):
         """

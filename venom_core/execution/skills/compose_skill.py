@@ -34,8 +34,32 @@ class ComposeSkill:
         Args:
             workspace_root: Katalog roboczy (domyślnie z SETTINGS)
         """
-        self.stack_manager = StackManager(workspace_root=workspace_root)
-        logger.info("ComposeSkill zainicjalizowany")
+        self.stack_manager: Optional[StackManager]
+        self.disabled_reason: Optional[str] = None
+
+        try:
+            self.stack_manager = StackManager(workspace_root=workspace_root)
+            logger.info("ComposeSkill zainicjalizowany")
+        except RuntimeError as exc:
+            # Środowisko lokalne często nie ma Dockera – zamiast wywalać cały system
+            # traktujemy ComposeSkill jako opcjonalny i zgłaszamy brak w runtime.
+            self.stack_manager = None
+            self.disabled_reason = str(exc)
+            logger.warning(
+                "ComposeSkill wyłączony - Docker Compose niedostępny: %s", exc
+            )
+
+    def _compose_unavailable_response(self) -> str:
+        """Informuje agenta o braku możliwości użycia Docker Compose."""
+        reason = (
+            self.disabled_reason or "Docker Compose nie jest dostępny w tym środowisku."
+        )
+        return (
+            "❌ ComposeSkill jest niedostępny: "
+            f"{reason}\n"
+            "Zainstaluj Docker + Docker Compose lub uruchom Venom na maszynie z tym środowiskiem, "
+            "aby korzystać z orkiestracji stacków."
+        )
 
     @kernel_function(
         name="create_environment",
@@ -67,6 +91,9 @@ class ComposeSkill:
             Komunikat o sukcesie lub błędzie
         """
         try:
+            if not self.stack_manager:
+                return self._compose_unavailable_response()
+
             # Walidacja nazwy stacka
             if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9]|)$", stack_name):
                 return (
@@ -136,6 +163,8 @@ class ComposeSkill:
             Komunikat o sukcesie lub błędzie
         """
         try:
+            if not self.stack_manager:
+                return self._compose_unavailable_response()
             logger.info(f"Usuwanie środowiska: {stack_name}")
 
             success, message = self.stack_manager.destroy_stack(
@@ -175,6 +204,8 @@ class ComposeSkill:
             Status serwisu i ostatnie logi
         """
         try:
+            if not self.stack_manager:
+                return self._compose_unavailable_response()
             logger.info(f"Sprawdzanie zdrowia serwisu: {service_name} w {stack_name}")
 
             # Pobierz logi serwisu
@@ -209,6 +240,8 @@ class ComposeSkill:
             Lista aktywnych stacków
         """
         try:
+            if not self.stack_manager:
+                return self._compose_unavailable_response()
             running_stacks = self.stack_manager.get_running_stacks()
 
             if not running_stacks:
@@ -244,6 +277,8 @@ class ComposeSkill:
             Status środowiska
         """
         try:
+            if not self.stack_manager:
+                return self._compose_unavailable_response()
             success, status = self.stack_manager.get_stack_status(stack_name)
 
             if success:
@@ -364,7 +399,12 @@ class ComposeSkill:
         if "{{VOLUME_ROOT}}" in processed:
             from pathlib import Path
 
-            volume_root = str(Path(self.stack_manager.workspace_root).resolve())
+            if self.stack_manager:
+                volume_root = str(Path(self.stack_manager.workspace_root).resolve())
+            else:
+                from venom_core.config import SETTINGS
+
+                volume_root = str(Path(SETTINGS.WORKSPACE_ROOT).resolve())
             processed = processed.replace("{{VOLUME_ROOT}}", volume_root)
             logger.info(f"Wstawiono VOLUME_ROOT: {volume_root}")
 

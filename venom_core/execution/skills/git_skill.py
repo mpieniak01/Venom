@@ -186,6 +186,10 @@ class GitSkill:
             logger.debug(f"Status repozytorium: {status}")
             return status
 
+        except InvalidGitRepositoryError as e:
+            message = f"⚠️ Workspace nie jest repozytorium Git: {e}"
+            logger.debug(message)
+            return message
         except Exception as e:
             error_msg = f"❌ Błąd podczas pobierania statusu: {str(e)}"
             logger.error(error_msg)
@@ -394,6 +398,10 @@ class GitSkill:
             logger.debug(f"Aktualny branch: {branch}")
             return branch
 
+        except InvalidGitRepositoryError as e:
+            message = f"⚠️ Workspace nie jest repozytorium Git: {e}"
+            logger.debug(message)
+            return message
         except Exception as e:
             error_msg = f"❌ Błąd podczas pobierania brancha: {str(e)}"
             logger.error(error_msg)

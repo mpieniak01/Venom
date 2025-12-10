@@ -13,6 +13,21 @@ router = APIRouter(prefix="/api/v1/git", tags=["git"])
 _git_skill = None
 
 
+def _is_workspace_git_error(message: str) -> bool:
+    """Sprawdza, czy komunikat pochodzi z GitSkill i oznacza brak repozytorium."""
+    if not isinstance(message, str):
+        return False
+    msg = message.strip()
+    if not msg:
+        return False
+    normalized = msg.lower()
+    return (
+        msg.startswith("❌")
+        or msg.startswith("⚠️")
+        or "nie jest repozytorium git" in normalized
+    )
+
+
 def set_dependencies(git_skill):
     """Ustaw zależności dla routera."""
     global _git_skill
@@ -40,16 +55,22 @@ async def get_git_status():
         # Pobierz aktualny branch
         branch = await _git_skill.get_current_branch()
 
-        # Sprawdź czy to błąd
-        if branch.startswith("❌"):
+        if _is_workspace_git_error(branch):
             return {
                 "status": "error",
                 "is_git_repo": False,
-                "message": "Workspace nie jest repozytorium Git",
+                "message": branch,
             }
 
-        # Pobierz status
+        # Pobierz status repozytorium
         status_output = await _git_skill.get_status()
+        if _is_workspace_git_error(status_output):
+            return {
+                "status": "error",
+                "is_git_repo": False,
+                "branch": branch,
+                "message": status_output,
+            }
 
         # Parsuj status aby określić czy są zmiany
         has_changes = (

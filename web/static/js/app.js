@@ -942,6 +942,11 @@ class VenomDashboard {
             // Refresh data when switching to memory tab
             this.fetchLessons();
             this.fetchGraphSummary();
+        } else if (tabName === 'models') {
+            document.getElementById('modelsTab').classList.add('active');
+            // Load models when switching to models tab
+            this.fetchModels();
+            this.fetchModelsUsage();
         } else if (tabName === 'history') {
             document.getElementById('historyTab').classList.add('active');
             // Load history when switching to history tab
@@ -1096,6 +1101,323 @@ class VenomDashboard {
                 scanButton.textContent = '🔍 Skanuj';
                 scanButton.disabled = false;
             }
+        }
+    }
+
+    // Models Tab Functions (THE_ARMORY)
+    initModelsTab() {
+        // Setup refresh button
+        const refreshModels = document.getElementById('refreshModels');
+        if (refreshModels) {
+            refreshModels.addEventListener('click', () => {
+                this.fetchModels();
+                this.fetchModelsUsage();
+            });
+        }
+
+        // Setup install button
+        const installModelBtn = document.getElementById('installModelBtn');
+        if (installModelBtn) {
+            installModelBtn.addEventListener('click', () => {
+                this.installModel();
+            });
+        }
+
+        // Setup unload all button
+        const unloadAllBtn = document.getElementById('unloadAllBtn');
+        if (unloadAllBtn) {
+            unloadAllBtn.addEventListener('click', () => {
+                this.unloadAllModels();
+            });
+        }
+
+        // Setup input enter key
+        const modelNameInput = document.getElementById('modelNameInput');
+        if (modelNameInput) {
+            modelNameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.installModel();
+                }
+            });
+        }
+    }
+
+    async fetchModels() {
+        try {
+            const response = await fetch('/api/v1/models');
+            const data = await response.json();
+
+            const modelsList = document.getElementById('modelsList');
+            if (!modelsList) return;
+
+            if (data.success && data.models && data.models.length > 0) {
+                modelsList.innerHTML = '';
+                data.models.forEach(model => {
+                    const modelItem = this.createModelElement(model);
+                    modelsList.appendChild(modelItem);
+                });
+            } else {
+                modelsList.innerHTML = '<p class="empty-state">Brak modeli</p>';
+            }
+        } catch (error) {
+            console.error('Error fetching models:', error);
+            const modelsList = document.getElementById('modelsList');
+            if (modelsList) {
+                modelsList.innerHTML = '<p class="empty-state">Błąd ładowania modeli</p>';
+            }
+        }
+    }
+
+    createModelElement(model) {
+        const div = document.createElement('div');
+        div.className = 'model-item';
+        div.style.cssText = 'padding: 10px; margin-bottom: 8px; background: #1f2937; border-radius: 4px; border-left: 3px solid #3b82f6;';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.style.cssText = 'font-weight: bold; color: #e5e7eb;';
+        nameDiv.textContent = model.name;
+
+        const typeSpan = document.createElement('span');
+        typeSpan.style.cssText = 'font-size: 11px; padding: 2px 6px; background: #374151; border-radius: 3px; color: #9ca3af;';
+        typeSpan.textContent = model.type.toUpperCase();
+
+        const info = document.createElement('div');
+        info.style.cssText = 'font-size: 12px; color: #9ca3af; margin-bottom: 8px;';
+        info.textContent = `Rozmiar: ${model.size_gb.toFixed(2)} GB`;
+        if (model.quantization && model.quantization !== 'unknown') {
+            info.textContent += ` | Kwantyzacja: ${model.quantization}`;
+        }
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; gap: 6px;';
+
+        // Activate button
+        const activateBtn = document.createElement('button');
+        activateBtn.textContent = model.active ? '✅ Aktywny' : '🔄 Aktywuj';
+        activateBtn.className = 'btn-small';
+        activateBtn.style.cssText = model.active ? 'background: #10b981;' : '';
+        activateBtn.disabled = model.active;
+        activateBtn.addEventListener('click', () => {
+            this.switchModel(model.name);
+        });
+
+        // Delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '🗑️ Usuń';
+        deleteBtn.className = 'btn-small';
+        deleteBtn.style.cssText = 'background: #ef4444;';
+        deleteBtn.addEventListener('click', () => {
+            this.deleteModel(model.name);
+        });
+
+        actions.appendChild(activateBtn);
+        actions.appendChild(deleteBtn);
+
+        header.appendChild(nameDiv);
+        header.appendChild(typeSpan);
+
+        div.appendChild(header);
+        div.appendChild(info);
+        div.appendChild(actions);
+
+        return div;
+    }
+
+    async fetchModelsUsage() {
+        try {
+            const response = await fetch('/api/v1/models/usage');
+            const data = await response.json();
+
+            if (data.success && data.usage) {
+                const usage = data.usage;
+
+                // Update disk usage
+                const diskUsageEl = document.getElementById('modelsDiskUsage');
+                if (diskUsageEl) {
+                    diskUsageEl.textContent = `${usage.disk_usage_gb.toFixed(2)} GB / ${usage.disk_limit_gb} GB`;
+                }
+
+                // Update VRAM usage
+                const vramUsageEl = document.getElementById('modelsVramUsage');
+                if (vramUsageEl) {
+                    vramUsageEl.textContent = usage.vram_usage_mb > 0 ? `${usage.vram_usage_mb} MB` : 'N/A';
+                }
+
+                // Update models count
+                const modelsCountEl = document.getElementById('modelsCount');
+                if (modelsCountEl) {
+                    modelsCountEl.textContent = usage.models_count;
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching models usage:', error);
+        }
+    }
+
+    async installModel() {
+        const modelNameInput = document.getElementById('modelNameInput');
+        const installBtn = document.getElementById('installModelBtn');
+        const progressDiv = document.getElementById('downloadProgress');
+        const progressBar = document.getElementById('downloadProgressBar');
+        const progressText = document.getElementById('downloadProgressText');
+
+        if (!modelNameInput || !installBtn) return;
+
+        const modelName = modelNameInput.value.trim();
+        if (!modelName) {
+            this.showNotification('Wprowadź nazwę modelu', 'warning');
+            return;
+        }
+
+        try {
+            installBtn.disabled = true;
+            installBtn.textContent = '⏳ Pobieranie...';
+
+            const response = await fetch('/api/v1/models/install', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: modelName })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                // Resource Guard blocked or other error
+                if (response.status === 400) {
+                    this.showNotification('Brak miejsca na dysku! Usuń nieużywane modele.', 'error');
+                } else {
+                    this.showNotification(data.detail || 'Błąd podczas pobierania', 'error');
+                }
+                return;
+            }
+
+            if (data.success) {
+                // Show progress bar
+                if (progressDiv) {
+                    progressDiv.style.display = 'block';
+                    if (progressBar) progressBar.style.width = '10%';
+                    if (progressText) progressText.textContent = `Pobieranie ${modelName}...`;
+                }
+
+                this.showNotification(`Pobieranie ${modelName} rozpoczęte w tle`, 'info');
+                modelNameInput.value = '';
+
+                // Simulate progress (in real scenario, use WebSocket updates)
+                let progress = 10;
+                const progressInterval = setInterval(() => {
+                    progress += 5;
+                    if (progress >= 90) {
+                        clearInterval(progressInterval);
+                        if (progressText) progressText.textContent = 'Finalizowanie...';
+                    }
+                    if (progressBar) progressBar.style.width = `${progress}%`;
+                }, 1000);
+
+                // Refresh models list after some time
+                setTimeout(() => {
+                    clearInterval(progressInterval);
+                    if (progressDiv) progressDiv.style.display = 'none';
+                    if (progressBar) progressBar.style.width = '0%';
+                    this.fetchModels();
+                    this.fetchModelsUsage();
+                    this.showNotification(`Model ${modelName} zainstalowany`, 'success');
+                }, 10000);
+            }
+        } catch (error) {
+            console.error('Error installing model:', error);
+            this.showNotification('Błąd podczas pobierania modelu', 'error');
+        } finally {
+            if (installBtn) {
+                installBtn.disabled = false;
+                installBtn.textContent = '📥 Pobierz';
+            }
+        }
+    }
+
+    async switchModel(modelName) {
+        if (!confirm(`Czy na pewno chcesz aktywować model: ${modelName}?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/models/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: modelName })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.showNotification(`Model ${modelName} aktywowany`, 'success');
+                await this.fetchModels();
+            } else {
+                this.showNotification('Błąd podczas zmiany modelu', 'error');
+            }
+        } catch (error) {
+            console.error('Error switching model:', error);
+            this.showNotification('Błąd podczas zmiany modelu', 'error');
+        }
+    }
+
+    async deleteModel(modelName) {
+        if (!confirm(`Czy na pewno chcesz usunąć model: ${modelName}?\n\nTej operacji nie można cofnąć.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/v1/models/${encodeURIComponent(modelName)}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                if (response.status === 400) {
+                    this.showNotification('Nie można usunąć aktywnego modelu', 'warning');
+                } else {
+                    this.showNotification(data.detail || 'Błąd podczas usuwania', 'error');
+                }
+                return;
+            }
+
+            if (data.success) {
+                this.showNotification(`Model ${modelName} usunięty`, 'success');
+                await this.fetchModels();
+                await this.fetchModelsUsage();
+            }
+        } catch (error) {
+            console.error('Error deleting model:', error);
+            this.showNotification('Błąd podczas usuwania modelu', 'error');
+        }
+    }
+
+    async unloadAllModels() {
+        if (!confirm('🚨 PANIC BUTTON\n\nCzy na pewno chcesz zwolnić wszystkie zasoby modeli?\n\nTo może wymagać restartu serwisu Ollama.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/v1/models/unload-all', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                this.showNotification('Wszystkie zasoby zwolnione', 'success');
+                await this.fetchModels();
+                await this.fetchModelsUsage();
+            } else {
+                this.showNotification('Błąd podczas zwalniania zasobów', 'error');
+            }
+        } catch (error) {
+            console.error('Error unloading models:', error);
+            this.showNotification('Błąd podczas zwalniania zasobów', 'error');
         }
     }
 
@@ -3184,6 +3506,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.venomDashboard.initBackgroundJobsTab();
     // Initialize voice tab
     window.venomDashboard.initVoiceTab();
+    // Initialize models tab (THE_ARMORY)
+    window.venomDashboard.initModelsTab();
     
     // Initialize autonomy polling
     window.venomDashboard.startAutonomyPolling();

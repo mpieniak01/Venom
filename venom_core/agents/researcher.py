@@ -22,18 +22,18 @@ logger = get_logger(__name__)
 def format_grounding_sources(response_metadata: dict) -> str:
     """
     Formatuje źródła z Google Grounding do czytelnej formy.
-    
+
     Args:
         response_metadata: Metadane odpowiedzi z API (grounding_metadata, web_search_queries)
-    
+
     Returns:
         Sformatowana sekcja ze źródłami lub pusty string jeśli brak
     """
     if not response_metadata:
         return ""
-    
+
     sources = []
-    
+
     # Sprawdź grounding_metadata
     grounding_metadata = response_metadata.get("grounding_metadata", {})
     if grounding_metadata and grounding_metadata.get("grounding_chunks"):
@@ -47,17 +47,19 @@ def format_grounding_sources(response_metadata: dict) -> str:
             # Jeśli jest tytuł ale brak URI, dodaj bez linku
             elif title and title != "Brak tytułu":
                 sources.append(f"[{idx}] {title}")
-    
+
     # Sprawdź web_search_queries (alternatywne źródło metadanych)
     web_queries = response_metadata.get("web_search_queries", [])
     if web_queries and not sources:
         for idx, query in enumerate(web_queries, 1):
             sources.append(f"[{idx}] Zapytanie: {query}")
-    
+
     if sources:
-        sources_section = "\n\n---\n📚 Źródła (Google Grounding):\n" + "\n".join(sources)
+        sources_section = "\n\n---\n📚 Źródła (Google Grounding):\n" + "\n".join(
+            sources
+        )
         return sources_section
-    
+
     return ""
 
 
@@ -146,7 +148,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         # Zarejestruj MemorySkill
         memory_skill = MemorySkill()
         self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
-        
+
         # Tracking źródła danych (dla UI badge)
         self._last_search_source = "duckduckgo"  # domyślnie DuckDuckGo
 
@@ -191,12 +193,12 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             )
 
             result = str(response).strip()
-            
+
             # Sprawdź czy odpowiedź zawiera metadane Google Grounding
             response_metadata = {}
-            if hasattr(response, 'metadata'):
+            if hasattr(response, "metadata"):
                 response_metadata = response.metadata or {}
-            
+
             # Dodaj źródła jeśli są dostępne
             sources_section = format_grounding_sources(response_metadata)
             if sources_section:
@@ -206,18 +208,18 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             else:
                 # Jeśli nie ma źródeł z Grounding, oznacz że użyto DuckDuckGo
                 self._last_search_source = "duckduckgo"
-            
+
             logger.info(f"ResearcherAgent wygenerował odpowiedź ({len(result)} znaków)")
             return result
 
         except Exception as e:
             logger.error(f"Błąd podczas przetwarzania przez ResearcherAgent: {e}")
             return f"Wystąpił błąd podczas badania: {str(e)}. Proszę spróbować ponownie lub sformułować pytanie inaczej."
-    
+
     def get_last_search_source(self) -> str:
         """
         Zwraca źródło ostatniego wyszukiwania (dla UI badge).
-        
+
         Returns:
             'google_grounding' lub 'duckduckgo'
         """

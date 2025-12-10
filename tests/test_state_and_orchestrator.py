@@ -116,12 +116,12 @@ def test_state_manager_paid_mode_default(temp_state_file):
 def test_state_manager_set_paid_mode(temp_state_file):
     """Test ustawiania paid_mode."""
     state_manager = StateManager(state_file_path=temp_state_file)
-    
+
     # Włącz paid mode
     state_manager.set_paid_mode(True)
     assert state_manager.is_paid_mode_enabled() is True
     assert state_manager.paid_mode_enabled is True
-    
+
     # Wyłącz paid mode
     state_manager.set_paid_mode(False)
     assert state_manager.is_paid_mode_enabled() is False
@@ -134,13 +134,13 @@ async def test_state_manager_paid_mode_persistence(temp_state_file):
     # Utwórz StateManager i ustaw paid_mode
     state_manager1 = StateManager(state_file_path=temp_state_file)
     state_manager1.set_paid_mode(True)
-    
+
     # Poczekaj na zapis
     await asyncio.sleep(0.5)
-    
+
     # Załaduj nowy StateManager z tego samego pliku
     state_manager2 = StateManager(state_file_path=temp_state_file)
-    
+
     # paid_mode powinien być zachowany
     assert state_manager2.is_paid_mode_enabled() is True
 

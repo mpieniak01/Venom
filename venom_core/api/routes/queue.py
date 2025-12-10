@@ -110,7 +110,9 @@ async def purge_queue():
 
     try:
         result = await _orchestrator.purge_queue()
-        logger.warning(f"Kolejka zadań wyczyszczona przez API - usunięto {result.get('removed', 0)} zadań")
+        logger.warning(
+            f"Kolejka zadań wyczyszczona przez API - usunięto {result.get('removed', 0)} zadań"
+        )
         return result
     except Exception as e:
         logger.exception("Błąd podczas czyszczenia kolejki")
@@ -167,7 +169,8 @@ async def abort_task(task_id: UUID):
 
         if not result.get("success"):
             raise HTTPException(
-                status_code=404, detail=result.get("message", "Nie można przerwać zadania")
+                status_code=404,
+                detail=result.get("message", "Nie można przerwać zadania"),
             )
 
         logger.warning(f"Zadanie {task_id} przerwane przez API")

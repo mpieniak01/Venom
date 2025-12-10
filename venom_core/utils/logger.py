@@ -31,9 +31,9 @@ def log_sink(message):
     """
     if _event_broadcaster is not None:
         # Walidacja typu
-        if not hasattr(message, 'record'):
+        if not hasattr(message, "record"):
             return
-            
+
         # Parsuj rekord loga
         record = message.record
         level = record["level"].name
@@ -50,7 +50,7 @@ def log_sink(message):
                     asyncio.create_task(
                         _event_broadcaster.broadcast_log(level=level, message=msg)
                     )
-                except Exception as exc:
+                except Exception:
                     # Błąd przy tworzeniu zadania - pomijamy aby nie zablokować loggera
                     pass
         except RuntimeError:
@@ -76,4 +76,3 @@ logger.add(log_sink, format="{message}")
 def get_logger(name: str):
     """Zwraca logger z podaną nazwą."""
     return logger.bind(name=name)
-

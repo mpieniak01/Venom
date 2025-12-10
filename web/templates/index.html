@@ -402,6 +402,7 @@
                         <input
                             type="text"
                             id="modelNameInput"
+                            aria-label="Nazwa modelu do pobrania"
                             placeholder="Nazwa modelu (np. llama3)"
                             style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
                         />
@@ -409,7 +410,7 @@
                             📥 Pobierz
                         </button>
                     </div>
-                    <div id="downloadProgress" style="display: none; margin-top: 8px;">
+                    <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
                         <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
                             <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
                         </div>

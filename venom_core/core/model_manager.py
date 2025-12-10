@@ -1,7 +1,6 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
-import json
-import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -565,11 +564,16 @@ PARAMETER top_k 40
             True jeśli sukces, False w przeciwnym razie
         """
         # Sprawdź limit miejsca przed pobraniem
-        # Zakładamy średni rozmiar 4GB dla bezpieczeństwa
-        if not self.check_storage_quota(additional_size_gb=4.0):
+        if not self.check_storage_quota(additional_size_gb=DEFAULT_MODEL_SIZE_GB):
             logger.error("Nie można pobrać modelu - brak miejsca na dysku")
             return False
 
+        # Walidacja nazwy modelu przed subprocess
+        if not model_name or not re.match(r'^[\w\-.:]+$', model_name):
+            logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
+            return False
+
+        process = None
         try:
             # Próba pobrania z Ollama
             logger.info(f"Rozpoczynam pobieranie modelu: {model_name}")
@@ -582,21 +586,27 @@ PARAMETER top_k 40
                 text=True,
             )
 
-            # Streamuj output
-            for line in process.stdout:
-                logger.info(f"Ollama: {line.strip()}")
-                if progress_callback:
-                    progress_callback(line.strip())
+            try:
+                # Streamuj output
+                for line in process.stdout:
+                    logger.info(f"Ollama: {line.strip()}")
+                    if progress_callback:
+                        progress_callback(line.strip())
 
-            return_code = process.wait()
+                return_code = process.wait()
 
-            if return_code == 0:
-                logger.info(f"✅ Model {model_name} pobrany pomyślnie")
-                return True
-            else:
-                stderr = process.stderr.read()
-                logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
-                return False
+                if return_code == 0:
+                    logger.info(f"✅ Model {model_name} pobrany pomyślnie")
+                    return True
+                else:
+                    stderr = process.stderr.read()
+                    logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
+                    return False
+            finally:
+                # Upewnij się, że proces jest zamknięty nawet przy wyjątku
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
 
         except FileNotFoundError:
             logger.error("Ollama nie jest zainstalowane lub niedostępne w PATH")
@@ -622,6 +632,11 @@ PARAMETER top_k 40
                 f"Nie można usunąć aktywnego modelu: {model_name}. "
                 f"Najpierw zmień aktywny model."
             )
+            return False
+
+        # Walidacja nazwy modelu przed subprocess
+        if not model_name or not re.match(r'^[\w\-.:]+$', model_name):
+            logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
         try:
@@ -650,7 +665,12 @@ PARAMETER top_k 40
                     return False
             else:
                 # Usuń lokalny plik/katalog
-                model_path = Path(model_info["path"])
+                model_path = Path(model_info["path"]).resolve()
+                # Sprawdź czy ścieżka jest wewnątrz models_dir (ochrona przed path traversal)
+                if not model_path.is_relative_to(self.models_dir):
+                    logger.error(f"Nieprawidłowa ścieżka modelu: {model_path}")
+                    return False
+                    
                 if model_path.exists():
                     if model_path.is_dir():
                         shutil.rmtree(model_path)
@@ -687,7 +707,7 @@ PARAMETER top_k 40
             # To spowoduje zwolnienie pamięci VRAM/RAM
             try:
                 subprocess.run(
-                    ["pkill", "-f", "ollama"],
+                    ["pkill", "-x", "ollama"],  # -x dla dokładnego dopasowania nazwy
                     capture_output=True,
                     timeout=5,
                 )
@@ -737,8 +757,13 @@ PARAMETER top_k 40
                 timeout=5,
             )
             if result.returncode == 0:
-                vram_used = int(result.stdout.strip().split("\n")[0])
-                metrics["vram_usage_mb"] = vram_used
+                output = result.stdout.strip()
+                # Walidacja: tylko linie z liczbami, obsługa wielu GPU
+                vram_lines = [line for line in output.split("\n") if line.strip().isdigit()]
+                if vram_lines:
+                    # Użyj max z dostępnych GPU (najbardziej obciążony)
+                    vram_used = max(int(line) for line in vram_lines)
+                    metrics["vram_usage_mb"] = vram_used
         except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
             # nvidia-smi nie jest dostępne lub wystąpił błąd
             pass

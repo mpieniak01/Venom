@@ -1183,7 +1183,7 @@ class VenomDashboard {
 
         const typeSpan = document.createElement('span');
         typeSpan.style.cssText = 'font-size: 11px; padding: 2px 6px; background: #374151; border-radius: 3px; color: #9ca3af;';
-        typeSpan.textContent = model.type.toUpperCase();
+        typeSpan.textContent = (model.type || 'unknown').toUpperCase();
 
         const info = document.createElement('div');
         info.style.cssText = 'font-size: 12px; color: #9ca3af; margin-bottom: 8px;';
@@ -1310,24 +1310,43 @@ class VenomDashboard {
                 // TODO: Zastąpić symulacją przez rzeczywisty progress tracking z WebSocket
                 // Simulate progress (temporary - should use WebSocket updates in production)
                 let progress = 10;
-                const progressInterval = setInterval(() => {
-                    progress += 5;
-                    if (progress >= 90) {
-                        clearInterval(progressInterval);
-                        if (progressText) progressText.textContent = 'Finalizowanie...';
-                    }
-                    if (progressBar) progressBar.style.width = `${progress}%`;
-                }, 1000);
+                let progressInterval = null;
+                let checkInterval = null;
 
-                // Refresh models list after some time
-                setTimeout(() => {
-                    clearInterval(progressInterval);
-                    if (progressDiv) progressDiv.style.display = 'none';
-                    if (progressBar) progressBar.style.width = '0%';
-                    this.fetchModels();
-                    this.fetchModelsUsage();
-                    this.showNotification(`Model ${modelName} zainstalowany`, 'success');
-                }, 10000);
+                try {
+                    progressInterval = setInterval(() => {
+                        progress += 5;
+                        if (progress >= 90) {
+                            if (progressInterval) clearInterval(progressInterval);
+                            if (progressText) progressText.textContent = 'Finalizowanie...';
+                        }
+                        if (progressBar) progressBar.style.width = `${progress}%`;
+                    }, 1000);
+
+                    // Zamiast sztywnego timeoutu, okresowo sprawdzaj status instalacji modelu
+                    checkInterval = setInterval(async () => {
+                        try {
+                            const response = await fetch('/api/v1/models');
+                            const data = await response.json();
+                            const model = data.models.find(m => m.name === modelName);
+                            if (model) {
+                                if (checkInterval) clearInterval(checkInterval);
+                                if (progressInterval) clearInterval(progressInterval);
+                                if (progressDiv) progressDiv.style.display = 'none';
+                                if (progressBar) progressBar.style.width = '0%';
+                                this.fetchModels();
+                                this.fetchModelsUsage();
+                                this.showNotification(`Model ${modelName} zainstalowany`, 'success');
+                            }
+                        } catch (error) {
+                            console.error('Error checking model status:', error);
+                        }
+                    }, 5000); // Sprawdzaj co 5 sekund
+                } catch (error) {
+                    if (progressInterval) clearInterval(progressInterval);
+                    if (checkInterval) clearInterval(checkInterval);
+                    throw error;
+                }
             }
         } catch (error) {
             console.error('Error installing model:', error);

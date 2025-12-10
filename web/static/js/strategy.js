@@ -5,6 +5,9 @@ class StrategyDashboard {
         this.API_BASE = '/api';
         this.refreshInterval = null;
 
+        // Add war-room-page class to body
+        document.body.classList.add('war-room-page');
+
         this.initElements();
         this.initEventHandlers();
         this.loadRoadmap();
@@ -211,9 +214,13 @@ class StrategyDashboard {
     }
 
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 }
 

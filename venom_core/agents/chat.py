@@ -100,7 +100,12 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                 if inner:
                     error_text += f" {str(inner).lower()}"
 
-                if "does not support tools" in error_text:
+                kernel_required_error = "kernel is required for function calls"
+
+                if (
+                    "does not support tools" in error_text
+                    or kernel_required_error in error_text
+                ):
                     logger.warning(
                         "Model nie wspiera function calling - przełączam na tryb bez funkcji."
                     )

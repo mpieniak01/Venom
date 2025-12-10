@@ -201,7 +201,7 @@ Wszystkie operacje automatycznie zapisują zmiany na dysku gdy `auto_save=True`.
 ### Unit Tests
 
 ```bash
-cd /home/runner/work/Venom/Venom
+# Z katalogu głównego projektu
 python -m pytest tests/test_knowledge_hygiene.py -v
 ```
 
@@ -273,7 +273,7 @@ class LessonsStore:
 
 ## Changelog
 
-### v1.0.0 (2024-12-10)
+### v1.0.0 (2025-12-10)
 - ✨ Dodano Lab Mode (Memory Freeze)
 - ✨ Dodano Knowledge Pruning API
 - ✨ Dodano UI checkbox dla Lab Mode

@@ -66,11 +66,12 @@ except (ValueError, AttributeError) as e:
 - Proper encoding (UTF-8)
 - No SQL injection risks (JSON-based storage)
 
-### 5. Authentication & Authorization ⚠️
+### 5. Uwierzytelnianie i Autoryzacja ❌
 
-**Current state:** No authentication implemented
-**Risk level:** Low (internal API)
-**Recommendation:** Add authentication before production deployment
+**Stan obecny:** Brak uwierzytelniania i autoryzacji na destrukcyjnych endpointach (np. `/lessons/purge`)
+**Poziom ryzyka:** Wysoki — krytyczna luka bezpieczeństwa. Każdy klient z dostępem sieciowym może wywołać operacje usuwające lub modyfikujące kluczowe dane (np. całą bazę lekcji).
+**Rekomendacja:** Wymagane silne uwierzytelnianie (np. FastAPI dependency wymuszający zalogowanego admina lub `permission_guard`) oraz autoryzacja dla wszystkich destrukcyjnych operacji. Nie polegać na założeniu „wewnętrznej sieci" — endpointy muszą być chronione niezależnie od środowiska.
+**Uwaga:** Pozostawienie tych endpointów bez uwierzytelnienia stanowi poważne zagrożenie dla integralności i dostępności systemu.
 
 ### 6. Information Disclosure ✅
 

@@ -312,7 +312,7 @@ async def purge_all_lessons(
 
     try:
         lesson_count = len(lessons_store.lessons)
-        success = lessons_store.clear_all()
+        lessons_store.clear_all()
 
         logger.warning(f"💣 PURGE: Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)")
 

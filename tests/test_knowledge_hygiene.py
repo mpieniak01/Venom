@@ -1,11 +1,9 @@
 """Testy jednostkowe dla Knowledge Hygiene Suite (Lab Mode i Pruning)."""
 
-import asyncio
 import json
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

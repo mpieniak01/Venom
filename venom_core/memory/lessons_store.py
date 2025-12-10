@@ -372,8 +372,9 @@ class LessonsStore:
         for lesson_id in list(self.lessons.keys()):
             lesson = self.lessons[lesson_id]
             try:
-                # Parsuj timestamp jako ISO 8601
-                lesson_time = datetime.fromisoformat(lesson.timestamp)
+                # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix)
+                timestamp_str = lesson.timestamp.replace('Z', '+00:00')
+                lesson_time = datetime.fromisoformat(timestamp_str)
 
                 # Sprawdź czy jest w zakresie
                 if start <= lesson_time <= end:

@@ -468,6 +468,18 @@ class Orchestrator:
             "get_token_economist niezaimplementowane - dodać getter w KernelBuilder"
         )
 
+    def _should_store_lesson(self, request: TaskRequest) -> bool:
+        """
+        Sprawdza czy należy zapisać lekcję dla danego zadania.
+
+        Args:
+            request: Oryginalne żądanie zadania
+
+        Returns:
+            True jeśli lekcja powinna być zapisana
+        """
+        return request.store_knowledge and ENABLE_META_LEARNING
+
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
         Wykonuje zadanie w tle.
@@ -684,7 +696,7 @@ class Orchestrator:
                 )
 
             # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone i store_knowledge=True)
-            if request.store_knowledge and ENABLE_META_LEARNING:
+            if self._should_store_lesson(request):
                 await self._save_task_lesson(
                     task_id=task_id,
                     context=context,
@@ -726,7 +738,7 @@ class Orchestrator:
                 )
 
             # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone i store_knowledge=True)
-            if request.store_knowledge and ENABLE_META_LEARNING:
+            if self._should_store_lesson(request):
                 await self._save_task_lesson(
                     task_id=task_id,
                     context=context,

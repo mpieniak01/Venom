@@ -150,10 +150,17 @@
                         placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
                         rows="3"
                     ></textarea>
-                    <button id="sendButton" class="btn-primary">
-                        <span>Wyślij</span>
-                        <kbd>Ctrl+Enter</kbd>
-                    </button>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <label class="lab-mode-toggle" title="Lab Mode - zadania nie zapisują lekcji do pamięci">
+                            <input type="checkbox" id="labModeCheckbox" />
+                            <span class="lab-mode-icon">🧪</span>
+                            <span class="lab-mode-text">Lab Mode</span>
+                        </label>
+                        <button id="sendButton" class="btn-primary">
+                            <span>Wyślij</span>
+                            <kbd>Ctrl+Enter</kbd>
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>

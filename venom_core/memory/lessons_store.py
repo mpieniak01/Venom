@@ -315,6 +315,132 @@ class LessonsStore:
         logger.warning(f"Nie znaleziono lekcji do usunięcia: {lesson_id}")
         return False
 
+    def delete_last_n(self, n: int) -> int:
+        """
+        Usuwa n najnowszych lekcji (na podstawie timestamp).
+
+        Args:
+            n: Liczba lekcji do usunięcia
+
+        Returns:
+            Liczba usuniętych lekcji
+        """
+        if n <= 0:
+            return 0
+
+        # Pobierz wszystkie lekcje posortowane po timestamp (od najnowszych)
+        sorted_lessons = sorted(
+            self.lessons.values(), key=lambda lesson: lesson.timestamp, reverse=True
+        )
+
+        # Weź n najnowszych
+        lessons_to_delete = sorted_lessons[:n]
+
+        # Usuń używając kopii kluczy aby uniknąć RuntimeError
+        deleted_count = 0
+        for lesson in lessons_to_delete:
+            if lesson.lesson_id in self.lessons:
+                del self.lessons[lesson.lesson_id]
+                deleted_count += 1
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(f"Usunięto {deleted_count} najnowszych lekcji")
+
+        return deleted_count
+
+    def delete_by_time_range(
+        self, start: datetime, end: datetime
+    ) -> int:
+        """
+        Usuwa lekcje z podanego zakresu czasu.
+
+        Args:
+            start: Data początkowa zakresu (inclusive)
+            end: Data końcowa zakresu (inclusive)
+
+        Returns:
+            Liczba usuniętych lekcji
+        """
+        if start > end:
+            logger.warning("Start date is after end date, swapping them")
+            start, end = end, start
+
+        deleted_count = 0
+        # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
+        for lesson_id in list(self.lessons.keys()):
+            lesson = self.lessons[lesson_id]
+            try:
+                # Parsuj timestamp jako ISO 8601
+                lesson_time = datetime.fromisoformat(lesson.timestamp)
+
+                # Sprawdź czy jest w zakresie
+                if start <= lesson_time <= end:
+                    del self.lessons[lesson_id]
+                    deleted_count += 1
+            except (ValueError, AttributeError) as e:
+                logger.warning(
+                    f"Nie można sparsować timestamp dla lekcji {lesson_id}: {e}"
+                )
+                continue
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(
+                f"Usunięto {deleted_count} lekcji z zakresu {start.isoformat()} - {end.isoformat()}"
+            )
+
+        return deleted_count
+
+    def delete_by_tag(self, tag: str) -> int:
+        """
+        Usuwa lekcje zawierające dany tag.
+
+        Args:
+            tag: Tag do wyszukania
+
+        Returns:
+            Liczba usuniętych lekcji
+        """
+        if not tag:
+            return 0
+
+        deleted_count = 0
+        # Używamy kopii kluczy aby uniknąć RuntimeError podczas iteracji
+        for lesson_id in list(self.lessons.keys()):
+            lesson = self.lessons[lesson_id]
+            if tag in lesson.tags:
+                del self.lessons[lesson_id]
+                deleted_count += 1
+
+        # Zapisz zmiany
+        if deleted_count > 0 and self.auto_save:
+            self.save_lessons()
+            logger.info(f"Usunięto {deleted_count} lekcji z tagiem '{tag}'")
+
+        return deleted_count
+
+    def clear_all(self) -> bool:
+        """
+        Czyści całą bazę lekcji (opcja nuklearna).
+
+        Returns:
+            True jeśli operacja się powiodła
+        """
+        lesson_count = len(self.lessons)
+
+        # Wyczyść słownik
+        self.lessons.clear()
+
+        # Zapisz zmiany
+        if self.auto_save:
+            self.save_lessons()
+
+        logger.warning(f"💣 Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)")
+        return True
+
     def flush(self) -> None:
         """
         Wymusza zapis lekcji na dysku.

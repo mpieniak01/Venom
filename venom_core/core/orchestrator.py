@@ -683,14 +683,19 @@ class Orchestrator:
                     task_id, "System", "complete", status="ok", details="Response sent"
                 )
 
-            # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone)
-            await self._save_task_lesson(
-                task_id=task_id,
-                context=context,
-                intent=intent,
-                result=result,
-                success=True,
-            )
+            # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone i store_knowledge=True)
+            if request.store_knowledge and ENABLE_META_LEARNING:
+                await self._save_task_lesson(
+                    task_id=task_id,
+                    context=context,
+                    intent=intent,
+                    result=result,
+                    success=True,
+                )
+            else:
+                logger.info(
+                    f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
 
             # Inkrementuj licznik ukończonych zadań
             if metrics_collector:
@@ -720,15 +725,20 @@ class Orchestrator:
                     details=f"Error: {str(e)}",
                 )
 
-            # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone)
-            await self._save_task_lesson(
-                task_id=task_id,
-                context=context,
-                intent=intent,
-                result=f"Błąd: {str(e)}",
-                success=False,
-                error=str(e),
-            )
+            # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone i store_knowledge=True)
+            if request.store_knowledge and ENABLE_META_LEARNING:
+                await self._save_task_lesson(
+                    task_id=task_id,
+                    context=context,
+                    intent=intent,
+                    result=f"Błąd: {str(e)}",
+                    success=False,
+                    error=str(e),
+                )
+            else:
+                logger.info(
+                    f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
 
             # Inkrementuj licznik nieudanych zadań
             if metrics_collector:

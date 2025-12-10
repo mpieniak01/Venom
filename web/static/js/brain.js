@@ -42,12 +42,13 @@ function brainControls() {
                 cy.nodes('[type="class"]').style('display', 'none');
             }
             
-            // Ukryj krawędzie, których źródło lub cel jest ukryte (batchowo)
-            const edgesToHide = cy.edges().filter(edge => {
-                const source = edge.source();
-                const target = edge.target();
-                return source.style('display') === 'none' || target.style('display') === 'none';
-            });
+            // Ukryj krawędzie, których źródło lub cel jest ukryte (batchowo, wydajnie)
+            const hiddenNodeIds = new Set(
+                cy.nodes().filter(n => n.style('display') === 'none').map(n => n.id())
+            );
+            const edgesToHide = cy.edges().filter(edge => 
+                hiddenNodeIds.has(edge.source().id()) || hiddenNodeIds.has(edge.target().id())
+            );
             edgesToHide.style('display', 'none');
         }
     };
@@ -360,7 +361,7 @@ function showNodeDetails(node) {
     title.textContent = data.label;
     
     // Buduj zawartość
-    // Funkcja pomocnicza do escapowania HTML (bezpiecznie konwertuje tekst na HTML-escaped string)
+    // Escape HTML characters
     const escapeHtml = (text) => {
         const div = document.createElement('div');
         div.textContent = text;

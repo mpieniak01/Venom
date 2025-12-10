@@ -1,0 +1,45 @@
+<!-- Navbar Component with Autonomy Selector -->
+<nav class="navbar">
+    <div class="navbar-container">
+        <!-- Logo/Brand -->
+        <div class="navbar-brand">
+            <a href="/" class="brand-link">
+                <span class="brand-icon">🕷️</span>
+                <span class="brand-text">Venom</span>
+            </a>
+        </div>
+
+        <!-- Navigation Links -->
+        <div class="navbar-menu">
+            <a href="/" class="nav-link" id="navCockpit">
+                <span class="nav-icon">🎮</span>
+                <span class="nav-text">Kokpit</span>
+            </a>
+            <a href="/strategy" class="nav-link" id="navStrategy">
+                <span class="nav-icon">🎯</span>
+                <span class="nav-text">Strategia</span>
+            </a>
+        </div>
+
+        <!-- Autonomy Level Selector -->
+        <div class="autonomy-selector">
+            <label for="autonomyLevel" class="autonomy-label">
+                <span class="autonomy-icon">🔐</span>
+                <span class="autonomy-text">Poziom Autonomii:</span>
+            </label>
+            <select id="autonomyLevel" class="autonomy-select">
+                <option value="0" data-color="green">🟢 ISOLATED</option>
+                <option value="10" data-color="blue">🔵 CONNECTED</option>
+                <option value="20" data-color="yellow">🟡 FUNDED</option>
+                <option value="30" data-color="orange">🟠 BUILDER</option>
+                <option value="40" data-color="red">🔴 ROOT</option>
+            </select>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="navbar-status">
+            <span class="status-dot" id="navConnectionStatus"></span>
+            <span id="navStatusText">Łączenie...</span>
+        </div>
+    </div>
+</nav>

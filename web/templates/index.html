@@ -10,6 +10,20 @@
     <header class="header">
         <h1>🕷️ Venom Cockpit</h1>
         <div class="header-info">
+            <!-- Autonomy Level Selector (AutonomyGate) -->
+            <div class="autonomy-selector">
+                <label for="autonomyLevel" class="autonomy-label">
+                    <span class="autonomy-icon">🔐</span>
+                    <span class="autonomy-text">Autonomia:</span>
+                </label>
+                <select id="autonomyLevel" class="autonomy-select">
+                    <option value="0" data-color="green">🟢 ISOLATED</option>
+                    <option value="10" data-color="blue">🔵 CONNECTED</option>
+                    <option value="20" data-color="yellow">🟡 FUNDED</option>
+                    <option value="30" data-color="orange">🟠 BUILDER</option>
+                    <option value="40" data-color="red">🔴 ROOT</option>
+                </select>
+            </div>
             <!-- Cost Mode Switch (Global Cost Guard) -->
             <div class="cost-mode-switch" id="costModeSwitch">
                 <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>

@@ -1,6 +1,9 @@
 """Moduł: routes/git - Endpointy API dla Git."""
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from venom_core.utils.logger import get_logger
 
@@ -11,6 +14,12 @@ router = APIRouter(prefix="/api/v1/git", tags=["git"])
 
 # Dependency - będzie ustawione w main.py
 _git_skill = None
+
+
+class InitRepoRequest(BaseModel):
+    """Payload dla inicjalizacji repozytorium."""
+
+    url: Optional[str] = None
 
 
 def _is_workspace_git_error(message: str) -> bool:
@@ -120,6 +129,25 @@ async def get_git_status():
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu Git")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.post("/init")
+async def init_repository(request: InitRepoRequest):
+    """
+    Inicjalizuje repozytorium w workspace lub klonuje istniejące.
+
+    Args:
+        request: Payload zawierający opcjonalny URL do klonowania
+    """
+    if _git_skill is None:
+        raise HTTPException(
+            status_code=503,
+            detail="GitSkill nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+        )
+
+    result = await _git_skill.init_repo(url=request.url)
+    status = "success" if result.startswith("✅") else "error"
+    return {"status": status, "message": result}
 
 
 @router.post("/sync")

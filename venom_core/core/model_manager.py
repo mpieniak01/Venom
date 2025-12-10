@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
+import psutil
 
 from venom_core.utils.logger import get_logger
 
@@ -15,6 +16,7 @@ logger = get_logger(__name__)
 # Konfiguracja Resource Guard
 MAX_STORAGE_GB = 50  # Limit na modele w GB
 DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
+BYTES_IN_GB = 1024**3
 
 
 class ModelVersion:
@@ -727,29 +729,38 @@ PARAMETER top_k 40
 
     async def get_usage_metrics(self) -> Dict[str, Any]:
         """
-        Zwraca metryki użycia zasobów: zajętość dysku i VRAM.
+        Zwraca metryki użycia zasobów: zajętość dysku, CPU/RAM oraz VRAM.
 
         Returns:
             Słownik z metrykami
         """
+        disk_usage_gb = self.get_models_size_gb()
+        memory = psutil.virtual_memory()
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+
         metrics = {
-            "disk_usage_gb": self.get_models_size_gb(),
+            "disk_usage_gb": disk_usage_gb,
             "disk_limit_gb": MAX_STORAGE_GB,
             "disk_usage_percent": (
-                (self.get_models_size_gb() / MAX_STORAGE_GB) * 100
-                if MAX_STORAGE_GB > 0
-                else 0
+                (disk_usage_gb / MAX_STORAGE_GB) * 100 if MAX_STORAGE_GB > 0 else 0
             ),
-            "vram_usage_mb": 0,  # TODO: Wymaga integracji z nvidia-smi lub podobnym narzędziem
+            "cpu_usage_percent": round(cpu_usage, 2),
+            "memory_total_gb": round(memory.total / BYTES_IN_GB, 2),
+            "memory_used_gb": round(memory.used / BYTES_IN_GB, 2),
+            "memory_usage_percent": round(memory.percent, 2),
+            "gpu_usage_percent": None,
+            "vram_usage_mb": 0,
+            "vram_total_mb": None,
+            "vram_usage_percent": None,
             "models_count": len(await self.list_local_models()),
         }
 
-        # Próba pobrania informacji o VRAM z nvidia-smi
+        # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
         try:
             result = subprocess.run(
                 [
                     "nvidia-smi",
-                    "--query-gpu=memory.used",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total",
                     "--format=csv,noheader,nounits",
                 ],
                 capture_output=True,
@@ -757,17 +768,42 @@ PARAMETER top_k 40
                 timeout=5,
             )
             if result.returncode == 0:
-                output = result.stdout.strip()
-                # Walidacja: tylko linie z liczbami, obsługa wielu GPU
-                vram_lines = [
-                    line for line in output.split("\n") if line.strip().isdigit()
+                lines = [
+                    line.strip()
+                    for line in result.stdout.strip().split("\n")
+                    if line.strip()
                 ]
-                if vram_lines:
-                    # Użyj max z dostępnych GPU (najbardziej obciążony)
-                    vram_used = max(int(line) for line in vram_lines)
-                    metrics["vram_usage_mb"] = vram_used
-        except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
-            # nvidia-smi nie jest dostępne lub wystąpił błąd
+
+                gpu_usage_values = []
+                vram_used_values = []
+                vram_total_values = []
+
+                for line in lines:
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) < 3:
+                        continue
+                    try:
+                        gpu_usage_values.append(float(parts[0]))
+                        vram_used_values.append(float(parts[1]))
+                        vram_total_values.append(float(parts[2]))
+                    except ValueError:
+                        continue
+
+                if gpu_usage_values:
+                    metrics["gpu_usage_percent"] = round(max(gpu_usage_values), 2)
+
+                if vram_used_values:
+                    max_index = vram_used_values.index(max(vram_used_values))
+                    metrics["vram_usage_mb"] = round(vram_used_values[max_index], 2)
+                    if max_index < len(vram_total_values):
+                        total_mb = vram_total_values[max_index]
+                        metrics["vram_total_mb"] = round(total_mb, 2)
+                        if total_mb > 0:
+                            metrics["vram_usage_percent"] = round(
+                                (metrics["vram_usage_mb"] / total_mb) * 100, 2
+                            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            # nvidia-smi nie jest dostępne lub wystąpił błąd - ignorujemy
             pass
 
         return metrics

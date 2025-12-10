@@ -1,6 +1,7 @@
 """Moduł: intent_manager - klasyfikacja intencji użytkownika."""
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -13,6 +14,17 @@ logger = get_logger(__name__)
 
 class IntentManager:
     """Menedżer klasyfikacji intencji użytkownika za pomocą Semantic Kernel."""
+
+    HELP_KEYWORDS = [
+        "co potrafisz",
+        "co umiesz",
+        "jakie masz możliwości",
+        "jakie masz umiejętności",
+        "jakie są twoje umiejętności",
+        "pomoc",
+        "help",
+        "kim jesteś",
+    ]
 
     # Prompt systemowy do klasyfikacji intencji
     SYSTEM_PROMPT = """Jesteś systemem klasyfikacji intencji użytkownika. Twoim zadaniem jest przeczytać wejście użytkownika i sklasyfikować je do JEDNEJ z następujących kategorii:
@@ -148,6 +160,11 @@ Przykłady:
         """
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
 
+        normalized = user_input.lower().strip()
+        if any(keyword in normalized for keyword in self.HELP_KEYWORDS):
+            logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
+            return "HELP_REQUEST"
+
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
         chat_history.add_message(
@@ -165,8 +182,10 @@ Przykłady:
             chat_service = self.kernel.get_service()
 
             # Wywołaj model
+            settings = OpenAIChatPromptExecutionSettings()
+
             response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=None
+                chat_history=chat_history, settings=settings
             )
 
             # Wyciągnij czystą odpowiedź (usuń whitespace)

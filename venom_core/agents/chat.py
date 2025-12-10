@@ -163,7 +163,7 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         """
         if enable_functions:
             behavior = FunctionChoiceBehavior.Auto()
-        else:
-            behavior = FunctionChoiceBehavior.NoneInvoke(enable_kernel_functions=False)
+            return OpenAIChatPromptExecutionSettings(function_choice_behavior=behavior)
 
-        return OpenAIChatPromptExecutionSettings(function_choice_behavior=behavior)
+        # Brak funkcji → użyj domyślnych ustawień bez konfiguracji behavior
+        return OpenAIChatPromptExecutionSettings()

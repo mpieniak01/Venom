@@ -675,6 +675,31 @@ class Orchestrator:
                 # Inkrementuj licznik użycia agenta
                 if metrics_collector:
                     metrics_collector.increment_agent_usage(agent_name)
+
+                # Wyślij odpowiedź agenta do dashboardu (np. ChatAgent)
+                formatted_result = ""
+                if isinstance(result, (dict, list)):
+                    import json
+
+                    try:
+                        formatted_result = json.dumps(
+                            result, ensure_ascii=False, indent=2
+                        )
+                    except Exception:
+                        formatted_result = str(result)
+                else:
+                    formatted_result = str(result)
+
+                if formatted_result.strip():
+                    await self._broadcast_event(
+                        event_type="AGENT_ACTION",
+                        message=formatted_result,
+                        agent=agent_name,
+                        data={
+                            "task_id": str(task_id),
+                            "intent": intent,
+                        },
+                    )
             else:
                 logger.error(
                     f"Nie znaleziono agenta dla intencji '{intent}' podczas logowania zadania {task_id}"

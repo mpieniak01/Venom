@@ -607,6 +607,12 @@ async def serve_flow_inspector(request: Request):
     return templates.TemplateResponse("flow_inspector.html", {"request": request})
 
 
+@app.get("/inspector")
+async def serve_inspector(request: Request):
+    """Serwuje Interactive Inspector (Alpine.js + svg-pan-zoom)."""
+    return templates.TemplateResponse("inspector.html", {"request": request})
+
+
 @app.websocket("/ws/events")
 async def websocket_endpoint(websocket: WebSocket):
     """

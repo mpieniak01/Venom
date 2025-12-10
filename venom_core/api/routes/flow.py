@@ -12,6 +12,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["flow"])
 
+# Stałe konfiguracyjne
+MAX_MESSAGE_LENGTH = 40  # Maksymalna długość wiadomości w diagramie Mermaid
+MAX_PROMPT_LENGTH = 50  # Maksymalna długość promptu w diagramie
+
 
 # Modele dla Flow Inspector
 class FlowStep(BaseModel):
@@ -137,7 +141,7 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
 
     # Dodaj interakcje
     lines.append("")
-    lines.append(f'    User->>Orchestrator: {trace.prompt[:50]}...')
+    lines.append(f'    User->>Orchestrator: {trace.prompt[:MAX_PROMPT_LENGTH]}...')
 
     last_component = "Orchestrator"
 
@@ -149,14 +153,14 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
         # Formatuj wiadomość
         if step.is_decision_gate:
             # Decision Gate - specjalne podświetlenie
-            message = f"🔀 {action}: {details[:40]}"
+            message = f"🔀 {action}: {details[:MAX_MESSAGE_LENGTH]}"
             lines.append(f"    Note over {component}: {message}")
         else:
             # Standardowa interakcja
             arrow = "->>" if step.status == "ok" else "--x"
             message = f"{action}"
             if details:
-                message += f": {details[:40]}"
+                message += f": {details[:MAX_MESSAGE_LENGTH]}"
 
             # Rysuj strzałkę od ostatniego komponentu
             if component != last_component:

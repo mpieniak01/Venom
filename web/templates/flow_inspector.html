@@ -336,11 +336,14 @@
 
 {% block extra_js %}
 <script>
+    // Konfiguracja
+    const AUTO_REFRESH_INTERVAL_MS = 3000; // Co 3 sekundy dla zadań w trakcie
+    
     // Inicjalizacja Mermaid
     mermaid.initialize({ 
         startOnLoad: false,
         theme: 'default',
-        securityLevel: 'loose',
+        securityLevel: 'strict',  // Bezpieczniejszy tryb dla production
         sequence: {
             showSequenceNumbers: true,
             actorMargin: 50,
@@ -487,7 +490,7 @@
         stopAutoRefresh();
         refreshInterval = setInterval(() => {
             loadFlowData(taskId);
-        }, 3000); // Co 3 sekundy
+        }, AUTO_REFRESH_INTERVAL_MS);
     }
 
     function stopAutoRefresh() {

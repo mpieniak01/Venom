@@ -37,9 +37,10 @@
 ### 4. Frontend Security
 
 - ✅ **No eval() usage** - No dynamic code execution
-- ✅ **DOMPurify** - Already available in base.html for sanitization
+- ✅ **HTML Escaping** - Custom escapeHtml() function sanitizes all user input before DOM insertion
+- ✅ **XSS prevention** - All user content properly escaped via escapeHtml() helper
 - ✅ **CSP compatible** - No inline scripts that would break CSP
-- ✅ **XSS prevention** - All user content properly escaped
+- ✅ **Null safety** - Optional chaining and fallback values for undefined/null data
 
 ### 5. Data Access Control
 
@@ -78,8 +79,9 @@ Analysis Result for 'python'. Found 0 alerts:
 
 1. **XSS (Cross-Site Scripting)**
    - ✅ Mitigated by Mermaid strict mode
-   - ✅ Mitigated by DOMPurify in base template
-   - ✅ No user-controlled HTML rendering
+   - ✅ Mitigated by custom escapeHtml() function for all user inputs
+   - ✅ No user-controlled HTML rendering without escaping
+   - ✅ All dynamic content sanitized before DOM insertion
 
 2. **DoS (Denial of Service)**
    - ✅ Mitigated by string truncation (40/50 char limits)

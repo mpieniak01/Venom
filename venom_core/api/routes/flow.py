@@ -135,13 +135,16 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
         participants.add(step.component)
 
     # Definicje uczestników (opcjonalne, Mermaid sam je wykryje)
+    participants.discard("User")  # Usuń "User" jeśli istnieje
     for participant in sorted(participants):
-        if participant != "User":
-            lines.append(f"    participant {participant}")
+        lines.append(f"    participant {participant}")
 
     # Dodaj interakcje
     lines.append("")
-    lines.append(f'    User->>Orchestrator: {trace.prompt[:MAX_PROMPT_LENGTH]}...')
+    prompt_text = trace.prompt[:MAX_PROMPT_LENGTH]
+    if len(trace.prompt) > MAX_PROMPT_LENGTH:
+        prompt_text += "..."
+    lines.append(f'    User->>Orchestrator: {prompt_text}')
 
     last_component = "Orchestrator"
 
@@ -153,14 +156,22 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
         # Formatuj wiadomość
         if step.is_decision_gate:
             # Decision Gate - specjalne podświetlenie
-            message = f"🔀 {action}: {details[:MAX_MESSAGE_LENGTH]}"
+            if len(details) > MAX_MESSAGE_LENGTH:
+                detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
+            else:
+                detail_text = details
+            message = f"🔀 {action}: {detail_text}"
             lines.append(f"    Note over {component}: {message}")
         else:
             # Standardowa interakcja
             arrow = "->>" if step.status == "ok" else "--x"
             message = f"{action}"
             if details:
-                message += f": {details[:MAX_MESSAGE_LENGTH]}"
+                if len(details) > MAX_MESSAGE_LENGTH:
+                    detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
+                else:
+                    detail_text = details
+                message += f": {detail_text}"
 
             # Rysuj strzałkę od ostatniego komponentu
             if component != last_component:

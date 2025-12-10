@@ -51,7 +51,6 @@ async def test_orchestrator_logs_decision_gate_for_help_request(
 ):
     """Test czy orchestrator loguje Decision Gate dla HELP_REQUEST."""
     # Setup
-    task_id = uuid4()
     task = orchestrator.state_manager.create_task("Pomóż mi")
     task_id = task.id
 

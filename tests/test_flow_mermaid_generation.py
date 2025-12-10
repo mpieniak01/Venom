@@ -17,7 +17,7 @@ def tracer():
 def test_generate_mermaid_diagram_basic_flow(tracer):
     """Test generowania podstawowego diagramu Mermaid."""
     task_id = uuid4()
-    trace = tracer.create_trace(task_id, "Test request")
+    tracer.create_trace(task_id, "Test request")
     tracer.add_step(task_id, "User", "submit_request", status="ok")
     tracer.add_step(task_id, "Orchestrator", "start_processing", status="ok")
     tracer.add_step(task_id, "CoderAgent", "process_task", status="ok")
@@ -50,7 +50,7 @@ def test_generate_mermaid_diagram_basic_flow(tracer):
 def test_generate_mermaid_diagram_with_decision_gate(tracer):
     """Test generowania diagramu z Decision Gate."""
     task_id = uuid4()
-    trace = tracer.create_trace(task_id, "Test with decision gate")
+    tracer.create_trace(task_id, "Test with decision gate")
     tracer.add_step(
         task_id,
         "Orchestrator",
@@ -95,7 +95,7 @@ def test_generate_mermaid_diagram_with_decision_gate(tracer):
 def test_generate_mermaid_diagram_failed_task(tracer):
     """Test generowania diagramu dla zadania zakończonego błędem."""
     task_id = uuid4()
-    trace = tracer.create_trace(task_id, "Failed task")
+    tracer.create_trace(task_id, "Failed task")
     tracer.add_step(task_id, "Orchestrator", "start_processing", status="ok")
     tracer.add_step(
         task_id, "System", "error", status="error", details="Connection timeout"
@@ -126,7 +126,7 @@ def test_generate_mermaid_diagram_failed_task(tracer):
 def test_generate_mermaid_diagram_processing_task(tracer):
     """Test generowania diagramu dla zadania w trakcie przetwarzania."""
     task_id = uuid4()
-    trace = tracer.create_trace(task_id, "Processing task")
+    tracer.create_trace(task_id, "Processing task")
     tracer.add_step(task_id, "Orchestrator", "start_processing", status="ok")
     tracer.update_status(task_id, TraceStatus.PROCESSING)
 
@@ -197,7 +197,7 @@ def test_generate_mermaid_diagram_multiple_decision_gates(tracer):
 def test_generate_mermaid_diagram_truncates_long_details(tracer):
     """Test czy długie szczegóły są obcinane w diagramie."""
     task_id = uuid4()
-    trace = tracer.create_trace(task_id, "Task with long details")
+    tracer.create_trace(task_id, "Task with long details")
 
     long_details = "A" * 100  # Bardzo długi string
     tracer.add_step(task_id, "Agent", "process", status="ok", details=long_details)

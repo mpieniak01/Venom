@@ -185,7 +185,6 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
             - target_file_change: str | None - ścieżka do pliku wymagającego naprawy
         """
         import json
-        import re
 
         # Domyślna odpowiedź jeśli nie uda się sparsować JSON
         default_response = {
@@ -197,23 +196,35 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         if not error_output:
             return default_response
 
-        # Szukaj JSON w odpowiedzi (może być otoczony tekstem)
-        json_pattern = r'\{[^{}]*"analysis"[^{}]*"suggested_fix"[^{}]*\}'
-        match = re.search(json_pattern, error_output, re.DOTALL)
+        # Szukaj JSON w odpowiedzi - próbuj znaleźć kompletne obiekty JSON
+        # Strategia: szukaj { i próbuj sparsować od tego miejsca do najbliższego }
+        start_idx = error_output.find("{")
+        if start_idx == -1:
+            return default_response
 
-        if match:
+        # Próbuj różne końcówki (od najbliższego } do najdalszego)
+        end_positions = [
+            i for i, char in enumerate(error_output[start_idx:], start_idx)
+            if char == "}"
+        ]
+
+        for end_idx in reversed(end_positions):
             try:
-                json_str = match.group(0)
+                json_str = error_output[start_idx : end_idx + 1]
                 parsed = json.loads(json_str)
 
                 # Walidacja wymaganych pól
-                if "analysis" in parsed and "suggested_fix" in parsed:
+                if (
+                    isinstance(parsed, dict)
+                    and "analysis" in parsed
+                    and "suggested_fix" in parsed
+                ):
                     return {
                         "analysis": parsed.get("analysis", ""),
                         "suggested_fix": parsed.get("suggested_fix", ""),
                         "target_file_change": parsed.get("target_file_change"),
                     }
-            except json.JSONDecodeError as e:
-                logger.warning(f"Nie udało się sparsować JSON z odpowiedzi Krytyka: {e}")
+            except (json.JSONDecodeError, ValueError):
+                continue
 
         return default_response

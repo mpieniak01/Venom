@@ -25,6 +25,9 @@ async def get_knowledge_graph():
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
     
+    UWAGA: Jeśli graf jest pusty, endpoint zwraca przykładowe dane (mock data)
+    z flagą "mock": true w odpowiedzi.
+    
     Format zwracany:
     {
         "elements": {
@@ -59,10 +62,16 @@ async def get_knowledge_graph():
                 category = "file"
                 label = node_data.get("path", node_name)
             elif node_type == "class":
-                category = "agent"
+                # Rozróżnij agentów od zwykłych klas
+                file_path = node_data.get("file", "")
+                if "agents" in file_path or node_data.get("is_agent", False):
+                    category = "agent"
+                else:
+                    category = "class"
                 label = node_name
             elif node_type == "function" or node_type == "method":
-                category = "memory"
+                # Funkcje i metody jako osobna kategoria, nie memory
+                category = "function"
                 label = node_name
             else:
                 category = "file"
@@ -254,6 +263,8 @@ async def trigger_graph_scan():
 
     try:
         stats = _graph_store.scan_workspace()
+        if isinstance(stats, dict) and "error" in stats:
+            raise HTTPException(status_code=500, detail=f"Błąd podczas skanowania: {stats['error']}")
         return {"status": "success", "message": "Skanowanie grafu zostało uruchomione", "stats": stats}
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")

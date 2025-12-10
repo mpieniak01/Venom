@@ -1,10 +1,10 @@
-# venom/main.py
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
@@ -566,14 +566,20 @@ if web_dir.exists():
     app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
     logger.info(f"Static files served from: {web_dir / 'static'}")
 
+# Konfiguracja szablonów Jinja2
+templates = Jinja2Templates(directory=str(web_dir / "templates"))
+
 
 @app.get("/")
-async def serve_dashboard():
-    """Serwuje główny dashboard."""
-    index_path = web_dir / "templates" / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
-    return {"message": "Dashboard niedostępny - brak pliku index.html"}
+async def serve_dashboard(request: Request):
+    """Serwuje główny dashboard (Cockpit)."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/strategy")
+async def serve_strategy(request: Request):
+    """Serwuje War Room (Strategy Dashboard)."""
+    return templates.TemplateResponse("strategy.html", {"request": request})
 
 
 @app.websocket("/ws/events")

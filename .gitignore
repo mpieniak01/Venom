@@ -26,3 +26,6 @@ models/
 venom_core/execution/skills/custom/*.py
 venom_core/execution/skills/custom/test_*.py
 !venom_core/execution/skills/custom/__init__.py
+
+# Template backups
+*.backup

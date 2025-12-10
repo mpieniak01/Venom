@@ -108,7 +108,9 @@ async def get_system_metrics():
         HTTPException: 503 jeśli metrics_collector nie jest dostępny
     """
     if metrics_collector is None:
-        raise HTTPException(status_code=503, detail="Metrics collector nie jest dostępny")
+        raise HTTPException(
+            status_code=503, detail="Metrics collector nie jest dostępny"
+        )
 
     try:
         metrics = metrics_collector.get_metrics()

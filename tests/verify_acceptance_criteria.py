@@ -9,6 +9,12 @@ from venom_core.execution.skills.github_skill import GitHubSkill
 from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 
 
+def _ensure(condition: bool, message: str) -> None:
+    """Raise AssertionError with a helpful message."""
+    if not condition:
+        raise AssertionError(message)
+
+
 def test_kryteria_akceptacji():
     """
     Weryfikacja wszystkich kryteriów akceptacji (DoD):
@@ -48,16 +54,18 @@ def test_kryteria_akceptacji():
         return_value=[mock_repo2, mock_repo1]  # sorted by stars
     )
 
-    result = github_skill.search_repos(query="Python PDF", language="Python", sort="stars")
+    result = github_skill.search_repos(
+        query="Python PDF", language="Python", sort="stars"
+    )
 
     print("Wynik zapytania: 'Znajdź biblioteki Python do PDF'")
     print(result)
 
     # Weryfikacja
-    assert "py-pdf/pypdf" in result, "Brak biblioteki pypdf w wynikach"
-    assert "pymupdf/PyMuPDF" in result, "Brak biblioteki PyMuPDF w wynikach"
-    assert "7,000" in result or "7000" in result, "Brak liczby gwiazdek"
-    assert "github.com" in result, "Brak linków do GitHub"
+    _ensure("py-pdf/pypdf" in result, "Brak biblioteki pypdf w wynikach")
+    _ensure("pymupdf/PyMuPDF" in result, "Brak biblioteki PyMuPDF w wynikach")
+    _ensure("7,000" in result or "7000" in result, "Brak liczby gwiazdek")
+    _ensure("github.com" in result, "Brak linków do GitHub")
 
     print("\n✅ SUKCES: Agent zwraca listę bibliotek z GitHub z gwiazdkami i linkami")
 
@@ -82,26 +90,24 @@ def test_kryteria_akceptacji():
     mock_model2.likes = 100
     mock_model2.tags = ["onnx", "text-classification", "sentiment"]
 
-    hf_skill.api.list_models = MagicMock(
-        return_value=[mock_model1, mock_model2]
-    )
+    hf_skill.api.list_models = MagicMock(return_value=[mock_model1, mock_model2])
 
     result = hf_skill.search_models(
-        task="text-classification",
-        query="sentiment",
-        sort="downloads"
+        task="text-classification", query="sentiment", sort="downloads"
     )
 
     print("Wynik zapytania: 'Poszukaj lekkiego modelu do sentymentu'")
     print(result)
 
     # Weryfikacja
-    assert "distilbert" in result.lower(), "Brak modeli distilbert w wynikach"
-    assert "text-classification" in result, "Brak informacji o zadaniu"
-    assert "huggingface.co" in result, "Brak linków do Hugging Face"
-    assert "✅ ONNX" in result, "Nie preferuje modeli ONNX (lekkich)"
+    _ensure("distilbert" in result.lower(), "Brak modeli distilbert w wynikach")
+    _ensure("text-classification" in result, "Brak informacji o zadaniu")
+    _ensure("huggingface.co" in result, "Brak linków do Hugging Face")
+    _ensure("✅ ONNX" in result, "Nie preferuje modeli ONNX (lekkich)")
 
-    print("\n✅ SUKCES: Agent zwraca listę modeli z Hugging Face z preferencją dla ONNX")
+    print(
+        "\n✅ SUKCES: Agent zwraca listę modeli z Hugging Face z preferencją dla ONNX"
+    )
 
     # Kryterium 3: Weryfikacja zależności w requirements.txt
     print("\n[3/3] Test: Biblioteki PyGithub i huggingface_hub są w zależnościach")
@@ -111,23 +117,32 @@ def test_kryteria_akceptacji():
         requirements_content = f.read()
 
     # Sprawdź czy PyGithub jest w requirements
-    assert "PyGithub" in requirements_content, "PyGithub nie jest w requirements.txt"
+    _ensure("PyGithub" in requirements_content, "PyGithub nie jest w requirements.txt")
     print("✅ PyGithub jest w requirements.txt")
 
     # Sprawdź czy huggingface_hub jest w requirements
-    assert "huggingface_hub" in requirements_content, "huggingface_hub nie jest w requirements.txt"
+    _ensure(
+        "huggingface_hub" in requirements_content,
+        "huggingface_hub nie jest w requirements.txt",
+    )
     print("✅ huggingface_hub jest w requirements.txt")
 
     # Sprawdź czy można je zaimportować
     try:
-        import github
+        import importlib
+
+        github_module = importlib.import_module("github")
+        _ = getattr(github_module, "__version__", "unknown")
         print("✅ PyGithub można zaimportować")
-    except ImportError:
-        raise AssertionError("Nie można zaimportować PyGithub")
+    except ImportError as exc:
+        raise AssertionError("Nie można zaimportować PyGithub") from exc
 
     try:
         import huggingface_hub
-        print(f"✅ huggingface_hub można zaimportować (wersja: {huggingface_hub.__version__})")
+
+        print(
+            f"✅ huggingface_hub można zaimportować (wersja: {huggingface_hub.__version__})"
+        )
     except ImportError:
         raise AssertionError("Nie można zaimportować huggingface_hub")
 

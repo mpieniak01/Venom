@@ -222,7 +222,7 @@ class Orchestrator:
                             await self.state_manager.update_status(
                                 task_id,
                                 TaskStatus.FAILED,
-                                result="Błąd systemu: nie można uzyskać task handle"
+                                result="Błąd systemu: nie można uzyskać task handle",
                             )
                             return
                         self.active_tasks[task_id] = task_handle
@@ -449,7 +449,9 @@ class Orchestrator:
             "pending": pending,
             "active": len(self.active_tasks),
             "processing": processing,  # Z state managera (może się różnić)
-            "limit": SETTINGS.MAX_CONCURRENT_TASKS if SETTINGS.ENABLE_QUEUE_LIMITS else None,
+            "limit": (
+                SETTINGS.MAX_CONCURRENT_TASKS if SETTINGS.ENABLE_QUEUE_LIMITS else None
+            ),
         }
 
     def get_token_economist(self):
@@ -458,7 +460,7 @@ class Orchestrator:
 
         Returns:
             TokenEconomist lub None jeśli nie jest dostępny
-            
+
         Raises:
             NotImplementedError: Funkcja nie jest jeszcze w pełni zaimplementowana
         """

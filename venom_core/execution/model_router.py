@@ -118,7 +118,7 @@ class HybridModelRouter:
             return self._route_to_local(
                 f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
             )
-        
+
         # RESEARCH - routing zależy od paid_mode
         # Router sprawdza paid_mode_enabled i decyduje o użyciu Google Grounding vs DuckDuckGo
         if task_type == TaskType.RESEARCH:
@@ -126,12 +126,12 @@ class HybridModelRouter:
             paid_mode_enabled = False
             if self.state_manager:
                 paid_mode_enabled = self.state_manager.is_paid_mode_enabled()
-            
+
             if paid_mode_enabled and self._has_cloud_access():
                 # Paid mode ON + API key available -> Google Grounding
                 logger.info("[Router] Research mode: GROUNDING (Paid)")
                 return self._route_to_cloud(
-                    f"Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
+                    "Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
                 )
             else:
                 # Paid mode OFF or no API key -> DuckDuckGo
@@ -207,7 +207,7 @@ class HybridModelRouter:
     def _route_to_cloud_with_guard(self, reason: str) -> dict:
         """
         Tworzy routing do chmury z Global Cost Guard.
-        
+
         Sprawdza czy tryb płatny jest włączony. Jeśli nie, wykonuje fallback do lokalnego modelu.
 
         Args:
@@ -226,21 +226,21 @@ class HybridModelRouter:
                 f"COST GUARD: Paid Mode wyłączony - fallback do LOCAL. "
                 f"Pierwotny powód: {reason}"
             )
-        
+
         # Tryb płatny włączony lub brak state_manager - przepuść do chmury
         return self._route_to_cloud(reason)
 
     def _is_cost_guard_blocking(self) -> bool:
         """
         Sprawdza czy Cost Guard blokuje dostęp do chmury.
-        
+
         Returns:
             True jeśli dostęp zablokowany, False jeśli dozwolony
         """
         # Jeśli brak state_manager - nie blokuj (backward compatibility)
         if not self.state_manager:
             return False
-        
+
         # Jeśli paid_mode wyłączony - blokuj
         return not self.state_manager.is_paid_mode_enabled()
 

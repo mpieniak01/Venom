@@ -29,7 +29,7 @@ class StateManager:
         self._state_file_path = Path(state_file_path)
         self._save_lock = asyncio.Lock()
         self._pending_saves: Set[asyncio.Task] = set()
-        
+
         # Global Cost Guard - flaga płatnego trybu (dla Google Grounding itp.)
         self.paid_mode_enabled: bool = False
 
@@ -67,7 +67,7 @@ class StateManager:
             for task_dict in data.get("tasks", []):
                 task = VenomTask(**task_dict)
                 self._tasks[task.id] = task
-            
+
             # Załaduj paid_mode_enabled jeśli istnieje
             self.paid_mode_enabled = data.get("paid_mode_enabled", False)
 
@@ -91,7 +91,7 @@ class StateManager:
                 ]
                 data = {
                     "tasks": tasks_list,
-                    "paid_mode_enabled": self.paid_mode_enabled
+                    "paid_mode_enabled": self.paid_mode_enabled,
                 }
 
                 # Zapisz do pliku
@@ -207,12 +207,12 @@ class StateManager:
 
         task.logs.append(log_message)
         self._schedule_save()
-    
+
     def set_paid_mode(self, enabled: bool) -> None:
         """
         Ustawia tryb płatny (Global Cost Guard).
-        
-        UWAGA: W środowisku produkcyjnym ta metoda powinna być chroniona 
+
+        UWAGA: W środowisku produkcyjnym ta metoda powinna być chroniona
         autoryzacją/uwierzytelnianiem. Obecnie brak weryfikacji uprawnień.
 
         Args:
@@ -221,7 +221,7 @@ class StateManager:
         self.paid_mode_enabled = enabled
         logger.info(f"Paid Mode {'włączony' if enabled else 'wyłączony'}")
         self._schedule_save()
-    
+
     # ========================================
     # Global Cost Guard Methods
     # ========================================
@@ -229,7 +229,7 @@ class StateManager:
     def enable_paid_mode(self) -> None:
         """
         Włącza tryb płatny (Pro Mode) - umożliwia dostęp do chmurowych API.
-        
+
         UWAGA: Ten stan jest tymczasowy i resetuje się przy restarcie aplikacji.
         """
         self.paid_mode_enabled = True
@@ -245,7 +245,7 @@ class StateManager:
     def is_paid_mode_enabled(self) -> bool:
         """
         Sprawdza czy tryb płatny jest włączony.
-        
+
         Returns:
             True jeśli tryb płatny jest włączony, False w przeciwnym wypadku
         """

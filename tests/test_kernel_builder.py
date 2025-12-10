@@ -180,16 +180,12 @@ def test_kernel_builder_enable_grounding_parameter():
     # Test że parametr enable_grounding jest akceptowany
     # Spodziewamy się NotImplementedError bo Google connector nie jest gotowy
     with pytest.raises((ValueError, NotImplementedError)):
-        builder._register_service(
-            kernel, "google", enable_grounding=True
-        )
+        builder._register_service(kernel, "google", enable_grounding=True)
 
     # Parametr powinien być akceptowany bez błędu składniowego
     # Sprawdzamy tylko że funkcja przyjmuje parametr
     try:
-        builder._register_service(
-            kernel, "google", enable_grounding=False
-        )
+        builder._register_service(kernel, "google", enable_grounding=False)
     except (ValueError, NotImplementedError):
         # To jest oczekiwane - Google nie jest jeszcze zaimplementowany
         pass

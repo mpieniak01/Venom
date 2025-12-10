@@ -213,7 +213,9 @@ class KernelBuilder:
                     "GOOGLE_API_KEY jest wymagany dla LLM_SERVICE_TYPE='google'"
                 )
 
-            logger.debug(f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}")
+            logger.debug(
+                f"Konfiguracja Google Gemini: model={model_name}, grounding={enable_grounding}"
+            )
 
             # UWAGA: Semantic Kernel obecnie nie ma natywnego connectora dla Gemini
             # z Google Search Grounding. Kod poniżej pokazuje jak będzie wyglądać
@@ -228,7 +230,7 @@ class KernelBuilder:
             # Przykładowa konfiguracja (gdy wrapper będzie gotowy):
             # import google.generativeai as genai
             # genai.configure(api_key=self.settings.GOOGLE_API_KEY)
-            # 
+            #
             # if enable_grounding:
             #     # Konfiguracja z Google Search Grounding
             #     tools = [{"google_search": {}}]
@@ -238,7 +240,7 @@ class KernelBuilder:
             #     )
             # else:
             #     model = genai.GenerativeModel(model_name=model_name)
-            
+
             raise NotImplementedError(
                 "Obsługa Google Gemini w Semantic Kernel nie jest jeszcze dostępna. "
                 "Wymagana jest implementacja dedykowanego connectora/wrappera. "

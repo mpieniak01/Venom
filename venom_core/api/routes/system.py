@@ -259,7 +259,9 @@ async def get_cost_mode():
         from venom_core.config import SETTINGS
 
         enabled = _state_manager.is_paid_mode_enabled()
-        provider = "hybrid" if SETTINGS.AI_MODE == "HYBRID" else SETTINGS.AI_MODE.lower()
+        provider = (
+            "hybrid" if SETTINGS.AI_MODE == "HYBRID" else SETTINGS.AI_MODE.lower()
+        )
 
         return CostModeResponse(enabled=enabled, provider=provider)
 

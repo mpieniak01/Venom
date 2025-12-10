@@ -129,9 +129,10 @@ class TestCostGuardModelRouter:
         # Wrażliwe dane ZAWSZE local
         assert routing["target"] == "local"
         assert routing["is_paid"] is False
-        assert "wrażliwe" in routing["reason"].lower() or "sensitive" in routing[
-            "reason"
-        ].lower()
+        assert (
+            "wrażliwe" in routing["reason"].lower()
+            or "sensitive" in routing["reason"].lower()
+        )
 
     def test_routing_metadata_includes_is_paid_flag(self):
         """Test że routing zawsze zwraca flagę is_paid."""

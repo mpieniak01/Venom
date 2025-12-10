@@ -3019,18 +3019,6 @@ class VenomDashboard {
             }
         }
     }
-}
-
-// Initialize after DOM loaded
-document.addEventListener('DOMContentLoaded', () => {
-    window.venomDashboard = new VenomDashboard();
-    // Initialize memory tab
-    window.venomDashboard.initMemoryTab();
-    // Initialize background jobs tab
-    window.venomDashboard.initBackgroundJobsTab();
-    // Initialize voice tab
-    window.venomDashboard.initVoiceTab();
-});
 
     // ============================================
     // AutonomyGate - 5-Level Security System
@@ -3185,55 +3173,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 }
 
-// Initialize autonomy handling when DOM is ready
+// Initialize after DOM loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Set active nav link
-    const currentPage = window.location.pathname;
-    if (currentPage === '/' || currentPage === '/index.html') {
-        const navLink = document.getElementById('navCockpit');
-        if (navLink) navLink.classList.add('active');
-    } else if (currentPage === '/strategy') {
-        const navLink = document.getElementById('navStrategy');
-        if (navLink) navLink.classList.add('active');
-    }
+    window.venomDashboard = new VenomDashboard();
+    // Initialize memory tab
+    window.venomDashboard.initMemoryTab();
+    // Initialize background jobs tab
+    window.venomDashboard.initBackgroundJobsTab();
+    // Initialize voice tab
+    window.venomDashboard.initVoiceTab();
 
-    // Initialize autonomy selector handler
-    const autonomySelector = document.getElementById('autonomyLevel');
-    if (autonomySelector && window.venomDashboard) {
-        autonomySelector.addEventListener('change', (e) => {
-            window.venomDashboard.setAutonomyLevel(e.target.value);
-        });
-
-        // Start autonomy polling
-        window.venomDashboard.startAutonomyPolling();
-    }
-
-    // Initialize autonomy modal handlers
-    const closeAutonomyBtn = document.getElementById('closeAutonomyModal');
-    const cancelAutonomyBtn = document.getElementById('cancelAutonomyBtn');
-    const increaseAutonomyBtn = document.getElementById('increaseAutonomyBtn');
-
-    if (closeAutonomyBtn) {
-        closeAutonomyBtn.addEventListener('click', () => {
-            if (window.venomDashboard) {
-                window.venomDashboard.closeAutonomyModal();
-            }
-        });
-    }
-
-    if (cancelAutonomyBtn) {
-        cancelAutonomyBtn.addEventListener('click', () => {
-            if (window.venomDashboard) {
-                window.venomDashboard.closeAutonomyModal();
-            }
-        });
-    }
-
-    if (increaseAutonomyBtn) {
-        increaseAutonomyBtn.addEventListener('click', () => {
-            if (window.venomDashboard) {
-                window.venomDashboard.increaseAutonomyLevel();
-            }
-        });
-    }
-});

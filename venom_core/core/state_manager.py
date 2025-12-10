@@ -30,11 +30,11 @@ class StateManager:
         self._save_lock = asyncio.Lock()
         self._pending_saves: Set[asyncio.Task] = set()
 
-        # Global Cost Guard - flaga płatnego trybu (dla Google Grounding itp.)
-        self.paid_mode_enabled: bool = False
-
         # AutonomyGate - poziom autonomii (0, 10, 20, 30, 40)
         self.autonomy_level: int = 0  # Domyślnie ISOLATED
+
+        # Global Cost Guard - flaga płatnego trybu (dla compatibility z TokenEconomist)
+        self.paid_mode_enabled: bool = False
 
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)

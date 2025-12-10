@@ -1187,7 +1187,8 @@ class VenomDashboard {
 
         const info = document.createElement('div');
         info.style.cssText = 'font-size: 12px; color: #9ca3af; margin-bottom: 8px;';
-        info.textContent = `Rozmiar: ${model.size_gb.toFixed(2)} GB`;
+        const sizeGb = model.size_gb || 0;
+        info.textContent = `Rozmiar: ${sizeGb.toFixed(2)} GB`;
         if (model.quantization && model.quantization !== 'unknown') {
             info.textContent += ` | Kwantyzacja: ${model.quantization}`;
         }
@@ -1306,7 +1307,8 @@ class VenomDashboard {
                 this.showNotification(`Pobieranie ${modelName} rozpoczęte w tle`, 'info');
                 modelNameInput.value = '';
 
-                // Simulate progress (in real scenario, use WebSocket updates)
+                // TODO: Zastąpić symulacją przez rzeczywisty progress tracking z WebSocket
+                // Simulate progress (temporary - should use WebSocket updates in production)
                 let progress = 10;
                 const progressInterval = setInterval(() => {
                     progress += 5;

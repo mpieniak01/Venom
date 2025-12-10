@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 # Konfiguracja Resource Guard
 MAX_STORAGE_GB = 50  # Limit na modele w GB
+DEFAULT_MODEL_SIZE_GB = 4.0  # Szacowany domyślny rozmiar modelu dla Resource Guard
 
 
 class ModelVersion:
@@ -714,8 +715,12 @@ PARAMETER top_k 40
         metrics = {
             "disk_usage_gb": self.get_models_size_gb(),
             "disk_limit_gb": MAX_STORAGE_GB,
-            "disk_usage_percent": (self.get_models_size_gb() / MAX_STORAGE_GB) * 100,
-            "vram_usage_mb": 0,  # Placeholder - wymaga integracji z nvidia-smi
+            "disk_usage_percent": (
+                (self.get_models_size_gb() / MAX_STORAGE_GB) * 100
+                if MAX_STORAGE_GB > 0
+                else 0
+            ),
+            "vram_usage_mb": 0,  # TODO: Wymaga integracji z nvidia-smi lub podobnym narzędziem
             "models_count": len(await self.list_local_models()),
         }
 

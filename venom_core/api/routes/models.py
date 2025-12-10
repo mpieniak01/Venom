@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -80,7 +81,7 @@ async def install_model(request: ModelInstallRequest, background_tasks: Backgrou
         raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
 
     # Sprawdź Resource Guard przed rozpoczęciem
-    if not _model_manager.check_storage_quota(additional_size_gb=4.0):
+    if not _model_manager.check_storage_quota(additional_size_gb=DEFAULT_MODEL_SIZE_GB):
         raise HTTPException(
             status_code=400,
             detail="Brak miejsca na dysku. Usuń nieużywane modele lub zwiększ limit.",

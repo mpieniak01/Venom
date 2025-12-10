@@ -175,7 +175,7 @@ async def serve_strategy(request: Request):
 ## Zgodność Wstecz
 
 - ✅ Wszystkie ID elementów DOM zachowane
-- ✅ Wszystkie endpointy API niezmienione  
+- ✅ Wszystkie endpointy API niezmienione
 - ✅ Struktura HTML kompatybilna z istniejącymi stylami CSS
 - ✅ JavaScript kompatybilny z WebSocket events z `app.js`
 - ✅ `VenomDashboard` działanie nie zmienione
@@ -188,7 +188,7 @@ async def serve_strategy(request: Request):
    python -m venom_core.main
    ```
    - Sprawdzić czy brak błędów Jinja2
-   
+
 2. **Nawigacja**:
    - Otworzyć `http://localhost:8000/`
    - Kliknąć link "War Room" w navbar

@@ -144,7 +144,7 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
     prompt_text = trace.prompt[:MAX_PROMPT_LENGTH]
     if len(trace.prompt) > MAX_PROMPT_LENGTH:
         prompt_text += "..."
-    lines.append(f'    User->>Orchestrator: {prompt_text}')
+    lines.append(f"    User->>Orchestrator: {prompt_text}")
 
     last_component = "Orchestrator"
 

@@ -33,13 +33,13 @@ TWOJA ROLA:
 ZASADY OCENY:
 1. Jeśli kod jest BEZPIECZNY i DOBREJ JAKOŚCI → odpowiedz: "APPROVED"
 
-2. Jeśli znajdziesz problemy TYLKO W ANALIZOWANYM KODZIE (błędy składni, logiki, bezpieczeństwa w tym pliku) → 
+2. Jeśli znajdziesz problemy TYLKO W ANALIZOWANYM KODZIE (błędy składni, logiki, bezpieczeństwa w tym pliku) →
    wylistuj je precyzyjnie w formie tekstowej:
    - Opis problemu
    - Lokalizacja (numer linii jeśli możliwe)
    - Sugerowana poprawa
 
-3. Jeśli błąd pochodzi z INNEGO PLIKU niż analizowany kod (np. ImportError z brakującej funkcji w module, 
+3. Jeśli błąd pochodzi z INNEGO PLIKU niż analizowany kod (np. ImportError z brakującej funkcji w module,
    AttributeError z importowanego obiektu) → odpowiedz TYLKO w formacie JSON:
    {
      "analysis": "Szczegółowa analiza problemu i wskazanie źródłowego pliku",
@@ -209,7 +209,8 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         # Próbuj różne końcówki (od najbliższego } do najdalszego)
         # Ogranicz liczbę prób do ostatnich 10 pozycji dla wydajności
         end_positions = [
-            i for i, char in enumerate(error_output[start_idx:], start_idx)
+            i
+            for i, char in enumerate(error_output[start_idx:], start_idx)
             if char == "}"
         ]
 

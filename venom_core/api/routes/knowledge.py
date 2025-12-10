@@ -24,10 +24,10 @@ def set_dependencies(graph_store, lessons_store):
 async def get_knowledge_graph():
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
-    
+
     UWAGA: Jeśli graf jest pusty, endpoint zwraca przykładowe dane (mock data)
     z flagą "mock": true w odpowiedzi.
-    
+
     Format zwracany:
     {
         "elements": {
@@ -35,10 +35,10 @@ async def get_knowledge_graph():
             "edges": [{"data": {"id": "...", "source": "...", "target": "...", "type": "..."}}]
         }
     }
-    
+
     Returns:
         Graf w formacie Cytoscape
-        
+
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
@@ -46,17 +46,17 @@ async def get_knowledge_graph():
     if _graph_store is None or _graph_store.graph.number_of_nodes() == 0:
         logger.info("Graph store pusty lub niedostępny, zwracam mock data")
         return _get_mock_knowledge_graph()
-    
+
     try:
         # Konwertuj NetworkX graph do formatu Cytoscape
         nodes = []
         edges = []
-        
+
         # Dodaj węzły
         for node_id, node_data in _graph_store.graph.nodes(data=True):
             node_type = node_data.get("type", "unknown")
             node_name = node_data.get("name", node_id)
-            
+
             # Mapowanie typów na kategorie dla UI
             if node_type == "file":
                 category = "file"
@@ -76,45 +76,43 @@ async def get_knowledge_graph():
             else:
                 category = "file"
                 label = node_name
-            
-            nodes.append({
-                "data": {
-                    "id": node_id,
-                    "label": label,
-                    "type": category,
-                    "original_type": node_type,
-                    "properties": node_data
+
+            nodes.append(
+                {
+                    "data": {
+                        "id": node_id,
+                        "label": label,
+                        "type": category,
+                        "original_type": node_type,
+                        "properties": node_data,
+                    }
                 }
-            })
-        
+            )
+
         # Dodaj krawędzie
         edge_id = 0
         for source, target, edge_data in _graph_store.graph.edges(data=True):
             edge_type = edge_data.get("type", "RELATED")
-            edges.append({
-                "data": {
-                    "id": f"e{edge_id}",
-                    "source": source,
-                    "target": target,
-                    "type": edge_type,
-                    "label": edge_type
+            edges.append(
+                {
+                    "data": {
+                        "id": f"e{edge_id}",
+                        "source": source,
+                        "target": target,
+                        "type": edge_type,
+                        "label": edge_type,
+                    }
                 }
-            })
+            )
             edge_id += 1
-        
+
         return {
             "status": "success",
-            "elements": {
-                "nodes": nodes,
-                "edges": edges
-            },
-            "stats": {
-                "nodes": len(nodes),
-                "edges": len(edges)
-            }
+            "elements": {"nodes": nodes, "edges": edges},
+            "stats": {"nodes": len(nodes), "edges": len(edges)},
         }
-        
-    except Exception as e:
+
+    except Exception:
         logger.exception("Błąd podczas konwersji grafu do formatu Cytoscape")
         # W przypadku błędu zwróć mock data jako fallback
         return _get_mock_knowledge_graph()
@@ -123,7 +121,7 @@ async def get_knowledge_graph():
 def _get_mock_knowledge_graph():
     """
     Zwraca przykładowe dane grafu wiedzy do testowania UI.
-    
+
     Returns:
         Mock graph w formacie Cytoscape
     """
@@ -138,28 +136,123 @@ def _get_mock_knowledge_graph():
                 {"data": {"id": "file1", "label": "main.py", "type": "file"}},
                 {"data": {"id": "file2", "label": "config.py", "type": "file"}},
                 {"data": {"id": "file3", "label": "api/routes.py", "type": "file"}},
-                {"data": {"id": "memory1", "label": "Lesson: Error Handling", "type": "memory"}},
-                {"data": {"id": "memory2", "label": "Lesson: Code Quality", "type": "memory"}},
-                {"data": {"id": "memory3", "label": "Lesson: Testing Strategy", "type": "memory"}},
+                {
+                    "data": {
+                        "id": "memory1",
+                        "label": "Lesson: Error Handling",
+                        "type": "memory",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "memory2",
+                        "label": "Lesson: Code Quality",
+                        "type": "memory",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "memory3",
+                        "label": "Lesson: Testing Strategy",
+                        "type": "memory",
+                    }
+                },
                 {"data": {"id": "file4", "label": "utils/logger.py", "type": "file"}},
             ],
             "edges": [
-                {"data": {"id": "e1", "source": "agent1", "target": "agent2", "type": "DELEGATES", "label": "DELEGATES"}},
-                {"data": {"id": "e2", "source": "agent1", "target": "agent3", "type": "DELEGATES", "label": "DELEGATES"}},
-                {"data": {"id": "e3", "source": "agent2", "target": "file1", "type": "EDITS", "label": "EDITS"}},
-                {"data": {"id": "e4", "source": "agent2", "target": "file3", "type": "EDITS", "label": "EDITS"}},
-                {"data": {"id": "e5", "source": "agent3", "target": "file2", "type": "READS", "label": "READS"}},
-                {"data": {"id": "e6", "source": "file1", "target": "file2", "type": "IMPORTS", "label": "IMPORTS"}},
-                {"data": {"id": "e7", "source": "file3", "target": "file4", "type": "IMPORTS", "label": "IMPORTS"}},
-                {"data": {"id": "e8", "source": "agent2", "target": "memory2", "type": "LEARNS", "label": "LEARNS"}},
-                {"data": {"id": "e9", "source": "agent1", "target": "memory1", "type": "LEARNS", "label": "LEARNS"}},
-                {"data": {"id": "e10", "source": "agent3", "target": "memory3", "type": "LEARNS", "label": "LEARNS"}},
-            ]
+                {
+                    "data": {
+                        "id": "e1",
+                        "source": "agent1",
+                        "target": "agent2",
+                        "type": "DELEGATES",
+                        "label": "DELEGATES",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e2",
+                        "source": "agent1",
+                        "target": "agent3",
+                        "type": "DELEGATES",
+                        "label": "DELEGATES",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e3",
+                        "source": "agent2",
+                        "target": "file1",
+                        "type": "EDITS",
+                        "label": "EDITS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e4",
+                        "source": "agent2",
+                        "target": "file3",
+                        "type": "EDITS",
+                        "label": "EDITS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e5",
+                        "source": "agent3",
+                        "target": "file2",
+                        "type": "READS",
+                        "label": "READS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e6",
+                        "source": "file1",
+                        "target": "file2",
+                        "type": "IMPORTS",
+                        "label": "IMPORTS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e7",
+                        "source": "file3",
+                        "target": "file4",
+                        "type": "IMPORTS",
+                        "label": "IMPORTS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e8",
+                        "source": "agent2",
+                        "target": "memory2",
+                        "type": "LEARNS",
+                        "label": "LEARNS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e9",
+                        "source": "agent1",
+                        "target": "memory1",
+                        "type": "LEARNS",
+                        "label": "LEARNS",
+                    }
+                },
+                {
+                    "data": {
+                        "id": "e10",
+                        "source": "agent3",
+                        "target": "memory3",
+                        "type": "LEARNS",
+                        "label": "LEARNS",
+                    }
+                },
+            ],
         },
-        "stats": {
-            "nodes": 10,
-            "edges": 10
-        }
+        "stats": {"nodes": 10, "edges": 10},
     }
 
 
@@ -264,8 +357,14 @@ async def trigger_graph_scan():
     try:
         stats = _graph_store.scan_workspace()
         if isinstance(stats, dict) and "error" in stats:
-            raise HTTPException(status_code=500, detail=f"Błąd podczas skanowania: {stats['error']}")
-        return {"status": "success", "message": "Skanowanie grafu zostało uruchomione", "stats": stats}
+            raise HTTPException(
+                status_code=500, detail=f"Błąd podczas skanowania: {stats['error']}"
+            )
+        return {
+            "status": "success",
+            "message": "Skanowanie grafu zostało uruchomione",
+            "stats": stats,
+        }
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

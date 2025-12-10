@@ -2,8 +2,8 @@
 
 ## Status: GOTOWE DO MERGE ✓
 
-**Branch:** `copilot/optimize-self-healing-process`  
-**Data ukończenia:** 2025-12-10  
+**Branch:** `copilot/optimize-self-healing-process`
+**Data ukończenia:** 2025-12-10
 **Commits:** 5 commits
 
 ---
@@ -240,6 +240,6 @@ Kod jest **bezpieczny**, **przetestowany**, **udokumentowany** i **gotowy do pro
 
 ---
 
-**Implementacja przez:** GitHub Copilot  
-**Czas realizacji:** ~2h  
+**Implementacja przez:** GitHub Copilot
+**Czas realizacji:** ~2h
 **Status:** ✅ COMPLETE

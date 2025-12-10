@@ -1,7 +1,7 @@
 # Podsumowanie Implementacji - Uzupełnienie brakujących implementacji w modułach Agentów
 
-**Data:** 2025-12-08  
-**Issue:** Uzupełnienie brakujących implementacji  
+**Data:** 2025-12-08
+**Issue:** Uzupełnienie brakujących implementacji
 **Branch:** copilot/complete-agent-implementations
 
 ## ✅ Wykonane Zadania
@@ -158,12 +158,12 @@ def _extract_time(self, time_result: str) -> float:
         if line.startswith('{') and 'minutes' in line:
             data = json.loads(line)
             return float(data['minutes'])
-    
+
     # Fallback do regex
     match = re.search(r"Oszacowany czas:\s*(\d+)", time_result)
     if match:
         return float(match.group(1))
-    
+
     # Ostatni fallback z ostrzeżeniem
     logger.warning(f"Nie udało się wyciągnąć czasu. Używam domyślnej wartości 30 minut.")
     return 30.0
@@ -173,7 +173,7 @@ def _extract_time(self, time_result: str) -> float:
 
 ### Zmienione Pliki
 - `venom_core/agents/ghost_agent.py`: +231 / -100 linii
-- `venom_core/agents/shadow.py`: +185 / -50 linii  
+- `venom_core/agents/shadow.py`: +185 / -50 linii
 - `venom_core/agents/strategist.py`: +43 / -12 linii
 - `venom_core/execution/skills/complexity_skill.py`: +12 / -5 linii
 - `tests/test_agent_improvements.py`: +137 linii (nowy plik)

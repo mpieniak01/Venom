@@ -58,7 +58,7 @@ Zaimplementowano integrację GitHub i Hugging Face dla systemu Venom, umożliwia
 
 ### ✅ Kryterium 1: Wyszukiwanie bibliotek Python
 **Test:** "Znajdź popularne biblioteki Python do PDF"
-**Wynik:** 
+**Wynik:**
 ```
 🔍 TOP 2 repozytoriów dla: 'Python PDF'
 

@@ -5,7 +5,7 @@
 Zaimplementowano trzy kluczowe optymalizacje procesu samo-naprawy kodu w `CodeReviewFlow`:
 
 1. **Wykrywanie pętli błędów (Loop Detection)**
-2. **Ochrona budżetu (Budget Guard)**  
+2. **Ochrona budżetu (Budget Guard)**
 3. **Dynamiczna zmiana pliku docelowego (Smart Targeting)**
 
 ## 🎯 Zmienione pliki
@@ -68,7 +68,7 @@ Dodano instrukcje diagnostyczne dla Krytyka:
 def analyze_error(self, error_output: str) -> dict:
     """
     Parsuje odpowiedź Krytyka i wyciąga diagnostykę.
-    
+
     Returns:
         {
             "analysis": str,
@@ -171,8 +171,8 @@ loop = CodeReviewLoop(state_manager, coder_agent, critic_agent)
 
 # Nowy sposób (opcjonalny):
 loop = CodeReviewLoop(
-    state_manager, 
-    coder_agent, 
+    state_manager,
+    coder_agent,
     critic_agent,
     token_economist=custom_economist,
     file_skill=custom_file_skill
@@ -252,7 +252,7 @@ class CodeReviewLoop:
         token_economist: TokenEconomist = None,  # Opcjonalny
         file_skill: FileSkill = None,           # Opcjonalny
     )
-    
+
     async def execute(self, task_id: UUID, user_request: str) -> str:
         """
         Returns:
@@ -295,6 +295,6 @@ class CriticAgent:
 
 ---
 
-**Autor:** GitHub Copilot  
-**Data:** 2025-12-10  
+**Autor:** GitHub Copilot
+**Data:** 2025-12-10
 **PR:** copilot/optimize-self-healing-process

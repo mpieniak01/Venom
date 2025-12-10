@@ -14,12 +14,26 @@
     <!-- Marked.js for Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 </head>
-<body>
+<body class="theme-isolated" id="venomBody">
     <div class="container">
         <!-- Header -->
         <header class="header">
             <h1>🕷️ Venom Cockpit</h1>
             <div class="header-info">
+                <!-- Autonomy Level Selector (AutonomyGate) -->
+                <div class="autonomy-selector">
+                    <label for="autonomyLevel" class="autonomy-label">
+                        <span class="autonomy-icon">🔐</span>
+                        <span class="autonomy-text">Autonomia:</span>
+                    </label>
+                    <select id="autonomyLevel" class="autonomy-select">
+                        <option value="0" data-color="green">🟢 ISOLATED</option>
+                        <option value="10" data-color="blue">🔵 CONNECTED</option>
+                        <option value="20" data-color="yellow">🟡 FUNDED</option>
+                        <option value="30" data-color="orange">🟠 BUILDER</option>
+                        <option value="40" data-color="red">🔴 ROOT</option>
+                    </select>
+                </div>
                 <!-- Cost Mode Switch (Global Cost Guard) -->
                 <div class="cost-mode-switch" id="costModeSwitch">
                     <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
@@ -425,6 +439,26 @@
                 <div class="modal-actions">
                     <button id="confirmCostMode" class="btn-primary">✅ Potwierdzam i Akceptuję Koszty</button>
                     <button id="cancelCostMode" class="btn-secondary">❌ Anuluj</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Autonomy Violation Modal -->
+    <div id="autonomyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="autonomyModalTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="autonomyModalTitle">🚫 Brak Uprawnień</h2>
+                <button class="modal-close" id="closeAutonomyModal" aria-label="Zamknij modal">&times;</button>
+            </div>
+            <div class="modal-body" id="autonomyModalBody">
+                <div class="warning-message">
+                    <p id="autonomyErrorMessage"></p>
+                    <p>Czy chcesz zwiększyć poziom autonomii?</p>
+                </div>
+                <div class="modal-actions">
+                    <button id="increaseAutonomyBtn" class="btn-primary">✅ Zwiększ Poziom</button>
+                    <button id="cancelAutonomyBtn" class="btn-secondary">❌ Anuluj</button>
                 </div>
             </div>
         </div>

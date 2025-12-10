@@ -3031,3 +3031,209 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize voice tab
     window.venomDashboard.initVoiceTab();
 });
+
+    // ============================================
+    // AutonomyGate - 5-Level Security System
+    // ============================================
+
+    async startAutonomyPolling() {
+        const pollAutonomy = async () => {
+            try {
+                const response = await fetch('/api/v1/system/autonomy');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.updateAutonomyUI(data);
+                }
+            } catch (error) {
+                console.error('Error polling autonomy level:', error);
+            }
+        };
+
+        // Initial poll
+        await pollAutonomy();
+
+        // Poll every 5 seconds
+        setInterval(pollAutonomy, 5000);
+    }
+
+    updateAutonomyUI(data) {
+        const body = document.getElementById('venomBody');
+        const selector = document.getElementById('autonomyLevel');
+
+        if (!body || !selector) return;
+
+        // Update body theme class
+        body.className = `theme-${data.color_name}`;
+
+        // Update selector value (without triggering change event)
+        selector.value = data.current_level;
+
+        // Store current level globally
+        window.currentAutonomyLevel = data.current_level;
+        window.currentAutonomyName = data.current_level_name;
+    }
+
+    async setAutonomyLevel(level) {
+        try {
+            const response = await fetch('/api/v1/system/autonomy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ level: parseInt(level) }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            // Update UI
+            this.updateAutonomyUI({
+                current_level: result.level,
+                current_level_name: result.level_name,
+                color: result.color,
+                color_name: this.getColorName(result.color)
+            });
+
+            // Show notification
+            this.showNotification(`🔐 Poziom autonomii: ${result.level_name}`, 'info');
+
+            // Pulse the autonomy selector
+            const selector = document.querySelector('.autonomy-selector');
+            if (selector) {
+                selector.classList.add('autonomy-pulse');
+                setTimeout(() => selector.classList.remove('autonomy-pulse'), 4500);
+            }
+
+            console.log('Autonomy level changed:', result);
+        } catch (error) {
+            console.error('Error setting autonomy level:', error);
+            this.showNotification('Błąd zmiany poziomu autonomii', 'error');
+        }
+    }
+
+    getColorName(hexColor) {
+        const colorMap = {
+            '#22c55e': 'green',
+            '#3b82f6': 'blue',
+            '#eab308': 'yellow',
+            '#f97316': 'orange',
+            '#ef4444': 'red'
+        };
+        return colorMap[hexColor.toLowerCase()] || 'green';
+    }
+
+    handleAutonomyViolation(errorData) {
+        // Show modal with error info
+        const modal = document.getElementById('autonomyModal');
+        const errorMsg = document.getElementById('autonomyErrorMessage');
+        const increaseBtn = document.getElementById('increaseAutonomyBtn');
+
+        if (!modal || !errorMsg) return;
+
+        errorMsg.textContent = `Zablokowano akcję! Wymagany poziom: ${errorData.required_level_name} (${errorData.required_level})`;
+
+        // Store required level for "Increase" button
+        increaseBtn.dataset.requiredLevel = errorData.required_level;
+
+        modal.style.display = 'flex';
+
+        // Pulse the autonomy selector with required color
+        const body = document.getElementById('venomBody');
+        const tempTheme = this.getThemeForLevel(errorData.required_level);
+        const originalTheme = body.className;
+
+        body.className = tempTheme;
+        const selector = document.querySelector('.autonomy-selector');
+        if (selector) {
+            selector.classList.add('autonomy-pulse');
+            setTimeout(() => {
+                selector.classList.remove('autonomy-pulse');
+                body.className = originalTheme;
+            }, 4500);
+        }
+    }
+
+    getThemeForLevel(level) {
+        const themeMap = {
+            0: 'theme-isolated',
+            10: 'theme-connected',
+            20: 'theme-funded',
+            30: 'theme-builder',
+            40: 'theme-root'
+        };
+        return themeMap[level] || 'theme-isolated';
+    }
+
+    closeAutonomyModal() {
+        const modal = document.getElementById('autonomyModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    increaseAutonomyLevel() {
+        const increaseBtn = document.getElementById('increaseAutonomyBtn');
+        const requiredLevel = parseInt(increaseBtn.dataset.requiredLevel || '0');
+
+        if (requiredLevel > 0) {
+            this.setAutonomyLevel(requiredLevel);
+            this.closeAutonomyModal();
+        }
+    }
+}
+
+// Initialize autonomy handling when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    // Set active nav link
+    const currentPage = window.location.pathname;
+    if (currentPage === '/' || currentPage === '/index.html') {
+        const navLink = document.getElementById('navCockpit');
+        if (navLink) navLink.classList.add('active');
+    } else if (currentPage === '/strategy') {
+        const navLink = document.getElementById('navStrategy');
+        if (navLink) navLink.classList.add('active');
+    }
+
+    // Initialize autonomy selector handler
+    const autonomySelector = document.getElementById('autonomyLevel');
+    if (autonomySelector && window.venomDashboard) {
+        autonomySelector.addEventListener('change', (e) => {
+            window.venomDashboard.setAutonomyLevel(e.target.value);
+        });
+
+        // Start autonomy polling
+        window.venomDashboard.startAutonomyPolling();
+    }
+
+    // Initialize autonomy modal handlers
+    const closeAutonomyBtn = document.getElementById('closeAutonomyModal');
+    const cancelAutonomyBtn = document.getElementById('cancelAutonomyBtn');
+    const increaseAutonomyBtn = document.getElementById('increaseAutonomyBtn');
+
+    if (closeAutonomyBtn) {
+        closeAutonomyBtn.addEventListener('click', () => {
+            if (window.venomDashboard) {
+                window.venomDashboard.closeAutonomyModal();
+            }
+        });
+    }
+
+    if (cancelAutonomyBtn) {
+        cancelAutonomyBtn.addEventListener('click', () => {
+            if (window.venomDashboard) {
+                window.venomDashboard.closeAutonomyModal();
+            }
+        });
+    }
+
+    if (increaseAutonomyBtn) {
+        increaseAutonomyBtn.addEventListener('click', () => {
+            if (window.venomDashboard) {
+                window.venomDashboard.increaseAutonomyLevel();
+            }
+        });
+    }
+});

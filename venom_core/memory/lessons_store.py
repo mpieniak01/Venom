@@ -363,9 +363,17 @@ class LessonsStore:
 
         Returns:
             Liczba usuniętych lekcji
+
+        Note:
+            Jeśli start > end, daty zostaną automatycznie zamienione
+            i operacja będzie kontynuowana.
         """
+        # Automatycznie zamień daty jeśli są w złej kolejności
         if start > end:
-            logger.warning("Start date is after end date, swapping them")
+            logger.warning(
+                f"Daty w złej kolejności (start={start.isoformat()}, end={end.isoformat()}). "
+                f"Automatyczne zamienienie na (start={end.isoformat()}, end={start.isoformat()})"
+            )
             start, end = end, start
 
         deleted_count = 0
@@ -373,9 +381,22 @@ class LessonsStore:
         for lesson_id in list(self.lessons.keys()):
             lesson = self.lessons[lesson_id]
             try:
-                # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix)
+                # Parsuj timestamp jako ISO 8601 (obsługa 'Z' suffix i innych offsetów)
                 timestamp_str = lesson.timestamp.replace('Z', '+00:00')
                 lesson_time = datetime.fromisoformat(timestamp_str)
+
+                # Normalizuj do naive datetime dla porównania jeśli oba są naive
+                # lub zachowaj aware jeśli oba są aware
+                if start.tzinfo is None and lesson_time.tzinfo is not None:
+                    # Konwertuj lesson_time do naive (usuń timezone info)
+                    lesson_time = lesson_time.replace(tzinfo=None)
+                elif start.tzinfo is not None and lesson_time.tzinfo is None:
+                    # To nie powinno się zdarzyć w normalnych warunkach
+                    logger.warning(
+                        f"Lekcja {lesson_id} ma naive timestamp, ale zakres jest aware. "
+                        "Pomijam lekcję."
+                    )
+                    continue
 
                 # Sprawdź czy jest w zakresie
                 if start <= lesson_time <= end:

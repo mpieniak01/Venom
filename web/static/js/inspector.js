@@ -12,12 +12,14 @@ if (typeof svgPanZoom === 'undefined') {
     console.error('❌ svg-pan-zoom not loaded from CDN');
 }
 
-// Inicjalizacja Mermaid
+// Import theme config
+import { getMermaidConfig } from './modules/theme_config.js';
+
+// Inicjalizacja Mermaid z Deep Space theme
 if (typeof mermaid !== 'undefined') {
+    const mermaidConfig = getMermaidConfig();
     mermaid.initialize({
-        startOnLoad: false,
-        theme: 'default',
-        securityLevel: 'strict', // Bezpieczniejszy tryb - zapobiega XSS
+        ...mermaidConfig,
         sequence: {
             showSequenceNumbers: true,
             actorMargin: 50,
@@ -27,6 +29,10 @@ if (typeof mermaid !== 'undefined') {
             noteMargin: 10
         }
     });
+    // Log only in dev mode
+    if (window.location.hostname === 'localhost') {
+        console.log('🎨 Mermaid initialized with Deep Space theme');
+    }
 }
 
 // Globalna zmienna dla svg-pan-zoom

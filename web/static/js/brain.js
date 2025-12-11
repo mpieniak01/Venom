@@ -1,4 +1,6 @@
 // Logika grafu wiedzy z Cytoscape.js
+// Import theme config for unified Deep Space styling
+import { THEME, getCytoscapeStyles } from './modules/theme_config.js';
 
 let cy = null; // Instancja Cytoscape
 let graphData = null; // Dane grafu
@@ -79,136 +81,132 @@ async function initGraph() {
             elements: data.elements,
             
             style: [
-                // Styl węzłów - bazowy
+                // Base styles from theme config (hologram effect, edges, highlights)
+                ...getCytoscapeStyles(),
+                
+                // Additional node properties (merged with base, data-driven)
                 {
                     selector: 'node',
                     style: {
                         'label': 'data(label)',
                         'text-valign': 'center',
-                        'text-halign': 'center',
-                        'font-size': '12px',
-                        'font-weight': 'bold',
-                        'text-outline-color': '#0f172a',
-                        'text-outline-width': 2,
-                        'color': '#e2e8f0',
-                        'width': 60,
-                        'height': 60,
-                        'border-width': 3,
-                        'border-color': '#64748b',
-                        'background-color': '#1e293b'
+                        'text-halign': 'center'
                     }
                 },
                 
-                // Agenci - diament, fioletowy
+                // Agenci - diament, purple (UI accent)
                 {
                     selector: 'node[type="agent"]',
                     style: {
                         'shape': 'diamond',
-                        'background-color': '#a855f7',
-                        'border-color': '#c084fc',
+                        'background-color': THEME.primaryColor,      // #8b5cf6 Purple
+                        'border-color': THEME.secondary,             // #00b8ff Neon cyan
                         'width': 80,
                         'height': 80
                     }
                 },
                 
-                // Pliki - kwadrat, niebieski
+                // Pliki - kwadrat, secondary (cyan)
                 {
                     selector: 'node[type="file"]',
                     style: {
                         'shape': 'square',
-                        'background-color': '#3b82f6',
-                        'border-color': '#60a5fa',
+                        'background-color': THEME.secondary,         // #00b8ff Cyan
+                        'border-color': THEME.secondaryColor,        // #06b6d4 Cyan alt
                         'width': 60,
                         'height': 60
                     }
                 },
                 
-                // Lekcje/Pamięć - koło, zielony
+                // Lekcje/Pamięć - koło, neon green (brand)
                 {
                     selector: 'node[type="memory"]',
                     style: {
                         'shape': 'ellipse',
-                        'background-color': '#10b981',
-                        'border-color': '#34d399',
+                        'background-color': THEME.primary,           // #00ff9d Neon green
+                        'border-color': THEME.success,               // #10b981 Success green
                         'width': 70,
                         'height': 70
                     }
                 },
                 
-                // Funkcje/Metody - okrąg, pomarańczowy
+                // Funkcje/Metody - okrąg, warning (pomarańczowy)
                 {
                     selector: 'node[type="function"]',
                     style: {
                         'shape': 'round-rectangle',
-                        'background-color': '#f59e0b',
-                        'border-color': '#fbbf24',
+                        'background-color': THEME.warning,           // #f59e0b Warning orange
+                        'border-color': THEME.primaryColor,          // #8b5cf6 Purple border
                         'width': 55,
                         'height': 55
                     }
                 },
                 
-                // Klasy - sześciokąt, różowy
+                // Klasy - sześciokąt, różowy/purpurowy
                 {
                     selector: 'node[type="class"]',
                     style: {
                         'shape': 'hexagon',
-                        'background-color': '#ec4899',
-                        'border-color': '#f472b6',
+                        'background-color': THEME.primaryHover,      // #7c3aed Purple dark
+                        'border-color': THEME.primaryColor,          // #8b5cf6 Purple
                         'width': 65,
                         'height': 65
                     }
                 },
                 
-                // Styl krawędzi
+                // Styl krawędzi - override base z dodatkowymi właściwościami
                 {
                     selector: 'edge',
                     style: {
                         'width': 2,
-                        'line-color': '#475569',
-                        'target-arrow-color': '#475569',
+                        'line-color': 'rgba(255, 255, 255, 0.2)',    // Półprzezroczyste
+                        'target-arrow-color': 'rgba(255, 255, 255, 0.2)',
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
                         'arrow-scale': 1.2,
-                        'opacity': 0.6
+                        'opacity': 0.4
                     }
                 },
                 
-                // Krawędzie różnych typów
+                // Krawędzie różnych typów - theme colors
                 {
                     selector: 'edge[type="DELEGATES"]',
                     style: {
-                        'line-color': '#a855f7',
-                        'target-arrow-color': '#a855f7'
+                        'line-color': THEME.primaryColor,            // Purple
+                        'target-arrow-color': THEME.primaryColor
                     }
                 },
                 {
                     selector: 'edge[type="EDITS"]',
                     style: {
-                        'line-color': '#3b82f6',
-                        'target-arrow-color': '#3b82f6'
+                        'line-color': THEME.secondary,               // Cyan
+                        'target-arrow-color': THEME.secondary
                     }
                 },
                 {
                     selector: 'edge[type="LEARNS"]',
                     style: {
-                        'line-color': '#10b981',
-                        'target-arrow-color': '#10b981'
+                        'line-color': THEME.primary,                 // Neon green
+                        'target-arrow-color': THEME.primary
                     }
                 },
                 {
                     selector: 'edge[type="IMPORTS"]',
                     style: {
-                        'line-color': '#f59e0b',
-                        'target-arrow-color': '#f59e0b'
+                        'line-color': THEME.warning,                 // Orange
+                        'target-arrow-color': THEME.warning
                     }
                 },
                 
-                // Węzeł wybrany (highlighted)
+                // Węzeł wybrany (highlighted) - Neon green highlight
+                // (See theme_config.js for box-shadow limitation notes)
                 {
                     selector: 'node.highlighted',
                     style: {
                         'border-width': 5,
-                        'border-color': '#fbbf24',
+                        'border-color': THEME.primary,               // #00ff9d Neon green
+                        'border-opacity': 1,
+                        'background-opacity': 0.9,
                         'z-index': 9999
                     }
                 },
@@ -218,15 +216,17 @@ async function initGraph() {
                     selector: 'node.neighbor',
                     style: {
                         'opacity': 1,
-                        'border-color': '#fbbf24'
+                        'border-color': THEME.secondary              // Cyan for neighbors
                     }
                 },
                 
-                // Krawędzie podświetlone
+                // Krawędzie podświetlone - Neon green
                 {
                     selector: 'edge.highlighted',
                     style: {
                         'width': 4,
+                        'line-color': THEME.primary,
+                        'target-arrow-color': THEME.primary,
                         'opacity': 1,
                         'z-index': 9999
                     }

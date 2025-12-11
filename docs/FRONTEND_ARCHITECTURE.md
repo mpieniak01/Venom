@@ -55,10 +55,11 @@ modules/
 
 ```
 modules/
-├── api.js       # REST API Client (34 metody)
-├── socket.js    # WebSocket Manager (auto-reconnect)
-├── ui.js        # UI Rendering & DOM Manipulation
-└── audio.js     # Audio/Voice (Push-to-Talk, Visualization)
+├── api.js          # REST API Client (34 metody)
+├── socket.js       # WebSocket Manager (auto-reconnect)
+├── ui.js           # UI Rendering & DOM Manipulation
+├── audio.js        # Audio/Voice (Push-to-Talk, Visualization)
+└── theme_config.js # Theme Configuration Bridge (CSS → JS)
 ```
 
 ### `api.js` - REST API Client
@@ -107,6 +108,31 @@ modules/
 - Audio visualization (canvas + Web Audio API)
 - MediaRecorder integration
 - Transcription via `/api/v1/audio/transcribe`
+
+### `theme_config.js` - Theme Configuration Bridge
+
+**Eksportuje:** `THEME`, `applyChartDefaults()`, `getMermaidConfig()`, `getCytoscapeStyles()`
+
+**Funkcjonalność:**
+- Most między CSS variables (Deep Space theme) a JavaScript bibliotekami
+- Centralna konfiguracja dla Chart.js, Mermaid.js, Cytoscape.js
+- Automatyczne pobieranie wartości z `:root` CSS variables
+- Spójne kolory i czcionki (JetBrains Mono) we wszystkich wizualizacjach
+
+**Przykład użycia:**
+```javascript
+import { THEME, applyChartDefaults, getMermaidConfig } from './modules/theme_config.js';
+
+// Zastosuj defaults dla Chart.js
+applyChartDefaults();
+
+// Inicjalizuj Mermaid z Deep Space theme
+const mermaidConfig = getMermaidConfig();
+mermaid.initialize(mermaidConfig);
+
+// Użyj THEME w custom komponentach
+const myColor = THEME.primary;  // #00ff9d (Neon green)
+```
 
 ## 🔄 Integracja z istniejącym kodem
 
@@ -233,13 +259,14 @@ renderMyNewWidget(data) {
 ✅ WebSocket z auto-reconnect  
 ✅ Chat interface z suggestion chips  
 ✅ Audio/Voice z wizualizacją  
-✅ Widget rendering (Chart.js, Mermaid)  
+✅ Widget rendering (Chart.js, Mermaid) - **z unified Deep Space theme**  
 ✅ Queue Governance (PAUZA, EMERGENCY STOP)  
 ✅ Repository status  
 ✅ Cost Guard  
 ✅ Model management (THE_ARMORY)  
-✅ Memory & Knowledge Graph  
+✅ Memory & Knowledge Graph - **z holograficznym efektem Cytoscape**  
 ✅ Wszystkie zakładki w panelu bocznym  
+✅ Alpine.js integration - dostępny globalnie dla reaktywnego UI  
 
 ## 📝 TODO (przyszłość)
 

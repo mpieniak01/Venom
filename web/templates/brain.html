@@ -294,7 +294,7 @@
         referrerpolicy="no-referrer"></script>
 <!-- Alpine.js CDN (potrzebne dla panelu kontrolnego) with integrity check -->
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" 
-        integrity="sha512-pJXTUPWanXZSZ/+s6/QJBZxdXgLZQ6k8uKRTHW5mS5G5EqrBKHZvLw4VgVqaLCpxf/TFvYJtpCZ7KJpLKO0lZw==" 
+        integrity="sha512-z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg==" 
         crossorigin="anonymous" 
         referrerpolicy="no-referrer"></script>
 
@@ -309,6 +309,6 @@ document.addEventListener('alpine:init', () => {
 });
 </script>
 
-<!-- Brain Logic -->
-<script src="/static/js/brain.js"></script>
+<!-- Brain Logic - Module type for ES6 imports -->
+<script type="module" src="/static/js/brain.js"></script>
 {% endblock %}

@@ -1,0 +1,55 @@
+/* Venom OS - Design Tokens (Deep Space Theme) */
+
+:root {
+    /* --- DEEP SPACE PALETTE --- */
+    --bg-dark: #030407;
+    --bg-panel: rgba(16, 20, 28, 0.6); /* Przezroczyste panele dla efektu szkła */
+    --bg-medium: #1e293b;
+    --bg-light: #334155;
+    
+    /* Główny gradient tła - kosmiczny */
+    --bg-gradient-body: radial-gradient(
+        circle at 50% -20%,
+        #1e2a45 0%,
+        #0f1319 40%,
+        #030407 100%
+    );
+
+    /* --- NEON AKCENTY --- */
+    --primary: #00ff9d;
+    --primary-color: #00ff9d; /* Alias dla kompatybilności */
+    --secondary: #00b8ff;
+    --secondary-color: #06b6d4; /* Alias dla kompatybilności */
+    --accent-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+
+    /* --- STATUS COLORS --- */
+    --success-color: #10b981;
+    --error-color: #ef4444;
+    --warning-color: #f59e0b;
+
+    /* --- GLOW EFFECTS --- */
+    --glow-strong: 0 0 20px rgba(0, 255, 157, 0.25);
+    --glow-border: 0 0 0 1px rgba(0, 255, 157, 0.15);
+    --glow-hover: 0 0 20px rgba(0, 255, 157, 0.4);
+
+    /* --- TEXT COLORS --- */
+    --text-main: #ffffff;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #94a3b8;
+
+    /* --- BORDERS --- */
+    --border-color: #475569;
+    --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+
+    /* --- FONTS --- */
+    --font-ui: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-tech: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* --- DARK MODE VARIATIONS (future-ready) --- */
+body.theme-isolated {
+    --bg-dark: #0f172a;
+    --bg-medium: #1e293b;
+    --bg-light: #334155;
+}

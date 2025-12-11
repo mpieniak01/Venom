@@ -1,0 +1,111 @@
+/* Venom OS - Animacje i Efekty */
+
+/* --- PULSE ANIMATION (dla kropek statusu, wskaźników live) --- */
+@keyframes pulse {
+    0% { 
+        opacity: 0.5; 
+    }
+    50% { 
+        opacity: 1; 
+        text-shadow: 0 0 5px var(--primary);
+    }
+    100% { 
+        opacity: 0.5; 
+    }
+}
+
+/* --- SLIDE IN ANIMATION (dla notyfikacji, toastów) --- */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* --- FADE IN --- */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* --- SHIMMER (dla ładowania) --- */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+/* --- GLOW PULSE (dla aktywnych elementów) --- */
+@keyframes glowPulse {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(0, 255, 157, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(0, 255, 157, 0.6);
+    }
+}
+
+/* --- SPIN (dla loaderów) --- */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* --- BOUNCE (dla notyfikacji ważnych) --- */
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0);
+    }
+    40% {
+        transform: translateY(-10px);
+    }
+    60% {
+        transform: translateY(-5px);
+    }
+}
+
+/* --- SCALE PULSE (dla przycisków akcji) --- */
+@keyframes scalePulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+/* --- UTILITY CLASSES --- */
+.animate-pulse {
+    animation: pulse 2s infinite;
+}
+
+.animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+.animate-glow {
+    animation: glowPulse 2s infinite;
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

@@ -1,0 +1,402 @@
+/* Venom OS - Main Stylesheet (Modular Architecture) */
+/* Import order matters: variables → layout → components → animations */
+
+@import url('modules/variables.css');
+@import url('modules/layout.css');
+@import url('modules/components.css');
+@import url('modules/animations.css');
+
+/* --- LEGACY COMPATIBILITY --- */
+/* Importing the old app.css for now to ensure nothing breaks during transition */
+/* TODO: Gradually migrate all styles from app.css to modules */
+/* @import url('app.css'); */
+
+/* --- ADDITIONAL GLOBAL STYLES --- */
+
+/* Navbar (from base.html) */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 2rem;
+    background-color: var(--bg-medium);
+    border-bottom: 2px solid var(--primary-color);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.navbar-logo {
+    font-size: 1.75rem;
+}
+
+.navbar-menu {
+    display: flex;
+    gap: 1rem;
+}
+
+.navbar-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.navbar-link:hover {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+}
+
+.navbar-link.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.navbar-icon {
+    font-size: 1.2rem;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background-color: var(--bg-medium);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.header-info {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+/* Brand (dla sidebar w Unified Config) */
+.brand {
+    font-family: var(--font-tech);
+    font-weight: 800;
+    font-size: 1.6rem;
+    letter-spacing: -1px;
+    color: white;
+    margin-bottom: 50px;
+    text-transform: uppercase;
+    position: relative;
+    display: inline-block;
+}
+
+.brand span {
+    color: var(--primary);
+    text-shadow: var(--glow-strong);
+}
+
+/* Navigation Links (dla sidebar) */
+.nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    font-family: var(--font-tech);
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-link.active {
+    background: rgba(0, 255, 157, 0.08);
+    border-color: rgba(0, 255, 157, 0.3);
+    color: var(--primary);
+    box-shadow: 0 0 15px rgba(0, 255, 157, 0.05);
+}
+
+.nav-link.active::after {
+    content: '●';
+    font-size: 0.6rem;
+    color: var(--primary);
+    animation: pulse 2s infinite;
+}
+
+/* Main content wrapper */
+.main-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Queue Governance Panel */
+.queue-governance-panel {
+    background: var(--bg-medium);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 2rem;
+}
+
+.governance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.governance-header h3 {
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+
+.governance-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.governance-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.btn-queue-action {
+    flex: 1;
+    padding: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.btn-queue-action:hover {
+    border-color: var(--primary-color);
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.btn-queue-action.danger:hover {
+    border-color: var(--error-color);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color);
+}
+
+/* Cost Mode Toggle */
+.cost-mode-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-light);
+    transition: 0.3s;
+    border-radius: 24px;
+    border: 1px solid var(--border-color);
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--primary-color);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+/* Repository Status */
+.repo-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.repo-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-repo-action {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-repo-action:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Lab Mode Toggle */
+.lab-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lab-mode-toggle:hover {
+    border-color: var(--warning-color);
+}
+
+.lab-mode-toggle input:checked ~ .lab-mode-icon {
+    filter: brightness(1.5);
+}
+
+/* Model badges */
+.model-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 600;
+}
+
+.model-badge.paid {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--error-color);
+    border: 1px solid var(--error-color);
+}
+
+.model-badge.free {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+/* Research source badge */
+.research-source-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    font-weight: 600;
+}
+
+.research-source-badge.google-grounded {
+    background: rgba(66, 133, 244, 0.2);
+    color: #4285f4;
+    border: 1px solid #4285f4;
+}
+
+.research-source-badge.web-search {
+    background: rgba(222, 88, 51, 0.2);
+    color: #de5833;
+    border: 1px solid #de5833;
+}
+
+/* Widgets Grid (THE_CANVAS) */
+.widgets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.widget {
+    background: var(--bg-medium);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.widget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.widget-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.widget-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+.widget-close:hover {
+    color: var(--error-color);
+}

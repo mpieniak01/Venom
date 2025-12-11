@@ -81,10 +81,10 @@ async function initGraph() {
             elements: data.elements,
             
             style: [
-                // Base styles from theme config (hologram effect)
+                // Base styles from theme config (hologram effect, edges, highlights)
                 ...getCytoscapeStyles(),
                 
-                // Styl węzłów - bazowy (overwrites for data-driven properties)
+                // Additional node properties (merged with base, data-driven)
                 {
                     selector: 'node',
                     style: {
@@ -199,7 +199,7 @@ async function initGraph() {
                 },
                 
                 // Węzeł wybrany (highlighted) - Neon green highlight
-                // Note: Cytoscape doesn't support box-shadow
+                // (See theme_config.js for box-shadow limitation notes)
                 {
                     selector: 'node.highlighted',
                     style: {

@@ -1,6 +1,6 @@
 // Venom OS - Theme Configuration Module
-// Most między CSS variables a JavaScript libraries
-// Pobiera wartości z modules/variables.css i udostępnia jako konfigurację dla Chart.js, Mermaid, Cytoscape
+// Bridge between CSS variables and JavaScript libraries
+// Extracts values from modules/variables.css and provides configuration for Chart.js, Mermaid, Cytoscape
 
 /**
  * Pobiera wartość CSS variable z :root
@@ -10,6 +10,19 @@
 function getCSSVariable(varName) {
     const name = varName.startsWith('--') ? varName : `--${varName}`;
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/**
+ * Konwertuje hex color na rgba z zadaną przezroczystością
+ * @param {string} hex - Kolor hex (np. #00ff9d)
+ * @param {number} alpha - Przezroczystość 0-1
+ * @returns {string} Kolor rgba
+ */
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /**
@@ -144,12 +157,12 @@ export const THEME = {
             labelTextColor: getCSSVariable('text-primary'),
             loopTextColor: getCSSVariable('text-primary'),
             noteBorderColor: getCSSVariable('primary-green'), // Neon green notes
-            noteBkgColor: 'rgba(0, 255, 157, 0.1)',          // Subtle green background
+            noteBkgColor: hexToRgba(getCSSVariable('primary-green'), 0.1), // Subtle green background
             noteTextColor: getCSSVariable('text-primary'),
             
             // Activation boxes
             activationBorderColor: getCSSVariable('primary-color'),
-            activationBkgColor: 'rgba(139, 92, 246, 0.15)',  // Subtle purple
+            activationBkgColor: hexToRgba(getCSSVariable('primary-color'), 0.15), // Subtle purple
             
             // Flowchart
             nodeBorder: getCSSVariable('primary-color'),

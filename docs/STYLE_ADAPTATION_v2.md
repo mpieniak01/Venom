@@ -1,7 +1,7 @@
 # Adaptacja Stylu Index.html do Szablonu Deep Space
 
 ## Kontekst
-Obecny plik produkcyjny `web/templates/index.html` znacząco odbiegł od zatwierdzonego szablonu projektu (`_szablon.html`). Przeprowadzono analizę i adaptację architektury stylów i HTML aby odwzorowywać detale z wzorca.
+Obecny plik produkcyjny `web/templates/index.html` znacząco odbiegł od zatwierdzonego szablonu projektu (`_szablon.html`). Przeprowadzono analizę i adaptację architektury stylów i HTML, aby odwzorowywały detale z wzorca.
 
 ## Zmiany Wprowadzone
 

@@ -198,7 +198,7 @@ body::before {
 .tab-button.active {
     color: var(--primary);
     border-bottom-color: var(--primary);
-    background: rgba(0, 255, 157, 0.05);
+    background: var(--primary-green-rgba-005);
 }
 
 .tab-content {

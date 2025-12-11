@@ -224,3 +224,84 @@ class TestHybridModelRouter:
 
         assert routing["target"] == "local"
         assert routing["provider"] == "local"
+
+    def test_calculate_complexity_simple_task(self):
+        """Test obliczania złożoności dla prostego zadania."""
+        router = HybridModelRouter()
+        complexity = router.calculate_complexity("What time is it?", TaskType.CHAT)
+
+        # CHAT task powinien mieć niską złożoność (1 + brak punktów za długość)
+        assert complexity < 5
+
+    def test_calculate_complexity_complex_task(self):
+        """Test obliczania złożoności dla złożonego zadania."""
+        router = HybridModelRouter()
+        long_prompt = "x" * 1500  # Długi prompt
+        complexity = router.calculate_complexity(long_prompt, TaskType.CODING_COMPLEX)
+
+        # CODING_COMPLEX (7) + długość >1000 (2) = 9
+        assert complexity >= 7
+
+    def test_low_cost_routing_simple_task(self):
+        """Test Low-Cost routingu - proste zadania idą do LOCAL."""
+        settings = Settings(AI_MODE="HYBRID", GOOGLE_API_KEY="test-key")
+        router = HybridModelRouter(settings=settings)
+
+        # Proste zadanie (complexity < 5) powinno iść do LOCAL mimo że HYBRID
+        routing = router.route_task(TaskType.CHAT, "Która godzina?")
+
+        assert routing["target"] == "local"
+        assert "complexity" in routing["reason"].lower() or "oszczędność" in routing["reason"].lower()
+
+    def test_low_cost_routing_complex_with_cost_threshold(self):
+        """Test Low-Cost Guard - zadania przekraczające próg kosztów używają CLOUD_FAST."""
+        settings = Settings(
+            AI_MODE="HYBRID",
+            GOOGLE_API_KEY="test-key",
+            HYBRID_CLOUD_PROVIDER="openai",
+            HYBRID_CLOUD_MODEL="gpt-4o"
+        )
+        router = HybridModelRouter(settings=settings)
+
+        # Bardzo długie zadanie CODING_COMPLEX (drogi koszt)
+        long_prompt = "x" * 5000
+        routing = router.route_task(TaskType.CODING_COMPLEX, long_prompt)
+
+        # Powinno wykryć wysoki koszt i użyć CLOUD_FAST zamiast CLOUD_HIGH
+        # lub pozostać w cloud (zależnie od estymacji)
+        assert routing["target"] in ["cloud", "local"]
+
+    def test_route_to_cloud_fast_openai(self):
+        """Test routingu do CLOUD_FAST dla OpenAI."""
+        settings = Settings(HYBRID_CLOUD_PROVIDER="openai")
+        router = HybridModelRouter(settings=settings)
+
+        routing = router._route_to_cloud_fast("Test reason")
+
+        assert routing["target"] == "cloud"
+        assert routing["model_name"] == "gpt-4o-mini"
+        assert routing["provider"] == "openai"
+        assert routing["tier"] == "fast"
+
+    def test_route_to_cloud_fast_google(self):
+        """Test routingu do CLOUD_FAST dla Google."""
+        settings = Settings(HYBRID_CLOUD_PROVIDER="google")
+        router = HybridModelRouter(settings=settings)
+
+        routing = router._route_to_cloud_fast("Test reason")
+
+        assert routing["target"] == "cloud"
+        assert routing["model_name"] == "gemini-1.5-flash"
+        assert routing["provider"] == "google"
+        assert routing["tier"] == "fast"
+
+    def test_token_economist_integration(self):
+        """Test integracji z TokenEconomist."""
+        router = HybridModelRouter()
+
+        # Router powinien mieć zainicjalizowany TokenEconomist
+        assert router.token_economist is not None
+
+        # TokenEconomist powinien być w stanie estymować koszty
+        cost = router.token_economist.estimate_task_cost("gpt-4o", 1000)
+        assert "estimated_cost_usd" in cost

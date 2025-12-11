@@ -34,6 +34,9 @@ class WebSearchSkill:
         self.tavily_client = None
         tavily_key = None
         
+        # Pobierz AI_MODE dla strategii kosztowej
+        self.ai_mode = getattr(SETTINGS, "AI_MODE", "LOCAL")
+        
         if hasattr(SETTINGS, "TAVILY_API_KEY"):
             tavily_key = extract_secret_value(SETTINGS.TAVILY_API_KEY)
         
@@ -80,8 +83,11 @@ class WebSearchSkill:
         )
 
         try:
-            # Użyj Tavily jeśli dostępny
-            if self.tavily_client:
+            # LOW-COST ROUTING: W trybie LOCAL lub ECO zawsze używaj DuckDuckGo (darmowe)
+            use_free_search = self.ai_mode == "LOCAL" or self.ai_mode == "ECO"
+            
+            # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL/ECO
+            if self.tavily_client and not use_free_search:
                 try:
                     response = self.tavily_client.search(
                         query=query,

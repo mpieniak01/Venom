@@ -234,3 +234,76 @@ class TestTokenEconomist:
         # Summary nie powinno być puste
         assert len(summary) > 0
         assert isinstance(summary, str)
+
+    def test_load_pricing_default_path(self):
+        """Test wczytywania cennika z domyślnej ścieżki."""
+        economist = TokenEconomist()
+        pricing = economist.load_pricing()
+
+        # Sprawdź czy cennik został wczytany
+        if pricing:
+            assert "models" in pricing
+            assert "tools" in pricing
+            assert "local" in pricing["models"]
+
+    def test_estimate_task_cost(self):
+        """Test estymacji kosztu zadania."""
+        economist = TokenEconomist()
+
+        # Test dla modelu lokalnego (darmowy)
+        local_cost = economist.estimate_task_cost("local", 100)
+        assert local_cost["service_id"] == "local"
+        assert local_cost["estimated_cost_usd"] == 0.0
+        assert local_cost["is_free"] is True
+
+        # Test dla modelu płatnego
+        gpt_cost = economist.estimate_task_cost("gpt-4o", 1000)
+        assert gpt_cost["service_id"] == "gpt-4o"
+        assert gpt_cost["estimated_cost_usd"] > 0
+        assert gpt_cost["is_free"] is False
+        assert gpt_cost["input_tokens"] > 0
+        assert gpt_cost["output_tokens"] > 0
+
+    def test_compare_providers(self):
+        """Test porównania kosztów między providerami."""
+        economist = TokenEconomist()
+
+        prompt = "Write a simple hello world function"
+        results = economist.compare_providers(prompt)
+
+        # Powinny być wyniki dla wszystkich providerów
+        assert len(results) > 0
+
+        # Pierwszy (najtańszy) powinien być local (koszt 0)
+        assert results[0]["provider"] == "local"
+        assert results[0]["cost"] == 0.0
+        assert results[0]["is_free"] is True
+
+        # Wyniki powinny być posortowane rosnąco po koszcie
+        for i in range(len(results) - 1):
+            assert results[i]["cost"] <= results[i + 1]["cost"]
+
+    def test_compare_providers_custom_list(self):
+        """Test porównania kosztów z niestandardową listą providerów."""
+        economist = TokenEconomist()
+
+        prompt = "Test prompt"
+        providers = ["local", "gpt-4o-mini"]
+        results = economist.compare_providers(prompt, providers)
+
+        assert len(results) == 2
+        assert results[0]["provider"] == "local"  # Najtańszy
+
+    def test_estimate_task_cost_with_output_ratio(self):
+        """Test estymacji kosztu z niestandardowym output_ratio."""
+        economist = TokenEconomist()
+
+        # Output ratio = 1.0 (output taki sam jak input)
+        cost_1 = economist.estimate_task_cost("gpt-4o", 1000, output_ratio=1.0)
+        # Output ratio = 0.5 (output połowa inputu)
+        cost_05 = economist.estimate_task_cost("gpt-4o", 1000, output_ratio=0.5)
+
+        # Koszt z ratio=1.0 powinien być wyższy
+        assert cost_1["estimated_cost_usd"] > cost_05["estimated_cost_usd"]
+        assert cost_1["output_tokens"] == cost_1["input_tokens"]
+        assert cost_05["output_tokens"] == cost_05["input_tokens"] // 2

@@ -1,4 +1,22 @@
-/* Venom Cockpit - Styles */
+/* Venom Cockpit - Styles (LEGACY)
+ * 
+ * ⚠️ DEPRECATION NOTICE ⚠️
+ * Ten plik CSS jest obecnie w trybie legacy i jest ładowany równolegle z main.css
+ * dla zachowania kompatybilności wstecznej podczas migracji do modularnej architektury.
+ * 
+ * NOWA ARCHITEKTURA: web/static/css/main.css (importuje moduły z /modules/)
+ * 
+ * Status migracji:
+ * - [x] base.html używa sidebar zamiast navbar
+ * - [x] Wszystkie podstrony (index, strategy, brain, inspector, flow_inspector) zaktualizowane
+ * - [x] Zmienne CSS zmigrowane do modules/variables.css
+ * - [x] Layout zmigrowany do modules/layout.css
+ * - [x] Komponenty zmigrowane do modules/components.css
+ * - [x] Animacje zmigrowane do modules/animations.css
+ * 
+ * TODO: Zweryfikować które style z tego pliku są nadal używane i usunąć duplikaty.
+ * Plan usunięcia tego pliku: Po pełnych testach regresji wizualnej.
+ */
 
 :root {
     --primary-color: #8b5cf6;

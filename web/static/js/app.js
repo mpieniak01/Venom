@@ -911,20 +911,25 @@ class VenomDashboard {
             }
         }
         
-        // Update network I/O in SYS tab if available
-        if (metrics.network && this.elements.sysMetricNetwork) {
-            const networkKB = Math.round((metrics.network.bytes || 0) / 1024);
-            this.elements.sysMetricNetwork.textContent = `${networkKB} KB`;
-        }
-
         // Dashboard v2.1: Network I/O
-        if (metrics.network && metrics.network.total_bytes !== undefined) {
-            const totalKB = Math.round(metrics.network.total_bytes / 1024);
+        // Unified handling for both total_bytes (main display) and bytes (fallback)
+        if (metrics.network) {
+            const networkBytes = metrics.network.total_bytes || metrics.network.bytes || 0;
+            const networkKB = Math.round(networkBytes / 1024);
+            
+            // Update main metric display
             const metricNetwork = document.getElementById('metricNetwork');
             if (metricNetwork) {
-                metricNetwork.textContent = totalKB >= 1024
-                    ? `${(totalKB / 1024).toFixed(1)} MB`
-                    : `${totalKB} KB`;
+                metricNetwork.textContent = networkKB >= 1024
+                    ? `${(networkKB / 1024).toFixed(1)} MB`
+                    : `${networkKB} KB`;
+            }
+            
+            // Update SYS tab metric display
+            if (this.elements.sysMetricNetwork) {
+                this.elements.sysMetricNetwork.textContent = networkKB >= 1024
+                    ? `${(networkKB / 1024).toFixed(1)} MB`
+                    : `${networkKB} KB`;
             }
         }
     }

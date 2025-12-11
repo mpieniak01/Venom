@@ -167,13 +167,13 @@
         <aside class="right-panel telemetry-panel">
             <!-- Tabs for switching between views -->
             <div class="panel-tabs">
-                <button class="tab-button active" data-tab="feed">FEED</button>
-                <button class="tab-button" data-tab="voice">VOICE</button>
-                <button class="tab-button" data-tab="sys">SYS</button>
-                <button class="tab-button" data-tab="jobs">JOBS</button>
-                <button class="tab-button" data-tab="memory">MEMORY</button>
-                <button class="tab-button" data-tab="models">MODELS</button>
-                <button class="tab-button" data-tab="history">HIST</button>
+                <button class="tab-button active" data-tab="feed">TRANSMISJA</button>
+                <button class="tab-button" data-tab="voice">GŁOS</button>
+                <button class="tab-button" data-tab="sys">SYSTEM</button>
+                <button class="tab-button" data-tab="jobs">ZADANIA</button>
+                <button class="tab-button" data-tab="memory">PAMIĘĆ</button>
+                <button class="tab-button" data-tab="models">MODELE</button>
+                <button class="tab-button" data-tab="history">HISTORIA</button>
             </div>
 
             <!-- Live Feed Tab -->
@@ -327,10 +327,10 @@
                 </div>
                 
                 <!-- Live Terminal reference -->
-                <div class="panel-header" style="margin-top: 15px; padding: 0.5rem 0;">
-                    <h3 style="font-size: 0.85rem;">Terminal</h3>
+                <div class="panel-header sys-terminal-header">
+                    <h3>Terminal</h3>
                 </div>
-                <div id="sysLiveTerminal" class="live-terminal" style="max-height: 150px; font-size: 0.7rem;">
+                <div id="sysLiveTerminal" class="live-terminal live-terminal--compact">
                     <div class="terminal-entry">
                         <span class="terminal-timestamp">[--:--:--]</span>
                         <span class="terminal-level info">INFO</span>

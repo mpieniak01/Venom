@@ -903,6 +903,22 @@ input:checked + .toggle-slider:before {
     color: var(--secondary);
 }
 
+/* SYS Tab Terminal Header */
+.sys-terminal-header {
+    margin-top: 15px;
+    padding: 0.5rem 0;
+}
+
+.sys-terminal-header h3 {
+    font-size: 0.85rem;
+}
+
+/* Live Terminal Compact Variant (for SYS tab) */
+.live-terminal--compact {
+    max-height: 150px;
+    font-size: 0.7rem;
+}
+
 /* Model badges */
 .model-badge {
     font-size: 0.75rem;

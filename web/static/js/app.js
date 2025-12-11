@@ -48,6 +48,21 @@ class VenomDashboard {
         this.historyLoading = false;
     }
 
+    applySuggestionText(suggestion) {
+        if (!suggestion || !this.elements.taskInput) return;
+        this.elements.taskInput.value = suggestion;
+        this.elements.taskInput.focus();
+    }
+
+    getSuggestionPrompt(chip) {
+        if (!chip) return null;
+        const prompt = chip.getAttribute('data-prompt') || chip.getAttribute('data-suggestion');
+        if (prompt && prompt.trim().length > 0) {
+            return prompt;
+        }
+        return (chip.textContent || '').trim();
+    }
+
     initNotificationContainer() {
         // Create notification container for toast messages
         const container = document.createElement('div');
@@ -100,6 +115,7 @@ class VenomDashboard {
             taskInput: document.getElementById('taskInput'),
             sendButton: document.getElementById('sendButton'),
             chatMessages: document.getElementById('chatMessages'),
+            suggestionPanel: document.getElementById('suggestionPanel'),
             liveFeed: document.getElementById('liveFeed'),
             taskList: document.getElementById('taskList'),
             metricTasks: document.getElementById('metricTasks'),
@@ -625,22 +641,16 @@ class VenomDashboard {
             }
         });
 
-        // Suggestion chips click handlers - use delegation on chat messages container
-        const chatMessages = document.getElementById('chatMessages');
-        if (chatMessages) {
-            chatMessages.addEventListener('click', (e) => {
-                const chip = e.target.closest('.suggestion-chip');
-                if (chip) {
-                    const suggestion = chip.getAttribute('data-suggestion');
-                    if (suggestion) {
-                        this.elements.taskInput.value = suggestion;
-                        this.elements.taskInput.focus();
-                        // Optionally auto-submit
-                        // this.sendTask();
-                    }
-                }
-            });
-        }
+        // Suggestion chips click handlers (both static section and dynamic messages)
+        const handleSuggestionClick = (event) => {
+            const chip = event.target.closest('.suggestion-chip');
+            if (!chip) return;
+            const prompt = this.getSuggestionPrompt(chip);
+            if (!prompt) return;
+            event.preventDefault();
+            this.applySuggestionText(prompt);
+        };
+        document.addEventListener('click', handleSuggestionClick);
 
         // Repository quick actions
         const syncBtn = this.elements.syncRepoBtn;

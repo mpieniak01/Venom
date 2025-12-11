@@ -295,13 +295,24 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
+    padding-bottom: 1.5rem;
     scroll-behavior: smooth;
+}
+
+.suggestion-panel {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-medium);
+    flex-shrink: 0;
 }
 
 .welcome-message {
@@ -312,54 +323,53 @@ body {
 
 /* Suggestion Grid */
 .suggestion-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-top: 2rem;
-    padding: 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
 }
 
 .suggestion-chip {
-    display: flex;
-    flex-direction: column;
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 1.25rem 1rem;
-    background: linear-gradient(135deg, var(--bg-medium), var(--bg-light));
-    border: 2px solid var(--border-color);
+    padding: 0.45rem 0.85rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
     border-radius: 12px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: center;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
 }
 
 .suggestion-chip:hover {
     border-color: var(--primary-color);
-    transform: translateY(-4px);
-    box-shadow: 0 8px 16px rgba(139, 92, 246, 0.3);
-    background: linear-gradient(135deg, var(--bg-light), var(--primary-color));
+    color: var(--primary-color);
+    transform: translateY(-1px);
 }
 
 .suggestion-chip:active {
-    transform: translateY(-2px);
+    transform: translateY(0);
 }
 
 .chip-icon {
-    font-size: 2rem;
-    margin-bottom: 0.25rem;
+    font-size: 1.1rem;
 }
 
-.chip-text {
-    font-size: 1rem;
+.chip-text-block {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+}
+
+.chip-title {
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
 }
 
-.chip-subtitle {
-    font-size: 0.75rem;
+.chip-desc {
+    font-size: 0.7rem;
     color: var(--text-secondary);
-    line-height: 1.2;
 }
 
 .message {
@@ -395,11 +405,8 @@ body {
     border-top: 1px solid var(--border-color);
     display: flex;
     gap: 0.5rem;
-    position: sticky;
-    bottom: 0;
-    background: linear-gradient(180deg, rgba(18,24,38,0.8), var(--bg-medium));
-    backdrop-filter: blur(6px);
-    z-index: 2;
+    background: var(--bg-medium);
+    flex-shrink: 0;
 }
 
 #taskInput {

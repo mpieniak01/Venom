@@ -9,6 +9,7 @@ from duckduckgo_search import DDGS
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,14 +34,7 @@ class WebSearchSkill:
         tavily_key = None
         
         if hasattr(SETTINGS, "TAVILY_API_KEY"):
-            key = SETTINGS.TAVILY_API_KEY
-            tavily_key = (
-                key.get_secret_value()
-                if hasattr(key, "get_secret_value")
-                else key
-            )
-            if not tavily_key:  # Empty string
-                tavily_key = None
+            tavily_key = extract_secret_value(SETTINGS.TAVILY_API_KEY)
         
         if tavily_key:
             try:

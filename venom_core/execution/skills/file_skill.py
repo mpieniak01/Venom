@@ -254,8 +254,9 @@ class FileSkill:
                             size = stat_result.st_size
                             rel_path = file_path.relative_to(self.workspace_root)
                             items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
-                        except Exception:
-                            # Pomiń pliki do których nie ma dostępu
+                        except Exception as e:
+                            # Loguj ostrzeżenie o plikach do których nie ma dostępu
+                            logger.warning(f"Nie można odczytać pliku {file_path}: {e}")
                             continue
                 
                 if len(items) == 1:  # Tylko nagłówek

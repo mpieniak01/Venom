@@ -38,6 +38,13 @@
     --glow-border: 0 0 0 1px rgba(0, 255, 157, 0.15);
     --glow-hover: 0 0 20px rgba(139, 92, 246, 0.4); /* Purple glow for UI elements */
     --glow-hover-green: 0 0 20px rgba(0, 255, 157, 0.4); /* Green glow for accents */
+    
+    /* --- RGBA COLORS (dla background i border) --- */
+    --primary-green-rgba-005: rgba(0, 255, 157, 0.05); /* 5% opacity dla subtelnych tła */
+    --primary-green-rgba-01: rgba(0, 255, 157, 0.1); /* 10% opacity dla tła hover */
+    --primary-green-rgba-02: rgba(0, 255, 157, 0.2); /* 20% opacity dla cieni */
+    --primary-green-rgba-03: rgba(0, 255, 157, 0.3); /* 30% opacity dla cieni i border */
+    --primary-green-rgba-06: rgba(0, 255, 157, 0.6); /* 60% opacity dla intensywnych efektów */
 
     /* --- TEXT COLORS --- */
     --text-main: #ffffff;
@@ -52,6 +59,11 @@
     /* --- FONTS --- */
     --font-ui: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-tech: 'JetBrains Mono', 'Consolas', monospace;
+    
+    /* --- GRID & LAYOUT --- */
+    --grid-gap: 30px;
+    --card-padding: 30px;
+    --card-border-radius: 4px;
 }
 
 /* --- DARK MODE VARIATIONS (future-ready) --- */

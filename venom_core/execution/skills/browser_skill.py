@@ -1,5 +1,6 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
+import time
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -10,6 +11,9 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Stała dla opóźnienia stabilizacji DOM
+DOM_STABILIZATION_DELAY_MS = 500
 
 
 class BrowserSkill:
@@ -78,6 +82,27 @@ class BrowserSkill:
             self._playwright = None
 
         logger.info("Przeglądarka zamknięta")
+
+    async def _capture_verification_screenshot(self, action_type: str) -> Path:
+        """
+        Wykonuje zrzut ekranu weryfikacyjny po akcji.
+        
+        Args:
+            action_type: Typ akcji (np. 'click', 'fill')
+            
+        Returns:
+            Ścieżka do zapisanego screenshota
+        """
+        timestamp = int(time.time())
+        screenshot_name = f"{action_type}_verification_{timestamp}.png"
+        screenshot_path = self.screenshots_dir / screenshot_name
+        
+        # Poczekaj chwilę na zmianę DOM (React, Vue, itp.)
+        await self._page.wait_for_timeout(DOM_STABILIZATION_DELAY_MS)
+        
+        await self._page.screenshot(path=str(screenshot_path))
+        
+        return screenshot_path
 
     @kernel_function(
         name="visit_page",
@@ -192,7 +217,7 @@ class BrowserSkill:
     @kernel_function(
         name="click_element",
         description="Klika w element na stronie za pomocą selektora CSS. "
-        "Użyj do interakcji z przyciskami, linkami itp.",
+        "Użyj do interakcji z przyciskami, linkami itp. Automatycznie wykonuje zrzut ekranu weryfikacyjny.",
     )
     async def click_element(
         self,
@@ -202,14 +227,14 @@ class BrowserSkill:
         timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
-        Klika w element na stronie.
+        Klika w element na stronie i wykonuje zrzut ekranu weryfikacyjny.
 
         Args:
             selector: Selektor CSS elementu
             timeout: Timeout w ms
 
         Returns:
-            Komunikat o wyniku operacji
+            Komunikat o wyniku operacji wraz ze ścieżką do zrzutu ekranu
         """
         try:
             await self._ensure_browser()
@@ -217,8 +242,11 @@ class BrowserSkill:
             logger.info(f"Klikanie w element: {selector}")
             await self._page.click(selector, timeout=timeout)
 
-            logger.info(f"Kliknięto w element: {selector}")
-            return f"✅ Kliknięto w element: {selector}"
+            # Wykonaj automatyczny zrzut ekranu weryfikacyjny
+            screenshot_path = await self._capture_verification_screenshot("click")
+
+            logger.info(f"Kliknięto w element: {selector}, zrzut ekranu: {screenshot_path}")
+            return f"✅ Kliknięto w element: {selector}\nZrzut ekranu weryfikacyjny: {screenshot_path}"
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas klikania w element '{selector}': {str(e)}"
@@ -228,7 +256,7 @@ class BrowserSkill:
     @kernel_function(
         name="fill_form",
         description="Wypełnia pole formularza podaną wartością. "
-        "Użyj do testowania formularzy (login, rejestracja, itp.).",
+        "Użyj do testowania formularzy (login, rejestracja, itp.). Automatycznie wykonuje zrzut ekranu weryfikacyjny.",
     )
     async def fill_form(
         self,
@@ -239,7 +267,7 @@ class BrowserSkill:
         timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
     ) -> str:
         """
-        Wypełnia pole formularza.
+        Wypełnia pole formularza i wykonuje zrzut ekranu weryfikacyjny.
 
         Args:
             selector: Selektor CSS pola
@@ -247,7 +275,7 @@ class BrowserSkill:
             timeout: Timeout w ms
 
         Returns:
-            Komunikat o wyniku operacji
+            Komunikat o wyniku operacji wraz ze ścieżką do zrzutu ekranu
         """
         try:
             await self._ensure_browser()
@@ -255,8 +283,11 @@ class BrowserSkill:
             logger.info(f"Wypełnianie pola: {selector}")
             await self._page.fill(selector, value, timeout=timeout)
 
-            logger.info(f"Wypełniono pole: {selector}")
-            return f"✅ Wypełniono pole: {selector}"
+            # Wykonaj automatyczny zrzut ekranu weryfikacyjny
+            screenshot_path = await self._capture_verification_screenshot("fill")
+
+            logger.info(f"Wypełniono pole: {selector}, zrzut ekranu: {screenshot_path}")
+            return f"✅ Wypełniono pole: {selector}\nZrzut ekranu weryfikacyjny: {screenshot_path}"
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas wypełniania pola '{selector}': {str(e)}"

@@ -10,7 +10,6 @@ Ten skrypt pokazuje nowe funkcjonalności:
 
 import asyncio
 import tempfile
-from pathlib import Path
 
 
 async def demo_file_skill_recursive():

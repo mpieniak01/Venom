@@ -12,6 +12,9 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Stała dla opóźnienia stabilizacji DOM
+DOM_STABILIZATION_DELAY_MS = 500
+
 
 class BrowserSkill:
     """
@@ -79,6 +82,27 @@ class BrowserSkill:
             self._playwright = None
 
         logger.info("Przeglądarka zamknięta")
+
+    async def _capture_verification_screenshot(self, action_type: str) -> Path:
+        """
+        Wykonuje zrzut ekranu weryfikacyjny po akcji.
+        
+        Args:
+            action_type: Typ akcji (np. 'click', 'fill')
+            
+        Returns:
+            Ścieżka do zapisanego screenshota
+        """
+        timestamp = int(time.time())
+        screenshot_name = f"{action_type}_verification_{timestamp}.png"
+        screenshot_path = self.screenshots_dir / screenshot_name
+        
+        # Poczekaj chwilę na zmianę DOM (React, Vue, itp.)
+        await self._page.wait_for_timeout(DOM_STABILIZATION_DELAY_MS)
+        
+        await self._page.screenshot(path=str(screenshot_path))
+        
+        return screenshot_path
 
     @kernel_function(
         name="visit_page",
@@ -219,14 +243,7 @@ class BrowserSkill:
             await self._page.click(selector, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
-            timestamp = int(time.time())
-            screenshot_name = f"click_verification_{timestamp}.png"
-            screenshot_path = self.screenshots_dir / screenshot_name
-            
-            # Poczekaj chwilę na zmianę DOM (React, Vue, itp.)
-            await self._page.wait_for_timeout(500)
-            
-            await self._page.screenshot(path=str(screenshot_path))
+            screenshot_path = await self._capture_verification_screenshot("click")
 
             logger.info(f"Kliknięto w element: {selector}, zrzut ekranu: {screenshot_path}")
             return f"✅ Kliknięto w element: {selector}\nZrzut ekranu weryfikacyjny: {screenshot_path}"
@@ -267,14 +284,7 @@ class BrowserSkill:
             await self._page.fill(selector, value, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
-            timestamp = int(time.time())
-            screenshot_name = f"fill_verification_{timestamp}.png"
-            screenshot_path = self.screenshots_dir / screenshot_name
-            
-            # Poczekaj chwilę na zmianę DOM (React, Vue, itp.)
-            await self._page.wait_for_timeout(500)
-            
-            await self._page.screenshot(path=str(screenshot_path))
+            screenshot_path = await self._capture_verification_screenshot("fill")
 
             logger.info(f"Wypełniono pole: {selector}, zrzut ekranu: {screenshot_path}")
             return f"✅ Wypełniono pole: {selector}\nZrzut ekranu weryfikacyjny: {screenshot_path}"

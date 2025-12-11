@@ -272,7 +272,7 @@ def test_web_skill_initialization_with_tavily():
                 mock_tavily_client = MagicMock()
                 mock_tavily_module.TavilyClient = mock_tavily_client
                 
-                skill = WebSearchSkill()
+                WebSearchSkill()
                 
                 # Powinien zainicjalizować klienta Tavily
                 mock_tavily_client.assert_called_once_with(api_key="test_api_key")

@@ -477,6 +477,45 @@
     letter-spacing: 1px;
 }
 
+/* Card Action Buttons (for buttons inside flare-cards) */
+.btn-card-action {
+    font-size: 0.6rem;
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    margin-top: 5px;
+    padding: 4px 8px;
+    font-family: var(--font-tech);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-card-action:hover {
+    color: var(--primary);
+    text-shadow: 0 0 5px var(--primary-green-rgba-03);
+}
+
+.btn-card-action.btn-danger {
+    color: var(--warning-color);
+}
+
+.btn-card-action.btn-danger:hover {
+    color: var(--error-color);
+    text-shadow: 0 0 5px rgba(239, 68, 68, 0.3);
+}
+
+.btn-card-action .btn-icon {
+    font-size: 0.8rem;
+}
+
+.btn-card-action .btn-text {
+    font-size: 0.6rem;
+    letter-spacing: 0.5px;
+}
+
 /* Main content wrapper */
 .main-content {
     flex: 1;
@@ -679,7 +718,7 @@ input:checked + .toggle-slider:before {
     font-family: var(--font-tech);
 }
 
-/* Toggle Switch (for cost mode, etc.) */
+/* Toggle Switch (for cost mode, lab mode, etc.) */
 .toggle-switch {
     position: relative;
     display: inline-block;
@@ -691,6 +730,7 @@ input:checked + .toggle-slider:before {
     opacity: 0;
     width: 0;
     height: 0;
+    position: absolute;
 }
 
 .toggle-dot {
@@ -717,11 +757,12 @@ input:checked + .toggle-slider:before {
     border-radius: 50%;
 }
 
-input[type="checkbox"]:checked + .toggle-switch .toggle-dot {
+/* When checkbox is checked, style the toggle */
+.toggle-switch input[type="checkbox"]:checked ~ .toggle-dot {
     background-color: var(--primary);
 }
 
-input[type="checkbox"]:checked + .toggle-switch .toggle-dot:before {
+.toggle-switch input[type="checkbox"]:checked ~ .toggle-dot:before {
     transform: translateX(20px);
 }
 

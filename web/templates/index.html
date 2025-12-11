@@ -49,8 +49,14 @@
             <div class="card-value">
                 <span id="queueActive">0</span><span style="font-size: 1.2rem; color: #444;"> / <span id="queueLimit">5</span></span>
             </div>
-            <button id="pauseResumeBtn" style="font-size: 0.6rem; background: none; border: none; color: #555; cursor: pointer; margin-top: 5px;" data-state="running">[ PAUSE ]</button>
-            <button id="emergencyStopBtn" style="font-size: 0.6rem; background: none; border: none; color: #f59e0b; cursor: pointer; margin-top: 5px;">[ STOP ]</button>
+            <button id="pauseResumeBtn" class="btn-card-action" data-state="running">
+                <span class="btn-icon">⏸️</span>
+                <span class="btn-text">PAUSE</span>
+            </button>
+            <button id="emergencyStopBtn" class="btn-card-action btn-danger">
+                <span class="btn-icon">🚨</span>
+                <span class="btn-text">STOP</span>
+            </button>
         </div>
         
         <div class="flare-card secondary">
@@ -59,7 +65,9 @@
                 Queue Pending
             </div>
             <div class="card-value" id="queuePending">0</div>
-            <button id="purgeQueueBtn" style="font-size: 0.6rem; background: none; border: none; color: #555; cursor: pointer; margin-top: 5px;">[ PURGE ]</button>
+            <button id="purgeQueueBtn" class="btn-card-action">
+                <span class="btn-text">[ PURGE ]</span>
+            </button>
         </div>
         
         <div class="flare-card danger">

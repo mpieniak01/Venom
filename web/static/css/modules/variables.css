@@ -29,8 +29,6 @@
     --secondary: #00b8ff;                 /* Cyan blue - drugorzędny akcent */
     --secondary-color: #06b6d4;           /* Cyan darker */
     --accent-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-    --warning: #f59e0b;                   /* Alias dla warning */
-    --danger: #ef4444;                    /* Alias dla danger */
 
     /* --- STATUS COLORS --- */
     --success-color: #10b981;

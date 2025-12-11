@@ -179,6 +179,7 @@ class VenomDashboard {
             governancePanel: document.querySelector('.queue-governance-panel'),
             // Dashboard v2.3: Live Terminal
             liveTerminal: document.getElementById('liveTerminal'),
+            sysLiveTerminal: document.getElementById('sysLiveTerminal'),
             clearTerminalBtn: document.getElementById('clearTerminalBtn'),
             // Dashboard v2.4: Cost Mode (Global Cost Guard)
             costModeToggle: document.getElementById('costModeToggle'),
@@ -3470,29 +3471,31 @@ class VenomDashboard {
     // ============================================
 
     addTerminalEntry(level, message) {
-        const terminal = this.elements.liveTerminal;
-        if (!terminal) return;
-
-        const entry = document.createElement('div');
-        entry.className = 'terminal-entry';
+        const terminals = [this.elements.liveTerminal, this.elements.sysLiveTerminal].filter(t => t);
+        if (terminals.length === 0) return;
 
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
 
-        entry.innerHTML = `
-            <span class="terminal-timestamp">[${timestamp}]</span>
-            <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
-            <span class="terminal-message">${this.escapeHtml(message)}</span>
-        `;
+        terminals.forEach(terminal => {
+            const entry = document.createElement('div');
+            entry.className = 'terminal-entry';
 
-        terminal.appendChild(entry);
+            entry.innerHTML = `
+                <span class="terminal-timestamp">[${timestamp}]</span>
+                <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
+                <span class="terminal-message">${this.escapeHtml(message)}</span>
+            `;
 
-        // Auto-scroll
-        terminal.scrollTop = terminal.scrollHeight;
+            terminal.appendChild(entry);
 
-        // Limit entries
-        while (terminal.children.length > 100) {
-            terminal.removeChild(terminal.firstChild);
-        }
+            // Auto-scroll
+            terminal.scrollTop = terminal.scrollHeight;
+
+            // Limit entries
+            while (terminal.children.length > 100) {
+                terminal.removeChild(terminal.firstChild);
+            }
+        });
     }
 
     clearTerminal() {

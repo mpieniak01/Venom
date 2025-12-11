@@ -44,6 +44,9 @@ class HybridModelRouter:
     priorytetując prywatność i oszczędność kosztów.
     """
 
+    # Próg bezpieczeństwa kosztów (USD)
+    COST_THRESHOLD_USD = 0.01
+
     def __init__(self, settings=None, state_manager=None, token_economist=None):
         """
         Inicjalizacja routera.
@@ -175,13 +178,10 @@ class HybridModelRouter:
                     cloud_high_model, len(prompt)
                 )
                 
-                # Próg bezpieczeństwa: $0.01
-                COST_THRESHOLD = 0.01
-                
-                if cost_estimate["estimated_cost_usd"] > COST_THRESHOLD:
+                if cost_estimate["estimated_cost_usd"] > self.COST_THRESHOLD_USD:
                     logger.warning(
                         f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${COST_THRESHOLD} -> "
+                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${self.COST_THRESHOLD_USD} -> "
                         f"Fallback do CLOUD_FAST"
                     )
                     # Fallback do CLOUD_FAST (np. GPT-4o-mini)
@@ -191,7 +191,7 @@ class HybridModelRouter:
                 
                 logger.info(
                     f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${COST_THRESHOLD} -> OK"
+                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${self.COST_THRESHOLD_USD} -> OK"
                 )
                 
                 return self._route_to_cloud_with_guard(

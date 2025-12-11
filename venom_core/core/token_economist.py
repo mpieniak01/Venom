@@ -389,8 +389,8 @@ class TokenEconomist:
             - estimated_cost_usd: estymowany koszt w USD
             - is_free: czy model jest darmowy (lokalny)
         """
-        # Oblicz liczbę tokenów w prompcie
-        input_tokens = self.estimate_tokens("x" * prompt_length)
+        # Oblicz liczbę tokenów w prompcie (heurystyka: ~4 znaki na token)
+        input_tokens = max(1, prompt_length // 4)
         
         # Estymuj output (pesymistycznie - zakładamy output_ratio)
         output_tokens = int(input_tokens * output_ratio)
@@ -477,12 +477,16 @@ class TokenEconomist:
             models_pricing = self.external_pricing.get("models", {})
             if service_id_lower in models_pricing:
                 yaml_pricing = models_pricing[service_id_lower]
-                # Konwertuj format YAML (per 1K) na format wewnętrzny (per 1M)
-                # YAML używa per 1K, więc mnożymy przez 1000 dla zgodności
+                # YAML ma ceny per 1K tokenów, zwracamy bezpośrednio
                 return {
-                    "input": yaml_pricing.get("input_cost_per_1k", 0.0) * 1000,
-                    "output": yaml_pricing.get("output_cost_per_1k", 0.0) * 1000,
+                    "input": yaml_pricing.get("input_cost_per_1k", 0.0),
+                    "output": yaml_pricing.get("output_cost_per_1k", 0.0),
                 }
 
-        # Fallback do statycznego cennika PRICING
-        return self._get_pricing(service_id)
+        # Fallback do statycznego cennika PRICING (ceny per 1M)
+        # Konwertuj per 1M na per 1K (podziel przez 1000)
+        pricing_1m = self._get_pricing(service_id)
+        return {
+            "input": pricing_1m["input"] / 1000,
+            "output": pricing_1m["output"] / 1000,
+        }

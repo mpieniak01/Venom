@@ -247,5 +247,91 @@ class Settings(BaseSettings):
     )
     DEFAULT_COST_MODEL: str = "gpt-3.5-turbo"  # Domyślny model dla estymacji kosztów
 
+    # ===== STABLE DIFFUSION CONFIGURATION =====
+    # Endpoint dla Stable Diffusion (Automatic1111 API)
+    STABLE_DIFFUSION_ENDPOINT: str = "http://127.0.0.1:7860"
+    # Timeouty dla Stable Diffusion API
+    SD_PING_TIMEOUT: float = 5.0  # Timeout dla sprawdzenia dostępności API (sekundy)
+    SD_GENERATION_TIMEOUT: float = 120.0  # Timeout dla generowania obrazu (sekundy)
+    # Domyślne parametry generowania obrazów
+    SD_DEFAULT_STEPS: int = 20  # Liczba kroków generowania
+    SD_DEFAULT_CFG_SCALE: float = 7.0  # CFG Scale (classifier-free guidance)
+    SD_DEFAULT_SAMPLER: str = "DPM++ 2M Karras"  # Sampler dla SD
+
+    # ===== AI MODELS CONFIGURATION =====
+    # Modele OpenAI
+    OPENAI_GPT4O_MODEL: str = "gpt-4o"  # Model GPT-4o dla vision i zaawansowanych zadań
+    OPENAI_GPT4O_MINI_MODEL: str = "gpt-4o-mini"  # Model GPT-4o Mini
+    OPENAI_GPT4_TURBO_MODEL: str = "gpt-4-turbo"  # Model GPT-4 Turbo
+    OPENAI_GPT35_TURBO_MODEL: str = "gpt-3.5-turbo"  # Model GPT-3.5 Turbo
+    # Modele Google
+    GOOGLE_GEMINI_FLASH_MODEL: str = "gemini-1.5-flash"  # Model Gemini Flash
+    GOOGLE_GEMINI_PRO_MODEL: str = "gemini-1.5-pro"  # Model Gemini Pro (używany jako HYBRID_CLOUD_MODEL)
+    GOOGLE_GEMINI_PRO_LEGACY_MODEL: str = "gemini-pro"  # Legacy Gemini Pro
+    # Modele Claude
+    CLAUDE_OPUS_MODEL: str = "claude-opus"  # Model Claude Opus
+    CLAUDE_SONNET_MODEL: str = "claude-sonnet"  # Model Claude Sonnet
+    # Modele lokalne
+    LOCAL_LLAMA3_MODEL: str = "llama3"  # Model Llama3 (domyślny lokalny)
+    LOCAL_PHI3_MODEL: str = "phi3:latest"  # Model Phi3
+    # Wzorce nazw modeli lokalnych (do wykrywania)
+    LOCAL_MODEL_PATTERNS: list[str] = [
+        "local",
+        "phi",
+        "mistral",
+        "llama",
+        "gemma",
+        "qwen",
+    ]
+    # Nazwy modeli vision (do wykrywania w Ollama)
+    VISION_MODEL_NAMES: list[str] = ["llava", "vision", "moondream", "bakllava"]
+
+    # ===== DOCKER IMAGES CONFIGURATION =====
+    # Obraz CUDA dla GPU operations
+    DOCKER_CUDA_IMAGE: str = "nvidia/cuda:12.0.0-base-ubuntu22.04"
+    # Obraz Redis dla Hive
+    DOCKER_REDIS_IMAGE: str = "redis:7-alpine"
+    # Obraz Node.js dla przykładów DevOps
+    DOCKER_NODE_IMAGE: str = "node:18-alpine"
+    # Obraz treningowy (domyślnie już jest jako ACADEMY_TRAINING_IMAGE)
+
+    # ===== API TIMEOUTS CONFIGURATION =====
+    # Timeout dla OpenAI API (vision, chat completions)
+    OPENAI_API_TIMEOUT: float = 30.0
+    # Timeout dla lokalnego modelu vision
+    LOCAL_VISION_TIMEOUT: float = 60.0
+    # Timeout dla sprawdzania dostępności Ollama
+    OLLAMA_CHECK_TIMEOUT: float = 2.0
+    # Timeout dla HTTP requests (ogólny)
+    HTTP_REQUEST_TIMEOUT: float = 30.0
+
+    # ===== TOKEN ECONOMIST CONFIGURATION =====
+    # Rezerwa tokenów dla podsumowania przy kompresji
+    RESERVE_TOKENS_FOR_SUMMARY: int = 500
+    # Ścieżka do pliku z cennikiem tokenów (YAML)
+    PRICING_FILE_PATH: str = "./data/config/pricing.yaml"
+
+    # ===== MODEL ROUTER CONFIGURATION =====
+    # Próg bezpieczeństwa kosztów (USD)
+    COST_THRESHOLD_USD: float = 0.01
+    # Próg złożoności dla routingu (Low-Cost: < 5 -> LOCAL)
+    COMPLEXITY_THRESHOLD_LOCAL: int = 5
+
+    # ===== VISION & PERCEPTION CONFIGURATION =====
+    # Minimalna długość base64 do rozróżnienia od ścieżki pliku
+    MIN_BASE64_LENGTH: int = 500
+    # Domyślny próg pewności dla vision grounding
+    DEFAULT_VISION_CONFIDENCE: float = 0.7
+    # Max tokens dla vision API responses
+    VISION_MAX_TOKENS: int = 500
+    # Max tokens dla vision grounding responses
+    VISION_GROUNDING_MAX_TOKENS: int = 100
+
+    # ===== OPENAI API ENDPOINTS =====
+    # Endpoint OpenAI Chat Completions API
+    OPENAI_CHAT_COMPLETIONS_ENDPOINT: str = (
+        "https://api.openai.com/v1/chat/completions"
+    )
+
 
 SETTINGS = Settings()

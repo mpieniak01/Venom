@@ -6,6 +6,7 @@ from typing import Dict, Optional
 import docker
 from docker.errors import APIError, ImageNotFound
 
+from venom_core.config import SETTINGS
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
 
@@ -74,7 +75,7 @@ class GPUHabitat(DockerHabitat):
         try:
             # Uruchom prosty kontener testowy z GPU
             self.client.containers.run(
-                image="nvidia/cuda:12.0.0-base-ubuntu22.04",
+                image=SETTINGS.DOCKER_CUDA_IMAGE,
                 command="nvidia-smi",
                 device_requests=[
                     docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
@@ -87,12 +88,12 @@ class GPUHabitat(DockerHabitat):
             return True
 
         except ImageNotFound:
-            logger.warning("Obraz nvidia/cuda nie jest dostępny, pobieram...")
+            logger.warning(f"Obraz {SETTINGS.DOCKER_CUDA_IMAGE} nie jest dostępny, pobieram...")
             try:
-                self.client.images.pull("nvidia/cuda:12.0.0-base-ubuntu22.04")
+                self.client.images.pull(SETTINGS.DOCKER_CUDA_IMAGE)
                 return self._check_gpu_availability()  # Retry
             except Exception as e:
-                logger.error(f"Nie można pobrać obrazu nvidia/cuda: {e}")
+                logger.error(f"Nie można pobrać obrazu {SETTINGS.DOCKER_CUDA_IMAGE}: {e}")
                 return False
 
         except APIError as e:

@@ -17,9 +17,6 @@ MIN_BASE64_LENGTH = 500
 class Eyes:
     """Warstwa percepcji wizualnej - analiza obrazów."""
 
-    # Nazwy modeli vision do wykrycia w lokalnych modelach
-    VISION_MODEL_NAMES = ["llava", "vision", "moondream", "bakllava"]
-
     def __init__(self):
         """Inicjalizacja Eyes z konfiguracją hybrid (local-first)."""
         self.use_openai = bool(SETTINGS.OPENAI_API_KEY)
@@ -40,14 +37,15 @@ class Eyes:
         # Sprawdź czy Ollama działa i ma model vision
         try:
             response = httpx.get(
-                f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/tags", timeout=2.0
+                f"{SETTINGS.LLM_LOCAL_ENDPOINT.rstrip('/v1')}/api/tags",
+                timeout=SETTINGS.OLLAMA_CHECK_TIMEOUT,
             )
             if response.status_code == 200:
                 models = response.json().get("models", [])
                 # Szukaj modeli vision
                 for model in models:
                     model_name = model.get("name", "").lower()
-                    for vision_name in self.VISION_MODEL_NAMES:
+                    for vision_name in SETTINGS.VISION_MODEL_NAMES:
                         if vision_name in model_name:
                             self.local_vision_model = model.get("name")
                             return True
@@ -85,7 +83,7 @@ class Eyes:
             return await self._analyze_with_openai(image_base64, prompt)
         else:
             raise RuntimeError(
-                "Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. llava w Ollama)."
+                f"Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. {', '.join(SETTINGS.VISION_MODEL_NAMES)} w Ollama)."
             )
 
     def _prepare_image_base64(self, image_path_or_base64: str) -> str:
@@ -103,7 +101,7 @@ class Eyes:
             # Usuń prefix "data:image/png;base64,"
             return image_path_or_base64.split(",", 1)[1]
         elif (
-            len(image_path_or_base64) > MIN_BASE64_LENGTH
+            len(image_path_or_base64) > SETTINGS.MIN_BASE64_LENGTH
             and "/" not in image_path_or_base64
         ):
             # Prawdopodobnie czysty base64 (długi string bez slashów)
@@ -142,7 +140,7 @@ class Eyes:
                 pass  # Użyj domyślnego
 
             payload = {
-                "model": "gpt-4o",
+                "model": SETTINGS.OPENAI_GPT4O_MODEL,
                 "messages": [
                     {
                         "role": "user",
@@ -157,12 +155,12 @@ class Eyes:
                         ],
                     }
                 ],
-                "max_tokens": 500,
+                "max_tokens": SETTINGS.VISION_MAX_TOKENS,
             }
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT,
                     headers=headers,
                     json=payload,
                 )
@@ -192,7 +190,7 @@ class Eyes:
                 "stream": False,
             }
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=SETTINGS.LOCAL_VISION_TIMEOUT) as client:
                 response = await client.post(endpoint, json=payload)
                 response.raise_for_status()
                 result = response.json()

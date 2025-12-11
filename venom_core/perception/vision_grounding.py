@@ -110,7 +110,7 @@ Przykład odpowiedzi:
             }
 
             payload = {
-                "model": "gpt-4o",
+                "model": SETTINGS.OPENAI_GPT4O_MODEL,
                 "messages": [
                     {
                         "role": "user",
@@ -126,13 +126,13 @@ Przykład odpowiedzi:
                         ],
                     }
                 ],
-                "max_tokens": 100,
+                "max_tokens": SETTINGS.VISION_GROUNDING_MAX_TOKENS,
                 "temperature": 0.1,
             }
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT,
                     headers=headers,
                     json=payload,
                 )

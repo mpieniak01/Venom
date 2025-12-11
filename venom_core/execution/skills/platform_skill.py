@@ -397,6 +397,54 @@ class PlatformSkill:
             logger.error(error_msg)
             return error_msg
 
+    @kernel_function(
+        name="get_configuration_status",
+        description="Sprawdza i zwraca raport o dostępnych integracjach platformowych (GitHub, Slack, Discord).",
+    )
+    def get_configuration_status(self) -> str:
+        """
+        Sprawdza status konfiguracji platform zewnętrznych.
+
+        Returns:
+            Sformatowany raport tekstowy o dostępnych integracjach
+        """
+        report = "[Konfiguracja PlatformSkill]\n\n"
+        
+        # GitHub
+        if self.github_token and self.github_repo_name:
+            # Sprawdź czy można się połączyć
+            try:
+                if self.github_client:
+                    user = self.github_client.get_user()
+                    user.login  # Trigger API call
+                    report += f"- GitHub: ✅ AKTYWNY (repo: {self.github_repo_name})\n"
+                else:
+                    report += "- GitHub: ⚠️ SKONFIGUROWANY (ale klient nie zainicjalizowany)\n"
+            except Exception as e:
+                report += f"- GitHub: ⚠️ SKONFIGUROWANY (błąd połączenia: {str(e)[:50]}...)\n"
+        else:
+            missing = []
+            if not self.github_token:
+                missing.append("GITHUB_TOKEN")
+            if not self.github_repo_name:
+                missing.append("GITHUB_REPO_NAME")
+            report += f"- GitHub: ❌ BRAK KONFIGURACJI (brak: {', '.join(missing)})\n"
+        
+        # Slack
+        if self.slack_webhook:
+            report += "- Slack: ✅ AKTYWNY\n"
+        else:
+            report += "- Slack: ❌ BRAK KLUCZA (SLACK_WEBHOOK_URL)\n"
+        
+        # Discord
+        if self.discord_webhook:
+            report += "- Discord: ✅ AKTYWNY\n"
+        else:
+            report += "- Discord: ❌ BRAK KLUCZA (DISCORD_WEBHOOK_URL)\n"
+        
+        logger.info("Wygenerowano raport konfiguracji PlatformSkill")
+        return report
+
     def check_connection(self) -> dict:
         """
         Sprawdza status połączenia z platformami zewnętrznymi.

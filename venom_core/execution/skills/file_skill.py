@@ -1,5 +1,6 @@
 """Moduł: file_skill - zarządzanie operacjami plikowymi z sandboxingiem."""
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -176,24 +177,28 @@ class FileSkill:
 
     @kernel_function(
         name="list_files",
-        description="Listuje pliki i katalogi w workspace (tylko bezpośrednie elementy, nie rekurencyjnie).",
+        description="Listuje pliki i katalogi w workspace. Może listować rekurencyjnie do 3 poziomów głębokości.",
     )
     def list_files(
         self,
         directory: Annotated[
             str, "Katalog względem workspace (domyślnie '.', czyli root workspace)"
         ] = ".",
+        recursive: Annotated[
+            bool, "Czy listować rekurencyjnie (domyślnie False, max głębokość: 3)"
+        ] = False,
     ) -> str:
         """
         Listuje pliki i katalogi w podanym katalogu.
 
         Args:
             directory: Katalog względem workspace (domyślnie '.')
+            recursive: Czy listować rekurencyjnie (max głębokość: 3 poziomy)
 
         Returns:
             Lista plików i katalogów w formacie tekstowym.
-            UWAGA: Listowanie jest płaskie (non-recursive) - pokazuje tylko
-            bezpośrednie elementy podanego katalogu, bez zagłębiania się w podkatalogi.
+            Jeśli recursive=False, pokazuje tylko bezpośrednie elementy.
+            Jeśli recursive=True, pokazuje strukturę do 3 poziomów głębokości.
 
         Raises:
             SecurityError: Jeśli ścieżka jest nieprawidłowa
@@ -208,20 +213,66 @@ class FileSkill:
             if not safe_path.is_dir():
                 return f"'{directory}' nie jest katalogiem"
 
-            # Zbierz pliki i katalogi
             items = []
-            for item in sorted(safe_path.iterdir()):
-                stat_result = item.stat()
-                item_type = "katalog" if item.is_dir() else "plik"
-                relative_path = item.relative_to(self.workspace_root)
-                size = stat_result.st_size if item.is_file() else "-"
-                items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
-            if not items:
-                return f"Katalog '{directory}' jest pusty"
+            if recursive:
+                # Listowanie rekurencyjne z limitem głębokości
+                max_depth = 3
+                items.append(f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n")
+                
+                for root, dirs, files in os.walk(safe_path):
+                    # Oblicz głębokość relatywną
+                    try:
+                        depth = len(Path(root).relative_to(safe_path).parts)
+                    except ValueError:
+                        depth = 0
+                    
+                    # Ogranicz głębokość
+                    if depth >= max_depth:
+                        dirs.clear()  # Nie schodź głębiej
+                        continue
+                    
+                    # Formatuj ścieżkę względem workspace
+                    rel_root = Path(root).relative_to(self.workspace_root)
+                    indent = "  " * depth
+                    
+                    # Dodaj katalogi
+                    for dir_name in sorted(dirs):
+                        dir_path = Path(root) / dir_name
+                        rel_path = dir_path.relative_to(self.workspace_root)
+                        items.append(f"{indent}[katalog] {rel_path}/")
+                    
+                    # Dodaj pliki
+                    for file_name in sorted(files):
+                        file_path = Path(root) / file_name
+                        try:
+                            stat_result = file_path.stat()
+                            size = stat_result.st_size
+                            rel_path = file_path.relative_to(self.workspace_root)
+                            items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
+                        except Exception:
+                            # Pomiń pliki do których nie ma dostępu
+                            continue
+                
+                if len(items) == 1:  # Tylko nagłówek
+                    items.append("  (katalog pusty)")
+                    
+            else:
+                # Listowanie płaskie (nie-rekurencyjne)
+                for item in sorted(safe_path.iterdir()):
+                    stat_result = item.stat()
+                    item_type = "katalog" if item.is_dir() else "plik"
+                    relative_path = item.relative_to(self.workspace_root)
+                    size = stat_result.st_size if item.is_file() else "-"
+                    items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
-            result = f"Zawartość katalogu '{directory}':\n" + "\n".join(items)
-            logger.info(f"Wylistowano {len(items)} elementów w: {safe_path}")
+                if not items:
+                    return f"Katalog '{directory}' jest pusty"
+
+                items.insert(0, f"Zawartość katalogu '{directory}':")
+
+            result = "\n".join(items)
+            logger.info(f"Wylistowano {len(items)-1} elementów w: {safe_path} (recursive={recursive})")
             return result
 
         except SecurityError:

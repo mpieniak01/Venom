@@ -1,6 +1,6 @@
 """Moduł: web_skill - Plugin Semantic Kernel do wyszukiwania w Internecie."""
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 import httpx
 import trafilatura
@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from semantic_kernel.functions import kernel_function
 
+from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,15 +23,45 @@ class WebSearchSkill:
     """
     Skill do wyszukiwania informacji w Internecie.
     Pozwala agentom wyszukiwać informacje i pobierać treść ze stron WWW.
+    Obsługuje Tavily AI Search (gdy skonfigurowany) lub DuckDuckGo (fallback).
     """
 
     def __init__(self):
         """Inicjalizacja WebSearchSkill."""
-        logger.info("WebSearchSkill zainicjalizowany")
+        # Sprawdź czy Tavily jest skonfigurowany
+        self.tavily_client = None
+        tavily_key = None
+        
+        if hasattr(SETTINGS, "TAVILY_API_KEY"):
+            key = SETTINGS.TAVILY_API_KEY
+            tavily_key = (
+                key.get_secret_value()
+                if hasattr(key, "get_secret_value")
+                else key
+            )
+            if not tavily_key:  # Empty string
+                tavily_key = None
+        
+        if tavily_key:
+            try:
+                from tavily import TavilyClient
+                self.tavily_client = TavilyClient(api_key=tavily_key)
+                logger.info("WebSearchSkill zainicjalizowany z Tavily AI Search")
+            except ImportError:
+                logger.warning(
+                    "tavily-python nie jest zainstalowane. Używam DuckDuckGo jako fallback."
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Błąd inicjalizacji Tavily client: {e}. Używam DuckDuckGo jako fallback."
+                )
+        else:
+            logger.info("WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)")
 
     @kernel_function(
         name="search",
-        description="Wyszukuje informacje w Internecie używając DuckDuckGo. Zwraca listę tytułów, URL i krótkich opisów znalezionych stron.",
+        description="Wyszukuje informacje w Internecie używając Tavily AI Search (jeśli skonfigurowany) lub DuckDuckGo. "
+        "Zwraca listę tytułów, URL i krótkich opisów znalezionych stron.",
     )
     def search(
         self,
@@ -54,15 +85,57 @@ class WebSearchSkill:
         )
 
         try:
-            # Użyj DuckDuckGo do wyszukiwania
+            # Użyj Tavily jeśli dostępny
+            if self.tavily_client:
+                try:
+                    response = self.tavily_client.search(
+                        query=query,
+                        max_results=max_results,
+                        include_answer=True,
+                        include_raw_content=False,
+                    )
+                    
+                    # Formatuj wyniki Tavily
+                    output = f"Znaleziono wyniki dla zapytania: '{query}'\n"
+                    output += "(źródło: Tavily AI Search)\n\n"
+                    
+                    # Dodaj AI-generated answer jeśli dostępny
+                    if response.get("answer"):
+                        output += f"📋 Podsumowanie AI:\n{response['answer']}\n\n"
+                    
+                    results = response.get("results", [])
+                    if not results:
+                        return f"Nie znaleziono wyników dla zapytania: {query}"
+                    
+                    output += f"🔍 Źródła ({len(results)}):\n\n"
+                    for i, result in enumerate(results[:max_results], 1):
+                        title = result.get("title", "Brak tytułu")
+                        url = result.get("url", "Brak URL")
+                        content = result.get("content", "Brak opisu")
+                        
+                        output += f"[{i}] {title}\n"
+                        output += f"URL: {url}\n"
+                        output += f"Opis: {content[:200]}...\n\n"
+                    
+                    logger.info(f"WebSearch (Tavily): znaleziono {len(results)} wyników")
+                    return output.strip()
+                    
+                except Exception as tavily_error:
+                    logger.warning(
+                        f"Błąd Tavily: {tavily_error}. Przełączam na DuckDuckGo."
+                    )
+                    # Fallback do DuckDuckGo poniżej
+            
+            # Fallback: Użyj DuckDuckGo
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
 
             if not results:
                 return f"Nie znaleziono wyników dla zapytania: {query}"
 
-            # Formatuj wyniki
-            output = f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n\n"
+            # Formatuj wyniki DuckDuckGo
+            output = f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
+            output += "(źródło: DuckDuckGo)\n\n"
             for i, result in enumerate(results, 1):
                 title = result.get("title", "Brak tytułu")
                 url = result.get("href", "Brak URL")
@@ -72,7 +145,7 @@ class WebSearchSkill:
                 output += f"URL: {url}\n"
                 output += f"Opis: {snippet}\n\n"
 
-            logger.info(f"WebSearch: znaleziono {len(results)} wyników")
+            logger.info(f"WebSearch (DuckDuckGo): znaleziono {len(results)} wyników")
             return output.strip()
 
         except Exception as e:

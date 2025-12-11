@@ -92,6 +92,16 @@ class Orchestrator:
             state_manager=state_manager, event_broadcaster=event_broadcaster
         )
 
+    @property
+    def is_paused(self) -> bool:
+        """Zwraca, czy kolejka jest wstrzymana (delegacja do queue_manager)."""
+        return self.queue_manager.is_paused
+
+    @property
+    def active_tasks(self) -> dict:
+        """Zwraca słownik aktywnych zadań (delegacja do queue_manager)."""
+        return self.queue_manager.active_tasks
+
     async def _broadcast_event(
         self, event_type: str, message: str, agent: str = None, data: dict = None
     ):
@@ -168,28 +178,27 @@ class Orchestrator:
 
         # Sprawdź limit współbieżności
         if SETTINGS.ENABLE_QUEUE_LIMITS:
-            async with self.queue_manager._queue_lock:
-                active_count = len(self.queue_manager.active_tasks)
-                if active_count >= SETTINGS.MAX_CONCURRENT_TASKS:
-                    self.state_manager.add_log(
-                        task.id,
-                        f"⏳ Osiągnięto limit współbieżności ({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS}) - zadanie czeka",
-                    )
-                    await self._broadcast_event(
-                        event_type="TASK_QUEUED",
-                        message=f"Zadanie {task.id} oczekuje - limit zadań równoległych",
-                        data={
-                            "task_id": str(task.id),
-                            "active": active_count,
-                            "limit": SETTINGS.MAX_CONCURRENT_TASKS,
-                        },
-                    )
-                    logger.info(
-                        f"Zadanie {task.id} czeka - limit współbieżności ({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS})"
-                    )
-                    # Zadanie czeka - uruchom w tle ale będzie oczekiwać
-                    asyncio.create_task(self._run_task_with_queue(task.id, request))
-                    return TaskResponse(task_id=task.id, status=task.status)
+            has_capacity, active_count = await self.queue_manager.check_capacity()
+            if not has_capacity:
+                self.state_manager.add_log(
+                    task.id,
+                    f"⏳ Osiągnięto limit współbieżności ({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS}) - zadanie czeka",
+                )
+                await self._broadcast_event(
+                    event_type="TASK_QUEUED",
+                    message=f"Zadanie {task.id} oczekuje - limit zadań równoległych",
+                    data={
+                        "task_id": str(task.id),
+                        "active": active_count,
+                        "limit": SETTINGS.MAX_CONCURRENT_TASKS,
+                    },
+                )
+                logger.info(
+                    f"Zadanie {task.id} czeka - limit współbieżności ({active_count}/{SETTINGS.MAX_CONCURRENT_TASKS})"
+                )
+                # Zadanie czeka - uruchom w tle ale będzie oczekiwać
+                asyncio.create_task(self._run_task_with_queue(task.id, request))
+                return TaskResponse(task_id=task.id, status=task.status)
 
         # Uruchom zadanie w tle (przekaż request zamiast tylko ID)
         asyncio.create_task(self._run_task_with_queue(task.id, request))
@@ -208,34 +217,30 @@ class Orchestrator:
         """
         # Czekaj na dostępny slot jeśli potrzeba
         while True:
-            # Sprawdź pauzę i limit atomowo pod lockiem
-            async with self.queue_manager._queue_lock:
-                # Sprawdź pauzę
-                if self.queue_manager.is_paused:
-                    # Pauza aktywna, zwolnij lock i czekaj
-                    pass
-                else:
-                    # Sprawdź limit
-                    active_count = len(self.queue_manager.active_tasks)
-                    if (
-                        not SETTINGS.ENABLE_QUEUE_LIMITS
-                        or active_count < SETTINGS.MAX_CONCURRENT_TASKS
-                    ):
-                        # Utwórz task handle
-                        task_handle = asyncio.current_task()
-                        if task_handle is None:
-                            logger.error(f"Nie można uzyskać task handle dla {task_id}")
-                            # Oznacz zadanie jako FAILED aby nie pozostało w PENDING
-                            await self.state_manager.update_status(
-                                task_id,
-                                TaskStatus.FAILED,
-                                result="Błąd systemu: nie można uzyskać task handle",
-                            )
-                            return
-                        self.queue_manager.active_tasks[task_id] = task_handle
-                        break
+            # Sprawdź pauzę
+            if self.queue_manager.is_paused:
+                # Pauza aktywna, czekaj
+                await asyncio.sleep(0.5)
+                continue
 
-            # Czekaj na zwolnienie slotu lub zakończenie pauzy
+            # Sprawdź limit
+            has_capacity, _ = await self.queue_manager.check_capacity()
+            if has_capacity:
+                # Utwórz task handle
+                task_handle = asyncio.current_task()
+                if task_handle is None:
+                    logger.error(f"Nie można uzyskać task handle dla {task_id}")
+                    # Oznacz zadanie jako FAILED aby nie pozostało w PENDING
+                    await self.state_manager.update_status(
+                        task_id,
+                        TaskStatus.FAILED,
+                        result="Błąd systemu: nie można uzyskać task handle",
+                    )
+                    return
+                await self.queue_manager.register_task(task_id, task_handle)
+                break
+
+            # Czekaj na zwolnienie slotu
             await asyncio.sleep(0.5)
 
         try:
@@ -243,8 +248,7 @@ class Orchestrator:
             await self._run_task(task_id, request)
         finally:
             # Usuń z active tasks
-            async with self.queue_manager._queue_lock:
-                self.queue_manager.active_tasks.pop(task_id, None)
+            await self.queue_manager.unregister_task(task_id)
 
     async def pause_queue(self) -> dict:
         """

@@ -5,6 +5,7 @@ from typing import Callable, Dict, Optional
 from uuid import UUID
 
 from venom_core.config import SETTINGS
+from venom_core.core.flows.base import BaseFlow
 from venom_core.core.models import TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
@@ -12,7 +13,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class QueueManager:
+class QueueManager(BaseFlow):
     """Menedżer kolejki zadań - zarządzanie pauzą, limitami współbieżności i operacjami."""
 
     def __init__(
@@ -27,30 +28,13 @@ class QueueManager:
             state_manager: Menedżer stanu zadań
             event_broadcaster: Opcjonalny broadcaster zdarzeń
         """
+        super().__init__(event_broadcaster)
         self.state_manager = state_manager
-        self.event_broadcaster = event_broadcaster
 
         # Stan kolejki
         self.is_paused: bool = False
         self.active_tasks: Dict[UUID, asyncio.Task] = {}
         self._queue_lock = asyncio.Lock()
-
-    async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
-    ):
-        """
-        Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
-
-        Args:
-            event_type: Typ zdarzenia
-            message: Treść wiadomości
-            agent: Opcjonalna nazwa agenta
-            data: Opcjonalne dodatkowe dane
-        """
-        if self.event_broadcaster:
-            await self.event_broadcaster.broadcast_event(
-                event_type=event_type, message=message, agent=agent, data=data
-            )
 
     async def pause(self) -> dict:
         """
@@ -266,3 +250,39 @@ class QueueManager:
                 SETTINGS.MAX_CONCURRENT_TASKS if SETTINGS.ENABLE_QUEUE_LIMITS else None
             ),
         }
+
+    async def check_capacity(self) -> tuple[bool, int]:
+        """
+        Sprawdza czy kolejka ma dostępną pojemność.
+
+        Returns:
+            Tuple (ma_miejsce: bool, liczba_aktywnych: int)
+        """
+        async with self._queue_lock:
+            active_count = len(self.active_tasks)
+            has_capacity = (
+                not SETTINGS.ENABLE_QUEUE_LIMITS
+                or active_count < SETTINGS.MAX_CONCURRENT_TASKS
+            )
+            return has_capacity, active_count
+
+    async def register_task(self, task_id: UUID, task_handle: asyncio.Task) -> None:
+        """
+        Rejestruje zadanie jako aktywne.
+
+        Args:
+            task_id: ID zadania
+            task_handle: Handle asyncio.Task
+        """
+        async with self._queue_lock:
+            self.active_tasks[task_id] = task_handle
+
+    async def unregister_task(self, task_id: UUID) -> None:
+        """
+        Usuwa zadanie z listy aktywnych.
+
+        Args:
+            task_id: ID zadania
+        """
+        async with self._queue_lock:
+            self.active_tasks.pop(task_id, None)

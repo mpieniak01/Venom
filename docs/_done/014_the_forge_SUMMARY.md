@@ -101,7 +101,7 @@ The Forge to system autonomicznego tworzenia, testowania i ładowania nowych umi
 **Lokalizacje:**
 - `docs/THE_FORGE.md` - Kompletna dokumentacja (9700+ znaków)
 - `docs/_done/014_the_forge_COMPLETED.md` - Task completion
-- `SECURITY_SUMMARY.md` - Analiza bezpieczeństwa (sekcja The Forge)
+- `security_summary.md` - Analiza bezpieczeństwa (sekcja The Forge)
 - `examples/forge_demo.py` - Demo script (6000+ znaków)
 
 **Zawartość:**
@@ -269,7 +269,7 @@ Wymienione w dokumentacji:
 
 ## Status: ✅ PRODUCTION READY
 
-Z zastrzeżeniem znanych ograniczeń (udokumentowanych w SECURITY_SUMMARY.md).
+Z zastrzeżeniem znanych ograniczeń (udokumentowanych w security_summary.md).
 
 ---
 

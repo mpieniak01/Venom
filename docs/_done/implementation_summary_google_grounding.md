@@ -98,7 +98,7 @@ tests/test_kernel_builder.py               - grounding tests
 
 **Documentation (3 files, 903 lines added):**
 ```
-docs/google_search_grounding_integration.md
+docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md
 examples/google_search_grounding_demo.py
 scripts/validate_grounding_integration.py
 ```

@@ -86,7 +86,7 @@ Zaimplementowano zaawansowany system pamięci z GraphRAG (Graph Retrieval-Augmen
 
 ### 6. Dokumentacja ✅
 **Pliki:**
-- `docs/oracle_graphrag_guide.md` - Kompleksowa dokumentacja (9.5KB)
+- `docs/ORACLE_GRAPHRAG_GUIDE.md` - Kompleksowa dokumentacja (9.5KB)
 - `examples/oracle_agent_demo.py` - Demo script (6.4KB)
 
 **Zawartość:**

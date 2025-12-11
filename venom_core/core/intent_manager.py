@@ -26,6 +26,17 @@ class IntentManager:
         "kim jesteś",
     ]
 
+    INFRA_KEYWORDS = [
+        "serwer",
+        "serwerów",
+        "infrastrukt",
+        "status usług",
+        "usług venom",
+        "monitoring systemu",
+        "status systemu",
+        "service status",
+    ]
+
     # Prompt systemowy do klasyfikacji intencji
     SYSTEM_PROMPT = """Jesteś systemem klasyfikacji intencji użytkownika. Twoim zadaniem jest przeczytać wejście użytkownika i sklasyfikować je do JEDNEJ z następujących kategorii:
 
@@ -40,7 +51,8 @@ class IntentManager:
 9. RELEASE_PROJECT - użytkownik chce wydać nową wersję projektu, wygenerować changelog, stworzyć tag
 10. START_CAMPAIGN - użytkownik chce uruchomić tryb autonomiczny (kampania), gdzie system sam realizuje roadmapę
 11. STATUS_REPORT - użytkownik pyta o status projektu, postęp realizacji celów, aktualny milestone
-12. HELP_REQUEST - użytkownik prosi o pomoc, pytania o możliwości systemu, dostępne funkcje
+12. INFRA_STATUS - użytkownik prosi o status infrastruktury i usług Venom (ServiceMonitor, serwery, integracje)
+13. HELP_REQUEST - użytkownik prosi o pomoc, pytania o możliwości systemu, dostępne funkcje
 
 ZASADY:
 - Odpowiedz TYLKO nazwą kategorii (np. "CODE_GENERATION")
@@ -105,6 +117,13 @@ KIEDY WYBIERAĆ STATUS_REPORT:
 - "Raport statusu"
 - Zapytania zawierające: "status", "postęp", "gdzie jesteśmy", "raport", "jak idzie projekt"
 
+KIEDY WYBIERAĆ INFRA_STATUS:
+- "Sprawdź status serwerów w infrastrukturze"
+- "Co działa w Venom, a co jest offline?"
+- "Monitoring usług / ServiceMonitor"
+- "Jakie serwisy są niedostępne?"
+- Zapytania zawierające: "serwer", "infrastruktura", "status usług", "monitoring systemu", "service status"
+
 KIEDY WYBIERAĆ HELP_REQUEST:
 - "Co potrafisz?"
 - "Pomoc"
@@ -164,6 +183,9 @@ Przykłady:
         if any(keyword in normalized for keyword in self.HELP_KEYWORDS):
             logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
             return "HELP_REQUEST"
+        if any(keyword in normalized for keyword in self.INFRA_KEYWORDS):
+            logger.debug("Wykryto zapytanie o infrastrukturę - zwracam INFRA_STATUS")
+            return "INFRA_STATUS"
 
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
@@ -204,6 +226,8 @@ Przykłady:
                 "RELEASE_PROJECT",
                 "START_CAMPAIGN",
                 "STATUS_REPORT",
+                "INFRA_STATUS",
+                "HELP_REQUEST",
             ]
             if intent not in valid_intents:
                 # Jeśli odpowiedź nie jest dokładna, spróbuj znaleźć dopasowanie

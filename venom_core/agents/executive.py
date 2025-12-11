@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -48,6 +49,7 @@ ZASADY PRACY:
 - Każdy Milestone musi mieć jasne KPI
 - Preferuj małe, częste dostawy zamiast długich projektów
 - Komunikuj się jasno i zwięźle
+- ODPOWIADAJ ZAWSZE W JĘZYKU POLSKIM (formalny, rzeczowy ton)
 
 FORMAT ODPOWIEDZI:
 Gdy użytkownik przedstawia wizję lub prosi o status:
@@ -68,6 +70,11 @@ Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie t
         """
         super().__init__(kernel)
         self.goal_store = goal_store
+        self.execution_settings = OpenAIChatPromptExecutionSettings(
+            temperature=0.2,
+            top_p=0.9,
+            max_tokens=800,
+        )
         logger.info("ExecutiveAgent zainicjalizowany")
 
     async def process(self, input_text: str) -> str:
@@ -95,7 +102,7 @@ Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie t
             # Użyj domyślnego serwisu czatu z kernela
             chat_service = self.kernel.get_service()
             response = await chat_service.get_chat_message_content(
-                chat_history=chat_history
+                chat_history=chat_history, settings=self.execution_settings
             )
 
             result = str(response)

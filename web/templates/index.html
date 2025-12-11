@@ -83,41 +83,55 @@
                 <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
             </div>
             <div class="chat-container">
-                <div class="chat-messages" id="chatMessages">
-                    <div class="welcome-message">
-                        <h3>Witaj w Venom Cockpit</h3>
-                        <p>Wprowadź polecenie poniżej aby rozpocząć pracę.</p>
-                        <!-- Quick Action Chips -->
-                        <div class="suggestion-grid">
-                            <button class="suggestion-chip" data-suggestion="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
-                                <span class="chip-icon" aria-hidden="true">🎨</span>
-                                <span class="chip-text">Kreacja</span>
-                                <span class="chip-subtitle">Stwórz logo dla fintechu</span>
-                            </button>
-                            <button class="suggestion-chip" data-suggestion="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
-                                <span class="chip-icon" aria-hidden="true">☁️</span>
-                                <span class="chip-text">DevOps</span>
-                                <span class="chip-subtitle">Sprawdź status serwerów</span>
-                            </button>
-                            <button class="suggestion-chip" data-suggestion="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
-                                <span class="chip-icon" aria-hidden="true">🧠</span>
-                                <span class="chip-text">Research</span>
-                                <span class="chip-subtitle">Analiza trendów AI 2024</span>
-                            </button>
-                            <button class="suggestion-chip" data-suggestion="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
-                                <span class="chip-icon" aria-hidden="true">🛠️</span>
-                                <span class="chip-text">Kod</span>
-                                <span class="chip-subtitle">Napisz testy dla API</span>
-                            </button>
-                            <button class="suggestion-chip" data-suggestion="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
-                                <span class="chip-icon" aria-hidden="true">❓</span>
-                                <span class="chip-text">Pomoc</span>
-                                <span class="chip-subtitle">Co potrafisz?</span>
-                            </button>
-                        </div>
+                <div class="chat-messages" id="chatMessages"></div>
+
+                <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
+                    <div class="suggestion-grid">
+                        <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
+                            <span class="chip-icon" aria-hidden="true">🎨</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">Kreacja</span>
+                                <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
+                            </span>
+                        </button>
+                        <button type="button" class="suggestion-chip" data-prompt="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
+                            <span class="chip-icon" aria-hidden="true">☁️</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">DevOps</span>
+                                <span class="chip-desc">"Sprawdź status serwerów w infrastrukturze"</span>
+                            </span>
+                        </button>
+                        <button type="button" class="suggestion-chip" data-prompt="Pokaż status projektu" aria-label="Executive: Status projektu i roadmapy">
+                            <span class="chip-icon" aria-hidden="true">📊</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">Status projektu</span>
+                                <span class="chip-desc">"Pokaż status projektu"</span>
+                            </span>
+                        </button>
+                        <button type="button" class="suggestion-chip" data-prompt="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
+                            <span class="chip-icon" aria-hidden="true">🧠</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">Research</span>
+                                <span class="chip-desc">"Zrób research o trendach AI w 2024"</span>
+                            </span>
+                        </button>
+                        <button type="button" class="suggestion-chip" data-prompt="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
+                            <span class="chip-icon" aria-hidden="true">🛠️</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">Kod</span>
+                                <span class="chip-desc">"Napisz testy jednostkowe dla modułu API"</span>
+                            </span>
+                        </button>
+                        <button type="button" class="suggestion-chip" data-prompt="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
+                            <span class="chip-icon" aria-hidden="true">❓</span>
+                            <span class="chip-text-block">
+                                <span class="chip-title">Pomoc</span>
+                                <span class="chip-desc">"Co potrafisz?"</span>
+                            </span>
+                        </button>
                     </div>
                 </div>
-                <!-- Widget Grid Container (THE_CANVAS) -->
+
                 <div class="widgets-grid" id="widgetsGrid" style="display: none;">
                     <!-- Dynamiczne widgety będą renderowane tutaj -->
                 </div>

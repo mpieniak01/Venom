@@ -20,6 +20,7 @@ from venom_core.agents.librarian import LibrarianAgent
 from venom_core.agents.publisher import PublisherAgent
 from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.agents.researcher import ResearcherAgent
+from venom_core.agents.system_status import SystemStatusAgent
 from venom_core.agents.tester import TesterAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 from venom_core.core.goal_store import GoalStore
@@ -96,6 +97,7 @@ class TaskDispatcher:
         self.publisher_agent = PublisherAgent(kernel)
         self.release_manager_agent = ReleaseManagerAgent(kernel)
         self.executive_agent = ExecutiveAgent(kernel, self.goal_store)
+        self.system_status_agent = SystemStatusAgent(kernel)
 
         # Ustawienie referencji do dispatchera w Architect (circular dependency)
         self.architect_agent.set_dispatcher(self)
@@ -115,6 +117,7 @@ class TaskDispatcher:
             "DOCUMENTATION": self.publisher_agent,
             "RELEASE_PROJECT": self.release_manager_agent,
             "STATUS_REPORT": self.executive_agent,
+            "INFRA_STATUS": self.system_status_agent,
         }
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ Executive layer)")
@@ -271,7 +274,10 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         # Przekaż zadanie do agenta
         try:
             logger.info(f"Agent {agent.__class__.__name__} przejmuje zadanie")
-            result = await agent.process(content)
+            if intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
+                result = await agent.generate_status_report()
+            else:
+                result = await agent.process(content)
             logger.info(f"Agent {agent.__class__.__name__} zakończył przetwarzanie")
             return result
 

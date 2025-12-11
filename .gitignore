@@ -29,3 +29,4 @@ venom_core/execution/skills/custom/test_*.py
 
 # Template backups
 *.backup
+node_modules/

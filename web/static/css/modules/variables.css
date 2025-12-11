@@ -16,12 +16,16 @@
     );
 
     /* --- NEON AKCENTY --- */
-    --primary: #00ff9d;
-    --primary-color: #8b5cf6; /* Fioletowy - używany w większości UI */
-    --primary-hover: #7c3aed; /* Fioletowy ciemniejszy - hover states */
-    --primary-green: #00ff9d; /* Zielony neon - akcenty i glow */
+    /* System kolorów wykorzystuje dual-accent approach:
+     * - Purple (#8b5cf6) jako główny kolor UI (buttony, highlights, interactive elements)
+     * - Neon Green (#00ff9d) jako brand accent (logo, active states, glow effects)
+     * To pozwala na spójny UI z wyrazistymi akcentami marki */
+    --primary: #00ff9d;                   /* Legacy - mapuje na green, dla kompatybilności z szablon.html */
+    --primary-color: #8b5cf6;             /* Purple - GŁÓWNY kolor UI (używaj dla buttonów, highlights) */
+    --primary-hover: #7c3aed;             /* Purple dark - hover states dla interactive elements */
+    --primary-green: #00ff9d;             /* Neon green - brand accent (logo "OS", active nav, glow) */
     --secondary: #00b8ff;
-    --secondary-color: #06b6d4; /* Alias dla kompatybilności */
+    --secondary-color: #06b6d4;           /* Cyan - drugorzędny kolor (używaj oszczędnie) */
     --accent-gradient: linear-gradient(135deg, var(--primary-green) 0%, var(--secondary) 100%);
 
     /* --- STATUS COLORS --- */

@@ -360,8 +360,8 @@
         return div.innerHTML;
     }
     
-    // Inicjalizacja Mermaid
     // Inicjalizacja Mermaid - użyj CSS custom properties zamiast hard-coded
+    // Pobieramy wartości tylko raz przy inicjalizacji, aby nie obciążać DOM
     const style = getComputedStyle(document.documentElement);
     const primaryColor = style.getPropertyValue('--primary-color').trim();
     const primaryGreen = style.getPropertyValue('--primary-green').trim();

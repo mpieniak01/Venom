@@ -128,8 +128,8 @@
     text-shadow: var(--glow-strong);
 }
 
-/* Navigation Section Label */
-.nav-section-label {
+/* Sidebar Section Headers */
+.sidebar-section-label {
     color: #555;
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -137,7 +137,7 @@
     font-family: var(--font-tech);
 }
 
-.nav-section-label.space-top {
+.sidebar-section-label.space-top {
     margin-top: 20px;
 }
 

@@ -354,7 +354,7 @@ pytest tests/test_chrono*.py tests/test_historian*.py -v
 - [THE_DREAMER](./DREAM_ENGINE_GUIDE.md) - Integracja z snami
 - [THE_ACADEMY](./THE_ACADEMY.md) - Training pipelines
 - [MEMORY_LAYER_GUIDE](./MEMORY_LAYER_GUIDE.md) - LessonsStore
-- [GUARDIAN_GUIDE](./guardian_guide.md) - Walidacja zmian
+- [GUARDIAN_GUIDE](./GUARDIAN_GUIDE.md) - Walidacja zmian
 
 ## 🎓 Przykład End-to-End
 

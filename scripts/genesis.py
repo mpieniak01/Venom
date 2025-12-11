@@ -4,7 +4,7 @@ from pathlib import Path
 # Definicja katalogów i plików
 STRUCTURE = {
     ".": [".env", "requirements.txt", "README.md"],
-    "docs": ["VENOM_DIAGRAM.md", "VENOM_MASTER_VISION_v2.md"],
+    "docs": ["VENOM_DIAGRAM.md", "VENOM_MASTER_VISION_V2.md"],
     "data/memory": ["lessons_learned.json"],
     "web/templates": ["base.html", "index.html"],
     "web/static/css": ["app.css"],

@@ -8,7 +8,7 @@
 │   ├── _done/                   # Dokumentacja zadan programistycznych zrealizowanych
 │   ├── _to_do/                  # Dokumentacja zadan programistycznych do realizacji
 │   ├── VENOM_DIAGRAM.md
-│   └── VENOM_MASTER_VISION_v2.md
+│   └── VENOM_MASTER_VISION_V2.md
 │
 ├── data/                        # dane runtime (nie kod)
 │   └── memory/

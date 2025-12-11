@@ -306,7 +306,7 @@ def validate_documentation():
     print("Validating Documentation...")
     print("=" * 80)
 
-    docs_path = Path("docs/google_search_grounding_integration.md")
+    docs_path = Path("docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md")
     if not docs_path.exists():
         raise AssertionError("❌ Missing documentation file")
 

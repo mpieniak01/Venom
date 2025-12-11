@@ -1,5 +1,5 @@
 // Venom OS - Theme Configuration Module
-// Most między CSS variables a JavaScript bibliotekę
+// Most między CSS variables a JavaScript biblioteki
 // Pobiera wartości z variables.css i udostępnia jako konfigurację dla Chart.js, Mermaid, Cytoscape
 
 /**
@@ -194,11 +194,13 @@ export const THEME = {
             'background-color': 'rgba(30, 41, 59, 0.6)'       // Przezroczyste tło
         },
         
-        // Węzeł aktywny - Neon green glow
+        // Węzeł aktywny - Neon green highlight
+        // Note: Cytoscape doesn't support box-shadow, using border and opacity instead
         nodeActive: {
             'border-width': 5,
             'border-color': getCSSVariable('primary-green'),  // #00ff9d
-            'box-shadow': `0 0 20px ${getCSSVariable('primary-green')}`,  // Glow effect
+            'border-opacity': 1,
+            'background-opacity': 0.9,
             'z-index': 9999
         },
         

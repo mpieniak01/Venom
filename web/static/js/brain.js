@@ -198,13 +198,15 @@ async function initGraph() {
                     }
                 },
                 
-                // Węzeł wybrany (highlighted) - Neon green glow
+                // Węzeł wybrany (highlighted) - Neon green highlight
+                // Note: Cytoscape doesn't support box-shadow
                 {
                     selector: 'node.highlighted',
                     style: {
                         'border-width': 5,
                         'border-color': THEME.primary,               // #00ff9d Neon green
-                        'box-shadow': `0 0 20px ${THEME.primary}`,  // Glow effect
+                        'border-opacity': 1,
+                        'background-opacity': 0.9,
                         'z-index': 9999
                     }
                 },

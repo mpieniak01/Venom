@@ -333,5 +333,9 @@ class Settings(BaseSettings):
         "https://api.openai.com/v1/chat/completions"
     )
 
+    # ===== SYSTEM & MONITORING ENDPOINTS =====
+    # Endpoint dla API systemowego (ServiceMonitor)
+    SYSTEM_SERVICES_ENDPOINT: str = "http://localhost:8000/api/v1/system/services"
+
 
 SETTINGS = Settings()

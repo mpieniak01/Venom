@@ -147,6 +147,11 @@ class VenomDashboard {
             metricTasks: document.getElementById('metricTasks'),
             metricSuccess: document.getElementById('metricSuccess'),
             metricUptime: document.getElementById('metricUptime'),
+            // SYS tab metrics (duplicates for SYS tab)
+            sysMetricTasks: document.getElementById('sysMetricTasks'),
+            sysMetricSuccess: document.getElementById('sysMetricSuccess'),
+            sysMetricUptime: document.getElementById('sysMetricUptime'),
+            sysMetricNetwork: document.getElementById('sysMetricNetwork'),
             // Repository status elements
             branchName: document.getElementById('branchName'),
             changesText: document.getElementById('changesText'),
@@ -174,6 +179,7 @@ class VenomDashboard {
             governancePanel: document.querySelector('.queue-governance-panel'),
             // Dashboard v2.3: Live Terminal
             liveTerminal: document.getElementById('liveTerminal'),
+            sysLiveTerminal: document.getElementById('sysLiveTerminal'),
             clearTerminalBtn: document.getElementById('clearTerminalBtn'),
             // Dashboard v2.4: Cost Mode (Global Cost Guard)
             costModeToggle: document.getElementById('costModeToggle'),
@@ -888,20 +894,42 @@ class VenomDashboard {
         if (metrics.tasks) {
             this.elements.metricTasks.textContent = metrics.tasks.created || 0;
             this.elements.metricSuccess.textContent = `${metrics.tasks.success_rate || 0}%`;
+            // Update SYS tab metrics
+            if (this.elements.sysMetricTasks) {
+                this.elements.sysMetricTasks.textContent = metrics.tasks.created || 0;
+            }
+            if (this.elements.sysMetricSuccess) {
+                this.elements.sysMetricSuccess.textContent = `${metrics.tasks.success_rate || 0}%`;
+            }
         }
 
         if (metrics.uptime_seconds !== undefined) {
             this.elements.metricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
+            // Update SYS tab uptime
+            if (this.elements.sysMetricUptime) {
+                this.elements.sysMetricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
+            }
         }
-
+        
         // Dashboard v2.1: Network I/O
-        if (metrics.network && metrics.network.total_bytes !== undefined) {
-            const totalKB = Math.round(metrics.network.total_bytes / 1024);
+        // Unified handling for both total_bytes (main display) and bytes (fallback)
+        if (metrics.network) {
+            const networkBytes = metrics.network.total_bytes || metrics.network.bytes || 0;
+            const networkKB = Math.round(networkBytes / 1024);
+            
+            // Update main metric display
             const metricNetwork = document.getElementById('metricNetwork');
             if (metricNetwork) {
-                metricNetwork.textContent = totalKB >= 1024
-                    ? `${(totalKB / 1024).toFixed(1)} MB`
-                    : `${totalKB} KB`;
+                metricNetwork.textContent = networkKB >= 1024
+                    ? `${(networkKB / 1024).toFixed(1)} MB`
+                    : `${networkKB} KB`;
+            }
+            
+            // Update SYS tab metric display
+            if (this.elements.sysMetricNetwork) {
+                this.elements.sysMetricNetwork.textContent = networkKB >= 1024
+                    ? `${(networkKB / 1024).toFixed(1)} MB`
+                    : `${networkKB} KB`;
             }
         }
     }
@@ -3448,41 +3476,45 @@ class VenomDashboard {
     // ============================================
 
     addTerminalEntry(level, message) {
-        const terminal = this.elements.liveTerminal;
-        if (!terminal) return;
-
-        const entry = document.createElement('div');
-        entry.className = 'terminal-entry';
+        const terminals = [this.elements.liveTerminal, this.elements.sysLiveTerminal].filter(t => t);
+        if (terminals.length === 0) return;
 
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
 
-        entry.innerHTML = `
-            <span class="terminal-timestamp">[${timestamp}]</span>
-            <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
-            <span class="terminal-message">${this.escapeHtml(message)}</span>
-        `;
+        terminals.forEach(terminal => {
+            const entry = document.createElement('div');
+            entry.className = 'terminal-entry';
 
-        terminal.appendChild(entry);
+            entry.innerHTML = `
+                <span class="terminal-timestamp">[${timestamp}]</span>
+                <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
+                <span class="terminal-message">${this.escapeHtml(message)}</span>
+            `;
 
-        // Auto-scroll
-        terminal.scrollTop = terminal.scrollHeight;
+            terminal.appendChild(entry);
 
-        // Limit entries
-        while (terminal.children.length > 100) {
-            terminal.removeChild(terminal.firstChild);
-        }
+            // Auto-scroll
+            terminal.scrollTop = terminal.scrollHeight;
+
+            // Limit entries
+            while (terminal.children.length > 100) {
+                terminal.removeChild(terminal.firstChild);
+            }
+        });
     }
 
     clearTerminal() {
-        if (this.elements.liveTerminal) {
-            this.elements.liveTerminal.innerHTML = `
+        const terminals = [this.elements.liveTerminal, this.elements.sysLiveTerminal].filter(t => t);
+        
+        terminals.forEach(terminal => {
+            terminal.innerHTML = `
                 <div class="terminal-entry">
                     <span class="terminal-timestamp">[--:--:--]</span>
                     <span class="terminal-level info">INFO</span>
                     <span class="terminal-message">Terminal cleared</span>
                 </div>
             `;
-        }
+        });
     }
 
     escapeHtml(text) {

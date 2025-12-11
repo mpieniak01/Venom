@@ -164,15 +164,16 @@
         </main>
 
         <!-- Panel z telemetrią i metrykami -->
-        <aside class="right-panel">
+        <aside class="right-panel telemetry-panel">
             <!-- Tabs for switching between views -->
             <div class="panel-tabs">
-                <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
-                <button class="tab-button" data-tab="voice">🎤 Głos</button>
-                <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
-                <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
-                <button class="tab-button" data-tab="models">🔫 Modele</button>
-                <button class="tab-button" data-tab="history">📜 Historia</button>
+                <button class="tab-button active" data-tab="feed">TRANSMISJA</button>
+                <button class="tab-button" data-tab="voice">GŁOS</button>
+                <button class="tab-button" data-tab="sys">SYSTEM</button>
+                <button class="tab-button" data-tab="jobs">ZADANIA</button>
+                <button class="tab-button" data-tab="memory">PAMIĘĆ</button>
+                <button class="tab-button" data-tab="models">MODELE</button>
+                <button class="tab-button" data-tab="history">HISTORIA</button>
             </div>
 
             <!-- Live Feed Tab -->
@@ -302,6 +303,38 @@
                             <span class="metric-label">Dysk</span>
                             <span class="metric-value" id="iotDisk">--%</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SYS Tab (System Metrics) -->
+            <div class="tab-content" id="sysTab">
+                <div class="metric-row">
+                    <span class="metric-row-label">Zadania</span>
+                    <span class="metric-row-value secondary" id="sysMetricTasks">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-row-label">Sukces</span>
+                    <span class="metric-row-value primary" id="sysMetricSuccess">0%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-row-label">Uptime</span>
+                    <span class="metric-row-value" id="sysMetricUptime">0s</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-row-label">Sieć I/O</span>
+                    <span class="metric-row-value" id="sysMetricNetwork">0 KB</span>
+                </div>
+                
+                <!-- Live Terminal reference -->
+                <div class="panel-header sys-terminal-header">
+                    <h3>Terminal</h3>
+                </div>
+                <div id="sysLiveTerminal" class="live-terminal live-terminal--compact">
+                    <div class="terminal-entry">
+                        <span class="terminal-timestamp">[--:--:--]</span>
+                        <span class="terminal-level info">INFO</span>
+                        <span class="terminal-message">System ready...</span>
                     </div>
                 </div>
             </div>

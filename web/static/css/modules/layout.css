@@ -64,7 +64,8 @@ body::before {
 }
 
 /* --- RIGHT PANEL (Sidebar/Telemetry) --- */
-.right-panel {
+.right-panel,
+.telemetry-panel {
     width: 380px;
     background: rgba(5, 6, 8, 0.85);
     backdrop-filter: blur(15px);
@@ -75,8 +76,9 @@ body::before {
     position: relative;
 }
 
-/* Ozdobna linia gradientowa przy right-panel */
-.right-panel::before {
+/* Ozdobna linia gradientowa przy right-panel / telemetry-panel */
+.right-panel::before,
+.telemetry-panel::before {
     content: '';
     position: absolute;
     top: 0;

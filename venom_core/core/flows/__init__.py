@@ -1,5 +1,6 @@
 """Moduł: flows - Logika przepływów biznesowych."""
 
+from venom_core.core.flows.base import BaseFlow
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import CodeReviewLoop
 from venom_core.core.flows.council import CouncilFlow
@@ -8,6 +9,7 @@ from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
 
 __all__ = [
+    "BaseFlow",
     "CampaignFlow",
     "CodeReviewLoop",
     "CouncilFlow",

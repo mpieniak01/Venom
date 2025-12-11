@@ -4,6 +4,7 @@ from typing import Callable, Optional
 from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.base import BaseFlow
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
@@ -13,7 +14,7 @@ logger = get_logger(__name__)
 MAX_HEALING_ITERATIONS = 3
 
 
-class HealingFlow:
+class HealingFlow(BaseFlow):
     """Logika pętli samonaprawy - Test-Diagnose-Fix-Apply."""
 
     def __init__(
@@ -30,26 +31,9 @@ class HealingFlow:
             task_dispatcher: Dispatcher zadań (dostęp do agentów)
             event_broadcaster: Opcjonalny broadcaster zdarzeń
         """
+        super().__init__(event_broadcaster)
         self.state_manager = state_manager
         self.task_dispatcher = task_dispatcher
-        self.event_broadcaster = event_broadcaster
-
-    async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
-    ):
-        """
-        Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
-
-        Args:
-            event_type: Typ zdarzenia
-            message: Treść wiadomości
-            agent: Opcjonalna nazwa agenta
-            data: Opcjonalne dodatkowe dane
-        """
-        if self.event_broadcaster:
-            await self.event_broadcaster.broadcast_event(
-                event_type=event_type, message=message, agent=agent, data=data
-            )
 
     async def execute(self, task_id: UUID, test_path: str = ".") -> dict:
         """
@@ -103,7 +87,7 @@ class HealingFlow:
 
             # Przygotuj środowisko - zainstaluj zależności
             self.state_manager.add_log(task_id, "📦 Przygotowuję środowisko testowe...")
-            exit_code, output = habitat.execute(
+            habitat.execute(
                 "pip install -r requirements.txt 2>&1 || echo 'No requirements.txt'",
                 timeout=120,
             )

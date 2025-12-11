@@ -3,6 +3,7 @@
 from typing import Callable, Optional
 
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.base import BaseFlow
 from venom_core.core.models import TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
@@ -10,7 +11,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class IssueHandlerFlow:
+class IssueHandlerFlow(BaseFlow):
     """Logika obsługi Issue z GitHub - pipeline Issue-to-PR."""
 
     def __init__(
@@ -27,26 +28,9 @@ class IssueHandlerFlow:
             task_dispatcher: Dispatcher zadań (dostęp do agentów)
             event_broadcaster: Opcjonalny broadcaster zdarzeń
         """
+        super().__init__(event_broadcaster)
         self.state_manager = state_manager
         self.task_dispatcher = task_dispatcher
-        self.event_broadcaster = event_broadcaster
-
-    async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
-    ):
-        """
-        Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
-
-        Args:
-            event_type: Typ zdarzenia
-            message: Treść wiadomości
-            agent: Opcjonalna nazwa agenta
-            data: Opcjonalne dodatkowe dane
-        """
-        if self.event_broadcaster:
-            await self.event_broadcaster.broadcast_event(
-                event_type=event_type, message=message, agent=agent, data=data
-            )
 
     async def execute(self, issue_number: int) -> dict:
         """

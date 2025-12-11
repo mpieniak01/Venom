@@ -83,7 +83,7 @@ body::before {
     left: 0;
     bottom: 0;
     width: 1px;
-    background: linear-gradient(to bottom, transparent, var(--primary), transparent);
+    background: linear-gradient(to bottom, transparent, var(--primary-green), transparent);
     opacity: 0.3;
 }
 
@@ -107,12 +107,13 @@ body::before {
     right: 0;
     bottom: 0;
     width: 1px;
-    background: linear-gradient(to bottom, transparent, var(--primary), transparent);
+    background: linear-gradient(to bottom, transparent, var(--primary-green), transparent);
     opacity: 0.3;
 }
 
 /* --- MAIN WORKSPACE (dla nowego szablonu) --- */
-.main {
+.main,
+.main-workspace {
     flex: 1;
     padding: 40px;
     overflow-y: auto;

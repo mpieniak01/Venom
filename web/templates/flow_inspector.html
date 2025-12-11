@@ -8,8 +8,8 @@
 <style>
     .flow-inspector-container {
         max-width: 1400px;
-        margin: 2rem auto;
-        padding: 0 2rem;
+        margin: 0 auto;
+        padding: 2rem;
     }
 
     .flow-header {
@@ -20,22 +20,23 @@
     .flow-header h1 {
         font-size: 2.5rem;
         margin-bottom: 0.5rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--accent-gradient);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
     .flow-header p {
-        color: #666;
+        color: var(--text-secondary);
         font-size: 1.1rem;
     }
 
     .task-selector {
-        background: white;
+        background: var(--bg-panel);
+        backdrop-filter: blur(10px);
+        border: var(--border-glass);
         border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 
     .task-selector-header {
@@ -48,20 +49,22 @@
     .task-selector-header h3 {
         margin: 0;
         font-size: 1.2rem;
+        color: var(--text-primary);
     }
 
     .task-list-container {
         max-height: 300px;
         overflow-y: auto;
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--border-color);
         border-radius: 8px;
         padding: 0.5rem;
+        background: rgba(0, 0, 0, 0.2);
     }
 
     .task-item {
         padding: 0.8rem;
         margin-bottom: 0.5rem;
-        background: #f8f9fa;
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 6px;
         cursor: pointer;
         transition: all 0.2s;
@@ -69,25 +72,25 @@
     }
 
     .task-item:hover {
-        background: #e9ecef;
+        background: rgba(255, 255, 255, 0.08);
         transform: translateX(4px);
     }
 
     .task-item.selected {
-        background: #e7f3ff;
-        border-left-color: #2196F3;
+        background: rgba(139, 92, 246, 0.15);
+        border-left-color: var(--primary-color);
     }
 
     .task-item.status-completed {
-        border-left-color: #4CAF50;
+        border-left-color: var(--success-color);
     }
 
     .task-item.status-failed {
-        border-left-color: #f44336;
+        border-left-color: var(--error-color);
     }
 
     .task-item.status-processing {
-        border-left-color: #FF9800;
+        border-left-color: var(--warning-color);
     }
 
     .task-item-header {
@@ -100,7 +103,8 @@
     .task-item-id {
         font-weight: 600;
         font-size: 0.9rem;
-        color: #333;
+        color: var(--text-primary);
+        font-family: var(--font-tech);
     }
 
     .task-item-status {
@@ -110,14 +114,14 @@
         font-weight: 600;
     }
 
-    .status-completed { background: #d4edda; color: #155724; }
-    .status-failed { background: #f8d7da; color: #721c24; }
-    .status-processing { background: #fff3cd; color: #856404; }
-    .status-pending { background: #d1ecf1; color: #0c5460; }
+    .status-completed { background: rgba(16, 185, 129, 0.2); color: var(--success-color); }
+    .status-failed { background: rgba(239, 68, 68, 0.2); color: var(--error-color); }
+    .status-processing { background: rgba(245, 158, 11, 0.2); color: var(--warning-color); }
+    .status-pending { background: rgba(6, 182, 212, 0.2); color: var(--secondary-color); }
 
     .task-item-prompt {
         font-size: 0.85rem;
-        color: #666;
+        color: var(--text-secondary);
         margin-bottom: 0.3rem;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -126,14 +130,16 @@
 
     .task-item-time {
         font-size: 0.75rem;
-        color: #999;
+        color: var(--text-muted);
+        font-family: var(--font-tech);
     }
 
     .flow-visualization {
-        background: white;
+        background: var(--bg-panel);
+        backdrop-filter: blur(10px);
+        border: var(--border-glass);
         border-radius: 12px;
         padding: 2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         margin-bottom: 2rem;
     }
 
@@ -143,47 +149,51 @@
         align-items: center;
         margin-bottom: 1.5rem;
         padding-bottom: 1rem;
-        border-bottom: 2px solid #f0f0f0;
+        border-bottom: 2px solid var(--border-color);
     }
 
     .flow-visualization-header h3 {
         margin: 0;
         font-size: 1.4rem;
+        color: var(--text-primary);
     }
 
     .refresh-btn {
         padding: 0.5rem 1rem;
-        background: #2196F3;
+        background: var(--primary-color);
         color: white;
         border: none;
         border-radius: 6px;
         cursor: pointer;
         font-weight: 600;
-        transition: background 0.2s;
+        transition: all 0.2s;
     }
 
     .refresh-btn:hover {
-        background: #1976D2;
+        background: var(--primary-hover);
+        box-shadow: var(--glow-hover);
     }
 
     .mermaid-container {
         text-align: center;
         padding: 2rem;
-        background: #fafafa;
+        background: rgba(0, 0, 0, 0.2);
         border-radius: 8px;
         overflow-x: auto;
     }
 
     .flow-details {
-        background: white;
+        background: var(--bg-panel);
+        backdrop-filter: blur(10px);
+        border: var(--border-glass);
         border-radius: 12px;
         padding: 2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 
     .flow-details h3 {
         margin-bottom: 1rem;
         font-size: 1.4rem;
+        color: var(--text-primary);
     }
 
     .flow-steps {
@@ -194,24 +204,24 @@
     .flow-step {
         padding: 1rem;
         margin-bottom: 0.8rem;
-        background: #f8f9fa;
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 8px;
-        border-left: 4px solid #e0e0e0;
+        border-left: 4px solid var(--border-color);
         transition: all 0.2s;
     }
 
     .flow-step:hover {
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        background: rgba(255, 255, 255, 0.08);
     }
 
     .flow-step.decision-gate {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-        border-left-color: #FF9800;
+        background: rgba(245, 158, 11, 0.15);
+        border-left-color: var(--warning-color);
     }
 
     .flow-step.error {
-        background: #ffebee;
-        border-left-color: #f44336;
+        background: rgba(239, 68, 68, 0.15);
+        border-left-color: var(--error-color);
     }
 
     .flow-step-header {
@@ -224,29 +234,32 @@
     .flow-step-component {
         font-weight: 600;
         font-size: 1rem;
+        color: var(--text-primary);
+        font-family: var(--font-tech);
     }
 
     .flow-step-time {
         font-size: 0.8rem;
-        color: #999;
+        color: var(--text-muted);
+        font-family: var(--font-tech);
     }
 
     .flow-step-action {
         font-size: 0.9rem;
-        color: #666;
+        color: var(--text-secondary);
         margin-bottom: 0.3rem;
     }
 
     .flow-step-details {
         font-size: 0.85rem;
-        color: #888;
+        color: var(--text-muted);
         font-style: italic;
     }
 
     .decision-gate-badge {
         display: inline-block;
         padding: 0.2rem 0.6rem;
-        background: #FF9800;
+        background: var(--warning-color);
         color: white;
         border-radius: 12px;
         font-size: 0.75rem;
@@ -257,7 +270,7 @@
     .empty-state {
         text-align: center;
         padding: 3rem;
-        color: #999;
+        color: var(--text-muted);
     }
 
     .empty-state svg {
@@ -270,12 +283,12 @@
     .loading {
         text-align: center;
         padding: 2rem;
-        color: #666;
+        color: var(--text-secondary);
     }
 
     .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #2196F3;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+        border-top: 4px solid var(--primary-color);
         border-radius: 50%;
         width: 40px;
         height: 40px;
@@ -347,11 +360,30 @@
         return div.innerHTML;
     }
     
-    // Inicjalizacja Mermaid
+    // Inicjalizacja Mermaid - użyj CSS custom properties zamiast hard-coded
+    // Pobieramy wartości tylko raz przy inicjalizacji, aby nie obciążać DOM
+    const style = getComputedStyle(document.documentElement);
+    const primaryColor = style.getPropertyValue('--primary-color').trim();
+    const primaryGreen = style.getPropertyValue('--primary-green').trim();
+    
     mermaid.initialize({ 
         startOnLoad: false,
-        theme: 'default',
+        theme: 'dark',
         securityLevel: 'strict',  // Bezpieczniejszy tryb dla production
+        themeVariables: {
+            primaryColor: primaryColor,
+            primaryTextColor: '#f1f5f9',
+            primaryBorderColor: primaryGreen,
+            lineColor: primaryGreen,
+            secondaryColor: '#06b6d4',
+            tertiaryColor: '#1e293b',
+            background: '#0f172a',
+            mainBkg: '#1e293b',
+            secondBkg: '#334155',
+            textColor: '#f1f5f9',
+            border1: '#475569',
+            border2: '#64748b'
+        },
         sequence: {
             showSequenceNumbers: true,
             actorMargin: 50,

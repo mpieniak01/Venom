@@ -12,6 +12,7 @@ from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
 from venom_core.agents.guardian import GuardianAgent
+from venom_core.config import SETTINGS
 from venom_core.core.swarm import create_venom_agent_wrapper
 from venom_core.utils.logger import get_logger
 
@@ -280,16 +281,16 @@ class CouncilSession:
 
 
 def create_local_llm_config(
-    base_url: str = "http://localhost:11434/v1",
-    model: str = "llama3",
+    base_url: str = None,
+    model: str = None,
     temperature: float = 0.7,
 ) -> Dict:
     """
     Tworzy konfigurację LLM dla lokalnego modelu (Ollama/LiteLLM).
 
     Args:
-        base_url: URL do lokalnego serwera LLM
-        model: Nazwa modelu
+        base_url: URL do lokalnego serwera LLM. Jeśli None, użyje SETTINGS.LLM_LOCAL_ENDPOINT
+        model: Nazwa modelu. Jeśli None, użyje SETTINGS.LOCAL_LLAMA3_MODEL
         temperature: Temperatura dla generacji (0.0-1.0)
 
     Returns:
@@ -297,7 +298,17 @@ def create_local_llm_config(
 
     Raises:
         ValueError: Jeśli parametry są nieprawidłowe
+
+    Note:
+        Parametry base_url i model domyślnie są None i automatycznie pobierane z SETTINGS.
+        Można je nadpisać przekazując konkretne wartości.
     """
+    # Użyj wartości z SETTINGS jeśli nie podano
+    if base_url is None:
+        base_url = SETTINGS.LLM_LOCAL_ENDPOINT
+    if model is None:
+        model = SETTINGS.LOCAL_LLAMA3_MODEL
+    
     # Walidacja parametrów
     if not 0.0 <= temperature <= 1.0:
         raise ValueError(

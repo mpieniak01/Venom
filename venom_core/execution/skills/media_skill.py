@@ -12,15 +12,6 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Konfiguracja timeoutów dla Stable Diffusion API
-SD_PING_TIMEOUT = 5.0  # Timeout dla sprawdzenia dostępności API (sekundy)
-SD_GENERATION_TIMEOUT = 120.0  # Timeout dla generowania obrazu (sekundy)
-
-# Konfiguracja Stable Diffusion (domyślne parametry)
-SD_DEFAULT_STEPS = 20
-SD_DEFAULT_CFG_SCALE = 7.0
-SD_DEFAULT_SAMPLER = "DPM++ 2M Karras"
-
 
 class MediaSkill:
     """
@@ -46,8 +37,8 @@ class MediaSkill:
         self.service = SETTINGS.IMAGE_GENERATION_SERVICE
         self.default_size = SETTINGS.IMAGE_DEFAULT_SIZE
 
-        # Domyślny endpoint dla Stable Diffusion (Automatic1111)
-        self.sd_endpoint = "http://127.0.0.1:7860"
+        # Endpoint dla Stable Diffusion z konfiguracji
+        self.sd_endpoint = SETTINGS.STABLE_DIFFUSION_ENDPOINT
 
         # Sprawdź czy OpenAI jest dostępny
         self.openai_available = False
@@ -159,7 +150,7 @@ class MediaSkill:
             # Sprawdź dostępność API
             logger.info(f"Próba połączenia z Stable Diffusion API: {self.sd_endpoint}")
 
-            async with httpx.AsyncClient(timeout=SD_PING_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=SETTINGS.SD_PING_TIMEOUT) as client:
                 # Ping endpoint
                 try:
                     ping_response = await client.get(f"{self.sd_endpoint}/sdapi/v1/")
@@ -178,14 +169,14 @@ class MediaSkill:
             payload = {
                 "prompt": prompt,
                 "negative_prompt": "blurry, bad quality, distorted, ugly",
-                "steps": SD_DEFAULT_STEPS,
+                "steps": SETTINGS.SD_DEFAULT_STEPS,
                 "width": width,
                 "height": height,
-                "cfg_scale": SD_DEFAULT_CFG_SCALE,
-                "sampler_name": SD_DEFAULT_SAMPLER,
+                "cfg_scale": SETTINGS.SD_DEFAULT_CFG_SCALE,
+                "sampler_name": SETTINGS.SD_DEFAULT_SAMPLER,
             }
 
-            async with httpx.AsyncClient(timeout=SD_GENERATION_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=SETTINGS.SD_GENERATION_TIMEOUT) as client:
                 response = await client.post(
                     f"{self.sd_endpoint}/sdapi/v1/txt2img",
                     json=payload,

@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     SLACK_WEBHOOK_URL: SecretStr = SecretStr("")  # Webhook URL dla powiadomień Slack
     ENABLE_ISSUE_POLLING: bool = False  # Włącz automatyczne sprawdzanie Issues
     ISSUE_POLLING_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania nowych Issues
+    
+    # Tavily AI Search (opcjonalne, dla lepszej jakości wyszukiwania)
+    TAVILY_API_KEY: SecretStr = SecretStr("")  # API Key dla Tavily AI Search
 
     # Konfiguracja Audio Interface (THE_AVATAR)
     ENABLE_AUDIO_INTERFACE: bool = False  # Włącz interfejs głosowy (STT/TTS)

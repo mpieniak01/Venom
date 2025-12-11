@@ -9,6 +9,7 @@ from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
+from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,12 +29,6 @@ class TokenEconomist:
         "gemini-pro": {"input": 0.5, "output": 1.5},
         "local": {"input": 0.0, "output": 0.0},  # Lokalny model jest darmowy
     }
-
-    # Modele lokalne - rozszerzalna lista
-    LOCAL_MODEL_PATTERNS = ["local", "phi", "mistral", "llama", "gemma", "qwen"]
-
-    # Rezerwa tokenów dla podsumowania przy kompresji
-    RESERVE_TOKENS_FOR_SUMMARY = 500
 
     def __init__(self, enable_compression: bool = True, pricing_file: str = None):
         """
@@ -87,13 +82,13 @@ class TokenEconomist:
         Args:
             history: Historia czatu do skompresowania
             max_tokens: Maksymalna liczba tokenów (domyślnie 4000)
-            reserve_tokens: Tokeny zarezerwowane na podsumowanie (domyślnie RESERVE_TOKENS_FOR_SUMMARY)
+            reserve_tokens: Tokeny zarezerwowane na podsumowanie (domyślnie z SETTINGS)
 
         Returns:
             Skompresowana historia czatu
         """
         if reserve_tokens is None:
-            reserve_tokens = self.RESERVE_TOKENS_FOR_SUMMARY
+            reserve_tokens = SETTINGS.RESERVE_TOKENS_FOR_SUMMARY
 
         if not self.enable_compression:
             logger.debug("Kompresja wyłączona, zwracam oryginalną historię")
@@ -261,8 +256,8 @@ class TokenEconomist:
         # Normalizuj nazwę modelu
         model_name_lower = model_name.lower()
 
-        # Sprawdź czy to lokalny model (używając patterns)
-        for pattern in self.LOCAL_MODEL_PATTERNS:
+        # Sprawdź czy to lokalny model (używając patterns z config)
+        for pattern in SETTINGS.LOCAL_MODEL_PATTERNS:
             if pattern in model_name_lower:
                 return self.PRICING["local"]
 

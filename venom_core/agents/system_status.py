@@ -6,6 +6,7 @@ import httpx
 from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,10 +23,12 @@ class SystemStatusAgent(BaseAgent):
     def __init__(
         self,
         kernel: Kernel,
-        status_endpoint: str = "http://localhost:8000/api/v1/system/services",
+        status_endpoint: str = None,
     ):
         super().__init__(kernel)
-        self.status_endpoint = status_endpoint.rstrip("/")
+        self.status_endpoint = (
+            status_endpoint or SETTINGS.SYSTEM_SERVICES_ENDPOINT
+        ).rstrip("/")
         logger.info("SystemStatusAgent zainicjalizowany")
 
     async def process(self, input_text: str) -> str:

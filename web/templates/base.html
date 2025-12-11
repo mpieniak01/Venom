@@ -4,21 +4,82 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Venom{% endblock %}</title>
+    
+    <!-- Google Fonts - Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
     <!-- Nowa modularna architektura CSS -->
     <link rel="stylesheet" href="/static/css/main.css">
     <!-- Stary app.css dla kompatybilności. Plan migracji i kryteria usunięcia opisane w docs/FRONTEND_ARCHITECTURE.md -->
     <link rel="stylesheet" href="/static/css/app.css">
     {% block extra_css %}{% endblock %}
+    
+    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
 </head>
 <body class="theme-isolated" id="venomBody">
-    {% include '_navbar.html' %}
-    <div class="main-content">
+    <!-- Venom OS Unified Layout: Sidebar + Main Workspace -->
+    <aside class="sidebar">
+        <div class="brand">VENOM <span>OS</span></div>
+        
+        <nav>
+            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 10px; font-family: var(--font-tech);">Core Modules</div>
+            <a href="/" class="nav-link {% block nav_cockpit_active %}{% endblock %}">
+                <span>🏠 Cockpit</span>
+            </a>
+            <a href="/strategy" class="nav-link {% block nav_strategy_active %}{% endblock %}">
+                <span>🎯 War Room</span>
+            </a>
+            <a href="/brain" class="nav-link {% block nav_brain_active %}{% endblock %}">
+                <span>🧠 The Brain</span>
+            </a>
+            
+            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin: 20px 0 10px 0; font-family: var(--font-tech);">Tools</div>
+            <a href="/flow-inspector" class="nav-link {% block nav_flow_active %}{% endblock %}">
+                <span>🔀 Flow Inspector</span>
+            </a>
+            <a href="/inspector" class="nav-link {% block nav_inspector_active %}{% endblock %}">
+                <span>🔍 Inspector</span>
+            </a>
+        </nav>
+        
+        <!-- Autonomy Level Selector -->
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div style="margin-bottom: 15px;">
+                <label for="autonomyLevel" style="display: block; font-size: 0.75rem; text-transform: uppercase; color: #555; margin-bottom: 8px; font-family: var(--font-tech);">
+                    🔐 Autonomia
+                </label>
+                <select id="autonomyLevel" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); font-family: var(--font-tech); font-size: 0.85rem;">
+                    <option value="0" data-color="green">🟢 ISOLATED</option>
+                    <option value="10" data-color="blue">🔵 CONNECTED</option>
+                    <option value="20" data-color="yellow">🟡 FUNDED</option>
+                    <option value="30" data-color="orange">🟠 BUILDER</option>
+                    <option value="40" data-color="red">🔴 ROOT</option>
+                </select>
+            </div>
+            
+            <!-- System Status -->
+            <div style="font-family: var(--font-tech); font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center;">
+                <span class="status-dot" id="sidebarConnectionStatus"></span>
+                <span id="sidebarStatusText">SYSTEM ONLINE</span>
+            </div>
+            <div style="font-size: 0.7rem; color: #555; margin-top: 5px; font-family: var(--font-tech);">
+                Latency: <span id="sidebarLatency">--</span>ms
+            </div>
+        </div>
+    </aside>
+    
+    <!-- Main Workspace -->
+    <main class="main-workspace">
         {% block content %}{% endblock %}
-    </div>
+    </main>
+    
+    <!-- Autonomy Modal -->
     <div id="autonomyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="autonomyModalTitle">
         <div class="modal-content">
             <div class="modal-header">
@@ -37,6 +98,7 @@
             </div>
         </div>
     </div>
+    
     <script src="/static/js/app.js"></script>
     {% block extra_js %}{% endblock %}
 </body>

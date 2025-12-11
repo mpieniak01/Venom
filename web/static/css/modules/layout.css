@@ -112,7 +112,8 @@ body::before {
 }
 
 /* --- MAIN WORKSPACE (dla nowego szablonu) --- */
-.main {
+.main,
+.main-workspace {
     flex: 1;
     padding: 40px;
     overflow-y: auto;

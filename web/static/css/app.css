@@ -404,6 +404,7 @@ body {
     padding: 1rem;
     border-top: 1px solid var(--border-color);
     display: flex;
+    flex-direction: column;
     gap: 0.5rem;
     background: var(--bg-medium);
     flex-shrink: 0;

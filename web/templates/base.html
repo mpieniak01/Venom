@@ -54,28 +54,36 @@
             </a>
         </nav>
         
+        <!-- Sidebar Content (with scroll) -->
+        <div class="sidebar-content">
+            <!-- Telemetry (optional, can be added per page) -->
+            <div class="telemetry-section">
+                <div class="nav-section-title">Telemetry</div>
+                <!-- Placeholder for live feed / mini stats -->
+            </div>
+        </div>
+        
         <!-- Autonomy Level Selector -->
         <div class="sidebar-footer">
-            <div class="autonomy-section">
-                <label for="autonomyLevel" class="autonomy-label">
-                    🔐 Autonomia
-                </label>
+            <div class="nav-section-title" style="margin-bottom: 5px;">System Configuration</div>
+            
+            <div>
+                <label for="autonomyLevel" style="font-size: 0.65rem; color: #666; display: block; margin-bottom: 4px;">SECURITY LEVEL</label>
                 <select id="autonomyLevel" class="autonomy-select">
-                    <option value="0" data-color="green">🟢 ISOLATED</option>
-                    <option value="10" data-color="blue">🔵 CONNECTED</option>
-                    <option value="20" data-color="yellow">🟡 FUNDED</option>
-                    <option value="30" data-color="orange">🟠 BUILDER</option>
-                    <option value="40" data-color="red">🔴 ROOT</option>
+                    <option value="0">🟢 ISOLATED</option>
+                    <option value="10">🔵 CONNECTED</option>
+                    <option value="20">🟡 FUNDED</option>
+                    <option value="40">🔴 ROOT</option>
                 </select>
             </div>
             
-            <!-- System Status -->
-            <div class="status-info">
-                <span class="status-dot" id="sidebarConnectionStatus"></span>
-                <span id="sidebarStatusText">SYSTEM ONLINE</span>
-            </div>
-            <div class="status-subtext">
-                Latency: <span id="sidebarLatency">--</span>ms
+            <!-- Config Row with toggle (for future use) -->
+            <div class="config-row">
+                <span id="costModeLabel" style="font-size: 0.75rem; color: #ccc; font-family: var(--font-tech);">ECO MODE</span>
+                <label>
+                    <input type="checkbox" id="costModeToggle" style="display:none;">
+                    <div class="toggle-switch"><div class="toggle-dot"></div></div>
+                </label>
             </div>
         </div>
     </aside>

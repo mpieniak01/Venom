@@ -14,14 +14,28 @@ function getCSSVariable(varName) {
 
 /**
  * Konwertuje hex color na rgba z zadaną przezroczystością
- * @param {string} hex - Kolor hex (np. #00ff9d)
+ * @param {string} hex - Kolor hex w formacie '#RRGGBB' (np. #00ff9d)
  * @param {number} alpha - Przezroczystość 0-1
  * @returns {string} Kolor rgba
+ * @throws {Error} Jeśli format hex jest niepoprawny
  */
 function hexToRgba(hex, alpha) {
+    // Walidacja formatu hex
+    if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length !== 7) {
+        console.error(`Invalid hex color format: ${hex}. Expected format: #RRGGBB`);
+        return `rgba(0, 0, 0, ${alpha})`; // Fallback to black
+    }
+    
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
+    
+    // Sprawdź czy parsing się udał
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+        console.error(`Invalid hex color value: ${hex}. Could not parse RGB components.`);
+        return `rgba(0, 0, 0, ${alpha})`; // Fallback to black
+    }
+    
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 

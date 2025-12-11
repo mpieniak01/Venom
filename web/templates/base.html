@@ -28,7 +28,7 @@
         <div class="brand">VENOM <span>OS</span></div>
         
         <nav>
-            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 10px; font-family: var(--font-tech);">Core Modules</div>
+            <div class="nav-section-label">Core Modules</div>
             <a href="/" class="nav-link {% block nav_cockpit_active %}{% endblock %}">
                 <span>🏠 Cockpit</span>
             </a>
@@ -39,7 +39,7 @@
                 <span>🧠 The Brain</span>
             </a>
             
-            <div style="color: #555; font-size: 0.75rem; text-transform: uppercase; margin: 20px 0 10px 0; font-family: var(--font-tech);">Tools</div>
+            <div class="nav-section-label space-top">Tools</div>
             <a href="/flow-inspector" class="nav-link {% block nav_flow_active %}{% endblock %}">
                 <span>🔀 Flow Inspector</span>
             </a>
@@ -49,12 +49,12 @@
         </nav>
         
         <!-- Autonomy Level Selector -->
-        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <div style="margin-bottom: 15px;">
-                <label for="autonomyLevel" style="display: block; font-size: 0.75rem; text-transform: uppercase; color: #555; margin-bottom: 8px; font-family: var(--font-tech);">
+        <div class="sidebar-footer">
+            <div class="autonomy-section">
+                <label for="autonomyLevel" class="autonomy-label">
                     🔐 Autonomia
                 </label>
-                <select id="autonomyLevel" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: var(--text-primary); font-family: var(--font-tech); font-size: 0.85rem;">
+                <select id="autonomyLevel" class="autonomy-select">
                     <option value="0" data-color="green">🟢 ISOLATED</option>
                     <option value="10" data-color="blue">🔵 CONNECTED</option>
                     <option value="20" data-color="yellow">🟡 FUNDED</option>
@@ -64,11 +64,11 @@
             </div>
             
             <!-- System Status -->
-            <div style="font-family: var(--font-tech); font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center;">
+            <div class="status-info">
                 <span class="status-dot" id="sidebarConnectionStatus"></span>
                 <span id="sidebarStatusText">SYSTEM ONLINE</span>
             </div>
-            <div style="font-size: 0.7rem; color: #555; margin-top: 5px; font-family: var(--font-tech);">
+            <div class="status-subtext">
                 Latency: <span id="sidebarLatency">--</span>ms
             </div>
         </div>

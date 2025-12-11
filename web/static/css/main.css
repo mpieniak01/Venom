@@ -128,6 +128,19 @@
     text-shadow: var(--glow-strong);
 }
 
+/* Navigation Section Label */
+.nav-section-label {
+    color: #555;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-family: var(--font-tech);
+}
+
+.nav-section-label.space-top {
+    margin-top: 20px;
+}
+
 /* Navigation Links (dla sidebar) */
 .nav-link {
     display: flex;
@@ -284,6 +297,52 @@ input:checked + .toggle-slider {
 
 input:checked + .toggle-slider:before {
     transform: translateX(20px);
+}
+
+/* Sidebar Footer / Status Area */
+.sidebar-footer {
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-footer .autonomy-section {
+    margin-bottom: 15px;
+}
+
+.sidebar-footer .autonomy-label {
+    display: block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 8px;
+    font-family: var(--font-tech);
+}
+
+.sidebar-footer .autonomy-select {
+    width: 100%;
+    padding: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: var(--font-tech);
+    font-size: 0.85rem;
+}
+
+.sidebar-footer .status-info {
+    font-family: var(--font-tech);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-footer .status-subtext {
+    font-size: 0.7rem;
+    color: #555;
+    margin-top: 5px;
+    font-family: var(--font-tech);
 }
 
 /* Repository Status */

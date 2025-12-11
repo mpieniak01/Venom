@@ -289,8 +289,8 @@ def create_local_llm_config(
     Tworzy konfigurację LLM dla lokalnego modelu (Ollama/LiteLLM).
 
     Args:
-        base_url: URL do lokalnego serwera LLM (domyślnie z SETTINGS)
-        model: Nazwa modelu (domyślnie z SETTINGS)
+        base_url: URL do lokalnego serwera LLM. Jeśli None, użyje SETTINGS.LLM_LOCAL_ENDPOINT
+        model: Nazwa modelu. Jeśli None, użyje SETTINGS.LOCAL_LLAMA3_MODEL
         temperature: Temperatura dla generacji (0.0-1.0)
 
     Returns:
@@ -298,6 +298,10 @@ def create_local_llm_config(
 
     Raises:
         ValueError: Jeśli parametry są nieprawidłowe
+
+    Note:
+        Parametry base_url i model domyślnie są None i automatycznie pobierane z SETTINGS.
+        Można je nadpisać przekazując konkretne wartości.
     """
     # Użyj wartości z SETTINGS jeśli nie podano
     if base_url is None:

@@ -17,10 +17,12 @@
 
     /* --- NEON AKCENTY --- */
     --primary: #00ff9d;
-    --primary-color: #00ff9d; /* Alias dla kompatybilności */
+    --primary-color: #8b5cf6; /* Fioletowy - używany w większości UI */
+    --primary-hover: #7c3aed; /* Fioletowy ciemniejszy - hover states */
+    --primary-green: #00ff9d; /* Zielony neon - akcenty i glow */
     --secondary: #00b8ff;
     --secondary-color: #06b6d4; /* Alias dla kompatybilności */
-    --accent-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    --accent-gradient: linear-gradient(135deg, var(--primary-green) 0%, var(--secondary) 100%);
 
     /* --- STATUS COLORS --- */
     --success-color: #10b981;
@@ -30,7 +32,8 @@
     /* --- GLOW EFFECTS --- */
     --glow-strong: 0 0 20px rgba(0, 255, 157, 0.25);
     --glow-border: 0 0 0 1px rgba(0, 255, 157, 0.15);
-    --glow-hover: 0 0 20px rgba(0, 255, 157, 0.4);
+    --glow-hover: 0 0 20px rgba(139, 92, 246, 0.4); /* Purple glow for UI elements */
+    --glow-hover-green: 0 0 20px rgba(0, 255, 157, 0.4); /* Green glow for accents */
 
     /* --- TEXT COLORS --- */
     --text-main: #ffffff;

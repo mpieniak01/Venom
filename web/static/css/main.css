@@ -124,7 +124,7 @@
 }
 
 .brand span {
-    color: var(--primary);
+    color: var(--primary-green);
     text-shadow: var(--glow-strong);
 }
 
@@ -153,14 +153,14 @@
 .nav-link.active {
     background: rgba(0, 255, 157, 0.08);
     border-color: rgba(0, 255, 157, 0.3);
-    color: var(--primary);
+    color: var(--primary-green);
     box-shadow: 0 0 15px rgba(0, 255, 157, 0.05);
 }
 
 .nav-link.active::after {
     content: '●';
     font-size: 0.6rem;
-    color: var(--primary);
+    color: var(--primary-green);
     animation: pulse 2s infinite;
 }
 

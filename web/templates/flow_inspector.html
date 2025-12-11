@@ -170,7 +170,7 @@
     }
 
     .refresh-btn:hover {
-        background: #7c3aed;
+        background: var(--primary-hover);
         box-shadow: var(--glow-hover);
     }
 
@@ -361,15 +361,20 @@
     }
     
     // Inicjalizacja Mermaid
+    // Inicjalizacja Mermaid - użyj CSS custom properties zamiast hard-coded
+    const style = getComputedStyle(document.documentElement);
+    const primaryColor = style.getPropertyValue('--primary-color').trim();
+    const primaryGreen = style.getPropertyValue('--primary-green').trim();
+    
     mermaid.initialize({ 
         startOnLoad: false,
         theme: 'dark',
         securityLevel: 'strict',  // Bezpieczniejszy tryb dla production
         themeVariables: {
-            primaryColor: '#8b5cf6',
+            primaryColor: primaryColor,
             primaryTextColor: '#f1f5f9',
-            primaryBorderColor: '#00ff9d',
-            lineColor: '#00ff9d',
+            primaryBorderColor: primaryGreen,
+            lineColor: primaryGreen,
             secondaryColor: '#06b6d4',
             tertiaryColor: '#1e293b',
             background: '#0f172a',

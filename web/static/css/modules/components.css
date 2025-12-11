@@ -196,7 +196,7 @@
 .metric-value, .governance-value {
     font-size: 1.8rem;
     font-weight: 700;
-    color: var(--primary);
+    color: var(--primary-green);
     font-family: var(--font-tech);
 }
 
@@ -291,7 +291,7 @@
 }
 
 .terminal-level.info {
-    color: var(--primary);
+    color: var(--primary-green);
 }
 
 .terminal-level.warning {

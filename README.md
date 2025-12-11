@@ -230,7 +230,7 @@ make run
 ## 📖 Dokumentacja
 
 - [Kompletna dokumentacja zadania 007](docs/_done/007_THE_HIVE_MIND_COMPLETED.md)
-- [Architektura systemu](docs/VENOM_MASTER_VISION_v2.md)
+- [Architektura systemu](docs/VENOM_MASTER_VISION_V2.md)
 - [System rozpoznawania intencji](docs/INTENT_RECOGNITION.md)
 - [Contributing Guide](docs/CONTRIBUTING.md)
 

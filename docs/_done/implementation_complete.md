@@ -43,8 +43,8 @@ Modified:
 
 Created:
 - tests/test_code_review_optimization.py        (+270 lines)
-- SELF_HEALING_OPTIMIZATION_SUMMARY.md          (+300 lines)
-- SECURITY_SUMMARY.md                           (+200 lines)
+- self_healing_optimization_summary.md          (+300 lines)
+- security_summary.md                           (+200 lines)
 ```
 
 ---
@@ -72,8 +72,8 @@ Created:
 - [x] No new vulnerabilities introduced
 
 ### Dokumentacja
-- [x] SELF_HEALING_OPTIMIZATION_SUMMARY.md
-- [x] SECURITY_SUMMARY.md
+- [x] self_healing_optimization_summary.md
+- [x] security_summary.md
 - [x] Code comments updated
 - [x] Docstrings complete
 - [x] API documentation
@@ -190,13 +190,13 @@ Rekomendowane metryki do śledzenia:
 ## 📚 Dokumentacja
 
 ### Pliki dokumentacji
-1. **SELF_HEALING_OPTIMIZATION_SUMMARY.md**
+1. **self_healing_optimization_summary.md**
    - Szczegóły implementacji
    - Scenariusze użycia
    - API documentation
    - Future enhancements
 
-2. **SECURITY_SUMMARY.md**
+2. **security_summary.md**
    - CodeQL results
    - Threat model
    - Mitigations

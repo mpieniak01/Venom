@@ -6,6 +6,8 @@
     --bg-panel: rgba(16, 20, 28, 0.6); /* Przezroczyste panele dla efektu szkła */
     --bg-medium: #1e293b;
     --bg-light: #334155;
+    --surface: #1f2937;  /* Dla paneli i kart */
+    --background: #111827;  /* Dla głębszych tła */
     
     /* Główny gradient tła - kosmiczny */
     --bg-gradient-body: radial-gradient(
@@ -15,42 +17,48 @@
         #030407 100%
     );
 
-    /* --- NEON AKCENTY --- */
+    /* --- NEON AKCENTY (Unified Config) --- */
     /* System kolorów wykorzystuje dual-accent approach:
-     * - Purple (#8b5cf6) jako główny kolor UI (buttony, highlights, interactive elements)
-     * - Neon Green (#00ff9d) jako brand accent (logo, active states, glow effects)
-     * To pozwala na spójny UI z wyrazistymi akcentami marki */
-    --primary: #00ff9d;                   /* Legacy - mapuje na green, dla kompatybilności z szablon.html */
-    --primary-color: #8b5cf6;             /* Purple - GŁÓWNY kolor UI (używaj dla buttonów, highlights) */
-    --primary-hover: #7c3aed;             /* Purple dark - hover states dla interactive elements */
-    --primary-green: #00ff9d;             /* Neon green - brand accent (logo "OS", active nav, glow) */
-    --secondary: #00b8ff;
-    --secondary-color: #06b6d4;           /* Cyan - drugorzędny kolor (używaj oszczędnie) */
-    --accent-gradient: linear-gradient(135deg, var(--primary-green) 0%, var(--secondary) 100%);
+     * - Neon Green (#00ff9d) jako PRIMARY kolor marki (używaj głównie)
+     * - Cyan Blue (#00b8ff) jako SECONDARY akcent (używaj oszczędnie)
+     * - Purple (#8b5cf6) jako legacy/fallback dla starszych komponentów */
+    --primary: #00ff9d;                   /* Neon green - GŁÓWNY akcent (logo "OS", active, glow) */
+    --primary-color: #8b5cf6;             /* Purple - legacy UI (dla kompatybilności) */
+    --primary-hover: #7c3aed;             /* Purple dark - legacy hover */
+    --primary-green: #00ff9d;             /* Alias dla --primary */
+    --secondary: #00b8ff;                 /* Cyan blue - drugorzędny akcent */
+    --secondary-color: #06b6d4;           /* Cyan darker */
+    --accent-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    --warning: #f59e0b;                   /* Alias dla warning */
+    --danger: #ef4444;                    /* Alias dla danger */
 
     /* --- STATUS COLORS --- */
     --success-color: #10b981;
     --error-color: #ef4444;
     --warning-color: #f59e0b;
 
-    /* --- GLOW EFFECTS --- */
+    /* --- GLOW EFFECTS (Neon Style) --- */
     --glow-strong: 0 0 20px rgba(0, 255, 157, 0.25);
     --glow-border: 0 0 0 1px rgba(0, 255, 157, 0.15);
-    --glow-hover: 0 0 20px rgba(139, 92, 246, 0.4); /* Purple glow for UI elements */
-    --glow-hover-green: 0 0 20px rgba(0, 255, 157, 0.4); /* Green glow for accents */
+    --glow-hover: 0 0 20px rgba(0, 255, 157, 0.4);  /* Green glow jako domyślny */
+    --glow-hover-green: 0 0 20px rgba(0, 255, 157, 0.4);
+    --glow-hover-cyan: 0 0 20px rgba(0, 184, 255, 0.4);
     
     /* --- RGBA COLORS (dla background i border) --- */
-    --primary-green-rgba-005: rgba(0, 255, 157, 0.05); /* 5% opacity dla subtelnych tła */
-    --primary-green-rgba-01: rgba(0, 255, 157, 0.1); /* 10% opacity dla tła hover */
-    --primary-green-rgba-02: rgba(0, 255, 157, 0.2); /* 20% opacity dla cieni */
-    --primary-green-rgba-03: rgba(0, 255, 157, 0.3); /* 30% opacity dla cieni i border */
-    --primary-green-rgba-06: rgba(0, 255, 157, 0.6); /* 60% opacity dla intensywnych efektów */
+    --primary-green-rgba-005: rgba(0, 255, 157, 0.05);
+    --primary-green-rgba-008: rgba(0, 255, 157, 0.08);
+    --primary-green-rgba-01: rgba(0, 255, 157, 0.1);
+    --primary-green-rgba-015: rgba(0, 255, 157, 0.15);
+    --primary-green-rgba-02: rgba(0, 255, 157, 0.2);
+    --primary-green-rgba-03: rgba(0, 255, 157, 0.3);
+    --primary-green-rgba-06: rgba(0, 255, 157, 0.6);
 
     /* --- TEXT COLORS --- */
     --text-main: #ffffff;
     --text-primary: #f1f5f9;
     --text-secondary: #94a3b8;
     --text-muted: #94a3b8;
+    --text-dim: #64748b;  /* Ciemniejszy odcień dla subtelnych tekstów */
 
     /* --- BORDERS --- */
     --border-color: #475569;
@@ -63,7 +71,7 @@
     /* --- GRID & LAYOUT --- */
     --grid-gap: 30px;
     --card-padding: 30px;
-    --card-border-radius: 4px;
+    --card-border-radius: 4px;  /* Kanciaste, techniczne */
 }
 
 /* --- DARK MODE VARIATIONS (future-ready) --- */

@@ -6,9 +6,11 @@
 
 {% block content %}
 <div class="container">
-    <!-- Header -->
-    <header class="header">
-        <h1>🕷️ Venom Cockpit</h1>
+    <!-- Top Header (Unified Config style) -->
+    <header class="top-header">
+        <div style="color: var(--primary); font-family: var(--font-tech); font-size: 0.9rem;">
+            // DASHBOARD CONTROL
+        </div>
         <div class="header-info">
             <!-- Cost Mode Switch (Global Cost Guard) -->
             <div class="cost-mode-switch" id="costModeSwitch">
@@ -37,50 +39,45 @@
         </div>
     </header>
 
-    <!-- Panel zarządzania kolejką -->
-    <div class="queue-governance-panel">
-        <div class="governance-header">
-            <h3>🎛️ Zarządzanie kolejką</h3>
-            <div class="governance-controls">
-                <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
-                    🚨 Awaryjne zatrzymanie
-                </button>
+    <!-- Stats Grid (Flare Cards) -->
+    <div class="stats-grid">
+        <div class="flare-card">
+            <div class="card-label">
+                <div class="pixel-dot" style="background: var(--primary);"></div>
+                Active Tasks
             </div>
+            <div class="card-value">
+                <span id="queueActive">0</span><span style="font-size: 1.2rem; color: #444;"> / <span id="queueLimit">5</span></span>
+            </div>
+            <button id="pauseResumeBtn" style="font-size: 0.6rem; background: none; border: none; color: #555; cursor: pointer; margin-top: 5px;" data-state="running">[ PAUSE ]</button>
+            <button id="emergencyStopBtn" style="font-size: 0.6rem; background: none; border: none; color: #f59e0b; cursor: pointer; margin-top: 5px;">[ STOP ]</button>
         </div>
-        <div class="governance-metrics">
-            <div class="governance-metric">
-                <span class="governance-label">Aktywne zadania</span>
-                <span class="governance-value" id="queueActive">0</span>
-                <span class="governance-limit">/ <span id="queueLimit">5</span></span>
+        
+        <div class="flare-card secondary">
+            <div class="card-label">
+                <div class="pixel-dot" style="background: var(--secondary); box-shadow: 0 0 8px var(--secondary);"></div>
+                Queue Pending
             </div>
-            <div class="governance-metric">
-                <span class="governance-label">Zadania w kolejce</span>
-                <span class="governance-value" id="queuePending">0</span>
-            </div>
-            <div class="governance-metric tokenomics">
-                <span class="governance-label">Koszt sesji</span>
-                <span class="governance-value cost" id="sessionCost">$0.00</span>
-            </div>
+            <div class="card-value" id="queuePending">0</div>
+            <button id="purgeQueueBtn" style="font-size: 0.6rem; background: none; border: none; color: #555; cursor: pointer; margin-top: 5px;">[ PURGE ]</button>
         </div>
-        <div class="governance-actions">
-            <button id="pauseResumeBtn" class="btn-queue-action pause" data-state="running">
-                <span class="btn-icon">⏸️</span>
-                <span class="btn-text">PAUZA</span>
-            </button>
-            <button id="purgeQueueBtn" class="btn-queue-action danger">
-                <span class="btn-icon">🗑️</span>
-                <span class="btn-text">WYCZYŚĆ KOLEJKĘ</span>
-            </button>
+        
+        <div class="flare-card danger">
+            <div class="card-label">
+                <div class="pixel-dot" style="background: var(--warning); box-shadow: 0 0 8px var(--warning);"></div>
+                Session Cost
+            </div>
+            <div class="card-value" style="color: var(--warning);" id="sessionCost">$0.00</div>
         </div>
     </div>
 
     <!-- Main Layout -->
     <div class="main-layout">
         <!-- Center Panel: Chat Console -->
-        <main class="center-panel">
-            <div class="panel-header">
-                <h2>💬 Konsola czatu</h2>
-                <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
+        <main class="center-panel console-wrapper">
+            <div style="padding: 10px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between;">
+                <span style="font-family: var(--font-tech); font-size: 0.7rem; color: #555;">COMMAND INTERFACE</span>
+                <button id="clearWidgetsBtn" style="background: none; border: none; color: #444; cursor: pointer; font-size: 0.7rem;">CLEAR</button>
             </div>
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages"></div>
@@ -135,22 +132,18 @@
                 <div class="widgets-grid" id="widgetsGrid" style="display: none;">
                     <!-- Dynamiczne widgety będą renderowane tutaj -->
                 </div>
-                <div class="chat-input-container">
-                    <textarea
-                        id="taskInput"
-                        placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
-                        rows="3"
-                    ></textarea>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <label class="lab-mode-toggle" title="Lab Mode - zadania nie zapisują lekcji do pamięci">
-                            <input type="checkbox" id="labModeCheckbox" />
-                            <span class="lab-mode-icon">🧪</span>
-                            <span class="lab-mode-text">Lab Mode</span>
-                        </label>
-                        <button id="sendButton" class="btn-primary">
-                            <span>Wyślij</span>
-                            <kbd>Ctrl+Enter</kbd>
-                        </button>
+                <div class="input-area">
+                    <div style="display: flex; gap: 10px;">
+                        <textarea
+                            id="taskInput"
+                            placeholder="Enter command... (e.g., 'Research Python 3.12')"
+                            rows="1"
+                        ></textarea>
+                        <button id="sendButton" class="btn-venom">EXECUTE</button>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
+                        <input type="checkbox" id="labModeCheckbox" />
+                        <span style="font-size: 0.75rem; color: #555;">Lab Mode (No Save)</span>
                     </div>
                 </div>
             </div>

@@ -52,6 +52,11 @@
     /* --- FONTS --- */
     --font-ui: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-tech: 'JetBrains Mono', 'Consolas', monospace;
+    
+    /* --- GRID & LAYOUT --- */
+    --grid-gap: 30px;
+    --card-padding: 30px;
+    --card-border-radius: 4px;
 }
 
 /* --- DARK MODE VARIATIONS (future-ready) --- */

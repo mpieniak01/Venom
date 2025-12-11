@@ -7,7 +7,7 @@
     }
     50% { 
         opacity: 1; 
-        text-shadow: 0 0 5px var(--primary);
+        text-shadow: 0 0 5px var(--primary-green);
     }
     100% { 
         opacity: 0.5; 

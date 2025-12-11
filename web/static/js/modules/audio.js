@@ -130,7 +130,15 @@ export class AudioManager {
 
     async processRecording() {
         if (this.audioChunks.length === 0) {
-            console.warn('No audio data recorded');
+            // Bardziej szczegółowy komunikat diagnostyczny
+            console.warn(
+                'Brak danych audio: nie zarejestrowano żadnych próbek. Możliwe przyczyny: ' +
+                'nagranie było zbyt krótkie, mikrofon nie działał lub wystąpił błąd MediaRecorder.\n' +
+                `Stan: isRecording=${this.isRecording}, ` +
+                `mediaRecorder.state=${this.mediaRecorder ? this.mediaRecorder.state : 'brak'}, ` +
+                `microphone=${this.microphone ? 'OK' : 'brak'}, ` +
+                `audioChunks.length=${this.audioChunks.length}`
+            );
             return;
         }
 

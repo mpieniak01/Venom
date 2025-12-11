@@ -300,7 +300,7 @@
     color: var(--error-color);
 }
 
-.message {
+.log-message {
     color: var(--text-primary);
     flex: 1;
 }

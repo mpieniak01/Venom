@@ -88,7 +88,7 @@ export class UIManager {
         timestampSpan.textContent = `[${this.getCurrentTime()}]`;
 
         const messageSpan = document.createElement('span');
-        messageSpan.className = 'message';
+        messageSpan.className = 'log-message';
         messageSpan.textContent = message;
 
         logEntry.appendChild(timestampSpan);
@@ -98,7 +98,8 @@ export class UIManager {
         if (liveFeed) {
             liveFeed.appendChild(logEntry);
             
-            // Limit entries
+            // Ogranicz liczbę wpisów do wartości LOG_ENTRY_MAX_COUNT
+            // (stała zdefiniowana w głównym dashboard, domyślnie 100)
             const entries = liveFeed.getElementsByClassName('log-entry');
             if (entries.length > this.dashboard.LOG_ENTRY_MAX_COUNT) {
                 entries[0].remove();
@@ -121,8 +122,14 @@ export class UIManager {
 
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
+        
+        // Użyj zmiennych CSS z variables.css dla spójności z Deep Space theme
+        const bgColor = type === 'error' ? 'var(--error-color)' : 
+                       type === 'warning' ? 'var(--warning-color)' : 
+                       'var(--success-color)';
+        
         notification.style.cssText = `
-            background-color: ${type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981'};
+            background-color: ${bgColor};
             color: white;
             padding: 12px 20px;
             border-radius: 6px;
@@ -135,7 +142,7 @@ export class UIManager {
 
         container.appendChild(notification);
 
-        // Auto-remove after 5 seconds
+        // Auto-usuwanie po 5 sekundach
         setTimeout(() => {
             notification.style.animation = 'fadeOut 0.3s ease-out';
             setTimeout(() => notification.remove(), 300);

@@ -7,8 +7,25 @@
 @import url('modules/animations.css');
 
 /* --- LEGACY COMPATIBILITY --- */
-/* Importing the old app.css for now to ensure nothing breaks during transition */
-/* TODO: Gradually migrate all styles from app.css to modules */
+/*
+ * Tymczasowy import starego app.css — zapewnia kompatybilność podczas migracji do modularnej architektury.
+ * 
+ * Plan migracji (szczegóły w docs/FRONTEND_ARCHITECTURE.md):
+ *   1. Migracja stylów z app.css do modules/ (variables, layout, components, animations)
+ *   2. Testowanie po każdym etapie migracji
+ *   3. Dokumentowanie konfliktów selektorów i zmiennych CSS
+ *   4. Usunięcie tego importu po przeniesieniu wszystkich sekcji
+ * 
+ * Kryteria zakończenia (DoD):
+ *   - app.css = 0 linii aktywnego kodu (tylko komentarze)
+ *   - Brak regresji wizualnej (testy porównawcze)
+ *   - Wszystkie sekcje przeniesione do odpowiednich modułów
+ * 
+ * Uwaga: Przy równoczesnym ładowaniu main.css i app.css mogą wystąpić konflikty.
+ * Strategia: Przenosić sekcje tematycznie, testować iteracyjnie.
+ * 
+ * Import tymczasowo zakomentowany — odkomentować tylko w razie regresji.
+ */
 /* @import url('app.css'); */
 
 /* --- ADDITIONAL GLOBAL STYLES --- */

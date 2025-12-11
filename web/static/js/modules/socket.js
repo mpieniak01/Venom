@@ -53,7 +53,7 @@ export class SocketManager {
             this.reconnectAttempts++;
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
-            this.dashboard.addLogEntry('warning', `Ponowna próba za ${delay/1000}s... (podejście ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+            this.dashboard.addLogEntry('warning', `Ponowna próba za ${(delay/1000).toFixed(1)}s... (podejście ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
             setTimeout(() => {
                 this.init();

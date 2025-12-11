@@ -177,7 +177,7 @@ class FileSkill:
 
     @kernel_function(
         name="list_files",
-        description="Listuje pliki i katalogi w workspace. Może listować rekurencyjnie do 3 poziomów głębokości.",
+        description="Listuje pliki i katalogi w workspace. Może listować rekurencyjnie z konfigurowalną głębokością.",
     )
     def list_files(
         self,
@@ -185,20 +185,24 @@ class FileSkill:
             str, "Katalog względem workspace (domyślnie '.', czyli root workspace)"
         ] = ".",
         recursive: Annotated[
-            bool, "Czy listować rekurencyjnie (domyślnie False, max głębokość: 3)"
+            bool, "Czy listować rekurencyjnie (domyślnie False)"
         ] = False,
+        max_depth: Annotated[
+            int, "Maksymalna głębokość rekurencji (domyślnie 3)"
+        ] = 3,
     ) -> str:
         """
         Listuje pliki i katalogi w podanym katalogu.
 
         Args:
             directory: Katalog względem workspace (domyślnie '.')
-            recursive: Czy listować rekurencyjnie (max głębokość: 3 poziomy)
+            recursive: Czy listować rekurencyjnie
+            max_depth: Maksymalna głębokość rekurencji (domyślnie 3)
 
         Returns:
             Lista plików i katalogów w formacie tekstowym.
             Jeśli recursive=False, pokazuje tylko bezpośrednie elementy.
-            Jeśli recursive=True, pokazuje strukturę do 3 poziomów głębokości.
+            Jeśli recursive=True, pokazuje strukturę do max_depth poziomów głębokości.
 
         Raises:
             SecurityError: Jeśli ścieżka jest nieprawidłowa
@@ -217,8 +221,10 @@ class FileSkill:
 
             if recursive:
                 # Listowanie rekurencyjne z limitem głębokości
-                max_depth = 3
                 items.append(f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n")
+                
+                # Licznik pominiętych plików
+                skipped_files = 0
                 
                 for root, dirs, files in os.walk(safe_path):
                     # Oblicz głębokość relatywną (0 = root, 1 = pierwszy poziom, itd.)
@@ -232,8 +238,6 @@ class FileSkill:
                         dirs.clear()  # Nie schodź głębiej
                         continue
                     
-                    # Formatuj ścieżkę względem workspace
-                    rel_root = Path(root).relative_to(self.workspace_root)
                     indent = "  " * depth
                     
                     # Dodaj katalogi (tylko jeśli nie przekroczymy limitu przy wejściu do nich)
@@ -255,9 +259,13 @@ class FileSkill:
                             rel_path = file_path.relative_to(self.workspace_root)
                             items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
                         except Exception as e:
-                            # Loguj ostrzeżenie o plikach do których nie ma dostępu
-                            logger.warning(f"Nie można odczytać pliku {file_path}: {e}")
+                            # Zlicz pominięte pliki zamiast logować każdy osobno
+                            skipped_files += 1
                             continue
+                
+                # Podsumowanie pominiętych plików
+                if skipped_files > 0:
+                    logger.warning(f"Pominięto {skipped_files} niedostępnych plików")
                 
                 if len(items) == 1:  # Tylko nagłówek
                     items.append("  (katalog pusty)")

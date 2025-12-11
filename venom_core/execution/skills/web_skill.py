@@ -1,6 +1,6 @@
 """Moduł: web_skill - Plugin Semantic Kernel do wyszukiwania w Internecie."""
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import httpx
 import trafilatura
@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 MAX_SEARCH_RESULTS = 5
 MAX_SCRAPED_TEXT_LENGTH = 8000  # Maksymalna długość tekstu ze strony (tokeny)
 MAX_TOTAL_CONTEXT_LENGTH = 20000  # Maksymalna łączna długość dla wielu stron
+MAX_CONTENT_PREVIEW_LENGTH = 200  # Maksymalna długość podglądu opisu w wynikach
 
 
 class WebSearchSkill:
@@ -109,7 +110,8 @@ class WebSearchSkill:
                         
                         output += f"[{i}] {title}\n"
                         output += f"URL: {url}\n"
-                        output += f"Opis: {content[:200]}...\n\n"
+                        # Użyj stałej zamiast hardcoded wartości
+                        output += f"Opis: {content[:MAX_CONTENT_PREVIEW_LENGTH]}...\n\n"
                     
                     logger.info(f"WebSearch (Tavily): znaleziono {len(results)} wyników")
                     return output.strip()
@@ -118,6 +120,8 @@ class WebSearchSkill:
                     logger.warning(
                         f"Błąd Tavily: {tavily_error}. Przełączam na DuckDuckGo."
                     )
+                    # Informuj agenta o fallback
+                    fallback_note = "⚠️ Tavily niedostępny, użyto DuckDuckGo\n\n"
                     # Fallback do DuckDuckGo poniżej
             
             # Fallback: Użyj DuckDuckGo
@@ -128,7 +132,11 @@ class WebSearchSkill:
                 return f"Nie znaleziono wyników dla zapytania: {query}"
 
             # Formatuj wyniki DuckDuckGo
-            output = f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
+            output = ""
+            # Dodaj notatkę o fallback jeśli była próba użycia Tavily
+            if self.tavily_client and 'fallback_note' in locals():
+                output += fallback_note
+            output += f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
             output += "(źródło: DuckDuckGo)\n\n"
             for i, result in enumerate(results, 1):
                 title = result.get("title", "Brak tytułu")

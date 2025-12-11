@@ -412,16 +412,11 @@ class PlatformSkill:
         
         # GitHub
         if self.github_token and self.github_repo_name:
-            # Sprawdź czy można się połączyć
-            try:
-                if self.github_client:
-                    user = self.github_client.get_user()
-                    user.login  # Trigger API call
-                    report += f"- GitHub: ✅ AKTYWNY (repo: {self.github_repo_name})\n"
-                else:
-                    report += "- GitHub: ⚠️ SKONFIGUROWANY (ale klient nie zainicjalizowany)\n"
-            except Exception as e:
-                report += f"- GitHub: ⚠️ SKONFIGUROWANY (błąd połączenia: {str(e)[:50]}...)\n"
+            # Sprawdź czy klient jest zainicjalizowany (bez wykonywania zapytania API)
+            if self.github_client:
+                report += f"- GitHub: ✅ AKTYWNY (repo: {self.github_repo_name})\n"
+            else:
+                report += "- GitHub: ⚠️ SKONFIGUROWANY (ale klient nie zainicjalizowany)\n"
         else:
             missing = []
             if not self.github_token:

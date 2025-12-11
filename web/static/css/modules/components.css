@@ -75,13 +75,13 @@
 /* Cyberpunk Style Button (ze Unified Config / szablon) */
 .btn {
     background: transparent;
-    color: var(--primary-green);
+    color: var(--primary);
     font-family: var(--font-tech);
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 1px;
     padding: 10px 24px;
-    border: 1px solid var(--primary-green);
+    border: 1px solid var(--primary);
     cursor: pointer;
     position: relative;
     overflow: hidden;
@@ -97,21 +97,21 @@
     left: -100%;
     width: 100%;
     height: 100%;
-    background: var(--primary-green);
+    background: var(--primary);
     transition: 0.3s;
     z-index: -1;
     opacity: 0.1;
 }
 
 .btn:hover {
-    box-shadow: var(--glow-hover-green);
-    text-shadow: 0 0 5px var(--primary-green);
+    box-shadow: var(--glow-hover);
+    text-shadow: 0 0 5px var(--primary);
     background: var(--primary-green-rgba-01);
 }
 
 .btn-fill {
-    background: var(--primary-green);
-    color: black;
+    background: var(--primary);
+    color: #000;
     font-weight: 700;
     box-shadow: 0 0 15px var(--primary-green-rgba-03);
 }
@@ -119,6 +119,21 @@
 .btn-fill:hover {
     background: #00e68e;
     box-shadow: 0 0 30px var(--primary-green-rgba-06);
+}
+
+/* Mini terminal (styl telemetrii) */
+.mini-terminal {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    padding: 10px;
+    font-family: var(--font-tech);
+    font-size: 0.75rem;
+    min-height: 80px;
+    max-height: 200px;
+    overflow-y: auto;
+    color: var(--text-secondary);
+    line-height: 1.6;
 }
 
 /* --- CARDS (NEON STYLE) --- */

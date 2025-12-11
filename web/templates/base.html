@@ -54,29 +54,31 @@
             </a>
         </nav>
         
-        <!-- Autonomy Level Selector -->
+        <!-- Zawartość sidebara (z przewijaniem) -->
+        <div class="sidebar-content">
+            <!-- Telemetria (opcjonalna, może być dodana na stronie) -->
+            <div class="telemetry-section">
+                <div class="nav-section-title">Telemetria</div>
+                <!-- Placeholder dla live feed / mini statystyk -->
+            </div>
+        </div>
+        
+        <!-- Selektor poziomu autonomii -->
         <div class="sidebar-footer">
-            <div class="autonomy-section">
-                <label for="autonomyLevel" class="autonomy-label">
-                    🔐 Autonomia
-                </label>
+            <div class="nav-section-title" style="margin-bottom: 5px;">Konfiguracja systemu</div>
+            
+            <div>
+                <label for="autonomyLevel" class="security-level-label">POZIOM BEZPIECZEŃSTWA</label>
                 <select id="autonomyLevel" class="autonomy-select">
-                    <option value="0" data-color="green">🟢 ISOLATED</option>
-                    <option value="10" data-color="blue">🔵 CONNECTED</option>
-                    <option value="20" data-color="yellow">🟡 FUNDED</option>
-                    <option value="30" data-color="orange">🟠 BUILDER</option>
-                    <option value="40" data-color="red">🔴 ROOT</option>
+                    <option value="0">🟢 ISOLATED</option>
+                    <option value="10">🔵 CONNECTED</option>
+                    <option value="20">🟡 FUNDED</option>
+                    <option value="30">🟠 BUILDER</option>
+                    <option value="40">🔴 ROOT</option>
                 </select>
             </div>
             
-            <!-- System Status -->
-            <div class="status-info">
-                <span class="status-dot" id="sidebarConnectionStatus"></span>
-                <span id="sidebarStatusText">SYSTEM ONLINE</span>
-            </div>
-            <div class="status-subtext">
-                Latency: <span id="sidebarLatency">--</span>ms
-            </div>
+            <!-- Config Row with toggle removed - moved to index.html to avoid duplicate IDs -->
         </div>
     </aside>
     

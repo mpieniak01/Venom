@@ -44,9 +44,6 @@ class HybridModelRouter:
     priorytetując prywatność i oszczędność kosztów.
     """
 
-    # Próg bezpieczeństwa kosztów (USD)
-    COST_THRESHOLD_USD = 0.01
-
     def __init__(self, settings=None, state_manager=None, token_economist=None):
         """
         Inicjalizacja routera.
@@ -129,8 +126,8 @@ class HybridModelRouter:
         # Oblicz złożoność zadania (0-10)
         complexity = self.calculate_complexity(prompt, task_type)
         
-        # LOW-COST ROUTING: Jeśli złożoność < 5 (proste) -> zawsze LOCAL
-        if complexity < 5:
+        # LOW-COST ROUTING: Jeśli złożoność < COMPLEXITY_THRESHOLD_LOCAL (domyślnie 5) -> zawsze LOCAL
+        if complexity < SETTINGS.COMPLEXITY_THRESHOLD_LOCAL:
             logger.info(f"[Low-Cost Routing] Complexity={complexity} -> LOCAL")
             return self._route_to_local(
                 f"Tryb HYBRID: niski complexity={complexity} -> LOCAL (oszczędność)"
@@ -178,10 +175,10 @@ class HybridModelRouter:
                     cloud_high_model, len(prompt)
                 )
                 
-                if cost_estimate["estimated_cost_usd"] > self.COST_THRESHOLD_USD:
+                if cost_estimate["estimated_cost_usd"] > SETTINGS.COST_THRESHOLD_USD:
                     logger.warning(
                         f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${self.COST_THRESHOLD_USD} -> "
+                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${SETTINGS.COST_THRESHOLD_USD} -> "
                         f"Fallback do CLOUD_FAST"
                     )
                     # Fallback do CLOUD_FAST (np. GPT-4o-mini)
@@ -191,7 +188,7 @@ class HybridModelRouter:
                 
                 logger.info(
                     f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${self.COST_THRESHOLD_USD} -> OK"
+                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${SETTINGS.COST_THRESHOLD_USD} -> OK"
                 )
                 
                 return self._route_to_cloud_with_guard(
@@ -397,12 +394,12 @@ class HybridModelRouter:
         
         # Wybierz tańszy model w zależności od providera
         if provider == "openai":
-            model_name = "gpt-4o-mini"
+            model_name = SETTINGS.OPENAI_GPT4O_MINI_MODEL
         elif provider == "google":
-            model_name = "gemini-1.5-flash"
+            model_name = SETTINGS.GOOGLE_GEMINI_FLASH_MODEL
         else:
             # Fallback
-            model_name = "gpt-4o-mini"
+            model_name = SETTINGS.OPENAI_GPT4O_MINI_MODEL
 
         return {
             "target": "cloud",

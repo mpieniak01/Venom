@@ -1,6 +1,6 @@
 // Venom OS - Theme Configuration Module
-// Most między CSS variables a JavaScript biblioteki
-// Pobiera wartości z variables.css i udostępnia jako konfigurację dla Chart.js, Mermaid, Cytoscape
+// Most między CSS variables a JavaScript libraries
+// Pobiera wartości z modules/variables.css i udostępnia jako konfigurację dla Chart.js, Mermaid, Cytoscape
 
 /**
  * Pobiera wartość CSS variable z :root
@@ -191,7 +191,7 @@ export const THEME = {
             'height': 60,
             'border-width': 3,
             'border-color': getCSSVariable('secondary'),      // Neon blue border
-            'background-color': 'rgba(30, 41, 59, 0.6)'       // Przezroczyste tło
+            'background-color': getCSSVariable('bg-panel')    // Przezroczyste tło (rgba from CSS)
         },
         
         // Węzeł aktywny - Neon green highlight

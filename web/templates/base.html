@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Venom{% endblock %}</title>
+    <!-- Nowa modularna architektura CSS -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    <!-- Stary app.css dla kompatybilności (TODO: stopniowo migrować) -->
     <link rel="stylesheet" href="/static/css/app.css">
     {% block extra_css %}{% endblock %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

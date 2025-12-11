@@ -14,20 +14,39 @@ class VenomDashboard {
         this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
         this.LOG_ENTRY_MAX_COUNT = 100;
 
-        // Initialize Mermaid
-        if (typeof mermaid !== 'undefined') {
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: 'dark',
-                themeVariables: {
-                    darkMode: true,
-                    background: '#1e1e1e',
-                    primaryColor: '#3b82f6',
-                    primaryTextColor: '#fff',
-                    primaryBorderColor: '#3b82f6',
-                    lineColor: '#6b7280',
-                    secondaryColor: '#10b981',
-                    tertiaryColor: '#f59e0b'
+        // Initialize theme config for Mermaid and Chart.js
+        if (typeof mermaid !== 'undefined' || typeof Chart !== 'undefined') {
+            // Dynamically import theme config
+            import('./modules/theme_config.js').then(({ getMermaidConfig, applyChartDefaults }) => {
+                // Initialize Mermaid with Deep Space theme
+                if (typeof mermaid !== 'undefined') {
+                    const mermaidConfig = getMermaidConfig();
+                    mermaid.initialize(mermaidConfig);
+                    console.log('🎨 Mermaid initialized with Deep Space theme');
+                }
+                
+                // Apply Chart.js defaults
+                if (typeof Chart !== 'undefined') {
+                    applyChartDefaults();
+                }
+            }).catch(err => {
+                console.error('❌ Failed to load theme config, using fallback', err);
+                // Fallback configuration for Mermaid
+                if (typeof mermaid !== 'undefined') {
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: 'dark',
+                        themeVariables: {
+                            darkMode: true,
+                            background: '#1e1e1e',
+                            primaryColor: '#3b82f6',
+                            primaryTextColor: '#fff',
+                            primaryBorderColor: '#3b82f6',
+                            lineColor: '#6b7280',
+                            secondaryColor: '#10b981',
+                            tertiaryColor: '#f59e0b'
+                        }
+                    });
                 }
             });
         }

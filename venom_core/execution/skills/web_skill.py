@@ -83,10 +83,10 @@ class WebSearchSkill:
         )
 
         try:
-            # LOW-COST ROUTING: W trybie LOCAL zawsze używaj DuckDuckGo (darmowe)
-            use_free_search = self.ai_mode == "LOCAL"
+            # LOW-COST ROUTING: W trybie LOCAL lub ECO zawsze używaj DuckDuckGo (darmowe)
+            use_free_search = self.ai_mode == "LOCAL" or self.ai_mode == "ECO"
             
-            # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL
+            # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL/ECO
             if self.tavily_client and not use_free_search:
                 try:
                     response = self.tavily_client.search(

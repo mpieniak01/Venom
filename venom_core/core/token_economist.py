@@ -1,6 +1,5 @@
 """Moduł: token_economist - optymalizacja kontekstu i kalkulacja kosztów."""
 
-import os
 from pathlib import Path
 from typing import Dict, List
 
@@ -432,6 +431,7 @@ class TokenEconomist:
             - cost: estymowany koszt
             - input_tokens: liczba tokenów wejściowych
             - output_tokens: estymowana liczba tokenów wyjściowych
+            - is_free: czy provider jest darmowy
         """
         if providers is None:
             providers = ["local", "gpt-4o-mini", "gpt-4o", "gemini-1.5-flash"]
@@ -452,11 +452,14 @@ class TokenEconomist:
         # Sortuj od najtańszego do najdroższego
         results.sort(key=lambda x: x["cost"])
 
-        logger.info(
-            f"Porównanie providerów: Najtańszy={results[0]['provider']} "
-            f"(${results[0]['cost']:.6f}), Najdroższy={results[-1]['provider']} "
-            f"(${results[-1]['cost']:.6f})"
-        )
+        if results:
+            logger.info(
+                f"Porównanie providerów: Najtańszy={results[0]['provider']} "
+                f"(${results[0]['cost']:.6f}), Najdroższy={results[-1]['provider']} "
+                f"(${results[-1]['cost']:.6f})"
+            )
+        else:
+            logger.info("Nie udało się oszacować kosztów dla żadnego providera.")
 
         return results
 

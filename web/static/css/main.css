@@ -875,6 +875,34 @@ input:checked + .toggle-slider:before {
     filter: brightness(1.5);
 }
 
+/* Metric Row (for SYS tab and similar compact metric displays) */
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 8px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.metric-row-label {
+    color: var(--text-secondary);
+}
+
+.metric-row-value {
+    font-family: var(--font-tech);
+    color: var(--text-primary);
+}
+
+.metric-row-value.primary {
+    color: var(--primary);
+}
+
+.metric-row-value.secondary {
+    color: var(--secondary);
+}
+
 /* Model badges */
 .model-badge {
     font-size: 0.75rem;

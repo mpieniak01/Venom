@@ -3499,15 +3499,17 @@ class VenomDashboard {
     }
 
     clearTerminal() {
-        if (this.elements.liveTerminal) {
-            this.elements.liveTerminal.innerHTML = `
+        const terminals = [this.elements.liveTerminal, this.elements.sysLiveTerminal].filter(t => t);
+        
+        terminals.forEach(terminal => {
+            terminal.innerHTML = `
                 <div class="terminal-entry">
                     <span class="terminal-timestamp">[--:--:--]</span>
                     <span class="terminal-level info">INFO</span>
                     <span class="terminal-message">Terminal cleared</span>
                 </div>
             `;
-        }
+        });
     }
 
     escapeHtml(text) {

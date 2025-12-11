@@ -28,14 +28,14 @@
  */
 /* @import url('app.css'); */
 
-/* --- ADDITIONAL GLOBAL STYLES --- */
+/* --- DODATKOWE STYLE GLOBALNE --- */
 
 /* ============================================
-   UNIFIED CONFIG STYLES (Deep Space Theme)
-   Based on _szablon.html template
+   STYLE UNIFIED CONFIG (Deep Space Theme)
+   Oparte na szablonie _szablon.html
    ============================================ */
 
-/* Top Header (Unified Config style) */
+/* Nagłówek górny (styl Unified Config) */
 .top-header {
     display: flex;
     justify-content: space-between;
@@ -59,7 +59,7 @@
     gap: 0.5rem;
 }
 
-/* Stats Grid (Flare Cards) */
+/* Siatka statystyk (Karty Flare) */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -131,7 +131,7 @@
     box-shadow: 0 0 8px var(--primary);
 }
 
-/* Console Wrapper */
+/* Obudowa konsoli */
 .console-wrapper {
     background: var(--bg-panel);
     backdrop-filter: blur(10px);
@@ -145,7 +145,22 @@
     overflow: hidden;
 }
 
-/* Welcome Message (Unified style) */
+/* Nagłówek konsoli */
+.console-header {
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.console-header-label {
+    font-family: var(--font-tech);
+    font-size: 0.7rem;
+    color: var(--text-subtle);
+}
+
+/* Wiadomość powitalna (styl Unified) */
 .welcome-message {
     text-align: center;
     padding: 3rem 2rem;
@@ -191,7 +206,7 @@
     box-shadow: 0 0 15px var(--primary-green-rgba-015);
 }
 
-/* Input Area */
+/* Obszar wprowadzania */
 .input-area {
     padding: 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
@@ -206,14 +221,53 @@
     padding: 12px;
     color: var(--text-primary);
     font-family: var(--font-ui);
-    resize: none;
-    min-height: 60px;
+    resize: vertical;
+    min-height: 80px;
 }
 
 .input-area textarea:focus {
     outline: none;
     border-color: var(--primary-green-rgba-03);
     box-shadow: 0 0 0 2px var(--primary-green-rgba-008);
+}
+
+/* Etykieta tech w nagłówku */
+.header-tech-label {
+    color: var(--primary);
+    font-family: var(--font-tech);
+    font-size: 0.9rem;
+}
+
+/* Etykieta poziomu bezpieczeństwa */
+.security-level-label {
+    font-size: 0.65rem;
+    color: var(--text-label);
+    display: block;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Pomocnicze klasy dla pixel-dot */
+.pixel-dot-primary {
+    background: var(--primary);
+    box-shadow: 0 0 8px var(--primary);
+}
+
+.pixel-dot-secondary {
+    background: var(--secondary);
+    box-shadow: 0 0 8px var(--secondary);
+}
+
+.pixel-dot-warning {
+    background: var(--warning-color);
+    box-shadow: 0 0 8px var(--warning-color);
+}
+
+/* Limit wartości karty */
+.card-value-limit {
+    font-size: 1.2rem;
+    color: var(--border-subtle);
 }
 
 .btn-venom {
@@ -414,7 +468,7 @@
     font-size: 1.1rem;
 }
 
-/* Telemetry Panel */
+/* Panel telemetrii */
 .telemetry-panel {
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -462,14 +516,14 @@
     display: block;
 }
 
-/* Sidebar Content/Footer enhancements */
+/* Zawartość i stopka sidebara */
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
 }
 
 .nav-section-title {
-    color: #555;
+    color: var(--text-subtle);
     font-size: 0.65rem;
     text-transform: uppercase;
     margin: 15px 0 8px 0;
@@ -477,12 +531,12 @@
     letter-spacing: 1px;
 }
 
-/* Card Action Buttons (for buttons inside flare-cards) */
+/* Przyciski akcji w kartach (dla przycisków wewnątrz flare-cards) */
 .btn-card-action {
     font-size: 0.6rem;
     background: none;
     border: none;
-    color: #555;
+    color: var(--text-subtle);
     cursor: pointer;
     margin-top: 5px;
     padding: 4px 8px;
@@ -653,7 +707,7 @@ input:checked + .toggle-slider:before {
     display: block;
     font-size: 0.65rem;
     text-transform: uppercase;
-    color: #666;
+    color: var(--text-label);
     margin-bottom: 4px;
     font-family: var(--font-tech);
     letter-spacing: 0.5px;
@@ -697,12 +751,12 @@ input:checked + .toggle-slider:before {
 
 .sidebar-footer .status-subtext {
     font-size: 0.7rem;
-    color: #555;
+    color: var(--text-subtle);
     margin-top: 5px;
     font-family: var(--font-tech);
 }
 
-/* Config Row (Toggle switches in sidebar footer) */
+/* Wiersz konfiguracji (przełączniki w stopce sidebara) */
 .config-row {
     display: flex;
     justify-content: space-between;
@@ -714,11 +768,11 @@ input:checked + .toggle-slider:before {
 
 .config-row span {
     font-size: 0.75rem;
-    color: #ccc;
+    color: var(--text-secondary);
     font-family: var(--font-tech);
 }
 
-/* Toggle Switch (for cost mode, lab mode, etc.) */
+/* Przełącznik Toggle (dla trybu kosztów, lab mode, itp.) */
 .toggle-switch {
     position: relative;
     display: inline-block;
@@ -740,7 +794,7 @@ input:checked + .toggle-slider:before {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #444;
+    background-color: var(--border-subtle);
     transition: 0.3s;
     border-radius: 20px;
 }
@@ -752,12 +806,12 @@ input:checked + .toggle-slider:before {
     width: 14px;
     left: 3px;
     bottom: 3px;
-    background-color: white;
+    background-color: var(--text-main);
     transition: 0.3s;
     border-radius: 50%;
 }
 
-/* When checkbox is checked, style the toggle */
+/* Gdy checkbox jest zaznaczony, stylizuj przełącznik */
 .toggle-switch input[type="checkbox"]:checked ~ .toggle-dot {
     background-color: var(--primary);
 }

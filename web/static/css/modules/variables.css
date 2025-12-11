@@ -18,10 +18,10 @@
     );
 
     /* --- NEON AKCENTY (Unified Config) --- */
-    /* System kolorów wykorzystuje dual-accent approach:
-     * - Neon Green (#00ff9d) jako PRIMARY kolor marki (używaj głównie)
-     * - Cyan Blue (#00b8ff) jako SECONDARY akcent (używaj oszczędnie)
-     * - Purple (#8b5cf6) jako legacy/fallback dla starszych komponentów */
+    /* System kolorów - hierarchia akcentów:
+     * - PRIMARY: Neon Green (#00ff9d) - główny kolor marki (używaj głównie)
+     * - SECONDARY: Cyan Blue (#00b8ff) - drugorzędny akcent (używaj oszczędnie)
+     * - Legacy: Purple (#8b5cf6) - fallback dla starszych komponentów */
     --primary: #00ff9d;                   /* Neon green - GŁÓWNY akcent (logo "OS", active, glow) */
     --primary-color: #8b5cf6;             /* Purple - legacy UI (dla kompatybilności) */
     --primary-hover: #7c3aed;             /* Purple dark - legacy hover */
@@ -57,10 +57,13 @@
     --text-secondary: #94a3b8;
     --text-muted: #94a3b8;
     --text-dim: #64748b;  /* Ciemniejszy odcień dla subtelnych tekstów */
+    --text-label: #666666;  /* Dla label i pomocniczych tekstów */
+    --text-subtle: #555555;  /* Dla bardzo subtelnych elementów */
 
     /* --- BORDERS --- */
     --border-color: #475569;
     --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+    --border-subtle: #444444;  /* Dla subtelnych separatorów */
 
     /* --- FONTS --- */
     --font-ui: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;

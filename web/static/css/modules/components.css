@@ -121,7 +121,7 @@
     box-shadow: 0 0 30px var(--primary-green-rgba-06);
 }
 
-/* Mini Terminal (Telemetry style) */
+/* Mini terminal (styl telemetrii) */
 .mini-terminal {
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);

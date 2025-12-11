@@ -221,14 +221,14 @@ class FileSkill:
                 items.append(f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n")
                 
                 for root, dirs, files in os.walk(safe_path):
-                    # Oblicz głębokość relatywną
+                    # Oblicz głębokość relatywną (0 = root, 1 = pierwszy poziom, itd.)
                     try:
                         depth = len(Path(root).relative_to(safe_path).parts)
                     except ValueError:
                         depth = 0
                     
-                    # Ogranicz głębokość
-                    if depth >= max_depth:
+                    # Ogranicz głębokość - nie wchodź głębiej niż max_depth
+                    if depth > max_depth:
                         dirs.clear()  # Nie schodź głębiej
                         continue
                     
@@ -236,13 +236,17 @@ class FileSkill:
                     rel_root = Path(root).relative_to(self.workspace_root)
                     indent = "  " * depth
                     
-                    # Dodaj katalogi
-                    for dir_name in sorted(dirs):
-                        dir_path = Path(root) / dir_name
-                        rel_path = dir_path.relative_to(self.workspace_root)
-                        items.append(f"{indent}[katalog] {rel_path}/")
+                    # Dodaj katalogi (tylko jeśli nie przekroczymy limitu przy wejściu do nich)
+                    if depth < max_depth:
+                        for dir_name in sorted(dirs):
+                            dir_path = Path(root) / dir_name
+                            rel_path = dir_path.relative_to(self.workspace_root)
+                            items.append(f"{indent}[katalog] {rel_path}/")
+                    else:
+                        # Na maksymalnej głębokości - nie pokazuj już katalogów (bo i tak nie możemy do nich wejść)
+                        dirs.clear()
                     
-                    # Dodaj pliki
+                    # Dodaj pliki na tym poziomie
                     for file_name in sorted(files):
                         file_path = Path(root) / file_name
                         try:

@@ -2,18 +2,22 @@
 
 import asyncio
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import CodeReviewLoop
 from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
+from venom_core.core.flows.healing import HealingFlow
+from venom_core.core.flows.issue_handler import IssueHandlerFlow
 from venom_core.core.goal_store import GoalStatus
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.core.queue_manager import QueueManager
 from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
@@ -76,14 +80,17 @@ class Orchestrator:
         self._code_review_loop = None
         self._council_flow = None
         self._forge_flow = None
+        self._campaign_flow = None
+        self._healing_flow = None
+        self._issue_handler_flow = None
 
         # Tracking ostatniej aktywności dla idle mode
         self.last_activity: Optional[datetime] = None
 
-        # Queue Governance (Dashboard v2.3)
-        self.is_paused: bool = False  # Globalna pauza dla kolejki
-        self.active_tasks: Dict[UUID, asyncio.Task] = {}  # Tracking aktywnych zadań
-        self._queue_lock = asyncio.Lock()  # Lock dla operacji kolejki
+        # Queue Manager (Dashboard v2.3) - delegacja zarządzania kolejką
+        self.queue_manager = QueueManager(
+            state_manager=state_manager, event_broadcaster=event_broadcaster
+        )
 
     async def _broadcast_event(
         self, event_type: str, message: str, agent: str = None, data: dict = None
@@ -147,7 +154,7 @@ class Orchestrator:
             )
 
         # Sprawdź czy system jest w trybie pauzy
-        if self.is_paused:
+        if self.queue_manager.is_paused:
             self.state_manager.add_log(
                 task.id, "⏸️ System w trybie pauzy - zadanie czeka w kolejce"
             )
@@ -161,8 +168,8 @@ class Orchestrator:
 
         # Sprawdź limit współbieżności
         if SETTINGS.ENABLE_QUEUE_LIMITS:
-            async with self._queue_lock:
-                active_count = len(self.active_tasks)
+            async with self.queue_manager._queue_lock:
+                active_count = len(self.queue_manager.active_tasks)
                 if active_count >= SETTINGS.MAX_CONCURRENT_TASKS:
                     self.state_manager.add_log(
                         task.id,
@@ -202,14 +209,14 @@ class Orchestrator:
         # Czekaj na dostępny slot jeśli potrzeba
         while True:
             # Sprawdź pauzę i limit atomowo pod lockiem
-            async with self._queue_lock:
+            async with self.queue_manager._queue_lock:
                 # Sprawdź pauzę
-                if self.is_paused:
+                if self.queue_manager.is_paused:
                     # Pauza aktywna, zwolnij lock i czekaj
                     pass
                 else:
                     # Sprawdź limit
-                    active_count = len(self.active_tasks)
+                    active_count = len(self.queue_manager.active_tasks)
                     if (
                         not SETTINGS.ENABLE_QUEUE_LIMITS
                         or active_count < SETTINGS.MAX_CONCURRENT_TASKS
@@ -225,7 +232,7 @@ class Orchestrator:
                                 result="Błąd systemu: nie można uzyskać task handle",
                             )
                             return
-                        self.active_tasks[task_id] = task_handle
+                        self.queue_manager.active_tasks[task_id] = task_handle
                         break
 
             # Czekaj na zwolnienie slotu lub zakończenie pauzy
@@ -236,8 +243,8 @@ class Orchestrator:
             await self._run_task(task_id, request)
         finally:
             # Usuń z active tasks
-            async with self._queue_lock:
-                self.active_tasks.pop(task_id, None)
+            async with self.queue_manager._queue_lock:
+                self.queue_manager.active_tasks.pop(task_id, None)
 
     async def pause_queue(self) -> dict:
         """
@@ -246,21 +253,7 @@ class Orchestrator:
         Returns:
             Dict z wynikiem operacji
         """
-        self.is_paused = True
-        logger.warning("⏸️ Kolejka zadań wstrzymana (PAUSE)")
-
-        await self._broadcast_event(
-            event_type="QUEUE_PAUSED",
-            message="Kolejka zadań wstrzymana - nowe zadania czekają",
-            data={"active_tasks": len(self.active_tasks)},
-        )
-
-        return {
-            "success": True,
-            "paused": True,
-            "active_tasks": len(self.active_tasks),
-            "message": "Kolejka wstrzymana. Aktywne zadania kontynuują pracę.",
-        }
+        return await self.queue_manager.pause()
 
     async def resume_queue(self) -> dict:
         """
@@ -269,28 +262,7 @@ class Orchestrator:
         Returns:
             Dict z wynikiem operacji
         """
-        self.is_paused = False
-        logger.info("▶️ Kolejka zadań wznowiona (RESUME)")
-
-        # Policz pending tasks
-        pending_count = sum(
-            1
-            for task in self.state_manager.get_all_tasks()
-            if task.status == TaskStatus.PENDING
-        )
-
-        await self._broadcast_event(
-            event_type="QUEUE_RESUMED",
-            message="Kolejka zadań wznowiona - przetwarzanie kontynuowane",
-            data={"pending_tasks": pending_count},
-        )
-
-        return {
-            "success": True,
-            "paused": False,
-            "pending_tasks": pending_count,
-            "message": "Kolejka wznowiona. Oczekujące zadania zostaną przetworzone.",
-        }
+        return await self.queue_manager.resume()
 
     async def purge_queue(self) -> dict:
         """
@@ -299,34 +271,7 @@ class Orchestrator:
         Returns:
             Dict z wynikiem operacji (liczba usuniętych zadań)
         """
-        removed_count = 0
-        all_tasks = self.state_manager.get_all_tasks()
-
-        for task in all_tasks:
-            if task.status == TaskStatus.PENDING:
-                # Zmień status na FAILED z informacją o purge
-                await self.state_manager.update_status(
-                    task.id, TaskStatus.FAILED, result="🗑️ Zadanie usunięte przez Purge"
-                )
-                self.state_manager.add_log(
-                    task.id, "Zadanie usunięte z kolejki (Queue Purge)"
-                )
-                removed_count += 1
-
-        logger.warning(f"🗑️ Purge Queue: Usunięto {removed_count} oczekujących zadań")
-
-        await self._broadcast_event(
-            event_type="QUEUE_PURGED",
-            message=f"Kolejka wyczyszczona - usunięto {removed_count} zadań",
-            data={"removed": removed_count, "active": len(self.active_tasks)},
-        )
-
-        return {
-            "success": True,
-            "removed": removed_count,
-            "active_tasks": len(self.active_tasks),
-            "message": f"Usunięto {removed_count} oczekujących zadań. Aktywne zadania kontynuują pracę.",
-        }
+        return await self.queue_manager.purge()
 
     async def abort_task(self, task_id: UUID) -> dict:
         """
@@ -338,55 +283,7 @@ class Orchestrator:
         Returns:
             Dict z wynikiem operacji
         """
-        # Sprawdź czy zadanie istnieje
-        task = self.state_manager.get_task(task_id)
-        if task is None:
-            return {"success": False, "message": f"Zadanie {task_id} nie istnieje"}
-
-        # Sprawdź czy zadanie jest aktywne
-        if task.status != TaskStatus.PROCESSING:
-            return {
-                "success": False,
-                "message": f"Zadanie {task_id} nie jest aktywne (status: {task.status})",
-            }
-
-        # Pobierz task handle
-        async with self._queue_lock:
-            task_handle = self.active_tasks.get(task_id)
-
-        if task_handle is None:
-            # Zadanie mogło się już zakończyć
-            return {
-                "success": False,
-                "message": f"Zadanie {task_id} nie jest już aktywne",
-            }
-
-        # Anuluj task
-        task_handle.cancel()
-
-        # Oznacz jako FAILED
-        await self.state_manager.update_status(
-            task_id, TaskStatus.FAILED, result="⛔ Zadanie przerwane przez użytkownika"
-        )
-        self.state_manager.add_log(task_id, "Zadanie przerwane przez operatora (ABORT)")
-
-        # Usuń z active tasks
-        async with self._queue_lock:
-            self.active_tasks.pop(task_id, None)
-
-        logger.warning(f"⛔ Zadanie {task_id} przerwane przez użytkownika")
-
-        await self._broadcast_event(
-            event_type="TASK_ABORTED",
-            message=f"Zadanie {task_id} zostało przerwane",
-            data={"task_id": str(task_id)},
-        )
-
-        return {
-            "success": True,
-            "task_id": str(task_id),
-            "message": "Zadanie zostało przerwane",
-        }
+        return await self.queue_manager.abort_task(task_id)
 
     async def emergency_stop(self) -> dict:
         """
@@ -395,43 +292,7 @@ class Orchestrator:
         Returns:
             Dict z wynikiem operacji
         """
-        logger.error("🚨 EMERGENCY STOP - zatrzymuję wszystkie zadania!")
-
-        # Wstrzymaj kolejkę
-        self.is_paused = True
-
-        # Anuluj wszystkie aktywne zadania
-        tasks_cancelled = 0
-        async with self._queue_lock:
-            for task_id, task_handle in list(self.active_tasks.items()):
-                task_handle.cancel()
-                await self.state_manager.update_status(
-                    task_id,
-                    TaskStatus.FAILED,
-                    result="🚨 Zadanie przerwane przez Emergency Stop",
-                )
-                tasks_cancelled += 1
-            self.active_tasks.clear()
-
-        # Purge pending
-        purge_result = await self.purge_queue()
-
-        await self._broadcast_event(
-            event_type="EMERGENCY_STOP",
-            message="🚨 Emergency Stop - wszystkie zadania zatrzymane",
-            data={
-                "cancelled": tasks_cancelled,
-                "purged": purge_result.get("removed", 0),
-            },
-        )
-
-        return {
-            "success": True,
-            "cancelled": tasks_cancelled,
-            "purged": purge_result.get("removed", 0),
-            "paused": True,
-            "message": "Emergency Stop wykonany. System wstrzymany.",
-        }
+        return await self.queue_manager.emergency_stop()
 
     def get_queue_status(self) -> dict:
         """
@@ -440,19 +301,7 @@ class Orchestrator:
         Returns:
             Dict ze statusem kolejki
         """
-        all_tasks = self.state_manager.get_all_tasks()
-        pending = sum(1 for t in all_tasks if t.status == TaskStatus.PENDING)
-        processing = sum(1 for t in all_tasks if t.status == TaskStatus.PROCESSING)
-
-        return {
-            "paused": self.is_paused,
-            "pending": pending,
-            "active": len(self.active_tasks),
-            "processing": processing,  # Z state managera (może się różnić)
-            "limit": (
-                SETTINGS.MAX_CONCURRENT_TASKS if SETTINGS.ENABLE_QUEUE_LIMITS else None
-            ),
-        }
+        return self.queue_manager.get_status()
 
     def get_token_economist(self):
         """
@@ -569,7 +418,14 @@ class Orchestrator:
                         status="ok",
                         details="🚀 Routing to Campaign Mode",
                     )
-                campaign_result = await self.execute_campaign_mode(
+                # Lazy init CampaignFlow
+                if self._campaign_flow is None:
+                    self._campaign_flow = CampaignFlow(
+                        state_manager=self.state_manager,
+                        orchestrator_submit_task=self.submit_task,
+                        event_broadcaster=self.event_broadcaster,
+                    )
+                campaign_result = await self._campaign_flow.execute(
                     goal_store=self.task_dispatcher.goal_store
                 )
                 result = campaign_result.get("summary", str(campaign_result))
@@ -1050,258 +906,25 @@ class Orchestrator:
     async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """
         Pętla samonaprawy (Test-Diagnose-Fix-Apply).
-
-        Algorytm:
-        1. CHECK: Uruchom testy
-        2. DIAGNOSE: Przeanalizuj błędy (Guardian)
-        3. FIX: Wygeneruj poprawkę (Coder)
-        4. APPLY: Zapisz poprawkę (FileSkill)
-        5. LOOP: Wróć do punktu 1 (max 3 iteracje)
+        
+        Delegowane do HealingFlow.
 
         Args:
             task_id: ID zadania
             test_path: Ścieżka do testów
 
         Returns:
-            Słownik z wynikami:
-            - success: bool - czy testy przeszły
-            - iterations: int - liczba iteracji
-            - final_report: str - ostatni raport z testów
+            Słownik z wynikami (success, iterations, final_report)
         """
-        from venom_core.agents.guardian import GuardianAgent
-        from venom_core.execution.skills.test_skill import TestSkill
-        from venom_core.infrastructure.docker_habitat import DockerHabitat
-
-        MAX_HEALING_ITERATIONS = 3
-
-        try:
-            # Inicjalizuj komponenty
-            habitat = DockerHabitat()
-            test_skill = TestSkill(habitat=habitat)
-
-            # Pobierz agentów
-            guardian = GuardianAgent(
-                kernel=self.task_dispatcher.kernel, test_skill=test_skill
+        # Lazy init HealingFlow
+        if self._healing_flow is None:
+            self._healing_flow = HealingFlow(
+                state_manager=self.state_manager,
+                task_dispatcher=self.task_dispatcher,
+                event_broadcaster=self.event_broadcaster,
             )
-            coder = self.task_dispatcher.coder_agent
-
-            self.state_manager.add_log(
-                task_id,
-                f"🔄 Rozpoczynam pętlę samonaprawy (max {MAX_HEALING_ITERATIONS} iteracji)",
-            )
-
-            await self._broadcast_event(
-                event_type="HEALING_STARTED",
-                message="Rozpoczynam automatyczne testy i naprawy",
-                data={
-                    "task_id": str(task_id),
-                    "max_iterations": MAX_HEALING_ITERATIONS,
-                },
-            )
-
-            # Przygotuj środowisko - zainstaluj zależności
-            self.state_manager.add_log(task_id, "📦 Przygotowuję środowisko testowe...")
-            exit_code, output = habitat.execute(
-                "pip install -r requirements.txt 2>&1 || echo 'No requirements.txt'",
-                timeout=120,
-            )
-
-            iteration = 0
-            last_test_report = ""
-
-            while iteration < MAX_HEALING_ITERATIONS:
-                iteration += 1
-
-                # PHASE 1: CHECK - Uruchom testy
-                self.state_manager.add_log(
-                    task_id,
-                    f"🔍 Iteracja {iteration}/{MAX_HEALING_ITERATIONS} - PHASE 1: Uruchamiam testy",
-                )
-
-                await self._broadcast_event(
-                    event_type="TEST_RUNNING",
-                    message=f"Próba {iteration}/{MAX_HEALING_ITERATIONS}: Uruchamiam testy",
-                    agent="Guardian",
-                    data={"task_id": str(task_id), "iteration": iteration},
-                )
-
-                test_report = await test_skill.run_pytest(
-                    test_path=test_path, timeout=60
-                )
-                last_test_report = test_report
-
-                # Sprawdź czy testy przeszły - używamy wielokrotnych sprawdzeń dla niezawodności
-                test_passed = (
-                    "PRZESZŁY POMYŚLNIE" in test_report
-                    or "PASSED" in test_report.upper()
-                    or (
-                        "exit_code: 0" in test_report.lower()
-                        and "failed: 0" in test_report.lower()
-                    )
-                )
-
-                if test_passed:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"✅ Testy przeszły pomyślnie po {iteration} iteracji!",
-                    )
-
-                    await self._broadcast_event(
-                        event_type="TEST_RESULT",
-                        message="✅ Testy przeszły pomyślnie!",
-                        agent="Guardian",
-                        data={
-                            "task_id": str(task_id),
-                            "success": True,
-                            "iterations": iteration,
-                        },
-                    )
-
-                    return {
-                        "success": True,
-                        "iterations": iteration,
-                        "final_report": test_report,
-                    }
-
-                # Testy nie przeszły - diagnozuj
-                self.state_manager.add_log(
-                    task_id, "❌ Testy nie przeszły. Rozpoczynam diagnostykę..."
-                )
-
-                await self._broadcast_event(
-                    event_type="TEST_RESULT",
-                    message="❌ Testy nie przeszły - analizuję błędy",
-                    agent="Guardian",
-                    data={
-                        "task_id": str(task_id),
-                        "success": False,
-                        "iteration": iteration,
-                    },
-                )
-
-                # PHASE 2: DIAGNOSE - Guardian analizuje błędy
-                self.state_manager.add_log(
-                    task_id,
-                    "🔬 PHASE 2: Guardian analizuje błędy (traceback)",
-                )
-
-                diagnosis_prompt = f"""Przeanalizuj wyniki testów i stwórz precyzyjny ticket naprawczy.
-
-WYNIKI TESTÓW:
-{test_report}
-
-Zidentyfikuj:
-1. Który plik wymaga naprawy
-2. Jaka jest przyczyna błędu
-3. Co dokładnie trzeba poprawić
-
-Odpowiedz w formacie ticketu naprawczego.
-"""
-
-                repair_ticket = await guardian.process(diagnosis_prompt)
-
-                self.state_manager.add_log(
-                    task_id,
-                    f"📋 Ticket naprawczy:\n{repair_ticket[:300]}...",
-                )
-
-                await self._broadcast_event(
-                    event_type="AGENT_THOUGHT",
-                    message="Zdiagnozowałem problem - tworzę ticket naprawczy",
-                    agent="Guardian",
-                    data={
-                        "task_id": str(task_id),
-                        "ticket_preview": repair_ticket[:100],
-                    },
-                )
-
-                # PHASE 3: FIX - Coder generuje poprawkę
-                self.state_manager.add_log(
-                    task_id,
-                    "🛠️ PHASE 3: Coder generuje poprawkę",
-                )
-
-                fix_prompt = f"""TICKET NAPRAWCZY OD GUARDIANA:
-{repair_ticket}
-
-WYNIKI TESTÓW:
-{test_report[:500]}
-
-Twoim zadaniem jest naprawić kod zgodnie z ticketem.
-WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
-"""
-
-                await self._broadcast_event(
-                    event_type="AGENT_ACTION",
-                    message="Coder naprawia kod",
-                    agent="Coder",
-                    data={"task_id": str(task_id), "iteration": iteration},
-                )
-
-                fix_result = await coder.process(fix_prompt)
-
-                self.state_manager.add_log(
-                    task_id,
-                    f"✏️ Coder zastosował poprawkę: {fix_result[:200]}...",
-                )
-
-                # PHASE 4 jest zintegrowana - Coder powinien użyć write_file
-                # Zapisanie odbywa się automatycznie przez funkcje kernela
-
-                self.state_manager.add_log(
-                    task_id,
-                    "💾 PHASE 4: Poprawka zastosowana, wracam do testów",
-                )
-
-                # Jeśli to ostatnia iteracja
-                if iteration >= MAX_HEALING_ITERATIONS:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"⚠️ Osiągnięto limit iteracji ({MAX_HEALING_ITERATIONS}). Testy nadal nie przechodzą.",
-                    )
-
-                    await self._broadcast_event(
-                        event_type="HEALING_FAILED",
-                        message=f"Nie udało się naprawić kodu w {MAX_HEALING_ITERATIONS} iteracjach",
-                        data={
-                            "task_id": str(task_id),
-                            "iterations": iteration,
-                            "final_report": last_test_report[:500],
-                        },
-                    )
-
-                    return {
-                        "success": False,
-                        "iterations": iteration,
-                        "final_report": last_test_report,
-                        "message": f"⚠️ FAIL FAST: Nie udało się naprawić kodu po {MAX_HEALING_ITERATIONS} próbach. Wymagana interwencja ręczna.",
-                    }
-
-            # Nie powinno się tu dostać, ale dla bezpieczeństwa
-            return {
-                "success": False,
-                "iterations": iteration,
-                "final_report": last_test_report,
-                "message": "Nieoczekiwane zakończenie pętli naprawczej",
-            }
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pętli samonaprawy: {str(e)}"
-            logger.error(error_msg)
-            self.state_manager.add_log(task_id, error_msg)
-
-            await self._broadcast_event(
-                event_type="HEALING_ERROR",
-                message=error_msg,
-                data={"task_id": str(task_id), "error": str(e)},
-            )
-
-            return {
-                "success": False,
-                "iterations": 0,
-                "final_report": "",
-                "message": error_msg,
-            }
+        
+        return await self._healing_flow.execute(task_id, test_path)
 
     async def execute_forge_workflow(
         self, task_id: UUID, tool_specification: str, tool_name: str
@@ -1341,12 +964,8 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
     async def handle_remote_issue(self, issue_number: int) -> dict:
         """
         Obsługuje Issue z GitHub: pobiera szczegóły, tworzy plan, implementuje fix, tworzy PR.
-
-        Pipeline "Issue-to-PR":
-        1. Integrator pobiera szczegóły Issue
-        2. Architekt tworzy plan naprawy
-        3. Coder + Guardian implementują fix
-        4. Integrator tworzy PR i wysyła powiadomienie
+        
+        Delegowane do IssueHandlerFlow.
 
         Args:
             issue_number: Numer Issue do obsłużenia
@@ -1354,176 +973,23 @@ WAŻNE: Użyj funkcji write_file aby zapisać poprawiony kod do pliku.
         Returns:
             Dict z wynikiem operacji
         """
-        try:
-            logger.info(
-                f"🚀 Rozpoczynam workflow Issue-to-PR dla Issue #{issue_number}"
+        # Lazy init IssueHandlerFlow
+        if self._issue_handler_flow is None:
+            self._issue_handler_flow = IssueHandlerFlow(
+                state_manager=self.state_manager,
+                task_dispatcher=self.task_dispatcher,
+                event_broadcaster=self.event_broadcaster,
             )
-
-            # Utwórz fikcyjne zadanie w StateManager do trackowania postępów
-            task = self.state_manager.create_task(
-                content=f"Automatyczna obsługa Issue #{issue_number}"
-            )
-            task_id = task.id
-
-            self.state_manager.add_log(
-                task_id, f"Rozpoczęto obsługę Issue #{issue_number}"
-            )
-
-            await self._broadcast_event(
-                event_type="ISSUE_PROCESSING_STARTED",
-                message=f"Rozpoczynam obsługę Issue #{issue_number}",
-                agent="Integrator",
-                data={"task_id": str(task_id), "issue_number": issue_number},
-            )
-
-            # 1. SETUP: Integrator pobiera Issue i tworzy branch
-            integrator = self.task_dispatcher.agent_map.get("GIT_OPERATIONS")
-            if not integrator:
-                error_msg = "❌ IntegratorAgent nie jest dostępny"
-                logger.error(error_msg)
-                return {"success": False, "message": error_msg}
-
-            self.state_manager.add_log(task_id, "Pobieranie szczegółów Issue...")
-            issue_details = await integrator.handle_issue(issue_number)
-
-            if issue_details.startswith("❌"):
-                self.state_manager.add_log(task_id, issue_details)
-                return {"success": False, "message": issue_details}
-
-            self.state_manager.add_log(task_id, "✅ Issue pobrane, branch utworzony")
-
-            await self._broadcast_event(
-                event_type="AGENT_ACTION",
-                message=f"Pobrano Issue #{issue_number}, utworzono branch",
-                agent="Integrator",
-                data={"task_id": str(task_id), "issue_number": issue_number},
-            )
-
-            # 2. PLANNING: Architekt tworzy plan naprawy
-            architect = self.task_dispatcher.agent_map.get("COMPLEX_PLANNING")
-            if not architect:
-                error_msg = "❌ ArchitectAgent nie jest dostępny"
-                logger.error(error_msg)
-                return {"success": False, "message": error_msg}
-
-            self.state_manager.add_log(task_id, "Tworzenie planu naprawy...")
-
-            planning_context = f"""Na podstawie poniższego Issue, stwórz plan naprawy:
-
-{issue_details}
-
-WAŻNE: Stwórz konkretny plan kroków do naprawy tego problemu."""
-
-            plan_result = await architect.process(planning_context)
-            self.state_manager.add_log(task_id, f"Plan naprawy:\n{plan_result}")
-
-            await self._broadcast_event(
-                event_type="AGENT_THOUGHT",
-                message="Plan naprawy utworzony",
-                agent="Architect",
-                data={"task_id": str(task_id), "plan": plan_result[:200]},
-            )
-
-            # 3. EXECUTION: Coder implementuje fix (uproszczone - w produkcji byłoby bardziej złożone)
-            coder = self.task_dispatcher.agent_map.get("CODE_GENERATION")
-            if not coder:
-                error_msg = "❌ CoderAgent nie jest dostępny"
-                logger.error(error_msg)
-                return {"success": False, "message": error_msg}
-
-            self.state_manager.add_log(task_id, "Implementacja fix...")
-
-            # Deleguj do Coder z kontekstem Issue
-            fix_context = f"""Zaimplementuj naprawę dla następującego Issue:
-
-{issue_details}
-
-Plan naprawy:
-{plan_result}"""
-
-            fix_result = await coder.process(fix_context)
-            self.state_manager.add_log(task_id, "✅ Fix zaimplementowany")
-
-            await self._broadcast_event(
-                event_type="AGENT_ACTION",
-                message="Fix zaimplementowany",
-                agent="Coder",
-                data={"task_id": str(task_id)},
-            )
-
-            # 4. DELIVERY: Integrator commituje, pushuje i tworzy PR
-            self.state_manager.add_log(task_id, "Tworzenie Pull Request...")
-
-            # Commitnij zmiany
-            commit_context = f"Commitnij zmiany dla Issue #{issue_number}"
-            commit_result = await integrator.process(commit_context)
-            self.state_manager.add_log(task_id, f"Commit: {commit_result}")
-
-            # Finalizuj Issue (PR + komentarz + powiadomienie)
-            branch_name = f"issue-{issue_number}"
-            pr_title = f"fix: resolve issue #{issue_number}"
-            pr_body = (
-                f"Automatyczna naprawa Issue #{issue_number}\n\n{fix_result[:500]}"
-            )
-
-            finalize_result = await integrator.finalize_issue(
-                issue_number=issue_number,
-                branch_name=branch_name,
-                pr_title=pr_title,
-                pr_body=pr_body,
-            )
-
-            self.state_manager.add_log(task_id, finalize_result)
-
-            await self._broadcast_event(
-                event_type="ISSUE_PROCESSING_COMPLETED",
-                message=f"Issue #{issue_number} sfinalizowane - PR utworzony",
-                agent="Integrator",
-                data={"task_id": str(task_id), "issue_number": issue_number},
-            )
-
-            # Oznacz zadanie jako ukończone
-            await self.state_manager.update_status(
-                task_id, TaskStatus.COMPLETED, result=finalize_result
-            )
-
-            logger.info(f"✅ Workflow Issue-to-PR zakończony dla Issue #{issue_number}")
-
-            return {
-                "success": True,
-                "issue_number": issue_number,
-                "message": finalize_result,
-                "task_id": str(task_id),
-            }
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas obsługi Issue #{issue_number}: {str(e)}"
-            logger.error(error_msg)
-
-            if "task_id" in locals():
-                self.state_manager.add_log(task_id, error_msg)
-                await self.state_manager.update_status(
-                    task_id, TaskStatus.FAILED, result=error_msg
-                )
-
-            return {
-                "success": False,
-                "issue_number": issue_number,
-                "message": error_msg,
-            }
+        
+        return await self._issue_handler_flow.execute(issue_number)
 
     async def execute_campaign_mode(
         self, goal_store=None, max_iterations: int = 10
     ) -> dict:
         """
         Tryb Kampanii - autonomiczna realizacja roadmapy.
-
-        System wchodzi w pętlę ciągłą:
-        1. Pobierz kolejne zadanie z GoalStore
-        2. Wykonaj zadanie
-        3. Zweryfikuj (Guardian)
-        4. Zaktualizuj postęp
-        5. Czy cel osiągnięty? Jeśli NIE, wróć do 1.
+        
+        Delegowane do CampaignFlow.
 
         Args:
             goal_store: Magazyn celów (GoalStore)
@@ -1532,214 +998,16 @@ Plan naprawy:
         Returns:
             Dict z wynikami kampanii
         """
-        if not goal_store:
-            return {
-                "success": False,
-                "message": "GoalStore nie został przekazany",
-            }
-
-        logger.info("🚀 Rozpoczynam Tryb Kampanii (Autonomous Campaign Mode)")
-
-        # Utwórz zadanie trackingowe
-        task = self.state_manager.create_task(
-            content="Autonomiczna Kampania - realizacja roadmapy"
-        )
-        task_id = task.id
-
-        self.state_manager.add_log(
-            task_id, "🚀 CAMPAIGN MODE: Rozpoczęcie autonomicznej realizacji celów"
-        )
-
-        await self._broadcast_event(
-            event_type="CAMPAIGN_STARTED",
-            message="Rozpoczęto Tryb Kampanii",
-            agent="Executive",
-            data={"task_id": str(task_id), "max_iterations": max_iterations},
-        )
-
-        iteration = 0
-        tasks_completed = 0
-        tasks_failed = 0
-
-        try:
-            while iteration < max_iterations:
-                iteration += 1
-
-                self.state_manager.add_log(
-                    task_id, f"📍 Iteracja {iteration}/{max_iterations}"
-                )
-
-                # 1. Pobierz kolejne zadanie
-                next_task = goal_store.get_next_task()
-
-                if not next_task:
-                    # Sprawdź czy obecny milestone jest ukończony
-                    current_milestone = goal_store.get_next_milestone()
-                    if not current_milestone:
-                        self.state_manager.add_log(
-                            task_id, "✅ Brak kolejnych zadań - roadmapa ukończona!"
-                        )
-                        break
-
-                    # Milestone ukończony, przejdź do kolejnego
-                    if current_milestone.get_progress() >= 100:
-                        goal_store.update_progress(
-                            current_milestone.goal_id, status=GoalStatus.COMPLETED
-                        )
-                        self.state_manager.add_log(
-                            task_id,
-                            f"✅ Milestone ukończony: {current_milestone.title}",
-                        )
-
-                        # Sprawdź kolejny milestone
-                        next_milestone = goal_store.get_next_milestone()
-                        if not next_milestone:
-                            self.state_manager.add_log(
-                                task_id,
-                                "🎉 Wszystkie Milestones ukończone! Kampania zakończona.",
-                            )
-                            break
-
-                        continue
-                    else:
-                        self.state_manager.add_log(
-                            task_id, "⚠️ Brak zadań w obecnym Milestone"
-                        )
-                        break
-
-                # 2. Oznacz zadanie jako w trakcie
-                goal_store.update_progress(
-                    next_task.goal_id, status=GoalStatus.IN_PROGRESS
-                )
-                self.state_manager.add_log(
-                    task_id, f"🎯 Rozpoczynam: {next_task.title}"
-                )
-
-                await self._broadcast_event(
-                    event_type="CAMPAIGN_TASK_STARTED",
-                    message=f"Kampania: rozpoczęto zadanie {next_task.title}",
-                    agent="Executive",
-                    data={
-                        "task_id": str(task_id),
-                        "goal_id": str(next_task.goal_id),
-                        "iteration": iteration,
-                    },
-                )
-
-                # 3. Wykonaj zadanie - utwórz sub-task w orchestratorze
-                task_request = TaskRequest(content=next_task.description)
-                task_response = await self.submit_task(task_request)
-
-                # Poczekaj na ukończenie sub-task (z timeout)
-                wait_time = 0
-                max_wait = 300  # 5 minut
-                while wait_time < max_wait:
-                    sub_task = self.state_manager.get_task(task_response.task_id)
-                    if sub_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-                        break
-                    await asyncio.sleep(5)
-                    wait_time += 5
-
-                sub_task = self.state_manager.get_task(task_response.task_id)
-
-                # 4. Zaktualizuj postęp w GoalStore
-                if sub_task.status == TaskStatus.COMPLETED:
-                    goal_store.update_progress(
-                        next_task.goal_id,
-                        status=GoalStatus.COMPLETED,
-                        task_id=sub_task.id,
-                    )
-                    tasks_completed += 1
-
-                    self.state_manager.add_log(
-                        task_id, f"✅ Ukończono: {next_task.title}"
-                    )
-
-                    await self._broadcast_event(
-                        event_type="CAMPAIGN_TASK_COMPLETED",
-                        message=f"Zadanie ukończone: {next_task.title}",
-                        agent="Executive",
-                        data={"goal_id": str(next_task.goal_id)},
-                    )
-                else:
-                    goal_store.update_progress(
-                        next_task.goal_id, status=GoalStatus.BLOCKED
-                    )
-                    tasks_failed += 1
-
-                    self.state_manager.add_log(
-                        task_id, f"❌ Nie udało się: {next_task.title}"
-                    )
-
-                    await self._broadcast_event(
-                        event_type="CAMPAIGN_TASK_FAILED",
-                        message=f"Zadanie nie powiodło się: {next_task.title}",
-                        agent="Executive",
-                        data={"goal_id": str(next_task.goal_id)},
-                    )
-
-                # 5. Human-in-the-loop checkpoint - co milestone
-                current_milestone = goal_store.get_next_milestone()
-                if current_milestone and current_milestone.get_progress() >= 100:
-                    self.state_manager.add_log(
-                        task_id,
-                        f"🏁 Milestone ukończony: {current_milestone.title}. "
-                        "Pauza dla akceptacji użytkownika.",
-                    )
-                    break  # Zatrzymaj się i czekaj na akceptację
-
-            # Podsumowanie
-            summary = f"""
-=== KAMPANIA ZAKOŃCZONA ===
-
-Iteracje: {iteration}/{max_iterations}
-Zadania ukończone: {tasks_completed}
-Zadania nieudane: {tasks_failed}
-
-Status roadmapy:
-{goal_store.generate_roadmap_report()}
-"""
-
-            self.state_manager.add_log(task_id, summary)
-
-            await self.state_manager.update_status(
-                task_id, TaskStatus.COMPLETED, result=summary
+        # Ta metoda już jest wywoływana przez _campaign_flow w _run_task
+        # ale zostawiamy ją dla kompatybilności wstecznej
+        if self._campaign_flow is None:
+            self._campaign_flow = CampaignFlow(
+                state_manager=self.state_manager,
+                orchestrator_submit_task=self.submit_task,
+                event_broadcaster=self.event_broadcaster,
             )
-
-            await self._broadcast_event(
-                event_type="CAMPAIGN_COMPLETED",
-                message="Kampania zakończona",
-                agent="Executive",
-                data={
-                    "tasks_completed": tasks_completed,
-                    "tasks_failed": tasks_failed,
-                    "iterations": iteration,
-                },
-            )
-
-            return {
-                "success": True,
-                "iterations": iteration,
-                "tasks_completed": tasks_completed,
-                "tasks_failed": tasks_failed,
-                "summary": summary,
-            }
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas Kampanii: {str(e)}"
-            logger.error(error_msg)
-            self.state_manager.add_log(task_id, error_msg)
-
-            await self.state_manager.update_status(
-                task_id, TaskStatus.FAILED, result=error_msg
-            )
-
-            return {
-                "success": False,
-                "error": str(e),
-                "iterations": iteration,
-                "tasks_completed": tasks_completed,
-            }
+        
+        return await self._campaign_flow.execute(goal_store, max_iterations)
 
     async def _generate_help_response(self, task_id: UUID) -> str:
         """

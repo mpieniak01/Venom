@@ -6,8 +6,10 @@ priorytetyzując prywatność i zerowy koszt operacyjny.
 """
 
 from enum import Enum
+from pathlib import Path
 
 from venom_core.config import SETTINGS
+from venom_core.core.token_economist import TokenEconomist
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -42,17 +44,25 @@ class HybridModelRouter:
     priorytetując prywatność i oszczędność kosztów.
     """
 
-    def __init__(self, settings=None, state_manager=None):
+    def __init__(self, settings=None, state_manager=None, token_economist=None):
         """
         Inicjalizacja routera.
 
         Args:
             settings: Konfiguracja (domyślnie SETTINGS)
             state_manager: StateManager dla Cost Guard (opcjonalny)
+            token_economist: TokenEconomist do estymacji kosztów (opcjonalny)
         """
         self.settings = settings or SETTINGS
         self.ai_mode = AIMode(self.settings.AI_MODE.upper())
         self.state_manager = state_manager  # Opcjonalna integracja z Cost Guard
+        
+        # Inicjalizuj TokenEconomist z plikiem cennika
+        if token_economist:
+            self.token_economist = token_economist
+        else:
+            pricing_file = Path(__file__).parent.parent.parent / "data" / "config" / "pricing.yaml"
+            self.token_economist = TokenEconomist(pricing_file=str(pricing_file))
 
         logger.info(
             f"HybridModelRouter zainicjalizowany (mode={self.ai_mode.value}, "
@@ -104,7 +114,7 @@ class HybridModelRouter:
 
     def _hybrid_route(self, task_type: TaskType, prompt: str) -> dict:
         """
-        Routing w trybie hybrydowym.
+        Routing w trybie hybrydowym z logiką "Low-Cost".
 
         Args:
             task_type: Typ zadania
@@ -113,6 +123,16 @@ class HybridModelRouter:
         Returns:
             Dict z informacjami o routingu
         """
+        # Oblicz złożoność zadania (0-10)
+        complexity = self.calculate_complexity(prompt, task_type)
+        
+        # LOW-COST ROUTING: Jeśli złożoność < 5 (proste) -> zawsze LOCAL
+        if complexity < 5:
+            logger.info(f"[Low-Cost Routing] Complexity={complexity} -> LOCAL")
+            return self._route_to_local(
+                f"Tryb HYBRID: niski complexity={complexity} -> LOCAL (oszczędność)"
+            )
+        
         # Zadania proste -> LOCAL
         if task_type in [TaskType.STANDARD, TaskType.CHAT, TaskType.CODING_SIMPLE]:
             return self._route_to_local(
@@ -141,6 +161,7 @@ class HybridModelRouter:
                 )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)
+        # LOW-COST ROUTING: Sprawdź estymowany koszt przed użyciem CLOUD_HIGH
         if task_type in [
             TaskType.CODING_COMPLEX,
             TaskType.ANALYSIS,
@@ -148,6 +169,31 @@ class HybridModelRouter:
         ]:
             # Sprawdź czy mamy klucz API dla chmury
             if self._has_cloud_access():
+                # Estymuj koszt dla CLOUD_HIGH (np. GPT-4o)
+                cloud_high_model = self.settings.HYBRID_CLOUD_MODEL
+                cost_estimate = self.token_economist.estimate_task_cost(
+                    cloud_high_model, len(prompt)
+                )
+                
+                # Próg bezpieczeństwa: $0.01
+                COST_THRESHOLD = 0.01
+                
+                if cost_estimate["estimated_cost_usd"] > COST_THRESHOLD:
+                    logger.warning(
+                        f"[Low-Cost Guard] Koszt {cloud_high_model}: "
+                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${COST_THRESHOLD} -> "
+                        f"Fallback do CLOUD_FAST"
+                    )
+                    # Fallback do CLOUD_FAST (np. GPT-4o-mini)
+                    return self._route_to_cloud_fast(
+                        f"Tryb HYBRID: koszt zbyt wysoki -> CLOUD_FAST (oszczędność)"
+                    )
+                
+                logger.info(
+                    f"[Low-Cost Guard] Koszt {cloud_high_model}: "
+                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${COST_THRESHOLD} -> OK"
+                )
+                
                 return self._route_to_cloud_with_guard(
                     f"Tryb HYBRID: złożone zadanie {task_type.value} -> CLOUD"
                 )
@@ -295,6 +341,78 @@ class HybridModelRouter:
                 return True
 
         return False
+
+    def calculate_complexity(self, prompt: str, task_type: TaskType) -> int:
+        """
+        Oblicza złożoność zadania na skali 0-10.
+
+        Args:
+            prompt: Treść promptu
+            task_type: Typ zadania
+
+        Returns:
+            Ocena złożoności (0-10)
+        """
+        complexity = 0
+
+        # Bazowa złożoność na podstawie task_type
+        task_type_complexity = {
+            TaskType.STANDARD: 1,
+            TaskType.CHAT: 1,
+            TaskType.CODING_SIMPLE: 2,
+            TaskType.CODING_COMPLEX: 7,
+            TaskType.SENSITIVE: 1,  # Zawsze local, niska złożoność
+            TaskType.ANALYSIS: 6,
+            TaskType.GENERATION: 5,
+            TaskType.RESEARCH: 4,
+        }
+        complexity += task_type_complexity.get(task_type, 3)
+
+        # Dodaj punkty na podstawie długości promptu
+        prompt_length = len(prompt)
+        if prompt_length > 1000:
+            complexity += 2
+        elif prompt_length > 500:
+            complexity += 1
+
+        # Ogranicz do skali 0-10
+        complexity = max(0, min(10, complexity))
+
+        logger.debug(f"Obliczona złożoność: {complexity} (task={task_type.value}, len={prompt_length})")
+        return complexity
+
+    def _route_to_cloud_fast(self, reason: str) -> dict:
+        """
+        Tworzy routing do szybkiego (tańszego) modelu chmurowego.
+
+        Args:
+            reason: Uzasadnienie decyzji
+
+        Returns:
+            Dict z informacjami o routingu
+        """
+        logger.debug(f"Routing do CLOUD_FAST: {reason}")
+
+        provider = self.settings.HYBRID_CLOUD_PROVIDER.lower()
+        
+        # Wybierz tańszy model w zależności od providera
+        if provider == "openai":
+            model_name = "gpt-4o-mini"
+        elif provider == "google":
+            model_name = "gemini-1.5-flash"
+        else:
+            # Fallback
+            model_name = "gpt-4o-mini"
+
+        return {
+            "target": "cloud",
+            "model_name": model_name,
+            "provider": provider,
+            "endpoint": None,
+            "reason": reason,
+            "is_paid": True,
+            "tier": "fast",  # Oznacz jako fast tier
+        }
 
     def get_routing_decision(
         self, prompt: str, task_type: TaskType = TaskType.STANDARD

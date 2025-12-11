@@ -82,8 +82,10 @@ class Eyes:
         elif self.use_openai:
             return await self._analyze_with_openai(image_base64, prompt)
         else:
+            # Bezpieczne łączenie nazw modeli (obsługa przypadku gdy lista zawiera non-stringi)
+            model_names_str = ', '.join(str(name) for name in SETTINGS.VISION_MODEL_NAMES)
             raise RuntimeError(
-                f"Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. {', '.join(SETTINGS.VISION_MODEL_NAMES)} w Ollama)."
+                f"Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. {model_names_str} w Ollama)."
             )
 
     def _prepare_image_base64(self, image_path_or_base64: str) -> str:

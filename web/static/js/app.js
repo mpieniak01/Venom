@@ -112,6 +112,10 @@ class VenomDashboard {
         this.elements = {
             connectionStatus: document.getElementById('connectionStatus'),
             statusText: document.getElementById('statusText'),
+            // Sidebar status elements (Unified Layout)
+            sidebarConnectionStatus: document.getElementById('sidebarConnectionStatus'),
+            sidebarStatusText: document.getElementById('sidebarStatusText'),
+            sidebarLatency: document.getElementById('sidebarLatency'),
             taskInput: document.getElementById('taskInput'),
             sendButton: document.getElementById('sendButton'),
             chatMessages: document.getElementById('chatMessages'),
@@ -215,11 +219,17 @@ class VenomDashboard {
 
     updateConnectionStatus(connected) {
         if (connected) {
-            this.elements.connectionStatus.classList.add('connected');
-            this.elements.statusText.textContent = 'Połączono';
+            this.elements.connectionStatus?.classList.add('connected');
+            if (this.elements.statusText) this.elements.statusText.textContent = 'Połączono';
+            // Update sidebar status (Unified Layout)
+            this.elements.sidebarConnectionStatus?.classList.add('connected');
+            if (this.elements.sidebarStatusText) this.elements.sidebarStatusText.textContent = 'SYSTEM ONLINE';
         } else {
-            this.elements.connectionStatus.classList.remove('connected');
-            this.elements.statusText.textContent = 'Rozłączono';
+            this.elements.connectionStatus?.classList.remove('connected');
+            if (this.elements.statusText) this.elements.statusText.textContent = 'Rozłączono';
+            // Update sidebar status (Unified Layout)
+            this.elements.sidebarConnectionStatus?.classList.remove('connected');
+            if (this.elements.sidebarStatusText) this.elements.sidebarStatusText.textContent = 'OFFLINE';
         }
     }
 

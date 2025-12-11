@@ -29,7 +29,10 @@ if (typeof mermaid !== 'undefined') {
             noteMargin: 10
         }
     });
-    console.log('🎨 Mermaid initialized with Deep Space theme');
+    // Log only in dev mode
+    if (window.location.hostname === 'localhost') {
+        console.log('🎨 Mermaid initialized with Deep Space theme');
+    }
 }
 
 // Globalna zmienna dla svg-pan-zoom

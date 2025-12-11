@@ -22,7 +22,10 @@ class VenomDashboard {
                 if (typeof mermaid !== 'undefined') {
                     const mermaidConfig = getMermaidConfig();
                     mermaid.initialize(mermaidConfig);
-                    console.log('🎨 Mermaid initialized with Deep Space theme');
+                    // Log only in dev mode
+                    if (window.location.hostname === 'localhost') {
+                        console.log('🎨 Mermaid initialized with Deep Space theme');
+                    }
                 }
                 
                 // Apply Chart.js defaults

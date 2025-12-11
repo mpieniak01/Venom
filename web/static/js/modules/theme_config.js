@@ -233,7 +233,10 @@ export function applyChartDefaults() {
         Chart.defaults.font.family = THEME.chartDefaults.font.family;
         Chart.defaults.font.size = THEME.chartDefaults.font.size;
         
-        console.log('✅ Chart.js defaults applied from theme');
+        // Log only in dev mode
+        if (window.location.hostname === 'localhost') {
+            console.log('✅ Chart.js defaults applied from theme');
+        }
     }
 }
 
@@ -264,10 +267,12 @@ export function getCytoscapeStyles() {
     ];
 }
 
-// Auto-log konfiguracji dla debugowania
-console.log('🎨 Venom Theme Config loaded:', {
-    primary: THEME.primary,
-    primaryColor: THEME.primaryColor,
-    secondary: THEME.secondary,
-    fontTech: THEME.fontTech
-});
+// Auto-log konfiguracji dla debugowania (tylko w dev mode)
+if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    console.log('🎨 Venom Theme Config loaded:', {
+        primary: THEME.primary,
+        primaryColor: THEME.primaryColor,
+        secondary: THEME.secondary,
+        fontTech: THEME.fontTech
+    });
+}

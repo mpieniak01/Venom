@@ -1,6 +1,9 @@
 """Moduł: token_economist - optymalizacja kontekstu i kalkulacja kosztów."""
 
-from typing import List
+from pathlib import Path
+from typing import Dict, List
+
+import yaml
 
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
@@ -32,16 +35,25 @@ class TokenEconomist:
     # Rezerwa tokenów dla podsumowania przy kompresji
     RESERVE_TOKENS_FOR_SUMMARY = 500
 
-    def __init__(self, enable_compression: bool = True):
+    def __init__(self, enable_compression: bool = True, pricing_file: str = None):
         """
         Inicjalizacja Token Economist.
 
         Args:
             enable_compression: Czy włączyć kompresję kontekstu (domyślnie True)
+            pricing_file: Ścieżka do pliku YAML z cennikiem (opcjonalne)
         """
         self.enable_compression = enable_compression
+        self.pricing_file = pricing_file
+        self.external_pricing = None
+        
+        # Wczytaj cennik z pliku YAML jeśli podano
+        if pricing_file:
+            self.load_pricing(pricing_file)
+        
         logger.info(
-            f"TokenEconomist zainicjalizowany (compression={enable_compression})"
+            f"TokenEconomist zainicjalizowany (compression={enable_compression}, "
+            f"pricing_file={'loaded' if self.external_pricing else 'not loaded'})"
         )
 
     def estimate_tokens(self, text: str) -> int:
@@ -320,4 +332,164 @@ class TokenEconomist:
             "messages_by_role": messages_by_role,
             "tokens_by_role": tokens_by_role,
             "compression_needed": total_tokens > 4000,
+        }
+
+    def load_pricing(self, pricing_file: str = None) -> Dict:
+        """
+        Wczytuje cennik z pliku YAML.
+
+        Args:
+            pricing_file: Ścieżka do pliku YAML (domyślnie data/config/pricing.yaml)
+
+        Returns:
+            Dict z cennikiem lub None jeśli wczytanie się nie powiodło
+        """
+        if pricing_file is None:
+            # Domyślna ścieżka do pricing.yaml
+            project_root = Path(__file__).parent.parent.parent
+            pricing_file = project_root / "data" / "config" / "pricing.yaml"
+        else:
+            pricing_file = Path(pricing_file)
+
+        if not pricing_file.exists():
+            logger.warning(f"Plik cennika nie istnieje: {pricing_file}")
+            return None
+
+        try:
+            with open(pricing_file, "r", encoding="utf-8") as f:
+                pricing_data = yaml.safe_load(f)
+            
+            self.external_pricing = pricing_data
+            logger.info(f"Wczytano cennik z pliku: {pricing_file}")
+            return pricing_data
+        except Exception as e:
+            logger.error(f"Błąd podczas wczytywania cennika: {e}")
+            return None
+
+    def estimate_task_cost(
+        self,
+        service_id: str,
+        prompt_length: int,
+        output_ratio: float = 0.5
+    ) -> Dict:
+        """
+        Estymuje koszt wykonania zadania przed jego wykonaniem.
+
+        Args:
+            service_id: Identyfikator serwisu/modelu (np. 'gpt-4o', 'local', 'gemini-1.5-flash')
+            prompt_length: Długość promptu (liczba znaków)
+            output_ratio: Stosunek długości outputu do inputu (domyślnie 0.5 = 50%)
+
+        Returns:
+            Dict z estymowanym kosztem i szczegółami:
+            - service_id: nazwa serwisu
+            - input_tokens: liczba tokenów wejściowych
+            - output_tokens: estymowana liczba tokenów wyjściowych
+            - estimated_cost_usd: estymowany koszt w USD
+            - is_free: czy model jest darmowy (lokalny)
+        """
+        # Oblicz liczbę tokenów w prompcie (heurystyka: ~4 znaki na token)
+        input_tokens = max(1, prompt_length // 4)
+        
+        # Estymuj output (pesymistycznie - zakładamy output_ratio)
+        output_tokens = int(input_tokens * output_ratio)
+
+        # Pobierz cennik
+        pricing = self._get_pricing_for_service(service_id)
+        
+        # Oblicz koszty (ceny per 1K tokenów)
+        input_cost = (input_tokens / 1_000) * pricing["input"]
+        output_cost = (output_tokens / 1_000) * pricing["output"]
+        total_cost = input_cost + output_cost
+
+        is_free = total_cost == 0.0
+
+        logger.debug(
+            f"Estymacja kosztu dla {service_id}: "
+            f"{input_tokens} in + {output_tokens} out = ${total_cost:.6f}"
+        )
+
+        return {
+            "service_id": service_id,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost_usd": round(total_cost, 6),
+            "is_free": is_free,
+        }
+
+    def compare_providers(self, prompt: str, providers: List[str] = None) -> List[Dict]:
+        """
+        Porównuje koszty wykonania zadania między różnymi providerami.
+
+        Args:
+            prompt: Treść promptu
+            providers: Lista providerów do porównania (domyślnie: local, gpt-4o-mini, gpt-4o, gemini-1.5-flash)
+
+        Returns:
+            Lista dict posortowana od najtańszego do najdroższego:
+            - provider: nazwa providera
+            - cost: estymowany koszt
+            - input_tokens: liczba tokenów wejściowych
+            - output_tokens: estymowana liczba tokenów wyjściowych
+            - is_free: czy provider jest darmowy
+        """
+        if providers is None:
+            providers = ["local", "gpt-4o-mini", "gpt-4o", "gemini-1.5-flash"]
+
+        results = []
+        prompt_length = len(prompt)
+
+        for provider in providers:
+            estimate = self.estimate_task_cost(provider, prompt_length)
+            results.append({
+                "provider": provider,
+                "cost": estimate["estimated_cost_usd"],
+                "input_tokens": estimate["input_tokens"],
+                "output_tokens": estimate["output_tokens"],
+                "is_free": estimate["is_free"],
+            })
+
+        # Sortuj od najtańszego do najdroższego
+        results.sort(key=lambda x: x["cost"])
+
+        if results:
+            logger.info(
+                f"Porównanie providerów: Najtańszy={results[0]['provider']} "
+                f"(${results[0]['cost']:.6f}), Najdroższy={results[-1]['provider']} "
+                f"(${results[-1]['cost']:.6f})"
+            )
+        else:
+            logger.info("Nie udało się oszacować kosztów dla żadnego providera.")
+
+        return results
+
+    def _get_pricing_for_service(self, service_id: str) -> Dict:
+        """
+        Pobiera cennik dla danego serwisu z pliku YAML lub fallback do PRICING.
+
+        Args:
+            service_id: Identyfikator serwisu
+
+        Returns:
+            Dict z cenami input/output per 1K tokenów
+        """
+        service_id_lower = service_id.lower()
+
+        # Najpierw sprawdź external_pricing (z YAML)
+        if self.external_pricing:
+            models_pricing = self.external_pricing.get("models", {})
+            if service_id_lower in models_pricing:
+                yaml_pricing = models_pricing[service_id_lower]
+                # YAML ma ceny per 1K tokenów, zwracamy bezpośrednio
+                return {
+                    "input": yaml_pricing.get("input_cost_per_1k", 0.0),
+                    "output": yaml_pricing.get("output_cost_per_1k", 0.0),
+                }
+
+        # Fallback do statycznego cennika PRICING (ceny per 1M)
+        # Konwertuj per 1M na per 1K (podziel przez 1000)
+        pricing_1m = self._get_pricing(service_id)
+        return {
+            "input": pricing_1m["input"] / 1000,
+            "output": pricing_1m["output"] / 1000,
         }

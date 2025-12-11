@@ -1,5 +1,6 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
+import time
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -218,7 +219,6 @@ class BrowserSkill:
             await self._page.click(selector, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
-            import time
             timestamp = int(time.time())
             screenshot_name = f"click_verification_{timestamp}.png"
             screenshot_path = self.screenshots_dir / screenshot_name
@@ -267,7 +267,6 @@ class BrowserSkill:
             await self._page.fill(selector, value, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
-            import time
             timestamp = int(time.time())
             screenshot_name = f"fill_verification_{timestamp}.png"
             screenshot_path = self.screenshots_dir / screenshot_name

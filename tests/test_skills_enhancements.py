@@ -260,54 +260,57 @@ def test_web_skill_initialization_without_tavily():
 
 def test_web_skill_initialization_with_tavily():
     """Test inicjalizacji WebSkill z Tavily API Key."""
+    import sys
+    
     with patch("venom_core.execution.skills.web_skill.SETTINGS") as mock_settings:
-        mock_settings.TAVILY_API_KEY.get_secret_value.return_value = "test_api_key"
+        with patch("venom_core.execution.skills.web_skill.extract_secret_value") as mock_extract:
+            mock_extract.return_value = "test_api_key"
+            
+            # Patch tavily import before it's imported
+            with patch.dict('sys.modules', {'tavily': MagicMock()}):
+                mock_tavily_module = sys.modules['tavily']
+                mock_tavily_client = MagicMock()
+                mock_tavily_module.TavilyClient = mock_tavily_client
+                
+                skill = WebSearchSkill()
+                
+                # Powinien zainicjalizować klienta Tavily
+                mock_tavily_client.assert_called_once_with(api_key="test_api_key")
+
+
+def test_web_skill_search_uses_tavily_when_available():
+    """Test czy search używa Tavily gdy jest dostępny."""
+    import sys
+    
+    with patch("venom_core.execution.skills.web_skill.extract_secret_value") as mock_extract:
+        mock_extract.return_value = "test_api_key"
         
         # Patch tavily import before it's imported
         with patch.dict('sys.modules', {'tavily': MagicMock()}):
-            import sys
             mock_tavily_module = sys.modules['tavily']
-            mock_tavily_client = MagicMock()
-            mock_tavily_module.TavilyClient = mock_tavily_client
+            
+            # Mock odpowiedzi Tavily
+            mock_client = MagicMock()
+            mock_client.search.return_value = {
+                "answer": "Test AI answer",
+                "results": [
+                    {
+                        "title": "Test Result",
+                        "url": "https://example.com",
+                        "content": "Test content",
+                    }
+                ],
+            }
+            mock_tavily_module.TavilyClient.return_value = mock_client
             
             skill = WebSearchSkill()
+            result = skill.search("test query", max_results=5)
             
-            # Powinien zainicjalizować klienta Tavily
-            mock_tavily_client.assert_called_once_with(api_key="test_api_key")
-
-
-@patch("venom_core.execution.skills.web_skill.SETTINGS")
-def test_web_skill_search_uses_tavily_when_available(mock_settings):
-    """Test czy search używa Tavily gdy jest dostępny."""
-    mock_settings.TAVILY_API_KEY.get_secret_value.return_value = "test_api_key"
-    
-    # Patch tavily import before it's imported
-    with patch.dict('sys.modules', {'tavily': MagicMock()}):
-        import sys
-        mock_tavily_module = sys.modules['tavily']
-        
-        # Mock odpowiedzi Tavily
-        mock_client = MagicMock()
-        mock_client.search.return_value = {
-            "answer": "Test AI answer",
-            "results": [
-                {
-                    "title": "Test Result",
-                    "url": "https://example.com",
-                    "content": "Test content",
-                }
-            ],
-        }
-        mock_tavily_module.TavilyClient.return_value = mock_client
-        
-        skill = WebSearchSkill()
-        result = skill.search("test query", max_results=5)
-        
-        # Sprawdź czy użyto Tavily
-        mock_client.search.assert_called_once()
-        assert "Tavily AI Search" in result
-        assert "Test AI answer" in result
-        assert "Test Result" in result
+            # Sprawdź czy użyto Tavily
+            mock_client.search.assert_called_once()
+            assert "Tavily AI Search" in result
+            assert "Test AI answer" in result
+            assert "Test Result" in result
 
 
 @patch("venom_core.execution.skills.web_skill.DDGS")
@@ -336,37 +339,38 @@ def test_web_skill_search_fallback_to_duckduckgo(mock_settings, mock_ddgs):
     assert "DDG Result" in result
 
 
-@patch("venom_core.execution.skills.web_skill.SETTINGS")
-def test_web_skill_tavily_fallback_on_error(mock_settings):
+def test_web_skill_tavily_fallback_on_error():
     """Test czy następuje fallback do DuckDuckGo gdy Tavily zwraca błąd."""
-    mock_settings.TAVILY_API_KEY.get_secret_value.return_value = "test_api_key"
+    import sys
     
-    # Patch tavily import
-    with patch.dict('sys.modules', {'tavily': MagicMock()}):
-        import sys
-        mock_tavily_module = sys.modules['tavily']
+    with patch("venom_core.execution.skills.web_skill.extract_secret_value") as mock_extract:
+        mock_extract.return_value = "test_api_key"
         
-        with patch("venom_core.execution.skills.web_skill.DDGS") as mock_ddgs:
-            # Mock Tavily rzucającego błąd
-            mock_client = MagicMock()
-            mock_client.search.side_effect = Exception("Tavily API error")
-            mock_tavily_module.TavilyClient.return_value = mock_client
+        # Patch tavily import
+        with patch.dict('sys.modules', {'tavily': MagicMock()}):
+            mock_tavily_module = sys.modules['tavily']
             
-            # Mock DuckDuckGo jako fallback
-            mock_ddgs_instance = MagicMock()
-            mock_ddgs_instance.text.return_value = [
-                {
-                    "title": "Fallback Result",
-                    "href": "https://example.com",
-                    "body": "Fallback content",
-                }
-            ]
-            mock_ddgs.return_value.__enter__.return_value = mock_ddgs_instance
-            
-            skill = WebSearchSkill()
-            result = skill.search("test query", max_results=5)
-            
-            # Sprawdź czy użyto DuckDuckGo jako fallback
-            mock_ddgs_instance.text.assert_called_once()
-            assert "DuckDuckGo" in result
-            assert "Fallback Result" in result
+            with patch("venom_core.execution.skills.web_skill.DDGS") as mock_ddgs:
+                # Mock Tavily rzucającego błąd
+                mock_client = MagicMock()
+                mock_client.search.side_effect = Exception("Tavily API error")
+                mock_tavily_module.TavilyClient.return_value = mock_client
+                
+                # Mock DuckDuckGo jako fallback
+                mock_ddgs_instance = MagicMock()
+                mock_ddgs_instance.text.return_value = [
+                    {
+                        "title": "Fallback Result",
+                        "href": "https://example.com",
+                        "body": "Fallback content",
+                    }
+                ]
+                mock_ddgs.return_value.__enter__.return_value = mock_ddgs_instance
+                
+                skill = WebSearchSkill()
+                result = skill.search("test query", max_results=5)
+                
+                # Sprawdź czy użyto DuckDuckGo jako fallback
+                mock_ddgs_instance.text.assert_called_once()
+                assert "DuckDuckGo" in result
+                assert "Fallback Result" in result

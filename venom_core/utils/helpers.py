@@ -18,6 +18,43 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def extract_secret_value(secret_field: Any) -> Optional[str]:
+    """
+    Bezpiecznie ekstrahuje wartość z pola SecretStr lub zwraca string.
+    
+    Funkcja wspiera różne formaty:
+    - SecretStr z pydantic (ma metodę get_secret_value)
+    - Zwykły string
+    - None lub puste wartości
+    
+    Args:
+        secret_field: Pole które może być SecretStr, str, lub None
+        
+    Returns:
+        Wyekstrahowana wartość jako string lub None jeśli puste
+        
+    Example:
+        >>> from pydantic import SecretStr
+        >>> key = extract_secret_value(SETTINGS.API_KEY)
+        >>> if key:
+        ...     client = APIClient(api_key=key)
+    """
+    if not secret_field:
+        return None
+        
+    # Sprawdź czy to SecretStr
+    if hasattr(secret_field, "get_secret_value"):
+        value = secret_field.get_secret_value()
+    else:
+        value = secret_field
+    
+    # Zwróć None dla pustych stringów
+    if not value or (isinstance(value, str) and not value.strip()):
+        return None
+        
+    return value
+
+
 def read_file(
     file_path: Union[str, Path],
     encoding: str = "utf-8",

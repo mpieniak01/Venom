@@ -164,15 +164,16 @@
         </main>
 
         <!-- Panel z telemetrią i metrykami -->
-        <aside class="right-panel">
+        <aside class="right-panel telemetry-panel">
             <!-- Tabs for switching between views -->
             <div class="panel-tabs">
-                <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
-                <button class="tab-button" data-tab="voice">🎤 Głos</button>
-                <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
-                <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
-                <button class="tab-button" data-tab="models">🔫 Modele</button>
-                <button class="tab-button" data-tab="history">📜 Historia</button>
+                <button class="tab-button active" data-tab="feed">FEED</button>
+                <button class="tab-button" data-tab="voice">VOICE</button>
+                <button class="tab-button" data-tab="sys">SYS</button>
+                <button class="tab-button" data-tab="jobs">JOBS</button>
+                <button class="tab-button" data-tab="memory">MEMORY</button>
+                <button class="tab-button" data-tab="models">MODELS</button>
+                <button class="tab-button" data-tab="history">HIST</button>
             </div>
 
             <!-- Live Feed Tab -->
@@ -302,6 +303,38 @@
                             <span class="metric-label">Dysk</span>
                             <span class="metric-value" id="iotDisk">--%</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SYS Tab (System Metrics) -->
+            <div class="tab-content" id="sysTab">
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                    <span style="color: var(--text-secondary);">Zadania</span>
+                    <span style="font-family: var(--font-tech); color: var(--secondary);" id="sysMetricTasks">0</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                    <span style="color: var(--text-secondary);">Sukces</span>
+                    <span style="font-family: var(--font-tech); color: var(--primary);" id="sysMetricSuccess">0%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                    <span style="color: var(--text-secondary);">Uptime</span>
+                    <span style="font-family: var(--font-tech); color: white;" id="sysMetricUptime">0s</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                    <span style="color: var(--text-secondary);">Sieć I/O</span>
+                    <span style="font-family: var(--font-tech); color: var(--text-primary);" id="sysMetricNetwork">0 KB</span>
+                </div>
+                
+                <!-- Live Terminal reference -->
+                <div class="panel-header" style="margin-top: 15px; padding: 0.5rem 0;">
+                    <h3 style="font-size: 0.85rem;">Terminal</h3>
+                </div>
+                <div id="sysLiveTerminal" class="live-terminal" style="max-height: 150px; font-size: 0.7rem;">
+                    <div class="terminal-entry">
+                        <span class="terminal-timestamp">[--:--:--]</span>
+                        <span class="terminal-level info">INFO</span>
+                        <span class="terminal-message">System ready...</span>
                     </div>
                 </div>
             </div>

@@ -187,18 +187,20 @@
     margin-top: 20px;
 }
 
-.chip {
+.chip,
+.suggestion-chip {
     padding: 10px 16px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.3s ease;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--text-secondary);
 }
 
-.chip:hover {
+.chip:hover,
+.suggestion-chip:hover {
     background: var(--primary-green-rgba-008);
     border-color: var(--primary-green-rgba-03);
     color: var(--primary);
@@ -468,13 +470,13 @@
     font-size: 1.1rem;
 }
 
-/* Panel telemetrii */
-.telemetry-panel {
+/* Panel telemetrii (również dla right-panel gdy używany jako telemetry) */
+.telemetry-panel-inner {
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 6px;
     padding: 12px;
-    margin-top: 20px;
+    margin: 20px 12px;
 }
 
 .panel-tabs {
@@ -501,11 +503,13 @@
 
 .tab-button:hover {
     color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .tab-button.active {
     color: var(--primary);
     border-bottom-color: var(--primary);
+    background: var(--primary-green-rgba-005);
 }
 
 .tab-content {

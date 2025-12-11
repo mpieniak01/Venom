@@ -147,6 +147,11 @@ class VenomDashboard {
             metricTasks: document.getElementById('metricTasks'),
             metricSuccess: document.getElementById('metricSuccess'),
             metricUptime: document.getElementById('metricUptime'),
+            // SYS tab metrics (duplicates for SYS tab)
+            sysMetricTasks: document.getElementById('sysMetricTasks'),
+            sysMetricSuccess: document.getElementById('sysMetricSuccess'),
+            sysMetricUptime: document.getElementById('sysMetricUptime'),
+            sysMetricNetwork: document.getElementById('sysMetricNetwork'),
             // Repository status elements
             branchName: document.getElementById('branchName'),
             changesText: document.getElementById('changesText'),
@@ -888,10 +893,27 @@ class VenomDashboard {
         if (metrics.tasks) {
             this.elements.metricTasks.textContent = metrics.tasks.created || 0;
             this.elements.metricSuccess.textContent = `${metrics.tasks.success_rate || 0}%`;
+            // Update SYS tab metrics
+            if (this.elements.sysMetricTasks) {
+                this.elements.sysMetricTasks.textContent = metrics.tasks.created || 0;
+            }
+            if (this.elements.sysMetricSuccess) {
+                this.elements.sysMetricSuccess.textContent = `${metrics.tasks.success_rate || 0}%`;
+            }
         }
 
         if (metrics.uptime_seconds !== undefined) {
             this.elements.metricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
+            // Update SYS tab uptime
+            if (this.elements.sysMetricUptime) {
+                this.elements.sysMetricUptime.textContent = this.formatUptime(metrics.uptime_seconds);
+            }
+        }
+        
+        // Update network I/O in SYS tab if available
+        if (metrics.network && this.elements.sysMetricNetwork) {
+            const networkKB = Math.round((metrics.network.bytes || 0) / 1024);
+            this.elements.sysMetricNetwork.textContent = `${networkKB} KB`;
         }
 
         // Dashboard v2.1: Network I/O

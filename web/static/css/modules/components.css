@@ -70,7 +70,7 @@
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
 }
 
-/* Cyberpunk Style Buttons (z Unified Config / szablon) */
+/* Cyberpunk Style Buttons (ze Unified Config / szablon) */
 .btn {
     background: transparent;
     color: var(--primary-green);
@@ -137,7 +137,7 @@
     transform: translateY(-3px);
 }
 
-/* Dekoracyjna linia gradientowa na górze karty (HUD style) */
+/* Dekoracyjna linia gradientowa na górze karty (styl HUD) */
 .card::before {
     content: '';
     position: absolute;
@@ -512,7 +512,7 @@
     display: none;
 }
 
-/* --- GRID LAYOUTS (z szablonu) --- */
+/* --- UKŁADY SIATKI (z szablonu) --- */
 .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

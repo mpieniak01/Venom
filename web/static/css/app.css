@@ -222,8 +222,9 @@ body {
     display: flex;
     gap: 1rem;
     padding: 1rem 2rem 2rem;
-    height: calc(100vh - 80px);
-    overflow: hidden;
+    min-height: calc(100vh - 80px);
+    height: auto;
+    overflow: visible;
 }
 
 .left-panel, .center-panel, .right-panel {
@@ -232,7 +233,7 @@ body {
     border: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .panel-header {
@@ -260,9 +261,8 @@ body {
 
 .queue-tabs-panel {
     background-color: var(--bg-medium);
-    border: 1px solid var(--border-color);
     border-radius: 12px;
-    padding: 0.5rem;
+    padding: 0.75rem;
 }
 
 .left-stack .right-panel {
@@ -439,6 +439,11 @@ body {
 .message.assistant {
     background-color: var(--bg-light);
     margin-right: 2rem;
+}
+
+.message-widget {
+    margin-left: 0;
+    margin-right: 0;
 }
 
 .message.user .message-content,
@@ -1254,8 +1259,8 @@ body {
 /* Markdown Widget */
 .widget-markdown {
     line-height: 1.8;
-    max-height: 70vh;
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
 }
 
 .widget-markdown h1,
@@ -1978,12 +1983,9 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 0.5rem;
-    padding: 0.5rem;
-    border-bottom: none;
+    padding: 0;
+    border: none;
     background-color: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    background-color: var(--bg-medium);
 }
 
 .queue-tabs-panel .tab-button {
@@ -2021,9 +2023,16 @@ body {
 
 .terminal-entry {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.25rem 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.4rem 0;
     line-height: 1.4;
+}
+
+.terminal-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .terminal-timestamp {
@@ -2046,6 +2055,11 @@ body {
 
 .terminal-level.error {
     color: #ff0000;
+}
+
+.terminal-message {
+    color: #e2e8f0;
+    margin-left: 0;
 }
 
 .terminal-level.debug {

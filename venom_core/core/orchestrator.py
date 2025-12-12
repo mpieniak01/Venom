@@ -8,7 +8,15 @@ from uuid import UUID
 from venom_core.config import SETTINGS
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.flows.campaign import CampaignFlow
+from venom_core.core.flows.code_review import (
+    MAX_REPAIR_ATTEMPTS as CODE_REVIEW_MAX_REPAIR_ATTEMPTS,
+)
 from venom_core.core.flows.code_review import CodeReviewLoop
+from venom_core.core.flows.council import (
+    COUNCIL_COLLABORATION_KEYWORDS as COUNCIL_KEYWORDS,
+)
+from venom_core.core.flows.council import COUNCIL_TASK_THRESHOLD as COUNCIL_THRESHOLD
+from venom_core.core.flows.council import ENABLE_COUNCIL_MODE as COUNCIL_ENABLE_FLAG
 from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
@@ -28,6 +36,11 @@ logger = get_logger(__name__)
 # Ustawienia dla pętli meta-uczenia
 ENABLE_META_LEARNING = True  # Flaga do włączania/wyłączania meta-uczenia
 MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
+# Alias dla kompatybilności z testami i innymi modułami
+MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS
+COUNCIL_COLLABORATION_KEYWORDS = COUNCIL_KEYWORDS
+COUNCIL_TASK_THRESHOLD = COUNCIL_THRESHOLD
+ENABLE_COUNCIL_MODE = COUNCIL_ENABLE_FLAG
 
 
 class Orchestrator:
@@ -78,6 +91,7 @@ class Orchestrator:
         # Inicjalizuj flows (delegowane logiki biznesowe)
         self._code_review_loop = None
         self._council_flow = None
+        self._council_config = None
         self._forge_flow = None
         self._campaign_flow = None
         self._healing_flow = None
@@ -710,12 +724,21 @@ class Orchestrator:
         Returns:
             Zaakceptowany kod lub kod po naprawach
         """
+        coder = getattr(self.task_dispatcher, "coder_agent", None)
+        critic = getattr(self.task_dispatcher, "critic_agent", None)
+
+        if coder is None or critic is None:
+            logger.warning(
+                "TaskDispatcher nie ma zainicjalizowanych agentów coder/critic - używam prostego dispatch"
+            )
+            return await self.task_dispatcher.dispatch("CODE_GENERATION", user_request)
+
         # Lazy init CodeReviewLoop
         if self._code_review_loop is None:
             self._code_review_loop = CodeReviewLoop(
                 state_manager=self.state_manager,
-                coder_agent=self.task_dispatcher.coder_agent,
-                critic_agent=self.task_dispatcher.critic_agent,
+                coder_agent=coder,
+                critic_agent=critic,
             )
 
         # Deleguj do CodeReviewLoop
@@ -895,16 +918,112 @@ class Orchestrator:
         Returns:
             Wynik dyskusji Council
         """
-        # Lazy init CouncilFlow
-        if self._council_flow is None:
-            self._council_flow = CouncilFlow(
-                state_manager=self.state_manager,
-                task_dispatcher=self.task_dispatcher,
-                event_broadcaster=self.event_broadcaster,
+        self.state_manager.add_log(
+            task_id, "🏛️ THE COUNCIL: Rozpoczynam tryb Group Chat (Swarm Intelligence)"
+        )
+
+        await self._broadcast_event(
+            event_type="COUNCIL_STARTED",
+            message="The Council rozpoczyna dyskusję nad zadaniem",
+            data={"task_id": str(task_id)},
+        )
+
+        try:
+            if self._council_config is None:
+                from venom_core.agents.guardian import GuardianAgent
+                from venom_core.core.council import (
+                    CouncilConfig,
+                    create_local_llm_config,
+                )
+
+                coder = getattr(self.task_dispatcher, "coder_agent", None)
+                critic = getattr(self.task_dispatcher, "critic_agent", None)
+                architect = getattr(self.task_dispatcher, "architect_agent", None)
+
+                guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
+                llm_config = create_local_llm_config()
+
+                self._council_config = CouncilConfig(
+                    coder_agent=coder,
+                    critic_agent=critic,
+                    architect_agent=architect,
+                    guardian_agent=guardian,
+                    llm_config=llm_config,
+                )
+
+            from venom_core.core.council import CouncilSession
+
+            council_tuple = self._council_config.create_council()
+            user_proxy, group_chat, manager = self._normalize_council_tuple(
+                council_tuple
             )
 
-        # Deleguj do CouncilFlow
-        return await self._council_flow.run(task_id, context)
+            session = CouncilSession(user_proxy, group_chat, manager)
+
+            members = []
+            if group_chat is not None and getattr(group_chat, "agents", None):
+                members = [
+                    getattr(agent, "name", str(agent)) for agent in group_chat.agents
+                ]
+
+            await self._broadcast_event(
+                event_type="COUNCIL_MEMBERS",
+                message=f"Council składa się z {len(members)} członków",
+                data={"task_id": str(task_id), "members": members},
+            )
+
+            result = await session.run(context)
+
+            get_message_count = getattr(session, "get_message_count", lambda: 0)
+            get_speakers = getattr(session, "get_speakers", lambda: members)
+            message_count = get_message_count()
+            speakers = get_speakers() or members
+
+            self.state_manager.add_log(
+                task_id,
+                f"🏛️ THE COUNCIL: Dyskusja zakończona - {message_count} wiadomości, "
+                f"uczestnicy: {', '.join(speakers)}",
+            )
+
+            await self._broadcast_event(
+                event_type="COUNCIL_COMPLETED",
+                message=f"Council zakończył dyskusję po {message_count} wiadomościach",
+                data={
+                    "task_id": str(task_id),
+                    "message_count": message_count,
+                    "speakers": speakers,
+                },
+            )
+
+            logger.info(f"Council zakończył zadanie {task_id}")
+            return result
+
+        except Exception as e:
+            error_msg = f"❌ Błąd podczas działania Council: {e}"
+            logger.error(error_msg)
+
+            self.state_manager.add_log(task_id, error_msg)
+
+            await self._broadcast_event(
+                event_type="COUNCIL_ERROR",
+                message=error_msg,
+                data={"task_id": str(task_id), "error": str(e)},
+            )
+
+            logger.warning("Council zawiódł - powrót do standardowego flow")
+            return f"Council mode nie powiódł się: {e}"
+
+    def _normalize_council_tuple(self, council_result):
+        """Zapewnia że create_council zwraca krotkę (user_proxy, group_chat, manager)."""
+
+        if isinstance(council_result, tuple):
+            padded = list(council_result) + [None] * (3 - len(council_result))
+            return tuple(padded[:3])
+
+        user_proxy = getattr(council_result, "user_proxy", None)
+        group_chat = getattr(council_result, "group_chat", None)
+        manager = getattr(council_result, "manager", None)
+        return user_proxy, group_chat, manager
 
     async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """

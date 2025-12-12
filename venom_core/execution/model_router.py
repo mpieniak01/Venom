@@ -125,22 +125,6 @@ class HybridModelRouter:
         Returns:
             Dict z informacjami o routingu
         """
-        # Oblicz złożoność zadania (0-10)
-        complexity = self.calculate_complexity(prompt, task_type)
-
-        # LOW-COST ROUTING: Jeśli złożoność < COMPLEXITY_THRESHOLD_LOCAL (domyślnie 5) -> zawsze LOCAL
-        if complexity < SETTINGS.COMPLEXITY_THRESHOLD_LOCAL:
-            logger.info(f"[Low-Cost Routing] Complexity={complexity} -> LOCAL")
-            return self._route_to_local(
-                f"Tryb HYBRID: niski complexity={complexity} -> LOCAL (oszczędność)"
-            )
-
-        # Zadania proste -> LOCAL
-        if task_type in [TaskType.STANDARD, TaskType.CHAT, TaskType.CODING_SIMPLE]:
-            return self._route_to_local(
-                f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
-            )
-
         # RESEARCH - routing zależy od paid_mode
         # Router sprawdza paid_mode_enabled i decyduje o użyciu Google Grounding vs DuckDuckGo
         if task_type == TaskType.RESEARCH:
@@ -161,6 +145,22 @@ class HybridModelRouter:
                 return self._route_to_local(
                     "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo)"
                 )
+
+        # Oblicz złożoność zadania (0-10)
+        complexity = self.calculate_complexity(prompt, task_type)
+
+        # LOW-COST ROUTING: Jeśli złożoność < COMPLEXITY_THRESHOLD_LOCAL (domyślnie 5) -> zawsze LOCAL
+        if complexity < SETTINGS.COMPLEXITY_THRESHOLD_LOCAL:
+            logger.info(f"[Low-Cost Routing] Complexity={complexity} -> LOCAL")
+            return self._route_to_local(
+                f"Tryb HYBRID: niski complexity={complexity} -> LOCAL (oszczędność)"
+            )
+
+        # Zadania proste -> LOCAL
+        if task_type in [TaskType.STANDARD, TaskType.CHAT, TaskType.CODING_SIMPLE]:
+            return self._route_to_local(
+                f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
+            )
 
         # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)
         # LOW-COST ROUTING: Sprawdź estymowany koszt przed użyciem CLOUD_HIGH

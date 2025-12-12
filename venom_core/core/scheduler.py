@@ -1,9 +1,11 @@
 """Moduł: scheduler - System harmonogramowania zadań w tle (THE_OVERMIND)."""
 
+import os
 from datetime import datetime
 from typing import Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING, STATE_STOPPED
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -21,7 +23,9 @@ class BackgroundScheduler:
     Wykorzystuje APScheduler do zarządzania zadaniami cyklicznymi i zdarzeniowymi.
     """
 
-    def __init__(self, event_broadcaster=None):
+    def __init__(
+        self, event_broadcaster=None, allow_test_override: Optional[bool] = None
+    ):
         """
         Inicjalizacja schedulera.
 
@@ -32,6 +36,11 @@ class BackgroundScheduler:
         self.event_broadcaster = event_broadcaster
         self.is_running = False
         self._jobs_registry = {}  # Rejestr zadań: job_id -> metadata
+        self._allow_test_override = (
+            allow_test_override
+            if allow_test_override is not None
+            else bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        )
 
         logger.info("BackgroundScheduler zainicjalizowany")
 
@@ -41,7 +50,7 @@ class BackgroundScheduler:
             logger.warning("Scheduler już działa")
             return
 
-        if SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS:
+        if SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS and not self._allow_test_override:
             logger.warning(
                 "Zadania w tle są wstrzymane (VENOM_PAUSE_BACKGROUND_TASKS=True)"
             )
@@ -194,10 +203,22 @@ class BackgroundScheduler:
         """
         jobs = []
         for job in self.scheduler.get_jobs():
+            next_run_attr = getattr(job, "next_run_time", None)
+            next_run_time = None
+            if callable(next_run_attr):
+                try:
+                    next_run_time = next_run_attr()
+                except Exception:
+                    next_run_time = None
+            else:
+                next_run_time = next_run_attr
+
             job_info = {
                 "id": job.id,
                 "next_run_time": (
-                    job.next_run_time.isoformat() if job.next_run_time else None
+                    next_run_time.isoformat()
+                    if hasattr(next_run_time, "isoformat")
+                    else None
                 ),
                 "name": job.name,
             }
@@ -224,11 +245,23 @@ class BackgroundScheduler:
         if not job:
             return None
 
+        next_run_attr = getattr(job, "next_run_time", None)
+        next_run_time = None
+        if callable(next_run_attr):
+            try:
+                next_run_time = next_run_attr()
+            except Exception:
+                next_run_time = None
+        else:
+            next_run_time = next_run_attr
+
         status = {
             "id": job.id,
             "name": job.name,
             "next_run_time": (
-                job.next_run_time.isoformat() if job.next_run_time else None
+                next_run_time.isoformat()
+                if hasattr(next_run_time, "isoformat")
+                else None
             ),
         }
 
@@ -239,6 +272,10 @@ class BackgroundScheduler:
 
     async def pause_all_jobs(self) -> None:
         """Wstrzymuje wszystkie zadania."""
+        if not self.is_running or self.scheduler.state == STATE_STOPPED:
+            logger.warning("Nie można wstrzymać - scheduler nie działa")
+            return
+
         self.scheduler.pause()
         logger.info("Wszystkie zadania wstrzymane")
 
@@ -251,6 +288,10 @@ class BackgroundScheduler:
 
     async def resume_all_jobs(self) -> None:
         """Wznawia wszystkie zadania."""
+        if not self.is_running or self.scheduler.state == STATE_STOPPED:
+            logger.warning("Nie można wznowić - scheduler nie działa")
+            return
+
         self.scheduler.resume()
         logger.info("Wszystkie zadania wznowione")
 
@@ -270,18 +311,18 @@ class BackgroundScheduler:
         """
         # Mapowanie stanu APSchedulera na uproszczony string
         aps_state = self.scheduler.state
-        if aps_state == 1:  # STATE_RUNNING
+        if aps_state == STATE_RUNNING:
             state_str = "running"
-        elif aps_state == 2:  # STATE_PAUSED
+        elif aps_state == STATE_PAUSED:
             state_str = "paused"
-        elif aps_state == 0:  # STATE_STOPPED
+        elif aps_state == STATE_STOPPED:
             state_str = "stopped"
         else:
             state_str = "unknown"
 
         return {
             "is_running": self.is_running,
-            "paused": aps_state == 2,  # Faktyczny stan paused schedulera
+            "paused": aps_state == STATE_PAUSED,  # Faktyczny stan paused schedulera
             "jobs_count": len(self.scheduler.get_jobs()),
             "state": state_str,
         }

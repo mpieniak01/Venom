@@ -446,7 +446,14 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         Returns:
             Bezpieczny identyfikator (tylko alfanumeryczne znaki i _)
         """
-        # Usuń niedozwolone znaki, zostaw tylko alfanumeryczne i _
+        # Najpierw neutralizuj próby przejścia do katalogu nadrzędnego
+        identifier = re.sub(r"\.\.(?:/|\\)", "____", identifier)
+        identifier = identifier.replace("..", "____")
+
+        # Zamień separatory ścieżek na podkreślenia
+        identifier = re.sub(r"[\\/]", "_", identifier)
+
+        # Usuń pozostałe niedozwolone znaki, zostaw tylko alfanumeryczne i _
         sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
 
         # Upewnij się że zaczyna się od litery lub _

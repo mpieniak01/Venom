@@ -366,23 +366,30 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
     def _extract_session_id(self, text: str) -> Optional[str]:
         """Wyodrębnia ID sesji z tekstu."""
+        pattern = re.compile(
+            r"(?:sesj[aeę]|session)\s+(?:o\s+nazwie\s+)?['\"]?([a-zA-Z0-9_\-]+)['\"]?",
+            re.IGNORECASE,
+        )
+        match = pattern.search(text)
+        if match:
+            return match.group(1)
+
         words = text.split()
         for word in words:
-            if word.startswith("demo_") or word.startswith("session_"):
-                return word
+            if word.startswith(("demo_", "session_", "sesja_")):
+                return word.strip("'\"")
         return None
 
     def _extract_skill_name(self, text: str) -> Optional[str]:
         """Wyodrębnia nazwę skill z tekstu."""
-        # Szukaj po słowie "skill"
-        words = text.split()
-        for i, word in enumerate(words):
-            if word.lower() == "skill" and i + 1 < len(words):
-                name = words[i + 1].strip("'\"")
-                # Normalizuj nazwę (snake_case)
-                name = name.lower().replace(" ", "_").replace("-", "_")
-                return name
-        return None
+        pattern = re.compile(r"skill\s+['\"]?([a-zA-Z0-9 _\-]+)['\"]?", re.IGNORECASE)
+        match = pattern.search(text)
+        if not match:
+            return None
+        raw_name = match.group(1).strip()
+        normalized = raw_name.lower().replace("-", " ").replace(" ", "_")
+        normalized = self._sanitize_identifier(normalized)
+        return normalized
 
     def _sanitize_identifier(self, identifier: str) -> str:
         """
@@ -394,6 +401,9 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
         Returns:
             Bezpieczny identyfikator (tylko alfanumeryczne znaki i _)
         """
+        # Specjalne zabezpieczenie przed ../ lub ..\ w ścieżkach
+        identifier = identifier.replace("../", "____").replace("..\\", "____")
+
         # Usuń niedozwolone znaki, zostaw tylko alfanumeryczne i _
         sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", identifier)
 

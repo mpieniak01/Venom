@@ -5,6 +5,8 @@ import pytest
 from venom_core.execution.skills.test_skill import TestSkill
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
+pytestmark = pytest.mark.requires_docker
+
 
 @pytest.fixture(scope="module")
 def docker_habitat():

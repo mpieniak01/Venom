@@ -181,21 +181,27 @@ ACTION: <co trzeba naprawić>
             # Wywołaj analizę
             result = await self.process(prompt)
 
+            if self._is_llm_failure(result):
+                logger.warning(
+                    "Guardian otrzymał komunikat błędu z LLM, zwracam ticket awaryjny"
+                )
+                return self._default_ticket(test_output, result)
+
             # Sparsuj odpowiedź do RepairTicket
             ticket = self._parse_repair_ticket(result)
+
+            if not ticket.cause or not ticket.suggested_action:
+                logger.warning(
+                    "Guardian otrzymał niekompletną odpowiedź LLM, zwracam ticket awaryjny"
+                )
+                return self._default_ticket(test_output, "Niekompletna odpowiedź LLM")
 
             return ticket
 
         except Exception as e:
             logger.error(f"Błąd podczas analizy testu: {e}")
             # Zwróć domyślny ticket
-            return RepairTicket(
-                file_path="UNKNOWN",
-                line_number=None,
-                error_message=test_output[:200],
-                cause="Nie udało się przeanalizować",
-                suggested_action=f"Sprawdź manualnie. Błąd: {str(e)}",
-            )
+            return self._default_ticket(test_output, str(e))
 
     def _parse_repair_ticket(self, llm_response: str) -> RepairTicket:
         """
@@ -239,3 +245,28 @@ ACTION: <co trzeba naprawić>
             cause=cause,
             suggested_action=suggested_action,
         )
+
+    def _default_ticket(self, test_output: str, error: str) -> RepairTicket:
+        """Buduje ticket awaryjny gdy analiza się nie powiodła."""
+
+        return RepairTicket(
+            file_path="UNKNOWN",
+            line_number=None,
+            error_message=test_output[:200],
+            cause="Nie udało się przeanalizować",
+            suggested_action=f"Sprawdź ręcznie wynik testu. Szczegóły: {error}",
+        )
+
+    def _is_llm_failure(self, response: str) -> bool:
+        """Sprawdza czy odpowiedź wskazuje na błąd LLM lub brak wyniku."""
+
+        if not response:
+            return True
+
+        normalized = response.strip()
+
+        if normalized.startswith("❌"):
+            return True
+
+        # Brak sekcji FILE / ACTION oznacza, że odpowiedź jest niepoprawna
+        return "FILE:" not in normalized and "ACTION:" not in normalized

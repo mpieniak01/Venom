@@ -12,8 +12,9 @@ from venom_core.main import app, state_manager
 
 @pytest.fixture
 def client():
-    """Fixture dla klienta testowego FastAPI."""
-    return TestClient(app)
+    """Fixture dla klienta testowego FastAPI (odpala lifespan)."""
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture

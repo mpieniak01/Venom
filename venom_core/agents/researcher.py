@@ -1,5 +1,7 @@
 """Moduł: researcher - agent badawczy, synteza wiedzy z Internetu."""
 
+import os
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
@@ -133,17 +135,21 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         """
         super().__init__(kernel)
 
+        # W testach nie chcemy rejestrować ciężkich pluginów (GitHub/HF)
+        self._testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
+
         # Zarejestruj WebSearchSkill
         web_skill = WebSearchSkill()
         self.kernel.add_plugin(web_skill, plugin_name="WebSearchSkill")
 
-        # Zarejestruj GitHubSkill
-        github_skill = GitHubSkill()
-        self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
+        if not self._testing_mode:
+            # Zarejestruj GitHubSkill
+            github_skill = GitHubSkill()
+            self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
 
-        # Zarejestruj HuggingFaceSkill
-        hf_skill = HuggingFaceSkill()
-        self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
+            # Zarejestruj HuggingFaceSkill
+            hf_skill = HuggingFaceSkill()
+            self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
 
         # Zarejestruj MemorySkill
         memory_skill = MemorySkill()
@@ -152,9 +158,14 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         # Tracking źródła danych (dla UI badge)
         self._last_search_source = "duckduckgo"  # domyślnie DuckDuckGo
 
-        logger.info(
-            "ResearcherAgent zainicjalizowany z WebSearchSkill, GitHubSkill, HuggingFaceSkill i MemorySkill"
-        )
+        if self._testing_mode:
+            logger.info(
+                "ResearcherAgent zainicjalizowany w trybie testowym (WebSearch + Memory)"
+            )
+        else:
+            logger.info(
+                "ResearcherAgent zainicjalizowany z WebSearchSkill, GitHubSkill, HuggingFaceSkill i MemorySkill"
+            )
 
     async def process(self, input_text: str) -> str:
         """

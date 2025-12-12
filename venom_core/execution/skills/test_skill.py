@@ -46,8 +46,18 @@ class TestSkill:
         Args:
             habitat: Instancja DockerHabitat (jeśli None, zostanie utworzona)
         """
-        self.habitat = habitat or DockerHabitat()
-        logger.info("TestSkill zainicjalizowany")
+        try:
+            self.habitat = habitat or DockerHabitat()
+            self.docker_available = True
+            logger.info("TestSkill zainicjalizowany (Docker sandbox)")
+        except RuntimeError as e:
+            # Środowisko docelowe (np. CI) może nie mieć Dockera – dopuszczamy tryb degradowany
+            self.habitat = None
+            self.docker_available = False
+            logger.warning(
+                "DockerHabitat niedostępny (%s). TestSkill działa w trybie tylko-raportującym.",
+                e,
+            )
 
     @kernel_function(
         name="run_pytest",
@@ -71,6 +81,9 @@ class TestSkill:
             Sformatowany raport z wyników testów
         """
         try:
+            if not self.docker_available or not self.habitat:
+                return "⚠️ Docker sandbox jest niedostępny - nie mogę uruchomić pytest."
+
             logger.info(f"Uruchamiam pytest dla: {test_path}")
 
             # Walidacja test_path - zapobieganie command injection
@@ -126,6 +139,9 @@ class TestSkill:
             Sformatowany raport z lintera
         """
         try:
+            if not self.docker_available or not self.habitat:
+                return "⚠️ Docker sandbox jest niedostępny - nie mogę uruchomić lintera."
+
             logger.info(f"Uruchamiam linter dla: {path}")
 
             # Walidacja path - zapobieganie command injection

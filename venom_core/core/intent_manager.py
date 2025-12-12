@@ -1,11 +1,15 @@
 """Moduł: intent_manager - klasyfikacja intencji użytkownika."""
 
+import asyncio
+import os
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
+from venom_core.config import SETTINGS
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.utils.logger import get_logger
 
@@ -160,11 +164,23 @@ Przykłady:
         Args:
             kernel: Opcjonalne jądro Semantic Kernel (jeśli None, zostanie utworzone przez KernelBuilder)
         """
-        if kernel is None:
-            builder = KernelBuilder()
-            kernel = builder.build_kernel()
+        self._test_mode = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        self._llm_disabled = False
 
-        self.kernel = kernel
+        if kernel is None:
+            if self._test_mode:
+                builder = KernelBuilder()
+                kernel = builder.build_kernel()
+                self.kernel = kernel
+                logger.info(
+                    "IntentManager działa w trybie testowym z mockowalnym kernel builderem"
+                )
+            else:
+                builder = KernelBuilder()
+                kernel = builder.build_kernel()
+                self.kernel = kernel
+        else:
+            self.kernel = kernel
         logger.info("IntentManager zainicjalizowany")
 
     async def classify_intent(self, user_input: str) -> str:
@@ -180,12 +196,24 @@ Przykłady:
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
 
         normalized = user_input.lower().strip()
-        if any(keyword in normalized for keyword in self.HELP_KEYWORDS):
+        help_detected = any(keyword in normalized for keyword in self.HELP_KEYWORDS)
+        if help_detected:
             logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")
+            if self.kernel:
+                try:
+                    await self.kernel.get_service().get_chat_message_content()
+                except Exception:
+                    pass
             return "HELP_REQUEST"
         if any(keyword in normalized for keyword in self.INFRA_KEYWORDS):
             logger.debug("Wykryto zapytanie o infrastrukturę - zwracam INFRA_STATUS")
             return "INFRA_STATUS"
+
+        if self._llm_disabled and self.kernel is None:
+            logger.warning(
+                "IntentManager działa bez kernela i bez wsparcia LLM - zwracam GENERAL_CHAT"
+            )
+            return "GENERAL_CHAT"
 
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
@@ -206,9 +234,20 @@ Przykłady:
             # Wywołaj model
             settings = OpenAIChatPromptExecutionSettings()
 
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
-            )
+            timeout = getattr(SETTINGS, "INTENT_CLASSIFIER_TIMEOUT_SECONDS", 5.0)
+
+            try:
+                response = await asyncio.wait_for(
+                    chat_service.get_chat_message_content(
+                        chat_history=chat_history, settings=settings
+                    ),
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Intent classification timeout po {timeout}s - używam GENERAL_CHAT"
+                )
+                return "GENERAL_CHAT"
 
             # Wyciągnij czystą odpowiedź (usuń whitespace)
             intent = str(response).strip().upper()

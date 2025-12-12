@@ -464,6 +464,9 @@ class VenomDashboard {
     }
 
     addLogEntry(level, message) {
+        if (!this.elements.liveFeed) {
+            return;
+        }
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry ${level}`;
 
@@ -2317,10 +2320,15 @@ class VenomDashboard {
         const widget = data.widget;
         console.log('Rendering widget:', widget);
 
-        // Store widget
+        // Store widget (również markdown, żeby można było je usunąć)
         this.widgets.set(widget.id, widget);
 
-        // Show widgets grid if hidden
+        if (widget.type === 'markdown') {
+            this.renderMarkdownWidget(widget);
+            return;
+        }
+
+        // Show widgets grid jeśli renderujemy wizualne widgety
         if (this.elements.widgetsGrid) {
             this.elements.widgetsGrid.style.display = 'grid';
         }
@@ -2335,9 +2343,6 @@ class VenomDashboard {
                 break;
             case 'form':
                 this.renderFormWidget(widget);
-                break;
-            case 'markdown':
-                this.renderMarkdownWidget(widget);
                 break;
             case 'mermaid':
                 this.renderMermaidWidget(widget);
@@ -2575,16 +2580,23 @@ class VenomDashboard {
     renderMarkdownWidget(widget) {
         const container = document.createElement('div');
         container.id = `widget-${widget.id}`;
-        container.className = 'widget widget-markdown';
+        container.className = 'message assistant message-widget';
 
-        // Render markdown with marked.js
+        const content = document.createElement('div');
+        content.className = 'message-content';
+
         if (typeof marked !== 'undefined') {
-            container.innerHTML = marked.parse(widget.data.content);
+            content.innerHTML = marked.parse(widget.data.content);
         } else {
-            container.textContent = widget.data.content;
+            content.innerHTML = this.escapeHtml(widget.data.content).replace(
+                /(?:\r\n|\r|\n)/g,
+                '<br>'
+            );
         }
 
-        this.elements.widgetsGrid.appendChild(container);
+        container.appendChild(content);
+        this.elements.chatMessages.appendChild(container);
+        this.scrollChatToBottom();
     }
 
     renderMermaidWidget(widget) {
@@ -2727,6 +2739,8 @@ class VenomDashboard {
             this.elements.widgetsGrid.innerHTML = '';
             this.elements.widgetsGrid.style.display = 'none';
         }
+
+        document.querySelectorAll('.message-widget').forEach(el => el.remove());
 
         this.showNotification('Wszystkie widgety zostały wyczyszczone', 'info');
     }
@@ -3426,10 +3440,14 @@ class VenomDashboard {
 
         const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
 
+        const safeMessage = this.escapeHtml(message).replace(/(?:\r\n|\r|\n)/g, '<br>');
+
         entry.innerHTML = `
-            <span class="terminal-timestamp">[${timestamp}]</span>
-            <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase().padEnd(7)}</span>
-            <span class="terminal-message">${this.escapeHtml(message)}</span>
+            <div class="terminal-meta">
+                <span class="terminal-timestamp">[${timestamp}]</span>
+                <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase()}</span>
+            </div>
+            <div class="terminal-message">${safeMessage}</div>
         `;
 
         terminal.appendChild(entry);
@@ -3447,9 +3465,11 @@ class VenomDashboard {
         if (this.elements.liveTerminal) {
             this.elements.liveTerminal.innerHTML = `
                 <div class="terminal-entry">
-                    <span class="terminal-timestamp">[--:--:--]</span>
-                    <span class="terminal-level info">INFO</span>
-                    <span class="terminal-message">Terminal cleared</span>
+                    <div class="terminal-meta">
+                        <span class="terminal-timestamp">[--:--:--]</span>
+                        <span class="terminal-level info">INFO</span>
+                    </div>
+                    <div class="terminal-message">Terminal cleared</div>
                 </div>
             `;
         }

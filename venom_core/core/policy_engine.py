@@ -41,6 +41,14 @@ class PolicyEngine:
         (r"dd\s+if=/dev/zero", "Nadpisywanie dysku"),
         (r">\s*/dev/sd[a-z]", "Bezpośredni zapis na dysk"),
         (
+            r"subprocess\.run\(\s*\[[^\]]*?['\"]git['\"][^\]]*?['\"]push['\"][^\]]*?['\"](--force|-f)['\"]",
+            "Git push wymuszający (subprocess)",
+        ),
+        (
+            r"subprocess\.run\(\s*['\"]git\s+push\s+(?:--force|-f)",
+            "Git push wymuszający (subprocess z poleceniem)",
+        ),
+        (
             r"\bgit\s+push\s+.*--force",
             "Git push --force (może nadpisać historię)",
         ),  # Explicit git command

@@ -6,12 +6,32 @@ a światem AutoGen (Swarm Intelligence / Group Chat).
 
 from typing import Any, Callable, Dict, List, Optional
 
-from autogen import ConversableAgent
-
 from venom_core.agents.base import BaseAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    from autogen import ConversableAgent
+except ImportError:  # pragma: no cover
+    logger.warning(
+        "Pakiet 'autogen' nie jest dostępny - używam stubu ConversableAgent."
+    )
+
+    class ConversableAgent:  # type: ignore
+        def __init__(
+            self, name: str, system_message: str, llm_config: Optional[Dict] = None, **_
+        ):
+            self.name = name
+            self.system_message = system_message
+            self.llm_config = llm_config or {}
+
+        def register_function(self, function_map: Dict[str, Callable]):
+            # Minimalna implementacja - brak obsługi function calling
+            logger.debug(
+                "Stub ConversableAgent.register_function wywołany z %s",
+                list(function_map.keys()),
+            )
 
 
 class VenomAgent(ConversableAgent):

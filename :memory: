@@ -1,0 +1,1500 @@
+{
+  "tasks": [
+    {
+      "id": "f085792a-4b23-4d62-85fc-71498d290dd4",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T11:41:59.900879",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:41:59.903196",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T11:41:59.903441",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T11:41:59.903874"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "0cfc8db1-7366-4261-8700-53bc5f982021",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T11:41:59.924569",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:41:59.925250",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T11:41:59.925482",
+        "Zakończono przetwarzanie: 2025-12-12T11:41:59.926197"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "301b0156-4fb1-4323-9c10-711dfaaae3f8",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T11:41:59.946198",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:41:59.946965",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:41:59.947187",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T11:41:59.947707"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "4a366ab9-ae68-4f77-a161-169ac84b9b69",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T11:41:59.969358",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:41:59.971140",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:41:59.971366",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T11:41:59.971870"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "84363d8e-6795-44c3-8639-e6d11d38c4d8",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T11:41:59.992682",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:41:59.993345",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T11:41:59.993561",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T11:41:59.993821",
+        "Zakończono przetwarzanie: 2025-12-12T11:41:59.994182"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "cec7b973-efc7-4740-81ba-c7d501ead07b",
+      "content": "Test task",
+      "created_at": "2025-12-12T11:42:00.038664",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:42:00.039388",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T11:42:00.039616",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T11:42:00.039889",
+        "Zakończono przetwarzanie: 2025-12-12T11:42:00.040260"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "be4b0ffb-3161-4d9c-ac5a-6b4a810d4bf8",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T11:49:04.515994",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.517396",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T11:49:04.517633",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.518151"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "131e6c08-9cb0-4792-a4a9-3e4162e34f36",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T11:49:04.540840",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.541626",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T11:49:04.541838",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.542405"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "c8498b41-49ba-4d6b-af3d-f7b2fa8d481f",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T11:49:04.562896",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.563695",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:49:04.563876",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.564398"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "92619d9f-08b6-43d6-9758-2ad6bbc60ae1",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T11:49:04.587099",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.589521",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:49:04.589757",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.590359"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "ffc22512-a86d-42c0-9a6e-90db0eeacf80",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T11:49:04.610980",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.612038",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T11:49:04.612398",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T11:49:04.612825",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.613466"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "2128608e-4351-42b4-9cab-801ebf54f8bc",
+      "content": "Test task",
+      "created_at": "2025-12-12T11:49:04.637034",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:04.637835",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T11:49:04.638090",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T11:49:04.638422",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:04.638870"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "f8966e7b-2605-4a69-9f92-92ae097ad6ae",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T11:49:10.378750",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.380237",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T11:49:10.380464",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.381029"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "412b07bd-522f-47fa-bf02-1ffbadd15636",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T11:49:10.408235",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.409044",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T11:49:10.409281",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.409850"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "92ec14c7-6f4e-400a-bcfc-9e8cc69c6fe1",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T11:49:10.436534",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.437431",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:49:10.437664",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.438218"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "d68c631d-be72-403c-8955-acc5e3f99da9",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T11:49:10.460012",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.461598",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:49:10.461847",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.463032"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "814f156e-5cba-4a7d-b4c3-77b916f52480",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T11:49:10.486619",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.487585",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T11:49:10.488100",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T11:49:10.488419",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.489083"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "7a55dfbe-96c1-4cfa-9202-d2014b51dfac",
+      "content": "Test task",
+      "created_at": "2025-12-12T11:49:10.512485",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:49:10.513681",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T11:49:10.514003",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T11:49:10.514427",
+        "Zakończono przetwarzanie: 2025-12-12T11:49:10.515005"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "ed227e90-5efe-4eb7-b633-72ad3681b4af",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T11:58:07.193494",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.194508",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T11:58:07.194769",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.195410"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e9eb8bdc-0826-4c02-819a-d3e132c598d5",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T11:58:07.216103",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.217261",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T11:58:07.217613",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.218406"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "7af9ca23-5ac4-4520-ba22-5bbf0c5b39c4",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T11:58:07.238820",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.239846",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:58:07.240098",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.241454"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "06f9a562-459c-4cd0-b723-96ae2e4f52e3",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T11:58:07.263832",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.264676",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T11:58:07.264910",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.265702"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "0fd7ce93-e9ca-4fd1-b7a3-498ab9c7a1b0",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T11:58:07.287380",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.288249",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T11:58:07.288480",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T11:58:07.288740",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.289269"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "9188a579-ec3d-45d0-a4f4-309a7e96d6db",
+      "content": "Test task",
+      "created_at": "2025-12-12T11:58:07.312860",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T11:58:07.313854",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T11:58:07.314099",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T11:58:07.314375",
+        "Zakończono przetwarzanie: 2025-12-12T11:58:07.314938"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "725e6b99-b4bf-4a6e-8b19-274902e5a67b",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T12:04:42.265592",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.266638",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T12:04:42.266894",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.267609"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "3c9745c0-5d6c-4562-b3e7-e872960360e0",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T12:04:42.288564",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.289558",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T12:04:42.289794",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.290507"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "8133f895-1ff3-4e26-af3b-a507561106be",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T12:04:42.313916",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.315024",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:04:42.315272",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.316006"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "13400644-2d2f-45f8-896d-553299fe4b0b",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T12:04:42.338828",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.340597",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:04:42.340983",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.342283"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "31b50282-43f6-4924-a080-c1942f470cc0",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T12:04:42.364685",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.365760",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T12:04:42.366010",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T12:04:42.366305",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.366937"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a2bfd1fc-d5e8-4d91-9021-9fc25375b320",
+      "content": "Test task",
+      "created_at": "2025-12-12T12:04:42.390180",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:04:42.391417",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T12:04:42.391705",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T12:04:42.391980",
+        "Zakończono przetwarzanie: 2025-12-12T12:04:42.393490"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a582bd41-ad14-48ba-849d-eecd4c4871f6",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T12:36:06.981078",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:06.982405",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T12:36:06.982664",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:06.983418"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5182080a-517f-4c9f-b9fe-fe038561949d",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T12:36:07.007366",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:07.008784",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T12:36:07.009364",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:07.010972"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e525633b-0d39-4492-aacd-e86230e26dd4",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T12:36:07.039617",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:07.042431",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:36:07.042718",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:07.043650"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "156e4f07-9629-4683-8630-7fb265ea9ce5",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T12:36:07.068417",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:07.069455",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:36:07.069746",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:07.070588"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "63bbdb9e-2d0b-4f0b-9b4e-56e5d495c430",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T12:36:07.097731",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:07.098787",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T12:36:07.099046",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T12:36:07.099422",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:07.100221"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "dfc8020f-b402-4a8c-b2c0-7712318dfa78",
+      "content": "Test task",
+      "created_at": "2025-12-12T12:36:07.126265",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:36:07.127500",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T12:36:07.127744",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T12:36:07.128019",
+        "Zakończono przetwarzanie: 2025-12-12T12:36:07.128716"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "abf9e9d5-8f6a-46d0-9621-94f3d77c2acb",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T12:42:17.892404",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:17.893533",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T12:42:17.893783",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:17.894662"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "1d729ebb-2f97-4aaf-9e09-1e273dfc1a85",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T12:42:17.920289",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:17.921707",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T12:42:17.921974",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:17.922839"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "2a3790ad-802b-4a77-ba7b-5647ad914b2a",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T12:42:17.945380",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:17.946531",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:42:17.946771",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:17.947950"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "3b0ce0b0-f00f-4502-a0e9-bd7c660992cc",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T12:42:17.972580",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:17.973697",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T12:42:17.973964",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:17.975669"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "34e6e6ed-57f2-4933-8920-2976cea01e4f",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T12:42:17.998930",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:17.999996",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T12:42:18.000247",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T12:42:18.000626",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:18.001529"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "d4a3a974-06d1-4830-87d7-ad957b085b1c",
+      "content": "Test task",
+      "created_at": "2025-12-12T12:42:18.025436",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T12:42:18.026529",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T12:42:18.026778",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T12:42:18.027427",
+        "Zakończono przetwarzanie: 2025-12-12T12:42:18.028997"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "22a53a58-888e-476e-8b14-643a59b428c9",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T13:01:05.167791",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.169143",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T13:01:05.169529",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.170738"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e191a164-af0e-4057-ad93-7026665c67b4",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T13:01:05.195681",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.199091",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T13:01:05.199756",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.200883"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "555f5246-b332-48eb-a3ed-04f99530b2f7",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T13:01:05.223847",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.225137",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T13:01:05.225390",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.226454"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "d68282fc-f1af-4fe2-b457-bb449e26d709",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T13:01:05.251872",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.253043",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T13:01:05.253299",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.254331"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "60f0ed5d-c1d7-436e-b106-52ee305ffdeb",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T13:01:05.281391",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.282684",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T13:01:05.282965",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T13:01:05.283284",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.284179"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "4d902366-a8d1-4100-8af1-f2d2304bb6aa",
+      "content": "Test task",
+      "created_at": "2025-12-12T13:01:05.309603",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:01:05.311032",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T13:01:05.311299",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T13:01:05.311614",
+        "Zakończono przetwarzanie: 2025-12-12T13:01:05.312504"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "afe6b40c-d85c-489d-b168-fba07fa3f48b",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T13:49:51.473117",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.475263",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T13:49:51.475720",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.478603"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "680b0548-b347-4573-a374-0d8267582a36",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T13:49:51.506839",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.508268",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T13:49:51.508545",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.509617"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "b181e490-a0bf-4dc0-a0d9-81cc0a9b0c12",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T13:49:51.533963",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.536183",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T13:49:51.536455",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.537519"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "1897b2c9-9669-4bcb-9a0b-b8cc1de0b729",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T13:49:51.562719",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.564030",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T13:49:51.564301",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.565305"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "b5176a6a-ae43-4f15-86e6-e63651e1e2a6",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T13:49:51.592945",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.594513",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T13:49:51.594832",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T13:49:51.595152",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.596117"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5516eece-3cb7-4329-9aaf-fc5fe811a892",
+      "content": "Test task",
+      "created_at": "2025-12-12T13:49:51.622637",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T13:49:51.624004",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T13:49:51.624270",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T13:49:51.624570",
+        "Zakończono przetwarzanie: 2025-12-12T13:49:51.625973"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5d406e02-6817-4631-a42c-6dc1cc28627a",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:00:23.383675",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.385588",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:00:23.385966",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.388146"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "8e4ca2ea-236f-4004-977d-b027da755ef1",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:00:23.413820",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.415350",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:00:23.415731",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.417188"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "98696494-b189-4cd7-b692-05e1eed95deb",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:00:23.444813",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.446373",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:00:23.446643",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.448502"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5679ff23-caae-4d11-a072-8ad1cbf9d5b7",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:00:23.474922",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.476352",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:00:23.476604",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.477696"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "2276cc57-24af-4dfb-8841-a11c3b9d8ffd",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:00:23.507146",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.508752",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:00:23.509060",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:00:23.509429",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.511228"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "1df53852-ef78-452b-98c1-c5249435ae8e",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:00:23.538609",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:00:23.540011",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:00:23.540267",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:00:23.540585",
+        "Zakończono przetwarzanie: 2025-12-12T14:00:23.542348"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "38462a01-06d6-4a87-8c31-aab80c8bfbf4",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:06:38.074066",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.076229",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:06:38.076514",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.077614"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e49ab6e3-be26-45eb-acaf-d63dd27557c8",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:06:38.105039",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.106528",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:06:38.106840",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.108196"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "ca79e438-45d7-4838-9e78-a608194c9960",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:06:38.135731",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.137374",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:06:38.137638",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.139580"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5eabdfe7-68eb-44ed-9c97-5b599e695e7d",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:06:38.167856",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.169663",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:06:38.169888",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.171681"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5e4f5418-9c3b-475e-a348-e2dc835e3662",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:06:38.199269",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.200724",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:06:38.200984",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:06:38.201304",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.203595"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "806ccd35-a476-4fd4-81a5-eae81b5b57f8",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:06:38.232218",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:06:38.233772",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:06:38.234052",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:06:38.234393",
+        "Zakończono przetwarzanie: 2025-12-12T14:06:38.236291"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "5bd11299-c040-467a-92fa-6be85845d084",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:12:55.188002",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.190342",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:12:55.190655",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.191910"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e3f3b083-b81a-49f9-8736-20ac94abfa8f",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:12:55.218735",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.220255",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:12:55.220527",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.222545"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e15a9b5b-a884-49fb-b1c9-a97d6a128f66",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:12:55.247442",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.249749",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:12:55.250037",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.251322"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "2dca642d-b88b-4c77-884a-dfd6567409c6",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:12:55.277845",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.279326",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:12:55.279592",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.281596"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "b8f16788-5936-4c90-91c3-f5c327b979eb",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:12:55.308797",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.310266",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:12:55.310527",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:12:55.310826",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.312727"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "76e9faee-3bda-4980-a3cf-207bccb6bbaf",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:12:55.337733",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:12:55.340826",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:12:55.341123",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:12:55.341462",
+        "Zakończono przetwarzanie: 2025-12-12T14:12:55.343379"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "0ba2fe96-cc5d-41d3-b848-e4a756062b4d",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:23:45.679840",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.682247",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:23:45.682525",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.683800"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "960f5e6b-d9d0-4e92-9508-640374ee9761",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:23:45.709087",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.710685",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:23:45.710948",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.713712"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "941b62aa-188e-4d46-bb75-01caa71367ce",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:23:45.739593",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.742006",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:23:45.742274",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.743538"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "cd9987ff-95e0-41e3-b405-1c3f05d3929f",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:23:45.770211",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.772062",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:23:45.772303",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.774993"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e305653b-e287-4e09-8d18-5a3c0b38ba31",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:23:45.801007",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.802563",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:23:45.803007",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:23:45.804373",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.805900"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "17411810-21e4-4fb1-a390-44aa6995b71f",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:23:45.832341",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:23:45.833956",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:23:45.834244",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:23:45.835293",
+        "Zakończono przetwarzanie: 2025-12-12T14:23:45.836535"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a07688ce-b744-40cd-9ac5-42682d4ef9d9",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:27:11.579033",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.581563",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:27:11.581840",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.583137"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "9e70f9fd-ce0c-4581-9283-97093d9f8ca7",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:27:11.610832",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.613287",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:27:11.613597",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.615051"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a2d2dcfd-25de-4ad0-afb8-2ba9caeca3f5",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:27:11.642231",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.644827",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:27:11.645108",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.646454"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "75c056dd-2bdb-41af-abc4-0081e60533e6",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:27:11.674310",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.678255",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:27:11.678534",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.680223"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "69ff91cf-331d-448c-8cbe-757b8a435bdd",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:27:11.707058",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.709684",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:27:11.710047",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:27:11.710393",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.711921"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "2b3a1a0d-0c7a-450e-b032-3c2b37850fa1",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:27:11.738740",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:27:11.741437",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:27:11.741750",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:27:11.742094",
+        "Zakończono przetwarzanie: 2025-12-12T14:27:11.743349"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "7f5db4bb-4b6a-4552-950a-33a94aede91d",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:30:00.845107",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:00.847826",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:30:00.848137",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:00.849595"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "fe7d0e84-6151-464e-85a9-581fa329f03f",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:30:00.877839",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:00.880353",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:30:00.880671",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:00.882391"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "1fa107d2-4d9a-4f84-9a9a-e8220e5c925d",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:30:00.909597",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:00.912219",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:30:00.912512",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:00.913918"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "592b9bb3-0cf3-4744-8db8-716dde0edbb7",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:30:00.940141",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:00.943392",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:30:00.943657",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:00.945267"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "bcf3715a-b58c-4541-a8ab-74bd3b7b9529",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:30:00.972858",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:00.975826",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:30:00.976349",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:30:00.976696",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:00.978114"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "cca89b76-a3e1-4987-85b2-a0adf55bff8d",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:30:01.007054",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:30:01.010017",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:30:01.010296",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:30:01.010667",
+        "Zakończono przetwarzanie: 2025-12-12T14:30:01.012070"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "7d4c01f9-9dce-4178-8c2d-3fc9ce65c1be",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:35:32.826820",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.829399",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:35:32.829672",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.831128"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "dd558af2-feff-4990-a75b-66433fc247db",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:35:32.857732",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.860309",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:35:32.860588",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.861981"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e7fa48c4-c50d-4bb4-83bd-cb641e2e736e",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:35:32.890387",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.892912",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:35:32.893178",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.894909"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a81f13a6-9542-4658-85b6-ec21e8a257b4",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:35:32.924004",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.926436",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:35:32.926718",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.928730"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "8b4be3ef-034c-4d44-8c40-e8cf38682ba2",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:35:32.955885",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.959052",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:35:32.959317",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:35:32.959618",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.960952"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "b82de76c-4e18-4a08-b45a-2a0cd3e6c55b",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:35:32.987306",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:35:32.990083",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:35:32.990405",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:35:32.990719",
+        "Zakończono przetwarzanie: 2025-12-12T14:35:32.992234"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "f3ce4fa7-703b-4929-9008-3a6908b1760a",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T14:46:18.672340",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.675796",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T14:46:18.676077",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.677769"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "f60f8daa-6b3e-4356-b679-da805d36b992",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T14:46:18.705187",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.709066",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T14:46:18.709469",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.711643"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "6505fef6-a621-4339-a253-c2845fea619a",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T14:46:18.741600",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.744382",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:46:18.744648",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.746308"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "14cefccb-5b92-4173-8d26-dc3adaf3f679",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T14:46:18.778193",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.781009",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T14:46:18.781320",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.783173"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "259a3dbd-4d19-4921-8e18-7534ca7cc44d",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T14:46:18.815226",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.818565",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T14:46:18.818840",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T14:46:18.819142",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.820498"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "fdf9bed9-ffbd-4c3b-9ea2-9c868ab194a0",
+      "content": "Test task",
+      "created_at": "2025-12-12T14:46:18.847365",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T14:46:18.849843",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T14:46:18.850104",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T14:46:18.850386",
+        "Zakończono przetwarzanie: 2025-12-12T14:46:18.851843"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "d8cf2f0c-4ce2-479e-aeab-9d0e9c83c8d9",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-12T15:53:35.270932",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.273310",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-12T15:53:35.273713",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.275597"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "e7370c65-468e-41c8-b85b-3da2f60f66f0",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-12T15:53:35.308115",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.311559",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-12T15:53:35.312048",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.314740"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "a95c7647-8dd9-4212-ac77-ca17b48c1657",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-12T15:53:35.344251",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.347404",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T15:53:35.347856",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.349705"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "984db5e9-0590-41ad-9b47-b4469211173c",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-12T15:53:35.382627",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.385492",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-12T15:53:35.385763",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.388425"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "f58daef4-611d-4a83-b4e4-ec1e3f38ddf4",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-12T15:53:35.419096",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.422151",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-12T15:53:35.422467",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-12T15:53:35.422782",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.424315"
+      ],
+      "context_history": {}
+    },
+    {
+      "id": "af68d7fc-e93b-44e8-a111-91326e9fe59f",
+      "content": "Test task",
+      "created_at": "2025-12-12T15:53:35.452174",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-12T15:53:35.455498",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-12T15:53:35.455823",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-12T15:53:35.456169",
+        "Zakończono przetwarzanie: 2025-12-12T15:53:35.457822"
+      ],
+      "context_history": {}
+    }
+  ],
+  "paid_mode_enabled": false,
+  "autonomy_level": 0
+}

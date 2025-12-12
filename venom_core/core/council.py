@@ -6,8 +6,6 @@ poprzez swobodną konwersację (Swarm Intelligence).
 
 from typing import Dict, List
 
-from autogen import GroupChat, GroupChatManager, UserProxyAgent
-
 from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.coder import CoderAgent
 from venom_core.agents.critic import CriticAgent
@@ -17,6 +15,60 @@ from venom_core.core.swarm import create_venom_agent_wrapper
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    from autogen import GroupChat, GroupChatManager, UserProxyAgent
+except ImportError:  # pragma: no cover - fallback for environments bez AutoGen
+    logger.warning(
+        "Pakiet 'autogen' nie jest dostępny - używam lekkich stubów na potrzeby testów."
+    )
+
+    class UserProxyAgent:  # type: ignore
+        def __init__(
+            self,
+            name: str,
+            system_message: str,
+            code_execution_config=False,
+            human_input_mode: str = "NEVER",
+            llm_config=None,
+        ):
+            self.name = name
+            self.system_message = system_message
+            self.code_execution_config = code_execution_config
+            self.human_input_mode = human_input_mode
+            self.llm_config = llm_config
+            self._history = []
+
+        def initiate_chat(self, manager, message: str):
+            """Prosta implementacja - dodaje wiadomość użytkownika."""
+            manager.groupchat.messages.append({"name": self.name, "content": message})
+
+    class GroupChat:  # type: ignore
+        def __init__(
+            self,
+            agents,
+            messages=None,
+            max_round=20,
+            speaker_selection_method="auto",
+            allow_repeat_speaker=False,
+            allowed_or_disallowed_speaker_transitions=None,
+            speaker_transitions_type="allowed",
+        ):
+            self.agents = agents
+            self.messages = messages or []
+            self.max_round = max_round
+            self.speaker_selection_method = speaker_selection_method
+            self.allow_repeat_speaker = allow_repeat_speaker
+            self.allowed_or_disallowed_speaker_transitions = (
+                allowed_or_disallowed_speaker_transitions or {}
+            )
+            self.speaker_transitions_type = speaker_transitions_type
+
+    class GroupChatManager:  # type: ignore
+        def __init__(self, groupchat, llm_config=None):
+            self.groupchat = groupchat
+            self.llm_config = llm_config or {}
+
 
 # Konfiguracja Group Chat
 DEFAULT_MAX_COUNCIL_ROUNDS = 20  # Maksymalna liczba rund konwersacji w Council

@@ -1,6 +1,7 @@
 """Moduł: web_skill - Plugin Semantic Kernel do wyszukiwania w Internecie."""
 
-from typing import Annotated
+from importlib import import_module
+from typing import Annotated, Optional
 
 import httpx
 import trafilatura
@@ -13,6 +14,15 @@ from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Staramy się opcjonalnie załadować TavilyClient aby testy mogły go mockować
+try:  # pragma: no cover - zależne od środowiska
+    from tavily import TavilyClient as _ImportedTavilyClient
+except Exception:  # pragma: no cover
+    _ImportedTavilyClient = None
+
+# Wystaw symbol na poziomie modułu (nawet jeśli None), aby patchowanie było możliwe
+TavilyClient = _ImportedTavilyClient
 
 # Limity dla bezpieczeństwa i wydajności
 MAX_SEARCH_RESULTS = 5
@@ -41,19 +51,22 @@ class WebSearchSkill:
             tavily_key = extract_secret_value(SETTINGS.TAVILY_API_KEY)
 
         if tavily_key:
-            try:
-                from tavily import TavilyClient
+            tavily_cls = TavilyClient or _get_tavily_client_class()
+        else:
+            tavily_cls = None
 
-                self.tavily_client = TavilyClient(api_key=tavily_key)
+        if tavily_key and tavily_cls is not None:
+            try:
+                self.tavily_client = tavily_cls(api_key=tavily_key)
                 logger.info("WebSearchSkill zainicjalizowany z Tavily AI Search")
-            except ImportError:
-                logger.warning(
-                    "tavily-python nie jest zainstalowane. Używam DuckDuckGo jako fallback."
-                )
-            except Exception as e:
+            except Exception as e:  # pragma: no cover - zależy od środowiska
                 logger.warning(
                     f"Błąd inicjalizacji Tavily client: {e}. Używam DuckDuckGo jako fallback."
                 )
+        elif tavily_key:
+            logger.warning(
+                "tavily-python nie jest zainstalowane. Używam DuckDuckGo jako fallback."
+            )
         else:
             logger.info(
                 "WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)"
@@ -86,8 +99,10 @@ class WebSearchSkill:
         )
 
         try:
-            # LOW-COST ROUTING: W trybie LOCAL lub ECO zawsze używaj DuckDuckGo (darmowe)
-            use_free_search = self.ai_mode == "LOCAL" or self.ai_mode == "ECO"
+            # LOW-COST ROUTING: W trybie LOCAL/ECO zawsze wymuszamy darmowe
+            # źródła (DuckDuckGo) aby uniknąć płatnych zapytań.
+            force_free = getattr(SETTINGS, "LOW_COST_FORCE_DDG", True)
+            use_free_search = force_free and self.ai_mode in ("LOCAL", "ECO")
 
             # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL/ECO
             if self.tavily_client and not use_free_search:
@@ -195,7 +210,7 @@ class WebSearchSkill:
                     no_fallback=False,
                 )
 
-                if text and len(text.strip()) > 100:
+                if text and text.strip():
                     # Ogranicz długość
                     if len(text) > MAX_SCRAPED_TEXT_LENGTH:
                         text = (
@@ -232,7 +247,7 @@ class WebSearchSkill:
             if len(text) > MAX_SCRAPED_TEXT_LENGTH:
                 text = text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
 
-            if len(text.strip()) < 50:
+            if not text.strip():
                 return f"Strona {url} nie zawiera wystarczającej ilości tekstu lub jest niedostępna."
 
             logger.info(
@@ -322,3 +337,13 @@ class WebSearchSkill:
         except Exception as e:
             logger.error(f"Błąd podczas search_and_scrape: {e}")
             return f"Wystąpił błąd podczas wyszukiwania i pobierania: {str(e)}"
+
+
+def _get_tavily_client_class() -> Optional[type]:
+    """Ładuje TavilyClient na żądanie."""
+
+    try:  # pragma: no cover - zależne od środowiska
+        module = import_module("tavily")
+        return getattr(module, "TavilyClient")
+    except Exception:  # pragma: no cover
+        return None

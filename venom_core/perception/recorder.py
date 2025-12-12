@@ -19,6 +19,25 @@ from venom_core.config import SETTINGS
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
+try:  # pragma: no cover - zależne od środowiska testowego
+    import mss as _mss_module  # type: ignore
+
+    MSS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    MSS_AVAILABLE = False
+
+    class _MSSModuleStub:
+        """Minimalny stub zapewniający atrybut mss dla patchowania w testach."""
+
+        class mss:  # type: ignore
+            def __init__(self, *_, **__):
+                raise RuntimeError("Biblioteka mss nie jest zainstalowana")
+
+    _mss_module = _MSSModuleStub()
+
+# Utrzymujemy referencję modułową (nawet jeśli to stub) aby testy mogły patchować
+mss = _mss_module  # type: ignore
+
 logger = get_logger(__name__)
 
 
@@ -82,6 +101,23 @@ class DemonstrationRecorder:
             f"DemonstrationRecorder zainicjalizowany (dir: {self.sessions_dir})"
         )
 
+    def _sanitize_session_id(self, value: str) -> str:
+        """
+        Zwraca bezpieczny identyfikator sesji bez znaków ścieżki.
+
+        Path traversal (../) jest neutralizowane przez zastąpienie podwójnych
+        kropek blokiem podkreśleń zanim trafi do regexu.
+        """
+
+        value = value.replace("..", "____")
+        value = re.sub(r"[\\/]", "_", value)
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+
+        # Upewnij się, że nazwa nie jest pusta
+        if not sanitized.strip("_"):
+            return "session"
+        return sanitized
+
     def start_recording(
         self,
         session_name: Optional[str] = None,
@@ -106,7 +142,7 @@ class DemonstrationRecorder:
 
         # Sanityzuj session_name aby zapobiec path traversal
         if session_name:
-            session_name = re.sub(r"[^a-zA-Z0-9_-]", "_", session_name)
+            session_name = self._sanitize_session_id(session_name)
 
         session_id = session_name or f"demo_{timestamp}"
 
@@ -302,10 +338,13 @@ class DemonstrationRecorder:
             label: Opcjonalna etykieta dla zrzutu
         """
         try:
-            # Import mss tylko gdy potrzebny (szybszy niż PIL.ImageGrab)
-            import mss
+            if not MSS_AVAILABLE:
+                logger.warning(
+                    "Biblioteka mss nie jest dostępna - pomijam zrzut ekranu"
+                )
+                return
 
-            with mss.mss() as sct:
+            with mss.mss() as sct:  # type: ignore[attr-defined]
                 # Zrób zrzut głównego monitora
                 monitor = sct.monitors[1]
                 screenshot = sct.grab(monitor)
@@ -377,7 +416,7 @@ class DemonstrationRecorder:
             Obiekt DemonstrationSession lub None jeśli nie znaleziono
         """
         # Sanityzuj session_id aby zapobiec path traversal
-        session_id = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id)
+        session_id = self._sanitize_session_id(session_id)
 
         session_file = self.sessions_dir / session_id / "session.json"
 

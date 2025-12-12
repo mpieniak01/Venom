@@ -139,10 +139,10 @@ class LessonsStore:
 
     def add_lesson(
         self,
-        situation: str,
-        action: str,
-        result: str,
-        feedback: str,
+        situation: Any,
+        action: str = None,
+        result: str = None,
+        feedback: str = None,
         tags: List[str] = None,
         metadata: Dict[str, Any] = None,
     ) -> Lesson:
@@ -160,14 +160,21 @@ class LessonsStore:
         Returns:
             Utworzona lekcja
         """
-        lesson = Lesson(
-            situation=situation,
-            action=action,
-            result=result,
-            feedback=feedback,
-            tags=tags,
-            metadata=metadata,
-        )
+        if isinstance(situation, Lesson):
+            lesson = situation
+        else:
+            if action is None or result is None or feedback is None:
+                raise ValueError(
+                    "add_lesson wymaga action, result i feedback gdy nie przekazujesz obiektu Lesson"
+                )
+            lesson = Lesson(
+                situation=situation,
+                action=action,
+                result=result,
+                feedback=feedback,
+                tags=tags,
+                metadata=metadata,
+            )
 
         # Zapisz w pamięci
         self.lessons[lesson.lesson_id] = lesson
@@ -256,6 +263,10 @@ class LessonsStore:
         except Exception as e:
             logger.error(f"Błąd podczas wyszukiwania lekcji: {e}")
             return []
+
+    def list_lessons(self, limit: Optional[int] = None) -> List[Lesson]:
+        """Alias kompatybilności ze starszym API."""
+        return self.get_all_lessons(limit=limit)
 
     def get_all_lessons(self, limit: int = None) -> List[Lesson]:
         """

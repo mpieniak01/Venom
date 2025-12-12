@@ -250,17 +250,34 @@ Przykład: "feat(git): add GitSkill implementation"
                 logger.info("Brak nowych Issues")
                 return []
 
-            # Parsowanie wyników do listy dictów (tymczasowo: każda linia jako oddzielny Issue)
-            issues = []
-            for line in result.splitlines():
-                if line.strip():
-                    issues.append({"raw_result": line.strip()})
+            issues = self._parse_issues_output(result)
             logger.info(f"Znaleziono Issues:\n{result}")
             return issues
 
         except Exception as e:
             logger.error(f"Błąd podczas pollowania Issues: {e}")
             return []
+
+    def _parse_issues_output(self, raw_output: str) -> list:
+        """Konwertuje tekstową odpowiedź PlatformSkill na listę opisów Issues."""
+
+        issues: list[str] = []
+        if not raw_output:
+            return issues
+
+        for line in raw_output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # Pomijamy nagłówki/narrację
+            if stripped.lower().startswith("znaleziono") or stripped.startswith("ℹ️"):
+                continue
+
+            if stripped.startswith("#") or stripped[0].isdigit():
+                issues.append(stripped)
+
+        return issues
 
     async def handle_issue(self, issue_number: int, architect_agent=None) -> str:
         """

@@ -5,13 +5,18 @@ Ten skill pozwala na fizyczną interakcję z interfejsem systemu operacyjnego.
 """
 
 import platform
+import sys
 import time
 from typing import Annotated, Optional
 
-import pyautogui
 from semantic_kernel.functions import kernel_function
 
 from venom_core.utils.logger import get_logger
+
+try:  # pragma: no cover - zależne od środowiska testowego
+    import pyautogui  # type: ignore
+except Exception:  # pragma: no cover
+    pyautogui = None  # type: ignore
 
 logger = get_logger(__name__)
 
@@ -33,17 +38,25 @@ class InputSkill:
         Args:
             safety_delay: Opóźnienie między akcjami (sekundy) dla bezpieczeństwa
         """
+        resolved_pg = sys.modules.get("pyautogui", pyautogui)
+        if resolved_pg is None:  # pragma: no cover - informacyjnie
+            raise RuntimeError(
+                "PyAutoGUI nie jest dostępne w tym środowisku. "
+                "Zainstaluj pakiet lub uruchom w trybie z interfejsem graficznym."
+            )
+
+        self.pg = resolved_pg
         self.safety_delay = safety_delay
         self.system = platform.system()
 
         # Aktywuj PyAutoGUI Fail-Safe (ruch do rogu (0,0) przerywa)
-        pyautogui.FAILSAFE = True
+        self.pg.FAILSAFE = True
 
         # Ustaw minimalne opóźnienie
-        pyautogui.PAUSE = max(0.1, safety_delay)
+        self.pg.PAUSE = max(0.1, safety_delay)
 
-        # Pobierz rozdzielczość ekranu
-        self.screen_width, self.screen_height = pyautogui.size()
+        # Pobierz rozdzielczość ekranu z tolerancją dla mocków/testów
+        self.screen_width, self.screen_height = self._resolve_screen_size()
 
         logger.info(
             f"InputSkill zainicjalizowany (System: {self.system}, "
@@ -95,23 +108,23 @@ class InputSkill:
             )
 
             # Przesuń mysz
-            pyautogui.moveTo(x, y, duration=move_duration)
+            self.pg.moveTo(x, y, duration=move_duration)
 
             # Czekaj chwilę
             time.sleep(0.1)
 
             # Kliknij
             if double:
-                pyautogui.doubleClick(button=button)
+                self.pg.doubleClick(button=button)
             else:
-                pyautogui.click(button=button)
+                self.pg.click(button=button)
 
             # Czekaj safety delay
             time.sleep(self.safety_delay)
 
             return f"✅ Kliknięto w ({x}, {y}) przyciskiem {button}"
 
-        except pyautogui.FailSafeException:
+        except self.pg.FailSafeException:
             error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
             logger.warning(error_msg)
             return error_msg
@@ -119,6 +132,29 @@ class InputSkill:
             error_msg = f"❌ Błąd podczas klikania: {e}"
             logger.error(error_msg, exc_info=True)
             return error_msg
+
+    def _resolve_screen_size(self) -> tuple[int, int]:
+        """Zwraca rozmiar ekranu tolerując różne typy odpowiedzi pyautogui."""
+
+        size = self.pg.size()
+
+        # Standardowy przypadek: tuple/list
+        if isinstance(size, (tuple, list)) and len(size) >= 2:
+            return int(size[0]), int(size[1])
+
+        # Obiekt z atrybutami width/height (np. pyautogui.Size)
+        if hasattr(size, "width") and hasattr(size, "height"):
+            return int(size.width), int(size.height)
+
+        # Spróbuj wymusić iterowalność (np. MagicMock może zachowywać się niestandardowo)
+        try:
+            seq = list(size)
+            if len(seq) >= 2:
+                return int(seq[0]), int(seq[1])
+        except TypeError:
+            pass
+
+        raise RuntimeError("PyAutoGUI zwróciło nieprawidłowy rozmiar ekranu")
 
     @kernel_function(
         name="keyboard_type",
@@ -149,14 +185,14 @@ class InputSkill:
             logger.info(f"Wpisywanie tekstu: '{text[:50]}...' (długość: {len(text)})")
 
             # Wpisz tekst
-            pyautogui.write(text, interval=interval)
+            self.pg.write(text, interval=interval)
 
             # Czekaj safety delay
             time.sleep(self.safety_delay)
 
             return f"✅ Wpisano tekst ({len(text)} znaków)"
 
-        except pyautogui.FailSafeException:
+        except self.pg.FailSafeException:
             error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
             logger.warning(error_msg)
             return error_msg
@@ -198,14 +234,14 @@ class InputSkill:
             logger.info(f"Wykonywanie skrótu: {keys}")
 
             # Wykonaj hotkey
-            pyautogui.hotkey(*key_list)
+            self.pg.hotkey(*key_list)
 
             # Czekaj safety delay
             time.sleep(self.safety_delay)
 
             return f"✅ Wykonano skrót: {keys}"
 
-        except pyautogui.FailSafeException:
+        except self.pg.FailSafeException:
             error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
             logger.warning(error_msg)
             return error_msg
@@ -226,7 +262,7 @@ class InputSkill:
             Pozycja kursora w formacie "X,Y"
         """
         try:
-            x, y = pyautogui.position()
+            x, y = self.pg.position()
             return f"Pozycja myszy: ({x}, {y})"
         except Exception as e:
             error_msg = f"❌ Błąd podczas pobierania pozycji myszy: {e}"
@@ -260,9 +296,9 @@ class InputSkill:
                 if len(parts) != 4:
                     return "❌ Region musi być w formacie: x,y,width,height"
 
-                screenshot = pyautogui.screenshot(region=tuple(parts))
+                screenshot = self.pg.screenshot(region=tuple(parts))
             else:
-                screenshot = pyautogui.screenshot()
+                screenshot = self.pg.screenshot()
 
             width, height = screenshot.size
             logger.info(f"Zrobiono zrzut ekranu: {width}x{height}")

@@ -22,7 +22,8 @@ MAX_PROMPT_LENGTH = 500
 MAX_HEALING_COST = 0.50
 
 # Liczba powtórzeń tego samego błędu prowadząca do przerwania (pętla śmierci)
-MAX_ERROR_REPEATS = 2
+# Ustawiona na MAX_REPAIR_ATTEMPTS + 1, aby dać pętli szansę wykorzystać pełny budżet prób
+MAX_ERROR_REPEATS = MAX_REPAIR_ATTEMPTS + 1
 
 
 class CodeReviewLoop:
@@ -183,7 +184,20 @@ Popraw kod zgodnie z feedbackiem. Wygeneruj poprawioną wersję."""
                 loop_msg = f"🔄 Wykryto pętlę błędów: ten sam błąd wystąpił {MAX_ERROR_REPEATS} razy. Model nie potrafi tego naprawić."
                 self.state_manager.add_log(task_id, loop_msg)
                 logger.warning(f"Zadanie {task_id}: {loop_msg}")
-                return f"{loop_msg}\n\nOSTATNI FEEDBACK:\n{critic_feedback}\n\n---\n\n{generated_code}"
+                if attempt > MAX_REPAIR_ATTEMPTS:
+                    self.state_manager.add_log(
+                        task_id,
+                        f"⚠️ Wyczerpano limit prób ({MAX_REPAIR_ATTEMPTS}). Zwracam ostatnią wersję z ostrzeżeniem.",
+                    )
+                feedback_summary = (
+                    critic_feedback[:MAX_PROMPT_LENGTH] + "..."
+                    if len(critic_feedback) > MAX_PROMPT_LENGTH
+                    else critic_feedback
+                )
+                return (
+                    f"⚠️ OSTRZEŻENIE: {loop_msg}\n\n"
+                    f"UWAGI KRYTYKA:\n{feedback_summary}\n\n---\n\n{generated_code}"
+                )
 
             self.previous_errors.append(error_hash)
 

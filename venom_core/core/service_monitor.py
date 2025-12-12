@@ -18,6 +18,11 @@ import aiohttp
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
+try:  # pragma: no cover - zależne od środowiska testowego
+    import chromadb  # type: ignore
+except ImportError:  # pragma: no cover
+    chromadb = None  # type: ignore
+
 logger = get_logger(__name__)
 
 
@@ -346,17 +351,21 @@ class ServiceHealthMonitor:
         """
         # Check cache for ChromaDB availability (initialize once)
         if self._chromadb_available is None:
-            try:
-                import chromadb
-
-                self._chromadb_available = True
-                self._chromadb_module = chromadb
-                # Initialize client once and reuse
-                self._chromadb_client = chromadb.Client()
-            except ImportError:
+            if chromadb is None:
                 self._chromadb_available = False
                 self._chromadb_module = None
                 self._chromadb_client = None
+            else:
+                self._chromadb_available = True
+                self._chromadb_module = chromadb
+                # Initialize client once and reuse
+                try:
+                    self._chromadb_client = chromadb.Client()
+                except Exception:
+                    # Jeśli inicjalizacja klienta się nie uda, oznacz jako niedostępne
+                    self._chromadb_available = False
+                    self._chromadb_module = None
+                    self._chromadb_client = None
 
         if not self._chromadb_available:
             service.status = ServiceStatus.OFFLINE

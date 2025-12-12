@@ -7,6 +7,8 @@ import pytest
 
 from venom_core.infrastructure.stack_manager import StackManager
 
+pytestmark = pytest.mark.requires_docker_compose
+
 
 @pytest.fixture
 def temp_workspace():

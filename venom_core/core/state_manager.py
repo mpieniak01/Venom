@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from uuid import UUID
 
+from venom_core.config import SETTINGS
 from venom_core.core.models import TaskStatus, VenomTask
 from venom_core.utils.logger import get_logger
 
@@ -18,7 +19,7 @@ MAX_STATE_FILE_SIZE = 10 * 1024 * 1024
 class StateManager:
     """Zarządzanie stanem zadań w pamięci z persystencją do pliku."""
 
-    def __init__(self, state_file_path: str = "data/memory/state_dump.json"):
+    def __init__(self, state_file_path: Optional[str] = None):
         """
         Inicjalizacja StateManager.
 
@@ -26,7 +27,10 @@ class StateManager:
             state_file_path: Ścieżka do pliku z zapisem stanu
         """
         self._tasks: Dict[UUID, VenomTask] = {}
-        self._state_file_path = Path(state_file_path)
+        resolved_path = state_file_path or getattr(
+            SETTINGS, "STATE_FILE_PATH", "data/memory/state_dump.json"
+        )
+        self._state_file_path = Path(resolved_path)
         self._save_lock = asyncio.Lock()
         self._pending_saves: Set[asyncio.Task] = set()
 
@@ -67,7 +71,7 @@ class StateManager:
                 task = VenomTask(**task_dict)
                 self._tasks[task.id] = task
 
-            # Załaduj paid_mode_enabled jeśli istnieje
+            # Przywróć paid_mode_enabled (używane przez testy i API)
             self.paid_mode_enabled = data.get("paid_mode_enabled", False)
 
             # Załaduj autonomy_level jeśli istnieje (nowa funkcjonalność)

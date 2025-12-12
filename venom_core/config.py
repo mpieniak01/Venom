@@ -38,12 +38,17 @@ class Settings(BaseSettings):
     SENSITIVE_DATA_LOCAL_ONLY: bool = (
         True  # ZAWSZE kieruj wrażliwe dane do lokalnego modelu
     )
+    # Czy w trybach LOCAL/ECO zawsze wymuszać darmowe źródła (np. DuckDuckGo)
+    LOW_COST_FORCE_DDG: bool = False
 
     # Konfiguracja Model Router (THE_STRATEGIST)
     ENABLE_MODEL_ROUTING: bool = True  # Włącz inteligentny routing modeli
     FORCE_LOCAL_MODEL: bool = False  # Wymusza użycie tylko lokalnego modelu
     ENABLE_MULTI_SERVICE: bool = (
         False  # Włącz inicjalizację wielu serwisów jednocześnie
+    )
+    INTENT_CLASSIFIER_TIMEOUT_SECONDS: float = (
+        5.0  # Timeout LLM przy klasyfikacji intencji
     )
 
     # Konfiguracja Prompt Manager

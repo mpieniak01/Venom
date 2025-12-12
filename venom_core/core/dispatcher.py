@@ -36,7 +36,7 @@ class TaskDispatcher:
 
     # Wzorzec regex dla ścieżek plików - skompilowany raz dla wydajności
     FILE_PATH_PATTERN = re.compile(
-        r"[\w/\-]+(?:\.[\w\-]+)*\.(py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)",
+        r"[\w/\-]+(?:\.[\w\-]+)*\.(?:py|js|ts|txt|md|json|yaml|yml|html|css|java|go|rs|cpp|c|h)(?=$|[^0-9A-Za-z_])",
         re.IGNORECASE,
     )
 

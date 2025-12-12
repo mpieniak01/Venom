@@ -6,6 +6,8 @@ import pytest
 
 from venom_core.execution.skills.compose_skill import ComposeSkill
 
+pytestmark = pytest.mark.requires_docker_compose
+
 
 @pytest.fixture
 def temp_workspace():

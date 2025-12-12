@@ -8,6 +8,8 @@ import pytest
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 
+pytestmark = pytest.mark.requires_docker
+
 
 @pytest.fixture(scope="module")
 def docker_habitat():

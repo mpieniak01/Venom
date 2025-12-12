@@ -54,10 +54,12 @@ class EnergyManager:
             check_interval: Interwał sprawdzania w sekundach
         """
         self.cpu_threshold = (
-            cpu_threshold or SETTINGS.DREAMING_CPU_THRESHOLD
+            SETTINGS.DREAMING_CPU_THRESHOLD if cpu_threshold is None else cpu_threshold
         )  # np. 0.7 = 70%
         self.memory_threshold = (
-            memory_threshold or SETTINGS.DREAMING_MEMORY_THRESHOLD
+            SETTINGS.DREAMING_MEMORY_THRESHOLD
+            if memory_threshold is None
+            else memory_threshold
         )  # np. 0.8 = 80%
         self.check_interval = check_interval
 

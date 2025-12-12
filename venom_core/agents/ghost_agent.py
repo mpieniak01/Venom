@@ -8,6 +8,7 @@ i input skill do wykonywania akcji.
 
 import asyncio
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -298,9 +299,107 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
 
         except Exception as e:
             logger.error(f"Błąd podczas generowania planu przez LLM: {e}")
-            # Fallback: prosty plan ze screenshot
-            logger.warning("Używam fallback planu (tylko screenshot)")
-            return [ActionStep("screenshot", "Zrób screenshot ekranu (fallback)", {})]
+            logger.warning("Używam fallback planu heurystycznego")
+            return self._build_fallback_plan(task)
+
+    def _build_fallback_plan(self, task: str) -> List[ActionStep]:
+        """Tworzy deterministyczny plan akcji gdy LLM nie jest dostępny."""
+
+        task_lower = task.lower()
+        steps: List[ActionStep] = []
+
+        def extract_text_to_type() -> Optional[str]:
+            matches = re.findall(r"['\"]([^'\"]+)['\"]", task)
+            if matches:
+                return matches[0]
+            return None
+
+        # Heurystyka dla Notatnika
+        if "notatnik" in task_lower or "notepad" in task_lower:
+            steps.append(
+                ActionStep("hotkey", "Otwórz okno 'Uruchom'", {"keys": "win+r"})
+            )
+            steps.append(
+                ActionStep("wait", "Czekaj na otwarcie okna", {"duration": 1.0})
+            )
+            steps.append(
+                ActionStep("type", "Wpisz nazwę aplikacji", {"text": "notepad"})
+            )
+            steps.append(ActionStep("hotkey", "Potwierdź enter", {"keys": "enter"}))
+            steps.append(
+                ActionStep("wait", "Czekaj aż Notatnik się pojawi", {"duration": 2.0})
+            )
+
+            text_to_type = extract_text_to_type()
+            if text_to_type:
+                steps.append(
+                    ActionStep(
+                        "type",
+                        f"Wpisz tekst '{text_to_type}'",
+                        {"text": text_to_type},
+                    )
+                )
+            else:
+                steps.append(
+                    ActionStep(
+                        "type",
+                        "Wpisz treść zadania",
+                        {"text": "Hello Venom"},
+                    )
+                )
+
+            steps.append(ActionStep("screenshot", "Zrób screenshot do weryfikacji", {}))
+            return steps
+
+        # Heurystyka dla Spotify / multimediów
+        if "spotify" in task_lower:
+            steps.append(
+                ActionStep(
+                    "screenshot",
+                    "Zrób screenshot aby znaleźć okno Spotify",
+                    {},
+                )
+            )
+            steps.append(
+                ActionStep(
+                    "locate",
+                    "Zlokalizuj okno Spotify",
+                    {"description": "okno aplikacji Spotify"},
+                )
+            )
+            steps.append(
+                ActionStep("click", "Aktywuj okno Spotify", {"use_located": True})
+            )
+            steps.append(
+                ActionStep(
+                    "hotkey",
+                    "Przejdź do następnej piosenki",
+                    {"keys": "ctrl+right"},
+                )
+            )
+            steps.append(
+                ActionStep(
+                    "wait",
+                    "Czekaj aż utwór się zmieni",
+                    {"duration": 1.5},
+                )
+            )
+            steps.append(ActionStep("screenshot", "Zweryfikuj odtwarzanie", {}))
+            return steps
+
+        # Domyślny plan: screenshot + orientacja
+        steps.append(ActionStep("screenshot", "Zrób screenshot ekranu", {}))
+        steps.append(
+            ActionStep(
+                "locate",
+                "Spróbuj znaleźć opisany element",
+                {"description": task},
+            )
+        )
+        steps.append(
+            ActionStep("wait", "Czekaj na potwierdzenie zadania", {"duration": 1.0})
+        )
+        return steps
 
     async def _execute_plan(self, plan: List[ActionStep]) -> str:
         """

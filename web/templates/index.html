@@ -392,13 +392,18 @@
                     <h2>💬 Konsola czatu</h2>
                     <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
                 </div>
-                <div class="chat-container">
+            <div class="chat-container">
+                <div class="chat-scroll-area" id="chatScrollArea">
                     <div class="chat-messages" id="chatMessages"></div>
+                    <div class="widgets-grid" id="widgetsGrid" style="display: none;">
+                        <!-- Dynamiczne widgety będą renderowane tutaj -->
+                    </div>
+                </div>
 
-                    <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
-                        <div class="suggestion-grid">
-                            <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
-                                <span class="chip-icon" aria-hidden="true">🎨</span>
+                <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
+                    <div class="suggestion-grid">
+                        <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
+                            <span class="chip-icon" aria-hidden="true">🎨</span>
                                 <span class="chip-text-block">
                                     <span class="chip-title">Kreacja</span>
                                     <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
@@ -442,10 +447,7 @@
                         </div>
                     </div>
 
-                    <div class="widgets-grid" id="widgetsGrid" style="display: none;">
-                        <!-- Dynamiczne widgety będą renderowane tutaj -->
-                    </div>
-                    <div class="chat-input-container">
+                <div class="chat-input-container">
                         <textarea
                             id="taskInput"
                             placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"

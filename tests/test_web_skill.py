@@ -168,7 +168,7 @@ class TestWebSearchSkill:
         """Test LOW-COST routing - tryb LOCAL wymusza DuckDuckGo nawet gdy Tavily jest dostępny."""
         # Skonfiguruj mock SETTINGS
         mock_settings.AI_MODE = "LOCAL"
-        
+
         # Mock wyników DuckDuckGo
         mock_results = [
             {
@@ -177,39 +177,43 @@ class TestWebSearchSkill:
                 "body": "Description",
             }
         ]
-        
+
         mock_ddgs_instance = MagicMock()
         mock_ddgs_instance.text.return_value = mock_results
         mock_ddgs.return_value.__enter__.return_value = mock_ddgs_instance
-        
+
         # Utwórz WebSearchSkill z mock Tavily client (dostępny, ale nie powinien być użyty)
-        with patch("venom_core.execution.skills.web_skill.extract_secret_value") as mock_extract:
+        with patch(
+            "venom_core.execution.skills.web_skill.extract_secret_value"
+        ) as mock_extract:
             mock_extract.return_value = "fake-tavily-key"
-            with patch("venom_core.execution.skills.web_skill.TavilyClient") as mock_tavily:
+            with patch(
+                "venom_core.execution.skills.web_skill.TavilyClient"
+            ) as mock_tavily:
                 mock_tavily_instance = MagicMock()
                 mock_tavily.return_value = mock_tavily_instance
-                
+
                 skill = WebSearchSkill()
-                
+
                 # Upewnij się, że Tavily jest dostępny
                 assert skill.tavily_client is not None
-                
+
                 # Wykonaj wyszukiwanie
                 result = skill.search("test query")
-                
+
                 # Sprawdź że użyto DuckDuckGo (nie Tavily)
                 assert "DuckDuckGo" in result
                 mock_ddgs_instance.text.assert_called_once()
                 # Tavily nie powinien być wywołany
                 mock_tavily_instance.search.assert_not_called()
-    
+
     @patch("venom_core.execution.skills.web_skill.SETTINGS")
     @patch("venom_core.execution.skills.web_skill.DDGS")
     def test_low_cost_routing_eco_mode(self, mock_ddgs, mock_settings):
         """Test LOW-COST routing - tryb ECO wymusza DuckDuckGo."""
         # Skonfiguruj mock SETTINGS
         mock_settings.AI_MODE = "ECO"
-        
+
         # Mock wyników DuckDuckGo
         mock_results = [
             {
@@ -218,23 +222,27 @@ class TestWebSearchSkill:
                 "body": "Description",
             }
         ]
-        
+
         mock_ddgs_instance = MagicMock()
         mock_ddgs_instance.text.return_value = mock_results
         mock_ddgs.return_value.__enter__.return_value = mock_ddgs_instance
-        
+
         # Utwórz WebSearchSkill
-        with patch("venom_core.execution.skills.web_skill.extract_secret_value") as mock_extract:
+        with patch(
+            "venom_core.execution.skills.web_skill.extract_secret_value"
+        ) as mock_extract:
             mock_extract.return_value = "fake-tavily-key"
-            with patch("venom_core.execution.skills.web_skill.TavilyClient") as mock_tavily:
+            with patch(
+                "venom_core.execution.skills.web_skill.TavilyClient"
+            ) as mock_tavily:
                 mock_tavily_instance = MagicMock()
                 mock_tavily.return_value = mock_tavily_instance
-                
+
                 skill = WebSearchSkill()
-                
+
                 # Wykonaj wyszukiwanie
                 result = skill.search("test query")
-                
+
                 # Sprawdź że użyto DuckDuckGo (nie Tavily)
                 assert "DuckDuckGo" in result
                 mock_ddgs_instance.text.assert_called_once()

@@ -251,7 +251,10 @@ class TestHybridModelRouter:
         routing = router.route_task(TaskType.CHAT, "Która godzina?")
 
         assert routing["target"] == "local"
-        assert "complexity" in routing["reason"].lower() or "oszczędność" in routing["reason"].lower()
+        assert (
+            "complexity" in routing["reason"].lower()
+            or "oszczędność" in routing["reason"].lower()
+        )
 
     def test_low_cost_routing_complex_with_cost_threshold(self):
         """Test Low-Cost Guard - zadania przekraczające próg kosztów używają CLOUD_FAST."""
@@ -259,7 +262,7 @@ class TestHybridModelRouter:
             AI_MODE="HYBRID",
             GOOGLE_API_KEY="test-key",
             HYBRID_CLOUD_PROVIDER="openai",
-            HYBRID_CLOUD_MODEL="gpt-4o"
+            HYBRID_CLOUD_MODEL="gpt-4o",
         )
         router = HybridModelRouter(settings=settings)
 

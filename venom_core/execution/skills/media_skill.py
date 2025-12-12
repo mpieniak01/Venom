@@ -176,7 +176,9 @@ class MediaSkill:
                 "sampler_name": SETTINGS.SD_DEFAULT_SAMPLER,
             }
 
-            async with httpx.AsyncClient(timeout=SETTINGS.SD_GENERATION_TIMEOUT) as client:
+            async with httpx.AsyncClient(
+                timeout=SETTINGS.SD_GENERATION_TIMEOUT
+            ) as client:
                 response = await client.post(
                     f"{self.sd_endpoint}/sdapi/v1/txt2img",
                     json=payload,

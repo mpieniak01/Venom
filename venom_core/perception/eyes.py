@@ -83,7 +83,9 @@ class Eyes:
             return await self._analyze_with_openai(image_base64, prompt)
         else:
             # Bezpieczne łączenie nazw modeli (obsługa przypadku gdy lista zawiera non-stringi)
-            model_names_str = ', '.join(str(name) for name in SETTINGS.VISION_MODEL_NAMES)
+            model_names_str = ", ".join(
+                str(name) for name in SETTINGS.VISION_MODEL_NAMES
+            )
             raise RuntimeError(
                 f"Brak dostępnych modeli vision. Skonfiguruj OPENAI_API_KEY lub uruchom lokalny model vision (np. {model_names_str} w Ollama)."
             )
@@ -192,7 +194,9 @@ class Eyes:
                 "stream": False,
             }
 
-            async with httpx.AsyncClient(timeout=SETTINGS.LOCAL_VISION_TIMEOUT) as client:
+            async with httpx.AsyncClient(
+                timeout=SETTINGS.LOCAL_VISION_TIMEOUT
+            ) as client:
                 response = await client.post(endpoint, json=payload)
                 response.raise_for_status()
                 result = response.json()

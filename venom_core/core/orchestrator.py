@@ -13,7 +13,6 @@ from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
-from venom_core.core.goal_store import GoalStatus
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
@@ -910,7 +909,7 @@ class Orchestrator:
     async def execute_healing_cycle(self, task_id: UUID, test_path: str = ".") -> dict:
         """
         Pętla samonaprawy (Test-Diagnose-Fix-Apply).
-        
+
         Delegowane do HealingFlow.
 
         Args:
@@ -927,7 +926,7 @@ class Orchestrator:
                 task_dispatcher=self.task_dispatcher,
                 event_broadcaster=self.event_broadcaster,
             )
-        
+
         return await self._healing_flow.execute(task_id, test_path)
 
     async def execute_forge_workflow(
@@ -968,7 +967,7 @@ class Orchestrator:
     async def handle_remote_issue(self, issue_number: int) -> dict:
         """
         Obsługuje Issue z GitHub: pobiera szczegóły, tworzy plan, implementuje fix, tworzy PR.
-        
+
         Delegowane do IssueHandlerFlow.
 
         Args:
@@ -984,7 +983,7 @@ class Orchestrator:
                 task_dispatcher=self.task_dispatcher,
                 event_broadcaster=self.event_broadcaster,
             )
-        
+
         return await self._issue_handler_flow.execute(issue_number)
 
     async def execute_campaign_mode(
@@ -992,7 +991,7 @@ class Orchestrator:
     ) -> dict:
         """
         Tryb Kampanii - autonomiczna realizacja roadmapy.
-        
+
         Delegowane do CampaignFlow.
 
         Args:
@@ -1010,7 +1009,7 @@ class Orchestrator:
                 orchestrator_submit_task=self.submit_task,
                 event_broadcaster=self.event_broadcaster,
             )
-        
+
         return await self._campaign_flow.execute(goal_store, max_iterations)
 
     async def _generate_help_response(self, task_id: UUID) -> str:

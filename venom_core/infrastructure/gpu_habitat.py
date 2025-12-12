@@ -88,12 +88,16 @@ class GPUHabitat(DockerHabitat):
             return True
 
         except ImageNotFound:
-            logger.warning(f"Obraz {SETTINGS.DOCKER_CUDA_IMAGE} nie jest dostępny, pobieram...")
+            logger.warning(
+                f"Obraz {SETTINGS.DOCKER_CUDA_IMAGE} nie jest dostępny, pobieram..."
+            )
             try:
                 self.client.images.pull(SETTINGS.DOCKER_CUDA_IMAGE)
                 return self._check_gpu_availability()  # Retry
             except Exception as e:
-                logger.error(f"Nie można pobrać obrazu {SETTINGS.DOCKER_CUDA_IMAGE}: {e}")
+                logger.error(
+                    f"Nie można pobrać obrazu {SETTINGS.DOCKER_CUDA_IMAGE}: {e}"
+                )
                 return False
 
         except APIError as e:

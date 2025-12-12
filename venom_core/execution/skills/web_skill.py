@@ -33,16 +33,17 @@ class WebSearchSkill:
         # Sprawdź czy Tavily jest skonfigurowany
         self.tavily_client = None
         tavily_key = None
-        
+
         # Pobierz AI_MODE dla strategii kosztowej
         self.ai_mode = getattr(SETTINGS, "AI_MODE", "LOCAL")
-        
+
         if hasattr(SETTINGS, "TAVILY_API_KEY"):
             tavily_key = extract_secret_value(SETTINGS.TAVILY_API_KEY)
-        
+
         if tavily_key:
             try:
                 from tavily import TavilyClient
+
                 self.tavily_client = TavilyClient(api_key=tavily_key)
                 logger.info("WebSearchSkill zainicjalizowany z Tavily AI Search")
             except ImportError:
@@ -54,7 +55,9 @@ class WebSearchSkill:
                     f"Błąd inicjalizacji Tavily client: {e}. Używam DuckDuckGo jako fallback."
                 )
         else:
-            logger.info("WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)")
+            logger.info(
+                "WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)"
+            )
 
     @kernel_function(
         name="search",
@@ -85,7 +88,7 @@ class WebSearchSkill:
         try:
             # LOW-COST ROUTING: W trybie LOCAL lub ECO zawsze używaj DuckDuckGo (darmowe)
             use_free_search = self.ai_mode == "LOCAL" or self.ai_mode == "ECO"
-            
+
             # Użyj Tavily jeśli dostępny i nie jesteśmy w trybie LOCAL/ECO
             if self.tavily_client and not use_free_search:
                 try:
@@ -95,33 +98,35 @@ class WebSearchSkill:
                         include_answer=True,
                         include_raw_content=False,
                     )
-                    
+
                     # Formatuj wyniki Tavily
                     output = f"Znaleziono wyniki dla zapytania: '{query}'\n"
                     output += "(źródło: Tavily AI Search)\n\n"
-                    
+
                     # Dodaj AI-generated answer jeśli dostępny
                     if response.get("answer"):
                         output += f"📋 Podsumowanie AI:\n{response['answer']}\n\n"
-                    
+
                     results = response.get("results", [])
                     if not results:
                         return f"Nie znaleziono wyników dla zapytania: {query}"
-                    
+
                     output += f"🔍 Źródła ({len(results)}):\n\n"
                     for i, result in enumerate(results[:max_results], 1):
                         title = result.get("title", "Brak tytułu")
                         url = result.get("url", "Brak URL")
                         content = result.get("content", "Brak opisu")
-                        
+
                         output += f"[{i}] {title}\n"
                         output += f"URL: {url}\n"
                         # Użyj stałej zamiast hardcoded wartości
                         output += f"Opis: {content[:MAX_CONTENT_PREVIEW_LENGTH]}...\n\n"
-                    
-                    logger.info(f"WebSearch (Tavily): znaleziono {len(results)} wyników")
+
+                    logger.info(
+                        f"WebSearch (Tavily): znaleziono {len(results)} wyników"
+                    )
                     return output.strip()
-                    
+
                 except Exception as tavily_error:
                     logger.warning(
                         f"Błąd Tavily: {tavily_error}. Przełączam na DuckDuckGo."
@@ -129,7 +134,7 @@ class WebSearchSkill:
                     # Informuj agenta o fallback
                     fallback_note = "⚠️ Tavily niedostępny, użyto DuckDuckGo\n\n"
                     # Fallback do DuckDuckGo poniżej
-            
+
             # Fallback: Użyj DuckDuckGo
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=max_results))
@@ -140,7 +145,7 @@ class WebSearchSkill:
             # Formatuj wyniki DuckDuckGo
             output = ""
             # Dodaj notatkę o fallback jeśli była próba użycia Tavily
-            if self.tavily_client and 'fallback_note' in locals():
+            if self.tavily_client and "fallback_note" in locals():
                 output += fallback_note
             output += f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
             output += "(źródło: DuckDuckGo)\n\n"

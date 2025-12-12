@@ -409,14 +409,16 @@ class PlatformSkill:
             Sformatowany raport tekstowy o dostępnych integracjach
         """
         report = "[Konfiguracja PlatformSkill]\n\n"
-        
+
         # GitHub
         if self.github_token and self.github_repo_name:
             # Sprawdź czy klient jest zainicjalizowany (bez wykonywania zapytania API)
             if self.github_client:
                 report += f"- GitHub: ✅ AKTYWNY (repo: {self.github_repo_name})\n"
             else:
-                report += "- GitHub: ⚠️ SKONFIGUROWANY (ale klient nie zainicjalizowany)\n"
+                report += (
+                    "- GitHub: ⚠️ SKONFIGUROWANY (ale klient nie zainicjalizowany)\n"
+                )
         else:
             missing = []
             if not self.github_token:
@@ -424,19 +426,19 @@ class PlatformSkill:
             if not self.github_repo_name:
                 missing.append("GITHUB_REPO_NAME")
             report += f"- GitHub: ❌ BRAK KONFIGURACJI (brak: {', '.join(missing)})\n"
-        
+
         # Slack
         if self.slack_webhook:
             report += "- Slack: ✅ AKTYWNY\n"
         else:
             report += "- Slack: ❌ BRAK KLUCZA (SLACK_WEBHOOK_URL)\n"
-        
+
         # Discord
         if self.discord_webhook:
             report += "- Discord: ✅ AKTYWNY\n"
         else:
             report += "- Discord: ❌ BRAK KLUCZA (DISCORD_WEBHOOK_URL)\n"
-        
+
         logger.info("Wygenerowano raport konfiguracji PlatformSkill")
         return report
 

@@ -187,9 +187,7 @@ class FileSkill:
         recursive: Annotated[
             bool, "Czy listować rekurencyjnie (domyślnie False)"
         ] = False,
-        max_depth: Annotated[
-            int, "Maksymalna głębokość rekurencji (domyślnie 3)"
-        ] = 3,
+        max_depth: Annotated[int, "Maksymalna głębokość rekurencji (domyślnie 3)"] = 3,
     ) -> str:
         """
         Listuje pliki i katalogi w podanym katalogu.
@@ -221,25 +219,27 @@ class FileSkill:
 
             if recursive:
                 # Listowanie rekurencyjne z limitem głębokości
-                items.append(f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n")
-                
+                items.append(
+                    f"Zawartość katalogu '{directory}' (rekurencyjnie, max {max_depth} poziomy):\n"
+                )
+
                 # Licznik pominiętych plików
                 skipped_files = 0
-                
+
                 for root, dirs, files in os.walk(safe_path):
                     # Oblicz głębokość relatywną (0 = root, 1 = pierwszy poziom, itd.)
                     try:
                         depth = len(Path(root).relative_to(safe_path).parts)
                     except ValueError:
                         depth = 0
-                    
+
                     # Ogranicz głębokość - nie wchodź głębiej niż max_depth
                     if depth > max_depth:
                         dirs.clear()  # Nie schodź głębiej
                         continue
-                    
+
                     indent = "  " * depth
-                    
+
                     # Dodaj katalogi (tylko jeśli nie przekroczymy limitu przy wejściu do nich)
                     if depth < max_depth:
                         for dir_name in sorted(dirs):
@@ -249,7 +249,7 @@ class FileSkill:
                     else:
                         # Na maksymalnej głębokości - nie pokazuj już katalogów (bo i tak nie możemy do nich wejść)
                         dirs.clear()
-                    
+
                     # Dodaj pliki na tym poziomie
                     for file_name in sorted(files):
                         file_path = Path(root) / file_name
@@ -258,18 +258,18 @@ class FileSkill:
                             size = stat_result.st_size
                             rel_path = file_path.relative_to(self.workspace_root)
                             items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
-                        except Exception as e:
+                        except Exception:
                             # Zlicz pominięte pliki zamiast logować każdy osobno
                             skipped_files += 1
                             continue
-                
+
                 # Podsumowanie pominiętych plików
                 if skipped_files > 0:
                     logger.warning(f"Pominięto {skipped_files} niedostępnych plików")
-                
+
                 if len(items) == 1:  # Tylko nagłówek
                     items.append("  (katalog pusty)")
-                    
+
             else:
                 # Listowanie płaskie (nie-rekurencyjne)
                 for item in sorted(safe_path.iterdir()):
@@ -285,7 +285,9 @@ class FileSkill:
                 items.insert(0, f"Zawartość katalogu '{directory}':")
 
             result = "\n".join(items)
-            logger.info(f"Wylistowano {len(items)-1} elementów w: {safe_path} (recursive={recursive})")
+            logger.info(
+                f"Wylistowano {len(items) - 1} elementów w: {safe_path} (recursive={recursive})"
+            )
             return result
 
         except SecurityError:

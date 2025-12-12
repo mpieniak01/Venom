@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, List
 
 import yaml
-
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -41,11 +40,11 @@ class TokenEconomist:
         self.enable_compression = enable_compression
         self.pricing_file = pricing_file
         self.external_pricing = None
-        
+
         # Wczytaj cennik z pliku YAML jeśli podano
         if pricing_file:
             self.load_pricing(pricing_file)
-        
+
         logger.info(
             f"TokenEconomist zainicjalizowany (compression={enable_compression}, "
             f"pricing_file={'loaded' if self.external_pricing else 'not loaded'})"
@@ -353,7 +352,7 @@ class TokenEconomist:
         try:
             with open(pricing_file, "r", encoding="utf-8") as f:
                 pricing_data = yaml.safe_load(f)
-            
+
             self.external_pricing = pricing_data
             logger.info(f"Wczytano cennik z pliku: {pricing_file}")
             return pricing_data
@@ -362,10 +361,7 @@ class TokenEconomist:
             return None
 
     def estimate_task_cost(
-        self,
-        service_id: str,
-        prompt_length: int,
-        output_ratio: float = 0.5
+        self, service_id: str, prompt_length: int, output_ratio: float = 0.5
     ) -> Dict:
         """
         Estymuje koszt wykonania zadania przed jego wykonaniem.
@@ -385,13 +381,13 @@ class TokenEconomist:
         """
         # Oblicz liczbę tokenów w prompcie (heurystyka: ~4 znaki na token)
         input_tokens = max(1, prompt_length // 4)
-        
+
         # Estymuj output (pesymistycznie - zakładamy output_ratio)
         output_tokens = int(input_tokens * output_ratio)
 
         # Pobierz cennik
         pricing = self._get_pricing_for_service(service_id)
-        
+
         # Oblicz koszty (ceny per 1K tokenów)
         input_cost = (input_tokens / 1_000) * pricing["input"]
         output_cost = (output_tokens / 1_000) * pricing["output"]
@@ -436,13 +432,15 @@ class TokenEconomist:
 
         for provider in providers:
             estimate = self.estimate_task_cost(provider, prompt_length)
-            results.append({
-                "provider": provider,
-                "cost": estimate["estimated_cost_usd"],
-                "input_tokens": estimate["input_tokens"],
-                "output_tokens": estimate["output_tokens"],
-                "is_free": estimate["is_free"],
-            })
+            results.append(
+                {
+                    "provider": provider,
+                    "cost": estimate["estimated_cost_usd"],
+                    "input_tokens": estimate["input_tokens"],
+                    "output_tokens": estimate["output_tokens"],
+                    "is_free": estimate["is_free"],
+                }
+            )
 
         # Sortuj od najtańszego do najdroższego
         results.sort(key=lambda x: x["cost"])

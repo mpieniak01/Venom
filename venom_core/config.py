@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     SLACK_WEBHOOK_URL: SecretStr = SecretStr("")  # Webhook URL dla powiadomień Slack
     ENABLE_ISSUE_POLLING: bool = False  # Włącz automatyczne sprawdzanie Issues
     ISSUE_POLLING_INTERVAL_MINUTES: int = 5  # Interwał sprawdzania nowych Issues
-    
+
     # Tavily AI Search (opcjonalne, dla lepszej jakości wyszukiwania)
     TAVILY_API_KEY: SecretStr = SecretStr("")  # API Key dla Tavily AI Search
 
@@ -266,7 +266,9 @@ class Settings(BaseSettings):
     OPENAI_GPT35_TURBO_MODEL: str = "gpt-3.5-turbo"  # Model GPT-3.5 Turbo
     # Modele Google
     GOOGLE_GEMINI_FLASH_MODEL: str = "gemini-1.5-flash"  # Model Gemini Flash
-    GOOGLE_GEMINI_PRO_MODEL: str = "gemini-1.5-pro"  # Model Gemini Pro (używany jako HYBRID_CLOUD_MODEL)
+    GOOGLE_GEMINI_PRO_MODEL: str = (
+        "gemini-1.5-pro"  # Model Gemini Pro (używany jako HYBRID_CLOUD_MODEL)
+    )
     GOOGLE_GEMINI_PRO_LEGACY_MODEL: str = "gemini-pro"  # Legacy Gemini Pro
     # Modele Claude
     CLAUDE_OPUS_MODEL: str = "claude-opus"  # Model Claude Opus
@@ -329,9 +331,7 @@ class Settings(BaseSettings):
 
     # ===== OPENAI API ENDPOINTS =====
     # Endpoint OpenAI Chat Completions API
-    OPENAI_CHAT_COMPLETIONS_ENDPOINT: str = (
-        "https://api.openai.com/v1/chat/completions"
-    )
+    OPENAI_CHAT_COMPLETIONS_ENDPOINT: str = "https://api.openai.com/v1/chat/completions"
 
     # ===== SYSTEM & MONITORING ENDPOINTS =====
     # Endpoint dla API systemowego (ServiceMonitor)

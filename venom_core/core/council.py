@@ -308,7 +308,7 @@ def create_local_llm_config(
         base_url = SETTINGS.LLM_LOCAL_ENDPOINT
     if model is None:
         model = SETTINGS.LOCAL_LLAMA3_MODEL
-    
+
     # Walidacja parametrów
     if not 0.0 <= temperature <= 1.0:
         raise ValueError(

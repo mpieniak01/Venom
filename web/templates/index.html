@@ -10,14 +10,6 @@
     <header class="header">
         <h1>🕷️ Venom Cockpit</h1>
         <div class="header-info">
-            <!-- Cost Mode Switch (Global Cost Guard) -->
-            <div class="cost-mode-switch" id="costModeSwitch">
-                <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="costModeToggle" />
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
             <!-- Repository Status -->
             <div class="repo-status" id="repoStatus">
                 <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
@@ -37,439 +29,443 @@
         </div>
     </header>
 
-    <!-- Panel zarządzania kolejką -->
-    <div class="queue-governance-panel">
-        <div class="governance-header">
-            <h3>🎛️ Zarządzanie kolejką</h3>
-            <div class="governance-controls">
-                <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
-                    🚨 Awaryjne zatrzymanie
-                </button>
-            </div>
-        </div>
-        <div class="governance-metrics">
-            <div class="governance-metric">
-                <span class="governance-label">Aktywne zadania</span>
-                <span class="governance-value" id="queueActive">0</span>
-                <span class="governance-limit">/ <span id="queueLimit">5</span></span>
-            </div>
-            <div class="governance-metric">
-                <span class="governance-label">Zadania w kolejce</span>
-                <span class="governance-value" id="queuePending">0</span>
-            </div>
-            <div class="governance-metric tokenomics">
-                <span class="governance-label">Koszt sesji</span>
-                <span class="governance-value cost" id="sessionCost">$0.00</span>
-            </div>
-        </div>
-        <div class="governance-actions">
-            <button id="pauseResumeBtn" class="btn-queue-action pause" data-state="running">
-                <span class="btn-icon">⏸️</span>
-                <span class="btn-text">PAUZA</span>
-            </button>
-            <button id="purgeQueueBtn" class="btn-queue-action danger">
-                <span class="btn-icon">🗑️</span>
-                <span class="btn-text">WYCZYŚĆ KOLEJKĘ</span>
-            </button>
-        </div>
-    </div>
-
     <!-- Main Layout -->
     <div class="main-layout">
-        <!-- Center Panel: Chat Console -->
-        <main class="center-panel">
-            <div class="panel-header">
-                <h2>💬 Konsola czatu</h2>
-                <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
-            </div>
-            <div class="chat-container">
-                <div class="chat-messages" id="chatMessages"></div>
-
-                <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
-                    <div class="suggestion-grid">
-                        <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
-                            <span class="chip-icon" aria-hidden="true">🎨</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Kreacja</span>
-                                <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
-                            <span class="chip-icon" aria-hidden="true">☁️</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">DevOps</span>
-                                <span class="chip-desc">"Sprawdź status serwerów w infrastrukturze"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Pokaż status projektu" aria-label="Executive: Status projektu i roadmapy">
-                            <span class="chip-icon" aria-hidden="true">📊</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Status projektu</span>
-                                <span class="chip-desc">"Pokaż status projektu"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
-                            <span class="chip-icon" aria-hidden="true">🧠</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Research</span>
-                                <span class="chip-desc">"Zrób research o trendach AI w 2024"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
-                            <span class="chip-icon" aria-hidden="true">🛠️</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Kod</span>
-                                <span class="chip-desc">"Napisz testy jednostkowe dla modułu API"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
-                            <span class="chip-icon" aria-hidden="true">❓</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Pomoc</span>
-                                <span class="chip-desc">"Co potrafisz?"</span>
-                            </span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="widgets-grid" id="widgetsGrid" style="display: none;">
-                    <!-- Dynamiczne widgety będą renderowane tutaj -->
-                </div>
-                <div class="chat-input-container">
-                    <textarea
-                        id="taskInput"
-                        placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
-                        rows="3"
-                    ></textarea>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <label class="lab-mode-toggle" title="Lab Mode - zadania nie zapisują lekcji do pamięci">
-                            <input type="checkbox" id="labModeCheckbox" />
-                            <span class="lab-mode-icon">🧪</span>
-                            <span class="lab-mode-text">Lab Mode</span>
-                        </label>
-                        <button id="sendButton" class="btn-primary">
-                            <span>Wyślij</span>
-                            <kbd>Ctrl+Enter</kbd>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Panel z telemetrią i metrykami -->
-        <aside class="right-panel">
-            <!-- Tabs for switching between views -->
-            <div class="panel-tabs">
-                <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
-                <button class="tab-button" data-tab="voice">🎤 Głos</button>
-                <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
-                <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
-                <button class="tab-button" data-tab="models">🔫 Modele</button>
-                <button class="tab-button" data-tab="history">📜 Historia</button>
-            </div>
-
-            <!-- Live Feed Tab -->
-            <div class="tab-content active" id="feedTab">
-                <div class="live-feed" id="liveFeed">
-                    <div class="log-entry info">
-                        <span class="timestamp">[--:--:--]</span>
-                        <span class="message">Oczekiwanie na połączenie...</span>
-                    </div>
-                </div>
-
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>📊 Metryki</h2>
-                </div>
-                <div class="metrics-container" id="metricsContainer">
-                    <div class="metric">
-                        <span class="metric-label">Zadania</span>
-                        <span class="metric-value" id="metricTasks">0</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Sukces</span>
-                        <span class="metric-value" id="metricSuccess">0%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Uptime</span>
-                        <span class="metric-value" id="metricUptime">0s</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Sieć I/O</span>
-                        <span class="metric-value" id="metricNetwork">0 KB</span>
-                    </div>
-                </div>
-
-                <!-- Integrations Matrix (Dashboard v2.1) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>🔗 Integracje</h2>
-                </div>
-                <div class="integrations-matrix" id="integrationsMatrix">
-                    <div class="loading-state">Ładowanie...</div>
-                </div>
-
-                <!-- Active Operations (Dashboard v2.1) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>⚡ Aktywne operacje</h2>
-                </div>
-                <div class="active-operations" id="activeOperations">
-                    <div class="empty-state">Brak aktywnych operacji</div>
-                </div>
-
-                <!-- Live Terminal (Dashboard v2.3) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>💻 Terminal na żywo</h2>
-                    <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
-                </div>
-                <div class="live-terminal" id="liveTerminal">
-                    <div class="terminal-entry">
-                        <span class="terminal-timestamp">[--:--:--]</span>
-                        <span class="terminal-level info">INFO</span>
-                        <span class="terminal-message">Oczekiwanie na logi systemowe...</span>
-                    </div>
+        <div class="left-stack">
+            <div class="queue-tabs-panel">
+                <div class="panel-tabs top-panel-tabs">
+                    <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
+                    <button class="tab-button" data-tab="voice">🎤 Głos</button>
+                    <button class="tab-button" data-tab="jobs">⚙️ Zadania</button>
+                    <button class="tab-button" data-tab="memory">🧠 Pamięć</button>
+                    <button class="tab-button" data-tab="models">🔫 Modele</button>
+                    <button class="tab-button" data-tab="history">📜 Historia</button>
                 </div>
             </div>
 
-            <!-- Voice Command Center Tab -->
-            <div class="tab-content" id="voiceTab">
-                <div class="panel-header">
-                    <h2>🎤 Centrum poleceń głosowych</h2>
-                </div>
-
-                <!-- Voice Status -->
-                <div class="voice-status" id="voiceStatus">
-                    <div class="status-indicator">
-                        <span class="status-dot" id="audioConnectionStatus"></span>
-                        <span id="audioStatusText">Rozłączony</span>
+            <!-- Panel z telemetrią i metrykami -->
+            <aside class="right-panel">
+                <!-- Live Feed Tab -->
+                <div class="tab-content active" id="feedTab">
+                    <div class="live-feed" id="liveFeed">
+                        <div class="log-entry info">
+                            <span class="timestamp">[--:--:--]</span>
+                            <span class="message">Oczekiwanie na połączenie...</span>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Microphone Control -->
-                <div class="voice-control">
-                    <button id="micButton" class="btn-mic" disabled>
-                        <span class="mic-icon">🎤</span>
-                        <span class="mic-text">Przytrzymaj i mów</span>
-                    </button>
-                    <div class="voice-hint">Trzymaj przycisk i mów</div>
-                </div>
-
-                <!-- Audio Visualizer -->
-                <div class="audio-visualizer" id="audioVisualizer">
-                    <canvas id="visualizerCanvas" width="280" height="80"></canvas>
-                </div>
-
-                <!-- Transcription Display -->
-                <div class="transcription-box">
-                    <h3>Transkrypcja</h3>
-                    <div id="transcriptionText" class="transcription-text">
-                        Oczekiwanie na komendę głosową...
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>📊 Metryki</h2>
                     </div>
-                </div>
-
-                <!-- Response Display -->
-                <div class="response-box">
-                    <h3>Odpowiedź</h3>
-                    <div id="responseText" class="response-text">
-                        -
-                    </div>
-                </div>
-
-                <!-- IoT Status Panel -->
-                <div class="iot-panel" style="margin-top: 20px;">
-                    <div class="panel-header">
-                        <h2>🔌 Status Rider-Pi</h2>
-                        <button id="refreshIoTBtn" class="btn-small">🔄</button>
-                    </div>
-                    <div id="iotStatus" class="iot-status">
-                        <p class="empty-state">Połączenie nieaktywne</p>
-                    </div>
-                    <div id="iotMetrics" class="iot-metrics" style="display: none;">
+                    <div class="metrics-container" id="metricsContainer">
                         <div class="metric">
-                            <span class="metric-label">Temperatura CPU</span>
-                            <span class="metric-value" id="iotCpuTemp">--°C</span>
+                            <span class="metric-label">Zadania</span>
+                            <span class="metric-value" id="metricTasks">0</span>
                         </div>
                         <div class="metric">
-                            <span class="metric-label">Pamięć</span>
-                            <span class="metric-value" id="iotMemory">--%</span>
+                            <span class="metric-label">Sukces</span>
+                            <span class="metric-value" id="metricSuccess">0%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Uptime</span>
+                            <span class="metric-value" id="metricUptime">0s</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Sieć I/O</span>
+                            <span class="metric-value" id="metricNetwork">0 KB</span>
+                        </div>
+                    </div>
+
+                    <!-- Integrations Matrix (Dashboard v2.1) -->
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>🔗 Integracje</h2>
+                    </div>
+                    <div class="integrations-matrix" id="integrationsMatrix">
+                        <div class="loading-state">Ładowanie...</div>
+                    </div>
+
+                    <!-- Active Operations (Dashboard v2.1) -->
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>⚡ Aktywne operacje</h2>
+                    </div>
+                    <div class="active-operations" id="activeOperations">
+                        <div class="empty-state">Brak aktywnych operacji</div>
+                    </div>
+
+                    <!-- Live Terminal (Dashboard v2.3) -->
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>💻 Terminal na żywo</h2>
+                        <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
+                    </div>
+                    <div class="live-terminal" id="liveTerminal">
+                        <div class="terminal-entry">
+                            <span class="terminal-timestamp">[--:--:--]</span>
+                            <span class="terminal-level info">INFO</span>
+                            <span class="terminal-message">Oczekiwanie na logi systemowe...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Command Center Tab -->
+                <div class="tab-content" id="voiceTab">
+                    <div class="panel-header">
+                        <h2>🎤 Centrum poleceń głosowych</h2>
+                    </div>
+
+                    <!-- Voice Status -->
+                    <div class="voice-status" id="voiceStatus">
+                        <div class="status-indicator">
+                            <span class="status-dot" id="audioConnectionStatus"></span>
+                            <span id="audioStatusText">Rozłączony</span>
+                        </div>
+                    </div>
+
+                    <!-- Microphone Control -->
+                    <div class="voice-control">
+                        <button id="micButton" class="btn-mic" disabled>
+                            <span class="mic-icon">🎤</span>
+                            <span class="mic-text">Przytrzymaj i mów</span>
+                        </button>
+                        <div class="voice-hint">Trzymaj przycisk i mów</div>
+                    </div>
+
+                    <!-- Audio Visualizer -->
+                    <div class="audio-visualizer" id="audioVisualizer">
+                        <canvas id="visualizerCanvas" width="280" height="80"></canvas>
+                    </div>
+
+                    <!-- Transcription Display -->
+                    <div class="transcription-box">
+                        <h3>Transkrypcja</h3>
+                        <div id="transcriptionText" class="transcription-text">
+                            Oczekiwanie na komendę głosową...
+                        </div>
+                    </div>
+
+                    <!-- Response Display -->
+                    <div class="response-box">
+                        <h3>Odpowiedź</h3>
+                        <div id="responseText" class="response-text">
+                            -
+                        </div>
+                    </div>
+
+                    <!-- IoT Status Panel -->
+                    <div class="iot-panel" style="margin-top: 20px;">
+                        <div class="panel-header">
+                            <h2>🔌 Status Rider-Pi</h2>
+                            <button id="refreshIoTBtn" class="btn-small">🔄</button>
+                        </div>
+                        <div id="iotStatus" class="iot-status">
+                            <p class="empty-state">Połączenie nieaktywne</p>
+                        </div>
+                        <div id="iotMetrics" class="iot-metrics" style="display: none;">
+                            <div class="metric">
+                                <span class="metric-label">Temperatura CPU</span>
+                                <span class="metric-value" id="iotCpuTemp">--°C</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Pamięć</span>
+                                <span class="metric-value" id="iotMemory">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Dysk</span>
+                                <span class="metric-value" id="iotDisk">--%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Background Jobs Tab -->
+                <div class="tab-content" id="jobsTab">
+                    <div class="panel-header">
+                        <h2>⚙️ Zadania w tle</h2>
+                        <div class="job-controls">
+                            <button id="pauseJobsBtn" class="btn-small">⏸️ Wstrzymaj</button>
+                            <button id="resumeJobsBtn" class="btn-small">▶️ Wznów</button>
+                            <button id="refreshJobsBtn" class="btn-small">🔄 Odśwież</button>
+                        </div>
+                    </div>
+
+                    <!-- Scheduler Status -->
+                    <div class="status-section">
+                        <h3>Status harmonogramu</h3>
+                        <div id="schedulerStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Active Jobs -->
+                    <div class="jobs-section" style="margin-top: 15px;">
+                        <h3>Aktywne zadania</h3>
+                        <div id="jobsList" class="jobs-list">
+                            <p class="empty-state">Ładowanie zadań...</p>
+                        </div>
+                    </div>
+
+                    <!-- Watchers Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>Monitor plików</h3>
+                        <div id="watcherStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Documenter Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>Auto-dokumentacja</h3>
+                        <div id="documenterStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+
+                    <!-- Gardener Status -->
+                    <div class="status-section" style="margin-top: 15px;">
+                        <h3>Auto-porządkowanie</h3>
+                        <div id="gardenerStatus" class="status-info">
+                            <p class="empty-state">Ładowanie statusu...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memory Tab -->
+                <div class="tab-content" id="memoryTab">
+                    <div class="panel-header">
+                        <h2>📚 Lekcje</h2>
+                        <button id="refreshLessons" class="btn-small">🔄</button>
+                    </div>
+                    <div class="lessons-list" id="lessonsList">
+                        <p class="empty-state">Ładowanie lekcji...</p>
+                    </div>
+
+                    <div class="panel-header" style="margin-top: 20px;">
+                        <h2>🕸️ Graf Wiedzy</h2>
+                        <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
+                    </div>
+                    <div class="graph-summary" id="graphSummary">
+                        <p class="empty-state">Ładowanie grafu...</p>
+                    </div>
+                </div>
+
+                <!-- Models Tab (THE_ARMORY) -->
+                <div class="tab-content" id="modelsTab">
+                    <div class="panel-header">
+                        <h2>🔫 Zbrojownia AI</h2>
+                        <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
+                    </div>
+
+                    <!-- Usage Metrics -->
+                    <div class="usage-metrics" style="margin-bottom: 15px;">
+                        <div class="metric">
+                            <span class="metric-label">CPU</span>
+                            <span class="metric-value" id="modelsCpuUsage">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">GPU</span>
+                            <span class="metric-value" id="modelsGpuUsage">N/A</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">RAM</span>
+                            <span class="metric-value" id="modelsRamUsage">-- / -- GB</span>
+                            <span class="metric-subtext" id="modelsRamPercent">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">VRAM</span>
+                            <span class="metric-value" id="modelsVramUsage">-- / -- GB</span>
+                            <span class="metric-subtext" id="modelsVramPercent">--%</span>
                         </div>
                         <div class="metric">
                             <span class="metric-label">Dysk</span>
-                            <span class="metric-value" id="iotDisk">--%</span>
+                            <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
+                            <span class="metric-subtext" id="modelsDiskPercent">--%</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">Modele</span>
+                            <span class="metric-value" id="modelsCount">0</span>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Background Jobs Tab -->
-            <div class="tab-content" id="jobsTab">
-                <div class="panel-header">
-                    <h2>⚙️ Zadania w tle</h2>
-                    <div class="job-controls">
-                        <button id="pauseJobsBtn" class="btn-small">⏸️ Wstrzymaj</button>
-                        <button id="resumeJobsBtn" class="btn-small">▶️ Wznów</button>
-                        <button id="refreshJobsBtn" class="btn-small">🔄 Odśwież</button>
+                    <!-- Model Installer -->
+                    <div class="model-installer" style="margin-bottom: 15px;">
+                        <h3>📥 Instalator</h3>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <input
+                                type="text"
+                                id="modelNameInput"
+                                aria-label="Nazwa modelu do pobrania"
+                                placeholder="Nazwa modelu (np. llama3)"
+                                style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
+                            />
+                            <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
+                                📥 Pobierz
+                            </button>
+                        </div>
+                        <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
+                            <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
+                                <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                            </div>
+                            <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Scheduler Status -->
-                <div class="status-section">
-                    <h3>Status harmonogramu</h3>
-                    <div id="schedulerStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Active Jobs -->
-                <div class="jobs-section" style="margin-top: 15px;">
-                    <h3>Aktywne zadania</h3>
-                    <div id="jobsList" class="jobs-list">
-                        <p class="empty-state">Ładowanie zadań...</p>
-                    </div>
-                </div>
-
-                <!-- Watchers Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Monitor plików</h3>
-                    <div id="watcherStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Documenter Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Auto-dokumentacja</h3>
-                    <div id="documenterStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Gardener Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Auto-porządkowanie</h3>
-                    <div id="gardenerStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Memory Tab -->
-            <div class="tab-content" id="memoryTab">
-                <div class="panel-header">
-                    <h2>📚 Lekcje</h2>
-                    <button id="refreshLessons" class="btn-small">🔄</button>
-                </div>
-                <div class="lessons-list" id="lessonsList">
-                    <p class="empty-state">Ładowanie lekcji...</p>
-                </div>
-
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>🕸️ Graf Wiedzy</h2>
-                    <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
-                </div>
-                <div class="graph-summary" id="graphSummary">
-                    <p class="empty-state">Ładowanie grafu...</p>
-                </div>
-            </div>
-
-            <!-- Models Tab (THE_ARMORY) -->
-            <div class="tab-content" id="modelsTab">
-                <div class="panel-header">
-                    <h2>🔫 Zbrojownia AI</h2>
-                    <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
-                </div>
-
-                <!-- Usage Metrics -->
-                <div class="usage-metrics" style="margin-bottom: 15px;">
-                    <div class="metric">
-                        <span class="metric-label">CPU</span>
-                        <span class="metric-value" id="modelsCpuUsage">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">GPU</span>
-                        <span class="metric-value" id="modelsGpuUsage">N/A</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">RAM</span>
-                        <span class="metric-value" id="modelsRamUsage">-- / -- GB</span>
-                        <span class="metric-subtext" id="modelsRamPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">VRAM</span>
-                        <span class="metric-value" id="modelsVramUsage">-- / -- GB</span>
-                        <span class="metric-subtext" id="modelsVramPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Dysk</span>
-                        <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
-                        <span class="metric-subtext" id="modelsDiskPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Modele</span>
-                        <span class="metric-value" id="modelsCount">0</span>
-                    </div>
-                </div>
-
-                <!-- Model Installer -->
-                <div class="model-installer" style="margin-bottom: 15px;">
-                    <h3>📥 Instalator</h3>
-                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <input
-                            type="text"
-                            id="modelNameInput"
-                            aria-label="Nazwa modelu do pobrania"
-                            placeholder="Nazwa modelu (np. llama3)"
-                            style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
-                        />
-                        <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
-                            📥 Pobierz
+                    <!-- Panic Button -->
+                    <div style="margin-bottom: 15px;">
+                        <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
+                            🚨 PANIC: Zwolnij zasoby
                         </button>
                     </div>
-                    <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
-                        <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
-                            <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
-                        </div>
-                        <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
+
+                    <!-- Models List -->
+                    <div class="models-list" id="modelsList">
+                        <p class="empty-state">Ładowanie modeli...</p>
                     </div>
                 </div>
 
-                <!-- Panic Button -->
-                <div style="margin-bottom: 15px;">
-                    <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
-                        🚨 PANIC: Zwolnij zasoby
+                <!-- History Tab -->
+                <div class="tab-content" id="historyTab">
+                    <div class="panel-header">
+                        <h2>📜 Historia Żądań</h2>
+                        <button id="refreshHistory" class="btn-small" title="Odśwież historię">🔄</button>
+                    </div>
+                    <div class="history-container">
+                        <div class="history-table-wrapper">
+                            <table class="history-table" id="historyTable">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Polecenie</th>
+                                        <th>Czas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <tr>
+                                        <td colspan="3" class="empty-state">Ładowanie historii...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <div class="right-column">
+            <div class="queue-governance-panel">
+                <div class="governance-header">
+                    <h3>🎛️ Zarządzanie kolejką</h3>
+                    <div class="governance-controls">
+                        <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
+                            🚨 Awaryjne zatrzymanie
+                        </button>
+                    </div>
+                </div>
+                <div class="governance-metrics">
+                    <div class="governance-metric">
+                        <span class="governance-label">Aktywne zadania</span>
+                        <span class="governance-value" id="queueActive">0</span>
+                        <span class="governance-limit">/ <span id="queueLimit">5</span></span>
+                    </div>
+                    <div class="governance-metric">
+                        <span class="governance-label">Zadania w kolejce</span>
+                        <span class="governance-value" id="queuePending">0</span>
+                    </div>
+                    <div class="governance-metric tokenomics">
+                        <span class="governance-label">Koszt sesji</span>
+                        <span class="governance-value cost" id="sessionCost">$0.00</span>
+                    </div>
+                </div>
+                <div class="governance-actions">
+                    <button id="pauseResumeBtn" class="btn-queue-action pause" data-state="running">
+                        <span class="btn-icon">⏸️</span>
+                        <span class="btn-text">PAUZA</span>
+                    </button>
+                    <button id="purgeQueueBtn" class="btn-queue-action danger">
+                        <span class="btn-icon">🗑️</span>
+                        <span class="btn-text">WYCZYŚĆ KOLEJKĘ</span>
                     </button>
                 </div>
-
-                <!-- Models List -->
-                <div class="models-list" id="modelsList">
-                    <p class="empty-state">Ładowanie modeli...</p>
-                </div>
             </div>
 
-            <!-- History Tab -->
-            <div class="tab-content" id="historyTab">
+            <!-- Center Panel: Chat Console -->
+            <main class="center-panel">
                 <div class="panel-header">
-                    <h2>📜 Historia Żądań</h2>
-                    <button id="refreshHistory" class="btn-small" title="Odśwież historię">🔄</button>
+                    <h2>💬 Konsola czatu</h2>
+                    <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
                 </div>
-                <div class="history-container">
-                    <div class="history-table-wrapper">
-                        <table class="history-table" id="historyTable">
-                            <thead>
-                                <tr>
-                                    <th>Status</th>
-                                    <th>Polecenie</th>
-                                    <th>Czas</th>
-                                </tr>
-                            </thead>
-                            <tbody id="historyTableBody">
-                                <tr>
-                                    <td colspan="3" class="empty-state">Ładowanie historii...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <div class="chat-container">
+                    <div class="chat-messages" id="chatMessages"></div>
+
+                    <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
+                        <div class="suggestion-grid">
+                            <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
+                                <span class="chip-icon" aria-hidden="true">🎨</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">Kreacja</span>
+                                    <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
+                                </span>
+                            </button>
+                            <button type="button" class="suggestion-chip" data-prompt="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
+                                <span class="chip-icon" aria-hidden="true">☁️</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">DevOps</span>
+                                    <span class="chip-desc">"Sprawdź status serwerów w infrastrukturze"</span>
+                                </span>
+                            </button>
+                            <button type="button" class="suggestion-chip" data-prompt="Pokaż status projektu" aria-label="Executive: Status projektu i roadmapy">
+                                <span class="chip-icon" aria-hidden="true">📊</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">Status projektu</span>
+                                    <span class="chip-desc">"Pokaż status projektu"</span>
+                                </span>
+                            </button>
+                            <button type="button" class="suggestion-chip" data-prompt="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
+                                <span class="chip-icon" aria-hidden="true">🧠</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">Research</span>
+                                    <span class="chip-desc">"Zrób research o trendach AI w 2024"</span>
+                                </span>
+                            </button>
+                            <button type="button" class="suggestion-chip" data-prompt="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
+                                <span class="chip-icon" aria-hidden="true">🛠️</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">Kod</span>
+                                    <span class="chip-desc">"Napisz testy jednostkowe dla modułu API"</span>
+                                </span>
+                            </button>
+                            <button type="button" class="suggestion-chip" data-prompt="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
+                                <span class="chip-icon" aria-hidden="true">❓</span>
+                                <span class="chip-text-block">
+                                    <span class="chip-title">Pomoc</span>
+                                    <span class="chip-desc">"Co potrafisz?"</span>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="widgets-grid" id="widgetsGrid" style="display: none;">
+                        <!-- Dynamiczne widgety będą renderowane tutaj -->
+                    </div>
+                    <div class="chat-input-container">
+                        <textarea
+                            id="taskInput"
+                            placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
+                            rows="3"
+                        ></textarea>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <label class="lab-mode-toggle" title="Lab Mode - zadania nie zapisują lekcji do pamięci">
+                                <input type="checkbox" id="labModeCheckbox" />
+                                <span class="lab-mode-icon">🧪</span>
+                                <span class="lab-mode-text">Lab Mode</span>
+                            </label>
+                            <button id="sendButton" class="btn-primary">
+                                <span>Wyślij</span>
+                                <kbd>Ctrl+Enter</kbd>
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </aside>
+            </main>
+        </div>
     </div>
 </div>
 

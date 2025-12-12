@@ -56,12 +56,14 @@ class HybridModelRouter:
         self.settings = settings or SETTINGS
         self.ai_mode = AIMode(self.settings.AI_MODE.upper())
         self.state_manager = state_manager  # Opcjonalna integracja z Cost Guard
-        
+
         # Inicjalizuj TokenEconomist z plikiem cennika
         if token_economist:
             self.token_economist = token_economist
         else:
-            pricing_file = Path(__file__).parent.parent.parent / "data" / "config" / "pricing.yaml"
+            pricing_file = (
+                Path(__file__).parent.parent.parent / "data" / "config" / "pricing.yaml"
+            )
             self.token_economist = TokenEconomist(pricing_file=str(pricing_file))
 
         logger.info(
@@ -125,14 +127,14 @@ class HybridModelRouter:
         """
         # Oblicz złożoność zadania (0-10)
         complexity = self.calculate_complexity(prompt, task_type)
-        
+
         # LOW-COST ROUTING: Jeśli złożoność < COMPLEXITY_THRESHOLD_LOCAL (domyślnie 5) -> zawsze LOCAL
         if complexity < SETTINGS.COMPLEXITY_THRESHOLD_LOCAL:
             logger.info(f"[Low-Cost Routing] Complexity={complexity} -> LOCAL")
             return self._route_to_local(
                 f"Tryb HYBRID: niski complexity={complexity} -> LOCAL (oszczędność)"
             )
-        
+
         # Zadania proste -> LOCAL
         if task_type in [TaskType.STANDARD, TaskType.CHAT, TaskType.CODING_SIMPLE]:
             return self._route_to_local(
@@ -174,7 +176,7 @@ class HybridModelRouter:
                 cost_estimate = self.token_economist.estimate_task_cost(
                     cloud_high_model, len(prompt)
                 )
-                
+
                 if cost_estimate["estimated_cost_usd"] > SETTINGS.COST_THRESHOLD_USD:
                     logger.warning(
                         f"[Low-Cost Guard] Koszt {cloud_high_model}: "
@@ -183,14 +185,14 @@ class HybridModelRouter:
                     )
                     # Fallback do CLOUD_FAST (np. GPT-4o-mini)
                     return self._route_to_cloud_fast(
-                        f"Tryb HYBRID: koszt zbyt wysoki -> CLOUD_FAST (oszczędność)"
+                        "Tryb HYBRID: koszt zbyt wysoki -> CLOUD_FAST (oszczędność)"
                     )
-                
+
                 logger.info(
                     f"[Low-Cost Guard] Koszt {cloud_high_model}: "
                     f"${cost_estimate['estimated_cost_usd']:.4f} <= ${SETTINGS.COST_THRESHOLD_USD} -> OK"
                 )
-                
+
                 return self._route_to_cloud_with_guard(
                     f"Tryb HYBRID: złożone zadanie {task_type.value} -> CLOUD"
                 )
@@ -375,7 +377,9 @@ class HybridModelRouter:
         # Ogranicz do skali 0-10
         complexity = max(0, min(10, complexity))
 
-        logger.debug(f"Obliczona złożoność: {complexity} (task={task_type.value}, len={prompt_length})")
+        logger.debug(
+            f"Obliczona złożoność: {complexity} (task={task_type.value}, len={prompt_length})"
+        )
         return complexity
 
     def _route_to_cloud_fast(self, reason: str) -> dict:
@@ -391,7 +395,7 @@ class HybridModelRouter:
         logger.debug(f"Routing do CLOUD_FAST: {reason}")
 
         provider = self.settings.HYBRID_CLOUD_PROVIDER.lower()
-        
+
         # Wybierz tańszy model w zależności od providera
         if provider == "openai":
             model_name = SETTINGS.OPENAI_GPT4O_MINI_MODEL

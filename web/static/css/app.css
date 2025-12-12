@@ -343,6 +343,7 @@ body {
     flex-direction: column;
     overflow-y: auto;
     min-height: 0;
+    max-height: calc(100vh - 460px);
 }
 
 .chat-messages {

@@ -37,7 +37,7 @@
 **CSS / Layout**
 - System design tokens – wszystkie kolory, spacing, promienie, typografia jako zmienne CSS w jednym miejscu; aliasy mapujące stary i nowy theme. Ułatwia dark/light theme i współdzielenie styli.
 - Layout przy użyciu CSS Grid + Flex – grid dla struktur makro (np. układ 2 kolumn, siatka statystyk), flex do wewnętrznych modułów (sidebar, przyciski). Pozwala to na responsywność bez hacków.
-- BEM/semantyczne klasy – nazwy w stylu `.sidebar__nav`, `.console-wrapper` dzięki czemu CSS jest czytelny, a JS może targetować jasne selektory.
+- BEM/semantyczne klasy – nazwy w stylu `.sidebar__nav`, `.console__wrapper` dzięki czemu CSS jest czytelny, a JS może targetować jasne selektory.
 - Kontrolowane przewijanie (`min-height:0`, `overflow:auto`) w panelach (chat, telemetry) i media queries (~1200px, ~900px), aby uniknąć globalnego scrolla.
 - Wspólne mixiny/utilities (np. `.panel`, `.chip`) – komponenty wielokrotnego użytku zamiast duplikacji w każdej stronie.
 

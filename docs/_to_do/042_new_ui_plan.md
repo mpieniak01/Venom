@@ -18,7 +18,7 @@
    - Ustawić nazwy zmiennych z prefiksem (`--venom-primary` itp.) i mapować na obecne `var(--primary-color)` – albo odwrotnie poprzez aliasy.
 2. **Refaktoryzacja CSS**
    - Podzielić style na moduły: `layout`, `sidebar`, `cards`, `console`, `chips`, `modal`.
-   - Uzgodnić spacingi, typografię (Inter / JetBrains) i upewnić się, że globalne literówki (np. `margin-top: 15px.`) są poprawne.
+   - Uzgodnić spacingi, typografię (Inter / JetBrains) i upewnić się, że globalne literówki (np. `margin-top: 15px`) są poprawne.
    - Zachować responsywność (sidebar w mobile, siatka kart).
 3. **Integracja HTML**
    - Zastąpić zawartość `web/templates/index.html` nową strukturą, zachowując bloki Jinja (extends `base.html`, `block content` itd.).

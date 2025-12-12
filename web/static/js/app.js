@@ -115,6 +115,7 @@ class VenomDashboard {
             taskInput: document.getElementById('taskInput'),
             sendButton: document.getElementById('sendButton'),
             chatMessages: document.getElementById('chatMessages'),
+            chatScrollArea: document.getElementById('chatScrollArea'),
             suggestionPanel: document.getElementById('suggestionPanel'),
             liveFeed: document.getElementById('liveFeed'),
             taskList: document.getElementById('taskList'),
@@ -552,8 +553,9 @@ class VenomDashboard {
     }
 
     scrollChatToBottom() {
-        if (this.elements.chatMessages) {
-            this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
+        const scrollTarget = this.elements.chatScrollArea || this.elements.chatMessages;
+        if (scrollTarget) {
+            scrollTarget.scrollTop = scrollTarget.scrollHeight;
         }
     }
 

@@ -337,9 +337,15 @@ body {
     min-height: 0;
 }
 
-.chat-messages {
+.chat-scroll-area {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
+    min-height: 0;
+}
+
+.chat-messages {
     padding: 1rem;
     padding-bottom: 1.5rem;
     scroll-behavior: smooth;
@@ -1153,9 +1159,10 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 1rem;
     padding: 1rem;
-    margin-top: 1rem;
+    margin-top: 0;
     background-color: var(--bg-dark);
     border-radius: 8px;
+    flex-shrink: 0;
 }
 
 .widget {

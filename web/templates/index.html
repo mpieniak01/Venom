@@ -4,516 +4,1155 @@
 
 {% block nav_cockpit_active %}active{% endblock %}
 
-{% block content %}
-<div class="container">
-    <!-- Nagłówek górny (styl Unified Config) -->
-    <header class="top-header">
-        <div class="header-tech-label">
-            // PANEL STEROWANIA
-        </div>
-        <div class="header-info">
-            <!-- Cost Mode Switch (Global Cost Guard) -->
-            <div class="cost-mode-switch" id="costModeSwitch">
-                <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="costModeToggle" />
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-            <!-- Repository Status -->
-            <div class="repo-status" id="repoStatus">
-                <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
-                <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Brak zmian</span></span>
-                <!-- Quick Actions -->
-                <div class="repo-actions">
-                    <button id="syncRepoBtn" class="btn-repo-action" title="Synchronizuj repozytorium">🔄</button>
-                    <button id="undoChangesBtn" class="btn-repo-action" title="Cofnij wszystkie zmiany">↩️</button>
-                    <button id="initRepoBtn" class="btn-repo-action" title="Zainicjalizuj lokalne repozytorium" style="display: none;">✨</button>
+{% block extra_css %}
+<style>
+    /* --- 1. DESIGN TOKENS --- */
+    :root {
+        --bg-dark: #030407;
+        --bg-panel: rgba(16, 20, 28, 0.75);
+        --bg-gradient-body: radial-gradient(
+            circle at 60% -20%,
+            #1e2a45 0%,
+            #0f1319 45%,
+            #030407 100%
+        );
+        --primary: #00ff9d;
+        --primary-dim: rgba(0, 255, 157, 0.1);
+        --secondary: #00b8ff;
+        --danger: #ff0055;
+        --warning: #ffcc00;
+        --border-glass: 1px solid rgba(255, 255, 255, 0.06);
+        --font-ui: 'Inter', sans-serif;
+        --font-tech: 'JetBrains Mono', monospace;
+        --text-muted: #6b7280;
+    }
+
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        scrollbar-width: thin;
+        scrollbar-color: var(--secondary) var(--bg-dark);
+    }
+
+    body.theme-isolated {
+        background-color: var(--bg-dark);
+        background-image: var(--bg-gradient-body);
+        background-attachment: fixed;
+        color: #e5e7eb;
+        font-family: var(--font-ui);
+        min-height: 100vh;
+        display: flex;
+        overflow: hidden;
+    }
+
+    body.theme-isolated::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.6;
+    }
+
+    ::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.3);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--secondary);
+        border-radius: 2px;
+    }
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+        width: 340px;
+        background: rgba(5, 6, 8, 0.95);
+        backdrop-filter: blur(20px);
+        border-right: var(--border-glass);
+        display: flex;
+        flex-direction: column;
+        z-index: 10;
+        flex-shrink: 0;
+        height: 100vh;
+        position: relative;
+    }
+
+    .sidebar .sidebar-header {
+        padding: 8px 22px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .sidebar .brand {
+        font-family: var(--font-tech);
+        font-weight: 800;
+        font-size: 1.45rem;
+        letter-spacing: -1px;
+        text-transform: uppercase;
+        margin-bottom: 0;
+    }
+
+    .sidebar .brand span {
+        color: var(--primary);
+        text-shadow: 0 0 15px rgba(0, 255, 157, 0.4);
+    }
+
+    .sidebar .version-line {
+        font-family: var(--font-tech);
+        font-size: 0.63rem;
+        color: #555;
+        margin-top: 0;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+    }
+
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1px 1px 1px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .sidebar nav {
+        padding: 0 12px 6px;
+    }
+
+    .sidebar .nav-section-title {
+        color: #555;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        font-family: var(--font-tech);
+        letter-spacing: 1px;
+        opacity: 1;
+    }
+
+    .sidebar .navbar-link {
+        display: flex;
+        align-items: center;
+        padding: 7px 14px;
+        margin-bottom: 1px;
+        color: #94a3b8;
+        text-decoration: none;
+        border-radius: 4px;
+        font-family: var(--font-tech);
+        font-size: 0.85rem;
+        transition: 0.2s;
+        border: 1px solid transparent;
+        background: transparent;
+    }
+
+    .sidebar .navbar-link:hover,
+    .sidebar .navbar-link.active {
+        background: var(--primary-dim);
+        color: var(--primary);
+        border-color: rgba(0, 255, 157, 0.2);
+        box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
+    }
+
+    .sidebar .navbar-icon {
+        margin-right: 12px;
+        font-size: 1rem;
+    }
+
+    .sidebar-telemetry {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        margin-top: 8px;
+    }
+
+    .telemetry-panel--sidebar {
+        width: 100%;
+        border-left: none;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 2px;
+        background: rgba(5, 6, 8, 0.85);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+    }
+
+    .telemetry-panel--sidebar::before {
+        display: none;
+    }
+
+    .sidebar-telemetry .panel-tabs {
+        display: flex;
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .sidebar-telemetry .tab-button {
+        flex: 1;
+        padding: 12px 0;
+        border: none;
+        background: transparent;
+        color: #7c8da5;
+        cursor: pointer;
+        font-family: var(--font-tech);
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        transition: background 0.2s, color 0.2s;
+    }
+
+    .sidebar-telemetry .tab-button.active {
+        color: var(--primary);
+        background: rgba(0, 255, 157, 0.08);
+        box-shadow: inset 0 -2px 0 rgba(0, 255, 157, 0.4);
+    }
+
+    .sidebar-telemetry .tab-content {
+        display: none;
+        padding: 18px;
+        background: rgba(7, 9, 14, 0.92);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .sidebar-telemetry .tab-content.active {
+        display: block;
+        animation: fadeIn 0.25s ease;
+    }
+
+    .sidebar-telemetry .panel-header h2,
+    .sidebar-telemetry .panel-header h3 {
+        font-family: var(--font-tech);
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        color: #7c8da5;
+        text-transform: uppercase;
+    }
+
+    .sidebar-telemetry .live-feed {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 2px;
+    }
+
+    .sidebar-telemetry .metrics-container,
+    .sidebar-telemetry .usage-metrics {
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 2px;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.35);
+    }
+
+    .telemetry-card {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 2px;
+        padding: 12px;
+    }
+
+    .telemetry-card .card-title {
+        font-family: var(--font-tech);
+        font-size: 0.7rem;
+        letter-spacing: 1px;
+        color: #7c8da5;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .telemetry-card .card-title button {
+        background: none;
+        border: none;
+        color: #7c8da5;
+        cursor: pointer;
+    }
+
+    #liveFeed {
+        font-family: var(--font-tech);
+        font-size: 0.75rem;
+        background: #050608;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 2px;
+        padding: 12px 16px;
+        max-height: 260px;
+        overflow-y: auto;
+        color: #b7c0d0;
+    }
+
+    #liveFeed .log-entry {
+        margin-bottom: 12px;
+        line-height: 1.4;
+    }
+
+    #liveFeed .log-entry:last-child {
+        margin-bottom: 0;
+    }
+
+    #liveFeed .timestamp {
+        color: #5b6372;
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    #liveFeed .message {
+        color: #d2dae8;
+        display: block;
+    }
+
+    #liveFeed .log-entry.info .message {
+        color: #00ff9d;
+    }
+
+    #liveFeed .log-entry.warning .message {
+        color: #f59e0b;
+    }
+
+    #liveFeed .log-entry.error .message {
+        color: #ff5f8f;
+    }
+
+    .sidebar-footer {
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.6);
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .config-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .autonomy-select {
+        width: 100%;
+        background: #050608;
+        border: 1px solid #333;
+        color: var(--secondary);
+        padding: 8px;
+        font-family: var(--font-tech);
+        font-size: 0.75rem;
+        border-radius: 2px;
+        cursor: pointer;
+    }
+
+    .toggle-switch {
+        position: relative;
+        width: 32px;
+        height: 16px;
+        background: #333;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .toggle-dot {
+        position: absolute;
+        height: 12px;
+        width: 12px;
+        left: 2px;
+        bottom: 2px;
+        background: #888;
+        border-radius: 50%;
+        transition: 0.3s;
+    }
+
+    #sidebarCostModeToggle:checked + .toggle-switch,
+    #costModeToggle:checked + .toggle-switch {
+        background: var(--secondary);
+    }
+
+    #sidebarCostModeToggle:checked + .toggle-switch .toggle-dot,
+    #costModeToggle:checked + .toggle-switch .toggle-dot {
+        transform: translateX(16px);
+        background: white;
+    }
+
+    /* --- MAIN WORKSPACE --- */
+    .main-workspace {
+        flex: 1;
+        padding: 30px 40px;
+        display: flex;
+        flex-direction: column;
+        overflow-y: hidden;
+        position: relative;
+        z-index: 1;
+    }
+
+    .top-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .header-tech-label {
+        color: var(--primary);
+        font-family: var(--font-tech);
+        font-size: 0.9rem;
+    }
+
+    .header-info {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .repo-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .repo-badge,
+    .cost-mode-label,
+    .repo-branch,
+    .repo-changes {
+        font-family: var(--font-tech);
+    }
+
+    .repo-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 5px 12px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 0.8rem;
+        color: #ccc;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    .flare-card {
+        background: var(--bg-panel);
+        backdrop-filter: blur(10px);
+        border-left: 1px solid rgba(255, 255, 255, 0.03);
+        border-right: 1px solid rgba(255, 255, 255, 0.03);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        border-radius: 4px;
+        padding: 20px;
+        position: relative;
+    }
+
+    .flare-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent 0%, var(--primary) 20%, var(--primary) 80%, transparent 100%);
+        box-shadow: 0 0 15px var(--primary);
+        opacity: 0.8;
+    }
+
+    .flare-card.secondary::before {
+        background: linear-gradient(90deg, transparent 0%, var(--secondary) 20%, var(--secondary) 80%, transparent 100%);
+        box-shadow: 0 0 15px var(--secondary);
+    }
+
+    .flare-card.danger::before {
+        background: linear-gradient(90deg, transparent 0%, var(--danger) 20%, var(--danger) 80%, transparent 100%);
+        box-shadow: 0 0 15px var(--danger);
+    }
+
+    .card-label {
+        font-family: var(--font-tech);
+        font-size: 0.75rem;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .pixel-dot {
+        width: 4px;
+        height: 4px;
+        background: currentColor;
+        box-shadow: 0 0 5px currentColor;
+    }
+
+    .card-value {
+        font-family: var(--font-tech);
+        font-size: 2.2rem;
+        font-weight: 400;
+        color: white;
+        display: flex;
+        align-items: baseline;
+    }
+
+    .main-layout {
+        display: block;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .console-wrapper {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .console-header {
+        padding: 12px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .chat-container {
+        flex: 1;
+        padding: 25px;
+        overflow-y: auto;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        color: #ddd;
+    }
+
+    .suggestion-panel {
+        margin-top: 20px;
+    }
+
+    .suggestion-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+    }
+
+    .suggestion-chip {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 12px;
+        border-radius: 6px;
+        text-align: left;
+        color: inherit;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: 0.2s;
+        width: 100%;
+    }
+
+    .suggestion-chip:hover {
+        border-color: var(--secondary);
+        color: white;
+        background: rgba(0, 184, 255, 0.1);
+    }
+
+    .chip-icon {
+        font-size: 1.4rem;
+    }
+
+    .chip-text-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .chip-title {
+        font-family: var(--font-tech);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        color: #94a3b8;
+    }
+
+    .chip-desc {
+        font-size: 0.85rem;
+        color: #e2e8f0;
+    }
+
+    .widgets-grid {
+        padding: 0 25px 20px;
+    }
+
+    .input-area {
+        background: rgba(10, 12, 16, 0.95);
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 20px;
+    }
+
+    #taskInput {
+        width: 100%;
+        background: #050505;
+        border: 1px solid #333;
+        color: var(--primary);
+        font-family: var(--font-tech);
+        padding: 15px;
+        border-radius: 2px;
+        outline: none;
+        resize: none;
+        transition: 0.3s;
+    }
+
+    #taskInput:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 10px rgba(0, 255, 157, 0.1);
+    }
+
+    .btn-venom {
+        background: transparent;
+        border: 1px solid var(--primary);
+        color: var(--primary);
+        font-family: var(--font-tech);
+        font-size: 0.8rem;
+        padding: 10px 24px;
+        cursor: pointer;
+        transition: 0.3s;
+        text-transform: uppercase;
+        border-radius: 2px;
+    }
+
+    .btn-venom:hover {
+        background: rgba(0, 255, 157, 0.1);
+        box-shadow: 0 0 15px rgba(0, 255, 157, 0.2);
+    }
+
+    .right-panel {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block sidebar %}
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <div class="brand">VENOM <span>OS</span></div>
+        <div class="version-line">v2.4.1 // Unified</div>
+    </div>
+
+    <div class="sidebar-content">
+        <nav>
+            <div class="nav-section-title">Core Modules</div>
+            <a href="/" class="navbar-link active"><span class="navbar-icon">🏠</span> Cockpit</a>
+            <a href="/strategy" class="navbar-link"><span class="navbar-icon">🎯</span> War Room</a>
+            <a href="/flow-inspector" class="navbar-link"><span class="navbar-icon">🔀</span> Flow Inspector</a>
+            <a href="/brain" class="navbar-link"><span class="navbar-icon">🧠</span> The Brain</a>
+            <a href="/inspector" class="navbar-link"><span class="navbar-icon">🕵️</span> Inspector</a>
+        </nav>
+
+        <div>
+            <div class="nav-section-title">Telemetry</div>
+            <div class="sidebar-telemetry">
+                <div class="telemetry-panel telemetry-panel--sidebar">
+                    <div class="panel-tabs">
+                        <button class="tab-button active" data-tab="feed">TRANSMISJA</button>
+                        <button class="tab-button" data-tab="voice">GŁOS</button>
+                        <button class="tab-button" data-tab="sys">SYSTEM</button>
+                        <button class="tab-button" data-tab="jobs">ZADANIA</button>
+                        <button class="tab-button" data-tab="memory">PAMIĘĆ</button>
+                        <button class="tab-button" data-tab="models">MODELE</button>
+                        <button class="tab-button" data-tab="history">HISTORIA</button>
+                    </div>
+
+                    <div class="tab-content active" id="feedTab">
+                        <div class="live-feed" id="liveFeed">
+                            <div class="log-entry info">
+                                <span class="timestamp">[--:--:--]</span>
+                                <span class="message">Oczekiwanie na połączenie...</span>
+                            </div>
+                        </div>
+
+                        <div class="telemetry-card">
+                            <div class="card-title">Metryki</div>
+                            <div class="metrics-container" id="metricsContainer">
+                                <div class="metric">
+                                    <span class="metric-label">Zadania</span>
+                                    <span class="metric-value" id="metricTasks">0</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Sukces</span>
+                                    <span class="metric-value" id="metricSuccess">0%</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Uptime</span>
+                                    <span class="metric-value" id="metricUptime">0s</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Sieć I/O</span>
+                                    <span class="metric-value" id="metricNetwork">0 KB</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="telemetry-card">
+                            <div class="card-title">Integracje</div>
+                            <div class="integrations-matrix" id="integrationsMatrix">
+                                <div class="loading-state">Ładowanie...</div>
+                            </div>
+                        </div>
+
+                        <div class="telemetry-card">
+                            <div class="card-title">Aktywne operacje</div>
+                            <div class="active-operations" id="activeOperations">
+                                <div class="empty-state">Brak aktywnych operacji</div>
+                            </div>
+                        </div>
+
+                        <div class="telemetry-card">
+                            <div class="card-title telemetry-card-row">
+                                <span>Terminal na żywo</span>
+                                <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
+                            </div>
+                            <div class="live-terminal" id="liveTerminal">
+                                <div class="terminal-entry">
+                                    <span class="terminal-timestamp">[--:--:--]</span>
+                                    <span class="terminal-level info">INFO</span>
+                                    <span class="terminal-message">Oczekiwanie na logi systemowe...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="voiceTab">
+                        <div class="panel-header">
+                            <h2>🎤 Centrum poleceń głosowych</h2>
+                        </div>
+
+                        <div class="voice-status" id="voiceStatus">
+                            <div class="status-indicator">
+                                <span class="status-dot" id="audioConnectionStatus"></span>
+                                <span id="audioStatusText">Rozłączony</span>
+                            </div>
+                        </div>
+
+                        <div class="voice-control">
+                            <button id="micButton" class="btn-mic" disabled>
+                                <span class="mic-icon">🎤</span>
+                                <span class="mic-text">Przytrzymaj i mów</span>
+                            </button>
+                            <div class="voice-hint">Trzymaj przycisk i mów</div>
+                        </div>
+
+                        <div class="audio-visualizer" id="audioVisualizer">
+                            <canvas id="visualizerCanvas" width="280" height="80"></canvas>
+                        </div>
+
+                        <div class="transcription-box">
+                            <h3>Transkrypcja</h3>
+                            <div id="transcriptionText" class="transcription-text">
+                                Oczekiwanie na komendę głosową...
+                            </div>
+                        </div>
+
+                        <div class="response-box">
+                            <h3>Odpowiedź</h3>
+                            <div id="responseText" class="response-text">
+                                -
+                            </div>
+                        </div>
+
+                        <div class="iot-panel" style="margin-top: 20px;">
+                            <div class="panel-header">
+                                <h2>🔌 Status Rider-Pi</h2>
+                                <button id="refreshIoTBtn" class="btn-small">🔄</button>
+                            </div>
+                            <div id="iotStatus" class="iot-status">
+                                <p class="empty-state">Połączenie nieaktywne</p>
+                            </div>
+                            <div id="iotMetrics" class="iot-metrics" style="display: none;">
+                                <div class="metric">
+                                    <span class="metric-label">Temperatura CPU</span>
+                                    <span class="metric-value" id="iotCpuTemp">--°C</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Pamięć</span>
+                                    <span class="metric-value" id="iotMemory">--%</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Dysk</span>
+                                    <span class="metric-value" id="iotDisk">--%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="sysTab">
+                        <div class="metric-row">
+                            <span class="metric-row-label">Zadania</span>
+                            <span class="metric-row-value secondary" id="sysMetricTasks">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-row-label">Sukces</span>
+                            <span class="metric-row-value primary" id="sysMetricSuccess">0%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-row-label">Uptime</span>
+                            <span class="metric-row-value" id="sysMetricUptime">0s</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-row-label">Sieć I/O</span>
+                            <span class="metric-row-value" id="sysMetricNetwork">0 KB</span>
+                        </div>
+
+                        <div class="panel-header sys-terminal-header">
+                            <h3>Terminal</h3>
+                        </div>
+                        <div id="sysLiveTerminal" class="live-terminal live-terminal--compact">
+                            <div class="terminal-entry">
+                                <span class="terminal-timestamp">[--:--:--]</span>
+                                <span class="terminal-level info">INFO</span>
+                                <span class="terminal-message">System ready...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="jobsTab">
+                        <div class="panel-header">
+                            <h2>⚙️ Zadania w tle</h2>
+                            <div class="job-controls">
+                                <button id="pauseJobsBtn" class="btn-small">⏸️ Wstrzymaj</button>
+                                <button id="resumeJobsBtn" class="btn-small">▶️ Wznów</button>
+                                <button id="refreshJobsBtn" class="btn-small">🔄 Odśwież</button>
+                            </div>
+                        </div>
+
+                        <div class="status-section">
+                            <h3>Status harmonogramu</h3>
+                            <div id="schedulerStatus" class="status-info">
+                                <p class="empty-state">Ładowanie statusu...</p>
+                            </div>
+                        </div>
+
+                        <div class="jobs-section" style="margin-top: 15px;">
+                            <h3>Aktywne zadania</h3>
+                            <div id="jobsList" class="jobs-list">
+                                <p class="empty-state">Ładowanie zadań...</p>
+                            </div>
+                        </div>
+
+                        <div class="status-section" style="margin-top: 15px;">
+                            <h3>Monitor plików</h3>
+                            <div id="watcherStatus" class="status-info">
+                                <p class="empty-state">Ładowanie statusu...</p>
+                            </div>
+                        </div>
+
+                        <div class="status-section" style="margin-top: 15px;">
+                            <h3>Auto-dokumentacja</h3>
+                            <div id="documenterStatus" class="status-info">
+                                <p class="empty-state">Ładowanie statusu...</p>
+                            </div>
+                        </div>
+
+                        <div class="status-section" style="margin-top: 15px;">
+                            <h3>Auto-porządkowanie</h3>
+                            <div id="gardenerStatus" class="status-info">
+                                <p class="empty-state">Ładowanie statusu...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="memoryTab">
+                        <div class="panel-header">
+                            <h2>📚 Lekcje</h2>
+                            <button id="refreshLessons" class="btn-small">🔄</button>
+                        </div>
+                        <div class="lessons-list" id="lessonsList">
+                            <p class="empty-state">Ładowanie lekcji...</p>
+                        </div>
+
+                        <div class="panel-header" style="margin-top: 20px;">
+                            <h2>🕸️ Graf Wiedzy</h2>
+                            <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
+                        </div>
+                        <div class="graph-summary" id="graphSummary">
+                            <p class="empty-state">Ładowanie grafu...</p>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="modelsTab">
+                        <div class="panel-header">
+                            <h2>🔫 Zbrojownia AI</h2>
+                            <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
+                        </div>
+
+                        <div class="usage-metrics" style="margin-bottom: 15px;">
+                            <div class="metric">
+                                <span class="metric-label">CPU</span>
+                                <span class="metric-value" id="modelsCpuUsage">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">GPU</span>
+                                <span class="metric-value" id="modelsGpuUsage">N/A</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">RAM</span>
+                                <span class="metric-value" id="modelsRamUsage">-- / -- GB</span>
+                                <span class="metric-subtext" id="modelsRamPercent">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">VRAM</span>
+                                <span class="metric-value" id="modelsVramUsage">-- / -- GB</span>
+                                <span class="metric-subtext" id="modelsVramPercent">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Dysk</span>
+                                <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
+                                <span class="metric-subtext" id="modelsDiskPercent">--%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Modele</span>
+                                <span class="metric-value" id="modelsCount">0</span>
+                            </div>
+                        </div>
+
+                        <div class="model-installer" style="margin-bottom: 15px;">
+                            <h3>📥 Instalator</h3>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <input
+                                    type="text"
+                                    id="modelNameInput"
+                                    aria-label="Nazwa modelu do pobrania"
+                                    placeholder="Nazwa modelu (np. llama3)"
+                                    style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
+                                />
+                                <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
+                                    📥 Pobierz
+                                </button>
+                            </div>
+                            <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
+                                <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
+                                    <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                </div>
+                                <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 15px;">
+                            <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
+                                🚨 PANIC: Zwolnij zasoby
+                            </button>
+                        </div>
+
+                        <div class="models-list" id="modelsList">
+                            <p class="empty-state">Ładowanie modeli...</p>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="historyTab">
+                        <div class="panel-header">
+                            <h2>📜 Historia Żądań</h2>
+                            <button id="refreshHistory" class="btn-small" title="Odśwież historię">🔄</button>
+                        </div>
+                        <div class="history-container">
+                            <div class="history-table-wrapper">
+                                <table class="history-table" id="historyTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Polecenie</th>
+                                            <th>Czas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="historyTableBody">
+                                        <tr>
+                                            <td colspan="3" class="empty-state">Ładowanie historii...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <!-- Connection Status -->
-            <div class="status-indicator">
-                <span class="status-dot" id="connectionStatus"></span>
-                <span id="statusText">Łączenie...</span>
-            </div>
-        </div>
-    </header>
-
-    <!-- Siatka statystyk (Karty Flare) -->
-    <div class="stats-grid">
-        <div class="flare-card">
-            <div class="card-label">
-                <div class="pixel-dot pixel-dot-primary"></div>
-                Aktywne zadania
-            </div>
-            <div class="card-value">
-                <span id="queueActive">0</span><span class="card-value-limit"> / <span id="queueLimit">5</span></span>
-            </div>
-            <button id="pauseResumeBtn" class="btn-card-action" data-state="running" title="Wstrzymaj kolejkę" aria-label="Wstrzymaj kolejkę">
-                <span class="btn-icon">⏸️</span>
-                <span class="btn-text">PAUZA</span>
-            </button>
-            <button id="emergencyStopBtn" class="btn-card-action btn-danger" title="Awaryjne zatrzymanie" aria-label="Awaryjne zatrzymanie - anuluj wszystkie zadania">
-                <span class="btn-icon">🚨</span>
-                <span class="btn-text">STOP</span>
-            </button>
-        </div>
-        
-        <div class="flare-card secondary">
-            <div class="card-label">
-                <div class="pixel-dot pixel-dot-secondary"></div>
-                Zadania w kolejce
-            </div>
-            <div class="card-value" id="queuePending">0</div>
-            <button id="purgeQueueBtn" class="btn-card-action" title="Wyczyść kolejkę" aria-label="Wyczyść kolejkę zadań">
-                <span class="btn-text">[ WYCZYŚĆ ]</span>
-            </button>
-        </div>
-        
-        <div class="flare-card danger">
-            <div class="card-label">
-                <div class="pixel-dot pixel-dot-warning"></div>
-                Koszt sesji
-            </div>
-            <div class="card-value" style="color: var(--warning-color);" id="sessionCost">$0.00</div>
         </div>
     </div>
 
-    <!-- Main Layout -->
-    <div class="main-layout">
-        <!-- Panel centralny: Konsola czatu -->
-        <main class="center-panel console-wrapper">
-            <div class="console-header">
-                <span class="console-header-label">INTERFEJS POLECEŃ</span>
-                <button id="clearWidgetsBtn" style="background: none; border: none; color: var(--border-subtle); cursor: pointer; font-size: 0.7rem;" title="Wyczyść widgety" aria-label="Wyczyść widgety">WYCZYŚĆ</button>
+    <div class="sidebar-footer">
+        <div class="nav-section-title" style="margin-bottom: 5px;">System Configuration</div>
+        <div>
+            <label for="autonomyLevel" style="font-size: 0.65rem; color: #666; display: block; margin-bottom: 4px;">SECURITY LEVEL</label>
+            <select id="autonomyLevel" class="autonomy-select">
+                <option value="0">🟢 ISOLATED</option>
+                <option value="10">🔵 CONNECTED</option>
+                <option value="20">🟡 FUNDED</option>
+                <option value="30">🟠 BUILDER</option>
+                <option value="40">🔴 ROOT</option>
+            </select>
+        </div>
+        <div class="config-row">
+            <div style="display: flex; flex-direction: column; gap: 4px; font-family: var(--font-tech); font-size: 0.75rem; color: #ccc;">
+                <span>ECO MODE</span>
+                <span style="font-size: 0.65rem; color: #555;">Global Cost Guard</span>
             </div>
-            <div class="chat-container">
-                <div class="chat-messages" id="chatMessages"></div>
+            <label style="cursor: pointer;">
+                <input type="checkbox" id="sidebarCostModeToggle" style="display: none;">
+                <div class="toggle-switch"><div class="toggle-dot"></div></div>
+            </label>
+        </div>
+    </div>
+</aside>
+{% endblock sidebar %}
 
-                <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
-                    <div class="suggestion-grid">
-                        <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
-                            <span class="chip-icon" aria-hidden="true">🎨</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Kreacja</span>
-                                <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
-                            <span class="chip-icon" aria-hidden="true">☁️</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">DevOps</span>
-                                <span class="chip-desc">"Sprawdź status serwerów w infrastrukturze"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Pokaż status projektu" aria-label="Executive: Status projektu i roadmapy">
-                            <span class="chip-icon" aria-hidden="true">📊</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Status projektu</span>
-                                <span class="chip-desc">"Pokaż status projektu"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
-                            <span class="chip-icon" aria-hidden="true">🧠</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Research</span>
-                                <span class="chip-desc">"Zrób research o trendach AI w 2024"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
-                            <span class="chip-icon" aria-hidden="true">🛠️</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Kod</span>
-                                <span class="chip-desc">"Napisz testy jednostkowe dla modułu API"</span>
-                            </span>
-                        </button>
-                        <button type="button" class="suggestion-chip" data-prompt="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
-                            <span class="chip-icon" aria-hidden="true">❓</span>
-                            <span class="chip-text-block">
-                                <span class="chip-title">Pomoc</span>
-                                <span class="chip-desc">"Co potrafisz?"</span>
-                            </span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="widgets-grid" id="widgetsGrid" style="display: none;">
-                    <!-- Dynamiczne widgety będą renderowane tutaj -->
-                </div>
-                <div class="input-area">
-                    <div style="display: flex; gap: 10px;">
-                        <textarea
-                            id="taskInput"
-                            placeholder="Wpisz polecenie... (np. 'Zrób research o Python 3.12')"
-                            rows="3"
-                        ></textarea>
-                        <button id="sendButton" class="btn-venom" title="Wyślij polecenie (Ctrl+Enter)">
-                            WYŚLIJ
-                            <kbd style="font-size: 0.65em; opacity: 0.7; margin-left: 6px;">Ctrl+Enter</kbd>
-                        </button>
-                    </div>
-                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
-                        <label style="display: flex; align-items: center; cursor: pointer; gap: 6px;" title="Tryb eksperymentalny: polecenia nie będą zapisywane w historii">
-                            <input type="checkbox" id="labModeCheckbox" />
-                            <span style="font-size: 1.1rem;">🧪</span>
-                            <span style="font-size: 0.75rem; color: var(--text-subtle);">Tryb Lab <span style="font-size: 0.7em; color: var(--text-muted);">(Bez zapisu)</span></span>
-                        </label>
-                    </div>
-                </div>
+{% block content %}
+<header class="top-header">
+    <div class="header-tech-label">// PANEL STEROWANIA</div>
+    <div class="header-info">
+        <div class="cost-mode-switch" id="costModeSwitch">
+            <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
+            <label style="display: flex; align-items: center; cursor: pointer; gap: 6px;">
+                <input type="checkbox" id="costModeToggle" style="display: none;" />
+                <div class="toggle-switch"><div class="toggle-dot"></div></div>
+            </label>
+        </div>
+        <div class="repo-status" id="repoStatus">
+            <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
+            <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Brak zmian</span></span>
+            <div class="repo-actions">
+                <button id="syncRepoBtn" class="btn-repo-action" title="Synchronizuj repozytorium">🔄</button>
+                <button id="undoChangesBtn" class="btn-repo-action" title="Cofnij wszystkie zmiany">↩️</button>
+                <button id="initRepoBtn" class="btn-repo-action" title="Zainicjalizuj lokalne repozytorium" style="display: none;">✨</button>
             </div>
-        </main>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot" id="connectionStatus"></span>
+            <span id="statusText">Łączenie...</span>
+        </div>
+    </div>
+</header>
 
-        <!-- Panel z telemetrią i metrykami -->
-        <aside class="right-panel telemetry-panel">
-            <!-- Tabs for switching between views -->
-            <div class="panel-tabs">
-                <button class="tab-button active" data-tab="feed">TRANSMISJA</button>
-                <button class="tab-button" data-tab="voice">GŁOS</button>
-                <button class="tab-button" data-tab="sys">SYSTEM</button>
-                <button class="tab-button" data-tab="jobs">ZADANIA</button>
-                <button class="tab-button" data-tab="memory">PAMIĘĆ</button>
-                <button class="tab-button" data-tab="models">MODELE</button>
-                <button class="tab-button" data-tab="history">HISTORIA</button>
-            </div>
-
-            <!-- Live Feed Tab -->
-            <div class="tab-content active" id="feedTab">
-                <div class="live-feed" id="liveFeed">
-                    <div class="log-entry info">
-                        <span class="timestamp">[--:--:--]</span>
-                        <span class="message">Oczekiwanie na połączenie...</span>
-                    </div>
-                </div>
-
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>📊 Metryki</h2>
-                </div>
-                <div class="metrics-container" id="metricsContainer">
-                    <div class="metric">
-                        <span class="metric-label">Zadania</span>
-                        <span class="metric-value" id="metricTasks">0</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Sukces</span>
-                        <span class="metric-value" id="metricSuccess">0%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Uptime</span>
-                        <span class="metric-value" id="metricUptime">0s</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Sieć I/O</span>
-                        <span class="metric-value" id="metricNetwork">0 KB</span>
-                    </div>
-                </div>
-
-                <!-- Integrations Matrix (Dashboard v2.1) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>🔗 Integracje</h2>
-                </div>
-                <div class="integrations-matrix" id="integrationsMatrix">
-                    <div class="loading-state">Ładowanie...</div>
-                </div>
-
-                <!-- Active Operations (Dashboard v2.1) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>⚡ Aktywne operacje</h2>
-                </div>
-                <div class="active-operations" id="activeOperations">
-                    <div class="empty-state">Brak aktywnych operacji</div>
-                </div>
-
-                <!-- Live Terminal (Dashboard v2.3) -->
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>💻 Terminal na żywo</h2>
-                    <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
-                </div>
-                <div class="live-terminal" id="liveTerminal">
-                    <div class="terminal-entry">
-                        <span class="terminal-timestamp">[--:--:--]</span>
-                        <span class="terminal-level info">INFO</span>
-                        <span class="terminal-message">Oczekiwanie na logi systemowe...</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Voice Command Center Tab -->
-            <div class="tab-content" id="voiceTab">
-                <div class="panel-header">
-                    <h2>🎤 Centrum poleceń głosowych</h2>
-                </div>
-
-                <!-- Voice Status -->
-                <div class="voice-status" id="voiceStatus">
-                    <div class="status-indicator">
-                        <span class="status-dot" id="audioConnectionStatus"></span>
-                        <span id="audioStatusText">Rozłączony</span>
-                    </div>
-                </div>
-
-                <!-- Microphone Control -->
-                <div class="voice-control">
-                    <button id="micButton" class="btn-mic" disabled>
-                        <span class="mic-icon">🎤</span>
-                        <span class="mic-text">Przytrzymaj i mów</span>
-                    </button>
-                    <div class="voice-hint">Trzymaj przycisk i mów</div>
-                </div>
-
-                <!-- Audio Visualizer -->
-                <div class="audio-visualizer" id="audioVisualizer">
-                    <canvas id="visualizerCanvas" width="280" height="80"></canvas>
-                </div>
-
-                <!-- Transcription Display -->
-                <div class="transcription-box">
-                    <h3>Transkrypcja</h3>
-                    <div id="transcriptionText" class="transcription-text">
-                        Oczekiwanie na komendę głosową...
-                    </div>
-                </div>
-
-                <!-- Response Display -->
-                <div class="response-box">
-                    <h3>Odpowiedź</h3>
-                    <div id="responseText" class="response-text">
-                        -
-                    </div>
-                </div>
-
-                <!-- IoT Status Panel -->
-                <div class="iot-panel" style="margin-top: 20px;">
-                    <div class="panel-header">
-                        <h2>🔌 Status Rider-Pi</h2>
-                        <button id="refreshIoTBtn" class="btn-small">🔄</button>
-                    </div>
-                    <div id="iotStatus" class="iot-status">
-                        <p class="empty-state">Połączenie nieaktywne</p>
-                    </div>
-                    <div id="iotMetrics" class="iot-metrics" style="display: none;">
-                        <div class="metric">
-                            <span class="metric-label">Temperatura CPU</span>
-                            <span class="metric-value" id="iotCpuTemp">--°C</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Pamięć</span>
-                            <span class="metric-value" id="iotMemory">--%</span>
-                        </div>
-                        <div class="metric">
-                            <span class="metric-label">Dysk</span>
-                            <span class="metric-value" id="iotDisk">--%</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SYS Tab (System Metrics) -->
-            <div class="tab-content" id="sysTab">
-                <div class="metric-row">
-                    <span class="metric-row-label">Zadania</span>
-                    <span class="metric-row-value secondary" id="sysMetricTasks">0</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-row-label">Sukces</span>
-                    <span class="metric-row-value primary" id="sysMetricSuccess">0%</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-row-label">Uptime</span>
-                    <span class="metric-row-value" id="sysMetricUptime">0s</span>
-                </div>
-                <div class="metric-row">
-                    <span class="metric-row-label">Sieć I/O</span>
-                    <span class="metric-row-value" id="sysMetricNetwork">0 KB</span>
-                </div>
-                
-                <!-- Live Terminal reference -->
-                <div class="panel-header sys-terminal-header">
-                    <h3>Terminal</h3>
-                </div>
-                <div id="sysLiveTerminal" class="live-terminal live-terminal--compact">
-                    <div class="terminal-entry">
-                        <span class="terminal-timestamp">[--:--:--]</span>
-                        <span class="terminal-level info">INFO</span>
-                        <span class="terminal-message">System ready...</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Background Jobs Tab -->
-            <div class="tab-content" id="jobsTab">
-                <div class="panel-header">
-                    <h2>⚙️ Zadania w tle</h2>
-                    <div class="job-controls">
-                        <button id="pauseJobsBtn" class="btn-small">⏸️ Wstrzymaj</button>
-                        <button id="resumeJobsBtn" class="btn-small">▶️ Wznów</button>
-                        <button id="refreshJobsBtn" class="btn-small">🔄 Odśwież</button>
-                    </div>
-                </div>
-
-                <!-- Scheduler Status -->
-                <div class="status-section">
-                    <h3>Status harmonogramu</h3>
-                    <div id="schedulerStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Active Jobs -->
-                <div class="jobs-section" style="margin-top: 15px;">
-                    <h3>Aktywne zadania</h3>
-                    <div id="jobsList" class="jobs-list">
-                        <p class="empty-state">Ładowanie zadań...</p>
-                    </div>
-                </div>
-
-                <!-- Watchers Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Monitor plików</h3>
-                    <div id="watcherStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Documenter Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Auto-dokumentacja</h3>
-                    <div id="documenterStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-
-                <!-- Gardener Status -->
-                <div class="status-section" style="margin-top: 15px;">
-                    <h3>Auto-porządkowanie</h3>
-                    <div id="gardenerStatus" class="status-info">
-                        <p class="empty-state">Ładowanie statusu...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Memory Tab -->
-            <div class="tab-content" id="memoryTab">
-                <div class="panel-header">
-                    <h2>📚 Lekcje</h2>
-                    <button id="refreshLessons" class="btn-small">🔄</button>
-                </div>
-                <div class="lessons-list" id="lessonsList">
-                    <p class="empty-state">Ładowanie lekcji...</p>
-                </div>
-
-                <div class="panel-header" style="margin-top: 20px;">
-                    <h2>🕸️ Graf Wiedzy</h2>
-                    <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
-                </div>
-                <div class="graph-summary" id="graphSummary">
-                    <p class="empty-state">Ładowanie grafu...</p>
-                </div>
-            </div>
-
-            <!-- Models Tab (THE_ARMORY) -->
-            <div class="tab-content" id="modelsTab">
-                <div class="panel-header">
-                    <h2>🔫 Zbrojownia AI</h2>
-                    <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
-                </div>
-
-                <!-- Usage Metrics -->
-                <div class="usage-metrics" style="margin-bottom: 15px;">
-                    <div class="metric">
-                        <span class="metric-label">CPU</span>
-                        <span class="metric-value" id="modelsCpuUsage">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">GPU</span>
-                        <span class="metric-value" id="modelsGpuUsage">N/A</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">RAM</span>
-                        <span class="metric-value" id="modelsRamUsage">-- / -- GB</span>
-                        <span class="metric-subtext" id="modelsRamPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">VRAM</span>
-                        <span class="metric-value" id="modelsVramUsage">-- / -- GB</span>
-                        <span class="metric-subtext" id="modelsVramPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Dysk</span>
-                        <span class="metric-value" id="modelsDiskUsage">-- GB / -- GB</span>
-                        <span class="metric-subtext" id="modelsDiskPercent">--%</span>
-                    </div>
-                    <div class="metric">
-                        <span class="metric-label">Modele</span>
-                        <span class="metric-value" id="modelsCount">0</span>
-                    </div>
-                </div>
-
-                <!-- Model Installer -->
-                <div class="model-installer" style="margin-bottom: 15px;">
-                    <h3>📥 Instalator</h3>
-                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <input
-                            type="text"
-                            id="modelNameInput"
-                            aria-label="Nazwa modelu do pobrania"
-                            placeholder="Nazwa modelu (np. llama3)"
-                            style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
-                        />
-                        <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
-                            📥 Pobierz
-                        </button>
-                    </div>
-                    <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
-                        <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
-                            <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
-                        </div>
-                        <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
-                    </div>
-                </div>
-
-                <!-- Panic Button -->
-                <div style="margin-bottom: 15px;">
-                    <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
-                        🚨 PANIC: Zwolnij zasoby
-                    </button>
-                </div>
-
-                <!-- Models List -->
-                <div class="models-list" id="modelsList">
-                    <p class="empty-state">Ładowanie modeli...</p>
-                </div>
-            </div>
-
-            <!-- History Tab -->
-            <div class="tab-content" id="historyTab">
-                <div class="panel-header">
-                    <h2>📜 Historia Żądań</h2>
-                    <button id="refreshHistory" class="btn-small" title="Odśwież historię">🔄</button>
-                </div>
-                <div class="history-container">
-                    <div class="history-table-wrapper">
-                        <table class="history-table" id="historyTable">
-                            <thead>
-                                <tr>
-                                    <th>Status</th>
-                                    <th>Polecenie</th>
-                                    <th>Czas</th>
-                                </tr>
-                            </thead>
-                            <tbody id="historyTableBody">
-                                <tr>
-                                    <td colspan="3" class="empty-state">Ładowanie historii...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </aside>
+<div class="stats-grid">
+    <div class="flare-card">
+        <div class="card-label"><div class="pixel-dot" style="color: var(--primary);"></div> Aktywne zadania</div>
+        <div class="card-value">
+            <span id="queueActive">0</span><span style="font-size: 1.2rem; color: #444;"> / <span id="queueLimit">5</span></span>
+        </div>
+        <button id="pauseResumeBtn" class="btn-card-action" data-state="running" title="Wstrzymaj kolejkę" aria-label="Wstrzymaj kolejkę">
+            <span class="btn-icon">⏸️</span>
+            <span class="btn-text">PAUZA</span>
+        </button>
+        <button id="emergencyStopBtn" class="btn-card-action btn-danger" title="Awaryjne zatrzymanie" aria-label="Awaryjne zatrzymanie - anuluj wszystkie zadania">
+            <span class="btn-icon">🚨</span>
+            <span class="btn-text">STOP</span>
+        </button>
+    </div>
+    <div class="flare-card secondary">
+        <div class="card-label"><div class="pixel-dot" style="color: var(--secondary);"></div> Zadania w kolejce</div>
+        <div class="card-value" id="queuePending">0</div>
+        <button id="purgeQueueBtn" class="btn-card-action" title="Wyczyść kolejkę" aria-label="Wyczyść kolejkę zadań">
+            <span class="btn-text">[ WYCZYŚĆ ]</span>
+        </button>
+    </div>
+    <div class="flare-card danger">
+        <div class="card-label"><div class="pixel-dot" style="color: var(--warning);"></div> Koszt sesji</div>
+        <div class="card-value" style="color: var(--warning);" id="sessionCost">$0.00</div>
     </div>
 </div>
 
-<!-- History Detail Modal -->
+<div class="main-layout">
+    <section class="console-wrapper">
+        <div class="console-header">
+            <span style="font-family: var(--font-tech); font-size: 0.75rem; color: #666;">INTERFEJS POLECEŃ</span>
+            <button id="clearWidgetsBtn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem;">WYCZYŚĆ</button>
+        </div>
+        <div class="chat-container">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="suggestion-panel" id="suggestionPanel" aria-label="Przybornik poleceń">
+                <div class="suggestion-grid">
+                    <button type="button" class="suggestion-chip" data-prompt="Stwórz logo dla fintechu używając DALL-E" aria-label="Kreacja: Stwórz logo dla fintechu używając DALL-E">
+                        <span class="chip-icon" aria-hidden="true">🎨</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">Kreacja</span>
+                            <span class="chip-desc">"Stwórz logo dla fintechu używając DALL-E"</span>
+                        </span>
+                    </button>
+                    <button type="button" class="suggestion-chip" data-prompt="Sprawdź status serwerów w infrastrukturze" aria-label="DevOps: Sprawdź status serwerów w infrastrukturze">
+                        <span class="chip-icon" aria-hidden="true">☁️</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">DevOps</span>
+                            <span class="chip-desc">"Sprawdź status serwerów w infrastrukturze"</span>
+                        </span>
+                    </button>
+                    <button type="button" class="suggestion-chip" data-prompt="Pokaż status projektu" aria-label="Executive: Status projektu i roadmapy">
+                        <span class="chip-icon" aria-hidden="true">📊</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">Status projektu</span>
+                            <span class="chip-desc">"Pokaż status projektu"</span>
+                        </span>
+                    </button>
+                    <button type="button" class="suggestion-chip" data-prompt="Zrób research o trendach AI w 2024" aria-label="Research: Zrób research o trendach AI w 2024">
+                        <span class="chip-icon" aria-hidden="true">🧠</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">Research</span>
+                            <span class="chip-desc">"Zrób research o trendach AI w 2024"</span>
+                        </span>
+                    </button>
+                    <button type="button" class="suggestion-chip" data-prompt="Napisz testy jednostkowe dla modułu API" aria-label="Kod: Napisz testy jednostkowe dla modułu API">
+                        <span class="chip-icon" aria-hidden="true">🛠️</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">Kod</span>
+                            <span class="chip-desc">"Napisz testy jednostkowe dla modułu API"</span>
+                        </span>
+                    </button>
+                    <button type="button" class="suggestion-chip" data-prompt="Co potrafisz?" aria-label="Pomoc: Co potrafisz? Pokaż dostępne funkcje systemu">
+                        <span class="chip-icon" aria-hidden="true">❓</span>
+                        <span class="chip-text-block">
+                            <span class="chip-title">Pomoc</span>
+                            <span class="chip-desc">"Co potrafisz?"</span>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="widgets-grid" id="widgetsGrid" style="display: none;">
+            <!-- Dynamiczne widgety będą renderowane tutaj -->
+        </div>
+        <div class="input-area">
+            <div style="display: flex; gap: 10px;">
+                <textarea
+                    id="taskInput"
+                    placeholder="Wpisz polecenie... (np. 'Zrób research o Python 3.12')"
+                    rows="3"
+                ></textarea>
+                <button id="sendButton" class="btn-venom" title="Wyślij polecenie (Ctrl+Enter)">
+                    WYŚLIJ
+                    <kbd style="font-size: 0.65em; opacity: 0.7; margin-left: 6px;">Ctrl+Enter</kbd>
+                </button>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
+                <label style="display: flex; align-items: center; cursor: pointer; gap: 6px;" title="Tryb eksperymentalny: polecenia nie będą zapisywane w historii">
+                    <input type="checkbox" id="labModeCheckbox" />
+                    <span style="font-size: 1.1rem;">🧪</span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">Tryb Lab <span style="font-size: 0.7em; color: var(--text-muted);">(Bez zapisu)</span></span>
+                </label>
+            </div>
+        </div>
+    </section>
+
+</div>
+
 <div id="historyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
     <div class="modal-content">
         <div class="modal-header">
@@ -526,7 +1165,6 @@
     </div>
 </div>
 
-<!-- Cost Mode Confirmation Modal -->
 <div id="costModeModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="costModeModalTitle">
     <div class="modal-content">
         <div class="modal-header">
@@ -546,4 +1184,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
 {% endblock %}

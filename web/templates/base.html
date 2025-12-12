@@ -4,35 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Venom{% endblock %}</title>
-    
+
     <!-- Google Fonts - Inter & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    
+
     <!-- Nowa modularna architektura CSS -->
     <link rel="stylesheet" href="/static/css/main.css">
     <!-- Stary app.css dla kompatybilności. Plan migracji i kryteria usunięcia opisane w docs/FRONTEND_ARCHITECTURE.md -->
     <link rel="stylesheet" href="/static/css/app.css">
     {% block extra_css %}{% endblock %}
-    
+
     <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
-    
+
     <!-- Alpine.js - Reactive UI framework -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" 
-            integrity="sha512-z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg==" 
-            crossorigin="anonymous" 
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"
+            integrity="sha512-z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg=="
+            crossorigin="anonymous"
             referrerpolicy="no-referrer"></script>
 </head>
 <body class="theme-isolated" id="venomBody">
     <!-- Venom OS Unified Layout: Sidebar + Main Workspace -->
+    {% block sidebar %}
     <aside class="sidebar">
         <div class="brand">VENOM <span>OS</span></div>
-        
+
         <nav>
             <div class="sidebar-section-label">Core Modules</div>
             <a href="/" class="nav-link {% block nav_cockpit_active %}{% endblock %}">
@@ -44,7 +45,7 @@
             <a href="/brain" class="nav-link {% block nav_brain_active %}{% endblock %}">
                 <span>🧠 The Brain</span>
             </a>
-            
+
             <div class="sidebar-section-label space-top">Tools</div>
             <a href="/flow-inspector" class="nav-link {% block nav_flow_active %}{% endblock %}">
                 <span>🔀 Flow Inspector</span>
@@ -53,7 +54,7 @@
                 <span>🔍 Inspector</span>
             </a>
         </nav>
-        
+
         <!-- Zawartość sidebara (z przewijaniem) -->
         <div class="sidebar-content">
             <!-- Telemetria (opcjonalna, może być dodana na stronie) -->
@@ -62,11 +63,11 @@
                 <!-- Placeholder dla live feed / mini statystyk -->
             </div>
         </div>
-        
+
         <!-- Selektor poziomu autonomii -->
         <div class="sidebar-footer">
             <div class="nav-section-title" style="margin-bottom: 5px;">Konfiguracja systemu</div>
-            
+
             <div>
                 <label for="autonomyLevel" class="security-level-label">POZIOM BEZPIECZEŃSTWA</label>
                 <select id="autonomyLevel" class="autonomy-select">
@@ -77,16 +78,17 @@
                     <option value="40">🔴 ROOT</option>
                 </select>
             </div>
-            
+
             <!-- Config Row with toggle removed - moved to index.html to avoid duplicate IDs -->
         </div>
     </aside>
-    
+    {% endblock sidebar %}
+
     <!-- Main Workspace -->
     <main class="main-workspace">
         {% block content %}{% endblock %}
     </main>
-    
+
     <!-- Autonomy Modal -->
     <div id="autonomyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="autonomyModalTitle">
         <div class="modal-content">
@@ -106,7 +108,7 @@
             </div>
         </div>
     </div>
-    
+
     <script src="/static/js/app.js"></script>
     {% block extra_js %}{% endblock %}
 </body>

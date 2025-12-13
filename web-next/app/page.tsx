@@ -1,6 +1,12 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Panel, StatCard } from "@/components/ui/panel";
 import {
+  emergencyStop,
+  purgeQueue,
+  sendTask,
+  toggleQueue,
   useGraphSummary,
   useMetrics,
   useQueueStatus,
@@ -8,11 +14,17 @@ import {
   useTasks,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
+import { useState } from "react";
 
 export default function Home() {
+  const [taskContent, setTaskContent] = useState("");
+  const [labMode, setLabMode] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
   const { data: metrics } = useMetrics();
-  const { data: tasks } = useTasks();
-  const { data: queue } = useQueueStatus();
+  const { data: tasks, refresh: refreshTasks } = useTasks();
+  const { data: queue, refresh: refreshQueue } = useQueueStatus();
   const { data: services } = useServiceStatus();
   const { data: graph } = useGraphSummary();
   const { connected, entries } = useTelemetryFeed();
@@ -158,6 +170,150 @@ export default function Home() {
           </ul>
         </Panel>
       </div>
+
+      <Panel
+        title="Nowe zadanie"
+        description="Wyślij polecenie do Orchestratora (POST /api/v1/tasks)."
+        action={
+          <div className="flex items-center gap-2 text-xs text-[--color-muted]">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={labMode}
+                onChange={(e) => setLabMode(e.target.checked)}
+              />
+              Lab Mode (nie zapisuj lekcji)
+            </label>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <textarea
+            className="min-h-[100px] w-full rounded-xl border border-[--color-border] bg-white/5 p-3 text-sm text-white outline-none focus:border-[--color-accent]"
+            placeholder="Opisz zadanie..."
+            value={taskContent}
+            onChange={(e) => setTaskContent(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={async () => {
+                if (!taskContent.trim()) {
+                  setMessage("Podaj treść zadania.");
+                  return;
+                }
+                setSending(true);
+                setMessage(null);
+                try {
+                  const res = await sendTask(taskContent.trim(), !labMode);
+                  setMessage(`Wysłano zadanie: ${res.task_id}`);
+                  setTaskContent("");
+                  refreshTasks();
+                  refreshQueue();
+                } catch (err) {
+                  setMessage(
+                    err instanceof Error ? err.message : "Nie udało się wysłać zadania",
+                  );
+                } finally {
+                  setSending(false);
+                }
+              }}
+              disabled={sending}
+              className="rounded-lg bg-[--color-accent] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-purple-900/30 transition hover:-translate-y-[1px] hover:shadow-purple-800/40 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {sending ? "Wysyłanie..." : "Wyślij"}
+            </button>
+            <button
+              onClick={() => setTaskContent("")}
+              className="rounded-lg border border-[--color-border] px-4 py-2 text-sm text-[--color-muted] hover:bg-white/5"
+            >
+              Wyczyść
+            </button>
+            {message && (
+              <span className="text-sm text-[--color-muted]">{message}</span>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Queue governance"
+        description="Zarządzanie kolejką zadań (/api/v1/queue/*)."
+        action={
+          <Badge tone={queue?.paused ? "warning" : "success"}>
+            {queue?.paused ? "Wstrzymana" : "Aktywna"}
+          </Badge>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4">
+            <p className="text-sm text-white">Stan kolejki</p>
+            <p className="text-xs text-[--color-muted]">
+              Active: {queue?.active ?? "—"} | Pending: {queue?.pending ?? "—"} | Limit:{" "}
+              {queue?.limit ?? "∞"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white border border-[--color-border] hover:bg-white/10"
+              onClick={async () => {
+                try {
+                  await toggleQueue(queue?.paused ?? false);
+                  refreshQueue();
+                } catch (err) {
+                  setMessage(
+                    err instanceof Error
+                      ? err.message
+                      : "Nie udało się zmienić stanu kolejki",
+                  );
+                }
+              }}
+            >
+              {queue?.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
+            </button>
+            <button
+              className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm text-amber-100 border border-amber-500/40 hover:bg-amber-500/30"
+              onClick={async () => {
+                if (!confirm("Wyczyścić oczekujące zadania?")) return;
+                try {
+                  await purgeQueue();
+                  refreshQueue();
+                  refreshTasks();
+                } catch (err) {
+                  setMessage(
+                    err instanceof Error ? err.message : "Nie udało się wyczyścić kolejki",
+                  );
+                }
+              }}
+            >
+              Purge queue
+            </button>
+            <button
+              className="rounded-lg bg-rose-600/25 px-4 py-2 text-sm text-rose-100 border border-rose-500/40 hover:bg-rose-600/35"
+              onClick={async () => {
+                if (
+                  !confirm(
+                    "Awaryjne zatrzymanie zatrzyma wszystkie zadania. Kontynuować?",
+                  )
+                )
+                  return;
+                try {
+                  await emergencyStop();
+                  refreshQueue();
+                  refreshTasks();
+                } catch (err) {
+                  setMessage(
+                    err instanceof Error
+                      ? err.message
+                      : "Nie udało się wykonać awaryjnego stopu",
+                  );
+                }
+              }}
+            >
+              Emergency stop
+            </button>
+          </div>
+        </div>
+      </Panel>
 
       <Panel
         title="Mapa funkcji do przeniesienia"

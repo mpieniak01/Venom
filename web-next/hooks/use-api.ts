@@ -92,6 +92,34 @@ export function useQueueStatus(intervalMs = 5000) {
   );
 }
 
+export async function sendTask(content: string, storeKnowledge = true) {
+  return apiFetch<{ task_id: string }>("/api/v1/tasks", {
+    method: "POST",
+    body: JSON.stringify({
+      content,
+      store_knowledge: storeKnowledge,
+    }),
+  });
+}
+
+export async function toggleQueue(paused: boolean) {
+  const endpoint = paused ? "/api/v1/queue/resume" : "/api/v1/queue/pause";
+  return apiFetch<{ message: string }>(endpoint, { method: "POST" });
+}
+
+export async function purgeQueue() {
+  return apiFetch<{ removed: number }>("/api/v1/queue/purge", {
+    method: "POST",
+  });
+}
+
+export async function emergencyStop() {
+  return apiFetch<{ cancelled: number; purged: number }>(
+    "/api/v1/queue/emergency-stop",
+    { method: "POST" },
+  );
+}
+
 export function useServiceStatus(intervalMs = 15000) {
   return usePolling<ServiceStatus[]>(
     "services",

@@ -27,7 +27,8 @@ import {
   useTasks,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
-import { useState } from "react";
+import Chart from "chart.js/auto";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   const [taskContent, setTaskContent] = useState("");
@@ -37,6 +38,7 @@ export default function Home() {
   const [modelName, setModelName] = useState("");
   const [historyDetail, setHistoryDetail] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [tokenHistory, setTokenHistory] = useState<TokenSample[]>([]);
 
   const { data: metrics } = useMetrics();
   const { data: tasks, refresh: refreshTasks } = useTasks();
@@ -50,6 +52,20 @@ export default function Home() {
   const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel();
   const { data: history } = useHistory(6);
   const { connected, entries } = useTelemetryFeed();
+
+  useEffect(() => {
+    if (tokenMetrics?.total_tokens === undefined) return;
+    setTokenHistory((prev) => {
+      const next = [
+        ...prev,
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          value: tokenMetrics.total_tokens ?? 0,
+        },
+      ];
+      return next.slice(-20);
+    });
+  }, [tokenMetrics?.total_tokens]);
 
   const taskItems = (tasks || []).slice(0, 4);
 
@@ -545,6 +561,18 @@ export default function Home() {
             <TokenRow label="Cached" value={tokenMetrics?.cached_tokens} />
           </div>
         </Panel>
+        <Panel
+          title="Trend tokenów"
+          description="Chart.js – próbki z /api/v1/metrics/tokens (ostatnie 20)."
+        >
+          {tokenHistory.length < 2 ? (
+            <p className="text-sm text-[--color-muted]">
+              Za mało danych do wizualizacji. Poczekaj na kolejne odczyty.
+            </p>
+          ) : (
+            <TokenChart history={tokenHistory} />
+          )}
+        </Panel>
 
         <Panel
           title="Historia"
@@ -647,19 +675,6 @@ function serviceTone(status: string | undefined) {
   return "neutral" as const;
 }
 
-type TokenRowProps = { label: string; value?: number };
-
-function TokenRow({ label, value }: TokenRowProps) {
-  return (
-    <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-[--color-muted]">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">
-        {value !== undefined ? value : "—"}
-      </p>
-    </div>
-  );
-}
-
 function formatUptime(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -673,4 +688,81 @@ function formatPayload(payload: unknown) {
   } catch {
     return String(payload);
   }
+}
+
+type TokenRowProps = { label: string; value?: number };
+
+function TokenRow({ label, value }: TokenRowProps) {
+  return (
+    <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-[--color-muted]">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">
+        {value !== undefined ? value : "—"}
+      </p>
+    </div>
+  );
+}
+
+type TokenSample = { timestamp: string; value: number };
+
+function TokenChart({ history }: { history: TokenSample[] }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const chartRef = useRef<Chart | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const labels = history.map((h) => h.timestamp);
+    const dataPoints = history.map((h) => h.value);
+
+    if (chartRef.current) {
+      chartRef.current.data.labels = labels;
+      chartRef.current.data.datasets[0].data = dataPoints;
+      chartRef.current.update();
+      return;
+    }
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Total tokens",
+            data: dataPoints,
+            borderColor: "#8b5cf6",
+            backgroundColor: "rgba(139,92,246,0.2)",
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            labels: {
+              color: "#e5e7eb",
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: "#94a3b8", maxTicksLimit: 5 },
+            grid: { color: "rgba(148,163,184,0.2)" },
+          },
+          y: {
+            ticks: { color: "#94a3b8" },
+            grid: { color: "rgba(148,163,184,0.2)" },
+          },
+        },
+      },
+    });
+
+    return () => {
+      chartRef.current?.destroy();
+      chartRef.current = null;
+    };
+  }, [history]);
+
+  return <canvas ref={canvasRef} className="w-full" />;
 }

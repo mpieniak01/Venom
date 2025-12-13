@@ -14,8 +14,10 @@
 - Assets: `web/static/css/app.css`, `strategy.css`, czcionki z CDN, biblioteki z CDN (Chart.js, mermaid, DOMPurify, marked; Cytoscape w Brain).
 
 ## 3. Założenia techniczne migracji
-- Next.js 14+ (app router) z TypeScript, ESLint, Prettier. Stylowanie: Tailwind albo CSS Modules/Styled-Components – decyzja w Faza 1 (prefer Tailwind + shadcn/ui, jeśli nie koliduje ze stylami).
+- Next.js 14+ (app router) z TypeScript, ESLint, Prettier. Stylowanie: Tailwind albo CSS Modules/Styled-Components – decyzja w etapie 1 (prefer Tailwind + shadcn/ui, jeśli nie koliduje ze stylami).
 - Konfiguracja `.env.local` z bazowym URL API (`NEXT_PUBLIC_API_BASE=https://...`) i WebSocket endpointem; w dev domyślnie `http://localhost:8000`.
+  - **Uwaga**: `.env.local` nie powinien trafiać do repozytorium (podobnie jak obecny `.env`).
+  - Należy również stworzyć odpowiednią konfigurację zgodną z istniejącym podejściem w projekcie (config.py/Settings z domyślnymi wartościami i fallbackami).
 - Zachowanie SSR/ISR tam, gdzie ma sens (np. statyczne części Strategii), ale większość paneli real-time jako client components.
 - Reużycie ikon/emoji z aktualnego UI; nowe fonty dopasowane do obecnej estetyki (dark dashboard).
 
@@ -45,7 +47,7 @@
 6) **Integracja i konfiguracja**
    - Next dev podłączony do działającego backendu FastAPI (CORS lub proxy).
    - Skrypty w `package.json` (`dev`, `build`, `start`, `lint`), aktualizacja README z instrukcją uruchomienia frontendu.
-   - Dodanie CI (opcjonalnie) dla lint/build.
+   - Dodanie CI dla lint/build (ESLint, Prettier, ewentualne testy jednostkowe) zgodnie z istniejącymi praktykami w projekcie (pre-commit + Black + Ruff).
 7) **Testy i cutover**
    - Test ręczny krytycznych ścieżek (task submit, telemetry feed, queue actions, model install/switch, git sync/undo, history, graph, strategy flow).
    - E2E smoke (Playwright/Cypress) dla najważniejszych ekranów, jeśli czas pozwoli.
@@ -56,14 +58,25 @@
 - Warstwa API/WS z typami + hookami.
 - Strony Cockpit, Flow Inspector, Brain, Strategy z funkcjonalnością 1:1 z obecną wersją.
 - Dokumentacja uruchomienia i konfiguracji (`docs/DASHBOARD_GUIDE` update lub nowy `docs/FRONTEND_NEXT_GUIDE.md`).
+- Testy:
+  - Testy jednostkowe i integracyjne dla komponentów frontendu (Jest/Vitest/React Testing Library).
+  - Testy E2E (Playwright/Cypress, jeśli wdrożone).
+  - Dokumentacja testowania (opis uruchamiania, zakres pokrycia).
 
 ## 6. Ryzyka i mitigacje
 - **Niezgodność API**: ustalić kontrakty (schematy odpowiedzi) na starcie; dodać typy i walidacje runtime.
 - **WS stabilność**: implementować backoff i sygnalizację reconnect; fallback na polling dla krytycznych metryk.
-- **Biblioteki w CSR**: mermaid/Chart.js/Cytoscape wymagają dynamic importu w Next – planować komponenty klientowe.
+- **Biblioteki w CSR**: mermaid/Chart.js/Cytoscape wymagają dynamic importu w Next – planować komponenty klientowe (client components).
 - **Różnice stylów**: jeśli Tailwind, wyekstrahować kolory/spacing z `app.css`, uniknąć podwójnego stylowania.
+- **Kompatybilność wersji Next.js i bibliotek zewnętrznych**: ryzyko niezgodności wersji Next.js (np. 14+ vs. potencjalne 15/16) z React, TypeScript, Chart.js, mermaid, Cytoscape itp.
+  - **Mitigacja**:
+    - Przed migracją i przy każdej aktualizacji sprawdzić peerDependencies i changelogi tych bibliotek.
+    - Wykonać testy smoke po podniesieniu wersji.
+    - W razie potrzeby zablokować wersje w `package.json` lub rozważyć downgrade/alternatywy.
+    - W fazie discovery potwierdzić minimalne i maksymalne wspierane wersje kluczowych zależności.
 
 ## 7. Następne kroki wykonawcze (do rozpoczęcia migracji)
+- Utworzyć lub zaktualizować plik opisu zadania w `docs/_to_do` zgodnie z wytycznymi projektu (numer, cel, Definition of Done, notatki). Dokument powinien zawierać jasno określone kryteria DoD dla całej migracji, aby po spełnieniu wszystkich warunków można było przenieść zadanie do `docs/_done`.
 - Potwierdzić strukturę katalogu (`web-next/` vs zastąpienie `web/`) i wybór stacku stylów.
 - Wygenerować projekt Next.js i skonfigurować proxy do `http://localhost:8000`.
 - Zaimportować typy z Pydantic (ręcznie lub generacja `openapi-typescript`), stworzyć warstwę klienta i placeholdery stron.

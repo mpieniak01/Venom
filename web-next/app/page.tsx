@@ -5,6 +5,7 @@ import { Panel, StatCard } from "@/components/ui/panel";
 import {
   emergencyStop,
   fetchHistoryDetail,
+  fetchMarkdownContent,
   gitSync,
   gitUndo,
   installModel,
@@ -18,6 +19,7 @@ import {
   useCostMode,
   useGraphSummary,
   useHistory,
+  useMarkdownLogs,
   useMetrics,
   useModels,
   useQueueStatus,
@@ -144,19 +146,9 @@ export default function Home() {
               <p className="text-[--color-muted]">Brak danych z telemetrii.</p>
             )}
             {entries.slice(0, 6).map((entry) => (
-              <div
-                key={entry.id}
-                className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
-              >
-                <p className="text-[11px] text-[--color-muted]">
-                  {new Date(entry.ts).toLocaleTimeString()}
-                </p>
-                <pre className="mt-1 max-h-24 overflow-auto text-xs text-slate-200">
-                  {formatPayload(entry.payload)}
-                </pre>
-              </div>
+              <LogEntry key={entry.id} entry={entry} />
             ))}
-          </div>
+         </div>
         </Panel>
 
         <Panel
@@ -718,6 +710,44 @@ function formatPayload(payload: unknown) {
     return String(payload);
   }
 }
+
+function LogEntry({ entry }: { entry: LogEntryType }) {
+  const payload = entry.payload;
+  const text =
+    typeof payload === "string"
+      ? payload
+      : payload && typeof payload === "object"
+        ? (payload as any).message || JSON.stringify(payload, null, 2)
+        : String(payload);
+  const level =
+    typeof payload === "object" && payload && "level" in payload
+      ? String((payload as any).level).toUpperCase()
+      : "INFO";
+  const type =
+    typeof payload === "object" && payload && "type" in payload
+      ? String((payload as any).type)
+      : "log";
+
+  return (
+    <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
+      <div className="flex items-center justify-between text-[11px] text-[--color-muted]">
+        <span>{new Date(entry.ts).toLocaleTimeString()}</span>
+        <span>
+          {type} • {level}
+        </span>
+      </div>
+      <pre className="mt-1 max-h-24 overflow-auto text-xs text-slate-200 whitespace-pre-wrap">
+        {text}
+      </pre>
+    </div>
+  );
+}
+
+type LogEntryType = {
+  id: string;
+  ts: number;
+  payload: unknown;
+};
 
 type TokenRowProps = { label: string; value?: number };
 

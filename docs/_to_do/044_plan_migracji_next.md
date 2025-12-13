@@ -20,6 +20,7 @@
   - Należy również stworzyć odpowiednią konfigurację zgodną z istniejącym podejściem w projekcie (config.py/Settings z domyślnymi wartościami i fallbackami).
 - Zachowanie SSR/ISR tam, gdzie ma sens (np. statyczne części Strategii), ale większość paneli real-time jako client components.
 - Reużycie ikon/emoji z aktualnego UI; nowe fonty dopasowane do obecnej estetyki (dark dashboard).
+- Funkcjonalnosci maja byc zachowane ze starego panelu ale wystandaryzowane do zunifikowanego wyglady nowego.
 
 ## 4. Plan etapowy
 1) **Discovery i decyzje narzędziowe**

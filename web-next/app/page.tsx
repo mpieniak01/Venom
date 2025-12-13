@@ -29,6 +29,7 @@ import {
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import Chart from "chart.js/auto";
 import { useEffect, useRef, useState } from "react";
+import type { HistoryRequestDetail } from "@/lib/types";
 
 export default function Home() {
   const [taskContent, setTaskContent] = useState("");
@@ -36,8 +37,9 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [modelName, setModelName] = useState("");
-  const [historyDetail, setHistoryDetail] = useState<string | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<HistoryRequestDetail | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [tokenHistory, setTokenHistory] = useState<TokenSample[]>([]);
 
   const { data: metrics } = useMetrics();
@@ -590,9 +592,11 @@ export default function Home() {
                   setLoadingHistory(true);
                   try {
                     const detail = await fetchHistoryDetail(item.request_id);
-                    setHistoryDetail(JSON.stringify(detail, null, 2));
+                    setHistoryDetail(detail);
+                    setHistoryError(null);
                   } catch (err) {
-                    setHistoryDetail(
+                    setHistoryDetail(null);
+                    setHistoryError(
                       err instanceof Error
                         ? err.message
                         : "Nie udało się pobrać szczegółów",
@@ -616,10 +620,35 @@ export default function Home() {
             {loadingHistory && (
               <p className="text-xs text-[--color-muted]">Ładowanie szczegółów...</p>
             )}
+            {historyError && (
+              <p className="text-xs text-rose-300">{historyError}</p>
+            )}
             {historyDetail && (
-              <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-[--color-border] bg-black/40 p-3 text-xs text-slate-200">
-                {historyDetail}
-              </pre>
+              <div className="mt-3 rounded-lg border border-[--color-border] bg-black/30 p-3 text-xs text-slate-200">
+                <p className="text-sm text-white">Request: {historyDetail.request_id}</p>
+                <p className="text-[--color-muted]">
+                  Status: {historyDetail.status} • Czas trwania:{" "}
+                  {historyDetail.duration_seconds
+                    ? `${historyDetail.duration_seconds.toFixed(1)}s`
+                    : "n/a"}
+                </p>
+                <div className="mt-2 max-h-60 overflow-auto">
+                  <ol className="space-y-1">
+                    {(historyDetail.steps || []).map((step, idx) => (
+                      <li
+                        key={`${historyDetail.request_id}-${idx}`}
+                        className="rounded border border-[--color-border] bg-white/5 px-2 py-1 text-white"
+                      >
+                        <span className="font-semibold">{step.component || "step"}</span>:{" "}
+                        {step.action || step.details || ""}
+                      </li>
+                    ))}
+                    {(historyDetail.steps || []).length === 0 && (
+                      <li className="text-[--color-muted]">Brak kroków w historii.</li>
+                    )}
+                  </ol>
+                </div>
+              </div>
             )}
           </div>
         </Panel>

@@ -296,7 +296,3 @@ export async function fetchGraphImpact(filePath: string) {
     `/api/v1/graph/impact/${encodeURIComponent(filePath)}`,
   );
 }
-
-export async function fetchMarkdownContent(path: string) {
-  return apiFetch<string>(path, { skipBaseUrl: true });
-}

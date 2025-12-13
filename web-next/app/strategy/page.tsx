@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Panel, StatCard } from "@/components/ui/panel";
+import { MarkdownPreview } from "@/components/ui/markdown";
 import {
   createRoadmap,
   requestRoadmapStatus,
@@ -176,12 +177,12 @@ export default function StrategyPage() {
 
       <Panel title="Wizja" description="Dane z goal store.">
         {roadmap?.vision ? (
-          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-sm text-[--color-muted]">
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-sm text-[--color-muted] space-y-3">
             <h3 className="text-lg font-semibold text-white">
               {roadmap.vision.title}
             </h3>
-            <p className="mt-2">{roadmap.vision.description}</p>
-            <p className="mt-3 text-xs">
+            <MarkdownPreview content={roadmap.vision.description} />
+            <p className="text-xs">
               Status: {roadmap.vision.status} • Postęp:{" "}
               {roadmap.vision.progress?.toFixed(1) ?? 0}%
             </p>
@@ -239,20 +240,15 @@ export default function StrategyPage() {
       </Panel>
 
       <Panel title="Pełny raport" description="/api/roadmap (pole report)">
-        {roadmap?.report ? (
-          <pre className="max-h-96 overflow-auto rounded-xl border border-[--color-border] bg-black/40 p-4 text-xs text-slate-200">
-            {roadmap.report}
-          </pre>
-        ) : (
-          <p className="text-sm text-[--color-muted]">Brak raportu.</p>
-        )}
+        <MarkdownPreview
+          content={roadmap?.report}
+          emptyState="Brak raportu."
+        />
       </Panel>
 
       {statusReport && (
         <Panel title="Raport statusu" description="/api/roadmap/status">
-          <pre className="max-h-96 overflow-auto rounded-xl border border-[--color-border] bg-black/40 p-4 text-xs text-slate-200">
-            {statusReport}
-          </pre>
+          <MarkdownPreview content={statusReport} />
         </Panel>
       )}
     </div>

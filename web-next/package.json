@@ -11,6 +11,8 @@
   "dependencies": {
     "chart.js": "^4.5.1",
     "cytoscape": "^3.33.1",
+    "dompurify": "^3.3.1",
+    "marked": "^17.0.1",
     "mermaid": "^11.12.2",
     "next": "15.5.9",
     "react": "19.1.0",

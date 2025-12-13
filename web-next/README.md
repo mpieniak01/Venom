@@ -46,6 +46,8 @@ npm run start
 - Cost Mode & Autonomy (`/api/v1/system/cost-mode`, `/api/v1/system/autonomy`)
 - Tokenomics (`/api/v1/metrics/tokens`), usługi systemowe (`/api/v1/system/services`)
 - Historia: ostatnie requesty + detail (`/api/v1/history/requests`)
+- Flow: timeline mermaid dla wybranego requestu (kroki z `/history/requests/{id}`)
+- Brain: graf wiedzy z Cytoscape (`/api/v1/knowledge/graph`), filtrowanie węzłów, podgląd detali
 
 ## Kolejne kroki
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.

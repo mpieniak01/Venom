@@ -23,6 +23,7 @@ export interface QueueStatus {
   active: number;
   pending: number;
   limit?: number;
+  paused?: boolean;
 }
 
 export interface IntegrationStatus {

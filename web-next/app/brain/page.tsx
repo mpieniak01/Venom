@@ -11,8 +11,9 @@ import {
   useLessons,
   useLessonsStats,
 } from "@/hooks/use-api";
+import type { Lesson } from "@/lib/types";
 import type cytoscapeType from "cytoscape";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function BrainPage() {
   const { data: summary, refresh: refreshSummary } = useGraphSummary();
@@ -30,8 +31,15 @@ export default function BrainPage() {
   const [impactInfo, setImpactInfo] = useState<Record<string, unknown> | null>(null);
   const [fileMessage, setFileMessage] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
+  const [relations, setRelations] = useState<RelationEntry[]>([]);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+  const lessonTags = useMemo(() => aggregateTags(lessons?.lessons || []), [lessons]);
+  const filteredLessons = useMemo(() => {
+    if (!activeTag) return lessons?.lessons || [];
+    return (lessons?.lessons || []).filter((lesson) => lesson.tags?.includes(activeTag));
+  }, [lessons, activeTag]);
   const summaryStats = summary?.summary || summary;
   const summaryNodes = summaryStats?.nodes ?? summary?.nodes ?? "—";
   const summaryEdges = summaryStats?.edges ?? summary?.edges ?? "—";
@@ -117,6 +125,21 @@ export default function BrainPage() {
       cyInstance.on("tap", "node", (evt) => {
         const data = evt.target.data() || {};
         setSelected(data);
+        const edges = evt.target.connectedEdges();
+        const relEntries: RelationEntry[] = edges.map((edge) => {
+          const edgeData = edge.data();
+          const source = edge.source();
+          const target = edge.target();
+          const isOut = source.id() === evt.target.id();
+          const otherNode = isOut ? target : source;
+          return {
+            id: otherNode.id(),
+            label: otherNode.data("label") || otherNode.id(),
+            type: edgeData.label || edgeData.type,
+            direction: isOut ? "out" : "in",
+          };
+        });
+        setRelations(relEntries);
       });
       cyInstanceRef.current = cyInstance;
     };
@@ -189,13 +212,38 @@ export default function BrainPage() {
           </div>
           <div>
             <h4 className="text-sm font-semibold text-white">Ostatnie lekcje</h4>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <button
+                className={`rounded-full px-3 py-1 ${
+                  activeTag === null
+                    ? "bg-[--color-accent]/30 text-white"
+                    : "bg-white/5 text-white border border-[--color-border]"
+                }`}
+                onClick={() => setActiveTag(null)}
+              >
+                Wszystkie
+              </button>
+              {lessonTags.map((tag) => (
+                <button
+                  key={tag.name}
+                  className={`rounded-full px-3 py-1 ${
+                    activeTag === tag.name
+                      ? "bg-[--color-accent]/30 text-white"
+                      : "bg-white/5 text-white border border-[--color-border]"
+                  }`}
+                  onClick={() => setActiveTag(tag.name)}
+                >
+                  #{tag.name} ({tag.count})
+                </button>
+              ))}
+            </div>
             <ul className="mt-2 space-y-2 text-sm text-[--color-muted]">
-              {(!lessons || lessons.lessons.length === 0) && (
+              {filteredLessons.length === 0 && (
                 <li className="rounded border border-[--color-border] bg-white/5 px-3 py-2">
                   Brak danych lub LessonsStore offline.
                 </li>
               )}
-              {(lessons?.lessons || []).map((lesson) => (
+              {filteredLessons.map((lesson) => (
                 <li
                   key={lesson.id || lesson.title}
                   className="rounded border border-[--color-border] bg-white/5 px-3 py-2"
@@ -337,7 +385,7 @@ export default function BrainPage() {
             </div>
             <div ref={cyRef} className="h-[480px] w-full rounded-lg bg-[#0b1220]" />
           </div>
-          <div className="rounded-xl border border-[--color-border] bg-white/5 p-6">
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-6 space-y-3">
             <h4 className="text-sm font-semibold text-white">Szczegóły węzła</h4>
             {selected ? (
               <div className="mt-2 space-y-2 text-sm text-[--color-muted]">
@@ -351,6 +399,29 @@ export default function BrainPage() {
                     {JSON.stringify(selected, null, 2)}
                   </pre>
                 </details>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+                    Relacje
+                  </p>
+                  {relations.length === 0 ? (
+                    <p className="text-xs">Brak relacji.</p>
+                  ) : (
+                    <ul className="text-xs space-y-1">
+                      {relations.map((rel) => (
+                        <li
+                          key={`${selected.id}-${rel.id}-${rel.direction}`}
+                          className="rounded border border-[--color-border] bg-white/5 px-2 py-1"
+                        >
+                          <span className="font-semibold text-white">{rel.label}</span>
+                          <span className="text-[--color-muted]">
+                            {" "}
+                            ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="mt-2 text-sm text-[--color-muted]">
@@ -387,3 +458,22 @@ function JsonPreview({ data }: { data: Record<string, unknown> }) {
     </pre>
   );
 }
+
+type RelationEntry = {
+  id: string;
+  label?: string;
+  type?: string;
+  direction: "in" | "out";
+};
+
+type TagEntry = { name: string; count: number };
+
+const aggregateTags = (lessons: Lesson[]): TagEntry[] => {
+  const counters: Record<string, number> = {};
+  lessons.forEach((lesson) => {
+    (lesson.tags || []).forEach((tag) => {
+      counters[tag] = (counters[tag] || 0) + 1;
+    });
+  });
+  return Object.entries(counters).map(([name, count]) => ({ name, count }));
+};

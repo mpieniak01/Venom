@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
 import type { HistoryStep as HistoryStepType } from "@/lib/types";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function FlowInspectorPage() {
   const { data: history } = useHistory(50);
@@ -12,8 +12,10 @@ export default function FlowInspectorPage() {
   const [diagram, setDiagram] = useState<string>("graph TD\nA[Brak danych]");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [steps, setSteps] = useState<HistoryStep[]>([]);
-  const [steps, setSteps] = useState<HistoryStep[]>([]);
+  const [stepFilter, setStepFilter] = useState("");
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const svgRef = useRef<HTMLDivElement | null>(null);
+  const filteredSteps = useMemo(() => filterSteps(steps, stepFilter), [steps, stepFilter]);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,7 +74,14 @@ export default function FlowInspectorPage() {
               key={req.request_id}
               className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-left hover:bg-white/10"
               onClick={() =>
-                loadHistoryDetail(req.request_id, setDiagram, setSelectedId, setSteps)
+                loadHistoryDetail(
+                  req.request_id,
+                  setDiagram,
+                  setSelectedId,
+                  setSteps,
+                  () => setStepFilter(""),
+                  () => setCopyMessage(null),
+                )
               }
             >
               <div className="flex items-center justify-between">
@@ -107,19 +116,37 @@ export default function FlowInspectorPage() {
             {selectedId ? (
               <div className="mt-2 space-y-2">
                 <p className="text-xs">Wybrany request: {selectedId}</p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <input
+                    type="text"
+                    placeholder="Filtruj kroki..."
+                    value={stepFilter}
+                    onChange={(e) => setStepFilter(e.target.value)}
+                    className="flex-1 rounded border border-[--color-border] bg-white/5 px-2 py-1 text-white outline-none focus:border-[--color-accent]"
+                  />
+                  <button
+                    className="rounded border border-[--color-border] px-2 py-1 text-white hover:bg-white/10"
+                    onClick={() => handleCopySteps(filteredSteps, setCopyMessage)}
+                  >
+                    Kopiuj
+                  </button>
+                </div>
+                {copyMessage && (
+                  <p className="text-[10px] text-[--color-muted]">{copyMessage}</p>
+                )}
                 <ul className="space-y-1 text-xs">
-                  {steps.length === 0 && (
+                  {filteredSteps.length === 0 && (
                     <li className="text-[--color-muted]">Brak kroków.</li>
                   )}
-                  {steps.map((step, idx) => (
+                  {filteredSteps.map((step, idx) => (
                     <li
-                      key={idx}
+                      key={`${selectedId}-${idx}`}
                       className="rounded border border-[--color-border] bg-white/5 px-2 py-1"
                     >
                       <span className="font-semibold text-white">
                         {step.component || "step"}
                       </span>
-                      : {step.action || ""}
+                      : {step.action || step.details || ""}
                     </li>
                   ))}
                 </ul>
@@ -144,11 +171,36 @@ function statusTone(status: string | undefined) {
 
 type HistoryStep = HistoryStepType;
 
+const filterSteps = (steps: HistoryStep[], query: string) => {
+  if (!query.trim()) return steps;
+  const lower = query.toLowerCase();
+  return steps.filter((step) =>
+    `${step.component ?? ""} ${step.action ?? ""}`.toLowerCase().includes(lower),
+  );
+};
+
+async function handleCopySteps(
+  steps: HistoryStep[],
+  setCopyMessage: (msg: string | null) => void,
+) {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(steps, null, 2));
+    setCopyMessage("Skopiowano kroki do schowka.");
+    setTimeout(() => setCopyMessage(null), 2000);
+  } catch (err) {
+    console.error("Clipboard error:", err);
+    setCopyMessage("Nie udało się skopiować.");
+    setTimeout(() => setCopyMessage(null), 2000);
+  }
+}
+
 async function loadHistoryDetail(
   requestId: string,
   setDiagram: (d: string) => void,
   setSelected: (id: string) => void,
   setSteps: (s: HistoryStep[]) => void,
+  resetFilter: () => void,
+  resetCopy: () => void,
 ) {
   const detail = (await fetchHistoryDetail(requestId)) as { steps?: HistoryStep[] };
   const steps = detail.steps || [];
@@ -156,6 +208,8 @@ async function loadHistoryDetail(
   setDiagram(diagram);
   setSelected(requestId);
   setSteps(steps);
+  resetFilter();
+  resetCopy();
 }
 
 function buildMermaid(steps: HistoryStep[]) {

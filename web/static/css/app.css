@@ -27,6 +27,10 @@
     --venom-border-glass: 1px solid rgba(255, 255, 255, 0.08);
     --venom-font-ui: 'Inter', sans-serif;
     --venom-font-tech: 'JetBrains Mono', monospace;
+    --venom-panel-radius: 4px;
+    --venom-panel-border: 1px solid rgba(255, 255, 255, 0.08);
+    --venom-panel-bg: rgba(6, 9, 16, 0.92);
+    --venom-card-bg: rgba(4, 7, 12, 0.92);
 }
 
 * {
@@ -2176,7 +2180,8 @@ body[data-layout='brain'] .main-content {
 }
 
 .venom-sidebar {
-    width: 340px;
+    width: 320px;
+    flex: 0 0 320px;
     background: var(--venom-surface);
     border-right: 1px solid rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(20px);
@@ -2184,6 +2189,7 @@ body[data-layout='brain'] .main-content {
     flex-direction: column;
     flex-shrink: 0;
     color: #e2e8f0;
+    overflow: hidden;
 }
 
 .venom-sidebar__header {
@@ -2217,26 +2223,28 @@ body[data-layout='brain'] .main-content {
 .venom-sidebar__content {
     flex: 1;
     overflow-y: auto;
-    padding: 24px;
+    padding: 20px 22px;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 28px;
+}
+
+.venom-sidebar__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .venom-nav-title {
     font-family: var(--venom-font-tech);
-    font-size: 0.65rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.3em;
-    color: rgba(226, 232, 240, 0.5);
-    margin-bottom: 12px;
-}
-
-.venom-nav-title--actions {
+    letter-spacing: 0.32em;
+    color: rgba(226, 232, 240, 0.6);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 12px;
 }
 
 .btn-icon {
@@ -2281,8 +2289,8 @@ body[data-layout='brain'] .main-content {
 .venom-mini-terminal {
     background: rgba(0, 0, 0, 0.35);
     border: var(--venom-border-glass);
-    border-radius: 4px;
-    padding: 16px;
+    border-radius: 6px;
+    padding: 14px;
     font-family: var(--venom-font-tech);
     font-size: 0.75rem;
     color: #94a3b8;
@@ -2291,12 +2299,13 @@ body[data-layout='brain'] .main-content {
 }
 
 .venom-sidebar__footer {
-    padding: 20px 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 16px 20px 20px;
+    border-top: none;
     background: transparent;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    margin-top: auto;
 }
 
 .terminal-line {
@@ -2369,7 +2378,123 @@ body[data-layout='brain'] .main-content {
     min-height: 0;
 }
 
-.cockpit-left-stack .venom-panels {
+.cockpit-panel {
+    background: var(--venom-panel-bg);
+    border: var(--venom-panel-border);
+    border-radius: var(--venom-panel-radius);
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: relative;
+    box-shadow: 0 30px 80px rgba(3, 7, 18, 0.35);
+    overflow: hidden;
+}
+
+.cockpit-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 157, 0.45), transparent);
+    opacity: 0.85;
+}
+
+.cockpit-panel--secondary::before {
+    background: linear-gradient(90deg, transparent, rgba(0, 184, 255, 0.45), transparent);
+}
+
+.cockpit-panel--danger::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 0, 85, 0.45), transparent);
+}
+
+.telemetry-section,
+.telemetry-metric-card,
+.jobs-insight-card,
+.memory-insight-card,
+.models-insight-card,
+.history-insight-card,
+.jobs-status-card,
+.governance-card,
+.voice-control-panel,
+.iot-panel,
+.tab-preferences,
+.jobs-controls,
+.memory-controls,
+.history-controls,
+.venom-panel-card {
+    background: var(--venom-card-bg);
+    border: var(--venom-panel-border);
+    border-radius: var(--venom-panel-radius);
+    position: relative;
+    overflow: hidden;
+}
+
+.telemetry-section::before,
+.telemetry-metric-card::before,
+.jobs-insight-card::before,
+.memory-insight-card::before,
+.models-insight-card::before,
+.history-insight-card::before,
+.jobs-status-card::before,
+.governance-card::before,
+.voice-control-panel::before,
+.iot-panel::before,
+.tab-preferences::before,
+.jobs-controls::before,
+.memory-controls::before,
+.history-controls::before,
+.venom-panel-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 157, 0.35), transparent);
+    opacity: 0.75;
+}
+
+.cockpit-panel input[type="text"],
+.cockpit-panel input[type="search"],
+.cockpit-panel input[type="number"],
+.cockpit-panel input[type="email"],
+.cockpit-panel select,
+.cockpit-panel textarea {
+    background: rgba(5, 6, 8, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    color: rgba(226, 232, 240, 0.92);
+    font-family: var(--venom-font-tech);
+    padding: 10px 14px;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cockpit-panel select {
+    appearance: none;
+    background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.4));
+    cursor: pointer;
+}
+
+.cockpit-panel textarea {
+    min-height: 64px;
+    resize: vertical;
+}
+
+.cockpit-panel input[type="text"]:focus,
+.cockpit-panel input[type="search"]:focus,
+.cockpit-panel input[type="number"]:focus,
+.cockpit-panel input[type="email"]:focus,
+.cockpit-panel select:focus,
+.cockpit-panel textarea:focus {
+    border-color: rgba(0, 255, 157, 0.65);
+    box-shadow: 0 0 14px rgba(0, 255, 157, 0.18);
+    outline: none;
+}
+
+.cockpit-left-stack .cockpit-panel {
     min-height: 0;
 }
 
@@ -2386,39 +2511,30 @@ body[data-layout='brain'] .main-content {
 }
 
 .queue-tabs-panel {
-    background: rgba(4, 8, 24, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    padding: 16px;
-    box-shadow: 0 20px 40px rgba(3, 7, 18, 0.45);
     min-height: auto;
 }
 
 .queue-tabs-panel .panel-tabs {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.75rem;
-    padding: 0;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.5rem;
+    padding: 0.25rem 0;
     border: none;
     background: transparent;
 }
 
 .tab-preferences {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-radius: 12px;
-    background: rgba(15, 23, 42, 0.55);
+    margin-top: 0.85rem;
+    padding: 0.85rem 1rem;
     display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .tab-preferences__label {
-    font-size: 0.85rem;
-    color: rgba(226, 232, 240, 0.8);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: rgba(226, 232, 240, 0.7);
     display: flex;
     gap: 6px;
     align-items: center;
@@ -2429,23 +2545,31 @@ body[data-layout='brain'] .main-content {
     font-weight: 600;
 }
 
-.tab-preferences__actions {
+.tab-preferences__actions,
+.tab-preferences__cta {
     display: flex;
-    flex-wrap: wrap;
+    width: 100%;
     gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.tab-preferences__cta .btn-ghost {
+    flex: 1;
+    text-align: center;
 }
 
 .queue-tabs-panel .tab-button {
     width: 100%;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 0.85rem 0.5rem;
+    border-radius: var(--venom-panel-radius);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.65rem 0.35rem;
     font-family: var(--venom-font-tech);
-    font-size: 0.75rem;
-    letter-spacing: 0.22em;
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: rgba(226, 232, 240, 0.7);
-    background: rgba(15, 23, 42, 0.65);
+    color: rgba(226, 232, 240, 0.65);
+    background: rgba(5, 7, 12, 0.92);
     transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
@@ -2453,15 +2577,15 @@ body[data-layout='brain'] .main-content {
 .queue-tabs-panel .tab-button:focus-visible {
     border-color: rgba(0, 255, 157, 0.35);
     color: #fff;
-    background: rgba(0, 255, 157, 0.08);
+    background: rgba(0, 255, 157, 0.07);
     transform: translateY(-1px);
 }
 
 .queue-tabs-panel .tab-button.active {
     color: var(--venom-secondary);
-    background: rgba(0, 208, 255, 0.12);
-    border-color: rgba(0, 208, 255, 0.45);
-    box-shadow: 0 0 20px rgba(0, 184, 255, 0.15);
+    background: rgba(0, 208, 255, 0.14);
+    border-color: rgba(0, 208, 255, 0.4);
+    box-shadow: 0 10px 30px rgba(0, 184, 255, 0.15);
 }
 
 .queue-tabs-panel .tab-button.is-default {
@@ -2598,17 +2722,11 @@ body[data-layout='brain'] .main-content {
 }
 
 .venom-panel-card {
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
+    padding: 22px 24px;
+    gap: 18px;
 }
 
 .venom-task-list {
-    margin-top: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -2623,13 +2741,18 @@ body[data-layout='brain'] .main-content {
 }
 
 .telemetry-section {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    padding: 16px 18px;
-    background: rgba(4, 7, 12, 0.82);
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.telemetry-section .venom-panel-eyebrow {
+    margin-bottom: 0;
+}
+
+.telemetry-section--metrics {
+    gap: 16px;
 }
 
 .telemetry-section__header {
@@ -2653,14 +2776,13 @@ body[data-layout='brain'] .main-content {
 
 .telemetry-metrics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
 }
 
 .telemetry-metric-card {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    padding: 12px;
+    padding: 14px 16px;
+    min-height: 90px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -2681,7 +2803,7 @@ body[data-layout='brain'] .main-content {
 }
 
 .telemetry-section--compact {
-    padding: 12px 14px;
+    padding: 12px 16px;
     gap: 8px;
 }
 
@@ -2694,6 +2816,72 @@ body[data-layout='brain'] .main-content {
 .telemetry-section--compact .telemetry-section__body {
     font-size: 0.85rem;
     color: rgba(226, 232, 240, 0.8);
+    display: flex;
+    align-items: center;
+}
+
+.telemetry-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.telemetry-info-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.telemetry-info-card__label {
+    font-size: 0.65rem;
+    letter-spacing: 0.32em;
+    color: rgba(226, 232, 240, 0.6);
+    text-transform: uppercase;
+}
+
+.telemetry-info-card__body {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--venom-panel-radius);
+    background: rgba(6, 8, 14, 0.85);
+    padding: 10px 12px;
+}
+
+.telemetry-info-card__body .integrations-matrix,
+.telemetry-info-card__body .active-operations {
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    min-height: auto;
+    width: 100%;
+}
+
+.telemetry-info-card__body .active-operations {
+    justify-content: center;
+}
+
+.telemetry-placeholder {
+    min-height: 68px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: calc(var(--venom-panel-radius) - 1px);
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.telemetry-placeholder .loading-state,
+.telemetry-placeholder .empty-state {
+    width: 100%;
+    text-align: center;
+    text-transform: uppercase;
+    font-family: var(--venom-font-tech);
+    font-size: 0.68rem;
+    letter-spacing: 0.32em;
+    color: rgba(226, 232, 240, 0.55);
 }
 
 .telemetry-terminal {
@@ -2983,13 +3171,9 @@ body[data-layout='brain'] .main-content {
 
 .venom-console-wrapper,
 .venom-console-panel {
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    flex-direction: column;
     min-height: 420px;
     overflow: hidden;
+    padding: 24px;
 }
 
 .venom-console__header {
@@ -3078,20 +3262,21 @@ body[data-layout='brain'] .main-content {
 .venom-console textarea,
 .venom-console textarea#taskInput {
     width: 100%;
-    background: rgba(0, 0, 0, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(5, 6, 8, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--venom-primary);
     font-family: var(--venom-font-tech);
-    padding: 14px;
-    border-radius: 4px;
+    padding: 15px;
+    border-radius: 3px;
     resize: none;
     outline: none;
     min-height: 64px;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
 }
 
 .venom-console textarea:focus {
     border-color: var(--venom-primary);
-    box-shadow: 0 0 12px rgba(0, 255, 157, 0.15);
+    box-shadow: 0 0 16px rgba(0, 255, 157, 0.2);
 }
 
 .btn-venom {
@@ -3199,29 +3384,35 @@ body[data-layout='brain'] .main-content {
     background: transparent;
     border: none;
     border-radius: 0;
+    padding: 0;
 }
 
 
 .venom-sidebar__footer .venom-panel-header {
     margin-top: 0;
+    margin-bottom: 8px;
     border-bottom: none;
     padding-bottom: 0;
 }
 
 .venom-sidebar__footer .system-guard-grid {
-    padding: 12px 0 0;
+    padding: 0;
     grid-template-columns: 1fr !important;
     gap: 12px;
 }
 
 .venom-sidebar__footer .system-guard-card {
     background: rgba(4, 8, 24, 0.85);
-    padding: 14px;
-    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 12px 14px;
+    gap: 8px;
 }
 
 .venom-sidebar__footer .system-guard-card--eco {
     background: rgba(7, 15, 10, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
 }
 
 .venom-sidebar__footer .system-guard-card__header {
@@ -3231,14 +3422,14 @@ body[data-layout='brain'] .main-content {
 }
 
 .venom-sidebar__footer .system-guard-toggle {
-    padding: 10px 12px;
+    padding: 8px 10px;
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 8px;
 }
 
 .venom-sidebar__footer .system-guard-toggle span {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
 }
 
 .venom-sidebar__footer .autonomy-selector {
@@ -3248,23 +3439,23 @@ body[data-layout='brain'] .main-content {
 }
 
 .venom-sidebar__footer .autonomy-label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: rgba(226, 232, 240, 0.8);
 }
 
 .venom-sidebar__footer .autonomy-select {
     width: 100%;
-    padding: 0.45rem 0.75rem;
+    padding: 0.4rem 0.7rem;
 }
 
-.venom-panels {
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 4px;
+    background: rgba(5, 8, 16, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    overflow: hidden;
+    border-radius: 6px;
+    padding: 20px 24px;
     display: flex;
     flex-direction: column;
-    min-height: 360px;
+    gap: 16px;
+    box-shadow: 0 18px 40px rgba(3, 7, 18, 0.45);
 }
 
 .venom-panels .panel-tabs {
@@ -3304,13 +3495,13 @@ body[data-layout='brain'] .main-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 8px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    margin-top: 24px;
 }
 
 .venom-panel-header--tight {
-    margin-top: 0;
+    margin-bottom: 12px;
 }
 
 .venom-panel-header h2 {
@@ -3655,21 +3846,6 @@ body[data-layout='brain'] .main-content {
     flex-wrap: wrap;
 }
 
-#taskInput {
-    flex: 1;
-    background-color: var(--bg-light);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.75rem;
-    color: var(--text-primary);
-    font-family: inherit;
-    resize: none;
-}
-
-#taskInput:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
 
 .chat-input-actions {
     display: flex;
@@ -4007,18 +4183,7 @@ body[data-layout='brain'] .main-content {
 
 .memory-search input {
     width: 100%;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(0, 0, 0, 0.35);
-    padding: 10px 16px;
-    color: #fff;
-    font-size: 0.9rem;
-}
-
-.memory-search input:focus {
-    outline: none;
-    border-color: var(--venom-secondary);
-    box-shadow: 0 0 0 2px rgba(59, 191, 171, 0.25);
+    font-size: 0.85rem;
 }
 
 .memory-filters {
@@ -4322,10 +4487,7 @@ body[data-layout='brain'] .main-content {
 }
 
 .jobs-controls {
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 16px;
+    padding: 18px;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -4334,18 +4496,7 @@ body[data-layout='brain'] .main-content {
 
 .jobs-search input {
     width: 100%;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(0, 0, 0, 0.35);
-    padding: 10px 16px;
-    color: #fff;
-    font-size: 0.9rem;
-}
-
-.jobs-search input:focus {
-    outline: none;
-    border-color: var(--venom-secondary);
-    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+    font-size: 0.85rem;
 }
 
 .jobs-filters {
@@ -4500,10 +4651,7 @@ body[data-layout='brain'] .main-content {
 }
 
 .jobs-status-card {
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 16px;
+    padding: 18px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -5249,10 +5397,7 @@ body[data-layout='brain'] .main-content {
     flex-direction: column;
     gap: 12px;
     margin-bottom: 16px;
-    padding: 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 16px;
 }
 
 .history-insights {
@@ -5263,10 +5408,7 @@ body[data-layout='brain'] .main-content {
 }
 
 .history-insight-card {
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 14px 16px;
+    padding: 16px 18px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -5301,17 +5443,7 @@ body[data-layout='brain'] .main-content {
 
 .history-search input {
     width: 100%;
-    padding: 10px 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.02);
-    color: #fff;
-}
-
-.history-search input:focus {
-    outline: none;
-    border-color: var(--venom-primary);
-    box-shadow: 0 0 0 2px rgba(0, 255, 157, 0.2);
+    font-size: 0.85rem;
 }
 
 .history-filters {
@@ -5834,13 +5966,9 @@ body[data-layout='brain'] .main-content {
 
 /* Queue Governance Panel */
 .queue-governance-panel {
-    background: rgba(0, 0, 0, 0.45);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
     display: flex;
     flex-direction: column;
     gap: 24px;
-    padding: 24px 28px;
 }
 
 .queue-governance-panel.paused {
@@ -5864,6 +5992,26 @@ body[data-layout='brain'] .main-content {
     color: rgba(226, 232, 240, 0.45);
     text-transform: uppercase;
     margin-bottom: 6px;
+}
+
+.venom-panel-title {
+    font-size: 1rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(226, 232, 240, 0.9);
+    margin: 0;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .btn-emergency {
@@ -5895,10 +6043,7 @@ body[data-layout='brain'] .main-content {
 }
 
 .governance-card {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    padding: 14px 18px;
-    background: rgba(20, 26, 35, 0.9);
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -6558,4 +6703,12 @@ body[class*="theme-"] .header {
     .lab-mode-text {
         display: none;
     }
+}
+.venom-sidebar__section--guard {
+    padding-top: 4px;
+}
+.venom-sidebar__section nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }

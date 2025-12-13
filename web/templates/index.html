@@ -20,7 +20,7 @@
             </div>
         </div>
         <div class="venom-sidebar__content">
-            <section>
+            <section class="venom-sidebar__section">
                 <div class="venom-nav-title">Moduły główne</div>
                 <nav>
                     <a href="/" class="venom-nav-link active">
@@ -41,8 +41,8 @@
                 </nav>
             </section>
 
-            <section>
-                <div class="venom-nav-title venom-nav-title--actions">
+            <section class="venom-sidebar__section">
+                <div class="venom-nav-title">
                     <span>Telemetria</span>
                     <button id="clearLiveFeedBtn" class="btn-icon" type="button" title="Wyczyść logi telemetrii">🗑️</button>
                 </div>
@@ -53,7 +53,10 @@
             </section>
         </div>
         <div class="venom-sidebar__footer">
-            {% include '_system_guard_panel.html' %}
+            <section class="venom-sidebar__section venom-sidebar__section--guard">
+                <div class="venom-nav-title">Straż systemu</div>
+                {% include '_system_guard_panel.html' %}
+            </section>
         </div>
     </aside>
 
@@ -95,7 +98,7 @@
 
         <div class="cockpit-grid">
             <section class="cockpit-left-stack">
-                <section class="venom-panels queue-tabs-panel queue-tabs-panel--nav">
+                <section class="cockpit-panel queue-tabs-panel queue-tabs-panel--nav">
                     <div class="panel-tabs top-panel-tabs">
                         <button class="tab-button active" data-tab="feed">📡 Transmisja</button>
                         <button class="tab-button" data-tab="voice">🎤 Głos</button>
@@ -125,13 +128,13 @@
                     </div>
                 </section>
 
-                <aside class="venom-panels cockpit-telemetry-panel">
+                <aside class="cockpit-panel cockpit-telemetry-panel">
                     <div class="tab-content active" id="feedTab">
                         <div class="telemetry-grid">
                             <section class="telemetry-section telemetry-section--metrics">
                                 <div class="telemetry-section__header">
-                                    <p class="venom-panel-eyebrow">Podgląd na żywo</p>
-                                    <h3>📊 Metryki sesji</h3>
+                                    <p class="venom-panel-eyebrow">Metryki sesji</p>
+                                    <h3 class="venom-panel-title sr-only">Metryki sesji</h3>
                                 </div>
                                 <div class="telemetry-metrics-grid" id="metricsContainer">
                                     <article class="telemetry-metric-card">
@@ -151,27 +154,27 @@
                                         <span class="telemetry-metric-card__value" id="metricNetwork">0 KB</span>
                                     </article>
                                 </div>
-                            </section>
-
-                            <section class="telemetry-section telemetry-section--compact">
-                                <div class="telemetry-section__header">
-                                    <h3>🔗 Integracje</h3>
-                                </div>
-                                <div class="telemetry-section__body">
-                                    <div class="integrations-matrix" id="integrationsMatrix">
-                                        <div class="loading-state">Ładowanie...</div>
-                                    </div>
-                                </div>
-                            </section>
-
-                            <section class="telemetry-section telemetry-section--compact">
-                                <div class="telemetry-section__header">
-                                    <h3>⚡ Aktywne operacje</h3>
-                                </div>
-                                <div class="telemetry-section__body">
-                                    <div class="active-operations" id="activeOperations">
-                                        <div class="empty-state">Brak aktywnych operacji</div>
-                                    </div>
+                                <div class="telemetry-info-grid">
+                                    <article class="telemetry-info-card">
+                                        <p class="telemetry-info-card__label">Integracje</p>
+                                        <div class="telemetry-info-card__body">
+                                            <div class="telemetry-placeholder">
+                                                <div class="integrations-matrix" id="integrationsMatrix">
+                                                    <div class="loading-state">Ładowanie...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </article>
+                                    <article class="telemetry-info-card">
+                                        <p class="telemetry-info-card__label">Aktywne operacje</p>
+                                        <div class="telemetry-info-card__body">
+                                            <div class="telemetry-placeholder">
+                                                <div class="active-operations" id="activeOperations">
+                                                    <div class="empty-state">Brak aktywnych operacji</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </article>
                                 </div>
                             </section>
                         </div>
@@ -182,7 +185,7 @@
                             <div class="telemetry-section__header voice-panel__header">
                                 <div>
                                     <p class="venom-panel-eyebrow">Centrum poleceń głosowych</p>
-                                    <h3>🎤 Polecenia głosowe</h3>
+                                    <h3 class="venom-panel-title sr-only">Polecenia głosowe</h3>
                                 </div>
                                 <div class="voice-status" id="voiceStatus">
                                     <div class="status-indicator">
@@ -214,7 +217,10 @@
                                 </section>
                                 <section class="iot-panel">
                                     <div class="iot-panel__header">
-                                        <h4>🔌 Rider-Pi</h4>
+                                        <div>
+                                            <p class="venom-panel-eyebrow">Rider-Pi</p>
+                                            <h4 class="venom-panel-title sr-only">Panel Rider-Pi</h4>
+                                        </div>
                                         <button id="refreshIoTBtn" class="btn-small">🔄</button>
                                     </div>
                                     <div id="iotStatus" class="iot-status">
@@ -244,7 +250,7 @@
                             <div class="telemetry-section__header jobs-panel__header">
                                 <div>
                                     <p class="venom-panel-eyebrow">Wgląd w harmonogram</p>
-                                    <h3>⚙️ Zadania w tle</h3>
+                                    <h3 class="venom-panel-title sr-only">Zadania w tle</h3>
                                 </div>
                                 <div class="jobs-meta">
                                     <span>Ostatnie odświeżenie:</span>
@@ -310,7 +316,7 @@
                             <div class="jobs-status-grid">
                                 <article class="jobs-status-card">
                                     <div class="jobs-status-header">
-                                        <h4>🗓️ Harmonogram</h4>
+                                        <p class="venom-panel-eyebrow">Harmonogram</p>
                                         <span class="jobs-status-pill" id="schedulerStatusPill">-</span>
                                     </div>
                                     <div id="schedulerStatus" class="jobs-status-body">
@@ -319,7 +325,7 @@
                                 </article>
                                 <article class="jobs-status-card">
                                     <div class="jobs-status-header">
-                                        <h4>👁️ Obserwator</h4>
+                                        <p class="venom-panel-eyebrow">Obserwator</p>
                                         <span class="jobs-status-pill" id="watcherStatusPill">-</span>
                                     </div>
                                     <div id="watcherStatus" class="jobs-status-body">
@@ -328,7 +334,7 @@
                                 </article>
                                 <article class="jobs-status-card">
                                     <div class="jobs-status-header">
-                                        <h4>📚 Dokumentator</h4>
+                                        <p class="venom-panel-eyebrow">Dokumentator</p>
                                         <span class="jobs-status-pill" id="documenterStatusPill">-</span>
                                     </div>
                                     <div id="documenterStatus" class="jobs-status-body">
@@ -337,7 +343,7 @@
                                 </article>
                                 <article class="jobs-status-card">
                                     <div class="jobs-status-header">
-                                        <h4>🌱 Ogrodnik</h4>
+                                        <p class="venom-panel-eyebrow">Ogrodnik</p>
                                         <span class="jobs-status-pill" id="gardenerStatusPill">-</span>
                                     </div>
                                     <div id="gardenerStatus" class="jobs-status-body">
@@ -353,7 +359,7 @@
                             <div class="telemetry-section__header memory-panel__header">
                                 <div>
                                     <p class="venom-panel-eyebrow">Bank wiedzy</p>
-                                    <h3>🧠 Lekcje i pamięć</h3>
+                                    <h3 class="venom-panel-title sr-only">Lekcje i pamięć</h3>
                                 </div>
                                 <div class="memory-meta">
                                     <span>Ostatnie odświeżenie:</span>
@@ -617,11 +623,11 @@
             </section>
 
             <section class="cockpit-right-stack">
-                <section class="venom-panels queue-governance-panel" aria-labelledby="queuePanelTitle">
+                <section class="cockpit-panel queue-governance-panel" aria-labelledby="queuePanelTitle">
                     <div class="venom-panel-header queue-panel-header">
                         <div>
-                            <p class="venom-panel-eyebrow">Kontrola kolejki</p>
-                            <h2 id="queuePanelTitle">🎛️ Zarządzanie kolejką</h2>
+                            <p class="venom-panel-eyebrow">Zarządzanie kolejką</p>
+                            <h2 id="queuePanelTitle" class="venom-panel-title sr-only">Zarządzanie kolejką</h2>
                         </div>
                         <div class="governance-header-actions">
                             <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
@@ -661,18 +667,20 @@
                     </div>
                 </section>
 
-                <section class="venom-panels venom-panel-card">
+                <section class="cockpit-panel venom-panel-card">
                     <div class="venom-panel-header venom-panel-header--tight">
-                        <h2>📋 Aktywne zadania</h2>
+                        <p class="venom-panel-eyebrow">Aktywne zadania</p>
+                        <h2 class="venom-panel-title sr-only">Aktywne zadania</h2>
                     </div>
                     <div class="venom-task-list" id="taskList">
                         <p class="empty-state">Brak aktywnych zadań</p>
                     </div>
                 </section>
 
-                <section class="venom-panels venom-console-panel">
+                <section class="cockpit-panel venom-console-panel">
                     <div class="venom-panel-header">
-                        <h2>💬 Konsola czatu</h2>
+                        <p class="venom-panel-eyebrow">Konsola czatu</p>
+                        <h2 class="venom-panel-title sr-only">Konsola czatu</h2>
                         <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
                     </div>
                     <div class="venom-console__body">

@@ -4,6 +4,8 @@ import {
   AutonomyLevel,
   CampaignResponse,
   CostMode,
+  GraphFileInfoResponse,
+  GraphImpactResponse,
   GraphScanResponse,
   GraphSummary,
   HistoryRequest,
@@ -293,4 +295,8 @@ export async function fetchGraphImpact(filePath: string) {
   return apiFetch<GraphImpactResponse>(
     `/api/v1/graph/impact/${encodeURIComponent(filePath)}`,
   );
+}
+
+export async function fetchMarkdownContent(path: string) {
+  return apiFetch<string>(path, { skipBaseUrl: true });
 }

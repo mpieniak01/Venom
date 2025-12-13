@@ -52,3 +52,46 @@ export interface ServiceStatus {
   status: "healthy" | "degraded" | "down" | string;
   detail?: string;
 }
+
+export interface TokenMetrics {
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cached_tokens?: number;
+}
+
+export interface GitStatus {
+  branch?: string;
+  changes?: string;
+  dirty?: boolean;
+  status?: string;
+}
+
+export interface ModelInfo {
+  name: string;
+  size_gb?: number;
+  installed?: boolean;
+  active?: boolean;
+  source?: string;
+}
+
+export interface ModelsResponse {
+  success?: boolean;
+  models: ModelInfo[];
+  count: number;
+}
+
+export interface CostMode {
+  enabled: boolean;
+  provider: string;
+}
+
+export interface AutonomyLevel {
+  current_level: number;
+  current_level_name: string;
+  color: string;
+  color_name: string;
+  description: string;
+  permissions: Record<string, unknown>;
+  risk_level: string;
+}

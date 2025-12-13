@@ -4,12 +4,25 @@ import { Badge } from "@/components/ui/badge";
 import { Panel, StatCard } from "@/components/ui/panel";
 import {
   emergencyStop,
+  fetchHistoryDetail,
+  gitSync,
+  gitUndo,
+  installModel,
   purgeQueue,
   sendTask,
+  setAutonomy,
+  setCostMode,
+  switchModel,
   toggleQueue,
+  useAutonomyLevel,
+  useCostMode,
   useGraphSummary,
+  useHistory,
   useMetrics,
+  useModels,
   useQueueStatus,
+  useTokenMetrics,
+  useGitStatus,
   useServiceStatus,
   useTasks,
 } from "@/hooks/use-api";
@@ -21,12 +34,21 @@ export default function Home() {
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [modelName, setModelName] = useState("");
+  const [historyDetail, setHistoryDetail] = useState<string | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const { data: metrics } = useMetrics();
   const { data: tasks, refresh: refreshTasks } = useTasks();
   const { data: queue, refresh: refreshQueue } = useQueueStatus();
   const { data: services } = useServiceStatus();
   const { data: graph } = useGraphSummary();
+  const { data: models, refresh: refreshModels } = useModels();
+  const { data: git, refresh: refreshGit } = useGitStatus();
+  const { data: tokenMetrics } = useTokenMetrics();
+  const { data: costMode, refresh: refreshCost } = useCostMode();
+  const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel();
+  const { data: history } = useHistory(6);
   const { connected, entries } = useTelemetryFeed();
 
   const taskItems = (tasks || []).slice(0, 4);
@@ -315,6 +337,266 @@ export default function Home() {
         </div>
       </Panel>
 
+      <div className="grid gap-6 md:grid-cols-2">
+        <Panel
+          title="Modele"
+          description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
+          action={<Badge tone="neutral">{models?.count ?? 0} modeli</Badge>}
+        >
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="w-full max-w-xs rounded-lg border border-[--color-border] bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[--color-accent]"
+                placeholder="Nazwa modelu do instalacji"
+                value={modelName}
+                onChange={(e) => setModelName(e.target.value)}
+              />
+              <button
+                className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white border border-[--color-border] hover:bg-white/10"
+                onClick={async () => {
+                  if (!modelName.trim()) {
+                    setMessage("Podaj nazwę modelu.");
+                    return;
+                  }
+                  try {
+                    const res = await installModel(modelName.trim());
+                    setMessage(res.message || "Rozpoczęto instalację.");
+                    setModelName("");
+                    refreshModels();
+                  } catch (err) {
+                    setMessage(err instanceof Error ? err.message : "Błąd instalacji");
+                  }
+                }}
+              >
+                Zainstaluj
+              </button>
+              <button
+                className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white border border-[--color-border] hover:bg-white/10"
+                onClick={() => {
+                  refreshModels();
+                  refreshTasks();
+                }}
+              >
+                Odśwież
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(models?.models || []).length === 0 && (
+                <p className="text-sm text-[--color-muted]">Brak modeli.</p>
+              )}
+              {(models?.models || []).map((model) => (
+                <div
+                  key={model.name}
+                  className="flex items-center justify-between rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-white">{model.name}</p>
+                    <p className="text-xs text-[--color-muted]">
+                      {model.size_gb ? `${model.size_gb} GB` : "—"}{" "}
+                      {model.source ? ` • ${model.source}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                      model.active
+                        ? "bg-[--color-accent-2]/20 text-emerald-100 border border-emerald-400/30"
+                        : "bg-white/5 text-white border border-[--color-border]"
+                    }`}
+                    onClick={async () => {
+                      try {
+                        await switchModel(model.name);
+                        setMessage(`Aktywowano model ${model.name}`);
+                        refreshModels();
+                      } catch (err) {
+                        setMessage(
+                          err instanceof Error
+                            ? err.message
+                            : "Nie udało się przełączyć modelu",
+                        );
+                      }
+                    }}
+                  >
+                    {model.active ? "Aktywny" : "Ustaw jako aktywny"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Repozytorium"
+          description="Status i szybkie akcje git (/api/v1/git/*)."
+          action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
+        >
+          <p className="text-sm text-[--color-muted]">
+            Zmiany: {git?.changes ?? git?.status ?? "n/a"}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white border border-[--color-border] hover:bg-white/10"
+              onClick={async () => {
+                try {
+                  await gitSync();
+                  setMessage("Synchronizacja repo zakończona.");
+                  refreshGit();
+                } catch (err) {
+                  setMessage(
+                    err instanceof Error ? err.message : "Błąd synchronizacji",
+                  );
+                }
+              }}
+            >
+              Sync
+            </button>
+            <button
+              className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm text-amber-100 border border-amber-500/40 hover:bg-amber-500/30"
+              onClick={async () => {
+                if (!confirm("Cofnąć lokalne zmiany?")) return;
+                try {
+                  await gitUndo();
+                  setMessage("Cofnięto zmiany.");
+                  refreshGit();
+                } catch (err) {
+                  setMessage(err instanceof Error ? err.message : "Błąd git undo");
+                }
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        </Panel>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Panel
+          title="Cost Mode"
+          description="Global Cost Guard (/api/v1/system/cost-mode)."
+          action={
+            <Badge tone={costMode?.enabled ? "warning" : "success"}>
+              {costMode?.enabled ? "Paid (Pro)" : "Eco"}
+            </Badge>
+          }
+        >
+          <p className="text-sm text-[--color-muted]">
+            Provider: {costMode?.provider ?? "n/a"}
+          </p>
+          <button
+            className="mt-3 rounded-lg bg-white/5 px-4 py-2 text-sm text-white border border-[--color-border] hover:bg-white/10"
+            onClick={async () => {
+              try {
+                await setCostMode(!(costMode?.enabled ?? false));
+                refreshCost();
+              } catch (err) {
+                setMessage(
+                  err instanceof Error ? err.message : "Błąd zmiany cost mode",
+                );
+              }
+            }}
+          >
+            Przełącz na {costMode?.enabled ? "Eco" : "Paid"}
+          </button>
+        </Panel>
+
+        <Panel
+          title="Autonomy"
+          description="Poziom AutonomyGate (/api/v1/system/autonomy)."
+          action={<Badge tone="neutral">{autonomy?.current_level_name ?? "n/a"}</Badge>}
+        >
+          <p className="text-sm text-[--color-muted]">
+            Aktualny poziom: {autonomy?.current_level ?? "—"} •{" "}
+            {autonomy?.risk_level ?? ""}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[0, 10, 20, 30, 40].map((level) => (
+              <button
+                key={level}
+                className={`rounded-lg px-3 py-2 text-xs ${
+                  autonomy?.current_level === level
+                    ? "bg-[--color-accent]/30 text-white border border-[--color-border]"
+                    : "bg-white/5 text-white border border-[--color-border] hover:bg-white/10"
+                }`}
+                onClick={async () => {
+                  try {
+                    await setAutonomy(level);
+                    refreshAutonomy();
+                  } catch (err) {
+                    setMessage(
+                      err instanceof Error
+                        ? err.message
+                        : "Nie udało się zmienić poziomu autonomii",
+                    );
+                  }
+                }}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Panel title="Tokenomics" description="Zużycie tokenów (/api/v1/metrics/tokens).">
+          <div className="grid grid-cols-2 gap-3 text-sm text-[--color-muted]">
+            <TokenRow label="Total" value={tokenMetrics?.total_tokens} />
+            <TokenRow label="Prompt" value={tokenMetrics?.prompt_tokens} />
+            <TokenRow label="Completion" value={tokenMetrics?.completion_tokens} />
+            <TokenRow label="Cached" value={tokenMetrics?.cached_tokens} />
+          </div>
+        </Panel>
+
+        <Panel
+          title="Historia"
+          description="Ostatnie requesty (/api/v1/history/requests). Kliknij, aby zobaczyć szczegóły."
+        >
+          <div className="space-y-2 text-sm">
+            {(history || []).length === 0 && (
+              <p className="text-[--color-muted]">Brak historii.</p>
+            )}
+            {(history || []).map((item) => (
+              <button
+                key={item.request_id}
+                className="w-full rounded-lg border border-[--color-border] bg-white/5 px-3 py-2 text-left hover:bg-white/10"
+                onClick={async () => {
+                  setLoadingHistory(true);
+                  try {
+                    const detail = await fetchHistoryDetail(item.request_id);
+                    setHistoryDetail(JSON.stringify(detail, null, 2));
+                  } catch (err) {
+                    setHistoryDetail(
+                      err instanceof Error
+                        ? err.message
+                        : "Nie udało się pobrać szczegółów",
+                    );
+                  } finally {
+                    setLoadingHistory(false);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-white line-clamp-1">
+                    {item.prompt}
+                  </span>
+                  <Badge tone={statusTone(item.status)}>{item.status}</Badge>
+                </div>
+                <p className="text-xs text-[--color-muted]">
+                  {item.created_at ? new Date(item.created_at).toLocaleString() : "—"}
+                </p>
+              </button>
+            ))}
+            {loadingHistory && (
+              <p className="text-xs text-[--color-muted]">Ładowanie szczegółów...</p>
+            )}
+            {historyDetail && (
+              <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-[--color-border] bg-black/40 p-3 text-xs text-slate-200">
+                {historyDetail}
+              </pre>
+            )}
+          </div>
+        </Panel>
+      </div>
+
       <Panel
         title="Mapa funkcji do przeniesienia"
         description="Parowanie starego Cockpitu z nowymi komponentami Next.js"
@@ -363,6 +645,19 @@ function serviceTone(status: string | undefined) {
   if (s.includes("down") || s.includes("error") || s.includes("fail"))
     return "danger" as const;
   return "neutral" as const;
+}
+
+type TokenRowProps = { label: string; value?: number };
+
+function TokenRow({ label, value }: TokenRowProps) {
+  return (
+    <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
+      <p className="text-xs uppercase tracking-wide text-[--color-muted]">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">
+        {value !== undefined ? value : "—"}
+      </p>
+    </div>
+  );
 }
 
 function formatUptime(totalSeconds: number) {

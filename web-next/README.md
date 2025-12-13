@@ -50,6 +50,8 @@ npm run start
 - Brain: graf wiedzy z Cytoscape (`/api/v1/knowledge/graph`), filtrowanie węzłów, podgląd detali
 - Chart.js: trend tokenów (ostatnie próbki z `/metrics/tokens`)
 - Lessons & Graph scan: `/api/v1/lessons`, `/api/v1/graph/scan`
+- Flow: filtrowanie/kopiowanie kroków timeline, eksport JSON
+- Brain: filtry lekcji po tagach, relacje węzłów, analiza plików (`/graph/file`, `/graph/impact`)
 - War Room: dane roadmapy z `/api/roadmap` + raport statusu/kampania, renderowanie Markdown wizji/raportów
 
 ## Kolejne kroki

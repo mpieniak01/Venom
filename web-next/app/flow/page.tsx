@@ -2,11 +2,41 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
-import { useHistory, useTasks } from "@/hooks/use-api";
+import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
+import { useEffect, useRef, useState } from "react";
 
 export default function FlowInspectorPage() {
   const { data: history } = useHistory(50);
   const { data: tasks } = useTasks();
+  const [diagram, setDiagram] = useState<string>("graph TD\nA[Brak danych]");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const svgRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      const mermaid = (await import("mermaid")).default;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: "dark",
+        securityLevel: "loose",
+      });
+      const renderSvg = async () => {
+        try {
+          const { svg } = await mermaid.render("flow-chart", diagram);
+          if (svgRef.current && isMounted) {
+            svgRef.current.innerHTML = svg;
+          }
+        } catch (err) {
+          console.error("Mermaid render error:", err);
+        }
+      };
+      await renderSvg();
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [diagram]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -34,25 +64,29 @@ export default function FlowInspectorPage() {
               Brak historii. Uruchom zadanie, aby zobaczyć timeline.
             </div>
           )}
-          {(history || []).map((req) => (
-            <div
-              key={req.request_id}
-              className="rounded-xl border border-[--color-border] bg-white/5 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">#{req.request_id}</p>
-                  <p className="text-xs text-[--color-muted]">{req.prompt}</p>
+            {(history || []).map((req) => (
+              <button
+                key={req.request_id}
+                className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-left hover:bg-white/10"
+                onClick={() =>
+                  loadHistoryDetail(req.request_id, setDiagram, setSelectedId)
+                }
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">#{req.request_id}</p>
+                    <p className="text-xs text-[--color-muted]">{req.prompt}</p>
+                  </div>
+                  <Badge tone={statusTone(req.status)}>{req.status}</Badge>
                 </div>
-                <Badge tone={statusTone(req.status)}>{req.status}</Badge>
-              </div>
-              {req.duration_seconds !== undefined && req.duration_seconds !== null && (
-                <p className="mt-2 text-xs text-[--color-muted]">
-                  Czas: {req.duration_seconds.toFixed(1)}s
-                </p>
-              )}
-            </div>
-          ))}
+                {req.duration_seconds !== undefined &&
+                  req.duration_seconds !== null && (
+                    <p className="mt-2 text-xs text-[--color-muted]">
+                      Czas: {req.duration_seconds.toFixed(1)}s
+                    </p>
+                  )}
+              </button>
+            ))}
         </div>
       </Panel>
 
@@ -60,9 +94,20 @@ export default function FlowInspectorPage() {
         title="Timeline wykonania"
         description="Docelowo mermaid + listowane kroki z RequestTracer."
       >
-        <div className="rounded-xl border border-dashed border-[--color-border] bg-white/5 p-6 text-sm text-[--color-muted]">
-          Diagram mermaid zostanie wstrzyknięty po stronie klienta (dynamic import).
-          Bieżące zadania: {(tasks || []).length}
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-sm text-[--color-muted] md:col-span-2">
+            <div className="min-h-[300px]" ref={svgRef} />
+          </div>
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-sm text-[--color-muted]">
+            <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+              Bieżące zadania: {(tasks || []).length}
+            </p>
+            {selectedId ? (
+              <p className="mt-2 text-xs">Wybrany request: {selectedId}</p>
+            ) : (
+              <p className="mt-2 text-xs">Wybierz request z listy.</p>
+            )}
+          </div>
         </div>
       </Panel>
     </div>
@@ -75,4 +120,39 @@ function statusTone(status: string | undefined) {
   if (status === "PROCESSING") return "warning" as const;
   if (status === "FAILED") return "danger" as const;
   return "neutral" as const;
+}
+
+type HistoryStep = {
+  component?: string;
+  action?: string;
+};
+
+async function loadHistoryDetail(
+  requestId: string,
+  setDiagram: (d: string) => void,
+  setSelected: (id: string) => void,
+) {
+  const detail = (await fetchHistoryDetail(requestId)) as { steps?: HistoryStep[] };
+  const steps = detail.steps || [];
+  const diagram = buildMermaid(steps);
+  setDiagram(diagram);
+  setSelected(requestId);
+}
+
+function buildMermaid(steps: HistoryStep[]) {
+  if (!steps.length) {
+    return "graph TD\nA[Brak kroków]";
+  }
+  const lines = ["graph TD"];
+  steps.forEach((step, idx) => {
+    const nodeId = `S${idx}`;
+    const label = `${step.component || "step"}: ${step.action || ""}`
+      .replace(/"/g, "'")
+      .slice(0, 40);
+    lines.push(`${nodeId}["${label}"]`);
+    if (idx > 0) {
+      lines.push(`S${idx - 1} --> ${nodeId}`);
+    }
+  });
+  return lines.join("\n");
 }

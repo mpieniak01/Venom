@@ -95,3 +95,16 @@ export interface AutonomyLevel {
   permissions: Record<string, unknown>;
   risk_level: string;
 }
+
+export interface KnowledgeGraph {
+  status?: string;
+  mock?: boolean;
+  elements: {
+    nodes: Array<{ data: Record<string, unknown> }>;
+    edges: Array<{ data: Record<string, unknown> }>;
+  };
+  stats?: {
+    nodes: number;
+    edges: number;
+  };
+}

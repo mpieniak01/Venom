@@ -15,7 +15,9 @@
 
 ## 3. Założenia techniczne migracji
 - Next.js 14+ (app router) z TypeScript, ESLint, Prettier. Stylowanie: Tailwind albo CSS Modules/Styled-Components – decyzja w etapie 1 (prefer Tailwind + shadcn/ui, jeśli nie koliduje ze stylami).
-- Konfiguracja `.env.local` z bazowym URL API (`NEXT_PUBLIC_API_BASE=https://...`) i WebSocket endpointem; w dev domyślnie `http://localhost:8000`. Uwaga: `.env.local` nie powinien trafiać do repozytorium (podobnie jak obecny `.env`). Należy również stworzyć odpowiednią konfigurację zgodną z istniejącym podejściem w projekcie (config.py/Settings z domyślnymi wartościami i fallbackami).
+- Konfiguracja `.env.local` z bazowym URL API (`NEXT_PUBLIC_API_BASE=https://...`) i WebSocket endpointem; w dev domyślnie `http://localhost:8000`.
+  - **Uwaga**: `.env.local` nie powinien trafiać do repozytorium (podobnie jak obecny `.env`).
+  - Należy również stworzyć odpowiednią konfigurację zgodną z istniejącym podejściem w projekcie (config.py/Settings z domyślnymi wartościami i fallbackami).
 - Zachowanie SSR/ISR tam, gdzie ma sens (np. statyczne części Strategii), ale większość paneli real-time jako client components.
 - Reużycie ikon/emoji z aktualnego UI; nowe fonty dopasowane do obecnej estetyki (dark dashboard).
 
@@ -56,14 +58,22 @@
 - Warstwa API/WS z typami + hookami.
 - Strony Cockpit, Flow Inspector, Brain, Strategy z funkcjonalnością 1:1 z obecną wersją.
 - Dokumentacja uruchomienia i konfiguracji (`docs/DASHBOARD_GUIDE` update lub nowy `docs/FRONTEND_NEXT_GUIDE.md`).
-- Zestaw testów jednostkowych i integracyjnych dla komponentów frontendu (pytest, jeśli dotyczy), testy E2E (Playwright/Cypress, jeśli wdrożone) oraz dokumentacja testowania (opis uruchamiania, zakres pokrycia).
+- Testy:
+  - Testy jednostkowe i integracyjne dla komponentów frontendu (pytest, jeśli dotyczy).
+  - Testy E2E (Playwright/Cypress, jeśli wdrożone).
+  - Dokumentacja testowania (opis uruchamiania, zakres pokrycia).
 
 ## 6. Ryzyka i mitigacje
 - **Niezgodność API**: ustalić kontrakty (schematy odpowiedzi) na starcie; dodać typy i walidacje runtime.
 - **WS stabilność**: implementować backoff i sygnalizację reconnect; fallback na polling dla krytycznych metryk.
 - **Biblioteki w CSR**: mermaid/Chart.js/Cytoscape wymagają dynamic importu w Next – planować komponenty klientowe (client components).
 - **Różnice stylów**: jeśli Tailwind, wyekstrahować kolory/spacing z `app.css`, uniknąć podwójnego stylowania.
-- **Kompatybilność wersji Next.js i bibliotek zewnętrznych**: ryzyko niezgodności wersji Next.js (np. 14+ vs. potencjalne 15/16) z React, TypeScript, Chart.js, mermaid, Cytoscape itp. Mitigacja: przed migracją i przy każdej aktualizacji sprawdzić peerDependencies i changelogi tych bibliotek, wykonać testy smoke po podniesieniu wersji, w razie potrzeby zablokować wersje w `package.json` lub rozważyć downgrade/alternatywy. W fazie discovery potwierdzić minimalne i maksymalne wspierane wersje kluczowych zależności.
+- **Kompatybilność wersji Next.js i bibliotek zewnętrznych**: ryzyko niezgodności wersji Next.js (np. 14+ vs. potencjalne 15/16) z React, TypeScript, Chart.js, mermaid, Cytoscape itp.
+  - **Mitigacja**:
+    - Przed migracją i przy każdej aktualizacji sprawdzić peerDependencies i changelogi tych bibliotek.
+    - Wykonać testy smoke po podniesieniu wersji.
+    - W razie potrzeby zablokować wersje w `package.json` lub rozważyć downgrade/alternatywy.
+    - W fazie discovery potwierdzić minimalne i maksymalne wspierane wersje kluczowych zależności.
 
 ## 7. Następne kroki wykonawcze (do rozpoczęcia migracji)
 - Utworzyć lub zaktualizować plik opisu zadania w `docs/_to_do` zgodnie z wytycznymi projektu (numer, cel, Definition of Done, notatki). Dokument powinien zawierać jasno określone kryteria DoD dla całej migracji, aby po spełnieniu wszystkich warunków można było przenieść zadanie do `docs/_done`.

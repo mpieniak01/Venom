@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import {
+  AutonomyLevel,
+  CostMode,
   GraphSummary,
   HistoryRequest,
+  GitStatus,
   Metrics,
+  ModelsResponse,
   QueueStatus,
   ServiceStatus,
   Task,
+  TokenMetrics,
 } from "@/lib/types";
 
 type PollingState<T> = {
@@ -84,10 +89,70 @@ export function useHistory(limit = 50, intervalMs = 10000) {
   );
 }
 
+export async function fetchHistoryDetail(requestId: string) {
+  return apiFetch(`/api/v1/history/requests/${requestId}`);
+}
+
 export function useQueueStatus(intervalMs = 5000) {
   return usePolling<QueueStatus>(
     "queue",
     () => apiFetch("/api/v1/queue/status"),
+    intervalMs,
+  );
+}
+
+export function useServiceStatus(intervalMs = 15000) {
+  return usePolling<ServiceStatus[]>(
+    "services",
+    () => apiFetch("/api/v1/system/services"),
+    intervalMs,
+  );
+}
+
+export function useGraphSummary(intervalMs = 15000) {
+  return usePolling<GraphSummary>(
+    "graph-summary",
+    () => apiFetch("/api/v1/graph/summary"),
+    intervalMs,
+  );
+}
+
+export function useModels(intervalMs = 15000) {
+  return usePolling<ModelsResponse>(
+    "models",
+    () => apiFetch("/api/v1/models"),
+    intervalMs,
+  );
+}
+
+export function useGitStatus(intervalMs = 10000) {
+  return usePolling<GitStatus>(
+    "git-status",
+    () => apiFetch("/api/v1/git/status"),
+    intervalMs,
+  );
+}
+
+export function useTokenMetrics(intervalMs = 5000) {
+  return usePolling<TokenMetrics>(
+    "token-metrics",
+    () => apiFetch("/api/v1/metrics/tokens"),
+    intervalMs,
+  );
+}
+
+export function useCostMode(intervalMs = 15000) {
+  return usePolling<CostMode>(
+    "cost-mode",
+    () => apiFetch("/api/v1/system/cost-mode"),
+    intervalMs,
+  );
+}
+
+export function useAutonomyLevel(intervalMs = 15000) {
+  return usePolling<AutonomyLevel>(
+    "autonomy-level",
+    () => apiFetch("/api/v1/system/autonomy"),
     intervalMs,
   );
 }
@@ -120,18 +185,44 @@ export async function emergencyStop() {
   );
 }
 
-export function useServiceStatus(intervalMs = 15000) {
-  return usePolling<ServiceStatus[]>(
-    "services",
-    () => apiFetch("/api/v1/system/services"),
-    intervalMs,
+export async function installModel(name: string) {
+  return apiFetch<{ success: boolean; message: string }>(
+    "/api/v1/models/install",
+    {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    },
   );
 }
 
-export function useGraphSummary(intervalMs = 15000) {
-  return usePolling<GraphSummary>(
-    "graph-summary",
-    () => apiFetch("/api/v1/graph/summary"),
-    intervalMs,
+export async function switchModel(name: string) {
+  return apiFetch<{ success: boolean; message: string; active_model: string }>(
+    "/api/v1/models/switch",
+    {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    },
   );
+}
+
+export async function gitSync() {
+  return apiFetch("/api/v1/git/sync", { method: "POST" });
+}
+
+export async function gitUndo() {
+  return apiFetch("/api/v1/git/undo", { method: "POST" });
+}
+
+export async function setCostMode(enable: boolean) {
+  return apiFetch("/api/v1/system/cost-mode", {
+    method: "POST",
+    body: JSON.stringify({ enable }),
+  });
+}
+
+export async function setAutonomy(level: number) {
+  return apiFetch("/api/v1/system/autonomy", {
+    method: "POST",
+    body: JSON.stringify({ level }),
+  });
 }

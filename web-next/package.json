@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "cytoscape": "^3.33.1",
     "mermaid": "^11.12.2",
     "next": "15.5.9",

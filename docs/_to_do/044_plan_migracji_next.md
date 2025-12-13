@@ -81,3 +81,9 @@
 - Potwierdzić strukturę katalogu (`web-next/` vs zastąpienie `web/`) i wybór stacku stylów.
 - Wygenerować projekt Next.js i skonfigurować proxy do `http://localhost:8000`.
 - Zaimportować typy z Pydantic (ręcznie lub generacja `openapi-typescript`), stworzyć warstwę klienta i placeholdery stron.
+
+## 8. Postęp implementacji (aktualizacja)
+- Cockpit Next: realtime telemetry, zadania, kolejka, modele/git/cost/autonomy + tokenomics oraz wykres Chart.js trendu tokenów, podgląd historii z detale `/history/requests`.
+- Flow Inspector: lista historii + dynamiczny timeline mermaid generowany z kroków `/history/requests/{id}`.
+- Brain: graf Cytoscape z filtrowaniem, panel lekcji (`/api/v1/lessons`), akcja skanowania `/api/v1/graph/scan`, podgląd szczegółów węzła.
+- Strategy (War Room): integracja z `/api/roadmap`, raport statusu i kampania, formularz tworzenia wizji.

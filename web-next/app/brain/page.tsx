@@ -2,19 +2,32 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
-import { useGraphSummary, useKnowledgeGraph } from "@/hooks/use-api";
+import {
+  triggerGraphScan,
+  useGraphSummary,
+  useKnowledgeGraph,
+  useLessons,
+} from "@/hooks/use-api";
 import type cytoscapeType from "cytoscape";
 import { useEffect, useRef, useState } from "react";
 
 export default function BrainPage() {
-  const { data: summary } = useGraphSummary();
+  const { data: summary, refresh: refreshSummary } = useGraphSummary();
   const { data: graph } = useKnowledgeGraph();
+  const { data: lessons, refresh: refreshLessons } = useLessons(5);
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [filter, setFilter] = useState<"all" | "agent" | "memory" | "file" | "function">(
     "all",
   );
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
+  const summaryStats = summary?.summary || summary;
+  const summaryNodes = summaryStats?.nodes ?? summary?.nodes ?? "—";
+  const summaryEdges = summaryStats?.edges ?? summary?.edges ?? "—";
+  const summaryUpdated =
+    summary?.lastUpdated || summaryStats?.last_updated || summary?.last_updated;
 
   useEffect(() => {
     let cyInstance: cytoscapeType.Core | null = null;
@@ -88,20 +101,17 @@ export default function BrainPage() {
         <div className="mt-4 flex gap-2">
           <Badge tone="neutral">/graph/summary</Badge>
           <Badge tone="neutral">
-            węzły: {summary?.nodes ?? "—"} / krawędzie: {summary?.edges ?? "—"}
+            węzły: {summaryNodes} / krawędzie: {summaryEdges}
           </Badge>
           <Badge tone="warning">Cytoscape (client)</Badge>
         </div>
       </div>
 
-      <Panel title="Statystyki grafu" description="Stub danych do zastąpienia API.">
+      <Panel title="Statystyki grafu" description="Dane z /api/v1/graph/summary.">
         <div className="grid gap-3 sm:grid-cols-3">
-          <StatRow label="Węzły" value={summary?.nodes ?? "—"} />
-          <StatRow label="Krawędzie" value={summary?.edges ?? "—"} />
-          <StatRow
-            label="Ostatnia aktualizacja"
-            value={summary?.lastUpdated ?? "—"}
-          />
+          <StatRow label="Węzły" value={summaryNodes} />
+          <StatRow label="Krawędzie" value={summaryEdges} />
+          <StatRow label="Ostatnia aktualizacja" value={summaryUpdated ?? "—"} />
         </div>
       </Panel>
 
@@ -114,6 +124,85 @@ export default function BrainPage() {
           <Badge tone="neutral">workflow</Badge>
           <Badge tone="neutral">dokumentacja</Badge>
           <Badge tone="neutral">lekcje</Badge>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Lekcje i operacje grafu"
+        description="LessonsStore + akcje skanowania grafu."
+        action={
+          <button
+            className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white border border-[--color-border] hover:bg-white/10"
+            onClick={() => refreshLessons()}
+          >
+            Odśwież lekcje
+          </button>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-sm font-semibold text-white">Ostatnie lekcje</h4>
+            <ul className="mt-2 space-y-2 text-sm text-[--color-muted]">
+              {(!lessons || lessons.lessons.length === 0) && (
+                <li className="rounded border border-[--color-border] bg-white/5 px-3 py-2">
+                  Brak danych lub LessonsStore offline.
+                </li>
+              )}
+              {(lessons?.lessons || []).map((lesson) => (
+                <li
+                  key={lesson.id || lesson.title}
+                  className="rounded border border-[--color-border] bg-white/5 px-3 py-2"
+                >
+                  <span className="font-semibold text-white">{lesson.title}</span>
+                  <p className="text-xs">{lesson.summary || "Brak opisu."}</p>
+                  {lesson.tags && lesson.tags.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {lesson.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-white/10 px-2 py-[2px] text-[10px] uppercase tracking-wide text-[--color-muted]"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl border border-[--color-border] bg-black/30 p-4 text-sm text-[--color-muted]">
+            <p className="text-white font-semibold">Skanowanie grafu</p>
+            <p className="text-xs">
+              Uruchom /api/v1/graph/scan aby zaktualizować graf po zmianach w kodzie.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="rounded-lg bg-[--color-accent]/40 px-4 py-2 text-xs font-semibold text-white hover:bg-[--color-accent]/60 disabled:opacity-60"
+                disabled={scanning}
+                onClick={async () => {
+                  setScanning(true);
+                  setScanMessage(null);
+                  try {
+                    const res = await triggerGraphScan();
+                    setScanMessage(res.message || "Skanowanie uruchomione.");
+                    refreshSummary();
+                  } catch (err) {
+                    setScanMessage(
+                      err instanceof Error ? err.message : "Nie udało się uruchomić skanu.",
+                    );
+                  } finally {
+                    setScanning(false);
+                  }
+                }}
+              >
+                {scanning ? "Skanowanie..." : "Skanuj graf"}
+              </button>
+            </div>
+            {scanMessage && (
+              <p className="mt-2 text-xs text-[--color-muted]">{scanMessage}</p>
+            )}
+          </div>
         </div>
       </Panel>
 

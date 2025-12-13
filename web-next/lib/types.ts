@@ -33,9 +33,14 @@ export interface IntegrationStatus {
 }
 
 export interface GraphSummary {
-  nodes: number;
-  edges: number;
+  nodes?: number;
+  edges?: number;
   lastUpdated?: string;
+  summary?: {
+    nodes?: number;
+    edges?: number;
+    last_updated?: string;
+  };
 }
 
 export interface HistoryRequest {
@@ -107,4 +112,75 @@ export interface KnowledgeGraph {
     nodes: number;
     edges: number;
   };
+}
+
+export interface Lesson {
+  id?: string;
+  title?: string;
+  summary?: string;
+  tags?: string[];
+  created_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface LessonsResponse {
+  status?: string;
+  count: number;
+  lessons: Lesson[];
+}
+
+export interface GraphScanResponse {
+  status?: string;
+  message?: string;
+  stats?: Record<string, unknown>;
+}
+
+export interface RoadmapVision {
+  title?: string;
+  description?: string;
+  status?: string;
+  progress?: number;
+}
+
+export interface RoadmapTask {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: number;
+}
+
+export interface RoadmapMilestone {
+  title?: string;
+  description?: string;
+  status?: string;
+  progress?: number;
+  priority?: number;
+  tasks?: RoadmapTask[];
+}
+
+export interface RoadmapKPIs {
+  completion_rate?: number;
+  milestones_completed?: number;
+  milestones_total?: number;
+  tasks_completed?: number;
+  tasks_total?: number;
+}
+
+export interface RoadmapResponse {
+  status?: string;
+  vision?: RoadmapVision | null;
+  milestones?: RoadmapMilestone[];
+  kpis?: RoadmapKPIs;
+  report?: string;
+}
+
+export interface RoadmapStatusResponse {
+  status?: string;
+  report?: string;
+}
+
+export interface CampaignResponse {
+  status?: string;
+  message?: string;
+  result?: unknown;
 }

@@ -2,17 +2,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-client";
 import {
   AutonomyLevel,
+  CampaignResponse,
   CostMode,
+  GraphScanResponse,
   GraphSummary,
   HistoryRequest,
   GitStatus,
+  KnowledgeGraph,
+  Lesson,
+  LessonsResponse,
   Metrics,
   ModelsResponse,
   QueueStatus,
+  RoadmapResponse,
+  RoadmapStatusResponse,
   ServiceStatus,
   Task,
   TokenMetrics,
-  KnowledgeGraph,
 } from "@/lib/types";
 
 type PollingState<T> = {
@@ -166,6 +172,18 @@ export function useKnowledgeGraph(intervalMs = 20000) {
   );
 }
 
+export function useLessons(limit = 5, intervalMs = 20000) {
+  return usePolling<LessonsResponse>(
+    "lessons",
+    () => apiFetch(`/api/v1/lessons?limit=${limit}`),
+    intervalMs,
+  );
+}
+
+export function useRoadmap(intervalMs = 30000) {
+  return usePolling<RoadmapResponse>("roadmap", () => apiFetch("/api/roadmap"), intervalMs);
+}
+
 export async function sendTask(content: string, storeKnowledge = true) {
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {
     method: "POST",
@@ -234,4 +252,23 @@ export async function setAutonomy(level: number) {
     method: "POST",
     body: JSON.stringify({ level }),
   });
+}
+
+export async function triggerGraphScan() {
+  return apiFetch<GraphScanResponse>("/api/v1/graph/scan", { method: "POST" });
+}
+
+export async function createRoadmap(vision: string) {
+  return apiFetch("/api/roadmap/create", {
+    method: "POST",
+    body: JSON.stringify({ vision }),
+  });
+}
+
+export async function requestRoadmapStatus() {
+  return apiFetch<RoadmapStatusResponse>("/api/roadmap/status");
+}
+
+export async function startCampaign() {
+  return apiFetch<CampaignResponse>("/api/campaign/start", { method: "POST" });
 }

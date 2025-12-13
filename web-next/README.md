@@ -48,6 +48,9 @@ npm run start
 - Historia: ostatnie requesty + detail (`/api/v1/history/requests`)
 - Flow: timeline mermaid dla wybranego requestu (kroki z `/history/requests/{id}`)
 - Brain: graf wiedzy z Cytoscape (`/api/v1/knowledge/graph`), filtrowanie węzłów, podgląd detali
+- Chart.js: trend tokenów (ostatnie próbki z `/metrics/tokens`)
+- Lessons & Graph scan: `/api/v1/lessons`, `/api/v1/graph/scan`
+- War Room: dane roadmapy z `/api/roadmap` + raport statusu/kampania
 
 ## Kolejne kroki
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.

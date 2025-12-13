@@ -12,6 +12,7 @@ import {
   ServiceStatus,
   Task,
   TokenMetrics,
+  KnowledgeGraph,
 } from "@/lib/types";
 
 type PollingState<T> = {
@@ -153,6 +154,14 @@ export function useAutonomyLevel(intervalMs = 15000) {
   return usePolling<AutonomyLevel>(
     "autonomy-level",
     () => apiFetch("/api/v1/system/autonomy"),
+    intervalMs,
+  );
+}
+
+export function useKnowledgeGraph(intervalMs = 20000) {
+  return usePolling<KnowledgeGraph>(
+    "knowledge-graph",
+    () => apiFetch("/api/v1/knowledge/graph"),
     intervalMs,
   );
 }

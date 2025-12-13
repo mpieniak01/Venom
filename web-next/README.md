@@ -37,7 +37,16 @@ npm run start
 - `lib/ws-client.ts` – klient WebSocket z autoreconnect
 - `next.config.ts` – proxy do FastAPI (dev), output `standalone`
 
+## Funkcje dostępne w Cockpit (Next)
+- Telemetria WS (`/ws/events`) z auto-reconnect
+- Zadania: wysyłanie / listowanie (`/api/v1/tasks`), Lab Mode toggle
+- Kolejka: status + akcje pause/resume/purge/emergency stop (`/api/v1/queue/*`)
+- Modele: lista / switch / instalacja (`/api/v1/models*`)
+- Git: status + sync/undo (`/api/v1/git/*`)
+- Cost Mode & Autonomy (`/api/v1/system/cost-mode`, `/api/v1/system/autonomy`)
+- Tokenomics (`/api/v1/metrics/tokens`), usługi systemowe (`/api/v1/system/services`)
+- Historia: ostatnie requesty + detail (`/api/v1/history/requests`)
+
 ## Kolejne kroki
-- Podpiąć realne dane do paneli (metrics, tasks, queue, models, git, graph).
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.
 - Testy E2E (Playwright) dla kluczowych ścieżek Cockpitu.

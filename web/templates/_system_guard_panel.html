@@ -1,0 +1,44 @@
+<section class="venom-panels venom-guard-panel" aria-labelledby="systemGuardTitle">
+    <div class="venom-panel-header venom-panel-header--tight">
+        <div>
+            <p class="venom-panel-eyebrow">Straż systemu</p>
+            <h2 id="systemGuardTitle">🛡️ Kontrola bezpieczeństwa</h2>
+        </div>
+    </div>
+    <div class="system-guard-grid">
+        <article class="system-guard-card">
+            <div class="system-guard-card__header">
+                <span class="system-guard-label">Poziom bezpieczeństwa</span>
+                <span class="system-guard-status" id="autonomyStatusLabel">AKTYWNY</span>
+            </div>
+            <div class="autonomy-selector">
+                <label for="autonomyLevel" class="autonomy-label">
+                    <span class="autonomy-icon">🔐</span>
+                    <span class="autonomy-text">Autonomia</span>
+                </label>
+                <select id="autonomyLevel" class="autonomy-select">
+                    <option value="0">🟢 IZOLOWANY</option>
+                    <option value="10">🔵 POŁĄCZONY</option>
+                    <option value="20">🟡 FINANSOWANY</option>
+                    <option value="30">🟠 BUDOWNICZY</option>
+                    <option value="40">🔴 ROOT</option>
+                </select>
+            </div>
+            <p class="system-guard-hint">Dostosuj poziom uprawnień Venoma przed uruchomieniem kosztownych zadań.</p>
+        </article>
+        <article class="system-guard-card system-guard-card--eco">
+            <div class="system-guard-card__header">
+                <span class="system-guard-label">Globalna ochrona kosztów</span>
+                <span class="system-guard-status" id="costModeStatusLabel">ECO</span>
+            </div>
+            <div class="system-guard-toggle">
+                <span id="costModeLabel">🌿 Tryb Eco</span>
+                <label class="toggle-switch" title="Globalna ochrona kosztów">
+                    <input type="checkbox" id="costModeToggle" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <p class="system-guard-hint">Wyłącz Tryb Eco tylko gdy chcesz korzystać z płatnych modeli i zasobów.</p>
+        </article>
+    </div>
+</section>

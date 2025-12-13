@@ -1,0 +1,131 @@
+# Refactor interfejsu VENOM (szablon `_szablon.html`)
+
+## 1. Cel i zakres
+- Zastąpić aktualny layout Cockpitu layoutem z `_szablon.html` (nowa grafika) i jednocześnie wystandaryzować strukturę HTML, CSS i JS.
+- Zachować kompatybilność z obecnym kodem aplikacji (`web/templates/index.html`, `web/static/js/app.js`, API REST).
+- Uporządkować style (design tokens, komponenty, reset) i sposób ładowania bibliotek JS (Chart.js, Mermaid, DOMPurify, Marked).
+
+## 2. Analiza obecnego `_szablon.html`
+- **Inline CSS**: całe UI zdefiniowane w `<style>` – trzeba wyprowadzić do `web/static/css/app.css` (ew. dedykowanego pliku) i zadbać o namespace zmiennych (prefiks `--venom-`).
+- **Reset + layout**: globalne `* { margin:0 }`, custom scrollbar, 2 kolumny (`.sidebar`, `.main-workspace`). U nas istnieje już reset + `main-layout`, więc trzeba pogodzić/respektować obie warstwy.
+- **Komponenty**: sidebar telemetry tabs, repo badge, stat cards, console / chips, form wejściowy. Wiele elementów wykorzystuje ID używane w `app.js` (`liveFeed`, `metricTasks`, `taskInput`, `sendButton`, `queueActive`, `clearWidgetsBtn`, itd.) – zachowanie identyfikatorów jest krytyczne.
+- **Zewnętrzne biblioteki**: w `<head>` importy CDN Chart.js, mermaid, DOMPurify, marked. W produkcie część jest już w bundlerze – decyzja: trzymać globalnie (np. w base template) lub dynamicznie ładować moduły w `app.js`.
+- **HTML struktura**: brak istniejących bloków (np. `queue-tabs-panel`, `right-panel`). Migracja będzie polegała na zastąpieniu `index.html` markupem z `_szablon.html`, ale musimy odwzorować placeholdery slotów (live feed, metrics, history table) i dodać makra Jinja, jeżeli są.
+
+## 3. Plan działania (wysoki poziom)
+1. ✅ **Przeniesienie design tokens** – `web/static/css/app.css` zawiera import Inter/JetBrains, nowe zmienne `--venom-*` i aliasy dla starego theme, reset został przeniesiony z `_szablon.html`.
+2. ✅ **Refaktoryzacja CSS** – inline style z `_szablon.html` trafiły do `app.css` (nowe klasy `venom-panel-header`, `console-input-stack`, utilsy typograficzne), pozostaje dalsze porządkowanie/responsywność w pozostałych widokach.
+3. ✅ **Integracja HTML** – `web/templates/index.html` korzysta w 100% z layoutu `_szablon.html`, zachowując wszystkie identyfikatory wymagane przez `app.js`; stare klasy (`left-stack`, `right-panel`, `right-column`, `main-layout`) zostały usunięte z markupu i CSS, a lewy blok zakładek/telemetrii działa na nowych komponentach (`cockpit-grid`, `queue-tabs-panel--nav`) więc nie ma już miksu starego i nowego UI. Te same komponenty `venom-page` (hero + meta-karty + blok akcji) są już używane w `strategy.html`, `flow_inspector.html`, `inspector.html` i `brain.html`, więc cały system ma jednolity wygląd zamiast osobnych layoutów.
+4. ✅ **Aktualizacja JS**
+   - Przejrzeć `web/static/js/app.js` i zsynchronizować nowe stany (np. nowe akcje w kartach, przełącznik sidebaru) – rozpoczęte poprzez nowy menedżer zakładek (ARIA + obsługa klawiatury) spójny z layoutem `_szablon.html`.
+   - Dashboard Cockpitu ma panel „History Insights”: `app.js` liczy łączną liczbę żądań, sukcesy, błędy oraz średni czas wykonania i renderuje je w nowych kartach w zakładce Historia.
+   - Widoki pomocnicze (`flow_inspector.js`, `inspector.js`, `brain.js`) aktualizują nagłówki `venom-page` – Flow Inspector pokazuje liczbę zadań i timestamp, Inspector prezentuje liczbę widocznych śladów / globalną oraz ile pinów trzyma operator, Brain zaciąga status grafu i czas ostatniego odświeżenia.
+   - ✅ Flow Inspector zapamiętuje stan wyszukiwarki, wybrany filtr statusu i przełącznik auto-refresh w `localStorage`, więc po przeładowaniu moduł otwiera się dokładnie w tym samym kontekście (bez ręcznego ustawiania filtrów).
+   - ✅ Inspector zapamiętuje wyszukiwarkę, aktywny filtr statusu i przełącznik auto-refresh w `localStorage`, więc analityk wraca do tej samej konfiguracji listy śladów po odświeżeniu modułu.
+   - ✅ War Room (strategy.js) zapamiętuje decyzję o auto-refresh w `localStorage`, więc po powrocie na stronę dashboard natychmiast startuje (lub zatrzymuje się) zgodnie z preferencją operatora, bez konieczności przełączania.
+   - ✅ Cockpit: zakładki Historia/Zadania/Pamięć mają dedykowane przyciski „Resetuj filtry”, które czyszczą wyszukiwarki, filtry i auto-refresh oraz od razu odświeżają dane; stan jest zapisywany w `venomUIPreferences`, więc operator może łatwo wrócić do ustawień domyślnych po każdej sesji.
+   - ✅ Panel zakładek Cockpitu pozwala nadać dowolną zakładkę jako domyślną oraz przywrócić tryb „Transmisja”; preferencja zapisuje się w `venomUIPreferences.general` i jest widoczna jako znacznik ⭐ przy odpowiednim przycisku.
+   - ✅ Centrum preferencji potrafi generować paczkę JSON do pobrania jednym kliknięciem („Pobierz plik”) oraz wczytać konfigurację z pliku (FileReader + podpowiedź, czytanie nazwy pliku) – można więc migrować ustawienia między środowiskami bez kopiowania ręcznego.
+5. ✅ **Biblioteki zewnętrzne**
+   - Chart.js, Mermaid, DOMPurify i Marked są bundlowane lokalnie (`/static/vendor/*`) i ładowane z `base.html`, co usuwa zależność od CDN i ułatwia wersjonowanie/offline.
+6. ✅ **QA i testy**
+   - Dodano `make qa` (wywołuje `scripts/qa/run_ui_suite.sh`, które zakłada `.venv`, instaluje minimalne zależności i odpala `pytest` w trybie `-q`).
+   - 2025-12-12: `.venv/bin/pytest -q` zakończone sukcesem (**1348 passed, 108 skipped, 13 warnings**, ~102 s). Ostrzeżenia dotyczą jedynie przestarzałych dekoratorów Pydantic i opcjonalnych modułów (`sentence_transformers`), brak regresji.
+
+## 4. Najlepsze praktyki / standardy front-end
+**CSS / Layout**
+- System design tokens – wszystkie kolory, spacing, promienie, typografia jako zmienne CSS w jednym miejscu; aliasy mapujące stary i nowy theme. Ułatwia dark/light theme i współdzielenie styli.
+- Layout przy użyciu CSS Grid + Flex – grid dla struktur makro (np. układ 2 kolumn, siatka statystyk), flex do wewnętrznych modułów (sidebar, przyciski). Pozwala to na responsywność bez hacków.
+- BEM/semantyczne klasy – nazwy w stylu `.sidebar__nav`, `.console__wrapper` dzięki czemu CSS jest czytelny, a JS może targetować jasne selektory.
+- Kontrolowane przewijanie (`min-height:0`, `overflow:auto`) w panelach (chat, telemetry) i media queries (~1200px, ~900px), aby uniknąć globalnego scrolla.
+- Wspólne mixiny/utilities (np. `.panel`, `.chip`) – komponenty wielokrotnego użytku zamiast duplikacji w każdej stronie.
+
+**HTML**
+- Semantyczne znaczniki (nagłówki zachowują hierarchię, listy/`dl` dla metryk) i definicja regionów (`<main>`, `<aside>`, `<nav>`).
+- Zachowanie stałych identyfikatorów wymaganych przez JS (`id="liveFeed"`, `id="historyModal"`) oraz data-attributes dla logiki (np. `data-tab`).
+- Dostępność: aria-label dla ikon, role dla kontenerów, odpowiednie `button type="button"` aby unikać domyślnego submit.
+- Minimalizacja inline-style; preferowana konfiguracja przez klasy + CSS variables.
+
+**JavaScript**
+- Rozdzielenie logiki od prezentacji: JS manipuluje klasami (`classList.add/remove`) i atrybutami, nie wstrzykuje “sztywnych” styli.
+- Hooki DOM w `initElements()` – wszystkie selektory w jednym miejscu, dzięki czemu łatwo śledzić zależności między template a JS.
+- Modularność: pliki takie jak `app.js`, `brain.js` utrzymują lokalne funkcje, deklarują dependencies (Chart, Mermaid) i korzystają z `async/await` + `try/catch`.
+- Reużywalne utilsy (formatowanie czasu, obsługa modali) zamiast powtórzeń w każdej podstronie.
+- Kontrola zasobów zewnętrznych: biblioteki (Chart.js, Mermaid, DOMPurify, Marked) ładowane raz przez bundler, wersje przypięte, brak globalnych `eval`.
+- Wsparcie dla dostępności: focus management w modalach, asynchroniczne operacje zakończone user feedback (toast/alert).
+
+## 5. Wpływ na pozostałe widoki i JS
+- **Lista szablonów**: oprócz `web/templates/index.html` Cockpit, w repo są m.in. `web/templates/brain.html`, `web/templates/inspector.html`, `web/templates/war_room.html`, `web/templates/flow_inspector.html`. Każdy ma własny layout, ale niektóre korzystają z tych samych elementów (`historyModal`, telemetry). Po zatwierdzeniu nowego wyglądu Cockpitu trzeba sukcesywnie migrować pozostałe podstrony do wspólnego układu (`sidebar + main-workspace`) i współdzielić komponenty CSS.
+- **Skrypty JS**: główna logika interfejsu mieszka w `web/static/js/app.js` (Cockpit) oraz w dedykowanych plikach (`brain.js`, `flow_inspector.js`, `inspector.js`, itd.). Każdy z nich manipuluje DOM przez określone identyfikatory (`cy`, `knowledgeStats`, `taskList`, `historyTableBody`). Nowy layout **musi zachować** te ID albo zapewnić adaptery, żeby uniknąć regresji. Po wdrożeniu Cockpitu należy przejrzeć inne skrypty i zaktualizować ich selektory/style (np. `brain.js` używa `#cy`, `#knowledge-stats`, `#filters`).
+- **Konwencje HTML/CSS**: gdy Cockpit będzie działał z nowym theme, przenosimy te same klasy oraz zmienne do wspólnego zestawu (np. `.sidebar`, `.console-wrapper`) i stosujemy je w innych widokach. Dzięki temu CSS będzie współdzielony, a kolejne strony będą mogły korzystać z tych samych tokenów (czcionki, spacing).
+- **Biblioteki i bundling**: jeżeli Chart.js, Mermaid czy DOMPurify mają być w całym UI, dodajemy je do globalnego bundla i upewniamy się, że np. `brain.js` dalej dostaje `cytoscape` bez konfliktu.
+
+
+## 6. Kwestie wymagające decyzji
+- Jak wpiąć nowy sidebar w istniejące blocki base template? (np. `nav`/`header` w `base.html` vs. nowy UI).
+- Czy zachować obecne nazwy zmiennych CSS, czy wprowadzić aliasy? (uniknięcie regresji w innych widokach).
+
+## 7. Postęp (2025-12-12)
+- ✅ `app.css`: dodano zmienne `--venom-*`, gradientowe tło, nowe klasy layoutu oraz import fontów – stary theme nadal działa dzięki aliasom.
+- ✅ `base.html`/`index.html`: `body` i navbar są konfigurowalne blokami; cockpit renderuje już sidebar, karty i konsolę z `_szablon.html` z zachowaniem ID oczekiwanych przez `app.js`.
+- ✅ Panel „Aktywne zadania” (`taskList`) i brakujące style (task list, statusy, job panels) zostały dostosowane do nowego motywu, aby zachować funkcjonalności starego UI mimo innej makiety.
+- ✅ `app.js`: dodano helpery `showModal/hideModal` i ujednolicono obsługę modali (history/cost/autonomy) z nową bazą CSS – brak inline-style, łatwiejsze rozszerzanie na kolejne widoki.
+- ✅ `brain.html`: przeniesiono inline CSS do `app.css`, ustawiono `data-layout="brain"` i przygotowano komponenty (`brain-controls`, `brain-node-details`, loading overlay) kompatybilne z `brain.js` – hero `venom-page` ma teraz live metryki (węzły/krawędzie/status/timestamp).
+- ✅ `brain.js`: panel detali i loading korzystają z nowych klas (`brain-detail-*`, `brain-loading`), a logika nie manipuluje już `style.display`, dzięki czemu zachowanie jest spójne z layoutem Venom. Statystyki grafu aktualizują zarówno boczny panel, jak i meta-karty w nagłówku (węzły/krawędzie + status + czas).
+- ✅ Widok Brain dostał pełny panel sterowania (status, metka czasu, wyszukiwarka, auto-refresh i komunikaty). `brain.js` to teraz moduł klasy `BrainGraph` zarządzający stanem filtrów, wyszukiwaniem węzłów i cyklicznym odświeżaniem grafu bez Alpine/inline JS – panel Insights pokazuje liczbę widocznych węzłów/krawędzi oraz podsumowanie aktywnych filtrów.
+- ✅ `flow_inspector.html` + `flow_inspector.js`: przeniesiono style do `app.css`, dodano `data-layout="flow"`, dedykowane komponenty kartowe i wydzielony skrypt z auto odświeżaniem (bez inline JS/CSS).
+- ✅ `inspector.html`: widok korzysta z `data-layout="inspector"`, kart Venom oraz komponentów (`inspector-shell`, `inspector-panel`, statusy) zamiast inline CSS/Alpine markup.
+- 🚧 Następny krok: zsynchronizować `app.js` (plan punkt 4) i zastosować nowy layout + tokeny w pozostałych podstronach z listy 043, pilnując responsywności.
+- ✅ `strategy.html` + `strategy.js`: War Room korzysta z `data-layout="strategy"`, komponentów `war-room-*` w `app.css` i zaktualizowanych szablonów HTML/JS (bez starego `strategy.css`, zachowane ID i funkcje `loadRoadmap`, `startCampaign`, itp.).
+- ✅ War Room (`strategy.html` + `strategy.js`): nagłówek `venom-page` pokazuje teraz kluczowe metryki (postęp %, liczba milestone'ów/tasks, health kamieni), a skrypt zasila je tymi samymi danymi co kafle KPI – operator wchodzi do modułu i od razu widzi kondycję roadmapy.
+- ✅ War Room zapamiętuje stan auto-refresh w `localStorage`, więc przełączenie trybu monitorowania roadmapy utrzymuje się pomiędzy sesjami/przeładowaniami strony.
+- ✅ Legacy `index_.html` oraz `index.css` usunięte (stare demo nie jest już potrzebne po migracji na nowy Cockpit).
+- ✅ `strategy.css` usunięty – dedykowane style War Room żyją wyłącznie w `app.css`, dzięki czemu wszystkie layouty korzystają z jednego pliku.
+- ✅ Sekcja „Zbrojownia AI” (`modelsList` + `app.js`) korzysta z nowych komponentów kart (`model-card*` w `app.css`) bez inline-style – aktywacja/usuwanie modeli działa w JS poprzez klasy tematyczne.
+- ✅ System powiadomień Cockpitu (kontener + toasty) korzysta z klas w `app.css` (`notification-container`, `notification--*`) zamiast inline-style ustawianych w `app.js`.
+- ✅ `_navbar.html`/`base.html`: globalny pasek nawigacji został przebudowany na „Venom Global Nav” – szklany, neonowy header z chipami builda, nowym menu i kontrolkami (Autonomia + Cost Guard) jest sticky i pojawia się na wszystkich podstronach poza Cockpitem, dzięki czemu War Room/Inspector/Brain wyglądają spójnie z nowym layoutem.
+- ✅ `app.css`: dodano moduł `venom-page` (hero + meta-karty + CTA) z tłem gradientowym i breakpointsami – korzystają z niego War Room, Flow Inspector, Inspector oraz Brain, więc każda sekcja ma identyczną ramę startową.
+- ✅ Cockpit: lewa kolumna odzyskała pełny blok zakładek/telemetrii z `_szablon.html`, prawa kolumna skupia governance + konsolę; nowa siatka `cockpit-grid` zachowuje dwukolumnowy układ starego interfejsu i odpowiadające style responsywne.
+- ✅ Lewy panel (`queue-tabs-panel--nav` + `cockpit-telemetry-panel`) odwzorowuje legacy układ: przyciski zakładek siedzą w osobnym, niskim boksie, a całe treści tabów przewijają się w dedykowanym `aside`, co daje identyczny flow jak w `origin/main`.
+- ✅ Usunięto legacy klasy layoutu (`left-stack`, `right-panel`, `right-column`, `main-layout`) i przeniesiono styling zakładek na komponenty Venom – nie ma już mieszanki starych styli z nowymi, a `app.js` zachowuje pełną kompatybilność ID.
+- 🚧 Nawigacja zakładek Cockpitu ma dedykowany moduł (`initTabNavigation` w `app.js`) – jeden zestaw listenerów zarządza kliknięciami i strzałkami klawiatury, aktualizuje atrybuty ARIA/`hidden`, więc logika nie jest już rozsiana po `initMemoryTab`.
+- 🚧 Preferencje użytkownika (ostatnio otwarta zakładka) są zapisywane w `localStorage`, więc po przeładowaniu Cockpit wraca np. od razu do Historii czy Pamięci zamiast zawsze zaczynać od Transmisji.
+- 🚧 Panelowe ustawienia (filtry i auto-refresh w Historia/Zadania/Pamięć) są zapisywane w przeglądarce – Cockpit po odświeżeniu zachowuje kryteria wyszukiwania i decyzję o auto-odświeżaniu, co eliminuje konieczność ręcznej rekonfiguracji.
+- ✅ Pasek statusu nad gridem (workspace path + wskaźnik połączenia + baner repo) jest spięty z `app.js`: WebSocket synchronizuje kropki statusu, `fetchRepositoryStatus` podaje ścieżkę workspace oraz komunikaty (info/warning/success/error), a nowe klasy `.status-alert--*` w `app.css` dbają o stylistykę.
+- ✅ Workspace banner nie dubluje już komunikatu o braku repozytorium – gdy Git nie jest dostępny, pole ze ścieżką jest ukrywane, a operator widzi tylko pojedynczy alert w złotej ramce.
+- ✅ Nagłówek „// DASHBOARD CONTROL” wyrównano z kartami statusu – `venom-top-header` ustawia teraz elementy w jednej linii, więc hero i baner workspace startują w tym samym poziomie.
+- ✅ Blok „Gałąź / zmiany” pokazuje neutralny placeholder, gdy workspace nie jest repozytorium – szczegółowy komunikat żyje wyłącznie w banerze `Workspace`, więc UI nie duplikuje ostrzeżeń (sterowane w `updateRepositoryStatus` w `app.js`).
+- ✅ Zakładka „Transmisja” (`feedTab`) została przeniesiona na karty Venom – metryki (`metricTasks`, `metricSuccess`, `metricUptime`, `metricNetwork`) siedzą w siatce `telemetry-metric-card`, sekcje Integracje/Operacje/Terminal mają wspólne nagłówki i kontenery (`telemetry-section*`), więc layout wygląda jak w `_szablon.html`, a wszystkie ID używane przez `app.js` pozostały aktywne.
+- ✅ Zakładka „Zadania w tle” (`jobsTab`) korzysta z nowych komponentów (`telemetry-section`, `jobs-panel`, `jobs-status-card`) – wyszukiwarka, filtry, auto-refresh i kafle statusów (Scheduler/Watcher/Documenter/Gardener) zostały odtworzone 1:1 ze starego indexa, zachowując identyfikatory wymagane przez `app.js`.
+- ✅ Zakładka „Pamięć” (`memoryTab`) została przełączona na layout Venom – nagłówek `memory-panel`, kontrolki (wyszukiwarka, filtry, auto-refresh) i sekcje „Lekcje” + „Graf wiedzy” używają wspólnych komponentów (`telemetry-section`, `memory-body`), więc JS obsługujący `memoryState` nadal działa na tych samych ID.
+- ✅ Zbrojownia AI (`modelsTab`) korzysta z nowych paneli (`models-panel`, `models-metrics-grid`, `models-installer`) – metryki zasobów (CPU/GPU/RAM/VRAM/Disk/Count), instalator oraz lista modeli mają wspólne nagłówki i styl `_szablon.html` z zachowaniem wszystkich haków (`refreshModels`, `modelNameInput`, `modelsList`, `unloadAllBtn` itd.). Dodatkowy blok „Models Insights” pokazuje liczbę zainstalowanych/aktywnych modeli, łączny rozmiar paczek oraz zestaw kwantyzacji (aktualizowany przez `app.js` polegając na `/api/v1/models`).
+- ✅ Historia (`historyTab`) została ujednolicona – nagłówki, wyszukiwarka, filtry statusów i autofresh siedzą w `telemetry-section history-panel`, tabela (`historyTable`/`historyTableBody`) zachowuje ID dla `app.js`, więc zarówno UI jak i logika modala działają w nowym layoutcie.
+- ✅ Centrum głosowe (`voiceTab`) korzysta z paneli Venom – nagłówek ze statusem WebSocket (`audioConnectionStatus`), push-to-talk (`micButton`), wizualizator oraz sekcja Rider-Pi (`refreshIoTBtn`, `iotStatus`, `iotMetrics`) siedzą w jednej siatce `voice-grid`, dzięki czemu Voice Command Center zachowuje funkcjonalności starego UI.
+- ✅ Panel zarządzania kolejką (`queue-governance-panel`) korzysta z nowych komponentów kartowych – nagłówek Venom + kartowe metryki (`queueActive`, `queuePending`, `sessionCost`) oraz przyciski (pauza/wznów/purge/emergency stop) osadzone bezpośrednio w kaflach, więc UX i ID z `app.js` są zachowane przy nowym wyglądzie.
+- ✅ Konsola czatu korzysta z układu legacy (`chat-container`, panel sugestii, stopka z `Lab Mode` + `Wyślij / Ctrl+Enter`), ale siedzi w nowej „Venom Console” – zachowaliśmy identyfikatory (`taskInput`, `sendButton`, `suggestionPanel`, `clearWidgetsBtn`) oraz dodaliśmy stylizowane `kbd`, dzięki czemu hotkey i przełącznik Lab Mode są ponownie widoczne w UI.
+- ✅ Lab Mode w konsoli zapamiętuje swoje ustawienie w `localStorage`, dzięki czemu po przeładowaniu Cockpit startuje w tym samym trybie (oszczędzając kliknięcia); `app.js` wykorzystuje też ten stan przy wysyłaniu zadań, więc backend otrzymuje konsekwentny sygnał o tym, czy należy zapisywać lekcje.
+- ✅ Pasek postępu testów (`showTestProgressBar` w `app.js`) renderuje kartę z klasami (`test-progress*` w `app.css`) zamiast dynamicznych `style.cssText`, więc status sukces/błąd zarządzany jest przez klasy.
+- ✅ Lista aktywnych zadań (`taskList`) nie korzysta już z inline `flex` w `app.js` – elementy używają klasy `.task-content` dodanej do `app.css`, co domyka przeniesienie layoutu do styli.
+- ✅ Pasek instalacji modeli (`progressDiv` w Armory) przełączany jest klasą `is-hidden`, zamiast ustawiania `style.display` bezpośrednio w JS.
+- ✅ Szczegóły historii/Timeline (`showHistoryDetail`) nie wstrzykują inline-style – tytuł sekcji korzysta z klasy `.request-timeline-title` w `app.css`.
+- ✅ Repo widget + IoT status + history/integrations: wszystkie toggle widoczności/kursory przeniesione na klasy (`is-hidden`, `.iot-metrics.is-visible`, `.widgets-grid--visible`, `.history-row`, `.service-last-check`) bez manipulacji `style.*` w JS.
+- ✅ `inspector.js` – komunikaty błędów i interaktywność diagramu korzystają z klas (`inspector-diagram-error*`, `inspector-diagram-clickable`) zamiast inline-style, zachowując hover/klik oraz spójny wygląd.
+- ✅ Historia zadań w Cockpicie: wiersze `history-row` mają focus/wybór, klikalność i auto-odświeżanie modala (klasy `.history-row--selected`, `service-last-check` itd. + logika w `app.js`), więc modal detali odświeża się wraz z tabelą bez inline JS.
+- ✅ Zakładka historii Cockpitu ma kompletny panel sterowania – markup `index.html` ma 3 spójne kolumny, a `app.js` utrzymuje stan (wyszukiwarka, filtry, przełącznik auto-refresh, metka czasu). Autoodświeżanie działa na osobnej pętli `silent`, manualne odświeżanie pokazuje placeholder, a błędy nie kasują istniejących danych.
+- ✅ Historia w Cockpicie wyświetla teraz panel „History Insights” – karty pokazują liczbę żądań, skuteczność, błędy i średni czas operacji; dane liczone są w `app.js` na podstawie bieżącego filtra, więc operator ma szybki ogląd jakości zadań bez sięgania do tabeli.
+- ✅ Zakładka „Zadania w tle” ma panel kontrolny (wyszukiwarka, filtry typów, auto-refresh, meta „ostatnie odświeżenie”) oraz kafle statusów Watcher/Documenter/Gardener; `app.js` utrzymuje stan `jobsState`, renderuje listę i steruje auto odświeżaniem bez bezpośrednich manipulacji DOM. Dodatkowe karty „Jobs Insights” pokazują liczbę widocznych zadań vs. ogółem, ile jobów pracuje oraz ile zakończyło się błędem (z uwzględnieniem bieżącego filtra/wyszukiwania).
+- ✅ Zakładka „Pamięć” posiada panel sterowania (wyszukiwarka, filtry wyników, auto-refresh, metka czasu); `app.js` zarządza `memoryState`, renderuje lekcje z tagami i aktualizuje graf po odświeżeniu zamiast wstrzykiwać HTML ad-hoc, a blok „Memory Insights” pokazuje liczbę lekcji widocznych/ogółem, sukcesy vs błędy oraz statystyki grafu wiedzy (węzły/krawędzie) zsynchronizowane z API.
+- ✅ Historia, Zadania w tle i Pamięć mają przyciski „♻️ Reset”, które kasują zapisane filtry, wyszukiwarki i auto-refresh – kliknięcie natychmiast odświeża dane i zapisuje stan w `venomUIPreferences`, dzięki czemu operator nie musi ręcznie cofać zmian podczas pracy na Cockpicie.
+- ✅ Tab bar Cockpitu ma panel preferencji – operator widzi domyślną zakładkę i może jednym kliknięciem oznaczyć bieżącą jako domyślną (znacznik ⭐ na przycisku), bądź przywrócić tryb „Transmisja”; preferencja żyje w `venomUIPreferences.general`.
+- ✅ Cockpit posiada „Centrum preferencji” (modal z podsumowaniem zapisanych stanów, importem/eksportem JSON i przyciskami resetującymi). Operator jednym kliknięciem czyści ustawienia Cockpitu, modułów zewnętrznych lub całego VENOM UI (czyści `venomUIPreferences`, `venomActiveTab`, `venomFlowInspectorPrefs`, `venomWarRoomPreferences`, `brainPreferences`, `venomInspectorUIPreferences`, `inspectorPinnedTraces` itp.), a panel pokazuje aktualne wartości filtrów/Lab Mode/default tabów i pozwala skopiować/przenieść konfigurację między środowiskami – zarówno przez schowek, jak i poprzez pobranie/wczytanie pliku JSON.
+- ✅ Flow Inspector: dodano panel sterowania (wyszukiwarka, filtry statusów, auto-refresh) z nowymi klasami (`flow-controls`, `flow-filter-btn`, `flow-auto-refresh`). `flow_inspector.js` utrzymuje teraz stan z filtrowaniem, klawiaturą, auto odświeżaniem listy oraz inteligentnym refreshem diagramu (bez inline-style/eventów w HTML) **+** nagłówek `venom-page` z kartami meta (liczba zadań w kolejce, czas ostatniego odświeżenia) aktualizowanymi przez JS oraz przełącznikiem auto-refresh w tym samym miejscu co na makiecie.
+- ✅ Flow Inspector: preferencje operatora (fraza wyszukiwania, aktywny filtr statusu i stan auto-refresh) są zapisywane w `localStorage`, a warstwa JS synchronizuje je z UI – po odświeżeniu widoku lista zadań i przełączniki zachowują poprzedni kontekst pracy.
+- ✅ Inspector: preferencje listy śladów (fraza wyszukiwania, filtr statusu oraz auto-refresh) są zapisywane w `localStorage`, więc po przeładowaniu widoku panel od razu otwiera się w tym samym stanie i automatycznie startuje/stopuje odświeżanie według zapisanego wyboru.
+- ✅ Inspector: nagłówek `venom-page` dostaje live metryki – liczba widocznych śladów vs. łączna oraz liczba przypiętych, a `inspector.js` aktualizuje je przy każdym fetchu/filtrze i po akcji pinowania.
+- ✅ QA: dodano `scripts/qa/run_ui_suite.sh` + `make qa`, co automatyzuje uruchomienie pełnego `pytest -q` (1348 passed / 108 skipped). Wynik testów opisany w planie #6.
+- ✅ Inspector: panel boczny ma wyszukiwarkę, filtry statusów i auto-refresh (`inspector-controls`, `inspector-filter-btn`, `inspector-meta`), a `inspector.js` to klasa `InspectorApp` (vanilla JS) zarządzająca listą, diagramem Mermaid i zoomem bez Alpine/inline-eventów.
+- ✅ Inspector: diagram sekwencji można teraz skopiować jako kod Mermaid lub pobrać jako PNG/SVG, a cały ślad eksportować do JSON jednym kliknięciem – ułatwia to przenoszenie wyników analizy do ticketów/Jiry.
+- ✅ Inspector: operator może przypinać istotne ślady (panel „Przypięte”) oraz eksportować detale wybranego kroku do JSON (kopiuj + pobierz); pinowanie synchronizuje się w `localStorage`, więc zestaw obserwowanych śladów pozostaje po odświeżeniu widoku.
+- ✅ War Room: szablon (`strategy.html`) ma meta panel (ostatnie odświeżenie, auto-refresh, alert) bez inline JS; `strategy.js` zarządza stanem, fallbackami, przełącznikiem auto-refresh i pokazuje błędy wyłącznie przez klasy (`war-room-alert`, `war-room-shell.is-loading`).
+- ✅ Flow Inspector: wizualizacja przepływu pozwala teraz jednym kliknięciem skopiować kod Mermaid oraz pobrać gotowy plik PNG/SVG – dzięki temu diagramy można szybko wkleić do ticketów lub dokumentacji bez robienia screenshotów.
+- ✅ The Brain: graf wiedzy pamięta ustawienia filtrów/szukania/auto-refresh (localStorage) i posiada akcje eksportowe (JSON + PNG), więc analizy sieci zależności można archiwizować lub udostępniać innym członkom zespołu bez zewnętrznych narzędzi.

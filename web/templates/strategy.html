@@ -4,74 +4,113 @@
 
 {% block nav_strategy_active %}active{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="/static/css/strategy.css">
-{% endblock %}
+{% block body_attrs %}data-layout="strategy"{% endblock %}
 
 {% block content %}
-<div class="war-room-container">
-    <!-- Header -->
-    <div class="war-room-header">
-        <h1>🎯 WAR ROOM - Zarządzanie Strategiczne</h1>
-        <p>Executive Dashboard: Wizja → Milestones → Tasks</p>
+<div class="venom-page">
+    <header class="venom-page-header">
+        <div class="venom-page-header__content">
+            <p class="venom-eyebrow">Executive Module</p>
+            <h1>🎯 WAR ROOM</h1>
+            <p class="venom-page-description">
+                Strategic cockpit dla liderów – wizja → kamienie milowe → zadania operacyjne.
+            </p>
+        </div>
+        <div class="venom-page-header__meta">
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Postęp strategii</span>
+                <span class="venom-meta-value" id="warRoomCompletionMeta">0%</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Milestones</span>
+                <span class="venom-meta-value" id="warRoomMilestonesMeta">0/0</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Zadania</span>
+                <span class="venom-meta-value" id="warRoomTasksMeta">0/0</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Health kamieni</span>
+                <span class="venom-meta-value" id="warRoomMilestoneHealth">-</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Ostatnie odświeżenie</span>
+                <span class="venom-meta-value" id="warRoomLastUpdated">-</span>
+            </div>
+            <div class="venom-page-actions">
+                <label class="venom-toggle">
+                    <input type="checkbox" id="warRoomAutoRefresh" checked />
+                    <span>Auto odświeżanie</span>
+                </label>
+                <button class="venom-ghost-btn" type="button" id="warRoomRefreshBtn">
+                    🔄 Odśwież dane
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="war-room-shell" id="warRoomShell">
+        <div class="war-room-alert is-hidden" id="warRoomAlert" role="status"></div>
+
+    <div class="war-room-actions">
+        <button class="war-room-btn war-room-btn--primary" type="button" id="warRoomManualRefresh">
+            🔄 Odśwież Roadmapę
+        </button>
+        <button class="war-room-btn" type="button" id="warRoomDefineVision">
+            ✨ Zdefiniuj Wizję
+        </button>
+        <button class="war-room-btn" type="button" id="warRoomStartCampaign">
+            🚀 Uruchom Kampanię
+        </button>
+        <button class="war-room-btn" type="button" id="warRoomStatusReport">
+            📊 Raport Statusu
+        </button>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-        <button class="btn btn-primary" onclick="loadRoadmap()">🔄 Odśwież Roadmapę</button>
-        <button class="btn" onclick="showDefineVisionDialog()">✨ Zdefiniuj Wizję</button>
-        <button class="btn" onclick="startCampaign()">🚀 Uruchom Kampanię</button>
-        <button class="btn" onclick="requestStatusReport()">📊 Raport Statusu</button>
-    </div>
-
-    <!-- Main Grid -->
     <div class="war-room-grid">
-        <!-- Vision Panel -->
-        <div class="war-room-panel">
-            <div class="panel-title">🎯 VISION (Wizja)</div>
-            <div id="visionContent" class="vision-box">
-                <div class="empty-state">Brak zdefiniowanej wizji. Kliknij "Zdefiniuj Wizję" aby rozpocząć.</div>
+        <section class="war-room-panel" aria-labelledby="visionPanelTitle">
+            <div class="panel-title" id="visionPanelTitle">🎯 VISION (Wizja)</div>
+            <div id="visionContent" class="war-room-vision-box">
+                <div class="empty-state">Brak zdefiniowanej wizji. Kliknij "Zdefiniuj Wizję", aby rozpocząć.</div>
             </div>
-        </div>
+        </section>
 
-        <!-- KPIs Panel -->
-        <div class="war-room-panel">
-            <div class="panel-title">📊 Key Performance Indicators</div>
-            <div id="kpisContent" class="kpi-grid">
-                <div class="kpi-card">
-                    <div class="kpi-value" id="completionRate">0%</div>
-                    <div class="kpi-label">Postęp Ogólny</div>
+        <section class="war-room-panel" aria-labelledby="kpiPanelTitle">
+            <div class="panel-title" id="kpiPanelTitle">📊 Key Performance Indicators</div>
+            <div id="kpisContent" class="war-room-kpi-grid">
+                <div class="war-room-kpi-card">
+                    <div class="war-room-kpi-value" id="completionRate">0%</div>
+                    <div class="war-room-kpi-label">Postęp Ogólny</div>
                 </div>
-                <div class="kpi-card">
-                    <div class="kpi-value" id="milestonesCompleted">0/0</div>
-                    <div class="kpi-label">Milestones</div>
+                <div class="war-room-kpi-card">
+                    <div class="war-room-kpi-value" id="milestonesCompleted">0/0</div>
+                    <div class="war-room-kpi-label">Milestones</div>
                 </div>
-                <div class="kpi-card">
-                    <div class="kpi-value" id="tasksCompleted">0/0</div>
-                    <div class="kpi-label">Tasks</div>
+                <div class="war-room-kpi-card">
+                    <div class="war-room-kpi-value" id="tasksCompleted">0/0</div>
+                    <div class="war-room-kpi-label">Tasks</div>
                 </div>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <!-- Milestones Panel (Full Width) -->
-    <div class="war-room-panel" style="grid-column: 1 / -1;">
-        <div class="panel-title">📋 MILESTONES (Kamienie Milowe)</div>
-        <div id="milestonesContent">
-            <div class="empty-state">Brak kamieni milowych. Zdefiniuj wizję aby automatycznie wygenerować roadmapę.</div>
-        </div>
-    </div>
+        <section class="war-room-panel war-room-panel--full" aria-labelledby="milestonesPanelTitle">
+            <div class="panel-title" id="milestonesPanelTitle">📋 MILESTONES (Kamienie Milowe)</div>
+            <div id="milestonesContent">
+                <div class="empty-state">Brak kamieni milowych. Zdefiniuj wizję aby automatycznie wygenerować roadmapę.</div>
+            </div>
+        </section>
 
-    <!-- Roadmap Report (Full Width) -->
-    <div class="war-room-panel" style="grid-column: 1 / -1;">
-        <div class="panel-title">📝 Pełny Raport Roadmapy</div>
-        <div id="roadmapReportContent" class="roadmap-report">
-            <div class="empty-state">Brak danych do wyświetlenia</div>
-        </div>
+        <section class="war-room-panel war-room-panel--full" aria-labelledby="reportPanelTitle">
+            <div class="panel-title" id="reportPanelTitle">📝 Pełny Raport Roadmapy</div>
+            <div id="roadmapReportContent" class="war-room-report">
+                <div class="empty-state">Brak danych do wyświetlenia</div>
+            </div>
+        </section>
+    </div>
     </div>
 </div>
 {% endblock %}
 
-{% block scripts %}
+{% block extra_js %}
 <script src="/static/js/strategy.js"></script>
 {% endblock %}

@@ -24,6 +24,7 @@ export default function BrainPage() {
   const [filter, setFilter] = useState<"all" | "agent" | "memory" | "file" | "function">(
     "all",
   );
+  const [highlightTag, setHighlightTag] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [filePath, setFilePath] = useState("");
@@ -125,6 +126,7 @@ export default function BrainPage() {
       cyInstance.on("tap", "node", (evt) => {
         const data = evt.target.data() || {};
         setSelected(data);
+        setHighlightTag(null);
         const edges = evt.target.connectedEdges();
         const relEntries: RelationEntry[] = edges.map((edge) => {
           const edgeData = edge.data();
@@ -178,14 +180,65 @@ export default function BrainPage() {
       </Panel>
 
       <Panel
-        title="Obszary filtrów"
-        description="Tagi, typy węzłów, ostatnie aktualizacje — do wpięcia w API grafu."
+        title="Filtry grafu"
+        description="Tagi, typy węzłów, highlight lekcji."
       >
         <div className="flex flex-wrap gap-2 text-sm text-[--color-muted]">
-          <Badge tone="neutral">kod</Badge>
-          <Badge tone="neutral">workflow</Badge>
-          <Badge tone="neutral">dokumentacja</Badge>
-          <Badge tone="neutral">lekcje</Badge>
+          {(["all", "agent", "memory", "file", "function"] as const).map((type) => (
+            <button
+              key={type}
+              className={`rounded-full px-3 py-1 ${
+                filter === type
+                  ? "bg-[--color-accent]/30 text-white"
+                  : "bg-white/5 text-white border border-[--color-border]"
+              }`}
+              onClick={() => {
+                setFilter(type);
+                const cy = cyInstanceRef.current;
+                if (!cy) return;
+                cy.nodes().style("display", "element");
+                if (type !== "all") {
+                  cy.nodes().forEach((n) => {
+                    if (n.data("type") !== type) {
+                      n.style("display", "none");
+                    }
+                  });
+                }
+                cy.layout({ name: "cose", padding: 30, animate: false }).run();
+              }}
+            >
+              {type}
+            </button>
+          ))}
+
+          {lessonTags.map((tag) => (
+            <button
+              key={tag.name}
+              className={`rounded-full px-3 py-1 ${
+                highlightTag === tag.name
+                  ? "bg-amber-500/40 text-white"
+                  : "bg-white/5 text-white border border-[--color-border]"
+              }`}
+              onClick={() => {
+                const next = highlightTag === tag.name ? null : tag.name;
+                setHighlightTag(next);
+                const cy = cyInstanceRef.current;
+                if (!cy) return;
+                cy.nodes().style("border-width", 1).style("border-color", "#1f2937");
+                if (next) {
+                  cy.nodes().forEach((node) => {
+                    const props = node.data("properties") || {};
+                    const tags = (props.tags || []) as string[];
+                    if (tags.includes(next)) {
+                      node.style("border-width", 4).style("border-color", "#f59e0b");
+                    }
+                  });
+                }
+              }}
+            >
+              #{tag.name}
+            </button>
+          ))}
         </div>
       </Panel>
 

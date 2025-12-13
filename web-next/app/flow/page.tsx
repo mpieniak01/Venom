@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
+import type { HistoryStep as HistoryStepType } from "@/lib/types";
 import { useEffect, useRef, useState } from "react";
 
 export default function FlowInspectorPage() {
@@ -141,10 +142,7 @@ function statusTone(status: string | undefined) {
   return "neutral" as const;
 }
 
-type HistoryStep = {
-  component?: string;
-  action?: string;
-};
+type HistoryStep = HistoryStepType;
 
 async function loadHistoryDetail(
   requestId: string,

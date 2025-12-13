@@ -52,6 +52,18 @@ export interface HistoryRequest {
   duration_seconds?: number | null;
 }
 
+export interface HistoryRequestDetail extends HistoryRequest {
+  steps?: HistoryStep[];
+}
+
+export interface HistoryStep {
+  component?: string;
+  action?: string;
+  status?: string;
+  timestamp?: string;
+  details?: string;
+}
+
 export interface ServiceStatus {
   name: string;
   status: "healthy" | "degraded" | "down" | string;
@@ -133,6 +145,21 @@ export interface GraphScanResponse {
   status?: string;
   message?: string;
   stats?: Record<string, unknown>;
+}
+
+export interface LessonsStats {
+  status?: string;
+  stats?: Record<string, unknown>;
+}
+
+export interface GraphFileInfoResponse {
+  status?: string;
+  file_info?: Record<string, unknown>;
+}
+
+export interface GraphImpactResponse {
+  status?: string;
+  impact?: Record<string, unknown>;
 }
 
 export interface RoadmapVision {

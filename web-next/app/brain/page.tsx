@@ -3,10 +3,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import {
+  fetchGraphFileInfo,
+  fetchGraphImpact,
   triggerGraphScan,
   useGraphSummary,
   useKnowledgeGraph,
   useLessons,
+  useLessonsStats,
 } from "@/hooks/use-api";
 import type cytoscapeType from "cytoscape";
 import { useEffect, useRef, useState } from "react";
@@ -15,12 +18,18 @@ export default function BrainPage() {
   const { data: summary, refresh: refreshSummary } = useGraphSummary();
   const { data: graph } = useKnowledgeGraph();
   const { data: lessons, refresh: refreshLessons } = useLessons(5);
+  const { data: lessonsStats } = useLessonsStats();
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [filter, setFilter] = useState<"all" | "agent" | "memory" | "file" | "function">(
     "all",
   );
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [filePath, setFilePath] = useState("");
+  const [fileInfo, setFileInfo] = useState<Record<string, unknown> | null>(null);
+  const [impactInfo, setImpactInfo] = useState<Record<string, unknown> | null>(null);
+  const [fileMessage, setFileMessage] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const summaryStats = summary?.summary || summary;
@@ -28,6 +37,36 @@ export default function BrainPage() {
   const summaryEdges = summaryStats?.edges ?? summary?.edges ?? "—";
   const summaryUpdated =
     summary?.lastUpdated || summaryStats?.last_updated || summary?.last_updated;
+
+  const handleFileFetch = async (mode: "info" | "impact") => {
+    if (!filePath.trim()) {
+      setFileMessage("Podaj ścieżkę pliku.");
+      return;
+    }
+    setFileLoading(true);
+    setFileMessage(null);
+    try {
+      if (mode === "info") {
+        const res = await fetchGraphFileInfo(filePath.trim());
+        setFileInfo(res.file_info || null);
+        if (!res.file_info) {
+          setFileMessage("Brak informacji o pliku.");
+        }
+      } else {
+        const res = await fetchGraphImpact(filePath.trim());
+        setImpactInfo(res.impact || null);
+        if (!res.impact) {
+          setFileMessage("Brak danych impact.");
+        }
+      }
+    } catch (err) {
+      setFileMessage(
+        err instanceof Error ? err.message : "Nie udało się pobrać danych dla pliku.",
+      );
+    } finally {
+      setFileLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cyInstance: cytoscapeType.Core | null = null;
@@ -140,6 +179,14 @@ export default function BrainPage() {
         }
       >
         <div className="space-y-4">
+          <div className="rounded-xl border border-[--color-border] bg-white/5 p-3 text-sm text-[--color-muted]">
+            <h4 className="text-sm font-semibold text-white">Statystyki Lessons</h4>
+            {lessonsStats?.stats ? (
+              <JsonPreview data={lessonsStats.stats} />
+            ) : (
+              <p className="text-xs">Brak statystyk lub LessonsStore offline.</p>
+            )}
+          </div>
           <div>
             <h4 className="text-sm font-semibold text-white">Ostatnie lekcje</h4>
             <ul className="mt-2 space-y-2 text-sm text-[--color-muted]">
@@ -202,6 +249,44 @@ export default function BrainPage() {
             {scanMessage && (
               <p className="mt-2 text-xs text-[--color-muted]">{scanMessage}</p>
             )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="Analiza pliku" description="Pobierz informacje z grafu (file info / impact).">
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <input
+              className="w-full max-w-md rounded-lg border border-[--color-border] bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[--color-accent]"
+              placeholder="Nazwa pliku, np. venom_core/api/routes/system.py"
+              value={filePath}
+              onChange={(e) => setFilePath(e.target.value)}
+            />
+            <button
+              className="rounded-lg border border-[--color-border] px-4 py-2 text-xs text-white hover:bg-white/10 disabled:opacity-60"
+              disabled={fileLoading}
+              onClick={() => handleFileFetch("info")}
+            >
+              ℹ️ Info
+            </button>
+            <button
+              className="rounded-lg border border-[--color-border] px-4 py-2 text-xs text-white hover:bg-white/10 disabled:opacity-60"
+              disabled={fileLoading}
+              onClick={() => handleFileFetch("impact")}
+            >
+              🌐 Impact
+            </button>
+          </div>
+          {fileMessage && <p className="text-xs text-[--color-muted]">{fileMessage}</p>}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-[--color-border] bg-black/30 p-3 text-xs text-[--color-muted]">
+              <p className="text-sm font-semibold text-white">File info</p>
+              {fileInfo ? <JsonPreview data={fileInfo} /> : <p>Brak danych.</p>}
+            </div>
+            <div className="rounded-xl border border-[--color-border] bg-black/30 p-3 text-xs text-[--color-muted]">
+              <p className="text-sm font-semibold text-white">Impact</p>
+              {impactInfo ? <JsonPreview data={impactInfo} /> : <p>Brak danych.</p>}
+            </div>
           </div>
         </div>
       </Panel>
@@ -292,5 +377,13 @@ function StatRow({ label, value }: StatRowProps) {
       </p>
       <p className="mt-2 text-xl font-semibold">{value}</p>
     </div>
+  );
+}
+
+function JsonPreview({ data }: { data: Record<string, unknown> }) {
+  return (
+    <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-[--color-border] bg-black/40 p-2 text-xs text-slate-200">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 }

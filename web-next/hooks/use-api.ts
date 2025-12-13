@@ -7,9 +7,11 @@ import {
   GraphScanResponse,
   GraphSummary,
   HistoryRequest,
+  HistoryRequestDetail,
   GitStatus,
   KnowledgeGraph,
   Lesson,
+  LessonsStats,
   LessonsResponse,
   Metrics,
   ModelsResponse,
@@ -97,7 +99,7 @@ export function useHistory(limit = 50, intervalMs = 10000) {
 }
 
 export async function fetchHistoryDetail(requestId: string) {
-  return apiFetch(`/api/v1/history/requests/${requestId}`);
+  return apiFetch<HistoryRequestDetail>(`/api/v1/history/requests/${requestId}`);
 }
 
 export function useQueueStatus(intervalMs = 5000) {
@@ -182,6 +184,14 @@ export function useLessons(limit = 5, intervalMs = 20000) {
 
 export function useRoadmap(intervalMs = 30000) {
   return usePolling<RoadmapResponse>("roadmap", () => apiFetch("/api/roadmap"), intervalMs);
+}
+
+export function useLessonsStats(intervalMs = 30000) {
+  return usePolling<LessonsStats>(
+    "lessons-stats",
+    () => apiFetch("/api/v1/lessons/stats"),
+    intervalMs,
+  );
 }
 
 export async function sendTask(content: string, storeKnowledge = true) {
@@ -271,4 +281,16 @@ export async function requestRoadmapStatus() {
 
 export async function startCampaign() {
   return apiFetch<CampaignResponse>("/api/campaign/start", { method: "POST" });
+}
+
+export async function fetchGraphFileInfo(filePath: string) {
+  return apiFetch<GraphFileInfoResponse>(
+    `/api/v1/graph/file/${encodeURIComponent(filePath)}`,
+  );
+}
+
+export async function fetchGraphImpact(filePath: string) {
+  return apiFetch<GraphImpactResponse>(
+    `/api/v1/graph/impact/${encodeURIComponent(filePath)}`,
+  );
 }

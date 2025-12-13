@@ -84,6 +84,6 @@
 
 ## 8. Postęp implementacji (aktualizacja)
 - Cockpit Next: realtime telemetry, zadania, kolejka, modele/git/cost/autonomy + tokenomics oraz wykres Chart.js trendu tokenów, podgląd historii z detale `/history/requests`.
-- Flow Inspector: lista historii + dynamiczny timeline mermaid generowany z kroków `/history/requests/{id}`, tekstowa lista kroków po prawej.
+- Flow Inspector: lista historii + dynamiczny timeline mermaid generowany z kroków `/history/requests/{id}`, panel kroków z filtrowaniem/eksportem.
 - Brain: graf Cytoscape z filtrowaniem, panel lekcji (`/api/v1/lessons`), statystyki LessonsStore, akcja skanowania `/api/v1/graph/scan`, analiza pliku (`/graph/file`, `/graph/impact`), podgląd szczegółów węzła.
 - Strategy (War Room): integracja z `/api/roadmap`, raport statusu i kampania, formularz tworzenia wizji, renderowanie Markdown wizji/raportów/stanu.

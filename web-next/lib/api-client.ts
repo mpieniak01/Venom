@@ -17,11 +17,12 @@ export async function apiFetch<T = unknown>(
   path: string,
   options: ApiOptions = {},
 ): Promise<T> {
-  const { skipBaseUrl, headers, ...rest } = options;
+  const { skipBaseUrl, headers, cache, ...rest } = options;
   const target = skipBaseUrl ? path : `${API_BASE_URL}${path}`;
 
   const response = await fetch(target, {
     ...rest,
+    cache: cache ?? "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(headers || {}),

@@ -1,13 +1,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
-
-const graphMeta = [
-  { label: "Węzły", value: "356" },
-  { label: "Krawędzie", value: "1 204" },
-  { label: "Ostatnia aktualizacja", value: "8 min temu" },
-];
+import { useGraphSummary } from "@/hooks/use-api";
 
 export default function BrainPage() {
+  const { data: summary } = useGraphSummary();
+
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-2xl border border-[--color-border] bg-[--color-panel]/70 p-6 shadow-xl shadow-black/40">
@@ -19,24 +16,21 @@ export default function BrainPage() {
         </p>
         <div className="mt-4 flex gap-2">
           <Badge tone="neutral">/graph/summary</Badge>
-          <Badge tone="neutral">/graph/scan</Badge>
+          <Badge tone="neutral">
+            węzły: {summary?.nodes ?? "—"} / krawędzie: {summary?.edges ?? "—"}
+          </Badge>
           <Badge tone="warning">Cytoscape (client)</Badge>
         </div>
       </div>
 
       <Panel title="Statystyki grafu" description="Stub danych do zastąpienia API.">
         <div className="grid gap-3 sm:grid-cols-3">
-          {graphMeta.map((item) => (
-            <div
-              key={item.label}
-              className="rounded-xl border border-[--color-border] bg-white/5 p-4"
-            >
-              <p className="text-xs uppercase tracking-wide text-[--color-muted]">
-                {item.label}
-              </p>
-              <p className="mt-2 text-xl font-semibold">{item.value}</p>
-            </div>
-          ))}
+          <StatRow label="Węzły" value={summary?.nodes ?? "—"} />
+          <StatRow label="Krawędzie" value={summary?.edges ?? "—"} />
+          <StatRow
+            label="Ostatnia aktualizacja"
+            value={summary?.lastUpdated ?? "—"}
+          />
         </div>
       </Panel>
 
@@ -68,6 +62,22 @@ export default function BrainPage() {
           </div>
         </div>
       </Panel>
+    </div>
+  );
+}
+
+type StatRowProps = {
+  label: string;
+  value: string | number;
+};
+
+function StatRow({ label, value }: StatRowProps) {
+  return (
+    <div className="rounded-xl border border-[--color-border] bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-wide text-[--color-muted]">
+        {label}
+      </p>
+      <p className="mt-2 text-xl font-semibold">{value}</p>
     </div>
   );
 }

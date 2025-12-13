@@ -36,3 +36,18 @@ export interface GraphSummary {
   edges: number;
   lastUpdated?: string;
 }
+
+export interface HistoryRequest {
+  request_id: string;
+  prompt: string;
+  status: TaskStatus;
+  created_at: string;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+}
+
+export interface ServiceStatus {
+  name: string;
+  status: "healthy" | "degraded" | "down" | string;
+  detail?: string;
+}

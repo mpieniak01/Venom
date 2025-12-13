@@ -1,19 +1,24 @@
 import { Badge } from "@/components/ui/badge";
 import { Panel, StatCard } from "@/components/ui/panel";
-
-const stubTasks = [
-  { title: "Research: Python 3.12", status: "COMPLETED", time: "2m ago" },
-  { title: "Sync repo & apply patch", status: "PROCESSING", time: "30s ago" },
-  { title: "Run E2E smoke", status: "PENDING", time: "queued" },
-];
-
-const stubOperations = [
-  "WS telemetry pipeline ready",
-  "Queue governance endpoints discovered",
-  "Model registry API reachable",
-];
+import {
+  useGraphSummary,
+  useMetrics,
+  useQueueStatus,
+  useServiceStatus,
+  useTasks,
+} from "@/hooks/use-api";
+import { useTelemetryFeed } from "@/hooks/use-telemetry";
 
 export default function Home() {
+  const { data: metrics } = useMetrics();
+  const { data: tasks } = useTasks();
+  const { data: queue } = useQueueStatus();
+  const { data: services } = useServiceStatus();
+  const { data: graph } = useGraphSummary();
+  const { connected, entries } = useTelemetryFeed();
+
+  const taskItems = (tasks || []).slice(0, 4);
+
   return (
     <div className="flex flex-col gap-8">
       <section className="rounded-2xl border border-[--color-border] bg-[--color-panel]/70 p-6 shadow-xl shadow-black/40">
@@ -34,17 +39,37 @@ export default function Home() {
             </div>
           </div>
           <div className="grid w-full max-w-md grid-cols-2 gap-3">
-            <StatCard label="Zadania" value="128" hint="total (API /tasks)" />
+            <StatCard
+              label="Zadania"
+              value={metrics?.tasks?.created ?? "—"}
+              hint="total (API /tasks)"
+            />
             <StatCard
               label="Success rate"
-              value="92%"
+              value={
+                metrics?.tasks?.success_rate !== undefined
+                  ? `${metrics.tasks.success_rate}%`
+                  : "—"
+              }
               hint="metrics.success_rate"
               accent="green"
             />
-            <StatCard label="Uptime" value="4h 11m" hint="metrics.uptime_seconds" />
+            <StatCard
+              label="Uptime"
+              value={
+                metrics?.uptime_seconds !== undefined
+                  ? formatUptime(metrics.uptime_seconds)
+                  : "—"
+              }
+              hint="metrics.uptime_seconds"
+            />
             <StatCard
               label="Kolejka"
-              value="2 / 10"
+              value={
+                queue
+                  ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}`
+                  : "—"
+              }
               hint="active / limit"
               accent="blue"
             />
@@ -55,41 +80,57 @@ export default function Home() {
       <div className="grid gap-6 md:grid-cols-3">
         <Panel
           title="Live feed (WS)"
-          description="Docelowo strumień z /ws/events z auto-reconnect i filtrami logów."
+          description="Strumień z /ws/events z auto-reconnect i filtrami logów."
+          action={
+            <Badge tone={connected ? "success" : "warning"}>
+              {connected ? "Połączono" : "Rozłączony"}
+            </Badge>
+          }
         >
-          <div className="space-y-3 text-sm text-[--color-muted]">
-            <p>• Połącz z WS → streamuj AGENT_ACTION / SYSTEM_LOG.</p>
-            <p>• Wyświetlaj 100 ostatnich wpisów z opcją pin/clear.</p>
-            <p>• Reconnect z backoff (zaimplementowany w VenomWebSocket).</p>
+          <div className="space-y-2 text-sm text-[--color-muted]">
+            {entries.length === 0 && (
+              <p className="text-[--color-muted]">Brak danych z telemetrii.</p>
+            )}
+            {entries.slice(0, 6).map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
+              >
+                <p className="text-[11px] text-[--color-muted]">
+                  {new Date(entry.ts).toLocaleTimeString()}
+                </p>
+                <pre className="mt-1 max-h-24 overflow-auto text-xs text-slate-200">
+                  {formatPayload(entry.payload)}
+                </pre>
+              </div>
+            ))}
           </div>
         </Panel>
 
         <Panel
           title="Aktywne zadania"
           description="Dane z /api/v1/tasks + historia /history/requests."
-          action={<Badge tone="neutral">stub</Badge>}
         >
           <ul className="space-y-3">
-            {stubTasks.map((task) => (
+            {taskItems.length === 0 && (
+              <li className="rounded-lg border border-[--color-border] bg-white/5 p-3 text-sm text-[--color-muted]">
+                Brak zadań – spróbuj wysłać nowe żądanie w Cockpit.
+              </li>
+            )}
+            {taskItems.map((task) => (
               <li
-                key={task.title}
+                key={task.task_id}
                 className="rounded-lg border border-[--color-border] bg-white/5 p-3"
               >
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">{task.title}</span>
-                  <Badge
-                    tone={
-                      task.status === "COMPLETED"
-                        ? "success"
-                        : task.status === "PROCESSING"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
-                    {task.status}
-                  </Badge>
+                  <span className="font-medium">{task.content}</span>
+                  <Badge tone={statusTone(task.status)}>{task.status}</Badge>
                 </div>
-                <p className="mt-1 text-xs text-[--color-muted]">{task.time}</p>
+                <p className="mt-1 text-xs text-[--color-muted]">
+                  {task.created_at
+                    ? new Date(task.created_at).toLocaleString()
+                    : "—"}
+                </p>
               </li>
             ))}
           </ul>
@@ -100,12 +141,18 @@ export default function Home() {
           description="Kolejka governance, model manager, repo sync."
         >
           <ul className="space-y-2 text-sm text-[--color-muted]">
-            {stubOperations.map((item) => (
+            {(services || []).length === 0 && (
+              <li className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
+                Brak danych o statusie usług.
+              </li>
+            )}
+            {(services || []).map((svc) => (
               <li
-                key={item}
-                className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
+                key={svc.name}
+                className="flex items-center justify-between rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
               >
-                {item}
+                <span className="text-white">{svc.name}</span>
+                <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
               </li>
             ))}
           </ul>
@@ -132,11 +179,47 @@ export default function Home() {
               <li>• WS: /ws/events (telemetria)</li>
               <li>• REST: /api/v1/tasks, /metrics, /queue, /models, /git</li>
               <li>• Markdown/HTML render (DOMPurify + marked)</li>
-              <li>• Graph: /api/v1/graph/summary, /graph/scan</li>
+              <li>
+                • Graph: /api/v1/graph/summary, /graph/scan (nodes:{" "}
+                {graph?.nodes ?? "—"})
+              </li>
             </ul>
           </div>
         </div>
       </Panel>
     </div>
   );
+}
+
+function statusTone(status: string | undefined) {
+  if (!status) return "neutral" as const;
+  if (status === "COMPLETED") return "success" as const;
+  if (status === "PROCESSING") return "warning" as const;
+  if (status === "FAILED") return "danger" as const;
+  return "neutral" as const;
+}
+
+function serviceTone(status: string | undefined) {
+  if (!status) return "neutral" as const;
+  const s = status.toLowerCase();
+  if (s.includes("healthy") || s.includes("ok")) return "success" as const;
+  if (s.includes("degraded") || s.includes("warn")) return "warning" as const;
+  if (s.includes("down") || s.includes("error") || s.includes("fail"))
+    return "danger" as const;
+  return "neutral" as const;
+}
+
+function formatUptime(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+}
+
+function formatPayload(payload: unknown) {
+  if (typeof payload === "string") return payload;
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return String(payload);
+  }
 }

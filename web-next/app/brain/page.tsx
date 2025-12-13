@@ -4,12 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { useGraphSummary, useKnowledgeGraph } from "@/hooks/use-api";
 import type cytoscapeType from "cytoscape";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function BrainPage() {
   const { data: summary } = useGraphSummary();
   const { data: graph } = useKnowledgeGraph();
+  const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
+  const [filter, setFilter] = useState<"all" | "agent" | "memory" | "file" | "function">(
+    "all",
+  );
   const cyRef = useRef<HTMLDivElement | null>(null);
+  const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
 
   useEffect(() => {
     let cyInstance: cytoscapeType.Core | null = null;
@@ -57,6 +62,11 @@ export default function BrainPage() {
           },
         ],
       });
+      cyInstance.on("tap", "node", (evt) => {
+        const data = evt.target.data() || {};
+        setSelected(data);
+      });
+      cyInstanceRef.current = cyInstance;
     };
     mount();
     return () => {
@@ -113,13 +123,66 @@ export default function BrainPage() {
       >
         <div className="grid gap-4 md:grid-cols-3">
           <div className="md:col-span-2 rounded-xl border border-[--color-border] bg-white/5 p-2 text-sm text-[--color-muted]">
+            <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
+              {(["all", "agent", "memory", "file", "function"] as const).map((type) => (
+                <button
+                  key={type}
+                  className={`rounded-lg px-3 py-1 text-xs capitalize ${
+                    filter === type
+                      ? "bg-[--color-accent]/30 text-white border border-[--color-border]"
+                      : "bg-white/5 text-white border border-[--color-border] hover:bg-white/10"
+                  }`}
+                  onClick={() => {
+                    setFilter(type);
+                    const cy = cyInstanceRef.current;
+                    if (!cy) return;
+                    cy.nodes().style("display", "element");
+                    if (type !== "all") {
+                      cy.nodes().forEach((n) => {
+                        if (n.data("type") !== type) {
+                          n.style("display", "none");
+                        }
+                      });
+                    }
+                    cy.layout({ name: "cose", padding: 30, animate: false }).run();
+                  }}
+                >
+                  {type}
+                </button>
+              ))}
+              <button
+                className="rounded-lg bg-white/5 px-3 py-1 text-xs text-white border border-[--color-border] hover:bg-white/10"
+                onClick={() => {
+                  const cy = cyInstanceRef.current;
+                  if (!cy) return;
+                  cy.fit();
+                }}
+              >
+                Dopasuj
+              </button>
+            </div>
             <div ref={cyRef} className="h-[480px] w-full rounded-lg bg-[#0b1220]" />
           </div>
           <div className="rounded-xl border border-[--color-border] bg-white/5 p-6">
             <h4 className="text-sm font-semibold text-white">Szczegóły węzła</h4>
-            <p className="mt-2 text-sm text-[--color-muted]">
-              Tu pojawi się panel szczegółów (tagi, relacje, ostatnie akcji agentów).
-            </p>
+            {selected ? (
+              <div className="mt-2 space-y-2 text-sm text-[--color-muted]">
+                <p className="text-white">{String(selected.label || selected.id)}</p>
+                <p className="text-xs">Typ: {String(selected.type || "n/a")}</p>
+                <details className="rounded-lg border border-[--color-border] bg-black/30 p-2">
+                  <summary className="cursor-pointer text-xs text-white">
+                    Właściwości
+                  </summary>
+                  <pre className="mt-2 max-h-64 overflow-auto text-xs text-slate-200">
+                    {JSON.stringify(selected, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-[--color-muted]">
+                Kliknij węzeł, aby zobaczyć szczegóły.
+              </p>
+            )}
           </div>
         </div>
       </Panel>

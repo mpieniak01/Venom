@@ -9,6 +9,7 @@ class VenomDashboard {
         this.widgets = new Map(); // THE_CANVAS: Widget storage
         this.chartInstances = new Map(); // Chart.js instances
         this.activeOperations = new Map(); // Track active skill operations
+        this.activeTab = null;
 
         // Constants
         this.TASK_CONTENT_TRUNCATE_LENGTH = 50;
@@ -32,7 +33,58 @@ class VenomDashboard {
             });
         }
 
+        this.historyRefreshTimer = null;
+        this.historyLoading = false;
+        this.historyBackgroundLoading = false;
+        this.historyState = {
+            requests: [],
+            filter: 'all',
+            query: '',
+            autoRefresh: true,
+            lastUpdated: null
+        };
+        this.memoryRefreshTimer = null;
+        this.memoryState = {
+            lessons: [],
+            filter: 'all',
+            query: '',
+            autoRefresh: true,
+            loading: false,
+            error: null,
+            lastUpdated: null,
+            graphSummary: {
+                total_nodes: 0,
+                total_edges: 0
+            }
+        };
+        this.jobsRefreshTimer = null;
+        this.jobsState = {
+            jobs: [],
+            filter: 'all',
+            query: '',
+            autoRefresh: true,
+            loading: false,
+            error: null,
+            lastUpdated: null
+        };
+        this.modelsState = {
+            list: [],
+            lastUpdated: null
+        };
+        this.consoleState = {
+            labMode: false
+        };
+        this.defaultTab = 'feed';
+        this.preferences = this.loadUIPreferences();
+        this.applyUIPreferences();
+        this.selectedHistoryId = null;
+        this.historyDetailAutoRefresh = false;
+
         this.initElements();
+        this.initConsoleControls();
+        this.initTabNavigation();
+        this.initTabPreferencesControls();
+        this.initPreferencesCenter();
         this.initWebSocket();
         this.initEventHandlers();
         this.startMetricsPolling();
@@ -42,10 +94,10 @@ class VenomDashboard {
         this.startTokenomicsPolling(); // Dashboard v2.3
         this.startCostModePolling(); // Dashboard v2.4: Cost Guard
         this.initNotificationContainer();
-
-        // History auto-refresh state
-        this.historyRefreshTimer = null;
-        this.historyLoading = false;
+        this.initHistoryControls();
+        this.initHistoryInteractions();
+        this.initJobsControls();
+        this.restoreSavedTabPreference();
     }
 
     applySuggestionText(suggestion) {
@@ -63,43 +115,798 @@ class VenomDashboard {
         return (chip.textContent || '').trim();
     }
 
+    initHistoryInteractions() {
+        const historyBody = this.elements?.historyTableBody;
+        if (!historyBody) return;
+
+        const activateRow = (event) => {
+            const row = event.target.closest('.history-row');
+            if (!row) return;
+            const requestId = row.dataset.requestId;
+            if (requestId) {
+                this.showHistoryDetail(requestId);
+            }
+        };
+
+        historyBody.addEventListener('click', activateRow);
+        historyBody.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+                return;
+            }
+            event.preventDefault();
+            activateRow(event);
+        });
+    }
+
+    initHistoryControls() {
+        const searchInput = this.elements?.historySearchInput;
+        if (searchInput) {
+            searchInput.value = this.historyState.query || '';
+            searchInput.addEventListener('input', (event) => {
+                this.historyState.query = event.target.value || '';
+                this.renderHistoryTable();
+                this.updateUIPreferences('history', { query: this.historyState.query });
+            });
+        }
+
+        const filterButtons = this.elements?.historyFilterButtons || [];
+        filterButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const status = button.dataset.status || 'all';
+                this.setHistoryFilter(status);
+            });
+        });
+
+        const autoToggle = this.elements?.historyAutoRefreshToggle;
+        if (autoToggle) {
+            autoToggle.checked = this.historyState.autoRefresh;
+            autoToggle.addEventListener('change', (event) => {
+                this.toggleHistoryAutoRefresh(event.target.checked);
+            });
+        }
+
+        const resetButton = this.elements?.historyResetButton;
+        if (resetButton) {
+            resetButton.addEventListener('click', () => this.resetHistoryPreferences());
+        }
+
+        this.updateHistoryFilterButtons();
+        this.updateHistoryLastUpdated();
+    }
+
+    setHistoryFilter(status) {
+        this.historyState.filter = status;
+        this.updateHistoryFilterButtons();
+        this.renderHistoryTable();
+        this.updateUIPreferences('history', { filter: this.historyState.filter });
+    }
+
+    updateHistoryFilterButtons() {
+        const buttons = this.elements?.historyFilterButtons || [];
+        buttons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.status === this.historyState.filter);
+        });
+    }
+
+    toggleHistoryAutoRefresh(enabled) {
+        this.historyState.autoRefresh = enabled;
+        if (this.elements.historyAutoRefreshToggle) {
+            this.elements.historyAutoRefreshToggle.checked = enabled;
+        }
+        this.updateUIPreferences('history', { autoRefresh: this.historyState.autoRefresh });
+        if (enabled && this.isHistoryTabActive()) {
+            this.startHistoryAutoRefresh({ immediate: true });
+        } else {
+            this.stopHistoryAutoRefresh();
+        }
+    }
+
+    resetHistoryPreferences(options = {}) {
+        const { silent = false } = options;
+        this.historyState.filter = 'all';
+        this.historyState.query = '';
+        if (this.elements.historySearchInput) {
+            this.elements.historySearchInput.value = '';
+        }
+        this.updateHistoryFilterButtons();
+        this.renderHistoryTable();
+        this.toggleHistoryAutoRefresh(true);
+        this.updateUIPreferences('history', { filter: 'all', query: '' });
+
+        if (this.isHistoryTabActive()) {
+            this.loadHistory({ showLoading: true });
+        }
+
+        if (!silent) {
+            this.showNotification('Przywrócono domyślne filtry historii', 'info');
+        }
+    }
+
+    isHistoryTabActive() {
+        const historyTab = document.getElementById('historyTab');
+        return !!(historyTab && historyTab.classList.contains('active'));
+    }
+
+    updateHistoryLastUpdated() {
+        if (!this.elements.historyLastUpdated) return;
+        const timestamp = this.historyState.lastUpdated;
+        this.elements.historyLastUpdated.textContent = timestamp
+            ? timestamp.toLocaleString('pl-PL')
+            : '-';
+    }
+
+    getFilteredHistoryRequests() {
+        const filter = this.historyState.filter;
+        const query = (this.historyState.query || '').toLowerCase();
+        return this.historyState.requests.filter((request) => {
+            const status = (request.status || '').toLowerCase();
+            const statusMatch = filter === 'all' ? true : status === filter;
+            if (!statusMatch) return false;
+            if (!query) return true;
+            const prompt = (request.prompt || '').toLowerCase();
+            const id = (request.request_id || '').toLowerCase();
+            return prompt.includes(query) || id.includes(query);
+        });
+    }
+
+    renderHistoryPlaceholder(message, className = 'empty-state') {
+        if (!this.elements.historyTableBody) return;
+        this.elements.historyTableBody.innerHTML = `
+            <tr>
+                <td colspan="3" class="${className}">${message}</td>
+            </tr>
+        `;
+    }
+
+    setHistoryLoadingState(message = 'Odświeżanie historii...') {
+        this.renderHistoryPlaceholder(message, 'loading-state');
+    }
+
+    updateHistoryInsights(requests = []) {
+        const total = Array.isArray(requests) ? requests.length : 0;
+        let success = 0;
+        let failed = 0;
+        let durationSum = 0;
+        let durationCount = 0;
+
+        if (total > 0) {
+            requests.forEach((request) => {
+                const status = (request.status || '').toLowerCase();
+                if (['completed', 'success', 'successful'].includes(status)) {
+                    success++;
+                } else if (['failed', 'error', 'errored'].includes(status)) {
+                    failed++;
+                }
+
+                const rawDuration = request.duration_seconds ?? request.duration;
+                const duration = parseFloat(rawDuration);
+                if (!Number.isNaN(duration) && duration > 0) {
+                    durationSum += duration;
+                    durationCount++;
+                }
+            });
+        }
+
+        const successRate = total > 0 ? `${Math.round((success / total) * 100)}%` : '0%';
+        const avgDuration = durationCount > 0 ? `${(durationSum / durationCount).toFixed(1)}s` : '-';
+        const sampleSize = this.historyState?.requests?.length || 0;
+
+        this.setElementText(this.elements.historyTotalCount, total, '0');
+        this.setElementText(this.elements.historySuccessCount, success, '0');
+        this.setElementText(this.elements.historySuccessRate, successRate);
+        this.setElementText(this.elements.historyFailedCount, failed, '0');
+        this.setElementText(this.elements.historyAvgDuration, avgDuration);
+        this.setElementText(this.elements.historySampleSize, sampleSize, '0');
+
+        if (this.elements.historyFailedCard) {
+            this.elements.historyFailedCard.classList.toggle('is-danger', failed > 0);
+        }
+    }
+
+    renderHistoryTable() {
+        if (!this.elements.historyTableBody) return;
+        const requests = this.getFilteredHistoryRequests();
+        this.updateHistoryInsights(requests);
+
+        if (requests.length === 0) {
+            this.renderHistoryPlaceholder('Brak wpisów spełniających kryteria');
+            return;
+        }
+
+        this.elements.historyTableBody.innerHTML = '';
+        requests.forEach((request) => {
+            const row = this.createHistoryRow(request);
+            this.elements.historyTableBody.appendChild(row);
+        });
+
+        this.highlightHistorySelection();
+
+        if (
+            this.historyDetailAutoRefresh &&
+            this.selectedHistoryId &&
+            this.isModalVisible(this.elements.historyModal)
+        ) {
+            this.showHistoryDetail(this.selectedHistoryId, { refreshOnly: true });
+        }
+    }
+
+    initJobsControls() {
+        const searchInput = this.elements?.jobsSearchInput;
+        if (searchInput) {
+            searchInput.value = this.jobsState.query || '';
+            searchInput.addEventListener('input', (event) => {
+                this.jobsState.query = event.target.value || '';
+                this.renderJobsList();
+                this.updateUIPreferences('jobs', { query: this.jobsState.query });
+            });
+        }
+
+        const filterButtons = this.elements?.jobsFilterButtons || [];
+        filterButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const type = button.dataset.type || 'all';
+                this.setJobsFilter(type);
+            });
+        });
+
+        const autoToggle = this.elements?.jobsAutoRefreshToggle;
+        if (autoToggle) {
+            autoToggle.checked = this.jobsState.autoRefresh;
+            autoToggle.addEventListener('change', (event) => {
+                this.toggleJobsAutoRefresh(event.target.checked);
+            });
+        }
+
+        if (this.elements.refreshJobsBtn) {
+            this.elements.refreshJobsBtn.addEventListener('click', () => {
+                this.fetchBackgroundJobsStatus({ showLoading: true });
+            });
+        }
+
+        const resetButton = this.elements?.jobsResetButton;
+        if (resetButton) {
+            resetButton.addEventListener('click', () => this.resetJobsPreferences());
+        }
+
+        this.updateJobsFilterButtons();
+        this.renderJobsList();
+        this.updateJobsLastUpdated();
+    }
+
+    setJobsFilter(filter) {
+        this.jobsState.filter = filter;
+        this.updateJobsFilterButtons();
+        this.renderJobsList();
+        this.updateUIPreferences('jobs', { filter: this.jobsState.filter });
+    }
+
+    updateJobsFilterButtons() {
+        const buttons = this.elements?.jobsFilterButtons || [];
+        buttons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.type === this.jobsState.filter);
+        });
+    }
+
+    toggleJobsAutoRefresh(enabled) {
+        this.jobsState.autoRefresh = enabled;
+        if (this.elements.jobsAutoRefreshToggle) {
+            this.elements.jobsAutoRefreshToggle.checked = enabled;
+        }
+        this.updateUIPreferences('jobs', { autoRefresh: this.jobsState.autoRefresh });
+        if (enabled && this.isJobsTabActive()) {
+            this.startJobsAutoRefresh({ immediate: true });
+        } else {
+            this.stopJobsAutoRefresh();
+        }
+    }
+
+    resetJobsPreferences(options = {}) {
+        const { silent = false } = options;
+        this.jobsState.filter = 'all';
+        this.jobsState.query = '';
+        if (this.elements.jobsSearchInput) {
+            this.elements.jobsSearchInput.value = '';
+        }
+        this.updateJobsFilterButtons();
+        this.renderJobsList();
+        this.toggleJobsAutoRefresh(true);
+        this.updateUIPreferences('jobs', { filter: 'all', query: '' });
+
+        if (this.isJobsTabActive()) {
+            this.fetchBackgroundJobsStatus({ showLoading: true });
+        }
+
+        if (!silent) {
+            this.showNotification('Przywrócono domyślne filtry zadań w tle', 'info');
+        }
+    }
+
+    isJobsTabActive() {
+        const jobsTab = document.getElementById('jobsTab');
+        return !!(jobsTab && jobsTab.classList.contains('active'));
+    }
+
+    startJobsAutoRefresh(options = {}) {
+        if (!this.jobsState.autoRefresh) return;
+        if (!this.isJobsTabActive()) return;
+        if (this.jobsRefreshTimer) return;
+
+        const { immediate = true } = options;
+        if (immediate) {
+            this.fetchBackgroundJobsStatus();
+        }
+
+        this.jobsRefreshTimer = setInterval(() => {
+            this.fetchBackgroundJobsStatus();
+        }, 5000);
+    }
+
+    stopJobsAutoRefresh() {
+        if (this.jobsRefreshTimer) {
+            clearInterval(this.jobsRefreshTimer);
+            this.jobsRefreshTimer = null;
+        }
+    }
+
+    updateJobsLastUpdated() {
+        if (!this.elements.jobsLastUpdated) return;
+        const timestamp = this.jobsState.lastUpdated;
+        this.elements.jobsLastUpdated.textContent = timestamp
+            ? timestamp.toLocaleString('pl-PL')
+            : '-';
+    }
+
+    getFilteredJobs() {
+        const filter = this.jobsState.filter;
+        const query = (this.jobsState.query || '').toLowerCase();
+
+        return this.jobsState.jobs.filter((job) => {
+            const type = (job.type || 'interval').toLowerCase();
+            const matchesType = filter === 'all' ? true : type === filter;
+            if (!matchesType) {
+                return false;
+            }
+            if (!query) {
+                return true;
+            }
+            const id = (job.id || '').toLowerCase();
+            const description = (job.description || '').toLowerCase();
+            return id.includes(query) || description.includes(query) || type.includes(query);
+        });
+    }
+
+    renderJobsList() {
+        const container = this.elements?.jobsList;
+        if (!container) return;
+
+        const jobs = this.getFilteredJobs();
+        this.updateJobsInsights(jobs);
+
+        if (this.jobsState.loading) {
+            container.innerHTML = `
+                <div class="flow-loading">
+                    <div class="flow-spinner"></div>
+                    <p>Odświeżanie zadań...</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (this.jobsState.error) {
+            container.innerHTML = `
+                <p class="error-state">${this.jobsState.error}</p>
+            `;
+            return;
+        }
+
+        if (jobs.length === 0) {
+            const message = this.jobsState.jobs.length === 0
+                ? 'Brak aktywnych zadań'
+                : 'Brak wpisów spełniających kryteria';
+            container.innerHTML = `<p class="empty-state">${message}</p>`;
+            return;
+        }
+
+        container.innerHTML = jobs.map((job) => this.renderJobItem(job)).join('');
+    }
+
+    renderJobItem(job) {
+        const nextRun = job.next_run_time ? new Date(job.next_run_time) : null;
+        const nextRunLabel = nextRun && !Number.isNaN(nextRun.getTime())
+            ? nextRun.toLocaleString('pl-PL')
+            : 'brak danych';
+        const type = (job.type || 'interval').toLowerCase();
+        const typeLabel = type.toUpperCase();
+
+        return `
+            <div class="job-item">
+                <div class="job-header">
+                    <span class="job-id">${this.escapeHtml(job.id || '---')}</span>
+                    <span class="job-type">${this.escapeHtml(typeLabel)}</span>
+                </div>
+                <div class="job-description">${this.escapeHtml(job.description || 'Brak opisu')}</div>
+                <div class="job-next-run">Następne uruchomienie: ${this.escapeHtml(nextRunLabel)}</div>
+            </div>
+        `;
+    }
+
+    setJobsStatusPill(elementId, label, isActive) {
+        const pill = document.getElementById(elementId);
+        if (!pill) return;
+        pill.textContent = label;
+        pill.classList.toggle('is-active', !!isActive);
+        pill.classList.toggle('is-inactive', !isActive);
+    }
+
+    updateJobsInsights(filteredJobs = []) {
+        if (!this.elements.jobsVisibleCount) return;
+        const visibleCount = Array.isArray(filteredJobs) ? filteredJobs.length : this.getFilteredJobs().length;
+        const totalCount = this.jobsState.jobs.length;
+        this.elements.jobsVisibleCount.textContent = visibleCount;
+        if (this.elements.jobsTotalCount) {
+            this.elements.jobsTotalCount.textContent = totalCount;
+        }
+
+        const statusBuckets = this.jobsState.jobs.reduce(
+            (acc, job) => {
+                const status = (job.status || job.state || 'unknown').toLowerCase();
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+            },
+            {}
+        );
+
+        const runningStates = ['running', 'in_progress', 'active', 'executing'];
+        const failedStates = ['failed', 'error', 'stopped', 'blocked'];
+        const runningCount = runningStates.reduce(
+            (sum, key) => sum + (statusBuckets[key] || 0),
+            0
+        );
+        const failedCount = failedStates.reduce(
+            (sum, key) => sum + (statusBuckets[key] || 0),
+            0
+        );
+
+        if (this.elements.jobsRunningCount) {
+            this.elements.jobsRunningCount.textContent = runningCount;
+        }
+        if (this.elements.jobsFailedCount) {
+            this.elements.jobsFailedCount.textContent = failedCount;
+        }
+
+        if (this.elements.jobsFilterSummary) {
+            const filterLabels = {
+                all: 'wszystkie',
+                interval: 'interwały',
+                cron: 'cron',
+                date: 'jednorazowe'
+            };
+            const filterLabel =
+                filterLabels[this.jobsState.filter] || this.jobsState.filter || 'wszystkie';
+            const query = (this.jobsState.query || '').trim();
+            this.elements.jobsFilterSummary.textContent = query
+                ? `Filtr: ${filterLabel} · Fraza: "${query}"`
+                : `Filtr: ${filterLabel}`;
+        }
+    }
+
+    initMemoryControls() {
+        const searchInput = this.elements?.memorySearchInput;
+        if (searchInput) {
+            searchInput.value = this.memoryState.query || '';
+            searchInput.addEventListener('input', (event) => {
+                this.memoryState.query = event.target.value || '';
+                this.renderLessonsList();
+                this.updateUIPreferences('memory', { query: this.memoryState.query });
+            });
+        }
+
+        const filterButtons = this.elements?.memoryFilterButtons || [];
+        filterButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const status = button.dataset.status || 'all';
+                this.setMemoryFilter(status);
+            });
+        });
+
+        const autoToggle = this.elements?.memoryAutoRefreshToggle;
+        if (autoToggle) {
+            autoToggle.checked = this.memoryState.autoRefresh;
+            autoToggle.addEventListener('change', (event) => {
+                this.toggleMemoryAutoRefresh(event.target.checked);
+            });
+        }
+
+        const resetButton = this.elements?.memoryResetButton;
+        if (resetButton) {
+            resetButton.addEventListener('click', () => this.resetMemoryPreferences());
+        }
+
+        this.updateMemoryFilterButtons();
+        if (this.memoryState.lessons.length === 0) {
+            this.memoryState.loading = true;
+        }
+        this.renderLessonsList();
+        this.updateMemoryLastUpdated();
+    }
+
+    setMemoryFilter(filter) {
+        this.memoryState.filter = filter;
+        this.updateMemoryFilterButtons();
+        this.renderLessonsList();
+        this.updateUIPreferences('memory', { filter: this.memoryState.filter });
+    }
+
+    updateMemoryFilterButtons() {
+        const buttons = this.elements?.memoryFilterButtons || [];
+        buttons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.status === this.memoryState.filter);
+        });
+    }
+
+    toggleMemoryAutoRefresh(enabled) {
+        this.memoryState.autoRefresh = enabled;
+        if (this.elements.memoryAutoRefreshToggle) {
+            this.elements.memoryAutoRefreshToggle.checked = enabled;
+        }
+        this.updateUIPreferences('memory', { autoRefresh: this.memoryState.autoRefresh });
+        if (enabled && this.isMemoryTabActive()) {
+            this.startMemoryAutoRefresh({ immediate: true });
+        } else {
+            this.stopMemoryAutoRefresh();
+        }
+    }
+
+    resetMemoryPreferences(options = {}) {
+        const { silent = false } = options;
+        this.memoryState.filter = 'all';
+        this.memoryState.query = '';
+        if (this.elements.memorySearchInput) {
+            this.elements.memorySearchInput.value = '';
+        }
+        this.updateMemoryFilterButtons();
+        this.renderLessonsList();
+        this.toggleMemoryAutoRefresh(true);
+        this.updateUIPreferences('memory', { filter: 'all', query: '' });
+
+        if (this.isMemoryTabActive()) {
+            this.fetchLessons({ showLoading: true });
+            this.fetchGraphSummary();
+        }
+
+        if (!silent) {
+            this.showNotification('Przywrócono domyślne filtry pamięci', 'info');
+        }
+    }
+
+    isMemoryTabActive() {
+        const memoryTab = document.getElementById('memoryTab');
+        return !!(memoryTab && memoryTab.classList.contains('active'));
+    }
+
+    startMemoryAutoRefresh(options = {}) {
+        if (!this.memoryState.autoRefresh) return;
+        if (!this.isMemoryTabActive()) return;
+        if (this.memoryRefreshTimer) return;
+
+        const { immediate = true } = options;
+        if (immediate) {
+            this.fetchLessons();
+        }
+
+        this.memoryRefreshTimer = setInterval(() => {
+            this.fetchLessons();
+        }, 10000);
+    }
+
+    stopMemoryAutoRefresh() {
+        if (this.memoryRefreshTimer) {
+            clearInterval(this.memoryRefreshTimer);
+            this.memoryRefreshTimer = null;
+        }
+    }
+
+    updateMemoryLastUpdated() {
+        if (!this.elements.memoryLastUpdated) return;
+        const timestamp = this.memoryState.lastUpdated;
+        this.elements.memoryLastUpdated.textContent = timestamp
+            ? timestamp.toLocaleString('pl-PL')
+            : '-';
+    }
+
+    updateMemoryInsights(filteredLessons = null) {
+        if (!filteredLessons) {
+            filteredLessons = this.getFilteredLessons();
+        }
+        const totalLessons = this.memoryState.lessons.length;
+        const visibleLessons = Array.isArray(filteredLessons) ? filteredLessons.length : 0;
+        const successCount = Array.isArray(filteredLessons)
+            ? filteredLessons.filter((lesson) => this.getLessonStatus(lesson) === 'success').length
+            : 0;
+        const errorCount = visibleLessons - successCount;
+
+        if (this.elements.memoryVisibleLessons) {
+            this.elements.memoryVisibleLessons.textContent = visibleLessons;
+        }
+        if (this.elements.memoryTotalLessons) {
+            this.elements.memoryTotalLessons.textContent = totalLessons;
+        }
+        if (this.elements.memorySuccessCount) {
+            this.elements.memorySuccessCount.textContent = successCount;
+        }
+        if (this.elements.memoryErrorCount) {
+            this.elements.memoryErrorCount.textContent = errorCount < 0 ? 0 : errorCount;
+        }
+        if (this.elements.memoryFilterSummary) {
+            const filterLabels = {
+                all: 'wszystkie',
+                success: 'sukcesy',
+                error: 'błędy'
+            };
+            const filterLabel =
+                filterLabels[this.memoryState.filter] || this.memoryState.filter || 'wszystkie';
+            const query = (this.memoryState.query || '').trim();
+            this.elements.memoryFilterSummary.textContent = query
+                ? `Filtr: ${filterLabel} · Fraza: "${query}"`
+                : `Filtr: ${filterLabel}`;
+        }
+
+        this.updateMemoryGraphInsights();
+    }
+
+    updateMemoryGraphInsights() {
+        const summary = this.memoryState.graphSummary || {};
+        const nodes = summary.total_nodes || 0;
+        const edges = summary.total_edges || 0;
+        if (this.elements.memoryGraphNodes) {
+            this.elements.memoryGraphNodes.textContent = nodes;
+        }
+        if (this.elements.memoryGraphEdges) {
+            this.elements.memoryGraphEdges.textContent = edges;
+        }
+    }
+
+    getLessonStatus(lesson) {
+        const result = (lesson?.result || '').toLowerCase();
+        if (result.includes('błąd') || result.includes('error') || result.includes('fail')) {
+            return 'error';
+        }
+        return 'success';
+    }
+
+    getFilteredLessons() {
+        const filter = this.memoryState.filter;
+        const query = (this.memoryState.query || '').toLowerCase();
+
+        return this.memoryState.lessons.filter((lesson) => {
+            const status = this.getLessonStatus(lesson);
+            const matchesFilter = filter === 'all' ? true : status === filter;
+            if (!matchesFilter) {
+                return false;
+            }
+            if (!query) {
+                return true;
+            }
+            const situation = (lesson.situation || '').toLowerCase();
+            const feedback = (lesson.feedback || '').toLowerCase();
+            return situation.includes(query) || feedback.includes(query);
+        });
+    }
+
+    renderLessonsList() {
+        const container = this.elements?.lessonsList;
+        if (!container) return;
+
+        const lessons = this.getFilteredLessons();
+        this.updateMemoryInsights(lessons);
+
+        if (this.memoryState.loading) {
+            container.innerHTML = `
+                <div class="flow-loading">
+                    <div class="flow-spinner"></div>
+                    <p>Odświeżanie lekcji...</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (this.memoryState.error) {
+            container.innerHTML = `<p class="error-state">${this.memoryState.error}</p>`;
+            return;
+        }
+
+        if (lessons.length === 0) {
+            const message = this.memoryState.lessons.length === 0
+                ? 'Brak lekcji'
+                : 'Brak wyników spełniających kryteria';
+            container.innerHTML = `<p class="empty-state">${message}</p>`;
+            return;
+        }
+
+        container.innerHTML = lessons.map((lesson) => this.renderLessonItem(lesson)).join('');
+    }
+
+    renderLessonItem(lesson) {
+        const status = this.getLessonStatus(lesson);
+        const situation = lesson.situation || 'Brak kontekstu';
+        const feedback = lesson.feedback || '';
+        const tags = Array.isArray(lesson.tags) ? lesson.tags : [];
+        const trimmedSituation =
+            situation.length > 120 ? `${situation.slice(0, 117)}...` : situation;
+        const trimmedFeedback =
+            feedback.length > 160 ? `${feedback.slice(0, 157)}...` : feedback;
+
+        const tagsHtml = tags.length > 0
+            ? `<div class="lesson-tags">
+                ${tags.map(tag => `<span class="lesson-tag">${this.escapeHtml(tag)}</span>`).join('')}
+               </div>`
+            : '';
+
+        return `
+            <div class="lesson-item ${status}">
+                <div class="lesson-situation">${this.escapeHtml(trimmedSituation)}</div>
+                <div class="lesson-feedback">💡 ${this.escapeHtml(trimmedFeedback || 'Brak feedbacku')}</div>
+                ${tagsHtml}
+            </div>
+        `;
+    }
+
+    createHistoryRow(request) {
+        const row = document.createElement('tr');
+        row.className = `status-${(request.status || '').toLowerCase()} history-row`;
+        row.dataset.requestId = request.request_id;
+        this.configureHistoryRow(row, request);
+
+        const statusCell = document.createElement('td');
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `status-badge status-${(request.status || '').toLowerCase()}`;
+        statusBadge.textContent = `${this.getStatusIcon(request.status)} ${request.status}`;
+        statusCell.appendChild(statusBadge);
+        row.appendChild(statusCell);
+
+        const promptCell = document.createElement('td');
+        const promptText = document.createElement('div');
+        promptText.className = 'prompt-text';
+        promptText.textContent = request.prompt;
+        promptText.title = request.prompt;
+        promptCell.appendChild(promptText);
+        row.appendChild(promptCell);
+
+        const timeCell = document.createElement('td');
+        const timeText = document.createElement('div');
+        timeText.className = 'time-text';
+        const createdDate = request.created_at ? new Date(request.created_at) : null;
+        const duration = request.duration_seconds
+            ? `(${request.duration_seconds.toFixed(1)}s)`
+            : '';
+        timeText.textContent = createdDate ? `${this.formatTime(createdDate)} ${duration}` : '-';
+        timeCell.appendChild(timeText);
+        row.appendChild(timeCell);
+
+        return row;
+    }
+
     initNotificationContainer() {
         // Create notification container for toast messages
         const container = document.createElement('div');
         container.id = 'notification-container';
-        container.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        `;
+        container.className = 'notification-container';
         document.body.appendChild(container);
+        return container;
     }
 
     showNotification(message, type = 'info') {
-        const container = document.getElementById('notification-container');
+        const container =
+            document.getElementById('notification-container') || this.initNotificationContainer();
         const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.style.cssText = `
-            background-color: ${type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#10b981'};
-            color: white;
-            padding: 12px 20px;
-            border-radius: 6px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            min-width: 250px;
-            max-width: 400px;
-            animation: slideIn 0.3s ease-out;
-        `;
+        notification.className = `notification notification--${type}`;
         notification.textContent = message;
 
         container.appendChild(notification);
 
         // Auto-remove after 5 seconds
         setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease-out';
+            notification.classList.add('notification--hiding');
             setTimeout(() => {
                 if (notification.parentNode) {
                     notification.parentNode.removeChild(notification);
@@ -108,10 +915,28 @@ class VenomDashboard {
         }, 5000);
     }
 
+    showModal(modal) {
+        if (!modal) return;
+        modal.classList.add('is-visible');
+    }
+
+    hideModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('is-visible');
+    }
+
+    isModalVisible(modal) {
+        return !!(modal && modal.classList.contains('is-visible'));
+    }
+
     initElements() {
         this.elements = {
             connectionStatus: document.getElementById('connectionStatus'),
             statusText: document.getElementById('statusText'),
+            statusBannerDot: document.getElementById('statusBannerDot'),
+            statusBannerText: document.getElementById('statusBannerText'),
+            workspacePathValue: document.getElementById('workspacePath'),
+            repoBannerMessage: document.getElementById('repoBannerMessage'),
             taskInput: document.getElementById('taskInput'),
             sendButton: document.getElementById('sendButton'),
             chatMessages: document.getElementById('chatMessages'),
@@ -119,6 +944,9 @@ class VenomDashboard {
             suggestionPanel: document.getElementById('suggestionPanel'),
             liveFeed: document.getElementById('liveFeed'),
             taskList: document.getElementById('taskList'),
+            defaultTabLabel: document.getElementById('defaultTabLabel'),
+            setDefaultTabBtn: document.getElementById('setDefaultTabBtn'),
+            resetDefaultTabBtn: document.getElementById('resetDefaultTabBtn'),
             metricTasks: document.getElementById('metricTasks'),
             metricSuccess: document.getElementById('metricSuccess'),
             metricUptime: document.getElementById('metricUptime'),
@@ -135,9 +963,75 @@ class VenomDashboard {
             // History elements
             historyTableBody: document.getElementById('historyTableBody'),
             refreshHistory: document.getElementById('refreshHistory'),
+            historySearchInput: document.getElementById('historySearchInput'),
+            historyAutoRefreshToggle: document.getElementById('historyAutoRefreshToggle'),
+            historyResetButton: document.getElementById('historyResetFilters'),
+            historyFilterButtons: document.querySelectorAll('.history-filter-btn'),
+            historyLastUpdated: document.getElementById('historyLastUpdated'),
             historyModal: document.getElementById('historyModal'),
             historyModalBody: document.getElementById('historyModalBody'),
             closeHistoryModal: document.getElementById('closeHistoryModal'),
+            historyTotalCount: document.getElementById('historyTotalCount'),
+            historySuccessCount: document.getElementById('historySuccessCount'),
+            historySuccessRate: document.getElementById('historySuccessRate'),
+            historyFailedCount: document.getElementById('historyFailedCount'),
+            historyAvgDuration: document.getElementById('historyAvgDuration'),
+            historySampleSize: document.getElementById('historySampleSize'),
+            historyFailedCard: document.getElementById('historyFailedCard'),
+            // Memory tab
+            lessonsList: document.getElementById('lessonsList'),
+            memorySearchInput: document.getElementById('memorySearchInput'),
+            memoryFilterButtons: document.querySelectorAll('.memory-filter-btn'),
+            memoryAutoRefreshToggle: document.getElementById('memoryAutoRefreshToggle'),
+            memoryResetButton: document.getElementById('memoryResetFilters'),
+            memoryLastUpdated: document.getElementById('memoryLastUpdated'),
+            refreshLessons: document.getElementById('refreshLessons'),
+            scanGraph: document.getElementById('scanGraph'),
+            memoryVisibleLessons: document.getElementById('memoryVisibleLessons'),
+            memoryTotalLessons: document.getElementById('memoryTotalLessons'),
+            memorySuccessCount: document.getElementById('memorySuccessCount'),
+            memoryErrorCount: document.getElementById('memoryErrorCount'),
+            memoryFilterSummary: document.getElementById('memoryFilterSummary'),
+            memoryGraphNodes: document.getElementById('memoryGraphNodes'),
+            memoryGraphEdges: document.getElementById('memoryGraphEdges'),
+            // Background jobs
+            jobsList: document.getElementById('jobsList'),
+            jobsSearchInput: document.getElementById('jobsSearchInput'),
+            jobsFilterButtons: document.querySelectorAll('.jobs-filter-btn'),
+            jobsAutoRefreshToggle: document.getElementById('jobsAutoRefreshToggle'),
+            jobsLastUpdated: document.getElementById('jobsLastUpdated'),
+            refreshJobsBtn: document.getElementById('refreshJobsBtn'),
+            jobsResetButton: document.getElementById('jobsResetFilters'),
+            jobsVisibleCount: document.getElementById('jobsVisibleCount'),
+            jobsTotalCount: document.getElementById('jobsTotalCount'),
+            jobsRunningCount: document.getElementById('jobsRunningCount'),
+            jobsFailedCount: document.getElementById('jobsFailedCount'),
+            jobsFilterSummary: document.getElementById('jobsFilterSummary'),
+            // Models tab
+            modelsInstalledCount: document.getElementById('modelsInstalledCount'),
+            modelsActiveCount: document.getElementById('modelsActiveCount'),
+            modelsTotalSize: document.getElementById('modelsTotalSize'),
+            modelsQuantSummary: document.getElementById('modelsQuantSummary'),
+            modelsLastUpdated: document.getElementById('modelsLastUpdated'),
+            // Console / chat controls
+            labModeCheckbox: document.getElementById('labModeCheckbox'),
+            // Preferences Center
+            openPreferencesCenterBtn: document.getElementById('openPreferencesCenterBtn'),
+            preferencesModal: document.getElementById('preferencesModal'),
+            closePreferencesModal: document.getElementById('closePreferencesModal'),
+            preferencesSummary: document.getElementById('preferencesSummary'),
+            externalPreferencesSummary: document.getElementById('externalPreferencesSummary'),
+            resetCockpitPreferencesBtn: document.getElementById('resetCockpitPreferencesBtn'),
+            resetExternalPreferencesBtn: document.getElementById('resetExternalPreferencesBtn'),
+            resetAllPreferencesBtn: document.getElementById('resetAllPreferencesBtn'),
+            preferencesExportPayload: document.getElementById('preferencesExportPayload'),
+            copyPreferencesExportBtn: document.getElementById('copyPreferencesExportBtn'),
+            refreshPreferencesExportBtn: document.getElementById('refreshPreferencesExportBtn'),
+            preferencesImportInput: document.getElementById('preferencesImportInput'),
+            downloadPreferencesExportBtn: document.getElementById('downloadPreferencesExportBtn'),
+            preferencesImportFileInput: document.getElementById('preferencesImportFileInput'),
+            preferencesImportFileName: document.getElementById('preferencesImportFileName'),
+            applyPreferencesImportBtn: document.getElementById('applyPreferencesImportBtn'),
             // Dashboard v2.3: Queue Governance
             queueActive: document.getElementById('queueActive'),
             queuePending: document.getElementById('queuePending'),
@@ -147,17 +1041,33 @@ class VenomDashboard {
             purgeQueueBtn: document.getElementById('purgeQueueBtn'),
             emergencyStopBtn: document.getElementById('emergencyStopBtn'),
             governancePanel: document.querySelector('.queue-governance-panel'),
-            // Dashboard v2.3: Live Terminal
-            liveTerminal: document.getElementById('liveTerminal'),
-            clearTerminalBtn: document.getElementById('clearTerminalBtn'),
+            // Telemetry log feed
+            clearLiveFeedBtn: document.getElementById('clearLiveFeedBtn'),
             // Dashboard v2.4: Cost Mode (Global Cost Guard)
             costModeToggle: document.getElementById('costModeToggle'),
             costModeLabel: document.getElementById('costModeLabel'),
+            costModeStatusLabel: document.getElementById('costModeStatusLabel'),
             costModeModal: document.getElementById('costModeModal'),
             closeCostModeModal: document.getElementById('closeCostModeModal'),
             confirmCostMode: document.getElementById('confirmCostMode'),
             cancelCostMode: document.getElementById('cancelCostMode'),
+            // System Guard status
+            autonomyStatusLabel: document.getElementById('autonomyStatusLabel'),
         };
+    }
+
+    initConsoleControls() {
+        const labModeCheckbox = this.elements?.labModeCheckbox;
+        if (!labModeCheckbox) return;
+
+        labModeCheckbox.checked = !!this.consoleState.labMode;
+        labModeCheckbox.addEventListener('change', (event) => {
+            this.consoleState.labMode = !!event.target.checked;
+            this.updateUIPreferences('console', { labMode: this.consoleState.labMode });
+            if (this.consoleState.labMode) {
+                this.showNotification('🧪 Lab Mode aktywny – nowe zadania nie zapisują lekcji', 'info');
+            }
+        });
     }
 
     initWebSocket() {
@@ -215,13 +1125,45 @@ class VenomDashboard {
     }
 
     updateConnectionStatus(connected) {
+        const {
+            connectionStatus,
+            statusText,
+            statusBannerDot,
+            statusBannerText
+        } = this.elements;
+
         if (connected) {
-            this.elements.connectionStatus.classList.add('connected');
-            this.elements.statusText.textContent = 'Połączono';
+            connectionStatus?.classList.add('connected');
+            statusBannerDot?.classList.add('connected');
+            if (statusText) statusText.textContent = 'Połączono';
+            if (statusBannerText) statusBannerText.textContent = 'Połączono';
         } else {
-            this.elements.connectionStatus.classList.remove('connected');
-            this.elements.statusText.textContent = 'Rozłączono';
+            connectionStatus?.classList.remove('connected');
+            statusBannerDot?.classList.remove('connected');
+            if (statusText) statusText.textContent = 'Rozłączono';
+            if (statusBannerText) statusBannerText.textContent = 'Rozłączono';
         }
+    }
+
+    setRepoBannerMessage(message, variant = 'info') {
+        const banner = this.elements.repoBannerMessage;
+        if (!banner) return;
+
+        const variants = ['info', 'success', 'warning', 'error'];
+        variants.forEach(v => banner.classList.remove(`status-alert--${v}`));
+
+        if (!message) {
+            banner.textContent = '';
+            banner.classList.add('is-hidden');
+            return;
+        }
+
+        if (variant) {
+            banner.classList.add(`status-alert--${variant}`);
+        }
+
+        banner.textContent = message;
+        banner.classList.remove('is-hidden');
     }
 
     handleWebSocketMessage(data) {
@@ -229,7 +1171,9 @@ class VenomDashboard {
 
         // Add to live feed
         const logLevel = this.getLogLevel(type);
-        this.addLogEntry(logLevel, `[${type}] ${agent ? agent + ': ' : ''}${message}`);
+        if (type !== 'SYSTEM_LOG') {
+            this.addLogEntry(logLevel, `[${type}] ${agent ? agent + ': ' : ''}${message}`);
+        }
 
         // Handle specific event types
         switch (type) {
@@ -427,34 +1371,30 @@ class VenomDashboard {
         // Stwórz lub zaktualizuj pasek postępu testów
         let progressBar = document.getElementById(`test-progress-${taskId}`);
 
+        const baseClass = success ? 'test-progress--success' : 'test-progress--error';
+
         if (!progressBar) {
             // Utwórz nowy pasek postępu
             progressBar = document.createElement('div');
             progressBar.id = `test-progress-${taskId}`;
-            progressBar.className = 'test-progress';
-            progressBar.style.cssText = `
-                margin: 10px 0;
-                padding: 10px;
-                border-radius: 6px;
-                background: ${success ? '#d1fae5' : '#fee2e2'};
-                border: 2px solid ${success ? '#10b981' : '#ef4444'};
-            `;
+            progressBar.className = `test-progress ${baseClass}`;
 
             // Dodaj do chat messages
             this.elements.chatMessages.appendChild(progressBar);
+        } else {
+            progressBar.className = `test-progress ${baseClass}`;
         }
 
         // Zaktualizuj zawartość
         const emoji = success ? '🟢' : '🔴';
         const statusText = success ? 'SUKCES' : 'BŁĄD';
-        const color = success ? '#10b981' : '#ef4444';
 
         progressBar.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="font-size: 24px;">${emoji}</div>
-                <div>
-                    <div style="font-weight: bold; color: ${color};">${statusText}</div>
-                    <div style="font-size: 12px; color: #6b7280;">Iteracja: ${iteration}</div>
+            <div class="test-progress__body">
+                <div class="test-progress__icon">${emoji}</div>
+                <div class="test-progress__text">
+                    <div class="test-progress__status">${statusText}</div>
+                    <div class="test-progress__iteration">Iteracja: ${iteration}</div>
                 </div>
             </div>
         `;
@@ -493,6 +1433,14 @@ class VenomDashboard {
         while (this.elements.liveFeed.children.length > this.LOG_ENTRY_MAX_COUNT) {
             this.elements.liveFeed.removeChild(this.elements.liveFeed.firstChild);
         }
+    }
+
+    clearLiveFeed() {
+        if (!this.elements.liveFeed) return;
+        this.elements.liveFeed.innerHTML = `
+            <div class="terminal-line terminal-line--accent">&gt; System wyczyszczony.</div>
+            <div class="terminal-line terminal-line--muted">&gt; Oczekiwanie na zadania...</div>
+        `;
     }
 
     addChatMessage(role, content, agent = null, metadata = null) {
@@ -562,6 +1510,15 @@ class VenomDashboard {
         }
     }
 
+    setElementText(element, value, fallback = '-') {
+        if (!element) return;
+        const shouldUseFallback =
+            value === null ||
+            value === undefined ||
+            (typeof value === 'string' && value.trim() === '');
+        element.textContent = shouldUseFallback ? fallback : value;
+    }
+
     updateTaskList() {
         if (!this.elements.taskList) {
             return;
@@ -599,7 +1556,7 @@ class VenomDashboard {
             taskItem.dataset.taskId = task.id;
 
             const contentDiv = document.createElement('div');
-            contentDiv.style.flex = '1';
+            contentDiv.className = 'task-content';
             const strong = document.createElement('strong');
             strong.textContent = `${statusEmoji} ${truncatedContent}...`;
             contentDiv.appendChild(strong);
@@ -689,7 +1646,7 @@ class VenomDashboard {
         // History: Refresh button
         if (this.elements.refreshHistory) {
             this.elements.refreshHistory.addEventListener('click', () => {
-                this.loadHistory();
+                this.loadHistory({ showLoading: true });
             });
         }
 
@@ -711,7 +1668,7 @@ class VenomDashboard {
 
         // History: Close modal on Escape key
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.elements.historyModal && this.elements.historyModal.style.display === 'flex') {
+            if (e.key === 'Escape' && this.isModalVisible(this.elements.historyModal)) {
                 this.closeHistoryModal();
             }
         });
@@ -735,9 +1692,9 @@ class VenomDashboard {
             });
         }
 
-        if (this.elements.clearTerminalBtn) {
-            this.elements.clearTerminalBtn.addEventListener('click', () => {
-                this.clearTerminal();
+        if (this.elements.clearLiveFeedBtn) {
+            this.elements.clearLiveFeedBtn.addEventListener('click', () => {
+                this.clearLiveFeed();
             });
         }
 
@@ -778,7 +1735,7 @@ class VenomDashboard {
 
         // Close cost mode modal on Escape
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.elements.costModeModal && this.elements.costModeModal.style.display === 'flex') {
+            if (e.key === 'Escape' && this.isModalVisible(this.elements.costModeModal)) {
                 this.cancelCostModeChange();
             }
         });
@@ -800,8 +1757,7 @@ class VenomDashboard {
             this.addChatMessage('user', content);
 
             // Pobierz stan Lab Mode
-            const labModeCheckbox = document.getElementById('labModeCheckbox');
-            const isLabModeEnabled = labModeCheckbox ? labModeCheckbox.checked : false;
+            const isLabModeEnabled = this.consoleState?.labMode ?? false;
 
             // Jeśli Lab Mode jest włączony, pokaż wizualne wskazanie
             if (isLabModeEnabled) {
@@ -920,10 +1876,15 @@ class VenomDashboard {
 
             if (!response.ok) {
                 // If endpoint returns error, don't update UI
+                this.setRepoBannerMessage('Nie udało się pobrać statusu repozytorium', 'error');
                 return;
             }
 
             const data = await response.json();
+
+            if (data.workspace_path && this.elements.workspacePathValue) {
+                this.elements.workspacePathValue.textContent = data.workspace_path;
+            }
 
             if (data.status === 'success' && data.is_git_repo) {
                 this.updateRepositoryStatus(
@@ -935,151 +1896,901 @@ class VenomDashboard {
                 this.updateRepositoryStatus('-', false, 0, data.message);
             } else {
                 // Not a git repo or error
-                this.updateRepositoryStatus('-', false, 0);
+                const noRepoMessage = 'Brak repozytorium Git w workspace';
+                this.updateRepositoryStatus('-', false, 0, noRepoMessage, 'info');
             }
 
         } catch (error) {
             console.error('Error fetching repository status:', error);
-            // Don't update UI on error
+            this.setRepoBannerMessage('Błąd pobierania statusu repozytorium', 'error');
         }
+    }
+
+    refreshTabAccessibilityStates() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach((button) => {
+            const isActive = button.classList.contains('active');
+            button.setAttribute('role', 'tab');
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            button.setAttribute('tabindex', isActive ? '0' : '-1');
+
+            const tabName = button.dataset.tab;
+            if (tabName) {
+                button.setAttribute('aria-controls', `${tabName}Tab`);
+            }
+        });
+
+        const tabContents = document.querySelectorAll('.tab-content');
+        tabContents.forEach((content) => {
+            content.setAttribute('role', 'tabpanel');
+            const isActive = content.classList.contains('active');
+            if (typeof content.toggleAttribute === 'function') {
+                content.toggleAttribute('hidden', !isActive);
+            } else if (!isActive) {
+                content.setAttribute('hidden', 'hidden');
+            } else {
+                content.removeAttribute('hidden');
+            }
+        });
+
+        this.updateTabDefaultIndicator();
+    }
+
+    initTabNavigation() {
+        const tabButtons = Array.from(document.querySelectorAll('.tab-button'));
+        if (!tabButtons.length) return;
+
+        this.refreshTabAccessibilityStates();
+
+        tabButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const tabName = button.dataset.tab;
+                if (tabName) {
+                    this.switchTab(tabName);
+                }
+            });
+
+            button.addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                    return;
+                }
+                event.preventDefault();
+
+                const direction = event.key === 'ArrowRight' ? 1 : -1;
+                const currentIndex = tabButtons.indexOf(button);
+                const nextIndex = (currentIndex + direction + tabButtons.length) % tabButtons.length;
+                const nextButton = tabButtons[nextIndex];
+                nextButton.focus();
+                const nextTab = nextButton?.dataset?.tab;
+                if (nextTab) {
+                    this.switchTab(nextTab);
+                }
+            });
+        });
+    }
+
+    initTabPreferencesControls() {
+        if (this.elements.setDefaultTabBtn) {
+            this.elements.setDefaultTabBtn.addEventListener('click', () => {
+                if (this.activeTab) {
+                    this.setDefaultTab(this.activeTab);
+                }
+            });
+        }
+
+        if (this.elements.resetDefaultTabBtn) {
+            this.elements.resetDefaultTabBtn.addEventListener('click', () => {
+                this.resetDefaultTab();
+            });
+        }
+
+        this.updateDefaultTabLabel();
+        this.updateTabDefaultIndicator();
+    }
+
+    initPreferencesCenter() {
+        const modal = this.elements?.preferencesModal;
+        const openBtn = this.elements?.openPreferencesCenterBtn;
+        if (!modal || !openBtn) return;
+
+        openBtn.addEventListener('click', () => {
+            this.renderPreferencesSummary();
+            this.populatePreferencesExportPayload(true);
+            this.clearPreferencesImportField();
+            this.showModal(modal);
+        });
+
+        this.elements?.closePreferencesModal?.addEventListener('click', () => {
+            this.hideModal(modal);
+        });
+
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                this.hideModal(modal);
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && this.isModalVisible(modal)) {
+                this.hideModal(modal);
+            }
+        });
+
+        this.elements?.resetCockpitPreferencesBtn?.addEventListener('click', () => {
+            this.resetCockpitPreferences();
+        });
+
+        this.elements?.resetExternalPreferencesBtn?.addEventListener('click', () => {
+            this.resetExternalPreferences();
+        });
+
+        this.elements?.resetAllPreferencesBtn?.addEventListener('click', () => {
+            this.resetAllPreferences();
+        });
+
+        this.elements?.copyPreferencesExportBtn?.addEventListener('click', () => {
+            this.copyPreferencesExportPayload();
+        });
+
+        this.elements?.refreshPreferencesExportBtn?.addEventListener('click', () => {
+            this.populatePreferencesExportPayload(true);
+        });
+
+        this.elements?.downloadPreferencesExportBtn?.addEventListener('click', () => {
+            this.downloadPreferencesExport();
+        });
+
+        this.elements?.applyPreferencesImportBtn?.addEventListener('click', () => {
+            this.applyPreferencesImport();
+        });
+
+        this.elements?.preferencesImportFileInput?.addEventListener('change', (event) => {
+            const input = event.target;
+            const file = input?.files?.[0];
+            this.handlePreferencesFileSelection(file);
+        });
+    }
+
+    renderPreferencesSummary() {
+        if (this.elements?.preferencesSummary) {
+            const cockpitItems = this.getCockpitPreferenceItems();
+            this.elements.preferencesSummary.innerHTML = cockpitItems.length
+                ? cockpitItems.map((item) => this.renderPreferenceCard(item)).join('')
+                : this.renderEmptyPreferencesMessage('Brak zapisanych preferencji Cockpitu');
+        }
+
+        if (this.elements?.externalPreferencesSummary) {
+            const externalItems = this.getExternalPreferenceItems();
+            this.elements.externalPreferencesSummary.innerHTML = externalItems.length
+                ? externalItems.map((item) => this.renderPreferenceCard(item)).join('')
+                : this.renderEmptyPreferencesMessage('Brak zapisanych ustawień innych modułów');
+        }
+    }
+
+    renderPreferenceCard(item) {
+        const label = this.escapeHtml(item.label || '');
+        const value = this.escapeHtml(item.value || '—');
+        const meta = item.meta
+            ? `<div class="preference-card__meta">${this.escapeHtml(item.meta)}</div>`
+            : '';
+        return `
+            <article class="preference-card">
+                <div class="preference-card__label">${label}</div>
+                <div class="preference-card__value">${value}</div>
+                ${meta}
+            </article>
+        `;
+    }
+
+    renderEmptyPreferencesMessage(message) {
+        return `<div class="preferences-empty">${this.escapeHtml(message)}</div>`;
+    }
+
+    getCockpitPreferenceItems() {
+        const items = [];
+        const history = this.preferences?.history || {};
+        const memory = this.preferences?.memory || {};
+        const jobs = this.preferences?.jobs || {};
+        const consolePrefs = this.preferences?.console || {};
+        const general = this.preferences?.general || {};
+        const lastActiveTab = this.safeGetLocalStorageItem('venomActiveTab');
+
+        items.push({
+            label: 'Domyślna zakładka',
+            value: this.getTabDisplayName(general.defaultTab || 'feed'),
+            meta: `Ostatnio otwarta: ${this.getTabDisplayName(lastActiveTab || this.activeTab || this.defaultTab || 'feed')}`
+        });
+
+        items.push({
+            label: 'Historia',
+            value: `Filtr: ${this.formatFilterLabel(history.filter)}`,
+            meta: `Fraza: ${this.formatQueryLabel(history.query)} • Auto-refresh: ${this.formatBooleanLabel(history.autoRefresh, true)}`
+        });
+
+        items.push({
+            label: 'Zadania w tle',
+            value: `Filtr: ${this.formatFilterLabel(jobs.filter)}`,
+            meta: `Fraza: ${this.formatQueryLabel(jobs.query)} • Auto-refresh: ${this.formatBooleanLabel(jobs.autoRefresh, true)}`
+        });
+
+        items.push({
+            label: 'Pamięć',
+            value: `Filtr: ${this.formatFilterLabel(memory.filter)}`,
+            meta: `Fraza: ${this.formatQueryLabel(memory.query)} • Auto-refresh: ${this.formatBooleanLabel(memory.autoRefresh, true)}`
+        });
+
+        items.push({
+            label: 'Lab Mode',
+            value: this.consoleState.labMode ? 'Aktywny' : 'Wyłączony',
+            meta: this.consoleState.labMode
+                ? 'Nowe zadania nie zapisują lekcji'
+                : 'Lekcje zapisywane są domyślnie'
+        });
+
+        return items;
+    }
+
+    getExternalPreferenceItems() {
+        const items = [];
+
+        const flowPrefs = this.safeParseJSON(this.safeGetLocalStorageItem('venomFlowInspectorPrefs'));
+        items.push({
+            label: 'Flow Inspector',
+            value: flowPrefs ? `Filtr: ${this.formatFilterLabel(flowPrefs.filterStatus)}` : 'Domyślne ustawienia',
+            meta: flowPrefs
+                ? `Fraza: ${this.formatQueryLabel(flowPrefs.searchQuery)} • Auto-refresh: ${this.formatBooleanLabel(flowPrefs.autoRefresh, true)}`
+                : 'Brak zapisanych preferencji Flow Inspector'
+        });
+
+        const inspectorPrefs = this.safeParseJSON(
+            this.safeGetLocalStorageItem('venomInspectorUIPreferences')
+        );
+        const pinnedTraces = this.safeParseJSON(
+            this.safeGetLocalStorageItem('inspectorPinnedTraces'),
+            []
+        );
+        items.push({
+            label: 'Inspector',
+            value: inspectorPrefs
+                ? `Filtr: ${this.formatFilterLabel(inspectorPrefs.filterStatus)}`
+                : 'Domyślne ustawienia',
+            meta: `Fraza: ${this.formatQueryLabel(inspectorPrefs?.searchQuery)} • Auto-refresh: ${this.formatBooleanLabel(inspectorPrefs?.autoRefresh, true)} • Przypięte ślady: ${
+                Array.isArray(pinnedTraces) ? pinnedTraces.length : 0
+            }`
+        });
+
+        const warRoomPrefs = this.safeParseJSON(this.safeGetLocalStorageItem('venomWarRoomPreferences'));
+        items.push({
+            label: 'War Room',
+            value: warRoomPrefs ? 'Stan zapisany' : 'Domyślne ustawienia',
+            meta: `Auto-refresh: ${this.formatBooleanLabel(warRoomPrefs?.autoRefresh, true)}`
+        });
+
+        const brainPrefs = this.safeParseJSON(this.safeGetLocalStorageItem('brainPreferences'));
+        const enabledFilters = brainPrefs?.filters
+            ? Object.values(brainPrefs.filters).filter(Boolean).length
+            : 0;
+        items.push({
+            label: 'The Brain',
+            value: brainPrefs
+                ? `Aktywne filtry: ${enabledFilters}/${brainPrefs.filters ? Object.keys(brainPrefs.filters).length : 5}`
+                : 'Domyślne ustawienia',
+            meta: `Fraza: ${this.formatQueryLabel(brainPrefs?.searchQuery)} • Auto-refresh: ${this.formatBooleanLabel(brainPrefs?.autoRefresh, true)}`
+        });
+
+        return items;
+    }
+
+    resetCockpitPreferences(options = {}) {
+        const { silent = false } = options;
+        this.clearLocalStorageKeys(['venomUIPreferences', 'venomActiveTab']);
+        this.preferences = this.loadUIPreferences();
+        this.applyUIPreferences();
+        this.saveUIPreferences();
+        this.resetHistoryPreferences({ silent: true });
+        this.resetJobsPreferences({ silent: true });
+        this.resetMemoryPreferences({ silent: true });
+        this.consoleState.labMode = false;
+        if (this.elements.labModeCheckbox) {
+            this.elements.labModeCheckbox.checked = false;
+        }
+        this.updateUIPreferences('console', { labMode: false });
+        this.updateDefaultTabLabel();
+        this.updateTabDefaultIndicator();
+        this.switchTab(this.defaultTab || 'feed');
+
+        if (!silent) {
+            this.showNotification('Wyczyszczono preferencje Cockpitu', 'success');
+        }
+        this.renderPreferencesSummary();
+    }
+
+    resetExternalPreferences(options = {}) {
+        const { silent = false } = options;
+        this.clearLocalStorageKeys([
+            'venomFlowInspectorPrefs',
+            'venomInspectorUIPreferences',
+            'inspectorPinnedTraces',
+            'venomWarRoomPreferences',
+            'brainPreferences'
+        ]);
+        if (!silent) {
+            this.showNotification('Usunięto preferencje pozostałych modułów', 'info');
+        }
+        this.renderPreferencesSummary();
+    }
+
+    resetAllPreferences() {
+        this.resetCockpitPreferences({ silent: true });
+        this.resetExternalPreferences({ silent: true });
+        this.showNotification('Wyczyszczono wszystkie preferencje VENOM UI', 'success');
+        this.renderPreferencesSummary();
+        this.populatePreferencesExportPayload();
+    }
+
+    formatBooleanLabel(value, defaultValue = false) {
+        const normalized = value === undefined ? !!defaultValue : !!value;
+        return normalized ? 'włączony' : 'wyłączony';
+    }
+
+    formatQueryLabel(value) {
+        const trimmed = (value || '').trim();
+        return trimmed ? `„${trimmed}”` : '—';
+    }
+
+    formatFilterLabel(value) {
+        if (!value || value === 'all') {
+            return 'wszystkie';
+        }
+        return value.replace(/_/g, ' ');
+    }
+
+    safeGetLocalStorageItem(key) {
+        try {
+            if (!window?.localStorage) return null;
+            return window.localStorage.getItem(key);
+        } catch (error) {
+            console.warn('Nie można odczytać localStorage:', error);
+            return null;
+        }
+    }
+
+    safeParseJSON(value, fallback = null) {
+        if (!value) return fallback;
+        try {
+            return JSON.parse(value);
+        } catch (error) {
+            console.warn('Nie można sparsować JSON z preferencji:', error);
+            return fallback;
+        }
+    }
+
+    clearLocalStorageKeys(keys = []) {
+        keys.forEach((key) => {
+            try {
+                window?.localStorage?.removeItem(key);
+            } catch (error) {
+                console.warn(`Nie można usunąć klucza localStorage: ${key}`, error);
+            }
+        });
+    }
+
+    getPreferencesSnapshot() {
+        return {
+            generatedAt: new Date().toISOString(),
+            cockpit: {
+                venomUIPreferences: this.safeParseJSON(
+                    this.safeGetLocalStorageItem('venomUIPreferences'),
+                    {}
+                ),
+                venomActiveTab: this.safeGetLocalStorageItem('venomActiveTab'),
+                labMode: !!this.consoleState.labMode
+            },
+            external: {
+                flowInspector: this.safeParseJSON(
+                    this.safeGetLocalStorageItem('venomFlowInspectorPrefs')
+                ),
+                inspector: this.safeParseJSON(
+                    this.safeGetLocalStorageItem('venomInspectorUIPreferences')
+                ),
+                inspectorPinnedTraces: this.safeParseJSON(
+                    this.safeGetLocalStorageItem('inspectorPinnedTraces'),
+                    []
+                ),
+                warRoom: this.safeParseJSON(
+                    this.safeGetLocalStorageItem('venomWarRoomPreferences')
+                ),
+                brain: this.safeParseJSON(this.safeGetLocalStorageItem('brainPreferences'))
+            }
+        };
+    }
+
+    populatePreferencesExportPayload(force = false) {
+        if (!this.elements?.preferencesExportPayload) return;
+        if (!force && this.elements.preferencesExportPayload.value) return;
+        const snapshot = this.getPreferencesSnapshot();
+        this.elements.preferencesExportPayload.value = JSON.stringify(snapshot, null, 2);
+    }
+
+    copyPreferencesExportPayload() {
+        const textarea = this.elements?.preferencesExportPayload;
+        if (!textarea) return;
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        let copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (error) {
+            copied = false;
+        }
+
+        if (!copied && navigator?.clipboard?.writeText) {
+            navigator.clipboard
+                .writeText(textarea.value)
+                .then(() => {
+                    copied = true;
+                })
+                .catch(() => {
+                    copied = false;
+                });
+        }
+
+        this.showNotification(
+            copied ? 'Skopiowano JSON z preferencjami' : 'Nie udało się skopiować JSON',
+            copied ? 'success' : 'error'
+        );
+    }
+
+    downloadPreferencesExport() {
+        const snapshot = this.getPreferencesSnapshot();
+        const filename = `venom-preferences-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        const payload = JSON.stringify(snapshot, null, 2);
+        try {
+            const blob = new Blob([payload], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            this.showNotification('Pobrano plik z ustawieniami', 'success');
+        } catch (error) {
+            console.error('Download preferences error:', error);
+            this.showNotification('Nie udało się pobrać pliku z ustawieniami', 'error');
+        }
+    }
+
+    clearPreferencesImportField() {
+        if (this.elements?.preferencesImportInput) {
+            this.elements.preferencesImportInput.value = '';
+        }
+        this.clearPreferencesImportFileInput();
+    }
+
+    applyPreferencesImport() {
+        const input = this.elements?.preferencesImportInput;
+        if (!input) return;
+        const raw = input.value.trim();
+        if (!raw) {
+            this.showNotification('Wklej JSON z ustawieniami, aby rozpocząć import', 'warning');
+            return;
+        }
+
+        try {
+            const payload = JSON.parse(raw);
+            const snapshot = this.normalizePreferencesImport(payload);
+            this.persistImportedPreferences(snapshot);
+            this.showNotification('Zaimportowano ustawienia – odświeżam Cockpit…', 'success');
+            this.clearPreferencesImportFileInput();
+            setTimeout(() => window.location.reload(), 800);
+        } catch (error) {
+            console.error('Import preferences error:', error);
+            this.showNotification('Nie udało się sparsować JSON z ustawieniami', 'error');
+        }
+    }
+
+    handlePreferencesFileSelection(file) {
+        if (!file) {
+            this.updateImportFileName('Brak wybranego pliku');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const text = typeof reader.result === 'string' ? reader.result : '';
+            if (this.elements?.preferencesImportInput) {
+                this.elements.preferencesImportInput.value = text;
+            }
+            this.updateImportFileName(file.name, true);
+            this.showNotification(
+                `Wczytano ${file.name}. Zweryfikuj dane i kliknij „Wczytaj JSON”.`,
+                'info'
+            );
+        };
+        reader.onerror = () => {
+            console.error('File import error:', reader.error);
+            this.showNotification('Nie udało się odczytać pliku JSON', 'error');
+            this.clearPreferencesImportFileInput();
+        };
+
+        reader.readAsText(file, 'utf-8');
+    }
+
+    clearPreferencesImportFileInput() {
+        if (this.elements?.preferencesImportFileInput) {
+            this.elements.preferencesImportFileInput.value = '';
+        }
+        this.updateImportFileName('Brak wybranego pliku');
+    }
+
+    updateImportFileName(label, loaded = false) {
+        const target = this.elements?.preferencesImportFileName;
+        if (!target) return;
+        target.textContent = label || 'Brak wybranego pliku';
+        target.classList.toggle('is-loaded', !!loaded);
+    }
+
+    normalizePreferencesImport(payload) {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Nieprawidłowy format JSON');
+        }
+
+        if (payload.cockpit || payload.external) {
+            return payload;
+        }
+
+        // Backwards compatibility: treat payload itself as cockpit prefs
+        return {
+            cockpit: {
+                venomUIPreferences: payload.venomUIPreferences || payload.cockpit || {},
+                venomActiveTab: payload.venomActiveTab || payload.activeTab || 'feed',
+                labMode: payload.labMode
+            },
+            external: payload.external || {}
+        };
+    }
+
+    persistImportedPreferences(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return;
+        const cockpit = snapshot.cockpit || {};
+        const external = snapshot.external || {};
+
+        if (cockpit.venomUIPreferences) {
+            try {
+                window?.localStorage?.setItem(
+                    'venomUIPreferences',
+                    JSON.stringify(cockpit.venomUIPreferences)
+                );
+            } catch (error) {
+                console.warn('Nie można zapisać venomUIPreferences z importu', error);
+            }
+        }
+
+        if (cockpit.venomActiveTab) {
+            try {
+                window?.localStorage?.setItem('venomActiveTab', cockpit.venomActiveTab);
+            } catch (error) {
+                console.warn('Nie można zapisać venomActiveTab z importu', error);
+            }
+        }
+
+        if (typeof cockpit.labMode === 'boolean') {
+            this.preferences.console = { ...(this.preferences.console || {}), labMode: cockpit.labMode };
+            this.saveUIPreferences();
+        }
+
+        if (external.flowInspector) {
+            this.persistExternalKey('venomFlowInspectorPrefs', external.flowInspector);
+        }
+        if (external.inspector) {
+            this.persistExternalKey('venomInspectorUIPreferences', external.inspector);
+        }
+        if (external.inspectorPinnedTraces) {
+            this.persistExternalKey('inspectorPinnedTraces', external.inspectorPinnedTraces);
+        }
+        if (external.warRoom) {
+            this.persistExternalKey('venomWarRoomPreferences', external.warRoom);
+        }
+        if (external.brain) {
+            this.persistExternalKey('brainPreferences', external.brain);
+        }
+    }
+
+    persistExternalKey(key, value) {
+        try {
+            window?.localStorage?.setItem(key, JSON.stringify(value));
+        } catch (error) {
+            console.warn(`Nie można zapisać ${key} z importu`, error);
+        }
+    }
+
+    setDefaultTab(tabName) {
+        if (!tabName) return;
+        this.defaultTab = tabName;
+        this.updateUIPreferences('general', { defaultTab: tabName });
+        this.persistActiveTab(tabName);
+        this.updateDefaultTabLabel();
+        this.updateTabDefaultIndicator();
+        this.showNotification(
+            `Domyślna zakładka ustawiona na: ${this.getTabDisplayName(tabName)}`,
+            'success'
+        );
+    }
+
+    resetDefaultTab() {
+        if (this.defaultTab === 'feed') {
+            this.showNotification('Domyślna zakładka to już Transmisja', 'info');
+            return;
+        }
+        this.defaultTab = 'feed';
+        this.updateUIPreferences('general', { defaultTab: 'feed' });
+        this.persistActiveTab('feed');
+        this.updateDefaultTabLabel();
+        this.updateTabDefaultIndicator();
+        this.showNotification('Przywrócono domyślną zakładkę: Transmisja', 'info');
+    }
+
+    updateDefaultTabLabel() {
+        if (this.elements.defaultTabLabel) {
+            this.elements.defaultTabLabel.textContent = this.getTabDisplayName(this.defaultTab);
+        }
+    }
+
+    updateTabDefaultIndicator() {
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach((btn) => {
+            const isDefault = btn.dataset.tab === this.defaultTab;
+            btn.classList.toggle('is-default', isDefault);
+        });
+    }
+
+    getTabDisplayName(tabName) {
+        const labels = {
+            feed: 'Transmisja',
+            voice: 'Głos',
+            jobs: 'Zadania',
+            memory: 'Pamięć',
+            models: 'Modele',
+            history: 'Historia'
+        };
+        return labels[tabName] || tabName;
+    }
+
+    persistActiveTab(tabName) {
+        try {
+            if (window?.localStorage) {
+                window.localStorage.setItem('venomActiveTab', tabName);
+            }
+        } catch (error) {
+            console.warn('Nie można zapisać aktywnej zakładki:', error);
+        }
+    }
+
+    restoreSavedTabPreference() {
+        let restored = false;
+        try {
+            if (window?.localStorage) {
+                const savedTab = window.localStorage.getItem('venomActiveTab');
+                if (savedTab && document.querySelector(`.tab-button[data-tab="${savedTab}"]`)) {
+                    this.switchTab(savedTab);
+                    restored = true;
+                }
+            }
+        } catch (error) {
+            console.warn('Nie można odczytać aktywnej zakładki:', error);
+        }
+
+        if (!restored) {
+            this.switchTab(this.defaultTab || 'feed');
+        }
+    }
+
+    loadUIPreferences() {
+        const defaults = {
+            general: { defaultTab: 'feed' },
+            history: { filter: 'all', query: '', autoRefresh: true },
+            memory: { filter: 'all', query: '', autoRefresh: true },
+            jobs: { filter: 'all', query: '', autoRefresh: true },
+            console: { labMode: false }
+        };
+
+        try {
+            if (!window?.localStorage) {
+                return defaults;
+            }
+            const raw = window.localStorage.getItem('venomUIPreferences');
+            if (!raw) return defaults;
+            const parsed = JSON.parse(raw);
+            return {
+                general: { ...defaults.general, ...(parsed?.general || {}) },
+                history: { ...defaults.history, ...(parsed?.history || {}) },
+                memory: { ...defaults.memory, ...(parsed?.memory || {}) },
+                jobs: { ...defaults.jobs, ...(parsed?.jobs || {}) },
+                console: { ...defaults.console, ...(parsed?.console || {}) }
+            };
+        } catch (error) {
+            console.warn('Nie można wczytać preferencji UI:', error);
+            return defaults;
+        }
+    }
+
+    saveUIPreferences() {
+        try {
+            if (!window?.localStorage) {
+                return;
+            }
+            window.localStorage.setItem('venomUIPreferences', JSON.stringify(this.preferences));
+        } catch (error) {
+            console.warn('Nie można zapisać preferencji UI:', error);
+        }
+    }
+
+    applyUIPreferences() {
+        const history = this.preferences.history || {};
+        this.historyState.filter = history.filter || 'all';
+        this.historyState.query = history.query || '';
+        this.historyState.autoRefresh =
+            history.autoRefresh === undefined ? true : !!history.autoRefresh;
+
+        const memory = this.preferences.memory || {};
+        this.memoryState.filter = memory.filter || 'all';
+        this.memoryState.query = memory.query || '';
+        this.memoryState.autoRefresh =
+            memory.autoRefresh === undefined ? true : !!memory.autoRefresh;
+
+        const jobs = this.preferences.jobs || {};
+        this.jobsState.filter = jobs.filter || 'all';
+        this.jobsState.query = jobs.query || '';
+        this.jobsState.autoRefresh =
+            jobs.autoRefresh === undefined ? true : !!jobs.autoRefresh;
+
+        const consolePrefs = this.preferences.console || {};
+        this.consoleState.labMode =
+            consolePrefs.labMode === undefined ? false : !!consolePrefs.labMode;
+
+        const generalPrefs = this.preferences.general || {};
+        this.defaultTab = generalPrefs.defaultTab || 'feed';
+    }
+
+    updateUIPreferences(section, values) {
+        if (!this.preferences[section]) {
+            this.preferences[section] = {};
+        }
+        this.preferences[section] = {
+            ...this.preferences[section],
+            ...values
+        };
+        this.saveUIPreferences();
     }
 
     // Memory Tab Functions
     initMemoryTab() {
-        // Setup tab switching
-        const tabButtons = document.querySelectorAll('.tab-button');
-        tabButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const tabName = button.getAttribute('data-tab');
-                this.switchTab(tabName);
-            });
-        });
+        this.initMemoryControls();
 
-        // Setup refresh buttons
-        const refreshLessons = document.getElementById('refreshLessons');
-        if (refreshLessons) {
-            refreshLessons.addEventListener('click', () => {
-                this.fetchLessons();
+        if (this.elements.refreshLessons) {
+            this.elements.refreshLessons.addEventListener('click', () => {
+                this.fetchLessons({ showLoading: true });
             });
         }
 
-        const scanGraph = document.getElementById('scanGraph');
-        if (scanGraph) {
-            scanGraph.addEventListener('click', () => {
+        if (this.elements.scanGraph) {
+            this.elements.scanGraph.addEventListener('click', () => {
                 this.triggerGraphScan();
             });
         }
 
         // Initial load
-        this.fetchLessons();
+        this.fetchLessons({ showLoading: true });
         this.fetchGraphSummary();
     }
 
     switchTab(tabName) {
-        // Update buttons
-        const tabButtons = document.querySelectorAll('.tab-button');
-        tabButtons.forEach(btn => {
-            if (btn.getAttribute('data-tab') === tabName) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-
-        // Update content
-        const tabContents = document.querySelectorAll('.tab-content');
-        tabContents.forEach(content => {
-            content.classList.remove('active');
-        });
-
-        if (tabName === 'feed') {
-            document.getElementById('feedTab').classList.add('active');
-            this.stopHistoryAutoRefresh();
-        } else if (tabName === 'voice') {
-            document.getElementById('voiceTab').classList.add('active');
-            this.stopHistoryAutoRefresh();
-        } else if (tabName === 'jobs') {
-            document.getElementById('jobsTab').classList.add('active');
-            // Refresh data when switching to jobs tab
-            this.fetchBackgroundJobsStatus();
-            this.stopHistoryAutoRefresh();
-        } else if (tabName === 'memory') {
-            document.getElementById('memoryTab').classList.add('active');
-            // Refresh data when switching to memory tab
-            this.fetchLessons();
-            this.fetchGraphSummary();
-            this.stopHistoryAutoRefresh();
-        } else if (tabName === 'models') {
-            document.getElementById('modelsTab').classList.add('active');
-            // Load models when switching to models tab
-            this.fetchModels();
-            this.fetchModelsUsage();
-            this.stopHistoryAutoRefresh();
-        } else if (tabName === 'history') {
-            document.getElementById('historyTab').classList.add('active');
-            this.startHistoryAutoRefresh();
+        if (!tabName) return;
+        if (this.activeTab === tabName) {
+            this.refreshTabAccessibilityStates();
+            return;
         }
+
+        const targetButton = document.querySelector(`.tab-button[data-tab="${tabName}"]`);
+        const targetContent = document.getElementById(`${tabName}Tab`);
+        if (!targetButton || !targetContent) {
+            return;
+        }
+
+        document.querySelectorAll('.tab-button').forEach((btn) => {
+            btn.classList.toggle('active', btn === targetButton);
+        });
+
+        document.querySelectorAll('.tab-content').forEach((content) => {
+            content.classList.toggle('active', content === targetContent);
+        });
+
+        this.refreshTabAccessibilityStates();
+
+        this.stopJobsAutoRefresh();
+        this.stopMemoryAutoRefresh();
+        if (tabName !== 'history') {
+            this.stopHistoryAutoRefresh();
+        }
+
+        switch (tabName) {
+            case 'voice':
+                break;
+            case 'jobs': {
+                const shouldShowLoading = this.jobsState.jobs.length === 0;
+                this.fetchBackgroundJobsStatus({ showLoading: shouldShowLoading });
+                if (this.jobsState.autoRefresh) {
+                    this.startJobsAutoRefresh({ immediate: false });
+                }
+                break;
+            }
+            case 'memory': {
+                const shouldShowLoading = this.memoryState.lessons.length === 0;
+                this.fetchLessons({ showLoading: shouldShowLoading });
+                this.fetchGraphSummary();
+                if (this.memoryState.autoRefresh) {
+                    this.startMemoryAutoRefresh({ immediate: false });
+                }
+                break;
+            }
+            case 'models':
+                this.fetchModels();
+                this.fetchModelsUsage();
+                break;
+            case 'history': {
+                if (this.historyState.autoRefresh) {
+                    this.startHistoryAutoRefresh({ immediate: true });
+                } else {
+                    const shouldShowLoading = this.historyState.requests.length === 0;
+                    this.loadHistory({ showLoading: shouldShowLoading });
+                }
+                break;
+            }
+            default:
+                // feed tab: nothing special
+                break;
+        }
+
+        this.activeTab = tabName;
+        this.persistActiveTab(tabName);
     }
 
-    async fetchLessons() {
+    async fetchLessons(options = {}) {
+        const { showLoading = false } = options;
+        if (showLoading) {
+            this.memoryState.loading = true;
+            this.memoryState.error = null;
+            this.renderLessonsList();
+        }
+
         try {
             const response = await fetch('/api/v1/lessons?limit=10');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             const data = await response.json();
-
-            const lessonsList = document.getElementById('lessonsList');
-            if (!lessonsList) return;
-
-            if (data.status === 'success' && data.lessons.length > 0) {
-                lessonsList.innerHTML = '';
-                data.lessons.forEach(lesson => {
-                    const lessonItem = this.createLessonElement(lesson);
-                    lessonsList.appendChild(lessonItem);
-                });
+            if (data.status === 'success' && Array.isArray(data.lessons)) {
+                this.memoryState.lessons = data.lessons;
+                this.memoryState.error = null;
             } else {
-                lessonsList.innerHTML = '<p class="empty-state">Brak lekcji</p>';
+                this.memoryState.lessons = [];
+                this.memoryState.error = 'Brak lekcji';
             }
         } catch (error) {
             console.error('Error fetching lessons:', error);
-            const lessonsList = document.getElementById('lessonsList');
-            if (lessonsList) {
-                lessonsList.innerHTML = '<p class="empty-state">Błąd ładowania lekcji</p>';
-            }
+            this.memoryState.lessons = [];
+            this.memoryState.error = 'Błąd ładowania lekcji';
+        } finally {
+            this.memoryState.loading = false;
+            this.memoryState.lastUpdated = new Date();
+            this.updateMemoryLastUpdated();
+            this.renderLessonsList();
         }
-    }
-
-    createLessonElement(lesson) {
-        const div = document.createElement('div');
-        const isError = lesson.result.toLowerCase().includes('błąd') ||
-                        lesson.result.toLowerCase().includes('error');
-        div.className = `lesson-item ${isError ? 'error' : 'success'}`;
-
-        const situation = document.createElement('div');
-        situation.className = 'lesson-situation';
-        situation.textContent = lesson.situation.slice(0, 80) + (lesson.situation.length > 80 ? '...' : '');
-
-        const feedback = document.createElement('div');
-        feedback.className = 'lesson-feedback';
-        feedback.textContent = '💡 ' + lesson.feedback.slice(0, 100) + (lesson.feedback.length > 100 ? '...' : '');
-
-        const tags = document.createElement('div');
-        tags.className = 'lesson-tags';
-        lesson.tags.forEach(tag => {
-            const tagSpan = document.createElement('span');
-            tagSpan.className = 'lesson-tag';
-            tagSpan.textContent = tag;
-            tags.appendChild(tagSpan);
-        });
-
-        div.appendChild(situation);
-        div.appendChild(feedback);
-        if (lesson.tags.length > 0) {
-            div.appendChild(tags);
-        }
-
-        return div;
     }
 
     async fetchGraphSummary() {
+        const defaultSummary = { total_nodes: 0, total_edges: 0 };
         try {
             const response = await fetch('/api/v1/graph/summary');
             const data = await response.json();
@@ -1089,6 +2800,11 @@ class VenomDashboard {
 
             if (data.status === 'success' && data.summary) {
                 const summary = data.summary;
+                this.memoryState.graphSummary = {
+                    total_nodes: summary.total_nodes || 0,
+                    total_edges: summary.total_edges || 0
+                };
+                this.updateMemoryGraphInsights();
 
                 // Wyczyść poprzednią zawartość
                 graphSummary.innerHTML = '';
@@ -1118,6 +2834,8 @@ class VenomDashboard {
                 graphSummary.appendChild(createStat('Klasy', (summary.node_types && summary.node_types.class) || 0));
                 graphSummary.appendChild(createStat('Funkcje', (summary.node_types && summary.node_types.function) || 0));
             } else {
+                this.memoryState.graphSummary = defaultSummary;
+                this.updateMemoryGraphInsights();
                 graphSummary.textContent = '';
                 const p = document.createElement('p');
                 p.className = 'empty-state';
@@ -1134,6 +2852,8 @@ class VenomDashboard {
                 p.textContent = 'Błąd ładowania grafu';
                 graphSummary.appendChild(p);
             }
+            this.memoryState.graphSummary = defaultSummary;
+            this.updateMemoryGraphInsights();
         }
     }
 
@@ -1165,7 +2885,7 @@ class VenomDashboard {
         } finally {
             const scanButton = document.getElementById('scanGraph');
             if (scanButton) {
-                scanButton.textContent = '🔍 Skanuj';
+                scanButton.textContent = '🛰️ Zeskanuj graf';
                 scanButton.disabled = false;
             }
         }
@@ -1219,13 +2939,19 @@ class VenomDashboard {
             if (!modelsList) return;
 
             if (data.success && data.models && data.models.length > 0) {
+                this.modelsState.list = data.models;
+                this.modelsState.lastUpdated = new Date();
                 modelsList.innerHTML = '';
                 data.models.forEach(model => {
                     const modelItem = this.createModelElement(model);
                     modelsList.appendChild(modelItem);
                 });
+                this.updateModelsInsights();
             } else {
+                this.modelsState.list = [];
+                this.modelsState.lastUpdated = new Date();
                 modelsList.innerHTML = '<p class="empty-state">Brak modeli</p>';
+                this.updateModelsInsights([]);
             }
         } catch (error) {
             console.error('Error fetching models:', error);
@@ -1233,51 +2959,62 @@ class VenomDashboard {
             if (modelsList) {
                 modelsList.innerHTML = '<p class="empty-state">Błąd ładowania modeli</p>';
             }
+            this.modelsState.list = [];
+            this.updateModelsInsights([]);
         }
     }
 
     createModelElement(model) {
-        const div = document.createElement('div');
-        div.className = 'model-item';
-        div.style.cssText = 'padding: 10px; margin-bottom: 8px; background: #1f2937; border-radius: 4px; border-left: 3px solid #3b82f6;';
-
-        const header = document.createElement('div');
-        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
-
-        const nameDiv = document.createElement('div');
-        nameDiv.style.cssText = 'font-weight: bold; color: #e5e7eb;';
-        nameDiv.textContent = model.name;
-
-        const typeSpan = document.createElement('span');
-        typeSpan.style.cssText = 'font-size: 11px; padding: 2px 6px; background: #374151; border-radius: 3px; color: #9ca3af;';
-        typeSpan.textContent = (model.type || 'unknown').toUpperCase();
-
-        const info = document.createElement('div');
-        info.style.cssText = 'font-size: 12px; color: #9ca3af; margin-bottom: 8px;';
-        const sizeGb = model.size_gb || 0;
-        info.textContent = `Rozmiar: ${sizeGb.toFixed(2)} GB`;
-        if (model.quantization && model.quantization !== 'unknown') {
-            info.textContent += ` | Kwantyzacja: ${model.quantization}`;
+        const container = document.createElement('article');
+        container.className = 'model-card';
+        if (model.active) {
+            container.classList.add('model-card--active');
         }
 
+        const header = document.createElement('div');
+        header.className = 'model-card__header';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'model-card__name';
+        nameDiv.textContent = model.name || '---';
+
+        const typeSpan = document.createElement('span');
+        typeSpan.className = 'model-card__type';
+        typeSpan.textContent = (model.type || 'unknown').toUpperCase();
+
+        header.appendChild(nameDiv);
+        header.appendChild(typeSpan);
+
+        const info = document.createElement('div');
+        info.className = 'model-card__meta';
+        const sizeValue = Number(model.size_gb);
+        const sizeLabel = Number.isFinite(sizeValue) ? `${sizeValue.toFixed(2)} GB` : 'N/A';
+        const metaParts = [`Rozmiar: ${sizeLabel}`];
+        if (model.quantization && model.quantization !== 'unknown') {
+            metaParts.push(`Kwantyzacja: ${model.quantization}`);
+        }
+        info.textContent = metaParts.join(' · ');
+
         const actions = document.createElement('div');
-        actions.style.cssText = 'display: flex; gap: 6px;';
+        actions.className = 'model-card__actions';
 
-        // Activate button
         const activateBtn = document.createElement('button');
+        activateBtn.type = 'button';
+        activateBtn.className = 'btn-small model-action model-action--activate';
         activateBtn.textContent = model.active ? '✅ Aktywny' : '🔄 Aktywuj';
-        activateBtn.className = 'btn-small';
-        activateBtn.style.cssText = model.active ? 'background: #10b981;' : '';
-        activateBtn.disabled = model.active;
-        activateBtn.addEventListener('click', () => {
-            this.switchModel(model.name);
-        });
+        if (model.active) {
+            activateBtn.classList.add('is-active');
+            activateBtn.disabled = true;
+        } else {
+            activateBtn.addEventListener('click', () => {
+                this.switchModel(model.name);
+            });
+        }
 
-        // Delete button
         const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn-small model-action model-action--danger';
         deleteBtn.textContent = '🗑️ Usuń';
-        deleteBtn.className = 'btn-small';
-        deleteBtn.style.cssText = 'background: #ef4444;';
         deleteBtn.addEventListener('click', () => {
             this.deleteModel(model.name);
         });
@@ -1285,14 +3022,44 @@ class VenomDashboard {
         actions.appendChild(activateBtn);
         actions.appendChild(deleteBtn);
 
-        header.appendChild(nameDiv);
-        header.appendChild(typeSpan);
+        container.appendChild(header);
+        container.appendChild(info);
+        container.appendChild(actions);
 
-        div.appendChild(header);
-        div.appendChild(info);
-        div.appendChild(actions);
+        return container;
+    }
 
-        return div;
+    updateModelsInsights(list = null) {
+        const models = Array.isArray(list) ? list : this.modelsState.list || [];
+        const installed = models.length;
+        const active = models.filter((model) => !!model.active).length;
+        const totalSize = models.reduce((sum, model) => {
+            const size = Number(model.size_gb);
+            return sum + (Number.isFinite(size) ? size : 0);
+        }, 0);
+        const quantizations = [...new Set(models.map((m) => (m.quantization || 'unknown').toUpperCase()))]
+            .filter((q) => q && q !== 'UNKNOWN');
+
+        if (this.elements.modelsInstalledCount) {
+            this.elements.modelsInstalledCount.textContent = installed;
+        }
+        if (this.elements.modelsActiveCount) {
+            this.elements.modelsActiveCount.textContent = active;
+        }
+        if (this.elements.modelsTotalSize) {
+            this.elements.modelsTotalSize.textContent = `${totalSize.toFixed(1)} GB`;
+        }
+        if (this.elements.modelsQuantSummary) {
+            this.elements.modelsQuantSummary.textContent = quantizations.length
+                ? `Quant: ${quantizations.join(', ')}`
+                : 'Quant: -';
+        }
+        if (this.elements.modelsLastUpdated) {
+            const timestamp = this.modelsState.lastUpdated;
+            this.elements.modelsLastUpdated.textContent = timestamp
+                ? timestamp.toLocaleTimeString('pl-PL')
+                : '-';
+        }
     }
 
     async fetchModelsUsage() {
@@ -1430,7 +3197,7 @@ class VenomDashboard {
             if (data.success) {
                 // Show progress bar
                 if (progressDiv) {
-                    progressDiv.style.display = 'block';
+                    progressDiv.classList.remove('is-hidden');
                     if (progressBar) progressBar.style.width = '10%';
                     if (progressText) progressText.textContent = `Pobieranie ${modelName}...`;
                 }
@@ -1463,7 +3230,7 @@ class VenomDashboard {
                             if (model) {
                                 if (checkInterval) clearInterval(checkInterval);
                                 if (progressInterval) clearInterval(progressInterval);
-                                if (progressDiv) progressDiv.style.display = 'none';
+                                if (progressDiv) progressDiv.classList.add('is-hidden');
                                 if (progressBar) progressBar.style.width = '0%';
                                 this.fetchModels();
                                 this.fetchModelsUsage();
@@ -1574,12 +3341,16 @@ class VenomDashboard {
     }
 
     // Update repository status in header
-    updateRepositoryStatus(branch, hasChanges, changeCount = 0, message = null) {
+    updateRepositoryStatus(branch, hasChanges, changeCount = 0, message = null, messageVariant = 'warning') {
         if (!this.elements.branchName || !this.elements.repoChanges) {
             return;
         }
 
         const hasRepo = !message;
+
+        if (this.elements.workspacePathValue) {
+            this.elements.workspacePathValue.classList.toggle('is-hidden', !hasRepo);
+        }
 
         if (this.elements.syncRepoBtn) {
             this.elements.syncRepoBtn.disabled = !hasRepo;
@@ -1596,7 +3367,7 @@ class VenomDashboard {
         }
 
         if (this.elements.initRepoBtn) {
-            this.elements.initRepoBtn.style.display = hasRepo ? 'none' : 'inline-flex';
+            this.elements.initRepoBtn.classList.toggle('is-hidden', hasRepo);
         }
 
         // Update branch name
@@ -1604,7 +3375,9 @@ class VenomDashboard {
 
         if (message) {
             this.elements.repoChanges.classList.remove('dirty');
-            this.elements.repoChanges.textContent = `ℹ️ ${message}`;
+            this.elements.repoChanges.innerHTML = `⚪ <span id="changesText">Niedostępne</span>`;
+            this.setRepoBannerMessage(message, messageVariant);
+            this.elements.changesText = document.getElementById('changesText');
             return;
         }
 
@@ -1613,9 +3386,11 @@ class VenomDashboard {
             this.elements.repoChanges.classList.add('dirty');
             const filesText = changeCount === 1 ? 'zmodyfikowany plik' : 'zmodyfikowanych plików';
             this.elements.repoChanges.innerHTML = `🔴 <span id="changesText">${changeCount} ${filesText}</span>`;
+            this.setRepoBannerMessage(`Wykryto ${changeCount} ${filesText}`, 'warning');
         } else {
             this.elements.repoChanges.classList.remove('dirty');
             this.elements.repoChanges.innerHTML = `🟢 <span id="changesText">Brak zmian</span>`;
+            this.setRepoBannerMessage('Repozytorium zsynchronizowane', 'success');
         }
 
         // Re-cache the changesText reference after innerHTML update
@@ -1728,7 +3503,6 @@ class VenomDashboard {
         // Setup control buttons
         const pauseBtn = document.getElementById('pauseJobsBtn');
         const resumeBtn = document.getElementById('resumeJobsBtn');
-        const refreshBtn = document.getElementById('refreshJobsBtn');
 
         if (pauseBtn) {
             pauseBtn.addEventListener('click', () => this.pauseBackgroundJobs());
@@ -1737,21 +3511,32 @@ class VenomDashboard {
         if (resumeBtn) {
             resumeBtn.addEventListener('click', () => this.resumeBackgroundJobs());
         }
-
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.fetchBackgroundJobsStatus());
-        }
     }
 
-    async fetchBackgroundJobsStatus() {
-        // Fetch all background job statuses
-        await Promise.all([
-            this.fetchSchedulerStatus(),
-            this.fetchSchedulerJobs(),
-            this.fetchWatcherStatus(),
-            this.fetchDocumenterStatus(),
-            this.fetchGardenerStatus()
-        ]);
+    async fetchBackgroundJobsStatus(options = {}) {
+        const { showLoading = false } = options;
+        if (showLoading) {
+            this.jobsState.loading = true;
+            this.jobsState.error = null;
+            this.renderJobsList();
+        }
+
+        try {
+            await Promise.all([
+                this.fetchSchedulerStatus(),
+                this.fetchSchedulerJobs(),
+                this.fetchWatcherStatus(),
+                this.fetchDocumenterStatus(),
+                this.fetchGardenerStatus()
+            ]);
+            this.jobsState.lastUpdated = new Date();
+        } catch (error) {
+            console.error('Error fetching background jobs:', error);
+        } finally {
+            this.jobsState.loading = false;
+            this.updateJobsLastUpdated();
+            this.renderJobsList();
+        }
     }
 
     async fetchSchedulerStatus() {
@@ -1780,11 +3565,20 @@ class VenomDashboard {
                         <span class="status-value">${scheduler.paused ? '⏸️ Tak' : '▶️ Nie'}</span>
                     </div>
                 `;
+                this.setJobsStatusPill(
+                    'schedulerStatusPill',
+                    scheduler.is_running ? 'Aktywny' : 'Zatrzymany',
+                    scheduler.is_running
+                );
+            } else {
+                statusDiv.innerHTML = '<p class="error-state">❌ Nie można pobrać statusu schedulera</p>';
+                this.setJobsStatusPill('schedulerStatusPill', 'Błąd', false);
             }
         } catch (error) {
             console.error('Error fetching scheduler status:', error);
             document.getElementById('schedulerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu schedulera</p>';
+            this.setJobsStatusPill('schedulerStatusPill', 'Błąd', false);
         }
     }
 
@@ -1794,42 +3588,12 @@ class VenomDashboard {
             if (!response.ok) throw new Error('Failed to fetch jobs');
 
             const data = await response.json();
-            const jobsDiv = document.getElementById('jobsList');
-
-            if (data.jobs && data.jobs.length > 0) {
-                jobsDiv.innerHTML = data.jobs.map(job => {
-                    // Walidacja i formatowanie daty
-                    let nextRunText = 'brak danych';
-                    if (job.next_run_time) {
-                        try {
-                            const date = new Date(job.next_run_time);
-                            if (!isNaN(date.getTime())) {
-                                nextRunText = date.toLocaleString();
-                            }
-                        } catch (e) {
-                            console.warn('Invalid date format:', job.next_run_time);
-                        }
-                    }
-
-                    return `
-                    <div class="job-item">
-                        <div class="job-header">
-                            <span class="job-id">${job.id}</span>
-                            <span class="job-type">${job.type || 'interwał'}</span>
-                        </div>
-                        <div class="job-description">${job.description || 'Brak opisu'}</div>
-                        <div class="job-next-run">
-                            Następne uruchomienie: ${nextRunText}
-                        </div>
-                    </div>
-                `}).join('');
-            } else {
-                jobsDiv.innerHTML = '<p class="empty-state">Brak aktywnych zadań</p>';
-            }
+            this.jobsState.jobs = Array.isArray(data.jobs) ? data.jobs : [];
+            this.jobsState.error = null;
         } catch (error) {
             console.error('Error fetching jobs:', error);
-            document.getElementById('jobsList').innerHTML =
-                '<p class="error-state">❌ Nie można pobrać listy zadań</p>';
+            this.jobsState.jobs = [];
+            this.jobsState.error = '❌ Nie można pobrać listy zadań';
         }
     }
 
@@ -1843,6 +3607,10 @@ class VenomDashboard {
 
             if (data.status === 'success') {
                 const watcher = data.watcher;
+                const workspaceRoot = this.escapeHtml(watcher.workspace_root || '-');
+                const extensions = Array.isArray(watcher.monitoring_extensions)
+                    ? watcher.monitoring_extensions.join(', ')
+                    : 'brak danych';
                 statusDiv.innerHTML = `
                     <div class="status-item">
                         <span class="status-label">Status:</span>
@@ -1852,18 +3620,23 @@ class VenomDashboard {
                     </div>
                     <div class="status-item">
                         <span class="status-label">Katalog roboczy:</span>
-                        <span class="status-value">${watcher.workspace_root}</span>
+                        <span class="status-value">${workspaceRoot}</span>
                     </div>
                     <div class="status-item">
                         <span class="status-label">Monitorowane rozszerzenia:</span>
-                        <span class="status-value">${watcher.monitoring_extensions.join(', ')}</span>
+                        <span class="status-value">${this.escapeHtml(extensions)}</span>
                     </div>
                 `;
+                this.setJobsStatusPill('watcherStatusPill', watcher.is_running ? 'Aktywny' : 'Zatrzymany', watcher.is_running);
+            } else {
+                statusDiv.innerHTML = '<p class="error-state">❌ Nie można pobrać statusu watchera</p>';
+                this.setJobsStatusPill('watcherStatusPill', 'Błąd', false);
             }
         } catch (error) {
             console.error('Error fetching watcher status:', error);
             document.getElementById('watcherStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu watchera</p>';
+            this.setJobsStatusPill('watcherStatusPill', 'Błąd', false);
         }
     }
 
@@ -1886,14 +3659,23 @@ class VenomDashboard {
                     </div>
                     <div class="status-item">
                         <span class="status-label">Przetwarzane pliki:</span>
-                        <span class="status-value">${documenter.processing_files}</span>
+                        <span class="status-value">${this.escapeHtml(String(documenter.processing_files || '0'))}</span>
                     </div>
                 `;
+                this.setJobsStatusPill(
+                    'documenterStatusPill',
+                    documenter.enabled ? 'Aktywny' : 'Nieaktywny',
+                    documenter.enabled
+                );
+            } else {
+                statusDiv.innerHTML = '<p class="error-state">❌ Nie można pobrać statusu documentera</p>';
+                this.setJobsStatusPill('documenterStatusPill', 'Błąd', false);
             }
         } catch (error) {
             console.error('Error fetching documenter status:', error);
             document.getElementById('documenterStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu documentera</p>';
+            this.setJobsStatusPill('documenterStatusPill', 'Błąd', false);
         }
     }
 
@@ -1924,14 +3706,23 @@ class VenomDashboard {
                     </div>
                     <div class="status-item">
                         <span class="status-label">Ostatnie skanowanie:</span>
-                        <span class="status-value">${gardener.last_scan_time ? new Date(gardener.last_scan_time).toLocaleString() : 'Nigdy'}</span>
+                        <span class="status-value">${this.escapeHtml(gardener.last_scan_time ? new Date(gardener.last_scan_time).toLocaleString() : 'Nigdy')}</span>
                     </div>
                 `;
+                this.setJobsStatusPill(
+                    'gardenerStatusPill',
+                    gardener.is_running ? 'Aktywny' : 'Nieaktywny',
+                    gardener.is_running
+                );
+            } else {
+                statusDiv.innerHTML = '<p class="error-state">❌ Nie można pobrać statusu gardenera</p>';
+                this.setJobsStatusPill('gardenerStatusPill', 'Błąd', false);
             }
         } catch (error) {
             console.error('Error fetching gardener status:', error);
             document.getElementById('gardenerStatus').innerHTML =
                 '<p class="error-state">❌ Nie można pobrać statusu gardenera</p>';
+            this.setJobsStatusPill('gardenerStatusPill', 'Błąd', false);
         }
     }
 
@@ -2299,7 +4090,7 @@ class VenomDashboard {
 
         if (iotStatus && iotMetrics) {
             iotStatus.innerHTML = '<p class="success-state">Połączony z Rider-Pi</p>';
-            iotMetrics.style.display = 'grid';
+            iotMetrics.classList.add('is-visible');
 
             document.getElementById('iotCpuTemp').textContent = '45.2°C';
             document.getElementById('iotMemory').textContent = '42%';
@@ -2330,7 +4121,7 @@ class VenomDashboard {
 
         // Show widgets grid jeśli renderujemy wizualne widgety
         if (this.elements.widgetsGrid) {
-            this.elements.widgetsGrid.style.display = 'grid';
+            this.elements.widgetsGrid.classList.add('widgets-grid--visible');
         }
 
         // Render based on type
@@ -2409,7 +4200,7 @@ class VenomDashboard {
 
         // Hide grid if no widgets
         if (this.widgets.size === 0 && this.elements.widgetsGrid) {
-            this.elements.widgetsGrid.style.display = 'none';
+            this.elements.widgetsGrid.classList.remove('widgets-grid--visible');
         }
     }
 
@@ -2737,7 +4528,7 @@ class VenomDashboard {
         // Clear DOM
         if (this.elements.widgetsGrid) {
             this.elements.widgetsGrid.innerHTML = '';
-            this.elements.widgetsGrid.style.display = 'none';
+            this.elements.widgetsGrid.classList.remove('widgets-grid--visible');
         }
 
         document.querySelectorAll('.message-widget').forEach(el => el.remove());
@@ -2848,7 +4639,7 @@ class VenomDashboard {
             // Last check
             const lastCheckCell = document.createElement('td');
             lastCheckCell.textContent = service.last_check || '-';
-            lastCheckCell.style.fontSize = '0.8rem';
+            lastCheckCell.className = 'service-last-check';
             row.appendChild(lastCheckCell);
 
             tbody.appendChild(row);
@@ -2935,9 +4726,9 @@ class VenomDashboard {
     }
 
     handleSystemLog(data, message) {
-        // Dashboard v2.3: Live Terminal
-        const level = data?.level || 'INFO';
-        this.addTerminalEntry(level, message);
+        const level = (data?.level || 'INFO').toLowerCase();
+        const component = data?.component ? `[${data.component}] ` : '';
+        this.addLogEntry(level, `${component}${message || ''}`.trim());
     }
 
     renderActiveOperations() {
@@ -2974,10 +4765,30 @@ class VenomDashboard {
     }
 
     // History Tab Methods
-    async loadHistory() {
-        if (!this.elements.historyTableBody || this.historyLoading) return;
+    async loadHistory(options = {}) {
+        return this.loadHistoryWithOptions(options);
+    }
 
-        this.historyLoading = true;
+    async loadHistoryWithOptions(options = {}) {
+        const { silent = false, showLoading = false } = options;
+        if (!this.elements.historyTableBody) return;
+
+        if (!silent && this.historyLoading) {
+            return;
+        }
+
+        if (silent && (this.historyBackgroundLoading || this.historyLoading)) {
+            return;
+        }
+
+        if (silent) {
+            this.historyBackgroundLoading = true;
+        } else {
+            this.historyLoading = true;
+            if (showLoading) {
+                this.setHistoryLoadingState('Ładowanie historii...');
+            }
+        }
 
         try {
             const response = await fetch('/api/v1/history/requests?limit=50');
@@ -2987,80 +4798,59 @@ class VenomDashboard {
             }
 
             const requests = await response.json();
-
-            if (requests.length === 0) {
-                this.elements.historyTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="3" class="empty-state">Brak historii żądań</td>
-                    </tr>
-                `;
-                return;
-            }
-
-            this.elements.historyTableBody.innerHTML = '';
-
-            requests.forEach(request => {
-                const row = document.createElement('tr');
-                row.className = `status-${request.status.toLowerCase()}`;
-                row.style.cursor = 'pointer';
-                row.dataset.requestId = request.request_id;
-
-                // Status badge
-                const statusCell = document.createElement('td');
-                const statusBadge = document.createElement('span');
-                statusBadge.className = `status-badge status-${request.status.toLowerCase()}`;
-                statusBadge.textContent = this.getStatusIcon(request.status) + ' ' + request.status;
-                statusCell.appendChild(statusBadge);
-                row.appendChild(statusCell);
-
-                // Prompt
-                const promptCell = document.createElement('td');
-                const promptText = document.createElement('div');
-                promptText.className = 'prompt-text';
-                promptText.textContent = request.prompt;
-                promptText.title = request.prompt;
-                promptCell.appendChild(promptText);
-                row.appendChild(promptCell);
-
-                // Time
-                const timeCell = document.createElement('td');
-                const timeText = document.createElement('div');
-                timeText.className = 'time-text';
-                const createdDate = new Date(request.created_at);
-                const duration = request.duration_seconds
-                    ? `(${request.duration_seconds.toFixed(1)}s)`
-                    : '';
-                timeText.textContent = `${this.formatTime(createdDate)} ${duration}`;
-                timeCell.appendChild(timeText);
-                row.appendChild(timeCell);
-
-                // Click handler
-                row.addEventListener('click', () => {
-                    this.showHistoryDetail(request.request_id);
-                });
-
-                this.elements.historyTableBody.appendChild(row);
-            });
+            this.historyState.requests = Array.isArray(requests) ? requests : [];
+            this.historyState.lastUpdated = new Date();
+            this.renderHistoryTable();
+            this.updateHistoryLastUpdated();
 
         } catch (error) {
             console.error('Error loading history:', error);
-            this.elements.historyTableBody.innerHTML = `
-                <tr>
-                    <td colspan="3" class="empty-state">Błąd ładowania historii</td>
-                </tr>
-            `;
+            if (!silent) {
+                this.renderHistoryPlaceholder('Błąd ładowania historii');
+            }
         }
         finally {
-            this.historyLoading = false;
+            if (silent) {
+                this.historyBackgroundLoading = false;
+            } else {
+                this.historyLoading = false;
+            }
         }
     }
 
-    startHistoryAutoRefresh() {
+    configureHistoryRow(row, request) {
+        row.tabIndex = 0;
+        row.setAttribute('role', 'button');
+        row.setAttribute('aria-label', `Zobacz szczegóły zadania ${request.request_id}`);
+        row.classList.toggle('history-row--selected', request.request_id === this.selectedHistoryId);
+    }
+
+    highlightHistorySelection() {
+        if (!this.elements.historyTableBody) return;
+        const rows = this.elements.historyTableBody.querySelectorAll('.history-row');
+        rows.forEach(row => {
+            row.classList.toggle(
+                'history-row--selected',
+                row.dataset.requestId === this.selectedHistoryId
+            );
+        });
+    }
+
+    startHistoryAutoRefresh(options = {}) {
+        if (!this.historyState.autoRefresh) return;
+        if (!this.isHistoryTabActive()) return;
         if (this.historyRefreshTimer) {
             return;
         }
-        this.loadHistory();
-        this.historyRefreshTimer = setInterval(() => this.loadHistory(), 5000);
+
+        const { immediate = true } = options;
+        if (immediate) {
+            this.loadHistory();
+        }
+
+        this.historyRefreshTimer = setInterval(() => {
+            this.loadHistory({ silent: true });
+        }, 5000);
     }
 
     stopHistoryAutoRefresh() {
@@ -3070,11 +4860,22 @@ class VenomDashboard {
         }
     }
 
-    async showHistoryDetail(requestId) {
+    async showHistoryDetail(requestId, options = {}) {
         if (!this.elements.historyModal || !this.elements.historyModalBody) return;
 
-        // Show modal
-        this.elements.historyModal.style.display = 'flex';
+        const { refreshOnly = false } = options;
+
+        if (refreshOnly && !this.isModalVisible(this.elements.historyModal)) {
+            return;
+        }
+
+        if (!refreshOnly) {
+            this.selectedHistoryId = requestId;
+            this.historyDetailAutoRefresh = true;
+            this.showModal(this.elements.historyModal);
+            this.highlightHistorySelection();
+        }
+
         this.elements.historyModalBody.innerHTML = '<div class="loading-state">Ładowanie szczegółów...</div>';
 
         try {
@@ -3127,7 +4928,7 @@ class VenomDashboard {
                     </div>
                 </div>
 
-                <h3 style="margin-bottom: 1rem; color: var(--text-primary);">⏱️ Timeline Wykonania</h3>
+                <h3 class="request-timeline-title">⏱️ Timeline Wykonania</h3>
                 <div class="request-timeline">
             `;
 
@@ -3171,8 +4972,11 @@ class VenomDashboard {
 
     closeHistoryModal() {
         if (this.elements.historyModal) {
-            this.elements.historyModal.style.display = 'none';
+            this.hideModal(this.elements.historyModal);
         }
+        this.historyDetailAutoRefresh = false;
+        this.selectedHistoryId = null;
+        this.highlightHistorySelection();
     }
 
     getStatusIcon(status) {
@@ -3427,54 +5231,6 @@ class VenomDashboard {
         }
     }
 
-    // ============================================
-    // Dashboard v2.3: Live Terminal
-    // ============================================
-
-    addTerminalEntry(level, message) {
-        const terminal = this.elements.liveTerminal;
-        if (!terminal) return;
-
-        const entry = document.createElement('div');
-        entry.className = 'terminal-entry';
-
-        const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
-
-        const safeMessage = this.escapeHtml(message).replace(/(?:\r\n|\r|\n)/g, '<br>');
-
-        entry.innerHTML = `
-            <div class="terminal-meta">
-                <span class="terminal-timestamp">[${timestamp}]</span>
-                <span class="terminal-level ${level.toLowerCase()}">${level.toUpperCase()}</span>
-            </div>
-            <div class="terminal-message">${safeMessage}</div>
-        `;
-
-        terminal.appendChild(entry);
-
-        // Auto-scroll
-        terminal.scrollTop = terminal.scrollHeight;
-
-        // Limit entries
-        while (terminal.children.length > 100) {
-            terminal.removeChild(terminal.firstChild);
-        }
-    }
-
-    clearTerminal() {
-        if (this.elements.liveTerminal) {
-            this.elements.liveTerminal.innerHTML = `
-                <div class="terminal-entry">
-                    <div class="terminal-meta">
-                        <span class="terminal-timestamp">[--:--:--]</span>
-                        <span class="terminal-level info">INFO</span>
-                    </div>
-                    <div class="terminal-message">Terminal cleared</div>
-                </div>
-            `;
-        }
-    }
-
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -3516,10 +5272,16 @@ class VenomDashboard {
             this.elements.costModeLabel.textContent = '💸 Tryb Pro';
             this.elements.costModeLabel.classList.add('pro-mode');
             this.elements.costModeLabel.classList.remove('eco-mode');
+            if (this.elements.costModeStatusLabel) {
+                this.elements.costModeStatusLabel.textContent = 'PRO';
+            }
         } else {
             this.elements.costModeLabel.textContent = '🌿 Tryb Eco';
             this.elements.costModeLabel.classList.add('eco-mode');
             this.elements.costModeLabel.classList.remove('pro-mode');
+            if (this.elements.costModeStatusLabel) {
+                this.elements.costModeStatusLabel.textContent = 'ECO';
+            }
         }
     }
 
@@ -3535,13 +5297,13 @@ class VenomDashboard {
 
     showCostModeModal() {
         if (this.elements.costModeModal) {
-            this.elements.costModeModal.style.display = 'flex';
+            this.showModal(this.elements.costModeModal);
         }
     }
 
     closeCostModeModal() {
         if (this.elements.costModeModal) {
-            this.elements.costModeModal.style.display = 'none';
+            this.hideModal(this.elements.costModeModal);
         }
     }
 
@@ -3624,6 +5386,7 @@ class VenomDashboard {
     updateAutonomyUI(data) {
         const body = document.getElementById('venomBody');
         const selector = document.getElementById('autonomyLevel');
+        const guardStatus = this.elements?.autonomyStatusLabel;
 
         if (!body || !selector) return;
 
@@ -3632,6 +5395,10 @@ class VenomDashboard {
 
         // Update selector value (without triggering change event)
         selector.value = data.current_level;
+
+        if (guardStatus && data.current_level_name) {
+            guardStatus.textContent = data.current_level_name.toUpperCase();
+        }
 
         // Store current level globally
         window.currentAutonomyLevel = data.current_level;
@@ -3703,7 +5470,7 @@ class VenomDashboard {
         // Store required level for "Increase" button
         increaseBtn.dataset.requiredLevel = errorData.required_level;
 
-        modal.style.display = 'flex';
+        this.showModal(modal);
 
         // Pulse the autonomy selector with required color
         const body = document.getElementById('venomBody');
@@ -3735,7 +5502,7 @@ class VenomDashboard {
     closeAutonomyModal() {
         const modal = document.getElementById('autonomyModal');
         if (modal) {
-            modal.style.display = 'none';
+            this.hideModal(modal);
         }
     }
 

@@ -2,11 +2,12 @@
 
 VENV ?= .venv
 UVICORN ?= $(VENV)/bin/uvicorn
+QA_SCRIPT ?= scripts/qa/run_ui_suite.sh
 HOST ?= 0.0.0.0
 PORT ?= 8000
 PID_FILE ?= .venom.pid
 
-.PHONY: lint format test precommit install-hooks start stop restart status
+.PHONY: lint format test precommit install-hooks start stop restart status qa
 
 lint:
 	pre-commit run --all-files
@@ -16,6 +17,9 @@ format:
 
 test:
 	pytest -q
+
+qa:
+	bash $(QA_SCRIPT)
 
 install-hooks:
 	pre-commit install

@@ -4,375 +4,150 @@
 
 {% block nav_inspector_active %}active{% endblock %}
 
+{% block body_attrs %}data-layout="inspector"{% endblock %}
+
 {% block extra_css %}
-<style>
-    * {
-        box-sizing: border-box;
-    }
-
-    .inspector-container {
-        display: flex;
-        height: calc(100vh - 80px);
-        gap: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-    }
-
-    /* Sidebar - Lista śladów */
-    .sidebar {
-        width: 350px;
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .sidebar-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #f0f0f0;
-    }
-
-    .sidebar-header h2 {
-        margin: 0;
-        font-size: 1.3rem;
-        color: #333;
-    }
-
-    .refresh-btn {
-        padding: 0.4rem 0.8rem;
-        background: #2196F3;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        font-weight: 600;
-        transition: background 0.2s;
-    }
-
-    .refresh-btn:hover {
-        background: #1976D2;
-    }
-
-    .trace-list {
-        flex: 1;
-        overflow-y: auto;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-    }
-
-    .trace-item {
-        padding: 0.8rem;
-        margin-bottom: 0.5rem;
-        background: #f8f9fa;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.2s;
-        border-left: 4px solid transparent;
-    }
-
-    .trace-item:hover {
-        background: #e9ecef;
-        transform: translateX(4px);
-    }
-
-    .trace-item.selected {
-        background: #e7f3ff;
-        border-left-color: #2196F3;
-    }
-
-    .trace-item.status-COMPLETED {
-        border-left-color: #4CAF50;
-    }
-
-    .trace-item.status-FAILED {
-        border-left-color: #f44336;
-    }
-
-    .trace-item.status-PROCESSING {
-        border-left-color: #FF9800;
-    }
-
-    .trace-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.3rem;
-    }
-
-    .trace-id {
-        font-weight: 600;
-        font-size: 0.9rem;
-        color: #333;
-    }
-
-    .trace-status {
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .status-COMPLETED { background: #d4edda; color: #155724; }
-    .status-FAILED { background: #f8d7da; color: #721c24; }
-    .status-PROCESSING { background: #fff3cd; color: #856404; }
-    .status-PENDING { background: #d1ecf1; color: #0c5460; }
-
-    .trace-prompt {
-        font-size: 0.85rem;
-        color: #666;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        margin-bottom: 0.3rem;
-    }
-
-    .trace-time {
-        font-size: 0.75rem;
-        color: #999;
-    }
-
-    /* Main Content - Diagram i Details */
-    .main-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-        overflow: hidden;
-    }
-
-    .diagram-panel {
-        flex: 2;
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #f0f0f0;
-    }
-
-    .panel-header h2 {
-        margin: 0;
-        font-size: 1.3rem;
-        color: #333;
-    }
-
-    .zoom-controls {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .zoom-btn {
-        padding: 0.4rem 0.8rem;
-        background: #666;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        font-weight: 600;
-        transition: background 0.2s;
-    }
-
-    .zoom-btn:hover {
-        background: #444;
-    }
-
-    .diagram-container {
-        flex: 1;
-        background: #fafafa;
-        border-radius: 8px;
-        padding: 1rem;
-        overflow: hidden;
-        position: relative;
-    }
-
-    #mermaidSvgContainer {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    .details-panel {
-        flex: 1;
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .details-content {
-        flex: 1;
-        overflow-y: auto;
-        background: #f8f9fa;
-        border-radius: 6px;
-        padding: 1rem;
-    }
-
-    .details-content pre {
-        margin: 0;
-        font-size: 0.85rem;
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: #999;
-        text-align: center;
-    }
-
-    .loading {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        color: #666;
-    }
-
-    .loading-spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #2196F3;
-        border-radius: 50%;
-        width: 40px;
-        height: 40px;
-        animation: spin 1s linear infinite;
-        margin-bottom: 1rem;
-    }
-
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    .clickable {
-        cursor: pointer;
-    }
-
-    .clickable:hover {
-        opacity: 0.8;
-    }
-</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.css">
 {% endblock %}
 
 {% block content %}
-<div class="inspector-container" x-data="inspectorApp()">
-    <!-- Sidebar - Lista śladów -->
-    <div class="sidebar">
-        <div class="sidebar-header">
-            <h2>📋 Ślady</h2>
-            <button class="refresh-btn" @click="loadTraces">🔄</button>
+<div class="venom-page">
+    <header class="venom-page-header">
+        <div class="venom-page-header__content">
+            <p class="venom-eyebrow">Forensics Suite</p>
+            <h1>🔍 Inspector</h1>
+            <p class="venom-page-description">
+                Analiza śladów zadań w czasie rzeczywistym – diagram sekwencji + detale kroków.
+            </p>
         </div>
-        
-        <ul class="trace-list">
-            <template x-if="loading">
-                <li class="loading">
-                    <div class="loading-spinner"></div>
-                    <p>Ładowanie...</p>
-                </li>
-            </template>
-            
-            <template x-if="!loading && traces.length === 0">
-                <li class="empty-state">
-                    <p>Brak śladów w historii</p>
-                </li>
-            </template>
-            
-            <template x-for="trace in traces" :key="trace.request_id">
-                <li 
-                    class="trace-item"
-                    :class="['status-' + trace.status, currentTraceId === trace.request_id ? 'selected' : '']"
-                    @click="selectTrace(trace.request_id)"
-                >
-                    <div class="trace-header">
-                        <span class="trace-id" x-text="trace.request_id.slice(0, 8) + '...'"></span>
-                        <span class="trace-status" :class="'status-' + trace.status" x-text="trace.status"></span>
-                    </div>
-                    <div class="trace-prompt" x-text="trace.prompt"></div>
-                    <div class="trace-time" x-text="new Date(trace.created_at).toLocaleString('pl-PL')"></div>
-                </li>
-            </template>
+        <div class="venom-page-header__meta">
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Ślady (widoczne / wszystkie)</span>
+                <span class="venom-meta-value" id="inspectorTraceStats">0 / 0</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Przypięte</span>
+                <span class="venom-meta-value" id="inspectorPinnedCount">0</span>
+            </div>
+            <div class="venom-meta-card">
+                <span class="venom-meta-label">Ostatnie odświeżenie</span>
+                <span class="venom-meta-value" id="inspectorLastUpdated">-</span>
+            </div>
+            <div class="venom-page-actions">
+                <label class="venom-toggle">
+                    <input type="checkbox" id="inspectorAutoRefresh" checked />
+                    <span>Auto odświeżanie</span>
+                </label>
+                <button type="button" class="venom-ghost-btn" id="inspectorRefreshBtn">🔄 Odśwież</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="inspector-shell">
+    <aside class="inspector-sidebar">
+        <div class="inspector-sidebar-header">
+            <h2>📋 Ślady</h2>
+        </div>
+
+        <div class="inspector-controls">
+            <div class="inspector-search">
+                <input
+                    type="text"
+                    placeholder="Szukaj po ID lub poleceniu..."
+                    aria-label="Filtruj ślady"
+                    id="inspectorSearchInput"
+                />
+            </div>
+            <div class="inspector-filters" role="tablist" aria-label="Filtry statusów">
+                <button type="button" class="inspector-filter-btn active" data-status="all">
+                    Wszystkie
+                </button>
+                <button type="button" class="inspector-filter-btn" data-status="processing">
+                    W toku
+                </button>
+                <button type="button" class="inspector-filter-btn" data-status="completed">
+                    Zakończone
+                </button>
+                <button type="button" class="inspector-filter-btn" data-status="failed">
+                    Błędy
+                </button>
+            </div>
+        </div>
+
+        <div class="inspector-pins is-hidden" id="inspectorPinnedContainer">
+            <div class="inspector-pins__header">
+                <span>📌 Przypięte ślady</span>
+                <button type="button" class="inspector-pin-clear" id="inspectorClearPinned" aria-label="Usuń wszystkie przypięte ślady">
+                    ✕
+                </button>
+            </div>
+            <div class="inspector-pinned-list" id="inspectorPinnedList">
+                <p class="inspector-pinned-empty">Brak przypiętych śladów</p>
+            </div>
+        </div>
+
+        <ul class="inspector-trace-list" id="inspectorTraceList">
+            <li class="inspector-loading">
+                <div class="inspector-spinner"></div>
+                <p>Ładowanie...</p>
+            </li>
         </ul>
-    </div>
-    
-    <!-- Main Content -->
-    <div class="main-content">
-        <!-- Diagram Panel -->
-        <div class="diagram-panel">
-            <div class="panel-header">
-                <h2>📊 Diagram Sekwencji</h2>
-                <div class="zoom-controls">
-                    <button class="zoom-btn" @click="zoomIn">🔍+</button>
-                    <button class="zoom-btn" @click="zoomOut">🔍-</button>
-                    <button class="zoom-btn" @click="resetZoom">↺</button>
+    </aside>
+
+    <div class="inspector-main">
+        <section class="inspector-panel inspector-panel--diagram">
+            <div class="inspector-panel-header">
+                <h2>📊 Diagram sekwencji</h2>
+                <div class="inspector-panel-actions">
+                    <div class="inspector-zoom-controls">
+                        <button type="button" class="inspector-zoom-btn" id="inspectorZoomIn">🔍+</button>
+                        <button type="button" class="inspector-zoom-btn" id="inspectorZoomOut">🔍-</button>
+                        <button type="button" class="inspector-zoom-btn" id="inspectorZoomReset">↺</button>
+                    </div>
+                    <button type="button" class="inspector-action-btn" id="inspectorCopyDiagram" disabled>
+                        📄 Kod Mermaid
+                    </button>
+                    <button type="button" class="inspector-action-btn" id="inspectorDownloadDiagram" disabled>
+                        ⬇️ Pobierz PNG
+                    </button>
+                    <button type="button" class="inspector-action-btn" id="inspectorDownloadTrace" disabled>
+                        💾 JSON
+                    </button>
                 </div>
             </div>
-            
-            <div class="diagram-container">
-                <template x-if="!currentTraceId">
-                    <div class="empty-state">
-                        <p>👈 Wybierz ślad z listy</p>
-                    </div>
-                </template>
-                
-                <div id="mermaidSvgContainer"></div>
+            <div class="inspector-diagram">
+                <div class="empty-state" id="inspectorDiagramPlaceholder">
+                    <p>👈 Wybierz ślad z listy</p>
+                </div>
+                <div id="mermaidSvgContainer" class="inspector-diagram-canvas"></div>
             </div>
-        </div>
-        
-        <!-- Details Panel -->
-        <div class="details-panel">
-            <div class="panel-header">
+        </section>
+
+        <section class="inspector-panel inspector-panel--details">
+            <div class="inspector-panel-header">
                 <h2>🔍 Szczegóły kroku</h2>
+                <div class="inspector-panel-actions inspector-panel-actions--compact">
+                    <button type="button" class="inspector-action-btn" id="inspectorCopyStep" disabled>
+                        📋 Kopiuj JSON
+                    </button>
+                    <button type="button" class="inspector-action-btn" id="inspectorDownloadStep" disabled>
+                        💾 Pobierz JSON
+                    </button>
+                </div>
             </div>
-            
-            <div class="details-content">
-                <template x-if="!selectedStep">
-                    <div class="empty-state">
-                        <p>👆 Kliknij element na diagramie</p>
-                    </div>
-                </template>
-                
-                <template x-if="selectedStep">
-                    <pre x-text="JSON.stringify(selectedStep, null, 2)"></pre>
-                </template>
+            <div class="inspector-details-content">
+                <div class="empty-state" id="inspectorDetailsPlaceholder">
+                    <p>👆 Kliknij element na diagramie</p>
+                </div>
+                <pre id="inspectorDetailsRaw" class="is-hidden"></pre>
             </div>
-        </div>
+        </section>
     </div>
+</div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<!-- Alpine.js -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
-<!-- svg-pan-zoom -->
 <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
-<!-- Inspector Logic -->
 <script src="/static/js/inspector.js"></script>
 {% endblock %}

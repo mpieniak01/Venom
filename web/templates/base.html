@@ -6,17 +6,19 @@
     <title>{% block title %}Venom{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/app.css">
     {% block extra_css %}{% endblock %}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/vendor/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script src="/static/vendor/purify.min.js"></script>
+    <script src="/static/vendor/marked.min.js"></script>
 </head>
-<body class="theme-isolated" id="venomBody">
-    {% include '_navbar.html' %}
+<body class="theme-isolated {% block body_class %}{% endblock %}" id="venomBody" {% block body_attrs %}{% endblock %}>
+    {% block navbar %}
+        {% include '_navbar.html' %}
+    {% endblock %}
     <div class="main-content">
         {% block content %}{% endblock %}
     </div>
-    <div id="autonomyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="autonomyModalTitle">
+    <div id="autonomyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="autonomyModalTitle">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="autonomyModalTitle">🚫 Brak Uprawnień</h2>

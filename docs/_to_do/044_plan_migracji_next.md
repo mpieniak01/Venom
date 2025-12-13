@@ -59,7 +59,7 @@
 - Strony Cockpit, Flow Inspector, Brain, Strategy z funkcjonalnością 1:1 z obecną wersją.
 - Dokumentacja uruchomienia i konfiguracji (`docs/DASHBOARD_GUIDE` update lub nowy `docs/FRONTEND_NEXT_GUIDE.md`).
 - Testy:
-  - Testy jednostkowe i integracyjne dla komponentów frontendu (pytest, jeśli dotyczy).
+  - Testy jednostkowe i integracyjne dla komponentów frontendu (Jest/Vitest/React Testing Library).
   - Testy E2E (Playwright/Cypress, jeśli wdrożone).
   - Dokumentacja testowania (opis uruchamiania, zakres pokrycia).
 

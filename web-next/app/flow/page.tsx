@@ -10,6 +10,8 @@ export default function FlowInspectorPage() {
   const { data: tasks } = useTasks();
   const [diagram, setDiagram] = useState<string>("graph TD\nA[Brak danych]");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [steps, setSteps] = useState<HistoryStep[]>([]);
+  const [steps, setSteps] = useState<HistoryStep[]>([]);
   const svgRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -64,29 +66,28 @@ export default function FlowInspectorPage() {
               Brak historii. Uruchom zadanie, aby zobaczyć timeline.
             </div>
           )}
-            {(history || []).map((req) => (
-              <button
-                key={req.request_id}
-                className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-left hover:bg-white/10"
-                onClick={() =>
-                  loadHistoryDetail(req.request_id, setDiagram, setSelectedId)
-                }
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">#{req.request_id}</p>
-                    <p className="text-xs text-[--color-muted]">{req.prompt}</p>
-                  </div>
-                  <Badge tone={statusTone(req.status)}>{req.status}</Badge>
+          {(history || []).map((req) => (
+            <button
+              key={req.request_id}
+              className="rounded-xl border border-[--color-border] bg-white/5 p-4 text-left hover:bg-white/10"
+              onClick={() =>
+                loadHistoryDetail(req.request_id, setDiagram, setSelectedId, setSteps)
+              }
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">#{req.request_id}</p>
+                  <p className="text-xs text-[--color-muted]">{req.prompt}</p>
                 </div>
-                {req.duration_seconds !== undefined &&
-                  req.duration_seconds !== null && (
-                    <p className="mt-2 text-xs text-[--color-muted]">
-                      Czas: {req.duration_seconds.toFixed(1)}s
-                    </p>
-                  )}
-              </button>
-            ))}
+                <Badge tone={statusTone(req.status)}>{req.status}</Badge>
+              </div>
+              {req.duration_seconds !== undefined && req.duration_seconds !== null && (
+                <p className="mt-2 text-xs text-[--color-muted]">
+                  Czas: {req.duration_seconds.toFixed(1)}s
+                </p>
+              )}
+            </button>
+          ))}
         </div>
       </Panel>
 
@@ -103,7 +104,25 @@ export default function FlowInspectorPage() {
               Bieżące zadania: {(tasks || []).length}
             </p>
             {selectedId ? (
-              <p className="mt-2 text-xs">Wybrany request: {selectedId}</p>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs">Wybrany request: {selectedId}</p>
+                <ul className="space-y-1 text-xs">
+                  {steps.length === 0 && (
+                    <li className="text-[--color-muted]">Brak kroków.</li>
+                  )}
+                  {steps.map((step, idx) => (
+                    <li
+                      key={idx}
+                      className="rounded border border-[--color-border] bg-white/5 px-2 py-1"
+                    >
+                      <span className="font-semibold text-white">
+                        {step.component || "step"}
+                      </span>
+                      : {step.action || ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : (
               <p className="mt-2 text-xs">Wybierz request z listy.</p>
             )}
@@ -131,12 +150,14 @@ async function loadHistoryDetail(
   requestId: string,
   setDiagram: (d: string) => void,
   setSelected: (id: string) => void,
+  setSteps: (s: HistoryStep[]) => void,
 ) {
   const detail = (await fetchHistoryDetail(requestId)) as { steps?: HistoryStep[] };
   const steps = detail.steps || [];
   const diagram = buildMermaid(steps);
   setDiagram(diagram);
   setSelected(requestId);
+  setSteps(steps);
 }
 
 function buildMermaid(steps: HistoryStep[]) {

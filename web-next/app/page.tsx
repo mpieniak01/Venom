@@ -5,7 +5,6 @@ import { Panel, StatCard } from "@/components/ui/panel";
 import {
   emergencyStop,
   fetchHistoryDetail,
-  fetchMarkdownContent,
   gitSync,
   gitUndo,
   installModel,
@@ -19,7 +18,6 @@ import {
   useCostMode,
   useGraphSummary,
   useHistory,
-  useMarkdownLogs,
   useMetrics,
   useModels,
   useQueueStatus,
@@ -702,31 +700,16 @@ function formatUptime(totalSeconds: number) {
   return `${hours}h ${minutes}m`;
 }
 
-function formatPayload(payload: unknown) {
-  if (typeof payload === "string") return payload;
-  try {
-    return JSON.stringify(payload, null, 2);
-  } catch {
-    return String(payload);
-  }
-}
-
 function LogEntry({ entry }: { entry: LogEntryType }) {
   const payload = entry.payload;
-  const text =
-    typeof payload === "string"
+  const logObj = isLogPayload(payload) ? payload : null;
+  const text = logObj?.message
+    ? logObj.message
+    : typeof payload === "string"
       ? payload
-      : payload && typeof payload === "object"
-        ? (payload as any).message || JSON.stringify(payload, null, 2)
-        : String(payload);
-  const level =
-    typeof payload === "object" && payload && "level" in payload
-      ? String((payload as any).level).toUpperCase()
-      : "INFO";
-  const type =
-    typeof payload === "object" && payload && "type" in payload
-      ? String((payload as any).type)
-      : "log";
+      : JSON.stringify(payload, null, 2);
+  const level = logObj?.level ? logObj.level.toUpperCase() : "INFO";
+  const type = logObj?.type || "log";
 
   return (
     <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
@@ -748,6 +731,16 @@ type LogEntryType = {
   ts: number;
   payload: unknown;
 };
+
+type LogPayload = {
+  message?: string;
+  level?: string;
+  type?: string;
+};
+
+function isLogPayload(value: unknown): value is LogPayload {
+  return typeof value === "object" && value !== null;
+}
 
 type TokenRowProps = { label: string; value?: number };
 

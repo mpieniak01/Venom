@@ -50,7 +50,7 @@ npm run start
 - Brain: graf wiedzy z Cytoscape (`/api/v1/knowledge/graph`), filtrowanie węzłów, podgląd detali
 - Chart.js: trend tokenów (ostatnie próbki z `/metrics/tokens`)
 - Lessons & Graph scan: `/api/v1/lessons`, `/api/v1/graph/scan`
-- War Room: dane roadmapy z `/api/roadmap` + raport statusu/kampania
+- War Room: dane roadmapy z `/api/roadmap` + raport statusu/kampania, renderowanie Markdown wizji/raportów
 
 ## Kolejne kroki
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.

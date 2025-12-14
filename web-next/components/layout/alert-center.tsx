@@ -28,7 +28,7 @@ const filters = [
 ];
 
 export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
-  const { entries } = useTelemetryFeed(150);
+  const { entries, connected } = useTelemetryFeed(150);
   const [filter, setFilter] = useState<(typeof filters)[number]["value"]>("all");
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
@@ -87,7 +87,16 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
         </div>
 
         <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-black/40 p-4">
-          {visibleEntries.length === 0 ? (
+          {!connected ? (
+            <div data-testid="alert-center-offline-state">
+              <EmptyState
+                icon={<AlertTriangle className="h-5 w-5" />}
+                title="Brak połączenia z feedem"
+                description="Kanał `/ws/events` jest niedostępny. Spróbuj ponownie za chwilę."
+                className="text-sm"
+              />
+            </div>
+          ) : visibleEntries.length === 0 ? (
             <EmptyState
               icon={<AlertTriangle className="h-5 w-5" />}
               title="Brak wpisów"

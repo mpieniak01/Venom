@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./env";
+import { getApiBaseUrl } from "./env";
 
 export class ApiError extends Error {
   status: number;
@@ -18,7 +18,7 @@ export async function apiFetch<T = unknown>(
   options: ApiOptions = {},
 ): Promise<T> {
   const { skipBaseUrl, headers, cache, ...rest } = options;
-  const target = skipBaseUrl ? path : `${API_BASE_URL}${path}`;
+  const target = skipBaseUrl ? path : `${getApiBaseUrl()}${path}`;
 
   const response = await fetch(target, {
     ...rest,

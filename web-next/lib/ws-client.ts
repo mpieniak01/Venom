@@ -1,4 +1,4 @@
-import { WS_BASE_URL } from "./env";
+import { getWsBaseUrl } from "./env";
 
 type MessageHandler = (payload: unknown) => void;
 type StatusHandler = (connected: boolean) => void;
@@ -13,7 +13,7 @@ export class VenomWebSocket {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor(path: string, onMessage: MessageHandler, onStatus?: StatusHandler) {
-    this.path = path.startsWith("ws") ? path : `${WS_BASE_URL}${path}`;
+    this.path = path.startsWith("ws") ? path : `${getWsBaseUrl()}${path}`;
     this.onMessage = onMessage;
     this.onStatus = onStatus;
   }

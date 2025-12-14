@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
+import { SectionHeading } from "@/components/ui/section-heading";
 import {
   Sheet,
   SheetContent,
@@ -166,22 +167,21 @@ export default function BrainPage() {
   return (
     <div className="space-y-6 pb-10">
       <div className="glass-panel flex flex-wrap items-center justify-between gap-6">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-            Brain / Knowledge Graph
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold text-white">Mind Mesh</h1>
-          <p className="text-sm text-zinc-400">
-            Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
-          <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
-          <Badge tone="warning">
-            Aktualizacja: {summaryUpdated ?? "—"}
-          </Badge>
-        </div>
+        <SectionHeading
+          eyebrow="Brain / Knowledge Graph"
+          title="Mind Mesh"
+          description="Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji."
+          as="h1"
+          size="lg"
+          className="items-center"
+          rightSlot={
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
+              <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+              <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
+            </div>
+          }
+        />
       </div>
 
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">

@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 export type ButtonVariant =
@@ -17,6 +18,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
   size?: ButtonSize;
   icon?: boolean;
+  asChild?: boolean;
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -26,6 +28,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     size = "md",
     icon = false,
     type = "button",
+    asChild = false,
     children,
     ...props
   },
@@ -51,10 +54,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         ? "px-3.5 py-2 text-xs"
         : "px-4 py-2.5 text-sm";
 
+  const Comp = asChild ? Slot : "button";
+
   return (
-    <button
+    <Comp
       ref={ref}
-      type={type}
+      type={asChild ? undefined : type}
       className={cn(
         "inline-flex items-center gap-2 rounded-full font-medium transition disabled:opacity-60 disabled:cursor-not-allowed",
         icon ? "justify-center" : "",
@@ -65,6 +70,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...props}
     >
       {children}
-    </button>
+    </Comp>
   );
 });

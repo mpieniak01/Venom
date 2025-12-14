@@ -27,7 +27,12 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   const { data: metrics } = useMetrics();
   const { data: services } = useServiceStatus();
 
-  const successRate = metrics?.tasks?.success_rate ?? 0;
+  const successRateRaw = metrics?.tasks?.success_rate;
+  const queueAvailable = Boolean(queue);
+  const metricsAvailable = typeof successRateRaw === "number";
+  const servicesAvailable = Boolean(services && services.length);
+
+  const successRate = successRateRaw ?? 0;
   const queueStatus = useMemo(
     () => ({
       active: queue?.active ?? 0,
@@ -39,14 +44,9 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   );
 
   const taskSummary = useMemo(() => aggregateTaskStatuses(tasks || []), [tasks]);
-  const visibleServices = useMemo(() => {
-    const fallback = [
-      { name: "Orchestrator", status: "healthy", detail: "OOD + exec" },
-      { name: "Watcher", status: "degraded", detail: "Repo & services" },
-      { name: "Gardener", status: "healthy", detail: "Lessons & graph" },
-    ];
-    return services && services.length > 0 ? services.slice(0, 5) : fallback;
-  }, [services]);
+  const visibleServices = useMemo(() => services?.slice(0, 5) ?? [], [services]);
+
+  const queueOfflineMessage = "Brak danych kolejki – sprawdź połączenie API.";
 
   const quickLinks = [
     { label: "Cockpit", description: "Czat i logi runtime", href: "/" },
@@ -68,23 +68,28 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
             label="Kolejka"
-            value={`${queueStatus.active}/${queueStatus.limit}`}
-            hint={queueStatus.paused ? "Wstrzymana" : "Aktywna"}
+            value={queueAvailable ? `${queueStatus.active}/${queueStatus.limit}` : "—"}
+            hint={queueAvailable ? (queueStatus.paused ? "Wstrzymana" : "Aktywna") : "Brak danych"}
             accent="blue"
           />
           <StatCard
             label="Pending"
-            value={queueStatus.pending}
-            hint="Oczekujące zadania"
+            value={queueAvailable ? queueStatus.pending : "—"}
+            hint={queueAvailable ? "Oczekujące zadania" : "Brak danych"}
             accent="purple"
           />
           <StatCard
             label="Success rate"
-            value={successRate ? `${successRate}%` : "—"}
-            hint="Metryki /api/v1/metrics"
+            value={metricsAvailable ? `${successRate}%` : "—"}
+            hint={metricsAvailable ? "Metryki /api/v1/metrics" : "Metryki offline"}
             accent="green"
           />
         </div>
+        {!queueAvailable && (
+          <p className="text-xs text-zinc-500" data-testid="command-center-queue-offline">
+            {queueOfflineMessage}
+          </p>
+        )}
 
         <section className="surface-card p-4">
           <header className="mb-3 flex items-center justify-between">
@@ -158,13 +163,15 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
                 badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
               />
             ))}
-            {visibleServices.length === 0 && (
-              <EmptyState
-                icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
-                title="Brak usług"
-                description="Sprawdź połączenie z backendem."
-                className="text-sm"
-              />
+            {!servicesAvailable && (
+              <div data-testid="command-center-services-offline">
+                <EmptyState
+                  icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
+                  title="Brak usług"
+                  description="Sprawdź połączenie z backendem."
+                  className="text-sm"
+                />
+              </div>
             )}
           </div>
         </section>

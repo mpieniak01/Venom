@@ -44,6 +44,19 @@ npm run start
 - `react-zoom-pan-pinch` w Inspectorze (nawigacja po Mermaid)
 - `lucide-react` (ikony), `tailwindcss-animate`
 
+## System design / tokeny
+- **Tokeny globalne** (`app/globals.css`):
+  - `--radius-panel`, `--radius-card` – ustandaryzowane promienie dla paneli i kart
+  - `--shadow-card` – cień stosowany w `glass-panel` i klasie pomocniczej `shadow-card`
+  - `--surface-muted` + `surface-card` – półprzezroczyste tło z ramką, używane w overlayach i kartach list
+- **Komponenty UI** (`components/ui`):
+  - `Button` – warianty `primary/secondary/outline/ghost/subtle/warning/danger`, rozmiary `xs/sm/md`, domyślne `type="button"`
+  - `IconButton` – opakowanie na ikonowe CTA (TopBar/Sidebar) z tymi samymi wariantami co `Button`
+  - `ListCard` – sekcje list/akcji z opcjonalnym `badge`, `meta` oraz ikoną (QuickActions, Command Center, Alert/Notification Drawer)
+  - `EmptyState` – spójne komunikaty w panelach z ikoną i opisem
+  - `Panel` / `StatCard` – korzystają z tokenów promieni/cieni (glassmorphism) i stanowią podstawę kart Cockpitu
+- **TopBar & overlaye**: wszystkie ikonowe akcje (Alert/Notifications/Command Palette/Quick Actions) używają `IconButton` i tokenów `surface-card`; QuickActions/Command/Alert/Notification Drawer bazują na `ListCard` + `EmptyState`.
+
 ## Funkcje dostępne w Cockpit (Next)
 - Telemetria WS (`/ws/events`) z auto-reconnect
 - Zadania: wysyłanie / listowanie (`/api/v1/tasks`), Lab Mode toggle
@@ -66,11 +79,11 @@ npm run start
 - Testy E2E (Playwright) dla kluczowych ścieżek Cockpitu.
 
 ## Testy E2E (Playwright)
-1. Uruchom backend FastAPI (port 8000) i frontend Next.js (`npm run dev`). Next nasłuchuje na 3000, ale przy zajętym porcie automatycznie wybierze kolejny (np. 3001 — sprawdź komunikat w terminalu).
-2. W innym terminalu:
+1. Uruchom backend FastAPI (port 8000). Frontend nie musi być ręcznie startowany — Playwright sam odpali `npm run dev -- --hostname 127.0.0.1 --port 3001` (domyślny port możesz zmienić zmienną `PLAYWRIGHT_PORT`).
+2. W terminalu:
    ```bash
    cd web-next
-   BASE_URL=http://127.0.0.1:3000 npm run test:e2e -- --reporter=list
+   npm run test:e2e -- --reporter=list
    ```
-   Dopasuj `BASE_URL` do faktycznego portu z pkt 1 (np. `http://localhost:3000` gdy 3000 jest wolny).
+   (opcjonalnie `BASE_URL=http://127.0.0.1:3001` gdy chcesz wymusić inny adres).
 3. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.

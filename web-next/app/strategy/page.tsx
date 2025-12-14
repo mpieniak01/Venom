@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
 import { MarkdownPreview } from "@/components/ui/markdown";
+import { SectionHeading } from "@/components/ui/section-heading";
 import {
   createRoadmap,
   requestRoadmapStatus,
@@ -126,20 +127,21 @@ export default function StrategyPage() {
   return (
     <div className="space-y-8 pb-10">
       <div className="glass-panel flex flex-col gap-4 border border-white/10 p-6 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">War Room</p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">Strategia i roadmapa</h1>
-            <p className="text-sm text-zinc-400">
-              `/api/roadmap` + Strategy Agent — wizja, kampanie, status Executive.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">/api/roadmap</Badge>
-            <Badge tone="neutral">/api/roadmap/status</Badge>
-            <Badge tone="neutral">/api/campaign/start</Badge>
-          </div>
-        </div>
+        <SectionHeading
+          eyebrow="War Room"
+          title="Strategia i roadmapa"
+          description="`/api/roadmap` + Strategy Agent — wizja, kampanie, status Executive."
+          as="h1"
+          size="lg"
+          className="items-center"
+          rightSlot={
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge tone="neutral">/api/roadmap</Badge>
+              <Badge tone="neutral">/api/roadmap/status</Badge>
+              <Badge tone="neutral">/api/campaign/start</Badge>
+            </div>
+          }
+        />
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" size="sm" onClick={() => refreshRoadmap()}>
             🔄 Odśwież Roadmapę

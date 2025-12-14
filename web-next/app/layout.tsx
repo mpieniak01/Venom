@@ -29,16 +29,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pl">
-      <body
-        className={`${geistSans.variable} ${jetBrains.variable} antialiased`}
-      >
-        <div className="flex min-h-screen bg-[url('/grid.svg')] bg-cover text-white">
-          <Sidebar />
-          <div className="flex flex-1 flex-col lg:pl-64">
-            <TopBar />
-            <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-8">
-              <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
-            </main>
+      <body className={`${geistSans.variable} ${jetBrains.variable} antialiased`}>
+        <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">
+          <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">
+            <div className="absolute -left-10 top-10 h-64 w-64 rounded-full bg-emerald-500/10" />
+            <div className="absolute bottom-10 right-10 h-72 w-72 rounded-full bg-violet-500/20" />
+          </div>
+          <div className="relative z-10 flex">
+            <Sidebar />
+            <div className="flex flex-1 flex-col lg:pl-72">
+              <TopBar />
+              <main className="flex-1 overflow-y-auto px-4 py-10 sm:px-10">
+                <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
+              </main>
+            </div>
           </div>
         </div>
       </body>

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:e2e": "playwright test"
+    "test:e2e": "npm run build && PLAYWRIGHT_MODE=prod playwright test"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

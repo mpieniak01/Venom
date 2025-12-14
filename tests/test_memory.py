@@ -7,7 +7,7 @@ import pytest
 
 # Testy będą działać tylko jeśli dependencies są zainstalowane
 pytest.importorskip("lancedb")
-pytest.importorskip("sentence_transformers")
+pytest.importorskip("sentence_transformers", exc_type=ImportError)
 
 from venom_core.memory.embedding_service import EmbeddingService
 from venom_core.memory.vector_store import VectorStore

@@ -4,6 +4,11 @@ const devHost = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
 const devPort = Number(process.env.PLAYWRIGHT_PORT || 3001);
 const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
+const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
+const webServerCommand = isProdServer
+  ? `npm run start -- --hostname ${devHost} --port ${devPort}`
+  : `npm run dev -- --hostname ${devHost} --port ${devPort}`;
+
 const config: PlaywrightTestConfig = {
   testDir: "./tests",
   timeout: 30_000,
@@ -17,7 +22,7 @@ const config: PlaywrightTestConfig = {
     video: "retain-on-failure",
   },
   webServer: {
-    command: `npm run dev -- --hostname ${devHost} --port ${devPort}`,
+    command: webServerCommand,
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,

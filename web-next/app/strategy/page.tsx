@@ -12,9 +12,12 @@ import {
   startCampaign,
   useRoadmap,
 } from "@/hooks/use-api";
-import { Card, Metric, Text, Flex, ProgressBar, BarList } from "@tremor/react";
+import { ProgressBar } from "@tremor/react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useMemo, useState } from "react";
+import { statusTone } from "@/lib/status";
+import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
+import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 
 export default function StrategyPage() {
   const { data: roadmap, refresh: refreshRoadmap } = useRoadmap();
@@ -44,8 +47,7 @@ export default function StrategyPage() {
         summary[key] = (summary[key] || 0) + 1;
       }),
     );
-    const entries = Object.entries(summary).map(([name, value]) => ({ name, value }));
-    return entries.length > 0 ? entries : [{ name: "Brak danych", value: 0 }];
+    return Object.entries(summary).map(([name, value]) => ({ name, value }));
   }, [milestones]);
 
   const summaryCards = useMemo(
@@ -55,21 +57,21 @@ export default function StrategyPage() {
         value: `${visionProgress.toFixed(1)}%`,
         percent: visionProgress,
         description: "Roadmap vision progress",
-        color: "violet",
+        tone: "violet" as const,
       },
       {
         label: "Milestones",
         value: `${kpis?.milestones_completed ?? 0} / ${kpis?.milestones_total ?? 0}`,
         percent: milestonesRaw,
         description: "Incomplete milestones",
-        color: "indigo",
+        tone: "indigo" as const,
       },
       {
         label: "Tasks",
         value: `${kpis?.tasks_completed ?? 0} / ${kpis?.tasks_total ?? 0}`,
         percent: tasksRaw,
         description: "Execution tasks",
-        color: "emerald",
+        tone: "emerald" as const,
       },
     ],
     [visionProgress, kpis, milestonesRaw, tasksRaw],
@@ -126,41 +128,38 @@ export default function StrategyPage() {
 
   return (
     <div className="space-y-8 pb-10">
-      <div className="glass-panel flex flex-col gap-4 border border-white/10 p-6 shadow-card">
-        <SectionHeading
-          eyebrow="War Room"
-          title="Strategia i roadmapa"
-          description="`/api/roadmap` + Strategy Agent — wizja, kampanie, status Executive."
-          as="h1"
-          size="lg"
-          className="items-center"
-          rightSlot={
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Badge tone="neutral">/api/roadmap</Badge>
-              <Badge tone="neutral">/api/roadmap/status</Badge>
-              <Badge tone="neutral">/api/campaign/start</Badge>
-            </div>
-          }
-        />
-        <div className="flex flex-wrap gap-3">
-          <Button variant="primary" size="sm" onClick={() => refreshRoadmap()}>
-            🔄 Odśwież Roadmapę
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowVisionForm((prev) => !prev)}>
-            ✨ {showVisionForm ? "Ukryj" : "Zdefiniuj"} Wizję
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleStartCampaign}>
-            🚀 Uruchom Kampanię
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleStatusReport}
-            disabled={reportLoading}
-          >
-            📊 {reportLoading ? "Ładuję..." : "Raport Statusu"}
-          </Button>
-        </div>
+      <SectionHeading
+        eyebrow="War Room"
+        title="Strategia i roadmapa"
+        description="`/api/roadmap` + Strategy Agent — wizja, kampanie, status Executive."
+        as="h1"
+        size="lg"
+        rightSlot={
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge tone="neutral">/api/roadmap</Badge>
+            <Badge tone="neutral">/api/roadmap/status</Badge>
+            <Badge tone="neutral">/api/campaign/start</Badge>
+          </div>
+        }
+      />
+      <div className="glass-panel flex flex-wrap gap-3 border border-white/10 p-6 shadow-card">
+        <Button variant="primary" size="sm" onClick={() => refreshRoadmap()}>
+          🔄 Odśwież Roadmapę
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setShowVisionForm((prev) => !prev)}>
+          ✨ {showVisionForm ? "Ukryj" : "Zdefiniuj"} Wizję
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleStartCampaign}>
+          🚀 Uruchom Kampanię
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleStatusReport}
+          disabled={reportLoading}
+        >
+          📊 {reportLoading ? "Ładuję..." : "Raport Statusu"}
+        </Button>
         {actionMessage && (
           <p className="text-xs text-zinc-400">{actionMessage}</p>
         )}
@@ -189,14 +188,14 @@ export default function StrategyPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {summaryCards.map((card) => (
-          <Card key={card.label} className="border border-white/10 bg-white/5 text-white shadow-card">
-            <Text>{card.label}</Text>
-            <Flex justifyContent="between" alignItems="center" className="mt-2">
-              <Metric>{card.value}</Metric>
-              <Text className="text-zinc-400">{card.description}</Text>
-            </Flex>
-            <ProgressBar value={card.percent} color={card.color as "violet" | "indigo" | "emerald"} className="mt-4" />
-          </Card>
+          <RoadmapKpiCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            description={card.description}
+            percent={card.percent}
+            tone={card.tone}
+          />
         ))}
       </div>
 
@@ -234,10 +233,14 @@ export default function StrategyPage() {
           )}
         </Panel>
         <Panel title="Podsumowanie zadań" description="Statusy tasków z milestones.">
-          <Card className="border border-white/10 bg-white/5 text-white shadow-card">
-            <Text>Stany zadań</Text>
-            <BarList data={taskSummary} className="mt-4" color="violet" />
-          </Card>
+          <TaskStatusBreakdown
+            title="Stany zadań"
+            datasetLabel="Milestones summary"
+            totalLabel="Łącznie"
+            totalValue={taskSummary.reduce((acc, entry) => acc + entry.value, 0)}
+            entries={taskSummary.map((entry) => ({ label: entry.name, value: entry.value }))}
+            emptyMessage="Brak zadań w roadmapie."
+          />
         </Panel>
       </div>
 
@@ -295,13 +298,4 @@ export default function StrategyPage() {
       </Panel>
     </div>
   );
-}
-
-function statusTone(status?: string) {
-  if (!status) return "neutral" as const;
-  const normalized = status.toUpperCase();
-  if (normalized.includes("COMPLETE")) return "success" as const;
-  if (normalized.includes("IN_PROGRESS") || normalized.includes("DOING"))
-    return "warning" as const;
-  return "neutral" as const;
 }

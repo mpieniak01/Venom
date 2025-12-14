@@ -2,25 +2,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #06080f;
-  --panel: rgba(24, 24, 32, 0.75);
-  --muted: #9ca3af;
-  --accent: #7c3aed;
-  --accent-2: #22c55e;
+  --background: #030407;
+  --panel: rgba(8, 10, 18, 0.88);
+  --muted: #9ca6c0;
+  --accent: #00ff9d;
+  --accent-2: #00b8ff;
   --border: rgba(255, 255, 255, 0.08);
-  --grid-color: rgba(99, 102, 241, 0.08);
+  --grid-color: rgba(0, 255, 157, 0.08);
   --font-jetbrains: "JetBrains Mono", ui-monospace, monospace;
   --radius-panel: 20px;
   --radius-card: 16px;
-  --shadow-card: 0 18px 60px rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 35px 80px rgba(0, 0, 0, 0.65);
   --padding-panel: 24px;
-  --surface-muted: rgba(255, 255, 255, 0.05);
+  --surface-muted: rgba(255, 255, 255, 0.04);
   --color-background: var(--background);
   --color-panel: var(--panel);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-border: var(--border);
+  --noise-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
 }
 
 * {
@@ -30,11 +31,23 @@
 body {
   min-height: 100vh;
   background-color: var(--background);
-  background-image: radial-gradient(circle at 10% 20%, rgba(88, 28, 135, 0.35), transparent 35%),
-    radial-gradient(circle at 85% 25%, rgba(2, 132, 199, 0.25), transparent 45%),
-    linear-gradient(145deg, rgba(12, 12, 20, 0.95), rgba(5, 5, 12, 0.98));
+  background-image: radial-gradient(circle at 60% -20%, rgba(0, 184, 255, 0.25), transparent 45%),
+    radial-gradient(circle at 20% 0%, rgba(0, 255, 157, 0.3), transparent 40%),
+    linear-gradient(150deg, rgba(3, 4, 7, 0.95), rgba(8, 10, 16, 0.98));
   color: #f4f4f5;
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  position: relative;
+  isolation: isolate;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: var(--noise-image);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: -1;
 }
 
 a {
@@ -43,17 +56,44 @@ a {
 }
 
 .glass-panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  backdrop-filter: blur(18px);
+  background: linear-gradient(180deg, rgba(8, 10, 16, 0.92), rgba(6, 8, 12, 0.78));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(22px);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel, var(--shadow-card));
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel.fixed {
+  position: fixed;
+}
+
+.glass-panel.sticky {
+  position: sticky;
+}
+
+.glass-panel.absolute {
+  position: absolute;
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  border-top: 1px solid rgba(0, 255, 157, 0.12);
+  border-left: 1px solid rgba(0, 184, 255, 0.08);
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .terminal {
   font-family: var(--font-jetbrains);
-  background: linear-gradient(160deg, rgba(3, 7, 18, 0.9), rgba(5, 12, 24, 0.95));
-  color: #86efac;
+  background: radial-gradient(circle at 10% 20%, rgba(0, 0, 0, 0.9), rgba(3, 8, 14, 0.95));
+  color: #00ff9d;
+  border: 1px solid rgba(0, 255, 157, 0.2);
+  box-shadow: inset 0 0 30px rgba(0, 255, 157, 0.08);
 }
 
 .grid-overlay::before {

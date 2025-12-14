@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ListCard } from "@/components/ui/list-card";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { AlertTriangle, Filter, Copy } from "lucide-react";
+import { OverlayFallback } from "./overlay-fallback";
 
 type AlertCenterProps = {
   open: boolean;
@@ -86,22 +86,21 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-black/40 p-4">
+        <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-black/40 p-4 space-y-3">
           {!connected ? (
-            <div data-testid="alert-center-offline-state">
-              <EmptyState
-                icon={<AlertTriangle className="h-5 w-5" />}
-                title="Brak połączenia z feedem"
-                description="Kanał `/ws/events` jest niedostępny. Spróbuj ponownie za chwilę."
-                className="text-sm"
-              />
-            </div>
+            <OverlayFallback
+              icon={<AlertTriangle className="h-5 w-5" />}
+              title="Brak połączenia z feedem"
+              description="Kanał `/ws/events` jest niedostępny. Spróbuj ponownie za chwilę."
+              hint="Alert Center"
+              testId="alert-center-offline-state"
+            />
           ) : visibleEntries.length === 0 ? (
-            <EmptyState
+            <OverlayFallback
               icon={<AlertTriangle className="h-5 w-5" />}
               title="Brak wpisów"
               description="Spróbuj zmienić filtr lub poczekaj na nowe logi."
-              className="text-sm"
+              hint="Alert Center"
             />
           ) : (
             <div className="space-y-3">

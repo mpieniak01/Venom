@@ -2,10 +2,10 @@
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ListCard } from "@/components/ui/list-card";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { useMemo } from "react";
+import { OverlayFallback } from "./overlay-fallback";
 
 type NotificationDrawerProps = {
   open: boolean;
@@ -54,20 +54,19 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
         </SheetHeader>
         <div className="mt-4 flex-1 overflow-y-auto space-y-3">
           {!connected ? (
-            <div data-testid="notification-offline-state">
-              <EmptyState
-                icon={<span className="text-lg">📡</span>}
-                title="Brak połączenia"
-                description="Kanał WebSocket jest offline – powiadomienia pojawią się po wznowieniu."
-                className="text-sm"
-              />
-            </div>
+            <OverlayFallback
+              icon={<span className="text-lg">📡</span>}
+              title="Brak połączenia"
+              description="Kanał WebSocket jest offline – powiadomienia pojawią się po wznowieniu."
+              hint="Notification Drawer"
+              testId="notification-offline-state"
+            />
           ) : notifications.length === 0 ? (
-            <EmptyState
+            <OverlayFallback
               icon={<span className="text-lg">🚨</span>}
               title="Brak ostrzeżeń"
               description="Aktualnie brak poziomów warn/error w telemetrii."
-              className="text-sm"
+              hint="Notification Drawer"
             />
           ) : (
             notifications.map((note) => (

@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -27,7 +28,7 @@ from venom_core.api.stream import EventType, connection_manager, event_broadcast
 from venom_core.config import SETTINGS
 from venom_core.core.metrics import init_metrics_collector
 from venom_core.core.orchestrator import Orchestrator
-from venom_core.core.permission_guard import permission_guard
+from venom_core.core.permission_guard import AutonomyViolation, permission_guard
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.core.state_manager import StateManager
@@ -542,6 +543,30 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(AutonomyViolation)
+async def autonomy_violation_handler(request: Request, exc: AutonomyViolation):
+    """
+    Zwraca 403 z dodatkowymi danymi o wymaganym poziomie autonomii.
+    """
+    logger.warning(
+        "AutonomyViolation - %s required=%s current=%s",
+        exc.skill_name,
+        exc.required_level_name,
+        exc.current_level_name,
+    )
+    return JSONResponse(
+        status_code=403,
+        content={
+            "detail": str(exc),
+            "required_level": exc.required_level,
+            "required_level_name": exc.required_level_name,
+            "current_level": exc.current_level,
+            "current_level_name": exc.current_level_name,
+            "skill_name": exc.skill_name,
+        },
+    )
 
 
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan

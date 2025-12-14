@@ -1,5 +1,31 @@
 // Venom Cockpit - Main Application
 
+(function () {
+    if (typeof window === 'undefined' || typeof window.fetch !== 'function' || window.__venomAutonomyFetchPatched) {
+        return;
+    }
+
+    window.__venomAutonomyFetchPatched = true;
+    const originalFetch = window.fetch.bind(window);
+
+    window.fetch = async function (...args) {
+        const response = await originalFetch(...args);
+
+        if (response && response.status === 403 && window.venomDashboard) {
+            try {
+                const payload = await response.clone().json();
+                if (payload && payload.required_level) {
+                    window.venomDashboard.handleAutonomyViolation(payload);
+                }
+            } catch (error) {
+                console.warn('Nie udało się odczytać danych AutonomyGate', error);
+            }
+        }
+
+        return response;
+    };
+})();
+
 class VenomDashboard {
     constructor() {
         this.ws = null;

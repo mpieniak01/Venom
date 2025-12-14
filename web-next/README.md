@@ -30,12 +30,19 @@ npm run start
 ```
 
 ## Struktura
-- `app/` – strony: Cockpit `/`, Flow `/flow`, Brain `/brain`, Strategy `/strategy`
+- `app/` – strony: Cockpit `/`, Inspector `/inspector`, Brain `/brain`, Strategy `/strategy`
 - `components/ui` – panele, karty, badge
 - `lib/env.ts` – źródło adresów API/WS (env + fallback)
 - `lib/api-client.ts` – fetch z obsługą błędów
 - `lib/ws-client.ts` – klient WebSocket z autoreconnect
 - `next.config.ts` – proxy do FastAPI (dev), output `standalone`
+
+## Stack UI
+- Tailwind CSS 4 + autorski `tailwind.config.ts` (ciemny motyw, glassmorphism)
+- shadcn/ui (Sheet, Accordion) na bazie Radix UI
+- `framer-motion` (animacje chatu), `@tremor/react` (karty KPI)
+- `react-zoom-pan-pinch` w Inspectorze (nawigacja po Mermaid)
+- `lucide-react` (ikony), `tailwindcss-animate`
 
 ## Funkcje dostępne w Cockpit (Next)
 - Telemetria WS (`/ws/events`) z auto-reconnect
@@ -57,3 +64,13 @@ npm run start
 ## Kolejne kroki
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.
 - Testy E2E (Playwright) dla kluczowych ścieżek Cockpitu.
+
+## Testy E2E (Playwright)
+1. Uruchom backend FastAPI (port 8000) i frontend Next.js (`npm run dev`). Next nasłuchuje na 3000, ale przy zajętym porcie automatycznie wybierze kolejny (np. 3001 — sprawdź komunikat w terminalu).
+2. W innym terminalu:
+   ```bash
+   cd web-next
+   BASE_URL=http://127.0.0.1:3000 npm run test:e2e -- --reporter=list
+   ```
+   Dopasuj `BASE_URL` do faktycznego portu z pkt 1 (np. `http://localhost:3000` gdy 3000 jest wolny).
+3. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.

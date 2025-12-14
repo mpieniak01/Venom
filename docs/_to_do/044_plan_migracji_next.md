@@ -85,5 +85,9 @@
 ## 8. Postęp implementacji (aktualizacja)
 - Cockpit Next: realtime telemetry, zadania, kolejka, modele/git/cost/autonomy + tokenomics oraz wykres Chart.js trendu tokenów, podgląd historii z detale `/history/requests`.
 - Flow Inspector: lista historii + dynamiczny timeline mermaid generowany z kroków `/history/requests/{id}`, panel kroków z filtrowaniem/eksportem.
-- Brain: graf Cytoscape z filtrowaniem, panel lekcji (`/api/v1/lessons`), statystyki LessonsStore, akcja skanowania `/api/v1/graph/scan`, analiza pliku (`/graph/file`, `/graph/impact`), podgląd szczegółów węzła.
+- Brain: graf Cytoscape z filtrowaniem, highlight tagów lekcji, panel relacji, statystyki LessonsStore, akcja skanowania `/api/v1/graph/scan`, analiza pliku (`/graph/file`, `/graph/impact`), podgląd szczegółów węzła.
 - Strategy (War Room): integracja z `/api/roadmap`, raport statusu i kampania, formularz tworzenia wizji, renderowanie Markdown wizji/raportów/stanu.
+- Playwright smoke test (`npm run test:e2e`) oczekuje uruchomionego Nexta (BASE_URL) i weryfikuje podstawowe ekrany Cockpit/Flow/Brain.
+- 2025-12-13: Potwierdzony przebieg smoke suite (`BASE_URL=http://127.0.0.1:3001 npm run test:e2e -- --reporter=list`) przy działającym `npm run dev` (Next przełączył się na port 3001, bo 3000 był zajęty). 3/3 testy zielone, artefakty w `web-next/test-results/` dołączone do zadania.
+- 2025-12-13 (wieczór): Zwolniono port 3000 (ubita zaległa instancja Next), wystartowano świeży `npm run dev` na domyślnym porcie i uruchomiono smoke suite ponownie (`BASE_URL=http://127.0.0.1:3000 npm run test:e2e -- --reporter=list`) – ponownie komplet zielonych testów, dzięki czemu dev-flow wrócił na standardowy adres.
+- 2025-12-13 (następny krok): Tokenomics Chart.js korzysta już z dynamicznego importu (`import("chart.js/auto")` wywoływane w `TokenChart`) – zgodnie z planem etap 5 „Styling i UX” ograniczamy wczytywanie ciężkich bibliotek do client components.

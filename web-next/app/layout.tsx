@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { TopNav } from "@/components/layout/top-nav";
+import { Geist, JetBrains_Mono } from "next/font/google";
+import { Sidebar } from "@/components/layout/sidebar";
+import { TopBar } from "@/components/layout/top-bar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -9,8 +10,8 @@ const geistSans = Geist({
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetBrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
   subsets: ["latin"],
   display: "swap",
 });
@@ -29,12 +30,17 @@ export default function RootLayout({
   return (
     <html lang="pl">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${jetBrains.variable} antialiased`}
       >
-        <TopNav />
-        <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
-          {children}
-        </main>
+        <div className="flex min-h-screen bg-[url('/grid.svg')] bg-cover text-white">
+          <Sidebar />
+          <div className="flex flex-1 flex-col lg:pl-64">
+            <TopBar />
+            <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-8">
+              <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
+            </main>
+          </div>
+        </div>
       </body>
     </html>
   );

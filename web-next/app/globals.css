@@ -1,23 +1,26 @@
+@config "../tailwind.config.ts";
 @import "tailwindcss";
 
 :root {
-  --background: #080b12;
-  --panel: #0f1623;
-  --muted: #7b8499;
+  --background: #06080f;
+  --panel: rgba(24, 24, 32, 0.75);
+  --muted: #9ca3af;
   --accent: #7c3aed;
   --accent-2: #22c55e;
-  --border: #1f2937;
-}
-
-@theme inline {
+  --border: rgba(255, 255, 255, 0.08);
+  --grid-color: rgba(99, 102, 241, 0.08);
+  --font-jetbrains: "JetBrains Mono", ui-monospace, monospace;
+  --radius-panel: 20px;
+  --radius-card: 16px;
+  --shadow-card: 0 18px 60px rgba(0, 0, 0, 0.55);
+  --padding-panel: 24px;
+  --surface-muted: rgba(255, 255, 255, 0.05);
   --color-background: var(--background);
   --color-panel: var(--panel);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-border: var(--border);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 * {
@@ -25,14 +28,56 @@
 }
 
 body {
-  background: radial-gradient(circle at 20% 20%, #111826 0, transparent 30%),
-    radial-gradient(circle at 80% 0%, #0f172a 0, transparent 35%),
-    #080b12;
-  color: #e5e7eb;
+  min-height: 100vh;
+  background-color: var(--background);
+  background-image: radial-gradient(circle at 10% 20%, rgba(88, 28, 135, 0.35), transparent 35%),
+    radial-gradient(circle at 85% 25%, rgba(2, 132, 199, 0.25), transparent 45%),
+    linear-gradient(145deg, rgba(12, 12, 20, 0.95), rgba(5, 5, 12, 0.98));
+  color: #f4f4f5;
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.glass-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel, var(--shadow-card));
+}
+
+.terminal {
+  font-family: var(--font-jetbrains);
+  background: linear-gradient(160deg, rgba(3, 7, 18, 0.9), rgba(5, 12, 24, 0.95));
+  color: #86efac;
+}
+
+.grid-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.rounded-panel {
+  border-radius: var(--radius-panel);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.surface-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }

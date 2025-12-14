@@ -1,7 +1,16 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   fetchGraphFileInfo,
   fetchGraphImpact,
@@ -14,6 +23,7 @@ import {
 import type { Lesson } from "@/lib/types";
 import type cytoscapeType from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Filter, Scan, Layers, Sparkles, Radar } from "lucide-react";
 
 export default function BrainPage() {
   const { data: summary, refresh: refreshSummary } = useGraphSummary();
@@ -154,44 +164,40 @@ export default function BrainPage() {
   }, [graph]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="rounded-2xl border border-[--color-border] bg-[--color-panel]/70 p-6 shadow-xl shadow-black/40">
-        <p className="text-sm text-[--color-muted]">Brain / Knowledge Graph</p>
-        <h1 className="mt-2 text-3xl font-semibold">Wizualizacja pamięci</h1>
-        <p className="mt-2 text-sm text-[--color-muted]">
-          Widok grafu zasila /api/v1/graph/summary i /api/v1/graph/scan. Rendering
-          planowany z użyciem Cytoscape (dynamic import).
-        </p>
-        <div className="mt-4 flex gap-2">
-          <Badge tone="neutral">/graph/summary</Badge>
-          <Badge tone="neutral">
-            węzły: {summaryNodes} / krawędzie: {summaryEdges}
+    <div className="space-y-6 pb-10">
+      <div className="glass-panel flex flex-wrap items-center justify-between gap-6">
+        <div>
+          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            Brain / Knowledge Graph
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold text-white">Mind Mesh</h1>
+          <p className="text-sm text-zinc-400">
+            Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
+          <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+          <Badge tone="warning">
+            Aktualizacja: {summaryUpdated ?? "—"}
           </Badge>
-          <Badge tone="warning">Cytoscape (client)</Badge>
         </div>
       </div>
 
-      <Panel title="Statystyki grafu" description="Dane z /api/v1/graph/summary.">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatRow label="Węzły" value={summaryNodes} />
-          <StatRow label="Krawędzie" value={summaryEdges} />
-          <StatRow label="Ostatnia aktualizacja" value={summaryUpdated ?? "—"} />
-        </div>
-      </Panel>
-
-      <Panel
-        title="Filtry grafu"
-        description="Tagi, typy węzłów, highlight lekcji."
-      >
-        <div className="flex flex-wrap gap-2 text-sm text-[--color-muted]">
+      <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
+        <div className="pointer-events-none absolute inset-0 grid-overlay" />
+        <div
+          ref={cyRef}
+          data-testid="graph-container"
+          className="relative h-[70vh] w-full"
+        />
+        <div className="pointer-events-auto absolute left-6 top-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
           {(["all", "agent", "memory", "file", "function"] as const).map((type) => (
-            <button
+            <Button
               key={type}
-              className={`rounded-full px-3 py-1 ${
-                filter === type
-                  ? "bg-[--color-accent]/30 text-white"
-                  : "bg-white/5 text-white border border-[--color-border]"
-              }`}
+              size="xs"
+              variant={filter === type ? "primary" : "outline"}
+              className="px-3"
               onClick={() => {
                 setFilter(type);
                 const cy = cyInstanceRef.current;
@@ -207,17 +213,56 @@ export default function BrainPage() {
                 cy.layout({ name: "cose", padding: 30, animate: false }).run();
               }}
             >
+              <Filter className="h-3 w-3" />
               {type}
-            </button>
+            </Button>
           ))}
-
-          {lessonTags.map((tag) => (
+        </div>
+        <div className="pointer-events-auto absolute right-6 top-6 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const cy = cyInstanceRef.current;
+              if (!cy) return;
+              cy.fit();
+            }}
+          >
+            <Layers className="h-4 w-4" />
+            Dopasuj
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={async () => {
+              setScanning(true);
+              setScanMessage(null);
+              try {
+                const res = await triggerGraphScan();
+                setScanMessage(res.message || "Skanowanie uruchomione.");
+                refreshSummary();
+              } catch (err) {
+                setScanMessage(
+                  err instanceof Error ? err.message : "Nie udało się uruchomić skanu.",
+                );
+              } finally {
+                setScanning(false);
+              }
+            }}
+            disabled={scanning}
+          >
+            <Scan className="h-4 w-4" />
+            {scanning ? "Skanuję..." : "Skanuj graf"}
+          </Button>
+        </div>
+        <div className="pointer-events-auto absolute left-6 bottom-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
+          {lessonTags.slice(0, 6).map((tag) => (
             <button
               key={tag.name}
-              className={`rounded-full px-3 py-1 ${
+              className={`rounded-full border px-3 py-1 ${
                 highlightTag === tag.name
-                  ? "bg-amber-500/40 text-white"
-                  : "bg-white/5 text-white border border-[--color-border]"
+                  ? "border-amber-400/50 bg-amber-500/20"
+                  : "border-white/10 bg-white/5 text-zinc-200"
               }`}
               onClick={() => {
                 const next = highlightTag === tag.name ? null : tag.name;
@@ -240,7 +285,12 @@ export default function BrainPage() {
             </button>
           ))}
         </div>
-      </Panel>
+        {scanMessage && (
+          <div className="pointer-events-none absolute right-6 bottom-6 rounded-full border border-white/10 bg-black/60 px-4 py-1 text-xs text-zinc-300">
+            {scanMessage}
+          </div>
+        )}
+      </div>
 
       <Panel
         title="Lekcje i operacje grafu"
@@ -260,7 +310,12 @@ export default function BrainPage() {
             {lessonsStats?.stats ? (
               <JsonPreview data={lessonsStats.stats} />
             ) : (
-              <p className="text-xs">Brak statystyk lub LessonsStore offline.</p>
+              <EmptyState
+                icon={<Radar className="h-4 w-4" />}
+                title="Brak statystyk"
+                description="LessonsStore może być offline lub puste."
+                className="text-xs"
+              />
             )}
           </div>
           <div>
@@ -292,9 +347,12 @@ export default function BrainPage() {
             </div>
             <ul className="mt-2 space-y-2 text-sm text-[--color-muted]">
               {filteredLessons.length === 0 && (
-                <li className="rounded border border-[--color-border] bg-white/5 px-3 py-2">
-                  Brak danych lub LessonsStore offline.
-                </li>
+                <EmptyState
+                  icon={<Sparkles className="h-4 w-4" />}
+                  title="Brak lekcji"
+                  description="Lekcje pojawią się po zapisaniu nowych wpisów w LessonsStore."
+                  className="text-sm"
+                />
               )}
               {filteredLessons.map((lesson) => (
                 <li
@@ -319,38 +377,6 @@ export default function BrainPage() {
               ))}
             </ul>
           </div>
-          <div className="rounded-xl border border-[--color-border] bg-black/30 p-4 text-sm text-[--color-muted]">
-            <p className="text-white font-semibold">Skanowanie grafu</p>
-            <p className="text-xs">
-              Uruchom /api/v1/graph/scan aby zaktualizować graf po zmianach w kodzie.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                className="rounded-lg bg-[--color-accent]/40 px-4 py-2 text-xs font-semibold text-white hover:bg-[--color-accent]/60 disabled:opacity-60"
-                disabled={scanning}
-                onClick={async () => {
-                  setScanning(true);
-                  setScanMessage(null);
-                  try {
-                    const res = await triggerGraphScan();
-                    setScanMessage(res.message || "Skanowanie uruchomione.");
-                    refreshSummary();
-                  } catch (err) {
-                    setScanMessage(
-                      err instanceof Error ? err.message : "Nie udało się uruchomić skanu.",
-                    );
-                  } finally {
-                    setScanning(false);
-                  }
-                }}
-              >
-                {scanning ? "Skanowanie..." : "Skanuj graf"}
-              </button>
-            </div>
-            {scanMessage && (
-              <p className="mt-2 text-xs text-[--color-muted]">{scanMessage}</p>
-            )}
-          </div>
         </div>
       </Panel>
 
@@ -363,20 +389,22 @@ export default function BrainPage() {
               value={filePath}
               onChange={(e) => setFilePath(e.target.value)}
             />
-            <button
-              className="rounded-lg border border-[--color-border] px-4 py-2 text-xs text-white hover:bg-white/10 disabled:opacity-60"
+            <Button
+              variant="outline"
+              size="sm"
               disabled={fileLoading}
               onClick={() => handleFileFetch("info")}
             >
               ℹ️ Info
-            </button>
-            <button
-              className="rounded-lg border border-[--color-border] px-4 py-2 text-xs text-white hover:bg-white/10 disabled:opacity-60"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={fileLoading}
               onClick={() => handleFileFetch("impact")}
             >
               🌐 Impact
-            </button>
+            </Button>
           </div>
           {fileMessage && <p className="text-xs text-[--color-muted]">{fileMessage}</p>}
           <div className="grid gap-3 md:grid-cols-2">
@@ -392,114 +420,57 @@ export default function BrainPage() {
         </div>
       </Panel>
 
-      <Panel
-        title="Widok grafu"
-        description="Miejsce na komponent grafu (Cytoscape) + szczegóły węzła."
+      <Sheet
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelected(null);
+            setRelations([]);
+          }
+        }}
       >
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="md:col-span-2 rounded-xl border border-[--color-border] bg-white/5 p-2 text-sm text-[--color-muted]">
-            <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
-              {(["all", "agent", "memory", "file", "function"] as const).map((type) => (
-                <button
-                  key={type}
-                  className={`rounded-lg px-3 py-1 text-xs capitalize ${
-                    filter === type
-                      ? "bg-[--color-accent]/30 text-white border border-[--color-border]"
-                      : "bg-white/5 text-white border border-[--color-border] hover:bg-white/10"
-                  }`}
-                  onClick={() => {
-                    setFilter(type);
-                    const cy = cyInstanceRef.current;
-                    if (!cy) return;
-                    cy.nodes().style("display", "element");
-                    if (type !== "all") {
-                      cy.nodes().forEach((n) => {
-                        if (n.data("type") !== type) {
-                          n.style("display", "none");
-                        }
-                      });
-                    }
-                    cy.layout({ name: "cose", padding: 30, animate: false }).run();
-                  }}
-                >
-                  {type}
-                </button>
-              ))}
-              <button
-                className="rounded-lg bg-white/5 px-3 py-1 text-xs text-white border border-[--color-border] hover:bg-white/10"
-                onClick={() => {
-                  const cy = cyInstanceRef.current;
-                  if (!cy) return;
-                  cy.fit();
-                }}
-              >
-                Dopasuj
-              </button>
-            </div>
-            <div ref={cyRef} className="h-[480px] w-full rounded-lg bg-[#0b1220]" />
-          </div>
-          <div className="rounded-xl border border-[--color-border] bg-white/5 p-6 space-y-3">
-            <h4 className="text-sm font-semibold text-white">Szczegóły węzła</h4>
-            {selected ? (
-              <div className="mt-2 space-y-2 text-sm text-[--color-muted]">
-                <p className="text-white">{String(selected.label || selected.id)}</p>
-                <p className="text-xs">Typ: {String(selected.type || "n/a")}</p>
-                <details className="rounded-lg border border-[--color-border] bg-black/30 p-2">
-                  <summary className="cursor-pointer text-xs text-white">
-                    Właściwości
-                  </summary>
-                  <pre className="mt-2 max-h-64 overflow-auto text-xs text-slate-200">
-                    {JSON.stringify(selected, null, 2)}
-                  </pre>
-                </details>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-[--color-muted]">
-                    Relacje
-                  </p>
-                  {relations.length === 0 ? (
-                    <p className="text-xs">Brak relacji.</p>
-                  ) : (
-                    <ul className="text-xs space-y-1">
-                      {relations.map((rel) => (
-                        <li
-                          key={`${selected.id}-${rel.id}-${rel.direction}`}
-                          className="rounded border border-[--color-border] bg-white/5 px-2 py-1"
-                        >
-                          <span className="font-semibold text-white">{rel.label}</span>
-                          <span className="text-[--color-muted]">
-                            {" "}
-                            ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+        <SheetContent side="right" className="bg-zinc-950/95 text-white">
+          <SheetHeader>
+            <SheetTitle>{String(selected?.label || selected?.id || "Node")}</SheetTitle>
+            <SheetDescription>
+              Typ: {String((selected as Record<string, unknown>)?.type || "n/a")}
+            </SheetDescription>
+          </SheetHeader>
+          {selected ? (
+            <div className="space-y-4 text-sm text-zinc-300">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Właściwości</p>
+                <pre className="mt-2 max-h-60 overflow-auto rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-zinc-100">
+                  {JSON.stringify(selected, null, 2)}
+                </pre>
               </div>
-            ) : (
-              <p className="mt-2 text-sm text-[--color-muted]">
-                Kliknij węzeł, aby zobaczyć szczegóły.
-              </p>
-            )}
-          </div>
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-type StatRowProps = {
-  label: string;
-  value: string | number;
-};
-
-function StatRow({ label, value }: StatRowProps) {
-  return (
-    <div className="rounded-xl border border-[--color-border] bg-white/5 p-4">
-      <p className="text-xs uppercase tracking-wide text-[--color-muted]">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold">{value}</p>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
+                {relations.length === 0 ? (
+                  <p className="text-xs text-zinc-500">Brak relacji.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-xs">
+                    {relations.map((rel) => (
+                      <li
+                        key={`${selected.id}-${rel.id}-${rel.direction}`}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                      >
+                        <span className="font-semibold text-white">{rel.label}</span>
+                        <span className="text-zinc-400">
+                          {" "}
+                          ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-500">Kliknij węzeł, by zobaczyć szczegóły.</p>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
-type BadgeProps = {
+type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
   tone?: "success" | "warning" | "danger" | "neutral";
   children: ReactNode;
 };
 
-export function Badge({ tone = "neutral", children }: BadgeProps) {
+export function Badge({ tone = "neutral", children, className, ...rest }: BadgeProps) {
   const styles = {
     success: "bg-emerald-500/15 text-emerald-200 border-emerald-400/30",
     warning: "bg-amber-500/15 text-amber-200 border-amber-400/30",
@@ -15,7 +16,12 @@ export function Badge({ tone = "neutral", children }: BadgeProps) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${styles}`}
+      {...rest}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium",
+        styles,
+        className,
+      )}
     >
       {children}
     </span>

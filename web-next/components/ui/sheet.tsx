@@ -48,19 +48,35 @@ const SheetContent = forwardRef<
 ));
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
-const SheetHeader = ({ children }: { children: React.ReactNode }) => (
-  <div className="mb-4 space-y-2 text-left">{children}</div>
-);
+const SheetHeader = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => <div className={cn("mb-4 space-y-2 text-left", className)}>{children}</div>;
 
-const SheetTitle = ({ children }: { children: React.ReactNode }) => (
+const SheetTitle = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
   <SheetPrimitive.Title asChild>
-    <h3 className="text-lg font-semibold text-white">{children}</h3>
+    <h3 className={cn("text-lg font-semibold text-white", className)}>{children}</h3>
   </SheetPrimitive.Title>
 );
 
-const SheetDescription = ({ children }: { children: React.ReactNode }) => (
+const SheetDescription = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
   <SheetPrimitive.Description asChild>
-    <p className="text-sm text-zinc-400">{children}</p>
+    <p className={cn("text-sm text-zinc-400", className)}>{children}</p>
   </SheetPrimitive.Description>
 );
 

@@ -374,7 +374,7 @@ export default function Home() {
   return (
     <div className="space-y-10 pb-14">
       <SectionHeading
-        eyebrow="Venom Cockpit"
+        eyebrow="Dashboard Control"
         title="Centrum Dowodzenia AI"
         description="Monitoruj telemetrię, kolejkę i logi w czasie rzeczywistym – reaguj tak szybko, jak Venom OS."
         as="h1"
@@ -471,12 +471,11 @@ export default function Home() {
           </div>
         </Panel>
         <div className="grid gap-6">
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">KPI kolejki</p>
-              <h3 className="text-lg font-semibold text-white">Skuteczność operacji</h3>
-              <p className="text-sm text-zinc-400">Monitoruj SLA tasków i uptime backendu.</p>
-            </div>
+          <Panel
+            eyebrow="KPI kolejki"
+            title="Skuteczność operacji"
+            description="Monitoruj SLA tasków i uptime backendu."
+          >
             <CockpitMetricCard
               primaryValue={successRate !== null ? `${successRate}%` : "—"}
               secondaryLabel={
@@ -491,8 +490,8 @@ export default function Home() {
                   : "—"
               }`}
             />
-          </div>
-          <div className="space-y-3">
+          </Panel>
+          <Panel eyebrow="KPI kolejki" title="Zużycie tokenów" description="Trend prompt/completion/cached.">
             <CockpitTokenCard
               totalValue={totalTokens}
               splits={
@@ -527,12 +526,12 @@ export default function Home() {
                 </div>
               }
             />
-          </div>
+          </Panel>
         </div>
       </section>
-      <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden">
+      <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
           <SectionHeading
-            eyebrow="Centrum dowodzenia"
+            eyebrow="Command Console"
             title="Cockpit AI"
             description="Chat operacyjny z Orchestratora i logami runtime."
             as="h1"

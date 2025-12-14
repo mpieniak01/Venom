@@ -396,3 +396,20 @@ Testy: brak (zmiany dokumentacyjne).
 2. **Brak marginesów w bloku „Centrum dowodzenia”** – hero chat („Cockpit AI”) klei się do krawędzi sekcji; konieczne jest dodanie paddingu zgodnie z `_szablon.html`.
 3. **Kolor tła** – główne tło Cockpitu ma turkusowy gradient, a w `_szablon.html` centralny panel jest ciemnoniebieski (`#031627` → `#051B2D`). Należy pobrać oryginalne wartości i zaktualizować `app/globals.css`.
 4. **Nazwy boxów** – każdy panel (KPI, tokeny, makra itd.) powinien mieć identyczny styl nagłówka jak „Live Feed” (font-size, uppercase eyebrow, badge akcji). Aktualnie część sekcji wciąż ma stare tytuły.
+
+### Postęp etapu 28 – dostosowanie hero Cockpitu do uwag QA
+- Zamiast luźnych `<div>` hero korzysta teraz z komponentu `Panel` (uzupełnionego o `eyebrow`), więc „Skuteczność operacji” i „Zużycie tokenów” mają tę samą ramkę i header jak „Live Feed”. Dzięki temu zniknął problem „brak ramki w KPI kolejki”.
+- Panel „Centrum dowodzenia” (chat) dostał wewnętrzne `px-6 py-6`, więc nagłówek nie przykleja się już do krawędzi; struktura pozostaje taka sama, ale wizualnie odpowiada `_szablon.html`.
+- `app/globals.css` używa teraz ciemnoniebieskiego gradientu (`#031627/#041120`) i ciemniejszego `--panel`, co odtwarza centralne tło z pliku `_szablon.html`.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – detale „// Dashboard Control”
+- `SectionHeading` automatycznie dodaje prefiks `//` i wykorzystuje font JetBrains + neonowy kolor (`--color-accent`), więc nagłówki typu „Dashboard Control” czy „Command Console” mają dokładnie taki sam charakter jak w `_szablon.html`.
+- Wszystkie główne nagłówki Cockpitu (górny hero i panel konsoli) używają nowego prefiksu, a `glass-panel` ma dodatkowe rozświetlenie (`::after` z gradientem emerald→cyan). Dzięki temu każdy panel ma subtelny top-glow tak jak w pliku wzorcowym.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – tło i tokeny body
+- W `app/globals.css` zdefiniowałem te same tokeny co w `_szablon.html` (`--bg-dark`, `--bg-panel`, `--bg-gradient-body`, `--primary`, `--primary-dim`, `--secondary`, `--font-ui`, `--font-tech`). Nasze wcześniejsze zmienne (`--background`, `--panel`, `--color-accent` itd.) wskazują na te wartości, więc całe UI korzysta z jednego źródła prawdy.
+- Gradient/tło jest renderowane na `body`, ale aby zachować przewijanie, zrezygnowaliśmy z `display:flex` i `overflow:hidden` na `body`. Scroll wrócił na główną kolumnę (`main`), a noise jest rysowany przez `body::before` z `position: fixed`, więc efekt wizualny został zachowany.
+- Efekt: cała strona ma ten sam „blask” z radially rozświetlanym tłem i ciemną bazą, co `_szablon.html`, a równocześnie można normalnie przewijać widok.
+- Testy: `npm --prefix web-next run lint`.

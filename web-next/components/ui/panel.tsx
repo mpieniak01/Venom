@@ -1,18 +1,22 @@
 import type { ReactNode } from "react";
 
 type PanelProps = {
+  eyebrow?: string;
   title?: string;
   description?: string;
   action?: ReactNode;
   children: ReactNode;
 };
 
-export function Panel({ title, description, action, children }: PanelProps) {
+export function Panel({ eyebrow, title, description, action, children }: PanelProps) {
   return (
     <section className="glass-panel w-full rounded-panel shadow-card px-6 py-5">
       {(title || description || action) && (
         <header className="mb-4 flex items-start justify-between gap-3">
           <div>
+            {eyebrow && (
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{eyebrow}</p>
+            )}
             {title && (
               <h3 className="text-lg font-semibold leading-tight">{title}</h3>
             )}

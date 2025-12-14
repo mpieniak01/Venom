@@ -12,8 +12,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { StatCard } from "@/components/ui/panel";
 import { Badge } from "@/components/ui/badge";
 import { ListCard } from "@/components/ui/list-card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ArrowUpRight, Compass, Cpu, RefreshCw } from "lucide-react";
+import { OverlayFallback } from "./overlay-fallback";
 
 type CommandCenterProps = {
   open: boolean;
@@ -126,11 +126,11 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
           </header>
           <div className="mt-4 space-y-2">
             {taskSummary.length === 0 ? (
-              <EmptyState
+              <OverlayFallback
                 icon={<Cpu className="h-4 w-4 text-emerald-300" />}
                 title="Brak aktywnych zadań"
                 description="Kolejka chwilowo nie przetwarza tasków."
-                className="text-sm"
+                hint="Command Center"
               />
             ) : (
               taskSummary.map((entry) => (
@@ -164,14 +164,13 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
               />
             ))}
             {!servicesAvailable && (
-              <div data-testid="command-center-services-offline">
-                <EmptyState
-                  icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
-                  title="Brak usług"
-                  description="Sprawdź połączenie z backendem."
-                  className="text-sm"
-                />
-              </div>
+              <OverlayFallback
+                icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
+                title="Brak usług"
+                description="Sprawdź połączenie z backendem."
+                hint="Command Center"
+                testId="command-center-services-offline"
+              />
             )}
           </div>
         </section>

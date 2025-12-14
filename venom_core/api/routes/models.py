@@ -4,7 +4,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
 from venom_core.utils.logger import get_logger
@@ -22,7 +22,7 @@ class ModelInstallRequest(BaseModel):
 
     name: str
 
-    @validator("name")
+    @field_validator("name")
     def validate_name(cls, v):
         if not v or len(v) > 100:
             raise ValueError("Nazwa modelu musi mieć 1-100 znaków")
@@ -39,7 +39,7 @@ class ModelSwitchRequest(BaseModel):
         None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
     )
 
-    @validator("name")
+    @field_validator("name")
     def validate_name(cls, v):
         if not v or len(v) > 100:
             raise ValueError("Nazwa modelu musi mieć 1-100 znaków")

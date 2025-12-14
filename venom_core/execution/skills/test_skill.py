@@ -15,6 +15,8 @@ logger = get_logger(__name__)
 class TestReport:
     """Raport z wykonania testów pytest."""
 
+    __test__ = False
+
     exit_code: int
     passed: int
     failed: int
@@ -25,6 +27,8 @@ class TestReport:
 @dataclass
 class LintReport:
     """Raport z wykonania lintera."""
+
+    __test__ = False
 
     exit_code: int
     issues: List[str]  # Lista problemów znalezionych przez linter
@@ -38,6 +42,8 @@ class TestSkill:
     Używa DockerHabitat do bezpiecznego wykonywania komend testowych.
     NIE uruchamia testów lokalnie - wszystko w kontenerze.
     """
+
+    __test__ = False
 
     def __init__(self, habitat: DockerHabitat = None):
         """

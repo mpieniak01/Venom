@@ -3,7 +3,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { ListCard } from "@/components/ui/list-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -11,8 +10,12 @@ import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
 import type { HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { Card, Metric, Text, Flex } from "@tremor/react";
-import { Activity, Layers, Radar, TimerReset, Inbox, ListFilter, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Activity, Layers, Radar, TimerReset, ListFilter, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { LatencyCard } from "@/components/inspector/lag-card";
+import { HistoryList } from "@/components/history/history-list";
+import { formatRelativeTime } from "@/lib/date";
+import { statusTone } from "@/lib/status";
+import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 
 export default function InspectorPage() {
   const { data: history } = useHistory(50);
@@ -36,22 +39,22 @@ export default function InspectorPage() {
   );
   const inspectorStats = useMemo(() => buildInspectorStats(history, tasks), [history, tasks]);
   const taskBreakdown = useMemo(() => buildTaskBreakdown(tasks), [tasks]);
-  const tremorCards = useMemo(
+  const latencyCards = useMemo(
     () => [
       {
         label: "Średni SLA",
-        metric: formatDuration(inspectorStats.avgDuration),
-        description: "czas wykonania requestu",
+        value: formatDuration(inspectorStats.avgDuration),
+        hint: "czas wykonania requestu",
       },
       {
         label: "Aktywne śledzenia",
-        metric: inspectorStats.processing,
-        description: `z ${inspectorStats.total} logów`,
+        value: inspectorStats.processing.toString(),
+        hint: `z ${inspectorStats.total} logów`,
       },
       {
         label: "Kroki (filtr)",
-        metric: filteredSteps.length,
-        description: `${stepsCount} w bieżącym flow`,
+        value: filteredSteps.length.toString(),
+        hint: `${stepsCount} w bieżącym flow`,
       },
     ],
     [filteredSteps.length, inspectorStats.avgDuration, inspectorStats.processing, inspectorStats.total, stepsCount],
@@ -95,59 +98,50 @@ export default function InspectorPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="glass-panel border border-white/10 p-6 shadow-card">
-        <SectionHeading
-          eyebrow="Inspector / Debugging"
-          title="Trace Intelligence"
-          description="RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki."
-          as="h1"
-          size="lg"
-          className="items-center"
-          rightSlot={
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Badge tone="neutral">/api/v1/history/requests</Badge>
-              <Badge tone="neutral">/api/v1/tasks</Badge>
-              <Badge tone="neutral">/history/requests/:id</Badge>
-            </div>
-          }
+      <SectionHeading
+        eyebrow="Inspector / Debugging"
+        title="Trace Intelligence"
+        description="RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki."
+        as="h1"
+        size="lg"
+        rightSlot={
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge tone="neutral">/api/v1/history/requests</Badge>
+            <Badge tone="neutral">/api/v1/tasks</Badge>
+            <Badge tone="neutral">/history/requests/:id</Badge>
+          </div>
+        }
+      />
+      <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <HeroStat
+          icon={<Activity className="h-4 w-4 text-emerald-300" />}
+          label="Skuteczność"
+          primary={`${inspectorStats.successRate}%`}
+          hint={`${inspectorStats.completed} zakończonych`}
         />
-        <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <HeroStat
-            icon={<Activity className="h-4 w-4 text-emerald-300" />}
-            label="Skuteczność"
-            primary={`${inspectorStats.successRate}%`}
-            hint={`${inspectorStats.completed} zakończonych`}
-          />
-          <HeroStat
-            icon={<Layers className="h-4 w-4 text-violet-300" />}
-            label="Historia requestów"
-            primary={inspectorStats.total.toString()}
-            hint={`${inspectorStats.processing} aktywnych śledzeń`}
-          />
-          <HeroStat
-            icon={<TimerReset className="h-4 w-4 text-sky-300" />}
-            label="Śr. czas realizacji"
-            primary={formatDuration(inspectorStats.avgDuration)}
-            hint="ostatnie 50"
-          />
-          <HeroStat
-            icon={<Radar className="h-4 w-4 text-indigo-300" />}
-            label="Aktywne zadania"
-            primary={inspectorStats.activeTasks.toString()}
-            hint={`${taskBreakdown.find((b) => b.status === "PROCESSING")?.count ?? 0} procesowanych`}
-          />
-        </div>
+        <HeroStat
+          icon={<Layers className="h-4 w-4 text-violet-300" />}
+          label="Historia requestów"
+          primary={inspectorStats.total.toString()}
+          hint={`${inspectorStats.processing} aktywnych śledzeń`}
+        />
+        <HeroStat
+          icon={<TimerReset className="h-4 w-4 text-sky-300" />}
+          label="Śr. czas realizacji"
+          primary={formatDuration(inspectorStats.avgDuration)}
+          hint="ostatnie 50"
+        />
+        <HeroStat
+          icon={<Radar className="h-4 w-4 text-indigo-300" />}
+          label="Aktywne zadania"
+          primary={inspectorStats.activeTasks.toString()}
+          hint={`${taskBreakdown.find((b) => b.status === "PROCESSING")?.count ?? 0} procesowanych`}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {tremorCards.map((card) => (
-          <Card key={card.label} className="border border-white/10 bg-white/5 text-white shadow-card">
-            <Text>{card.label}</Text>
-            <Flex justifyContent="between" alignItems="center" className="mt-2">
-              <Metric>{card.metric}</Metric>
-              <Text className="text-zinc-400">{card.description}</Text>
-            </Flex>
-          </Card>
+        {latencyCards.map((card) => (
+          <LatencyCard key={card.label} label={card.label} value={card.value} hint={card.hint} />
         ))}
       </div>
 
@@ -157,74 +151,39 @@ export default function InspectorPage() {
             title="Kolejka requestów"
             description="Ostatnie 50 historii RequestTracer."
           >
-            <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-              {(history || []).length === 0 && (
-                <EmptyState
-                  icon={<ListFilter className="h-4 w-4" />}
-                  title="Brak historii do wyświetlenia"
-                  description="Wyślij zadanie, aby zobaczyć przepływ w historii."
-                  className="text-xs"
-                />
-              )}
-              {(history || []).map((req) => (
-                <ListCard
-                  key={req.request_id}
-                  title={req.request_id}
-                  subtitle={formatRelative(req.created_at)}
-                  badge={<Badge tone={statusTone(req.status)}>{req.status}</Badge>}
-                  meta={<span className="line-clamp-2">{req.prompt || "Brak promptu."}</span>}
-                  selected={selectedId === req.request_id}
-                  onClick={() =>
-                    loadHistoryDetail(
-                      req.request_id,
-                      setDiagram,
-                      setSelectedId,
-                      setSteps,
-                      () => setStepFilter(""),
-                      () => setCopyMessage(null),
-                    )
-                  }
-                />
-              ))}
-            </div>
+            <HistoryList
+              entries={history}
+              selectedId={selectedId}
+              onSelect={(entry) =>
+                loadHistoryDetail(
+                  entry.request_id,
+                  setDiagram,
+                  setSelectedId,
+                  setSteps,
+                  () => setStepFilter(""),
+                  () => setCopyMessage(null),
+                )
+              }
+              emptyTitle="Brak historii do wyświetlenia"
+              emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
+            />
           </Panel>
 
           <Panel
             title="Task telemetry"
             description="Status agentów oczekujących na wykonanie."
           >
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-white/5 bg-zinc-950/40 px-4 py-3 text-sm text-zinc-300">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">
-                  Aktywne zadania
-                </p>
-                <p className="mt-1 text-2xl font-semibold text-white">
-                  {inspectorStats.activeTasks}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {taskBreakdown.reduce((acc, entry) => acc + entry.count, 0)} w obserwacji
-                </p>
-              </div>
-              <ul className="space-y-2">
-                {taskBreakdown.length === 0 && (
-                  <EmptyState
-                    icon={<Inbox className="h-4 w-4" />}
-                    title="Brak aktywnych tasków"
-                    description="Taski pojawią się, gdy kolejka uruchomi nowe zadania."
-                    className="text-xs"
-                  />
-                )}
-                {taskBreakdown.map((entry) => (
-                  <li
-                    key={entry.status}
-                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-2 text-sm text-zinc-300"
-                  >
-                    <span className="font-medium">{entry.status}</span>
-                    <Badge tone={statusTone(entry.status)}>{entry.count}</Badge>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <TaskStatusBreakdown
+              title="Task telemetry"
+              datasetLabel="Zadania w obserwacji"
+              totalLabel="Aktywne"
+              totalValue={inspectorStats.activeTasks}
+              entries={taskBreakdown.map((entry) => ({
+                label: entry.status,
+                value: entry.count,
+              }))}
+              emptyMessage="Taski pojawią się, gdy kolejka uruchomi nowe zadania."
+            />
           </Panel>
         </aside>
 
@@ -295,21 +254,28 @@ export default function InspectorPage() {
                   />
                 )}
                 {filteredSteps.map((step, idx) => (
-                  <ListCard
+                  <button
                     key={`${selectedId}-${idx}`}
-                    title={step.component || "Nieznany komponent"}
-                    subtitle={step.action || step.details || "—"}
-                    badge={step.status ? <Badge tone={statusTone(step.status)}>{step.status}</Badge> : undefined}
-                    meta={
-                      step.timestamp ? (
-                        <span className="text-[11px] uppercase tracking-wide text-zinc-500">
-                          {formatTimestamp(step.timestamp)}
-                        </span>
-                      ) : undefined
-                    }
-                    selected={focusedIndex === idx}
                     onClick={() => setFocusedIndex(idx)}
-                  />
+                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                      focusedIndex === idx
+                        ? "border-violet-400/60 bg-violet-500/10"
+                        : "border-white/10 bg-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{step.component || "Nieznany komponent"}</p>
+                        <p className="text-xs text-zinc-400">{step.action || step.details || "—"}</p>
+                      </div>
+                      {step.status && <Badge tone={statusTone(step.status)}>{step.status}</Badge>}
+                    </div>
+                    {step.timestamp && (
+                      <p className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                        {formatTimestamp(step.timestamp)}
+                      </p>
+                    )}
+                  </button>
                 ))}
               </div>
             </Panel>
@@ -322,7 +288,7 @@ export default function InspectorPage() {
                 <StatCard
                   label="Status"
                   value={selectedRequest?.status ?? "—"}
-                  hint={selectedRequest ? `Zakończone: ${formatRelative(selectedRequest.finished_at)}` : "Wybierz request z listy"}
+                  hint={selectedRequest ? `Zakończone: ${formatRelativeTime(selectedRequest.finished_at)}` : "Wybierz request z listy"}
                   accent="purple"
                 />
                 <StatCard
@@ -385,14 +351,6 @@ export default function InspectorPage() {
       </div>
     </div>
   );
-}
-
-function statusTone(status: string | undefined) {
-  if (!status) return "neutral" as const;
-  if (status === "COMPLETED") return "success" as const;
-  if (status === "PROCESSING") return "warning" as const;
-  if (status === "FAILED") return "danger" as const;
-  return "neutral" as const;
 }
 
 type HistoryStep = HistoryStepType;
@@ -505,22 +463,6 @@ function formatTimestamp(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
-}
-
-function formatRelative(value?: string | null) {
-  if (!value) return "—";
-  const target = new Date(value);
-  if (Number.isNaN(target.getTime())) return value;
-  const diffMs = Date.now() - target.getTime();
-  if (diffMs < 0) return "przyszłość";
-  const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return `${seconds}s temu`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m temu`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h temu`;
-  const days = Math.floor(hours / 24);
-  return `${days}d temu`;
 }
 
 type HeroStatProps = {

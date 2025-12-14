@@ -5,17 +5,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { navItems } from "./sidebar";
-import {
-  emergencyStop,
-  purgeQueue,
-  toggleQueue,
-  useQueueStatus,
-  useTasks,
-} from "@/hooks/use-api";
 
 type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenQuickActions: () => void;
 };
 
 type PaletteAction = {
@@ -26,10 +20,8 @@ type PaletteAction = {
   run: () => Promise<void> | void;
 };
 
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: CommandPaletteProps) {
   const router = useRouter();
-  const { data: queue, refresh: refreshQueue } = useQueueStatus();
-  const { refresh: refreshTasks } = useTasks();
   const [query, setQuery] = useState("");
   const [running, setRunning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,39 +47,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const queueActions: PaletteAction[] = useMemo(
     () => [
       {
-        id: "queue-toggle",
-        label: queue?.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę",
-        description: "/api/v1/queue toggle",
+        id: "queue-open",
+        label: "Otwórz Quick Actions",
+        description: "Panel /api/v1/queue (pause, purge, emergency).",
         category: "Kolejka",
         run: async () => {
-          await toggleQueue(queue?.paused ?? false);
-          refreshQueue();
-        },
-      },
-      {
-        id: "queue-purge",
-        label: "Purge queue",
-        description: "Czyści oczekujące zadania",
-        category: "Kolejka",
-        run: async () => {
-          await purgeQueue();
-          refreshQueue();
-          refreshTasks();
-        },
-      },
-      {
-        id: "queue-emergency",
-        label: "Emergency stop",
-        description: "Natychmiast zatrzymuje kolejkę",
-        category: "Kolejka",
-        run: async () => {
-          await emergencyStop();
-          refreshQueue();
-          refreshTasks();
+          onOpenQuickActions();
         },
       },
     ],
-    [queue?.paused, refreshQueue, refreshTasks],
+    [onOpenQuickActions],
   );
 
   const allActions = [...navActions, ...queueActions];

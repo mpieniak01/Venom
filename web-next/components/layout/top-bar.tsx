@@ -54,7 +54,7 @@ export function TopBar() {
   const proEnabled = costMode?.enabled ?? false;
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-gradient-to-r from-zinc-950/95 to-zinc-900/30 px-6 py-4 backdrop-blur-xl">
+    <div className="glass-panel sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-black/40 px-6 py-4 backdrop-blur-2xl">
       <div className="flex items-center gap-3">
         <MobileNav />
         <span
@@ -152,7 +152,11 @@ export function TopBar() {
       <CommandCenter open={commandOpen} onOpenChange={setCommandOpen} />
       <AlertCenter open={alertsOpen} onOpenChange={setAlertsOpen} />
       <QuickActions open={actionsOpen} onOpenChange={setActionsOpen} />
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onOpenQuickActions={() => setActionsOpen(true)}
+      />
       <NotificationDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />
       <ServiceStatusDrawer open={servicesOpen} onOpenChange={setServicesOpen} />
     </div>

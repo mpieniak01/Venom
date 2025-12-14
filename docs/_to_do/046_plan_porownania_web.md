@@ -189,3 +189,210 @@
 ## Postęp etapu 26 – Make start/stop ogarnia też UI
 - Aby uniknąć „śmieci” procesów, dodałem do `Makefile` obsługę Next.js (port 3000). `make start` po uruchomieniu uvicorna odpala również `npm --prefix web-next run dev -- --hostname 0.0.0.0 --port 3000`, zapisując PID w `.web-next.pid`. Analogicznie `make stop` zabija oba procesy i czyści PID-y, a `make status` raportuje kondycję backendu i UI.
 - Dzięki temu mamy jeden punkt wejścia do restartu środowiska (backend + dashboard) i nie musimy ręcznie wchodzić do `web-next`. Przydatne szczególnie, gdy port 3000 ma być odpalany razem z API na 8000 podczas porównań gałęzi.
+
+## Analiza stanu – przed etapem 27
+- `_szablon.html` zawiera komplet docelowych tokenów wizualnych (kolory neonowe, glassmorphism, spacing, typografia Inter/JetBrains), ale aktualne widoki Jinja (`web/templates/index.html`, `brain.html`, `strategy.html`, `inspector.html`) wciąż renderują legacy układ (`container`, `left-stack`, `war-room-panel`) i klasy niepowiązane z tokenami szablonu.
+- `web/static/css/app.css` nie ma sekcji odpowiadającej deklaracjom ze `_szablon.html`; część klas jest duplikowana inline i nie respektuje docelowych przerw/siatki ani gradientów tła.
+- Elementy wizerunkowe (sidebar typu command column, panel telemetrii, glassowe nagłówki, hero karty) nie posiadają jeszcze swoich odpowiedników w `base.html`; nadal ładowany jest tylko stary navbar + kontener.
+- Zmiany z etapów 21–26 przygotowały wskaźniki usług/kolejki w Next, ale nie istnieje jeszcze statyczne odwzorowanie tych sekcji dla obecnego frontu – brak spójności między gałęziami pod kątem kolorystyki i modułów.
+
+## Plan etapu 27 – odwzorowanie szablonu wizerunkowego (web-next)
+1. **Tokeny i tło**
+   - Zidentyfikować kolory, gradienty i efekty (noise/glass/flare) z `_szablon.html`, a następnie przenieść je do `web-next/app/globals.css` oraz `tailwind.config.ts`, aby całe Next UI korzystało z jednej palety (background, panel, akcenty neonowe, shadow).
+2. **Layout bazowy**
+   - Ujednolicić podstawowe komponenty layoutu (`app/layout.tsx`, `components/layout/sidebar.tsx`, `components/layout/top-bar.tsx`) tak, by używały nowych klas glass/glow i spacingu odpowiadającego referencyjnemu szablonowi – bez zmian logiki hooków.
+3. **Widoki funkcjonalne**
+   - Dostosować główne strony (`app/page.tsx`, `app/brain/page.tsx`, `app/inspector/page.tsx`, `app/strategy/page.tsx`), aby hero sekcje, flare-card i command console odwzorowywały `_szablon.html` (układ kolumn, spacing, neonowe nagłówki).
+4. **Weryfikacja**
+   - Uruchomić `npm run lint` i `npm run test:e2e`, przygotować screeny porównawcze oraz zanotować wszystkie kompromisy w tej sekcji planu.
+
+## Przygotowanie etapu 28 – mapa bloków i deduplikacja
+- Po ujednoliceniu wyglądu przygotować tabelaryczną mapę bloków (sidebar, telemetry tabs, command console, hero cards, integracje, KPI, overlaye) wraz z przypisaną funkcjonalnością i źródłem danych (legacy `app.js`, Next hook, brak).
+- Dla każdej sekcji oznaczyć status: „potrzebna 1:1”, „do scalania z innym blokiem”, „możliwa do usunięcia” – to posłuży do decyzji o dalszej adaptacji usług w etapie 28.
+- Uwzględnić ewentualne dublowanie funkcji między Cockpitem a Inspector/Strategy (np. historia vs timeline) oraz zdefiniować kryteria zachowania (np. unikalny endpoint, wymóg compliance, value UX).
+
+## Postęp etapu 27 – kickoff w web-next
+- Stary katalog `web/` oznaczono jako zamrożony (`web/README.md`) – wszystkie kolejne iteracje realizujemy w `web-next`.
+- Przeniesiono neonową paletę `_szablon.html` do `web-next/app/globals.css` (ciemne tło #030407, akcenty #00ff9d / #00b8ff, noise overlay, nowe cienie i glass-panel), dzięki czemu layouty Next korzystają z tych samych efektów wizualnych.
+- Zaktualizowano bazowy layout (`app/layout.tsx`) oraz komponenty otoczenia (`components/layout/sidebar.tsx`, `components/layout/top-bar.tsx`): sidebar i topbar korzystają z klas glass-panel, neonowych akcentów i spacingu jak w `_szablon.html`, a shell posiada warstwy tła z gradientami i noise.
+- Kolejnym krokiem będzie dopięcie widoków funkcjonalnych (Cockpit/Brain/Inspector/Strategy) oraz walidacja wizualna opisana w planie powyżej.
+
+## Postęp etapu 27 – stabilizacja layoutu i testów
+- Naprawiłem regresję z `SystemStatusPanel`: klasa `glass-panel` nadpisywała `position`, przez co blok w sidebarze kurczył się do 0 px i smoketest widział „hidden”. W `app/globals.css` zachowujemy teraz przekazaną wartość (`fixed`/`sticky`/`absolute`), więc panel odzyskał właściwe wymiary bez ruszania markupów.
+- Uporządkowałem typy stron Brain/Cockpit (cytoscape + logi) oraz komponenty wykorzystujące `SheetContent`, żeby `next build` przechodził bez błędów – to było konieczne, by odblokować testy w trybie produkcyjnym.
+- `npm --prefix web-next run test:e2e` buduje obecnie aplikację i odpala Playwrighta na `next start` (konfiguracja w `package.json` + `playwright.config.ts`). Dzięki temu smoketest działa na tym samym buildzie co deployment i nie wyświetla więcej dev-overlay z błędem „Unexpected end of JSON input”.
+- Po zmianach `npm --prefix web-next run lint` oraz `npm --prefix web-next run test:e2e` (13 scenariuszy) zakończyły się zielono i logują realny wynik w `_test-results`. To zamyka kolejny etap planu: layouty w `web-next` są zgodne z `_szablon.html`, a pipeline testowy jest odporny na brak backendu.
+
+## Postęp etapu 28 – mapa bloków i deduplikacja
+Przeanalizowałem aktualne widoki `web-next` względem wymagań `_szablon.html` i zebrałem blokowo-funkcjonalną mapę, która mówi które sekcje musimy utrzymać 1:1, a które można scalić lub uprościć. Oparłem się na rzeczywistych hookach/data-source’ach z Next (np. `useQueueStatus`, `useGraphSummary`, `useRoadmap`). Poniżej tabela z rekomendacjami:
+
+| Obszar / blok | Funkcja w UI | Źródło danych / komponent w `web-next` | Status |
+| --- | --- | --- | --- |
+| Sidebar (Modules, System Status, Cost, Autonomy) | Globalna nawigacja + kontrola trybów | `SystemStatusPanel` (`useQueueStatus`, `useTelemetryFeed`), `useCostMode`, `useAutonomyLevel` | **Utrzymać 1:1** – to odpowiednik command-column z makiety, nie ma duplikatów |
+| TopBar + Status Pills | Telemetria WS/Queue/Tasks + skróty | `StatusPills` (`useQueueStatus`, `useMetrics`, `useTasks`) | **Utrzymać 1:1** – główny wskaźnik stanu systemu |
+| TopBar overlaye (Alert/Notification/Command/QuickActions/Services) | Szybkie interakcje + fallbacki offline | `AlertCenter`, `NotificationDrawer`, `CommandCenter`, `QuickActions`, `ServiceStatusDrawer` (korzystają z `useTelemetryFeed`, `useQueueStatus`, `useServiceStatus`) | **Utrzymać**, ale konsolidować wzorce offline (już spójne) |
+| Cockpit – hero telemetry (Live Feed, Skuteczność, Zużycie tokenów) | Startowy przegląd operacji | `useTelemetryFeed`, `useMetrics`, `useTokenMetrics` | **Utrzymać 1:1** – zgodne z `_szablon` (neonowe hero) |
+| Cockpit – Command Console / chat | Wysyłanie zadań, logi, pinowanie | `sendTask`, `useHistory`, `useTasks`, `useTelemetryFeed` | **Utrzymać** – to kluczowy blok unikatowy |
+| Task lists (Aktywne zadania, Historia, Task Insights) | Kolejka i historia requestów | `useTasks`, `useHistory`, `fetchHistoryDetail` | **Scalić** – dane dublują się z Inspector (lista + timeline), potrzebny jeden komponent i linkowanie zamiast dwóch list |
+| Queue governance vs QuickActions | Operacje `/api/v1/queue/*` | `useQueueStatus`, akcje `toggleQueue`, `purgeQueue`, `emergencyStop` | **Scalić** – QuickActions sheet obsługuje te same endpointy, panel w Cockpit może zostać uproszczony do skrótu/linku |
+| Makra Cockpitu | Makra użytkownika + gotowe akcje | LocalStorage + `sendTask` | **Utrzymać**, bo brak innego miejsca na user-defined scripts |
+| Modele / Repo / Tokenomics | Operacyjne moduły (models/git/tokens) | `useModels`, `useGitStatus`, `useTokenMetrics` | **Utrzymać**, ale rozważyć zlanie wykresu tokenów z hero (żeby nie pokazywać tych samych liczb dwa razy) |
+| Brain – Mind Mesh i Lessons | Podgląd grafu wiedzy i lekcji | `useGraphSummary`, `useKnowledgeGraph`, `useLessons`, `useLessonsStats` | **Utrzymać** – unikalna funkcja, wymaga jedynie polerki typów (już zrobione) |
+| Inspector – Trace Intelligence | Mermaid flow + kroki RequestTracer | `useHistory`, `fetchHistoryDetail`, `useTasks` | **Utrzymać**, ale współdzielić komponent listy historii z Cockpitem (punkt powyżej) |
+| Strategy – War Room | Roadmapa, wizja, raport Executive | `useRoadmap`, `createRoadmap`, `requestRoadmapStatus`, `startCampaign` | **Utrzymać**, blok docelowo odwzorowuje sekcję „Integracje / KPI” ze `_szablon` |
+
+Wnioski:
+- **Priorytet scalania**: listy historii i panel kolejkowy (Cockpit ↔ Inspector / QuickActions), bo to jedyne miejsca z powielonymi endpointami.
+- **Integracje / overlaye** są już spójne, wymagają tylko dalszej kosmetyki (np. wspólne dane testowe).
+- Kolejny krok w etapie 28: przygotować schemat komponentów współdzielonych (HistoryList, QueueActions) i rozpocząć refaktor Cockpitu tak, by linkował do gotowych widoków zamiast powielać logikę.
+
+Testy: brak (zmiany dokumentacyjne).
+
+### Backlog etapu 28 (cele, zanim ruszymy dalej)
+1. **History & Timeline** – przygotować wspólny komponent listy historii (Cockpit/Inspector), dodać tryb „preview” w Cockpit (2 ostatnie wpisy + link do pełnego widoku Inspector), a w Inspectorze używać tego samego komponentu z rozszerzonymi filtrami.
+2. **Queue governance vs QuickActions** – zostawić pełną logikę akcji w overlayu, a w Cockpitu zamienić panel na skrót (status + CTA otwierające QuickActions); w ten sposób unikamy dwóch miejsc modyfikujących `/api/v1/queue/*`.
+3. **Token/KPI bloki** – sprawdzić, czy statystyki tokenów z hero i sekcji „Tokenomics” nie duplikują danych; jeśli tak, przesunąć wykres/BarList do hero i wprowadzić inny moduł (np. koszt per model) w dolnej części.
+4. **Brain/Strategy dokumentacja** – doprowadzić widok Brain do pełnej zgodności z `_szablon` (z gotowym opisem bloków w README), a w Strategy uporządkować interakcje formularzy (wizja, kampanie, raport) i potwierdzić mapping endpointów.
+5. **TopBar overlaye – wspólne fallbacki** – ujednolicić copy i strukturę `EmptyState` w Alert/Notification/Command/Services (jedna utilka, te same ikony/kolory i testy).
+6. **Mapa bloków → kolejny etap** – przed startem etapu 29 przygotować checklistę wykonanych scaleni oraz wskazać, które elementy wciąż są „legacy” względem `_szablon`. Cel nadrzędny: zachować wizerunkową spójność (kolory, spacing, glass) i zminimalizować liczbę równoległych implementacji tej samej funkcji.
+
+### Postęp etapu 28 – wspólna historia Cockpit/Inspector
+- Stworzyłem komponent `HistoryList` (`components/history/history-list.tsx`) wykorzystujący neonową paletę ze `_szablon.html` (gradient emerald/black, badge w tonach success/warning/danger) oraz nowy helper `formatRelativeTime` (`lib/date.ts`). Komponent obsługuje tryb „preview” (Cockpit) i „full” (Inspector) oraz opcjonalne CTA „+N w Inspectorze”.
+- Cockpit (`app/page.tsx`) korzysta teraz z `HistoryList` i prezentuje tylko 5 ostatnich wpisów wraz z linkiem do `/inspector`, zamiast własnej listy `ListCard`. Dzięki temu blok ma spójne tło i akcenty jak w projekcie referencyjnym.
+- Inspector (`app/inspector/page.tsx`) używa pełnej wersji `HistoryList`, co usuwa duplikację markupów i ręczne liczenie relative time; hinty w statystykach korzystają z tej samej funkcji formatującej.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – token KPI bez duplikatów
+- Sekcja hero „Zużycie tokenów” zawiera teraz badge trendu i inline wykres (`TokenChart` z kontrolowaną wysokością), więc pełny kontekst (łączna liczba, rozkład i kierunek zmian) jest dostępny bez scrollowania – zgodnie z `_szablon.html`.
+- Panele „Tokenomics” i „Trend tokenów” zastąpiłem duetem „Efektywność tokenów” + „Cache boost”. Pierwszy prezentuje średnie zużycie na zadanie, delta dwóch ostatnich próbek i stosunek prompt/completion oraz gradientową kartę live. Drugi zamienia surowe liczby na udziały procentowe (prompt/completion/cached) z neonowymi progess barami, co ułatwia decyzje o optymalizacji.
+- Dodane komponenty (`TokenEfficiencyStat`, `TokenShareBar`) pilnują glassmorphism i spacingu, a `TokenChart` otrzymał opcjonalny parametr wysokości – można go wpiąć w hero i w przyszłości w overlaye.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – mobilna kolumna dowodzenia
+- Komponent `MobileNav` (`components/layout/mobile-nav.tsx`) został przebudowany na pełnoprawny „command column”: nagłówek z neonowym badge, sekcja modułów, panel telemetrii z zakładkami Queue/Tasks/WS (zaczytuje `useQueueStatus`, `useMetrics`, `useTelemetryFeed`), mini terminal oraz karty Cost Mode + Autonomy oparte na tych samych endpointach co sidebar (`setCostMode`, `setAutonomy`).
+- Wewnętrzne komponenty (tab buttons, logi, selecty) korzystają z tych samych tokenów glass/glow co `_szablon.html`, a na dole widnieje blok statusów Next.js/FastAPI – użytkownik mobilny dostaje więc identyczny zestaw informacji jak w desktopowej kolumnie.
+- Dzięki temu nie ma już prostego menu z listą linków; mobilny shell w pełni odwzorowuje docelową wizerunkową szynę sterującą i nie wymaga przełączania na desktop, by zarządzać kosztami lub autonomią.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Task Insights & telemetry (Cockpit + Inspector)
+- Wyciągnąłem wspólny helper `statusTone` (`web-next/lib/status.ts`) i podpiąłem go w najważniejszych ekranach (Cockpit, Inspector, Strategy), dzięki czemu wszystkie badge statusowe korzystają z tych samych zasad (COMPLETED → success, IN_PROGRESS → warning itd.).
+- Dodałem moduły `TaskStatusBreakdown` oraz `RecentRequestList` (`web-next/components/tasks/*`), odtworzone z makiety `_szablon.html` (glass-panel, gradientowe progress bary, listy uppercase). Panel „Task Insights” w Cockpicie korzysta teraz z nowych komponentów i prezentuje statusy + ostatnie requesty bez Tremora.
+- Inspector w sekcji „Task telemetry” używa `TaskStatusBreakdown`, więc rozkład statusów tasków ma ten sam wygląd / copy co Cockpit; usunęliśmy zduplikowany kod obsługujący listę statusów i puste stany.
+- Zmiany obejmują kilka komponentów i stron, dzięki czemu kolejna faza może już bazować na spójnym „task board” niezależnie od widoku.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Queue governance ↔ QuickActions
+- Stworzyłem wspólny komponent `QueueStatusCard` (`components/queue/queue-status-card.tsx`) w stylistyce `_szablon.html` (glass-panel, gradient, badge statusu). Korzysta z niego panel „Queue governance” w Cockpicie oraz arkusz `QuickActions`, więc dane `/api/v1/queue/status` wyglądają identycznie i znikają duplikaty HTML/EmptyState.
+- Panel Cockpitu jest już w 100 % read-only (tylko status + CTA do QuickActions), a w Command Palette usunąłem bezpośrednie akcje kolejki – zamiast tego pojawiła się komenda „Otwórz Quick Actions”, która otwiera dedykowany sheet. Cała mutacja kolejki żyje teraz wyłącznie w jednym miejscu (overlay).
+- QuickActions pokazują dokładnie tę samą kartę statusową i blokują przyciski, gdy brakuje danych (`queue-offline-state` → `QueueStatusCard`). Brak potrzeby ręcznego kopiowania komunikatu do różnych widoków.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – overlaye TopBaru z jednym fallbackiem
+- Dodany komponent `OverlayFallback` (`components/layout/overlay-fallback.tsx`) odwzorowuje neonowy blok z `_szablon.html` (ikona w kapsule + opis + hint) i zastąpił wszystkie ręcznie budowane `EmptyState` w overlayach TopBaru.
+- `AlertCenter`, `NotificationDrawer`, `CommandCenter` oraz `ServiceStatusDrawer` korzystają teraz z tego samego fallbacku dla stanów offline i pustych list (`alert-center-offline-state`, `notification-offline-state`, `command-center-services-offline`, `service-status-offline`). Copy oraz układ są ujednolicone.
+- Dzięki temu użytkownik dostaje te same komunikaty niezależnie od tego, który sheet otworzy, a zespołowi łatwiej będzie wprowadzać dalsze zmiany stylistyczne (jedno źródło prawdy).
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Strategy w stylistyce `_szablon.html`
+- Zamiast tremorowych kart KPI w Strategy powstał komponent `RoadmapKpiCard` (`components/strategy/roadmap-kpi-card.tsx`) – neonowy panel z progressem wypełniającym się gradientem. Sekcja „Postęp wizji / Milestones / Tasks” korzysta już z nowego komponentu.
+- Sekcję „Podsumowanie zadań” przebudowałem na `TaskStatusBreakdown`, więc ten sam komponent co w Cockpicie/Inspectorze renderuje teraz rozkład statusów z milestone’ów (jedno źródło stylu + fallback).
+- `taskSummary` nie wstrzykuje sztucznego wpisu „Brak danych”; brak tasków powoduje spójny komunikat w `TaskStatusBreakdown`. Cały widok Strategy jest dzięki temu bliższy `_szablon.html` i współdzieli już większość naszego mini design systemu.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Brain: lekcje i analiza plików
+- Wyciągnąłem logikę lekcji do `LessonActions` i `LessonList` (`components/brain/lesson-actions.tsx`, `components/tasks/lesson-list.tsx`), dzięki czemu filtr tagów i lista lekcji mają tę samą neonową stylistykę co inne moduły oraz można je ponownie wykorzystać w przyszłości.
+- Utworzyłem moduł `FileAnalysisForm` + `FileAnalysisPanel` (`components/brain/file-analytics.tsx`), dzięki czemu sekcja „Analiza pliku” ma spójny układ (formularz + dwie karty glass) i nie powiela markupów JSON.
+- Tag agregacji (`aggregateTags`) teraz sortuje i limituje wpisy (max 8), więc UI nie rozsypuje się przy dużej liczbie tagów; highlight presetów w `LessonActions` ułatwia szybkie filtrowanie.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Brain: metryki i kontrolki grafu
+- Dodałem `BrainMetricCard` (`components/brain/metric-card.tsx`) i na szczycie widoku Brain pojawiła się trójka kart (węzły, krawędzie, lekcje) w stylu `_szablon.html`. Dzięki temu kluczowe KPI MindMesh są widoczne przed wejściem w graf.
+- Kontrolki grafu zostały wyciągnięte do `GraphFilterButtons` oraz `GraphActionButtons` (`components/brain/graph-filters.tsx`, `graph-actions.tsx`). Te same komponenty renderują teraz filtry typów i przyciski dopasowania/skanowania, a komunikaty o skanowaniu są spięte w jednym miejscu.
+- Cały overlay nie duplikuje już logiki – `handleFilterChange`, `handleTagToggle` i `handleScanGraph` mieszkają w BrainPage, a UI jest w komponentach. To przygotowuje scenę do dalszego przenoszenia grafu na docelowy layout.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Brain: finalizacja sekcji Lessons
+- Po kompletnej weryfikacji wprowadziłem `LessonStats` (`components/brain/lesson-stats.tsx`), które renderuje statystyki LessonsStore w tym samym stylu co reszta kart. Sekcja „Lekcje i operacje grafu” ma teraz spójny układ (statystyki + filtry + lista) i nie korzysta już z surowego JSON.
+- Dzięki temu panel Lessons wykorzystuje w 100% nasze komponenty (LessonStats, LessonActions, LessonList, FileAnalysisForm/Panel). Zachowaliśmy funkcjonalność (filtry tagów, odświeżanie, analiza pliku), ale kod jest gotowy na finalny retusz.
+- Ten krok domyka zakres dla Brain w etapie 28 – kolejne prace będą mogły skupić się na innych widokach, bo Mind Mesh jest już przeniesiony do `_szablon.html` bez zmian logiki backendu.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Inspector: wizualny parity
+- Sekcja insightów została zmodernizowana: tremorowe karty SLA/aktywnych śledzeń/kroków zastąpił nowy komponent `LatencyCard` (`components/inspector/lag-card.tsx`), dzięki czemu KPI Trace Intelligence wyglądają tak samo jak reszta aplikacji (glass + neon).
+- Lista kroków RequestTracer korzysta teraz z tego samego layoutu co Command console (tailwindowe bloki + `Badge`), więc cały panel nie używa już `ListCard` i łatwiej go dostosować do `_szablon.html`.
+- Reszta widoku (HistoryList, TaskStatusBreakdown) pozostała funkcjonalna – zmieniliśmy tylko warstwę wizualną. Inspector jest gotowy do finalnej prezentacji bez naruszania funkcji debuggera.
+- Testy: `npm --prefix web-next run lint`.
+
+## Plan etapu 28 – Cockpit (index)
+1. **Hero KPI / Live Feed** – zastąpić tremorowe `Card/Metric/BarList` nowymi neonowymi komponentami (`CockpitMetricCard`, `CockpitTokenCard`), aby sekcja „Skuteczność operacji” i „Zużycie tokenów” wyglądała jak w `_szablon.html`.
+2. **Makra i przypięte logi** – wyprowadzić `MacroCard` oraz `PinnedLogCard`, tak aby blok makr i pinned logów korzystał z glass-paneli zamiast surowych list; przygotować ciepłe CTA (dodaj/usuwaj) zgodne z design systemem.
+3. **Modele i Repozytorium** – stworzyć spójne komponenty (`ModelListItem`, `RepoActionCard`), dzięki którym dolne panele Cockpitu przestaną używać legacy layoutu i będą gotowe do dalszej migracji funkcjonalnej.
+4. **Command console** – wynieść bąbelki rozmowy do `ConversationBubble`, aby chat/console miały identyczny wygląd i można je było przenieść w inne widoki.
+
+### Plan operacyjny dla sekcji Cockpit
+1. **Hero KPI / Live Feed** *(status: wykonane – patrz sekcja niżej)*
+   - Refaktor starych paneli Tremor → `CockpitMetricCard` + `CockpitTokenCard`.
+   - Zadbać o ten sam układ typografii i neonowych akcentów co `_szablon.html`.
+   - Wpiąć `TokenChart` jako `chartSlot`, żeby od razu mierzyć trend w hero.
+2. **Makra i przypięte logi**
+   - Wyodrębnić komponenty `MacroCard` i `PinnedLogCard` (glass-panel, CTA).
+   - Przenieść formularz dodawania makr do bocznego slotu `Panel` i dodać walidację wejścia.
+   - W logach zapewnić dwie akcje (eksport / usuń) oraz badge statusu z `statusTone`.
+   - Po wdrożeniu uruchomić `npm --prefix web-next run lint`.
+3. **Modele i Repozytorium**
+   - Stworzyć `ModelListItem` (status modelu, wersja, CTA „Aktywuj/Instaluj”) oraz `RepoActionCard` (git status + akcje sync/undo).
+   - Zamienić istniejące siatki na trzykolumnowy layout glass-paneli, tak jak w `_szablon.html`.
+   - Dodać badge liczby modeli (wykorzystać `data-testid="models-count"`), pamiętać o fallbacku offline.
+   - Test: lint + istniejący smoketest „Models panel badge displays count”.
+4. **Command console / ConversationBubble**
+   - Zaprojektować `ConversationBubble` (user vs Venom) z neonowymi kapsułami i metadanymi (czas, status, id).
+   - Zastąpić aktualne `motion.div` wewnątrz konsoli nowym komponentem, zostawiając logikę `openRequestDetail`.
+   - Dodać możliwość rozbudowy (np. akcje kopiuj/pin), ale bez zmian backendu.
+   - Po zmianach odświeżyć dokumentację + lint.
+
+### Postęp etapu 28 – hero KPI Cockpitu
+- W sekcji otwierającej Cockpit zrezygnowałem z tremorowych kart i podmieniłem je na dedykowane komponenty `CockpitMetricCard` i `CockpitTokenCard` wpięte bezpośrednio w `app/page.tsx`. Dzięki temu hero używa tych samych glass-paneli i neonowych cieni, co reszta layoutu `_szablon.html`.
+- `CockpitMetricCard` prezentuje teraz realny `success_rate`, liczbę zadań oraz pasek progresu wraz z opisem uptime – dane są formatowane w jednym miejscu, więc możemy łatwo rozbudować kartę o kolejne KPI.
+- `CockpitTokenCard` otrzymuje `chartSlot` z wykresem `TokenChart` i badge trendu (wspólne copy z sekcji Tokenomics), a rozbicie prompt/completion/cached renderowane jest w neonowych listach zamiast `BarList`. Usunęło to importy `@tremor/react` z Cockpitu i rozwiązało dublowanie komponentów.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – makra i przypięte logi
+- Wyprowadziłem komponenty `MacroCard` i `PinnedLogCard` (`components/cockpit/macro-card.tsx`) oraz nowy helper `lib/logs.ts`, dzięki czemu makra i przypięte logi dzielą ten sam look&feel glass-paneli co hero. Makra mają teraz nagłówki uppercase, badge „Custom” i przycisk w formie kapsuły – jeden komponent obsługuje zarówno presetowe, jak i użytkownika.
+- Panel logów oferuje kapsułowy header z CTA (eksport/wipe) oraz listę kart, gdzie każda pokazuje czas, typ, poziom i pełny payload w neonowej konsoli. Cały blok korzysta z gradientu emerald i nie używa już surowych `<pre>`/`IconButton` z `X`.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Modele i Repozytorium
+- Sekcje „Modele” i „Repozytorium” otrzymały nowe komponenty `ModelListItem` oraz `RepoActionCard` (`components/cockpit/model-card.tsx`). Lista modeli prezentuje nazwę, metadane (GB, source) i status w jednym glass-panelu, a aktywacja odbywa się poprzez kapsułowy przycisk – brak modeli pokazuje spójny `EmptyState`.
+- Repozytorium ma teraz blok „Stan repo” z opisem zmian oraz kartami akcji (Synchronizacja / Cofnij zmiany) z gradientami i kontrolą `pending`. Akcje korzystają z nowych handlerów (`handleGitSync`, `handleGitUndo`) i blokują przyciski podczas requestu, żeby uniknąć wielokrotnego strzału.
+- Testy: `npm --prefix web-next run lint`.
+
+### Postęp etapu 28 – Command console / ConversationBubble
+- Wyciągnąłem komponent `ConversationBubble` (`components/cockpit/conversation-bubble.tsx`), który renderuje kapsułowe wiadomości user ↔ Venom (eyebrow, czas, status, skrót requestu). Bąbel używa `MarkdownPreview` oraz `statusTone`, posiada ring zaznaczenia i CTA „Szczegóły ↗” zgodnie z `_szablon.html`.
+- Sekcja chatu w `app/page.tsx` korzysta teraz z `ConversationBubble` wewnątrz `AnimatePresence`, więc cały layout reaguje płynnie, a kliknięcia/klawiatura kierują do `openRequestDetail` bez duplikacji stylów.
+- Dzięki temu command console ma identyczny wygląd jak na makiecie wizerunkowej i jest gotowa do ewentualnego przeniesienia w inne widoki.
+- Testy: `npm --prefix web-next run lint`.
+
+## Ocena bieżącej wersji Cockpitu (screen 2024-XX-XX)
+1. **Hero KPI / Live Feed**
+   - Brak neonowej kapsuły wokół „Skuteczność operacji” – karta nadal wygląda płasko i nie ma numeru z badge'em trendu (na screenie `0`).
+   - Token panel nie zawiera wykresu inline ani share’ów; trzeba upewnić się, że nowy `CockpitTokenCard` jest zdeployowany oraz że API dostarcza wartości (fallback „Brak danych” powinien mieć ikonę).
+2. **Command console**
+   - Pomimo wdrożenia `ConversationBubble` w kodzie, screen pokazuje jeszcze stary layout. Sprawdzić build/SSR i zweryfikować, czy `app/page.tsx` na gałęzi `feature/044-migracja-next-plan` jest wdrożony na środowisko designerskie.
+   - Brak CTA „Szczegóły ↗” i badge statusu – jeśli build jest aktualny, trzeba dopracować styl `ConversationBubble` (większy kontrast, w pełni czarne tło, gradient z `_szablon.html`).
+3. **Makra / logi / sekcje dolne**
+   - Sekcja makr wygląda jeszcze jak prostokątne kafle – należy upewnić się, że nowy `MacroCard` ma gradient (violet) i uppercase; w razie potrzeby dopracować spacing + animacje hover.
+   - „Queue governance”, „Modele” i „Repozytorium” mają stare border-boxy; trzeba dopilnować, by `ModelListItem` i `RepoActionCard` były widoczne (deployment + styl).
+   - Panel „Task Insights” pokazuje placeholdery – warto dodać fallback `EmptyState`, żeby uniknąć twardego „Brak danych”.
+
+## Zadanie – domknięcie Cockpitu do 100% (etap 28)
+1. **Zweryfikować build** – upewnić się, że `web-next/app/page.tsx` z nowymi komponentami jest widoczny w preview. Jeśli nie, uruchomić `make stop && make start`, zbudować `web-next` i zrobić świeży screenshot referencyjny.
+2. **Dopolerować hero** – do `CockpitMetricCard` i `CockpitTokenCard` dodać brakujące elementy wizualne (badge trendu na karcie KPI, placeholder ikon dla „Brak danych”, podbity gradient).
+3. **Spójne glass-panels** – przejrzeć wszystkie sekcje Cockpitu i przepiąć na `glass-panel / rounded-panel / shadow-card`, żeby karta makr, Task Insights, Queue governance wyglądały jak w `_szablon.html`.
+4. **Fallbacki danych** – dodać `EmptyState` tam, gdzie API zwraca `0` (np. hero tokens), aby uniknąć „pustych” kart w screenshotach.
+5. **Dokumentacja** – po domknięciu wykonać screenshot + opis w tej sekcji dokumentu, potwierdzając, że Cockpit jest gotowy wizualnie i funkcjonalnie.
+
+## Uwagi z przeglądu wizualnego (nie wykonane, zapisane do backlogu)
+1. **Brak ramki w „KPI kolejki”** – karta po prawej od Live Feed ma inne obramowanie i wygląda jak płaski prostokąt. Trzeba odtworzyć tę samą ramkę/glow co w „Live Feed”.
+2. **Brak marginesów w bloku „Centrum dowodzenia”** – hero chat („Cockpit AI”) klei się do krawędzi sekcji; konieczne jest dodanie paddingu zgodnie z `_szablon.html`.
+3. **Kolor tła** – główne tło Cockpitu ma turkusowy gradient, a w `_szablon.html` centralny panel jest ciemnoniebieski (`#031627` → `#051B2D`). Należy pobrać oryginalne wartości i zaktualizować `app/globals.css`.
+4. **Nazwy boxów** – każdy panel (KPI, tokeny, makra itd.) powinien mieć identyczny styl nagłówka jak „Live Feed” (font-size, uppercase eyebrow, badge akcji). Aktualnie część sekcji wciąż ma stare tytuły.

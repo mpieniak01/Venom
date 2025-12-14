@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 # Testy będą działać tylko jeśli dependencies są zainstalowane
 pytest.importorskip("lancedb")
-pytest.importorskip("sentence_transformers")
+pytest.importorskip("sentence_transformers", exc_type=ImportError)
 
 from venom_core.main import app
 

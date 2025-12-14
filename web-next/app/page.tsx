@@ -8,6 +8,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { MarkdownPreview } from "@/components/ui/markdown";
+import { ConversationBubble } from "@/components/cockpit/conversation-bubble";
+import { MacroCard, PinnedLogCard } from "@/components/cockpit/macro-card";
+import { ModelListItem, RepoActionCard } from "@/components/cockpit/model-card";
 import {
   Sheet,
   SheetContent,
@@ -16,15 +19,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  emergencyStop,
   fetchHistoryDetail,
   gitSync,
   gitUndo,
   installModel,
-  purgeQueue,
   sendTask,
   switchModel,
-  toggleQueue,
   useGraphSummary,
   useHistory,
   useMetrics,
@@ -39,10 +39,17 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import type { Chart } from "chart.js/auto";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryRequestDetail, ServiceStatus } from "@/lib/types";
+import { LogEntryType, isLogPayload } from "@/lib/logs";
+import { statusTone } from "@/lib/status";
 import { AnimatePresence, motion } from "framer-motion";
-import { Card, Metric, Text, Flex, ProgressBar, BarList } from "@tremor/react";
-import { Bot, Pin, PinOff, X, Inbox, History as HistoryIcon, Package } from "lucide-react";
+import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
+import { Bot, Pin, PinOff, Inbox, Package } from "lucide-react";
 import Link from "next/link";
+import { HistoryList } from "@/components/history/history-list";
+import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
+import { RecentRequestList } from "@/components/tasks/recent-request-list";
+import { QueueStatusCard } from "@/components/queue/queue-status-card";
+import { QuickActions } from "@/components/layout/quick-actions";
 
 export default function Home() {
   const [taskContent, setTaskContent] = useState("");
@@ -66,6 +73,9 @@ export default function Home() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [copyStepsMessage, setCopyStepsMessage] = useState<string | null>(null);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [exportingPinned, setExportingPinned] = useState(false);
+  const [gitAction, setGitAction] = useState<"sync" | "undo" | null>(null);
 
   const { data: metrics } = useMetrics();
   const { data: tasks, refresh: refreshTasks } = useTasks();
@@ -135,13 +145,51 @@ export default function Home() {
     [history],
   );
   const logEntries = entries.slice(0, 8);
-  const tokensBar = [
-    { name: "Prompt", value: tokenMetrics?.prompt_tokens ?? 0 },
-    { name: "Completion", value: tokenMetrics?.completion_tokens ?? 0 },
-    { name: "Cached", value: tokenMetrics?.cached_tokens ?? 0 },
+  const tokenSplits = [
+    { label: "Prompt", value: tokenMetrics?.prompt_tokens ?? 0 },
+    { label: "Completion", value: tokenMetrics?.completion_tokens ?? 0 },
+    { label: "Cached", value: tokenMetrics?.cached_tokens ?? 0 },
   ].filter((item) => item.value && item.value > 0);
+  const totalTokens = tokenMetrics?.total_tokens ?? 0;
+  const promptTokens = tokenMetrics?.prompt_tokens ?? 0;
+  const completionTokens = tokenMetrics?.completion_tokens ?? 0;
+  const cachedTokens = tokenMetrics?.cached_tokens ?? 0;
+  const tasksCreated = metrics?.tasks?.created ?? 0;
+  const successRateValue = metrics?.tasks?.success_rate;
+  const successRate = typeof successRateValue === "number" ? successRateValue : null;
+  const avgTokensPerTask =
+    totalTokens > 0 && tasksCreated > 0
+      ? Math.round(totalTokens / Math.max(tasksCreated, 1))
+      : null;
+  const promptShare =
+    totalTokens > 0 ? Math.round((promptTokens / totalTokens) * 100) : null;
+  const completionShare =
+    totalTokens > 0 ? Math.round((completionTokens / totalTokens) * 100) : null;
+  const cachedShare =
+    totalTokens > 0 ? Math.round((cachedTokens / totalTokens) * 100) : null;
+  const lastTokenSample =
+    tokenHistory.length > 0 ? tokenHistory[tokenHistory.length - 1]?.value ?? null : null;
+  const prevTokenSample =
+    tokenHistory.length > 1 ? tokenHistory[tokenHistory.length - 2]?.value ?? null : null;
+  const tokenTrendDelta =
+    lastTokenSample !== null && prevTokenSample !== null
+      ? lastTokenSample - prevTokenSample
+      : null;
+  const tokenTrendMagnitude =
+    tokenTrendDelta !== null ? Math.abs(tokenTrendDelta).toLocaleString("pl-PL") : null;
+  const tokenTrendLabel =
+    tokenTrendDelta === null
+      ? "Stabilny"
+      : tokenTrendDelta > 0
+        ? `+${tokenTrendDelta.toLocaleString("pl-PL")}↑`
+        : `${tokenTrendDelta.toLocaleString("pl-PL")}↓`;
+  const promptCompletionRatio =
+    completionTokens > 0
+      ? (promptTokens / Math.max(completionTokens, 1)).toFixed(1)
+      : promptTokens > 0
+        ? "∞"
+        : null;
 
-  const successRate = metrics?.tasks?.success_rate ?? 0;
   const graphNodes = graph?.summary?.nodes ?? graph?.nodes ?? "—";
   const graphEdges = graph?.summary?.edges ?? graph?.edges ?? "—";
   const historySummary = useMemo(() => {
@@ -154,6 +202,10 @@ export default function Home() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [history]);
+  const historyStatusEntries = historySummary.map((entry) => ({
+    label: entry.name,
+    value: entry.value,
+  }));
   const macroActions = useMemo<MacroAction[]>(
     () => [
       {
@@ -231,6 +283,29 @@ export default function Home() {
     }
   };
 
+  const handleExportPinnedLogs = async () => {
+    if (pinnedLogs.length === 0) return;
+    setExportingPinned(true);
+    try {
+      const blob = new Blob(
+        [JSON.stringify(pinnedLogs.map((log) => log.payload), null, 2)],
+        { type: "application/json" },
+      );
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "pinned-logs.json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Clipboard error:", err);
+    } finally {
+      setExportingPinned(false);
+    }
+  };
+
   const openRequestDetail = async (requestId: string) => {
     setSelectedRequestId(requestId);
     setDetailOpen(true);
@@ -267,26 +342,57 @@ export default function Home() {
     }
   };
 
+  const handleGitSync = async () => {
+    if (gitAction) return;
+    setGitAction("sync");
+    try {
+      await gitSync();
+      setMessage("Synchronizacja repo zakończona.");
+      refreshGit();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Błąd synchronizacji");
+    } finally {
+      setGitAction(null);
+    }
+  };
+
+  const handleGitUndo = async () => {
+    if (gitAction) return;
+    if (!confirm("Cofnąć lokalne zmiany?")) return;
+    setGitAction("undo");
+    try {
+      await gitUndo();
+      setMessage("Cofnięto zmiany.");
+      refreshGit();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Błąd git undo");
+    } finally {
+      setGitAction(null);
+    }
+  };
+
   return (
-    <div className="space-y-8 pb-12">
-      <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
-          <div className="glass-panel flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Live Feed
-                </p>
-                <p className="text-sm font-semibold text-white">
-                  /ws/events stream
-                </p>
-              </div>
-              <Badge tone={connected ? "success" : "warning"}>
-                {connected ? "Połączono" : "Brak sygnału"}
-              </Badge>
-            </div>
+    <div className="space-y-10 pb-14">
+      <SectionHeading
+        eyebrow="Venom Cockpit"
+        title="Centrum Dowodzenia AI"
+        description="Monitoruj telemetrię, kolejkę i logi w czasie rzeczywistym – reaguj tak szybko, jak Venom OS."
+        as="h1"
+        size="lg"
+      />
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+        <Panel
+          title="Live Feed"
+          description="/ws/events stream – ostatnie logi operacyjne"
+          action={
+            <Badge tone={connected ? "success" : "warning"}>
+              {connected ? "Połączono" : "Brak sygnału"}
+            </Badge>
+          }
+        >
+          <div className="space-y-4">
             <input
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
+              className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
               placeholder="Filtruj logi..."
               value={logFilter}
               onChange={(e) => setLogFilter(e.target.value)}
@@ -319,104 +425,112 @@ export default function Home() {
                 ))}
             </div>
             {pinnedLogs.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-200">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                    Pinned
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    className="px-3 text-white"
-                    onClick={async () => {
-                      try {
-                        const blob = new Blob(
-                          [JSON.stringify(pinnedLogs.map((log) => log.payload), null, 2)],
-                          { type: "application/json" },
-                        );
-                        const url = URL.createObjectURL(blob);
-                        const anchor = document.createElement("a");
-                        anchor.href = url;
-                        anchor.download = "pinned-logs.json";
-                        document.body.appendChild(anchor);
-                        anchor.click();
-                        anchor.remove();
-                        URL.revokeObjectURL(url);
-                      } catch (err) {
-                        console.error("Clipboard error:", err);
-                      }
-                    }}
-                  >
-                    Eksportuj JSON
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="xs"
-                    className="px-3"
-                    onClick={() => setPinnedLogs([])}
-                  >
-                    Wyczyść
-                  </Button>
-                </div>
-                <ul className="mt-2 space-y-2">
-                  {pinnedLogs.map((log) => (
-                    <li
-                      key={`pinned-${log.id}`}
-                      className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px]"
+              <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs text-white shadow-card">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
+                      Przypięte logi
+                    </p>
+                    <p className="text-sm text-emerald-100/80">
+                      Najważniejsze zdarzenia z kanału /ws/events.
+                    </p>
+                  </div>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      className="px-3 text-white"
+                      disabled={exportingPinned}
+                      onClick={handleExportPinnedLogs}
                     >
-                      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                        <span>{new Date(log.ts).toLocaleTimeString()}</span>
-                        <IconButton
-                          label="Usuń przypięty log"
-                          size="xs"
-                          variant="ghost"
-                          className="text-rose-300 hover:text-rose-400"
-                          icon={<X className="h-3.5 w-3.5" />}
-                          onClick={() =>
-                            setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
-                          }
-                        />
-                      </div>
-                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-white">
-                        {typeof log.payload === "string"
-                          ? log.payload
-                          : JSON.stringify(log.payload, null, 2)}
-                      </pre>
-                    </li>
+                      {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="xs"
+                      className="px-3"
+                      onClick={() => setPinnedLogs([])}
+                    >
+                      Wyczyść
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {pinnedLogs.map((log) => (
+                    <PinnedLogCard
+                      key={`pinned-${log.id}`}
+                      log={log}
+                      onUnpin={() =>
+                        setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+                      }
+                    />
                   ))}
-                </ul>
+                </div>
               </div>
             )}
           </div>
-          <Card className="border border-white/5 bg-white/5 text-white">
-            <Text>Skuteczność operacji</Text>
-            <Flex justifyContent="between" className="mt-3">
-              <Metric>{successRate ? `${successRate}%` : "—"}</Metric>
-              <Text>{metrics?.tasks?.created ?? 0} zadań</Text>
-            </Flex>
-            <ProgressBar value={successRate} color="violet" className="mt-3" />
-            <Text className="mt-2 text-zinc-400">
-              Uptime:{" "}
-              {metrics?.uptime_seconds !== undefined
-                ? formatUptime(metrics.uptime_seconds)
-                : "—"}
-            </Text>
-          </Card>
-          <Card className="border border-white/5 bg-white/5 text-white">
-            <Text>Zużycie tokenów</Text>
-            <Metric>{tokenMetrics?.total_tokens ?? 0}</Metric>
-            <BarList
-              data={
-                tokensBar.length > 0
-                  ? tokensBar
-                  : [{ name: "Brak danych", value: 0 }]
+        </Panel>
+        <div className="grid gap-6">
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">KPI kolejki</p>
+              <h3 className="text-lg font-semibold text-white">Skuteczność operacji</h3>
+              <p className="text-sm text-zinc-400">Monitoruj SLA tasków i uptime backendu.</p>
+            </div>
+            <CockpitMetricCard
+              primaryValue={successRate !== null ? `${successRate}%` : "—"}
+              secondaryLabel={
+                tasksCreated > 0
+                  ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
+                  : "Brak zadań"
               }
-              className="mt-4 text-xs"
-              color="violet"
+              progress={successRate}
+              footer={`Uptime: ${
+                metrics?.uptime_seconds !== undefined
+                  ? formatUptime(metrics.uptime_seconds)
+                  : "—"
+              }`}
             />
-          </Card>
+          </div>
+          <div className="space-y-3">
+            <CockpitTokenCard
+              totalValue={totalTokens}
+              splits={
+                tokenSplits.length > 0
+                  ? tokenSplits
+                  : [{ label: "Brak danych", value: 0 }]
+              }
+              chartSlot={
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                      Trend próbek
+                    </p>
+                    <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
+                      {tokenTrendLabel}
+                    </Badge>
+                  </div>
+                  {tokenHistory.length < 2 ? (
+                    <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
+                      Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
+                    </p>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                        Przebieg ostatnich próbek
+                      </p>
+                      <div className="mt-3 h-32">
+                        <TokenChart history={tokenHistory} height={128} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              }
+            />
+          </div>
         </div>
-        <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden">
+      </section>
+      <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden">
           <SectionHeading
             eyebrow="Centrum dowodzenia"
             title="Cockpit AI"
@@ -448,36 +562,16 @@ export default function Home() {
                         initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -12 }}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => openRequestDetail(msg.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            openRequestDetail(msg.id);
-                          }
-                        }}
-                        className={`w-fit max-w-2xl cursor-pointer rounded-2xl border px-4 py-3 text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${
-                          msg.role === "user"
-                            ? "ml-auto border-violet-500/30 bg-violet-500/10 text-violet-100"
-                            : "border-white/10 bg-white/5 text-zinc-100"
-                        } ${isSelected ? "ring-2 ring-violet-400/50" : ""}`}
-                        title="Kliknij, aby otworzyć szczegóły requestu"
                       >
-                        <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-                          <span>{msg.role === "user" ? "Operacja" : "Venom"}</span>
-                          <span>{new Date(msg.created_at).toLocaleTimeString()}</span>
-                        </div>
-                        <div className="mt-2 text-[15px] leading-relaxed text-white">
-                          <MarkdownPreview content={msg.text} emptyState="Brak treści." />
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                          <Badge tone={statusTone(msg.status)}>{msg.status}</Badge>
-                          <span>#{msg.id.slice(0, 6)}…</span>
-                          <span className="ml-auto text-[10px] uppercase tracking-[0.3em] text-zinc-500">
-                            Szczegóły ↗
-                          </span>
-                        </div>
+                        <ConversationBubble
+                          role={msg.role === "user" ? "user" : "assistant"}
+                          timestamp={msg.created_at}
+                          text={msg.text}
+                          status={msg.status}
+                          requestId={msg.id}
+                          isSelected={isSelected}
+                          onSelect={() => openRequestDetail(msg.id)}
+                        />
                       </motion.div>
                     );
                   })}
@@ -516,8 +610,10 @@ export default function Home() {
                     >
                       {sending ? "Wysyłanie..." : "Wyślij"}
                     </Button>
-                  </div>
-                </div>
+      </div>
+    </div>
+
+    <QuickActions open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
                 {message && (
                   <p className="mt-2 text-xs text-amber-300">{message}</p>
                 )}
@@ -525,7 +621,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
         <div className="glass-panel flex flex-col gap-4">
@@ -573,7 +668,7 @@ export default function Home() {
         />
         <StatCard
           label="Success rate"
-          value={successRate ? `${successRate}%` : "—"}
+          value={successRate !== null ? `${successRate}%` : "—"}
           hint="Aktualna skuteczność"
           accent="green"
         />
@@ -628,34 +723,25 @@ export default function Home() {
           title="Historia requestów"
           description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
         >
-          <div className="space-y-2 text-sm">
-            {(history || []).length === 0 && (
-              <EmptyState
-                icon={<HistoryIcon className="h-4 w-4" />}
-                title="Brak historii"
-                description="Historia requestów pojawi się po wysłaniu zadań."
-              />
-            )}
-            {(history || []).map((item) => (
-              <ListCard
-                key={item.request_id}
-                title={item.prompt}
-                subtitle={item.created_at ? new Date(item.created_at).toLocaleString() : "—"}
-                badge={<Badge tone={statusTone(item.status)}>{item.status}</Badge>}
-                selected={selectedRequestId === item.request_id}
-                onClick={() => openRequestDetail(item.request_id)}
-              />
-            ))}
-            {loadingHistory && (
-              <p className="text-xs text-zinc-500">Ładowanie szczegółów...</p>
-            )}
-            {historyError && (
-              <p className="text-xs text-rose-300">{historyError}</p>
-            )}
-            <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-              Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
-            </p>
-          </div>
+          <HistoryList
+            entries={history}
+            limit={5}
+            selectedId={selectedRequestId}
+            onSelect={(entry) => openRequestDetail(entry.request_id)}
+            variant="preview"
+            viewAllHref="/inspector"
+            emptyTitle="Brak historii"
+            emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
+          />
+          {loadingHistory && (
+            <p className="mt-2 text-xs text-zinc-500">Ładowanie szczegółów...</p>
+          )}
+          {historyError && (
+            <p className="mt-2 text-xs text-rose-300">{historyError}</p>
+          )}
+          <p className="mt-2 text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+            Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
+          </p>
         </Panel>
       </div>
 
@@ -721,39 +807,22 @@ export default function Home() {
           </div>
         }
       >
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {allMacros.map((macro) => (
-            <div
+            <MacroCard
               key={macro.id}
-              className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left text-sm text-white"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-base font-semibold">{macro.label}</p>
-                  <p className="text-xs text-zinc-400">{macro.description}</p>
-                </div>
-                {macro.custom && (
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-zinc-400 hover:text-rose-300"
-                    onClick={() =>
+              title={macro.label}
+              description={macro.description}
+              isCustom={macro.custom}
+              pending={macroSending === macro.id}
+              onRun={() => handleMacroRun(macro)}
+              onRemove={
+                macro.custom
+                  ? () =>
                       setCustomMacros((prev) => prev.filter((item) => item.id !== macro.id))
-                    }
-                  >
-                    Usuń
-                  </Button>
-                )}
-              </div>
-              <Button
-                variant="subtle"
-                className="rounded-2xl border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm font-semibold hover:border-violet-500/60"
-                onClick={() => handleMacroRun(macro)}
-                disabled={macroSending === macro.id}
-              >
-                {macroSending === macro.id ? "Wysyłam..." : "Uruchom"}
-              </Button>
-            </div>
+                  : undefined
+              }
+            />
           ))}
         </div>
       </Panel>
@@ -763,123 +832,40 @@ export default function Home() {
         description="Podsumowanie statusów i ostatnich requestów /history/requests."
       >
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="border border-white/10 bg-white/5 text-white">
-            <Text>Statusy (ostatnie)</Text>
-            <BarList
-              data={
-                historySummary.length > 0
-                  ? historySummary
-                  : [{ name: "Brak danych", value: 0 }]
-              }
-              className="mt-4 text-xs"
-              color="violet"
-            />
-          </Card>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-              Ostatnie requesty
-            </p>
-            <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-              {(history || []).slice(0, 5).map((item) => (
-                <li
-                  key={`insight-${item.request_id}`}
-                  className="rounded-xl border border-white/10 bg-black/30 px-3 py-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white">{item.status}</span>
-                    <span>{item.finished_at ? new Date(item.finished_at).toLocaleTimeString() : "—"}</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-500 line-clamp-2">{item.prompt}</p>
-                </li>
-              ))}
-              {(history || []).length === 0 && (
-                <li className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-zinc-500">
-                  Brak historii do analizy.
-                </li>
-              )}
-            </ul>
-          </div>
+          <TaskStatusBreakdown
+            title="Statusy"
+            datasetLabel="Ostatnie 50 historii"
+            totalLabel="Historia"
+            totalValue={(history || []).length}
+            entries={historyStatusEntries}
+            emptyMessage="Brak historii do analizy."
+          />
+          <RecentRequestList requests={history} />
         </div>
       </Panel>
 
       <Panel
         title="Queue governance"
-        description="Zarządzanie kolejką zadań (/api/v1/queue/*)."
+        description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
         action={
           <Badge tone={queue?.paused ? "warning" : "success"}>
             {queue?.paused ? "Wstrzymana" : "Aktywna"}
           </Badge>
         }
       >
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border border-[--color-border] bg-white/5 p-4">
-            <p className="text-sm text-white">Stan kolejki</p>
-            <p className="text-xs text-[--color-muted]">
-              Active: {queue?.active ?? "—"} | Pending: {queue?.pending ?? "—"} | Limit:{" "}
-              {queue?.limit ?? "∞"}
+        <div className="space-y-4">
+          <QueueStatusCard queue={queue} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              Akcje dostępne w panelu Quick Actions.
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
               size="sm"
-              onClick={async () => {
-                try {
-                  await toggleQueue(queue?.paused ?? false);
-                  refreshQueue();
-                } catch (err) {
-                  setMessage(
-                    err instanceof Error
-                      ? err.message
-                      : "Nie udało się zmienić stanu kolejki",
-                  );
-                }
-              }}
+              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
+              onClick={() => setQuickActionsOpen(true)}
             >
-              {queue?.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
-            </Button>
-            <Button
-              variant="warning"
-              size="sm"
-              onClick={async () => {
-                if (!confirm("Wyczyścić oczekujące zadania?")) return;
-                try {
-                  await purgeQueue();
-                  refreshQueue();
-                  refreshTasks();
-                } catch (err) {
-                  setMessage(
-                    err instanceof Error ? err.message : "Nie udało się wyczyścić kolejki",
-                  );
-                }
-              }}
-            >
-              Purge queue
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={async () => {
-                if (
-                  !confirm(
-                    "Awaryjne zatrzymanie zatrzyma wszystkie zadania. Kontynuować?",
-                  )
-                )
-                  return;
-                try {
-                  await emergencyStop();
-                  refreshQueue();
-                  refreshTasks();
-                } catch (err) {
-                  setMessage(
-                    err instanceof Error
-                      ? err.message
-                      : "Nie udało się wykonać awaryjnego stopu",
-                  );
-                }
-              }}
-            >
-              Emergency stop
+              ⚡ Otwórz Quick Actions
             </Button>
           </div>
         </div>
@@ -895,74 +881,68 @@ export default function Home() {
             </span>
           }
         >
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <input
-                className="w-full max-w-xs rounded-lg border border-[--color-border] bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[--color-accent]"
-                placeholder="Nazwa modelu do instalacji"
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={async () => {
-                  if (!modelName.trim()) {
-                    setMessage("Podaj nazwę modelu.");
-                    return;
-                  }
-                  try {
-                    const res = await installModel(modelName.trim());
-                    setMessage(res.message || "Rozpoczęto instalację.");
-                    setModelName("");
-                    refreshModels();
-                  } catch (err) {
-                    setMessage(err instanceof Error ? err.message : "Błąd instalacji");
-                  }
-                }}
-              >
-                Zainstaluj
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  refreshModels();
-                  refreshTasks();
-                }}
-              >
-                Odśwież
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {(models?.models || []).length === 0 && (
-                <EmptyState
-                  icon={<Package className="h-4 w-4" />}
-                  title="Brak modeli"
-                  description="Zainstaluj model, aby rozpocząć pracę."
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Instalacja</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
+                  placeholder="Nazwa modelu do instalacji"
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
                 />
-              )}
-              {(models?.models || []).map((model) => (
-                <div
-                  key={model.name}
-                  className="flex items-center justify-between rounded-lg border border-[--color-border] bg-white/5 px-3 py-2"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-white">{model.name}</p>
-                    <p className="text-xs text-[--color-muted]">
-                      {model.size_gb ? `${model.size_gb} GB` : "—"}{" "}
-                      {model.source ? ` • ${model.source}` : ""}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant={model.active ? "secondary" : "outline"}
-                    className={
-                      model.active
-                        ? "border-emerald-400/30 bg-[--color-accent-2]/20 text-emerald-100"
-                        : ""
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    if (!modelName.trim()) {
+                      setMessage("Podaj nazwę modelu.");
+                      return;
                     }
-                    onClick={async () => {
+                    try {
+                      const res = await installModel(modelName.trim());
+                      setMessage(res.message || "Rozpoczęto instalację.");
+                      setModelName("");
+                      refreshModels();
+                    } catch (err) {
+                      setMessage(err instanceof Error ? err.message : "Błąd instalacji");
+                    }
+                  }}
+                >
+                  Zainstaluj
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    refreshModels();
+                    refreshTasks();
+                  }}
+                >
+                  Odśwież
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. Instalacja rozpoczyna job w tle.
+              </p>
+            </div>
+            {(models?.models || []).length === 0 ? (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Brak modeli"
+                description="Zainstaluj model, aby rozpocząć pracę."
+              />
+            ) : (
+              <div className="grid gap-3">
+                {(models?.models || []).map((model) => (
+                  <ModelListItem
+                    key={model.name}
+                    name={model.name}
+                    sizeGb={model.size_gb}
+                    source={model.source}
+                    active={model.active}
+                    onActivate={async () => {
+                      if (model.active) return;
                       try {
                         await switchModel(model.name);
                         setMessage(`Aktywowano model ${model.name}`);
@@ -975,12 +955,10 @@ export default function Home() {
                         );
                       }
                     }}
-                    >
-                      {model.active ? "Aktywny" : "Ustaw jako aktywny"}
-                  </Button>
-                </div>
-              ))}
-            </div>
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -989,67 +967,111 @@ export default function Home() {
           description="Status i szybkie akcje git (/api/v1/git/*)."
           action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
         >
-          <p className="text-sm text-[--color-muted]">
-            Zmiany: {git?.changes ?? git?.status ?? "n/a"}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={async () => {
-                try {
-                  await gitSync();
-                  setMessage("Synchronizacja repo zakończona.");
-                  refreshGit();
-                } catch (err) {
-                  setMessage(
-                    err instanceof Error ? err.message : "Błąd synchronizacji",
-                  );
-                }
-              }}
-            >
-              Sync
-            </Button>
-            <Button
-              variant="warning"
-              size="sm"
-              onClick={async () => {
-                if (!confirm("Cofnąć lokalne zmiany?")) return;
-                try {
-                  await gitUndo();
-                  setMessage("Cofnięto zmiany.");
-                  refreshGit();
-                } catch (err) {
-                  setMessage(err instanceof Error ? err.message : "Błąd git undo");
-                }
-              }}
-            >
-              Undo
-            </Button>
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
+              <p className="mt-2 text-sm text-white">
+                {git?.changes ?? git?.status ?? "Brak danych z API."}
+              </p>
+              <p className="text-xs text-zinc-500">
+                Aktualna gałąź: <span className="font-semibold text-white">{git?.branch ?? "—"}</span>
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <RepoActionCard
+                title="Synchronizacja"
+                description="Pobierz/publikuj zmiany i odśwież status pipeline’u."
+                pending={gitAction === "sync"}
+                onClick={handleGitSync}
+              />
+              <RepoActionCard
+                title="Cofnij zmiany"
+                description="Przywróć HEAD do stanu origin – operacja nieodwracalna."
+                variant="danger"
+                pending={gitAction === "undo"}
+                onClick={handleGitUndo}
+              />
+            </div>
           </div>
         </Panel>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Panel title="Tokenomics" description="Zużycie tokenów (/api/v1/metrics/tokens).">
-          <div className="grid grid-cols-2 gap-3 text-sm text-[--color-muted]">
-            <TokenRow label="Total" value={tokenMetrics?.total_tokens} />
-            <TokenRow label="Prompt" value={tokenMetrics?.prompt_tokens} />
-            <TokenRow label="Completion" value={tokenMetrics?.completion_tokens} />
-            <TokenRow label="Cached" value={tokenMetrics?.cached_tokens} />
+        <Panel
+          title="Efektywność tokenów"
+          description="Średnie zużycie i tempo – KPI na bazie /metrics i /metrics/tokens."
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <TokenEfficiencyStat
+                label="Śr./zadanie"
+                value={
+                  avgTokensPerTask !== null
+                    ? `${avgTokensPerTask.toLocaleString("pl-PL")} tok`
+                    : "—"
+                }
+                hint="Total tokens ÷ tasks.created"
+              />
+              <TokenEfficiencyStat
+                label="Delta próbki"
+                value={tokenTrendMagnitude ? `${tokenTrendMagnitude} tok` : "—"}
+                hint="Różnica między dwoma ostatnimi odczytami"
+              />
+              <TokenEfficiencyStat
+                label="Prompt / completion"
+                value={promptCompletionRatio ? `${promptCompletionRatio}x` : "—"}
+                hint="Większa wartość = dłuższe prompty"
+              />
+            </div>
+            <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-sky-500/10 to-emerald-500/5 p-4 text-sm text-emerald-50">
+              <p className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
+                Live próbka
+              </p>
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <p className="text-3xl font-semibold text-white">
+                  {lastTokenSample !== null
+                    ? lastTokenSample.toLocaleString("pl-PL")
+                    : "—"}
+                </p>
+                <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
+                  {tokenTrendLabel}
+                </Badge>
+              </div>
+              <p className="mt-1 text-xs text-emerald-100/70">
+                {tokenTrendDelta === null
+                  ? "Oczekuję kolejnych danych z /metrics/tokens."
+                  : tokenTrendDelta >= 0
+                    ? "Zużycie rośnie względem poprzedniej próbki – rozważ throttle."
+                    : "Zużycie spadło – cache i makra działają."}
+              </p>
+            </div>
           </div>
         </Panel>
         <Panel
-          title="Trend tokenów"
-          description="Chart.js – próbki z /api/v1/metrics/tokens (ostatnie 20)."
+          title="Cache boost"
+          description="Udziały prompt/completion/cached – pozwala ocenić optymalizację."
         >
-          {tokenHistory.length < 2 ? (
-            <p className="text-sm text-[--color-muted]">
-              Za mało danych do wizualizacji. Poczekaj na kolejne odczyty.
+          <div className="space-y-3">
+            <TokenShareBar
+              label="Prompt"
+              percent={promptShare}
+              accent="from-emerald-400/70 via-emerald-500/40 to-emerald-500/10"
+            />
+            <TokenShareBar
+              label="Completion"
+              percent={completionShare}
+              accent="from-sky-400/70 via-blue-500/40 to-violet-500/10"
+            />
+            <TokenShareBar
+              label="Cached"
+              percent={cachedShare}
+              accent="from-amber-300/70 via-amber-400/40 to-rose-400/10"
+            />
+            <p className="text-xs text-[--color-muted]">
+              Dane z `/api/v1/metrics/tokens`. Dążymy do wysokiego udziału cache przy zachowaniu
+              równowagi prompt/completion.
             </p>
-          ) : (
-            <TokenChart history={tokenHistory} />
-          )}
+          </div>
         </Panel>
       </div>
       <Sheet
@@ -1175,14 +1197,6 @@ export default function Home() {
   );
 }
 
-function statusTone(status: string | undefined) {
-  if (!status) return "neutral" as const;
-  if (status === "COMPLETED") return "success" as const;
-  if (status === "PROCESSING") return "warning" as const;
-  if (status === "FAILED") return "danger" as const;
-  return "neutral" as const;
-}
-
 function serviceTone(status: string | undefined) {
   if (!status) return "neutral" as const;
   const s = status.toLowerCase();
@@ -1261,41 +1275,14 @@ function LogEntry({
         <details className="mt-1">
           <summary className="cursor-pointer text-emerald-200">Szczegóły</summary>
           <pre className="mt-1 max-h-40 overflow-auto text-emerald-100">
-            {logObj.details}
+            {typeof logObj.details === "string"
+              ? logObj.details
+              : JSON.stringify(logObj.details, null, 2)}
           </pre>
         </details>
       ) : (
         <pre className="mt-1 whitespace-pre-wrap text-emerald-100">{"> " + text}</pre>
       )}
-    </div>
-  );
-}
-
-type LogEntryType = {
-  id: string;
-  ts: number;
-  payload: unknown;
-};
-
-type LogPayload = {
-  message?: string;
-  level?: string;
-  type?: string;
-};
-
-function isLogPayload(value: unknown): value is LogPayload {
-  return typeof value === "object" && value !== null;
-}
-
-type TokenRowProps = { label: string; value?: number };
-
-function TokenRow({ label, value }: TokenRowProps) {
-  return (
-    <div className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-[--color-muted]">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">
-        {value !== undefined ? value : "—"}
-      </p>
     </div>
   );
 }
@@ -1310,7 +1297,46 @@ type MacroAction = {
 };
 const MACRO_STORAGE_KEY = "venom:cockpit-macros";
 
-function TokenChart({ history }: { history: TokenSample[] }) {
+type TokenEfficiencyStatProps = {
+  label: string;
+  value: string | number | null;
+  hint: string;
+};
+
+function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatProps) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
+      <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-white">{value ?? "—"}</p>
+      <p className="text-[11px] text-zinc-400">{hint}</p>
+    </div>
+  );
+}
+
+type TokenShareBarProps = {
+  label: string;
+  percent: number | null;
+  accent: string;
+};
+
+function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+      <div className="flex items-center justify-between text-sm text-white">
+        <span>{label}</span>
+        <span>{percent !== null ? `${percent}%` : "—"}</span>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-white/5">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${accent}`}
+          style={{ width: percent !== null ? `${Math.min(percent, 100)}%` : "0%" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TokenChart({ history, height = 220 }: { history: TokenSample[]; height?: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
   const chartModuleRef = useRef<typeof import("chart.js/auto") | null>(null);
@@ -1324,6 +1350,9 @@ function TokenChart({ history }: { history: TokenSample[] }) {
 
   useEffect(() => {
     if (!canvasRef.current) return;
+    if (height) {
+      canvasRef.current.style.height = `${height}px`;
+    }
     const labels = history.map((h) => h.timestamp);
     const dataPoints = history.map((h) => h.value);
 
@@ -1388,7 +1417,7 @@ function TokenChart({ history }: { history: TokenSample[] }) {
     return () => {
       isMounted = false;
     };
-  }, [history]);
+  }, [history, height]);
 
-  return <canvas ref={canvasRef} className="w-full" />;
+  return <canvas ref={canvasRef} className="w-full" style={{ height }} />;
 }

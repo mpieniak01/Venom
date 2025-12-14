@@ -11,8 +11,8 @@ import {
 import { useServiceStatus } from "@/hooks/use-api";
 import { ListCard } from "@/components/ui/list-card";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ServerCog, RefreshCw } from "lucide-react";
+import { OverlayFallback } from "./overlay-fallback";
 
 type ServiceStatusDrawerProps = {
   open: boolean;
@@ -70,13 +70,13 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto">
           {serviceEntries.length === 0 ? (
-            <div data-testid="service-status-offline">
-              <EmptyState
-                icon={<RefreshCw className="h-4 w-4" />}
-                title="Brak usług"
-                description="API nie zwróciło listy usług. Sprawdź połączenie."
-              />
-            </div>
+            <OverlayFallback
+              icon={<RefreshCw className="h-4 w-4" />}
+              title="Brak usług"
+              description="API nie zwróciło listy usług. Sprawdź połączenie."
+              hint="Service status"
+              testId="service-status-offline"
+            />
           ) : (
             serviceEntries.map((svc) => (
               <ListCard

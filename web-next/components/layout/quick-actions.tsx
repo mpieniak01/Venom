@@ -1,7 +1,8 @@
- "use client";
+"use client";
 
 import { useState, type ReactNode } from "react";
 import { ListCard } from "@/components/ui/list-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { emergencyStop, purgeQueue, toggleQueue, useQueueStatus, useTasks } from "@/hooks/use-api";
 import {
   Sheet,
@@ -11,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
+import { AlertTriangle, Inbox, Pause, Play, Trash2 } from "lucide-react";
 
 type QuickActionsProps = {
   open: boolean;
@@ -40,6 +41,8 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   const { refresh: refreshTasks } = useTasks();
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
+  const queueAvailable = Boolean(queue);
+  const queueOfflineMessage = "Brak danych kolejki – sprawdź połączenie API.";
 
   const runAction = async (name: string, fn: () => Promise<unknown>) => {
     if (running) return;
@@ -90,6 +93,10 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   ];
 
   const handleQuickAction = async (action: QuickActionItem) => {
+    if (!queueAvailable) {
+      setMessage(queueOfflineMessage);
+      return;
+    }
     if (action.confirm && !confirm(action.confirm)) return;
     await runAction(action.label, action.handler);
   };
@@ -110,15 +117,26 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
         </SheetHeader>
         <div className="surface-card w-full bg-white/5 p-4">
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Queue</p>
-          <div className="mt-2 flex items-center gap-3 text-sm text-zinc-300">
-            <Badge tone={queue?.paused ? "warning" : "success"}>
-              {queue?.paused ? "Wstrzymana" : "Aktywna"}
-            </Badge>
-            <span>
-              Active: {queue?.active ?? 0} • Pending: {queue?.pending ?? 0} • Limit:{" "}
-              {queue?.limit ?? "∞"}
-            </span>
-          </div>
+          {queueAvailable ? (
+            <div className="mt-2 flex items-center gap-3 text-sm text-zinc-300">
+              <Badge tone={queue?.paused ? "warning" : "success"}>
+                {queue?.paused ? "Wstrzymana" : "Aktywna"}
+              </Badge>
+              <span>
+                Active: {queue?.active ?? 0} • Pending: {queue?.pending ?? 0} • Limit:{" "}
+                {queue?.limit ?? "∞"}
+              </span>
+            </div>
+          ) : (
+            <div data-testid="queue-offline-state">
+              <EmptyState
+                icon={<Inbox className="h-4 w-4" />}
+                title="Brak danych kolejki"
+                description={queueOfflineMessage}
+                className="mt-2 border-white/10 bg-transparent px-0 py-0 text-sm text-zinc-400"
+              />
+            </div>
+          )}
         </div>
         <div className="space-y-2">
           {actions.map((action) => {

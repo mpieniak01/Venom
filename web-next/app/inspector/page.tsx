@@ -6,6 +6,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ListCard } from "@/components/ui/list-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
 import type { HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -95,22 +96,21 @@ export default function InspectorPage() {
   return (
     <div className="space-y-6 pb-10">
       <div className="glass-panel border border-white/10 p-6 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-              Inspector / Debugging
-            </p>
-            <h1 className="text-3xl font-semibold text-white">Trace Intelligence</h1>
-            <p className="text-sm text-zinc-400">
-              RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">/api/v1/history/requests</Badge>
-            <Badge tone="neutral">/api/v1/tasks</Badge>
-            <Badge tone="neutral">/history/requests/:id</Badge>
-          </div>
-        </div>
+        <SectionHeading
+          eyebrow="Inspector / Debugging"
+          title="Trace Intelligence"
+          description="RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki."
+          as="h1"
+          size="lg"
+          className="items-center"
+          rightSlot={
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge tone="neutral">/api/v1/history/requests</Badge>
+              <Badge tone="neutral">/api/v1/tasks</Badge>
+              <Badge tone="neutral">/history/requests/:id</Badge>
+            </div>
+          }
+        />
         <div className="mt-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <HeroStat
             icon={<Activity className="h-4 w-4 text-emerald-300" />}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { WifiOff, Wifi, Sparkles, BellRing, Cpu, Command as CommandIcon, Rows } from "lucide-react";
+import { WifiOff, Wifi, Sparkles, BellRing, Cpu, Command as CommandIcon, Rows, ServerCog } from "lucide-react";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { setCostMode, useCostMode } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ import { StatusPills } from "./status-pills";
 import { QuickActions } from "./quick-actions";
 import { CommandPalette } from "./command-palette";
 import { NotificationDrawer } from "./notification-drawer";
+import { ServiceStatusDrawer } from "./service-status-drawer";
 
 export function TopBar() {
   const { connected } = useTelemetryFeed();
@@ -24,6 +25,7 @@ export function TopBar() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -85,26 +87,46 @@ export function TopBar() {
       </div>
       <div className="flex items-center gap-4">
         <StatusPills />
-        <TopBarIconAction icon={<BellRing className="h-4 w-4 text-amber-300" />} label="Alert center" onClick={() => setAlertsOpen(true)} />
+        <TopBarIconAction
+          icon={<BellRing className="h-4 w-4 text-amber-300" />}
+          label="Alert center"
+          onClick={() => setAlertsOpen(true)}
+          testId="topbar-alerts"
+        />
         <TopBarIconAction
           icon={<Rows className="h-4 w-4 text-emerald-300" />}
           label="Notifications"
           onClick={() => setNotificationsOpen(true)}
           hidden="mobile"
+          testId="topbar-notifications"
         />
         <TopBarIconAction
           icon={<CommandIcon className="h-4 w-4 text-zinc-200" />}
           label="Command ⌘K"
           onClick={() => setPaletteOpen(true)}
           hidden="mobile"
+          testId="topbar-command"
         />
         <TopBarIconAction
           icon={<Cpu className="h-4 w-4 text-sky-300" />}
           label="Quick actions"
           onClick={() => setActionsOpen(true)}
           hidden="mobile"
+          testId="topbar-quick-actions"
         />
-        <Button variant="outline" size="sm" onClick={() => setCommandOpen(true)}>
+        <TopBarIconAction
+          icon={<ServerCog className="h-4 w-4 text-indigo-300" />}
+          label="Services"
+          onClick={() => setServicesOpen(true)}
+          hidden="mobile"
+          testId="topbar-services"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCommandOpen(true)}
+          data-testid="topbar-command-center"
+        >
           <Sparkles className="h-4 w-4 text-violet-300" />
           <span className="text-xs uppercase tracking-wider">Command Center</span>
         </Button>
@@ -132,6 +154,7 @@ export function TopBar() {
       <QuickActions open={actionsOpen} onOpenChange={setActionsOpen} />
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
       <NotificationDrawer open={notificationsOpen} onOpenChange={setNotificationsOpen} />
+      <ServiceStatusDrawer open={servicesOpen} onOpenChange={setServicesOpen} />
     </div>
   );
 }
@@ -143,22 +166,32 @@ function TopBarIconAction({
   icon,
   onClick,
   hidden,
+  testId,
 }: {
   label: string;
   icon: ReactNode;
   onClick: () => void;
   hidden?: TopBarActionVisibility;
+  testId?: string;
 }) {
   const visibilityClass =
     hidden === "desktop"
-      ? "hidden md:flex"
+      ? "md:hidden"
       : hidden === "mobile"
-        ? "md:hidden"
+        ? "hidden md:flex"
         : "flex";
 
   return (
     <div className={cn("items-center gap-2 text-xs uppercase tracking-wider text-white", visibilityClass)}>
-      <IconButton label={label} icon={icon} variant="outline" size="sm" onClick={onClick} className="p-0" />
+      <IconButton
+        label={label}
+        icon={icon}
+        variant="outline"
+        size="sm"
+        onClick={onClick}
+        className="p-0"
+        dataTestId={testId}
+      />
       <span className="hidden md:inline-flex">{label}</span>
     </div>
   );

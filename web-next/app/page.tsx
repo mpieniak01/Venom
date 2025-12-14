@@ -6,6 +6,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { ListCard } from "@/components/ui/list-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import {
   Sheet,
@@ -22,12 +23,8 @@ import {
   installModel,
   purgeQueue,
   sendTask,
-  setAutonomy,
-  setCostMode,
   switchModel,
   toggleQueue,
-  useAutonomyLevel,
-  useCostMode,
   useGraphSummary,
   useHistory,
   useMetrics,
@@ -78,8 +75,6 @@ export default function Home() {
   const { data: models, refresh: refreshModels } = useModels();
   const { data: git, refresh: refreshGit } = useGitStatus();
   const { data: tokenMetrics } = useTokenMetrics();
-  const { data: costMode, refresh: refreshCost } = useCostMode();
-  const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel();
   const { data: history } = useHistory(6);
   const { connected, entries } = useTelemetryFeed();
 
@@ -274,59 +269,167 @@ export default function Home() {
 
   return (
     <div className="space-y-8 pb-12">
-      <section className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-          <div className="glass-panel flex flex-col gap-4">
-          <header className="flex items-center gap-3">
-            <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
-              <Bot className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                Agenci
-              </p>
-              <h2 className="text-lg font-semibold text-white">
-                Aktywność systemowa
-              </h2>
-            </div>
-          </header>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">Węzły: {graphNodes}</Badge>
-            <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
-          </div>
-          <div className="space-y-3">
-            {agentDeck.map((svc) => (
-              <div
-                key={svc.name}
-                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
-              >
-                <div>
-                  <p className="font-semibold text-white">{svc.name}</p>
-                  <p className="text-xs text-zinc-500">
-                    {svc.detail ?? "Brak opisu"}
-                  </p>
-                </div>
-                <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
+      <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
+          <div className="glass-panel flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                  Live Feed
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  /ws/events stream
+                </p>
               </div>
-            ))}
+              <Badge tone={connected ? "success" : "warning"}>
+                {connected ? "Połączono" : "Brak sygnału"}
+              </Badge>
+            </div>
+            <input
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
+              placeholder="Filtruj logi..."
+              value={logFilter}
+              onChange={(e) => setLogFilter(e.target.value)}
+            />
+            <div className="terminal h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
+              {logEntries.length === 0 && (
+                <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
+              )}
+              {logEntries
+                .filter((entry) => {
+                  if (!logFilter.trim()) return true;
+                  const payload = entry.payload;
+                  const text =
+                    typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+                  return text.toLowerCase().includes(logFilter.toLowerCase());
+                })
+                .map((entry) => (
+                  <LogEntry
+                    key={entry.id}
+                    entry={entry}
+                    pinned={pinnedLogs.some((log) => log.id === entry.id)}
+                    onPin={() =>
+                      setPinnedLogs((prev) =>
+                        prev.some((log) => log.id === entry.id)
+                          ? prev.filter((log) => log.id !== entry.id)
+                          : [...prev, entry],
+                      )
+                    }
+                  />
+                ))}
+            </div>
+            {pinnedLogs.length > 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                    Pinned
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="px-3 text-white"
+                    onClick={async () => {
+                      try {
+                        const blob = new Blob(
+                          [JSON.stringify(pinnedLogs.map((log) => log.payload), null, 2)],
+                          { type: "application/json" },
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement("a");
+                        anchor.href = url;
+                        anchor.download = "pinned-logs.json";
+                        document.body.appendChild(anchor);
+                        anchor.click();
+                        anchor.remove();
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        console.error("Clipboard error:", err);
+                      }
+                    }}
+                  >
+                    Eksportuj JSON
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="xs"
+                    className="px-3"
+                    onClick={() => setPinnedLogs([])}
+                  >
+                    Wyczyść
+                  </Button>
+                </div>
+                <ul className="mt-2 space-y-2">
+                  {pinnedLogs.map((log) => (
+                    <li
+                      key={`pinned-${log.id}`}
+                      className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px]"
+                    >
+                      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                        <span>{new Date(log.ts).toLocaleTimeString()}</span>
+                        <IconButton
+                          label="Usuń przypięty log"
+                          size="xs"
+                          variant="ghost"
+                          className="text-rose-300 hover:text-rose-400"
+                          icon={<X className="h-3.5 w-3.5" />}
+                          onClick={() =>
+                            setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+                          }
+                        />
+                      </div>
+                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-white">
+                        {typeof log.payload === "string"
+                          ? log.payload
+                          : JSON.stringify(log.payload, null, 2)}
+                      </pre>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
+          <Card className="border border-white/5 bg-white/5 text-white">
+            <Text>Skuteczność operacji</Text>
+            <Flex justifyContent="between" className="mt-3">
+              <Metric>{successRate ? `${successRate}%` : "—"}</Metric>
+              <Text>{metrics?.tasks?.created ?? 0} zadań</Text>
+            </Flex>
+            <ProgressBar value={successRate} color="violet" className="mt-3" />
+            <Text className="mt-2 text-zinc-400">
+              Uptime:{" "}
+              {metrics?.uptime_seconds !== undefined
+                ? formatUptime(metrics.uptime_seconds)
+                : "—"}
+            </Text>
+          </Card>
+          <Card className="border border-white/5 bg-white/5 text-white">
+            <Text>Zużycie tokenów</Text>
+            <Metric>{tokenMetrics?.total_tokens ?? 0}</Metric>
+            <BarList
+              data={
+                tokensBar.length > 0
+                  ? tokensBar
+                  : [{ name: "Brak danych", value: 0 }]
+              }
+              className="mt-4 text-xs"
+              color="violet"
+            />
+          </Card>
         </div>
         <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                Centrum dowodzenia
-              </p>
-              <h1 className="mt-1 text-3xl font-semibold text-white">
-                Cockpit AI
-              </h1>
-              <p className="text-sm text-zinc-400">
-                Chat operacyjny z Orchestratora i logami runtime.
-              </p>
-            </div>
-            <Badge tone={labMode ? "warning" : "success"}>
-              {labMode ? "Lab Mode" : "Prod"}
-            </Badge>
-          </div>
+          <SectionHeading
+            eyebrow="Centrum dowodzenia"
+            title="Cockpit AI"
+            description="Chat operacyjny z Orchestratora i logami runtime."
+            as="h1"
+            size="lg"
+            className="items-center"
+            rightSlot={
+              <Badge tone={labMode ? "warning" : "success"}>
+                {labMode ? "Lab Mode" : "Prod"}
+              </Badge>
+            }
+          />
           <div className="grid-overlay relative mt-5 flex-1 rounded-3xl border border-white/5 bg-black/30 p-6">
             <div className="flex h-full flex-col">
               <div className="flex-1 space-y-4 overflow-y-auto pr-4">
@@ -422,151 +525,43 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="glass-panel flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Live Feed
-                </p>
-                <p className="text-sm font-semibold text-white">
-                  /ws/events stream
-                </p>
-              </div>
-              <Badge tone={connected ? "success" : "warning"}>
-                {connected ? "Połączono" : "Brak sygnału"}
-              </Badge>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
+        <div className="glass-panel flex flex-col gap-4">
+          <header className="flex items-center gap-3">
+            <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
+              <Bot className="h-5 w-5" />
             </div>
-            <input
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
-              placeholder="Filtruj logi..."
-              value={logFilter}
-              onChange={(e) => setLogFilter(e.target.value)}
-            />
-            <div className="terminal h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
-              {logEntries.length === 0 && (
-                <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
-              )}
-              {logEntries
-                .filter((entry) => {
-                  if (!logFilter.trim()) return true;
-                  const payload = entry.payload;
-                  const text =
-                    typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-                  return text.toLowerCase().includes(logFilter.toLowerCase());
-                })
-                .map((entry) => (
-                  <LogEntry
-                    key={entry.id}
-                    entry={entry}
-                    pinned={pinnedLogs.some((log) => log.id === entry.id)}
-                    onPin={() =>
-                    setPinnedLogs((prev) =>
-                      prev.some((log) => log.id === entry.id)
-                        ? prev.filter((log) => log.id !== entry.id)
-                        : [...prev, entry],
-                    )
-                  }
-                />
-              ))}
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                Agenci
+              </p>
+              <h2 className="text-lg font-semibold text-white">
+                Aktywność systemowa
+              </h2>
             </div>
-            {pinnedLogs.length > 0 && (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-200">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                  Pinned
-                </span>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="px-3 text-white"
-                  onClick={async () => {
-                    try {
-                      const blob = new Blob(
-                        [JSON.stringify(pinnedLogs.map((log) => log.payload), null, 2)],
-                        { type: "application/json" },
-                      );
-                      const url = URL.createObjectURL(blob);
-                      const anchor = document.createElement("a");
-                      anchor.href = url;
-                      anchor.download = "pinned-logs.json";
-                      document.body.appendChild(anchor);
-                      anchor.click();
-                      anchor.remove();
-                      URL.revokeObjectURL(url);
-                    } catch (err) {
-                      console.error("Clipboard error:", err);
-                    }
-                  }}
-                >
-                  Eksportuj JSON
-                </Button>
-                <Button
-                  variant="danger"
-                  size="xs"
-                  className="px-3"
-                  onClick={() => setPinnedLogs([])}
-                >
-                  Wyczyść
-                </Button>
-              </div>
-              <ul className="mt-2 space-y-2">
-                {pinnedLogs.map((log) => (
-                  <li
-                    key={`pinned-${log.id}`}
-                      className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px]"
-                    >
-                      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                        <span>{new Date(log.ts).toLocaleTimeString()}</span>
-                        <IconButton
-                          label="Usuń przypięty log"
-                          size="xs"
-                          variant="ghost"
-                          className="text-rose-300 hover:text-rose-400"
-                          icon={<X className="h-3.5 w-3.5" />}
-                          onClick={() =>
-                            setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
-                          }
-                        />
-                      </div>
-                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-white">
-                        {typeof log.payload === "string"
-                          ? log.payload
-                          : JSON.stringify(log.payload, null, 2)}
-                      </pre>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          </header>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge tone="neutral">Węzły: {graphNodes}</Badge>
+            <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
           </div>
-          <Card className="border border-white/5 bg-white/5 text-white">
-            <Text>Skuteczność operacji</Text>
-            <Flex justifyContent="between" className="mt-3">
-              <Metric>{successRate ? `${successRate}%` : "—"}</Metric>
-              <Text>{metrics?.tasks?.created ?? 0} zadań</Text>
-            </Flex>
-            <ProgressBar value={successRate} color="violet" className="mt-3" />
-            <Text className="mt-2 text-zinc-400">
-              Uptime:{" "}
-              {metrics?.uptime_seconds !== undefined
-                ? formatUptime(metrics.uptime_seconds)
-                : "—"}
-            </Text>
-          </Card>
-          <Card className="border border-white/5 bg-white/5 text-white">
-            <Text>Zużycie tokenów</Text>
-            <Metric>{tokenMetrics?.total_tokens ?? 0}</Metric>
-            <BarList
-              data={
-                tokensBar.length > 0
-                  ? tokensBar
-                  : [{ name: "Brak danych", value: 0 }]
-              }
-              className="mt-4 text-xs"
-              color="violet"
-            />
-          </Card>
+          <div className="space-y-3">
+            {agentDeck.map((svc) => (
+              <div
+                key={svc.name}
+                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
+              >
+                <div>
+                  <p className="font-semibold text-white">{svc.name}</p>
+                  <p className="text-xs text-zinc-500">
+                    {svc.detail ?? "Brak opisu"}
+                  </p>
+                </div>
+                <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -894,7 +889,11 @@ export default function Home() {
         <Panel
           title="Modele"
           description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
-          action={<Badge tone="neutral">{modelCount} modeli</Badge>}
+          action={
+            <span data-testid="models-count">
+              <Badge tone="neutral">{modelCount} modeli</Badge>
+            </span>
+          }
         >
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
@@ -1027,78 +1026,6 @@ export default function Home() {
             >
               Undo
             </Button>
-          </div>
-        </Panel>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <Panel
-          title="Cost Mode"
-          description="Global Cost Guard (/api/v1/system/cost-mode)."
-          action={
-            <Badge tone={costMode?.enabled ? "warning" : "success"}>
-              {costMode?.enabled ? "Paid (Pro)" : "Eco"}
-            </Badge>
-          }
-        >
-          <p className="text-sm text-[--color-muted]">
-            Provider: {costMode?.provider ?? "n/a"}
-          </p>
-          <Button
-            className="mt-3"
-            variant="secondary"
-            size="sm"
-            onClick={async () => {
-              try {
-                await setCostMode(!(costMode?.enabled ?? false));
-                refreshCost();
-              } catch (err) {
-                setMessage(
-                  err instanceof Error ? err.message : "Błąd zmiany cost mode",
-                );
-              }
-            }}
-          >
-            Przełącz na {costMode?.enabled ? "Eco" : "Paid"}
-          </Button>
-        </Panel>
-
-        <Panel
-          title="Autonomy"
-          description="Poziom AutonomyGate (/api/v1/system/autonomy)."
-          action={<Badge tone="neutral">{autonomy?.current_level_name ?? "n/a"}</Badge>}
-        >
-          <p className="text-sm text-[--color-muted]">
-            Aktualny poziom: {autonomy?.current_level ?? "—"} •{" "}
-            {autonomy?.risk_level ?? ""}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[0, 10, 20, 30, 40].map((level) => (
-              <Button
-                key={level}
-                size="xs"
-                variant={autonomy?.current_level === level ? "primary" : "secondary"}
-                className={
-                  autonomy?.current_level === level
-                    ? ""
-                    : "border-[--color-border]"
-                }
-                onClick={async () => {
-                  try {
-                    await setAutonomy(level);
-                    refreshAutonomy();
-                  } catch (err) {
-                    setMessage(
-                      err instanceof Error
-                        ? err.message
-                        : "Nie udało się zmienić poziomu autonomii",
-                    );
-                  }
-                }}
-              >
-                {level}
-              </Button>
-            ))}
           </div>
         </Panel>
       </div>

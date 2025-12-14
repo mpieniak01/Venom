@@ -13,7 +13,7 @@ type NotificationDrawerProps = {
 };
 
 export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerProps) {
-  const { entries } = useTelemetryFeed(100);
+  const { entries, connected } = useTelemetryFeed(100);
 
   const notifications = useMemo(
     () =>
@@ -53,7 +53,16 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 flex-1 overflow-y-auto space-y-3">
-          {notifications.length === 0 ? (
+          {!connected ? (
+            <div data-testid="notification-offline-state">
+              <EmptyState
+                icon={<span className="text-lg">📡</span>}
+                title="Brak połączenia"
+                description="Kanał WebSocket jest offline – powiadomienia pojawią się po wznowieniu."
+                className="text-sm"
+              />
+            </div>
+          ) : notifications.length === 0 ? (
             <EmptyState
               icon={<span className="text-lg">🚨</span>}
               title="Brak ostrzeżeń"

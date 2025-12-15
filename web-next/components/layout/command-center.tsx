@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { ListCard } from "@/components/ui/list-card";
 import { ArrowUpRight, Compass, Cpu, RefreshCw } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
+import { useTranslation } from "@/lib/i18n";
 
 type CommandCenterProps = {
   open: boolean;
@@ -26,6 +27,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   const { data: tasks } = useTasks();
   const { data: metrics } = useMetrics();
   const { data: services } = useServiceStatus();
+  const t = useTranslation();
 
   const successRateRaw = metrics?.tasks?.success_rate;
   const queueAvailable = Boolean(queue);
@@ -51,42 +53,73 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
     [services],
   );
 
-  const queueOfflineMessage = "Brak danych kolejki – sprawdź połączenie API.";
+  const queueOfflineMessage = t("commandCenter.queueOffline");
 
-  const quickLinks = [
-    { label: "Cockpit", description: "Czat i logi runtime", href: "/" },
-    { label: "Inspector", description: "RequestTracer + kroki", href: "/inspector" },
-    { label: "Brain", description: "Graf wiedzy i lekcje", href: "/brain" },
-    { label: "Strategy", description: "War Room & KPI", href: "/strategy" },
-  ];
+  const quickLinks = useMemo(
+    () => [
+      {
+        label: t("commandCenter.shortcuts.links.cockpit.label"),
+        description: t("commandCenter.shortcuts.links.cockpit.description"),
+        href: "/",
+      },
+      {
+        label: t("commandCenter.shortcuts.links.inspector.label"),
+        description: t("commandCenter.shortcuts.links.inspector.description"),
+        href: "/inspector",
+      },
+      {
+        label: t("commandCenter.shortcuts.links.brain.label"),
+        description: t("commandCenter.shortcuts.links.brain.description"),
+        href: "/brain",
+      },
+      {
+        label: t("commandCenter.shortcuts.links.strategy.label"),
+        description: t("commandCenter.shortcuts.links.strategy.description"),
+        href: "/strategy",
+      },
+    ],
+    [t],
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-white/10 bg-zinc-950/95">
         <SheetHeader>
-          <SheetTitle>Command Center</SheetTitle>
-          <SheetDescription>
-            Globalny podgląd kolejki, tasków i usług z szybkimi skrótami nawigacyjnymi.
-          </SheetDescription>
+          <SheetTitle>{t("commandCenter.title")}</SheetTitle>
+          <SheetDescription>{t("commandCenter.description")}</SheetDescription>
         </SheetHeader>
 
         <div className="grid gap-4 md:grid-cols-3">
           <StatCard
-            label="Kolejka"
+            label={t("commandCenter.stats.queueLabel")}
             value={queueAvailable ? `${queueStatus.active}/${queueStatus.limit}` : "—"}
-            hint={queueAvailable ? (queueStatus.paused ? "Wstrzymana" : "Aktywna") : "Brak danych"}
+            hint={
+              queueAvailable
+                ? queueStatus.paused
+                  ? t("commandCenter.stats.queueHintPaused")
+                  : t("commandCenter.stats.queueHintActive")
+                : t("commandCenter.stats.queueHintOffline")
+            }
             accent="blue"
           />
           <StatCard
-            label="Pending"
+            label={t("commandCenter.stats.pendingLabel")}
             value={queueAvailable ? queueStatus.pending : "—"}
-            hint={queueAvailable ? "Oczekujące zadania" : "Brak danych"}
+            hint={
+              queueAvailable
+                ? t("commandCenter.stats.pendingHint")
+                : t("commandCenter.stats.queueHintOffline")
+            }
             accent="purple"
           />
           <StatCard
-            label="Success rate"
+            label={t("commandCenter.stats.successLabel")}
             value={metricsAvailable ? `${successRate}%` : "—"}
-            hint={metricsAvailable ? "Metryki /api/v1/metrics" : "Metryki offline"}
+            hint={
+              metricsAvailable
+                ? t("commandCenter.stats.successHint")
+                : t("commandCenter.stats.successOffline")
+            }
             accent="green"
           />
         </div>
@@ -99,8 +132,12 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4">
           <header className="mb-3 flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Skróty</p>
-              <h3 className="text-lg font-semibold text-white">Nawigacja operacyjna</h3>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                {t("commandCenter.shortcuts.eyebrow")}
+              </p>
+              <h3 className="text-lg font-semibold text-white">
+                {t("commandCenter.shortcuts.title")}
+              </h3>
             </div>
             <Compass className="h-5 w-5 text-violet-300" />
           </header>
@@ -110,7 +147,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
                 key={link.href}
                 title={link.label}
                 subtitle={link.description}
-                meta={<span className="text-xs text-zinc-400">Przejdź</span>}
+                meta={<span className="text-xs text-zinc-400">{t("commandCenter.shortcuts.goTo")}</span>}
                 badge={<ArrowUpRight className="h-4 w-4" />}
                 onClick={() => {
                   router.push(link.href);
@@ -124,8 +161,12 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4">
           <header className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Aktywne taski</p>
-              <h3 className="text-lg font-semibold text-white">Status agentów</h3>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                {t("commandCenter.tasks.eyebrow")}
+              </p>
+              <h3 className="text-lg font-semibold text-white">
+                {t("commandCenter.tasks.title")}
+              </h3>
             </div>
             <Cpu className="h-5 w-5 text-emerald-300" />
           </header>
@@ -133,9 +174,9 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
             {taskSummary.length === 0 ? (
               <OverlayFallback
                 icon={<Cpu className="h-4 w-4 text-emerald-300" />}
-                title="Brak aktywnych zadań"
-                description="Kolejka chwilowo nie przetwarza tasków."
-                hint="Command Center"
+                title={t("commandCenter.tasks.fallbackTitle")}
+                description={t("commandCenter.tasks.fallbackDescription")}
+                hint={t("commandCenter.tasks.fallbackHint")}
               />
             ) : (
               taskSummary.map((entry) => (
@@ -153,9 +194,11 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
           <header className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                System Services
+                {t("commandCenter.services.eyebrow")}
               </p>
-              <h3 className="text-lg font-semibold text-white">Status integracji</h3>
+              <h3 className="text-lg font-semibold text-white">
+                {t("commandCenter.services.title")}
+              </h3>
             </div>
             <RefreshCw className="h-5 w-5 text-sky-300" />
           </header>
@@ -164,16 +207,16 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
               <ListCard
                 key={svc.name}
                 title={svc.name}
-                subtitle={svc.detail ?? "Brak opisu"}
+                subtitle={svc.detail ?? t("common.noDescription")}
                 badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
               />
             ))}
             {servicesOffline && (
               <OverlayFallback
                 icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
-                title="Brak usług"
-                description="Sprawdź połączenie z backendem."
-                hint="Command Center"
+                title={t("commandCenter.services.fallbackTitle")}
+                description={t("commandCenter.services.fallbackDescription")}
+                hint={t("commandCenter.services.fallbackHint")}
                 testId="command-center-services-offline"
               />
             )}

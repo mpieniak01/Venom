@@ -1,9 +1,13 @@
 export type TaskStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "LOST";
 
 export interface Task {
-  task_id: string;
+  task_id?: string;
+  id?: string;
   content: string;
   status: TaskStatus;
+  result?: string | null;
+  logs?: string[];
+  context_history?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
 }
@@ -62,6 +66,26 @@ export interface HistoryStep {
   status?: string;
   timestamp?: string;
   details?: string;
+}
+
+export interface FlowStep {
+  component: string;
+  action: string;
+  timestamp?: string;
+  status?: string;
+  details?: string;
+  is_decision_gate?: boolean;
+}
+
+export interface FlowTrace {
+  request_id: string;
+  prompt: string;
+  status: string;
+  created_at: string;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+  steps: FlowStep[];
+  mermaid_diagram?: string;
 }
 
 export interface ServiceStatus {

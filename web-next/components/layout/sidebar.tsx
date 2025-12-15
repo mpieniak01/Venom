@@ -12,21 +12,22 @@ import {
   useCostMode,
 } from "@/hooks/use-api";
 import { SystemStatusPanel } from "./system-status-panel";
+import { useTranslation } from "@/lib/i18n";
 
 export const navItems = [
-  { href: "/", label: "Cockpit", icon: Command },
-  { href: "/brain", label: "Brain", icon: Brain },
-  { href: "/inspector", label: "Inspector", icon: BugPlay },
-  { href: "/strategy", label: "Strategy", icon: Target },
+  { href: "/", label: "Kokpit", labelKey: "sidebar.nav.cockpit", icon: Command },
+  { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
+  { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
+  { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target },
 ];
 
 const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];
 const AUTONOMY_LABELS: Record<number, string> = {
-  0: "Boot",
+  0: "Start",
   10: "Monitor",
-  20: "Assistant",
-  30: "Hybrid",
-  40: "Full",
+  20: "Asystent",
+  30: "Hybryda",
+  40: "Pełny",
 };
 const AUTONOMY_DETAILS: Record<number, { name: string; risk: string; description: string }> = {
   0: { name: "ISOLATED", risk: "zero", description: "Lokalny odczyt bez dostępu do sieci." },
@@ -52,6 +53,7 @@ export function Sidebar() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectedAutonomy, setSelectedAutonomy] = useState<string>("");
   const [localAutonomy, setLocalAutonomy] = useState<AutonomySnapshot | null>(null);
+  const t = useTranslation();
 
   const resolveAutonomyDetails = (level: number | null) => {
     if (level === null || level === undefined) return null;
@@ -82,12 +84,23 @@ export function Sidebar() {
   }, [autonomy, localAutonomy, selectedAutonomy]);
 
   const handleCostToggle = async () => {
+    const targetState = !(costMode?.enabled ?? false);
+    if (
+      targetState &&
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Tryb Paid (Pro) wykorzysta płatne API i zasoby. Czy chcesz kontynuować?",
+      )
+    ) {
+      setStatusMessage("Anulowano przełączenie trybu kosztów.");
+      return;
+    }
     setCostLoading(true);
     setStatusMessage(null);
     try {
-      await setCostMode(!(costMode?.enabled ?? false));
+      await setCostMode(targetState);
       refreshCost();
-      setStatusMessage(`Przełączono tryb na ${costMode?.enabled ? "Eco" : "Paid (Pro)"}.`);
+      setStatusMessage(`Przełączono tryb na ${targetState ? "Pro (płatny)" : "Eco"}.`);
     } catch (error) {
       setStatusMessage(
         error instanceof Error ? error.message : "Nie udało się przełączyć trybu kosztów.",
@@ -160,8 +173,12 @@ export function Sidebar() {
             🕷️
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Venom</p>
-            <p className="text-lg font-semibold tracking-[0.1em] text-white">Command Center</p>
+            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              {t("sidebar.brand.caption")}
+            </p>
+            <p className="text-lg font-semibold tracking-[0.1em] text-white">
+              {t("sidebar.brand.title")}
+            </p>
           </div>
         </div>
         <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-zinc-400">
@@ -170,11 +187,14 @@ export function Sidebar() {
       </div>
       <nav className="mt-8 space-y-5">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Modules</p>
+          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            {t("sidebar.modulesTitle")}
+          </p>
           <div className="mt-3 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
+              const label = item.labelKey ? t(item.labelKey) : item.label;
               return (
                 <a
                   key={item.href}
@@ -189,7 +209,7 @@ export function Sidebar() {
                   aria-current={active ? "page" : undefined}
                 >
                   <Icon className={cn("h-4 w-4", active ? "text-emerald-300" : "text-zinc-400")} />
-                  <span>{item.label}</span>
+                  <span>{label}</span>
                 </a>
               );
             })}
@@ -205,12 +225,14 @@ export function Sidebar() {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Cost Mode</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                {t("sidebar.cost.title")}
+              </p>
               <p className="text-lg font-semibold text-white">
-                {costMode?.enabled ? "Paid (Pro)" : "Eco"}
+                {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
               </p>
               <p className="text-xs text-zinc-400">
-                Provider: {costMode?.provider ?? "n/a"}
+                {t("common.provider")}: {costMode?.provider ?? "brak"}
               </p>
             </div>
             <Sparkles className="h-5 w-5 text-emerald-200" />
@@ -222,7 +244,11 @@ export function Sidebar() {
             disabled={costLoading}
             onClick={handleCostToggle}
           >
-            {costLoading ? "Przełączam..." : `Przełącz na ${costMode?.enabled ? "Eco" : "Paid"}`}
+            {costLoading
+              ? t("sidebar.cost.switching")
+              : costMode?.enabled
+                ? t("sidebar.cost.switchToEco")
+                : t("sidebar.cost.switchToPro")}
           </Button>
         </section>
 
@@ -232,17 +258,19 @@ export function Sidebar() {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Autonomy</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                {t("sidebar.autonomy.title")}
+              </p>
               <p className="text-lg font-semibold text-white">{autonomyInfo.name}</p>
               <p className="text-xs text-zinc-400">
-                Poziom {autonomyInfo.level ?? "n/a"} • {autonomyInfo.risk}
+                Poziom {autonomyInfo.level ?? "brak"} • {autonomyInfo.risk}
               </p>
             </div>
             <Shield className="h-5 w-5 text-violet-200" />
           </div>
           <div className="mt-3">
             <label className="text-xs text-zinc-500" htmlFor="autonomy-select">
-              Wybierz poziom autonomii
+              {t("sidebar.autonomy.selectLabel")}
             </label>
             <select
               id="autonomy-select"

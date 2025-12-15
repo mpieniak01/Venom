@@ -29,7 +29,7 @@ export function SystemStatusPanel() {
     const apiValue = queueLoading
       ? "Łączenie..."
       : hasQueue
-        ? "Online"
+        ? "Dostępne"
         : queueError
           ? "Offline"
           : "Brak danych";
@@ -52,17 +52,17 @@ export function SystemStatusPanel() {
       },
       {
         id: "queue",
-        label: "Queue",
+        label: "Kolejka",
         value: hasQueue ? (queue?.paused ? "Wstrzymana" : "Aktywna") : "—",
         hint: hasQueue
-          ? `Active ${queue?.active ?? 0} • Pending ${queue?.pending ?? 0}`
+          ? `Aktywne ${queue?.active ?? 0} • Oczekujące ${queue?.pending ?? 0}`
           : "Brak danych kolejki",
         tone: queueTone,
       },
       {
         id: "ws",
-        label: "WS Feed",
-        value: connected ? "Połączony" : "Offline",
+        label: "Kanał WS",
+        value: connected ? "Połączony" : "Rozłączony",
         hint: connected ? "Telemetria live" : "Kanał /ws/events",
         tone: wsTone,
       },
@@ -71,7 +71,7 @@ export function SystemStatusPanel() {
 
   return (
     <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
-      <p className="text-xs uppercase tracking-[0.25em] text-zinc-500">SYSTEM STATUS</p>
+      <p className="text-xs uppercase tracking-[0.25em] text-zinc-500">STATUS SYSTEMU</p>
       <div className="mt-3 space-y-3">
         {statuses.map((status) => (
           <div

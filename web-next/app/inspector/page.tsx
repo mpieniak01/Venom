@@ -1,16 +1,17 @@
 "use client";
 
+import mermaid from "mermaid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
-import type { HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
+import { fetchFlowTrace, fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
+import type { FlowTrace, HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { Activity, Layers, Radar, TimerReset, ListFilter, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Activity, Layers, Radar, TimerReset, ListFilter, ZoomIn, ZoomOut, RotateCcw, RefreshCw, Loader2 } from "lucide-react";
 import { LatencyCard } from "@/components/inspector/lag-card";
 import { HistoryList } from "@/components/history/history-list";
 import { formatRelativeTime } from "@/lib/date";
@@ -18,15 +19,31 @@ import { statusTone } from "@/lib/status";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 
 export default function InspectorPage() {
-  const { data: history } = useHistory(50);
+  const {
+    data: history,
+    refresh: refreshHistory,
+    loading: historyLoading,
+  } = useHistory(50);
   const { data: tasks } = useTasks();
-  const [diagram, setDiagram] = useState<string>("graph TD\nA[Brak danych]");
+  const DEFAULT_DIAGRAM = [
+    "sequenceDiagram",
+    "    autonumber",
+    "    Note over User: Wybierz request z listy",
+  ].join("\n");
+  const [diagram, setDiagram] = useState<string>(DEFAULT_DIAGRAM);
+  const [diagramLoading, setDiagramLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [steps, setSteps] = useState<HistoryStep[]>([]);
   const [stepFilter, setStepFilter] = useState("");
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [historyRefreshPending, setHistoryRefreshPending] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [mermaidError, setMermaidError] = useState<string | null>(null);
+  const [mermaidReloadKey, setMermaidReloadKey] = useState(0);
   const svgRef = useRef<HTMLDivElement | null>(null);
+  const mermaidInitializedRef = useRef(false);
+  const fitViewRef = useRef<(() => void) | null>(null);
   const filteredSteps = useMemo(() => filterSteps(steps, stepFilter), [steps, stepFilter]);
   const stepsCount = steps.length;
   const selectedRequest = useMemo(
@@ -61,27 +78,79 @@ export default function InspectorPage() {
   );
 
   useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      const mermaid = (await import("mermaid")).default;
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "loose",
-      });
+    if (typeof window === "undefined" || mermaidInitializedRef.current) {
+      return;
+    }
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "dark",
+      securityLevel: "loose",
+      themeCSS: `
+        :root {
+          --mermaid-font-family: 'Inter, JetBrains Mono', sans-serif;
+        }
+        .node > rect,
+        .node > circle,
+        .node > polygon,
+        .actor {
+          fill: #0f172a !important;
+          stroke: #38bdf8 !important;
+          stroke-width: 1.4px;
+        }
+        .messageLine0,
+        .loopLine {
+          stroke: #38bdf8 !important;
+        }
+        .messageText,
+        .actor > text,
+        .noteText {
+          fill: #e2e8f0 !important;
+        }
+        .note {
+          fill: #1c1917 !important;
+          stroke: #fbbf24 !important;
+        }
+      `,
+    });
+    mermaidInitializedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const render = async () => {
+      if (!svgRef.current) return;
       try {
-        const { svg } = await mermaid.render("flow-chart", diagram);
-        if (svgRef.current && isMounted) {
-          svgRef.current.innerHTML = svg;
+        const container = svgRef.current;
+        container.innerHTML = `<div class="mermaid">${diagram}</div>`;
+        await mermaid.run({
+          nodes: container.querySelectorAll(".mermaid"),
+        });
+        adjustMermaidSizing(container);
+        if (!cancelled) {
+          setMermaidError(null);
+          requestAnimationFrame(() => fitViewRef.current?.());
         }
       } catch (err) {
         console.error("Mermaid render error:", err);
+        if (!cancelled) {
+          setMermaidError(
+            "Nie udało się wyrenderować diagramu – spróbuj ponownie lub sprawdź, czy RequestTracer działa.",
+          );
+        }
       }
-    })();
-    return () => {
-      isMounted = false;
     };
-  }, [diagram]);
+
+    if (diagram) {
+      render();
+    } else if (svgRef.current) {
+      svgRef.current.innerHTML = "";
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [diagram, mermaidReloadKey]);
 
   useEffect(() => {
     if (!filteredSteps.length) {
@@ -96,11 +165,60 @@ export default function InspectorPage() {
     });
   }, [filteredSteps]);
 
+  const handleHistoryRefresh = async () => {
+    setHistoryRefreshPending(true);
+    try {
+      await refreshHistory();
+    } finally {
+      setHistoryRefreshPending(false);
+    }
+  };
+
+  const handleHistorySelect = async (requestId: string) => {
+    setDiagramLoading(true);
+    setDetailError(null);
+    setSelectedId(requestId);
+    setSteps([]);
+    setFocusedIndex(null);
+    setStepFilter("");
+    setCopyMessage(null);
+    setMermaidError(null);
+    try {
+      const flow = await fetchFlowTrace(requestId);
+      const flowSteps = (flow.steps || []) as HistoryStep[];
+      setSteps(flowSteps);
+      const diagramSource =
+        (flow.mermaid_diagram && flow.mermaid_diagram.trim().length > 0
+          ? flow.mermaid_diagram
+          : flowSteps.length > 0
+            ? buildSequenceDiagram(flow)
+            : null) ?? DEFAULT_DIAGRAM;
+      setDiagram(diagramSource);
+    } catch (flowError) {
+      console.error("Flow trace error:", flowError);
+      setDetailError(
+        flowError instanceof Error ? flowError.message : "Nie udało się pobrać przepływu.",
+      );
+      try {
+        const detail = await fetchHistoryDetail(requestId);
+        const detailSteps = detail.steps || [];
+        setSteps(detailSteps);
+        setDiagram(detailSteps.length > 0 ? buildFlowchartDiagram(detailSteps) : DEFAULT_DIAGRAM);
+      } catch (historyError) {
+        console.error("Fallback detail error:", historyError);
+        setSteps([]);
+        setDiagram("graph TD\nE[Błąd ładowania]");
+      }
+    } finally {
+      setDiagramLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-10">
       <SectionHeading
-        eyebrow="Inspector / Debugging"
-        title="Trace Intelligence"
+        eyebrow="Inspector / Diagnostyka"
+        title="Analiza śladów"
         description="RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki."
         as="h1"
         size="lg"
@@ -150,20 +268,34 @@ export default function InspectorPage() {
           <Panel
             title="Kolejka requestów"
             description="Ostatnie 50 historii RequestTracer."
+            action={
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={handleHistoryRefresh}
+                disabled={historyRefreshPending}
+              >
+                {historyRefreshPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Odświeżam…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                    Odśwież
+                  </>
+                )}
+              </Button>
+            }
           >
+            {historyLoading && !history?.length && (
+              <p className="mb-2 text-xs text-zinc-500">Ładuję historię...</p>
+            )}
             <HistoryList
               entries={history}
               selectedId={selectedId}
-              onSelect={(entry) =>
-                loadHistoryDetail(
-                  entry.request_id,
-                  setDiagram,
-                  setSelectedId,
-                  setSteps,
-                  () => setStepFilter(""),
-                  () => setCopyMessage(null),
-                )
-              }
+              onSelect={(entry) => handleHistorySelect(entry.request_id)}
               emptyTitle="Brak historii do wyświetlenia"
               emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
             />
@@ -192,29 +324,76 @@ export default function InspectorPage() {
             title="Diagnoza przepływu"
             description="Mermaid flow graph + zoom/drag (react-zoom-pan-pinch)."
             action={
-              <div className="text-sm text-zinc-400">
-                Wybrany request:{" "}
-                <span className="font-semibold text-white">{selectedId ?? "—"}</span>
+              <div className="flex flex-col items-start gap-1 text-sm text-zinc-400 sm:flex-row sm:items-center sm:gap-3">
+                <span>
+                  Wybrany request:{" "}
+                  <span className="font-semibold text-white">{selectedId ?? "—"}</span>
+                </span>
+                {detailError && <span className="text-rose-300">{detailError}</span>}
               </div>
             }
           >
-            <TransformWrapper>
-              {({ zoomIn, zoomOut, resetTransform }) => (
-                <>
-                  <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                    <IconButton label="Przybliż" icon={<ZoomIn className="h-4 w-4" />} onClick={() => zoomIn()} />
+            <TransformWrapper wheel={{ step: 0.15 }}>
+              {({ zoomIn, zoomOut, resetTransform, setTransform }) => {
+                fitViewRef.current = () => autoFitDiagram(svgRef.current, setTransform);
+                return (
+                  <>
+                    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                      <IconButton label="Przybliż" icon={<ZoomIn className="h-4 w-4" />} onClick={() => zoomIn()} />
                     <IconButton label="Oddal" icon={<ZoomOut className="h-4 w-4" />} onClick={() => zoomOut()} />
                     <IconButton label="Resetuj" icon={<RotateCcw className="h-4 w-4" />} onClick={() => resetTransform()} />
                   </div>
-                  <div className="rounded-[28px] border border-white/10 bg-black/30 p-4">
-                    <TransformComponent>
-                      <div className="min-h-[420px] min-w-full">
-                        <div ref={svgRef} className="min-h-[420px]" />
-                      </div>
-                    </TransformComponent>
-                  </div>
-                </>
-              )}
+                    <div className="relative rounded-[28px] border border-white/10 bg-black/30 p-4">
+                      {diagramLoading && (
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-black/70 text-sm text-white">
+                          <Loader2 className="h-5 w-5 animate-spin text-emerald-300" />
+                          Ładuję kroki…
+                        </div>
+                      )}
+                      {mermaidError && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-[28px] bg-black/80 px-6 text-center text-sm text-rose-200">
+                          <p>{mermaidError}</p>
+                          <Button variant="outline" size="sm" onClick={() => setMermaidReloadKey((key) => key + 1)}>
+                            Spróbuj ponownie
+                          </Button>
+                        </div>
+                      )}
+                      <TransformComponent>
+                        <div className="relative min-h-[700px] w-full">
+                          <div
+                            ref={svgRef}
+                            className="h-full w-full [&>svg]:h-full [&>svg]:w-full [&>svg]:rounded-[20px] [&>svg]:bg-[#020617] [&>svg]:p-4 [&>svg_path]:stroke-[#38bdf8]"
+                          />
+                          {!selectedId && !diagramLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
+                              Wybierz request z listy, aby zbudować przepływ.
+                            </div>
+                          )}
+                          {!diagramLoading && (detailError || mermaidError || steps.length === 0) && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-black/70 text-center text-sm text-zinc-300">
+                              <p>
+                                {detailError ||
+                                  mermaidError ||
+                                  "Brak kroków do pokazania – sprawdź, czy RequestTracer działa na porcie 8000."}
+                              </p>
+                              {detailError && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleHistorySelect(selectedId as string)}
+                                  disabled={!selectedId}
+                                >
+                                  Spróbuj ponownie
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </TransformComponent>
+                    </div>
+                  </>
+                );
+              }}
             </TransformWrapper>
           </Panel>
 
@@ -344,6 +523,18 @@ export default function InspectorPage() {
                     </dd>
                   </div>
                 </dl>
+                <div className="mt-3">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">JSON kroku</p>
+                  <div className="mt-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs text-emerald-50">
+                    {focusedStep ? (
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
+                        {JSON.stringify(focusedStep, null, 2)}
+                      </pre>
+                    ) : (
+                      <p className="text-zinc-500">Kliknij krok, aby zobaczyć surowe dane.</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </Panel>
           </div>
@@ -351,6 +542,49 @@ export default function InspectorPage() {
       </div>
     </div>
   );
+}
+
+function adjustMermaidSizing(container: HTMLDivElement) {
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  const width = svg.getAttribute("width");
+  const height = svg.getAttribute("height");
+  if (width && height && !svg.getAttribute("viewBox")) {
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
+  svg.removeAttribute("width");
+  svg.removeAttribute("height");
+  svg.style.width = "100%";
+  svg.style.height = "100%";
+  svg.style.display = "block";
+  svg.style.maxWidth = "none";
+  svg.style.maxHeight = "none";
+}
+
+function autoFitDiagram(
+  container: HTMLDivElement | null,
+  setTransform: (x: number, y: number, scale: number, duration?: number, easing?: string) => void,
+) {
+  if (!container) return;
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  const nodes = svg.querySelectorAll(".node");
+  if (nodes.length === 0) return;
+  let bbox: DOMRect | SVGRect;
+  try {
+    bbox = svg.getBBox();
+  } catch {
+    return;
+  }
+  if (!bbox.width || !bbox.height) return;
+  const padding = 96;
+  const availableWidth = Math.max(container.clientWidth - padding, 100);
+  const availableHeight = Math.max(container.clientHeight - padding, 100);
+  const scale = Math.min(availableWidth / bbox.width, availableHeight / bbox.height);
+  const targetScale = Math.max(Math.min(scale, 3), 0.2);
+  const offsetX = -bbox.x * targetScale + (container.clientWidth - bbox.width * targetScale) / 2;
+  const offsetY = -bbox.y * targetScale + (container.clientHeight - bbox.height * targetScale) / 2;
+  setTransform(offsetX, offsetY, targetScale, 200, "easeOut");
 }
 
 type HistoryStep = HistoryStepType;
@@ -362,6 +596,97 @@ const filterSteps = (steps: HistoryStep[], query: string) => {
     `${step.component ?? ""} ${step.action ?? ""}`.toLowerCase().includes(lower),
   );
 };
+
+function buildSequenceDiagram(flow?: FlowTrace | null) {
+  if (!flow) {
+    return [
+      "sequenceDiagram",
+      "    autonumber",
+      "    Note over User: Brak danych requestu",
+    ].join("\n");
+  }
+
+  const steps = flow.steps || [];
+  const lines: string[] = ["sequenceDiagram", "    autonumber"];
+  const participants = new Set<string>(["User", "Orchestrator"]);
+
+  steps.forEach((step) => {
+    const component = sanitizeSequenceText(step.component || "");
+    if (component && component !== "User") {
+      participants.add(component);
+    }
+  });
+
+  participants.delete("User");
+  participants.forEach((participant) => {
+    lines.push(`    participant ${participant}`);
+  });
+
+  lines.push("");
+  const prompt = truncateText(sanitizeSequenceText(flow.prompt || "Zapytanie"), 70);
+  lines.push(`    User->>Orchestrator: ${prompt || "Zapytanie"}`);
+
+  let lastComponent = "Orchestrator";
+  steps.forEach((step) => {
+    const component = sanitizeSequenceText(step.component || lastComponent);
+    if (!component) return;
+    const action = truncateText(
+      sanitizeSequenceText(step.action || step.details || "Krok"),
+      80,
+    );
+    const details = truncateText(sanitizeSequenceText(step.details || ""), 80);
+
+    if (step.is_decision_gate || component.toLowerCase() === "decisiongate") {
+      const message = details ? `${action}: ${details}` : action;
+      lines.push(`    Note over ${component}: 🔀 ${message || "Decision Gate"}`);
+      return;
+    }
+
+    const message = details ? `${action}: ${details}` : action;
+    const arrow = statusToArrow(step.status);
+    if (component !== lastComponent) {
+      lines.push(`    ${lastComponent}${arrow}${component}: ${message}`);
+      lastComponent = component;
+    } else {
+      lines.push(`    Note right of ${component}: ${message}`);
+    }
+  });
+
+  if (flow.status === "COMPLETED") {
+    lines.push(`    ${lastComponent}->>User: ✅ Task completed`);
+  } else if (flow.status === "FAILED") {
+    lines.push(`    ${lastComponent}--xUser: ❌ Task failed`);
+  } else if (flow.status === "PROCESSING") {
+    lines.push(`    Note over ${lastComponent}: ⏳ Processing...`);
+  }
+
+  return lines.join("\n");
+}
+
+function sanitizeSequenceText(value?: string | null) {
+  if (!value) return "";
+  return value
+    .replace(/[<>]/g, "")
+    .replace(/[\r\n]/g, " ")
+    .replace(/[|]/g, "‖")
+    .replace(/--/g, "–")
+    .replace(/["]/g, "'")
+    .trim();
+}
+
+function truncateText(value: string, limit: number) {
+  if (!value) return "";
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
+}
+
+function statusToArrow(status?: string) {
+  if (!status) return "->>";
+  const normalized = status.toLowerCase();
+  if (normalized.includes("fail") || normalized.includes("error")) {
+    return "--x";
+  }
+  return "->>";
+}
 
 async function handleCopySteps(
   steps: HistoryStep[],
@@ -378,40 +703,53 @@ async function handleCopySteps(
   }
 }
 
-async function loadHistoryDetail(
-  requestId: string,
-  setDiagram: (d: string) => void,
-  setSelected: (id: string) => void,
-  setSteps: (s: HistoryStep[]) => void,
-  resetFilter: () => void,
-  resetCopy: () => void,
-) {
-  const detail = (await fetchHistoryDetail(requestId)) as { steps?: HistoryStep[] };
-  const steps = detail.steps || [];
-  const diagram = buildMermaid(steps);
-  setDiagram(diagram);
-  setSelected(requestId);
-  setSteps(steps);
-  resetFilter();
-  resetCopy();
-}
-
-function buildMermaid(steps: HistoryStep[]) {
+function buildFlowchartDiagram(steps: HistoryStep[]) {
   if (!steps.length) {
     return "graph TD\nA[Brak kroków]";
   }
-  const lines = ["graph TD"];
+  const lines = [
+    "graph TD",
+    "classDef success fill:#052e1a,stroke:#22c55e,color:#d1fae5",
+    "classDef failed fill:#331010,stroke:#f87171,color:#fee2e2",
+    "classDef running fill:#0f172a,stroke:#38bdf8,color:#e0f2fe",
+    "classDef default fill:#111827,stroke:#475569,color:#f8fafc",
+    "classDef decision fill:#1f2937,stroke:#facc15,color:#fde68a,stroke-dasharray:5 5",
+    "classDef note fill:#1c1917,stroke:#fbbf24,color:#fef3c7",
+  ];
   steps.forEach((step, idx) => {
     const nodeId = `S${idx}`;
-    const label = `${step.component || "step"}: ${step.action || ""}`
-      .replace(/"/g, "'")
-      .slice(0, 40);
-    lines.push(`${nodeId}["${label}"]`);
+    const safeComponent = sanitizeMermaidText(step.component || `Step ${idx + 1}`);
+    const safeAction = sanitizeMermaidText(step.action || step.details || "");
+    const label = safeAction ? `${safeComponent}\\n${safeAction}` : safeComponent;
+    const statusClass = statusToMermaidClass(step.status);
+    const isDecision = (step.details || step.action || "")
+      .toLowerCase()
+      .includes("decision");
+    lines.push(`${nodeId}["${label}"]:::${isDecision ? "decision" : statusClass}`);
     if (idx > 0) {
-      lines.push(`S${idx - 1} --> ${nodeId}`);
+      const edgeLabel = sanitizeMermaidText(steps[idx - 1]?.status || "");
+      lines.push(`S${idx - 1} -->${edgeLabel ? `|${edgeLabel}|` : ""} ${nodeId}`);
+    }
+    if (step.details && step.details.length > 80) {
+      const noteId = `${nodeId}_note`;
+      lines.push(`${noteId}["${sanitizeMermaidText(step.details, 90)}"]:::note`);
+      lines.push(`${nodeId} -.-> ${noteId}`);
     }
   });
   return lines.join("\n");
+}
+
+function sanitizeMermaidText(value: string, limit = 60) {
+  return value.replace(/[\n\r"]/g, " ").trim().slice(0, limit);
+}
+
+function statusToMermaidClass(status?: string) {
+  if (!status) return "default";
+  const normalized = status.toLowerCase();
+  if (normalized.includes("success") || normalized.includes("complete")) return "success";
+  if (normalized.includes("fail") || normalized.includes("error")) return "failed";
+  if (normalized.includes("process") || normalized.includes("run")) return "running";
+  return "default";
 }
 
 function buildInspectorStats(history: HistoryRequest[] | null | undefined, tasks?: Task[] | null) {

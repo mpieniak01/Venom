@@ -14,22 +14,26 @@ import { ListCard } from "@/components/ui/list-card";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { AlertTriangle, Filter, Copy } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
+import { useTranslation } from "@/lib/i18n";
 
 type AlertCenterProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-const filters = [
-  { value: "all" as const, label: "Wszystkie" },
-  { value: "error" as const, label: "Błędy" },
-  { value: "warn" as const, label: "Ostrzeżenia" },
-  { value: "info" as const, label: "Info" },
-];
-
 export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
   const { entries, connected } = useTelemetryFeed(150);
-  const [filter, setFilter] = useState<(typeof filters)[number]["value"]>("all");
+  const t = useTranslation();
+  const filterOptions = useMemo(
+    () => [
+      { value: "all" as const, label: t("alertCenter.filters.all") },
+      { value: "error" as const, label: t("alertCenter.filters.error") },
+      { value: "warn" as const, label: t("alertCenter.filters.warn") },
+      { value: "info" as const, label: t("alertCenter.filters.info") },
+    ],
+    [t],
+  );
+  const [filter, setFilter] = useState<(typeof filterOptions)[number]["value"]>("all");
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
   const parsedEntries = useMemo(() => entries.map(parseTelemetryEntry), [entries]);
@@ -45,10 +49,10 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(visibleEntries, null, 2));
-      setCopyMessage("Skopiowano logi.");
+      setCopyMessage(t("alertCenter.copySuccess"));
     } catch (err) {
       console.error("Clipboard error", err);
-      setCopyMessage("Nie udało się skopiować.");
+      setCopyMessage(t("alertCenter.copyError"));
     } finally {
       setTimeout(() => setCopyMessage(null), 2000);
     }
@@ -58,15 +62,13 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-white/10 bg-zinc-950/95">
         <SheetHeader>
-          <SheetTitle>Alert Center</SheetTitle>
-          <SheetDescription>
-            Potok WebSocket `/ws/events` z filtrowaniem poziomów logów i szybkim kopiowaniem.
-          </SheetDescription>
+          <SheetTitle>{t("alertCenter.title")}</SheetTitle>
+          <SheetDescription>{t("alertCenter.description")}</SheetDescription>
         </SheetHeader>
 
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <Filter className="h-4 w-4 text-zinc-500" />
-          {filters.map((item) => (
+          {filterOptions.map((item) => (
             <Button
               key={item.value}
               variant={filter === item.value ? "secondary" : "outline"}
@@ -80,7 +82,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
           <div className="ml-auto flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-2">
               <Copy className="h-3.5 w-3.5" />
-              Kopiuj JSON
+              {t("alertCenter.copy")}
             </Button>
             {copyMessage && <span className="text-emerald-300">{copyMessage}</span>}
           </div>
@@ -90,17 +92,17 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
           {!connected ? (
             <OverlayFallback
               icon={<AlertTriangle className="h-5 w-5" />}
-              title="Brak połączenia z feedem"
-              description="Kanał `/ws/events` jest niedostępny. Spróbuj ponownie za chwilę."
-              hint="Alert Center"
+              title={t("alertCenter.offlineTitle")}
+              description={t("alertCenter.offlineDescription")}
+              hint={t("alertCenter.hint")}
               testId="alert-center-offline-state"
             />
           ) : visibleEntries.length === 0 ? (
             <OverlayFallback
               icon={<AlertTriangle className="h-5 w-5" />}
-              title="Brak wpisów"
-              description="Spróbuj zmienić filtr lub poczekaj na nowe logi."
-              hint="Alert Center"
+              title={t("alertCenter.emptyTitle")}
+              description={t("alertCenter.emptyDescription")}
+              hint={t("alertCenter.hint")}
             />
           ) : (
             <div className="space-y-3">

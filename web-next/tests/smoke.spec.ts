@@ -6,18 +6,18 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(page.getByRole("heading", { name: /Cockpit AI/i })).toBeVisible();
     await expect(page.getByText(/Live Feed/i)).toBeVisible();
     await expect(page.getByText("Zadania").first()).toBeVisible();
-    await expect(page.getByText("Success rate")).toBeVisible();
+    await expect(page.getByText("Skuteczność")).toBeVisible();
   });
 
   test("Inspector list displays placeholders", async ({ page }) => {
     await page.goto("/inspector");
-    await expect(page.getByRole("heading", { name: /Trace Intelligence/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Analiza śladów/i })).toBeVisible();
     await expect(page.getByText(/Brak historii/i)).toBeVisible();
   });
 
   test("Brain view loads filters and graph container", async ({ page }) => {
     await page.goto("/brain");
-    await expect(page.getByText(/Mind Mesh/i)).toBeVisible();
+    await expect(page.getByText(/Siatka wiedzy/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /^all$/i }).first()).toBeVisible();
     await expect(page.getByTestId("graph-container")).toBeVisible();
   });
@@ -65,7 +65,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const servicesButton = page.getByTestId("topbar-services");
     await expect(servicesButton).toBeVisible();
     await servicesButton.click();
-    await expect(page.getByRole("dialog", { name: /Service status/i })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Status usług/i })).toBeVisible();
     const offline = page.getByTestId("service-status-offline");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
@@ -81,7 +81,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const alertsButton = page.getByTestId("topbar-alerts");
     await expect(alertsButton).toBeVisible();
     await alertsButton.click();
-    await expect(page.getByRole("dialog", { name: /Alert Center/i })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Centrum alertów/i })).toBeVisible();
     const offline = page.getByTestId("alert-center-offline-state");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const notificationsButton = page.getByTestId("topbar-notifications");
     await expect(notificationsButton).toBeVisible();
     await notificationsButton.click();
-    await expect(page.getByRole("dialog", { name: /Notifications/i })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Powiadomienia/i })).toBeVisible();
     const offline = page.getByTestId("notification-offline-state");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
@@ -112,7 +112,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const commandCenterButton = page.getByTestId("topbar-command-center");
     await expect(commandCenterButton).toBeVisible();
     await commandCenterButton.click();
-    await expect(page.getByRole("dialog", { name: /Command Center/i })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Centrum dowodzenia/i })).toBeVisible();
     const queueOffline = page.getByTestId("command-center-queue-offline");
     if ((await queueOffline.count()) > 0) {
       await expect(queueOffline).toBeVisible();

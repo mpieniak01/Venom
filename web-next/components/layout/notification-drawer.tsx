@@ -6,6 +6,7 @@ import { ListCard } from "@/components/ui/list-card";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { useMemo } from "react";
 import { OverlayFallback } from "./overlay-fallback";
+import { useTranslation } from "@/lib/i18n";
 
 type NotificationDrawerProps = {
   open: boolean;
@@ -14,6 +15,7 @@ type NotificationDrawerProps = {
 
 export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerProps) {
   const { entries, connected } = useTelemetryFeed(100);
+  const t = useTranslation();
 
   const notifications = useMemo(
     () =>
@@ -47,26 +49,24 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full max-w-lg flex-col border-l border-white/10 bg-zinc-950/95">
         <SheetHeader>
-          <SheetTitle>Notifications</SheetTitle>
-          <SheetDescription>
-            Ostrzeżenia i błędy z feedu `/ws/events` filtrowane po poziomie logów.
-          </SheetDescription>
+          <SheetTitle>{t("notifications.title")}</SheetTitle>
+          <SheetDescription>{t("notifications.description")}</SheetDescription>
         </SheetHeader>
         <div className="mt-4 flex-1 overflow-y-auto space-y-3">
           {!connected ? (
             <OverlayFallback
               icon={<span className="text-lg">📡</span>}
-              title="Brak połączenia"
-              description="Kanał WebSocket jest offline – powiadomienia pojawią się po wznowieniu."
-              hint="Notification Drawer"
+              title={t("notifications.offlineTitle")}
+              description={t("notifications.offlineDescription")}
+              hint={t("notifications.hint")}
               testId="notification-offline-state"
             />
           ) : notifications.length === 0 ? (
             <OverlayFallback
               icon={<span className="text-lg">🚨</span>}
-              title="Brak ostrzeżeń"
-              description="Aktualnie brak poziomów warn/error w telemetrii."
-              hint="Notification Drawer"
+              title={t("notifications.emptyTitle")}
+              description={t("notifications.emptyDescription")}
+              hint={t("notifications.hint")}
             />
           ) : (
             notifications.map((note) => (

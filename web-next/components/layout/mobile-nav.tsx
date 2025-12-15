@@ -22,15 +22,17 @@ import {
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { navItems } from "./sidebar";
+import { LanguageSwitcher } from "./language-switcher";
+import { useTranslation } from "@/lib/i18n";
 
 type TelemetryTab = "queue" | "tasks" | "ws";
 
 const AUTONOMY_LEVELS = [
-  { value: 0, label: "Boot" },
+  { value: 0, label: "Start" },
   { value: 10, label: "Monitor" },
-  { value: 20, label: "Assistant" },
-  { value: 30, label: "Hybrid" },
-  { value: 40, label: "Full" },
+  { value: 20, label: "Asystent" },
+  { value: 30, label: "Hybryda" },
+  { value: 40, label: "Pełny" },
 ];
 
 export function MobileNav() {
@@ -44,6 +46,7 @@ export function MobileNav() {
   const { connected, entries } = useTelemetryFeed();
   const { data: costMode, refresh: refreshCost } = useCostMode(15000);
   const { data: autonomy, refresh: refreshAutonomy } = useAutonomyLevel(20000);
+  const t = useTranslation();
 
   const latestLogs = useMemo(() => entries.slice(0, 5), [entries]);
   const telemetryContent = useMemo(() => {
@@ -51,11 +54,13 @@ export function MobileNav() {
       return {
         title: "Kolejka",
         rows: [
-          { label: "Active", value: queue?.active ?? "—" },
-          { label: "Pending", value: queue?.pending ?? "—" },
+          { label: "Aktywne", value: queue?.active ?? "—" },
+          { label: "Oczekujące", value: queue?.pending ?? "—" },
           { label: "Limit", value: queue?.limit ?? "∞" },
         ],
-        badge: queue?.paused ? { tone: "warning" as const, text: "Wstrzymana" } : { tone: "success" as const, text: "Online" },
+        badge: queue?.paused
+          ? { tone: "warning" as const, text: "Wstrzymana" }
+          : { tone: "success" as const, text: "Aktywna" },
       };
     }
     if (telemetryTab === "tasks") {
@@ -63,22 +68,22 @@ export function MobileNav() {
         title: "Zadania",
         rows: [
           { label: "Nowe", value: metrics?.tasks?.created ?? 0 },
-          { label: "Sukces %", value: metrics?.tasks?.success_rate ?? "—" },
+          { label: "Skuteczność", value: metrics?.tasks?.success_rate ?? "—" },
           { label: "Uptime", value: metrics?.uptime_seconds ? formatUptime(metrics.uptime_seconds) : "—" },
         ],
-        badge: { tone: "neutral" as const, text: "Insight" },
+        badge: { tone: "neutral" as const, text: "Podgląd" },
       };
     }
     return {
       title: "WebSocket",
       rows: [
-        { label: "Status", value: connected ? "Połączono" : "Offline" },
+        { label: "Status", value: connected ? "Połączono" : "Rozłączono" },
         { label: "Logi", value: `${entries.length}` },
         { label: "Ostatni", value: latestLogs[0] ? new Date(latestLogs[0].ts).toLocaleTimeString() : "—" },
       ],
       badge: connected
-        ? { tone: "success" as const, text: "LIVE" }
-        : { tone: "danger" as const, text: "OFF" },
+        ? { tone: "success" as const, text: "AKTYWNE" }
+        : { tone: "danger" as const, text: "BRAK" },
     };
   }, [telemetryTab, queue, metrics, connected, entries.length, latestLogs]);
 
@@ -112,10 +117,10 @@ export function MobileNav() {
       <button
         className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:bg-white/5 lg:hidden"
         onClick={() => setOpen(true)}
-        aria-label="Otwórz nawigację"
+        aria-label={t("common.openNavigation")}
       >
         <Menu className="h-4 w-4" />
-        Menu
+        {t("common.menu")}
       </button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="glass-panel flex h-full max-w-md flex-col border-r border-white/10 bg-black/90 text-white">
@@ -125,10 +130,10 @@ export function MobileNav() {
                 <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/50 to-cyan-500/50 text-xl">
                   🕷️
                 </span>
-                Venom Command
+                {t("mobileNav.navTitle")}
               </span>
               <Badge tone="neutral" className="uppercase tracking-[0.3em]">
-                mobile
+                mobilne
               </Badge>
             </SheetTitle>
             <SheetDescription className="text-sm text-zinc-400">
@@ -137,28 +142,31 @@ export function MobileNav() {
           </SheetHeader>
 
           <nav className="mt-2 space-y-3 text-sm">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 rounded-2xl border border-white/5 bg-black/40 px-4 py-3 text-white transition hover:border-emerald-400/40 hover:bg-emerald-500/10"
-                onClick={() => setOpen(false)}
-              >
-                <item.icon className="h-4 w-4 text-emerald-200" />
-                <div>
-                  <p className="font-semibold tracking-wide">{item.label}</p>
-                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    /{item.href === "/" ? "cockpit" : item.label.toLowerCase()}
-                  </p>
-                </div>
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const label = item.labelKey ? t(item.labelKey) : item.label;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 rounded-2xl border border-white/5 bg-black/40 px-4 py-3 text-white transition hover:border-emerald-400/40 hover:bg-emerald-500/10"
+                  onClick={() => setOpen(false)}
+                >
+                  <item.icon className="h-4 w-4 text-emerald-200" />
+                  <div>
+                    <p className="font-semibold tracking-wide">{label}</p>
+                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                      /{item.href === "/" ? "cockpit" : item.href.replace("/", "")}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
           </nav>
 
           <section className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-zinc-500">Telemetry</p>
+                <p className="text-xs uppercase tracking-[0.4em] text-zinc-500">Telemetria</p>
                 <p className="text-base font-semibold">{telemetryContent.title}</p>
               </div>
               <Badge tone={telemetryContent.badge.tone}>{telemetryContent.badge.text}</Badge>
@@ -172,7 +180,7 @@ export function MobileNav() {
                   }`}
                   onClick={() => setTelemetryTab(tab)}
                 >
-                  {tab}
+                  {tab === "queue" ? "Kolejka" : tab === "tasks" ? "Zadania" : "WS"}
                 </button>
               ))}
             </div>
@@ -194,7 +202,7 @@ export function MobileNav() {
             <div className="mt-3 max-h-32 overflow-y-auto text-xs font-mono text-zinc-300">
               {latestLogs.length === 0 && (
                 <p className="text-zinc-500">
-                  {connected ? "Czekam na logi..." : "Kanał offline – brak logów."}
+                  {connected ? "Czekam na logi..." : "Kanał rozłączony – brak logów."}
                 </p>
               )}
               {latestLogs.map((entry) => (
@@ -214,11 +222,11 @@ export function MobileNav() {
             <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Cost Mode</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Tryb kosztów</p>
                   <p className="text-lg font-semibold">
-                    {costMode?.enabled ? "Paid (Pro)" : "Eco"}
+                    {costMode?.enabled ? "Pro (płatny)" : "Eco"}
                   </p>
-                  <p className="text-xs text-zinc-400">Provider: {costMode?.provider ?? "n/a"}</p>
+                  <p className="text-xs text-zinc-400">Dostawca: {costMode?.provider ?? "brak"}</p>
                 </div>
                 <Sparkles className="h-5 w-5 text-emerald-200" />
               </div>
@@ -229,19 +237,19 @@ export function MobileNav() {
                 disabled={costLoading}
                 onClick={handleCostToggle}
               >
-                {costLoading ? "Przełączam..." : `Przełącz na ${costMode?.enabled ? "Eco" : "Paid"}`}
+                {costLoading ? "Przełączam..." : `Przełącz na ${costMode?.enabled ? "Eco" : "Pro"}`}
               </Button>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Autonomy</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Autonomia</p>
                   <p className="text-lg font-semibold">
                     {autonomy?.current_level_name ?? "Offline"}
                   </p>
                   <p className="text-xs text-zinc-400">
-                    Poziom {autonomy?.current_level ?? "?"} • {autonomy?.risk_level ?? "n/a"}
+                    Poziom {autonomy?.current_level ?? "?"} • {autonomy?.risk_level ?? "brak"}
                   </p>
                 </div>
                 <Shield className="h-5 w-5 text-violet-200" />
@@ -258,7 +266,7 @@ export function MobileNav() {
                 disabled={autonomyLoading}
               >
                 <option value="" disabled>
-                  {autonomy ? "Wybierz poziom" : "AutonomyGate offline"}
+                  {autonomy ? "Wybierz poziom" : "Brak połączenia z AutonomyGate"}
                 </option>
                 {AUTONOMY_LEVELS.map((level) => (
                   <option key={level.value} value={level.value}>
@@ -269,6 +277,13 @@ export function MobileNav() {
               {autonomyLoading && (
                 <p className="mt-2 text-xs text-zinc-400">Aktualizuję poziom autonomii...</p>
               )}
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-black/40 p-3 text-center">
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Język</p>
+              <div className="mt-2 flex justify-center">
+                <LanguageSwitcher className="justify-center" />
+              </div>
             </div>
           </section>
 
@@ -283,11 +298,11 @@ export function MobileNav() {
             </div>
             <div className="mt-2 flex items-center gap-2 text-sky-300">
               <ListChecks className="h-4 w-4" />
-              {metrics?.tasks?.created ?? 0} tasks session
+              {metrics?.tasks?.created ?? 0} zadań w sesji
             </div>
             <div className="mt-2 flex items-center gap-2 text-amber-200">
               <Radio className="h-4 w-4" />
-              Kolejka {queue?.paused ? "wstrzymana" : "online"}
+              Kolejka {queue?.paused ? "wstrzymana" : "aktywna"}
             </div>
           </div>
         </SheetContent>

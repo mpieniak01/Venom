@@ -13,6 +13,7 @@ import { ListCard } from "@/components/ui/list-card";
 import { Badge } from "@/components/ui/badge";
 import { ServerCog, RefreshCw } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
+import { useTranslation } from "@/lib/i18n";
 
 type ServiceStatusDrawerProps = {
   open: boolean;
@@ -23,6 +24,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
   const { data: services } = useServiceStatus(20000);
   const serviceEntries = useMemo(() => services ?? [], [services]);
   const servicesOffline = !serviceEntries || serviceEntries.length === 0;
+  const t = useTranslation();
 
   const summary = useMemo(() => {
     if (!serviceEntries.length) {
@@ -48,34 +50,42 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full max-w-xl flex-col gap-4 border-l border-white/10 bg-zinc-950/95">
         <SheetHeader>
-          <SheetTitle>Service status</SheetTitle>
-          <SheetDescription>
-            Aktualny stan usług systemowych z `/api/v1/system/services`.
-          </SheetDescription>
+          <SheetTitle>{t("serviceStatus.title")}</SheetTitle>
+          <SheetDescription>{t("serviceStatus.description")}</SheetDescription>
         </SheetHeader>
         <div className="surface-card flex items-center justify-between gap-4 p-4 text-sm text-zinc-200">
           <div className="flex items-center gap-3">
             <ServerCog className="h-5 w-5 text-violet-300" />
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Podsumowanie</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                {t("serviceStatus.summary")}
+              </p>
               <p className="text-base font-semibold text-white">
-                {serviceEntries.length > 0 ? `${serviceEntries.length} usług` : "Brak danych"}
+                {serviceEntries.length > 0
+                  ? t("serviceStatus.servicesCount", { count: serviceEntries.length })
+                  : t("serviceStatus.noData")}
               </p>
             </div>
           </div>
           <div className="flex gap-2 text-xs">
-            <Badge tone="success">{summary.healthy} healthy</Badge>
-            <Badge tone="warning">{summary.degraded} degraded</Badge>
-            <Badge tone="danger">{summary.down} down</Badge>
+            <Badge tone="success">
+              {t("serviceStatus.badges.healthy", { count: summary.healthy })}
+            </Badge>
+            <Badge tone="warning">
+              {t("serviceStatus.badges.degraded", { count: summary.degraded })}
+            </Badge>
+            <Badge tone="danger">
+              {t("serviceStatus.badges.down", { count: summary.down })}
+            </Badge>
           </div>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto">
           {servicesOffline && (
             <OverlayFallback
               icon={<RefreshCw className="h-4 w-4" />}
-              title="Brak usług"
-              description="API nie zwróciło listy usług. Sprawdź połączenie."
-              hint="Service status"
+              title={t("serviceStatus.offlineTitle")}
+              description={t("serviceStatus.offlineDescription")}
+              hint={t("serviceStatus.hint")}
               testId="service-status-offline"
             />
           )}
@@ -84,7 +94,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
               <ListCard
                 key={`${svc.name}-${svc.status}`}
                 title={svc.name}
-                subtitle={svc.detail ?? "Brak opisu"}
+                subtitle={svc.detail ?? t("common.noDescription")}
                 badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
               />
             ))}

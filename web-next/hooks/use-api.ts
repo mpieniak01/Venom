@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apiFetch } from "@/lib/api-client";
 import {
   AutonomyLevel,
@@ -10,6 +10,7 @@ import {
   GraphSummary,
   HistoryRequest,
   HistoryRequestDetail,
+  FlowTrace,
   GitStatus,
   KnowledgeGraph,
   Lesson,
@@ -29,7 +30,7 @@ type PollingState<T> = {
   data: T | null;
   loading: boolean;
   error: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 };
 
 const defaultHandleError = (error: unknown): string => {
@@ -37,46 +38,139 @@ const defaultHandleError = (error: unknown): string => {
   return "Nie udało się pobrać danych";
 };
 
+type PollingSnapshot<T> = {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+};
+
+type PollingEntry<T> = {
+  state: PollingSnapshot<T>;
+  fetcher: () => Promise<T>;
+  interval: number;
+  listeners: Set<() => void>;
+  timer?: ReturnType<typeof setInterval>;
+  fetching: boolean;
+};
+
+const pollingRegistry = new Map<string, PollingEntry<unknown>>();
+
+function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number) {
+  const existing = pollingRegistry.get(key) as PollingEntry<T> | undefined;
+  if (existing) {
+    existing.fetcher = fetcher;
+    if (interval > 0 && interval < existing.interval) {
+      existing.interval = interval;
+      if (existing.timer) {
+        clearInterval(existing.timer);
+        existing.timer = undefined;
+      }
+    }
+    return existing;
+  }
+  const entry: PollingEntry<T> = {
+    state: { data: null, loading: true, error: null },
+    fetcher,
+    interval,
+    listeners: new Set(),
+    fetching: false,
+  };
+  pollingRegistry.set(key, entry as PollingEntry<unknown>);
+  triggerFetch(entry, key);
+  return entry;
+}
+
+async function triggerFetch<T>(entry: PollingEntry<T>, key: string) {
+  if (entry.fetching) return;
+  entry.fetching = true;
+  entry.state.loading = true;
+  notifyEntry(entry);
+  try {
+    const result = await entry.fetcher();
+    entry.state.data = result;
+    entry.state.error = null;
+  } catch (err) {
+    entry.state.error = defaultHandleError(err);
+  } finally {
+    entry.state.loading = false;
+    entry.fetching = false;
+    notifyEntry(entry);
+  }
+}
+
+function notifyEntry(entry: PollingEntry<unknown>) {
+  entry.listeners.forEach((listener) => listener());
+}
+
 function usePolling<T>(
   key: string,
   fetcher: () => Promise<T>,
   intervalMs = 5000,
 ): PollingState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const runner = useCallback(async () => {
-    try {
-      const result = await fetcher();
-      setData(result);
-      setError(null);
-    } catch (err) {
-      setError(defaultHandleError(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [fetcher]);
+  const isBrowser = typeof window !== "undefined";
+  const fallbackEntry = useMemo<PollingEntry<T>>(
+    () => ({
+      state: { data: null, loading: true, error: null },
+      fetcher: async () => {
+        throw new Error("Polling entry not initialized.");
+      },
+      interval: 0,
+      listeners: new Set(),
+      fetching: false,
+    }),
+    [],
+  );
+  const entryRef = useRef<PollingEntry<T>>(fallbackEntry);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    runner();
-    if (intervalMs > 0) {
-      timer = setInterval(runner, intervalMs);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [key, intervalMs, runner]);
+    if (!isBrowser) return;
+    const actualEntry = ensureEntry(key, fetcher, intervalMs);
+    entryRef.current = actualEntry;
+    setReady(true);
+  }, [isBrowser, key, fetcher, intervalMs]);
+
+  const entry = ready ? entryRef.current : fallbackEntry;
+
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      entry.listeners.add(listener);
+      if (entry.listeners.size === 1) {
+        if (entry.interval > 0 && !entry.timer) {
+          entry.timer = setInterval(() => triggerFetch(entry, key), entry.interval);
+        }
+        triggerFetch(entry, key);
+      }
+      return () => {
+        entry.listeners.delete(listener);
+        if (entry.listeners.size === 0 && entry.timer) {
+          clearInterval(entry.timer);
+          entry.timer = undefined;
+        }
+      };
+    },
+    [entry, key],
+  );
+
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    () => entry.state,
+    () => entry.state,
+  );
+
+  const refresh = useCallback(async () => {
+    if (entry === fallbackEntry) return;
+    await triggerFetch(entry, key);
+  }, [entry, key, fallbackEntry]);
 
   return useMemo(
     () => ({
-      data,
-      loading,
-      error,
-      refresh: runner,
+      data: snapshot.data,
+      loading: snapshot.loading,
+      error: snapshot.error,
+      refresh,
     }),
-    [data, loading, error, runner],
+    [snapshot.data, snapshot.loading, snapshot.error, refresh],
   );
 }
 
@@ -94,7 +188,7 @@ export function useTasks(intervalMs = 5000) {
 
 export function useHistory(limit = 50, intervalMs = 10000) {
   return usePolling<HistoryRequest[]>(
-    "history",
+    `history-${limit}`,
     () => apiFetch(`/api/v1/history/requests?limit=${limit}`),
     intervalMs,
   );
@@ -102,6 +196,14 @@ export function useHistory(limit = 50, intervalMs = 10000) {
 
 export async function fetchHistoryDetail(requestId: string) {
   return apiFetch<HistoryRequestDetail>(`/api/v1/history/requests/${requestId}`);
+}
+
+export async function fetchFlowTrace(requestId: string) {
+  return apiFetch<FlowTrace>(`/api/v1/flow/${requestId}`);
+}
+
+export async function fetchTaskDetail(taskId: string) {
+  return apiFetch<Task>(`/api/v1/tasks/${taskId}`);
 }
 
 export function useQueueStatus(intervalMs = 5000) {

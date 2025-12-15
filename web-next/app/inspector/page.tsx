@@ -358,7 +358,10 @@ export default function InspectorPage() {
                           </Button>
                         </div>
                       )}
-                      <TransformComponent>
+                      <TransformComponent
+                        wrapperStyle={{ width: "100%", height: "100%" }}
+                        contentStyle={{ width: "100%", height: "100%" }}
+                      >
                         <div className="relative min-h-[700px] w-full">
                           <div
                             ref={svgRef}

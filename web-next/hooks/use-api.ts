@@ -115,7 +115,18 @@ export function useQueueStatus(intervalMs = 5000) {
 export function useServiceStatus(intervalMs = 15000) {
   return usePolling<ServiceStatus[]>(
     "services",
-    () => apiFetch("/api/v1/system/services"),
+    async () => {
+      const data = await apiFetch<{ services?: ServiceStatus[]; status?: string }>(
+        "/api/v1/system/services",
+      );
+      if (Array.isArray(data?.services)) {
+        return data.services;
+      }
+      if (Array.isArray((data as unknown) as ServiceStatus[])) {
+        return (data as unknown) as ServiceStatus[];
+      }
+      return [];
+    },
     intervalMs,
   );
 }
@@ -149,6 +160,48 @@ export function useTokenMetrics(intervalMs = 5000) {
     "token-metrics",
     () => apiFetch("/api/v1/metrics/tokens"),
     intervalMs,
+  );
+}
+
+export interface ModelsUsage {
+  cpu_usage_percent?: number;
+  gpu_usage_percent?: number;
+  vram_usage_mb?: number;
+  vram_total_mb?: number;
+  memory_used_gb?: number;
+  memory_total_gb?: number;
+  memory_usage_percent?: number;
+  disk_usage_gb?: number;
+  disk_limit_gb?: number;
+  disk_usage_percent?: number;
+  models_count?: number;
+}
+
+export interface ModelsUsageResponse {
+  success?: boolean;
+  usage?: ModelsUsage;
+}
+
+type ModelsUsagePayload = ModelsUsageResponse | ModelsUsage;
+
+export function useModelsUsage(intervalMs = 10000) {
+  return usePolling<ModelsUsageResponse>(
+    "models-usage",
+    async () => {
+      const result = await apiFetch<ModelsUsagePayload>("/api/v1/models/usage");
+      if ("usage" in result) {
+        return result;
+      }
+      return { usage: result as ModelsUsage };
+    },
+    intervalMs,
+  );
+}
+
+export async function unloadAllModels() {
+  return apiFetch<{ success: boolean; message: string }>(
+    "/api/v1/models/unload-all",
+    { method: "POST" },
   );
 }
 

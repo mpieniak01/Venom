@@ -25,19 +25,25 @@ import {
   installModel,
   sendTask,
   switchModel,
+  toggleQueue,
+  unloadAllModels,
   useGraphSummary,
   useHistory,
   useMetrics,
   useModels,
+  useModelsUsage,
   useQueueStatus,
   useTokenMetrics,
   useGitStatus,
   useServiceStatus,
   useTasks,
+  purgeQueue,
+  emergencyStop,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import type { Chart } from "chart.js/auto";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type { HistoryRequestDetail, ServiceStatus } from "@/lib/types";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
@@ -76,6 +82,54 @@ export default function Home() {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [exportingPinned, setExportingPinned] = useState(false);
   const [gitAction, setGitAction] = useState<"sync" | "undo" | null>(null);
+  const [unloadingModels, setUnloadingModels] = useState(false);
+  const [queueAction, setQueueAction] = useState<
+    null | "pause" | "resume" | "purge" | "emergency"
+  >(null);
+  const [queueActionMessage, setQueueActionMessage] = useState<string | null>(
+    null,
+  );
+  const suggestionChips = useMemo(
+    () => [
+      {
+        id: "create-logo",
+        title: "Kreacja",
+        description: "Stwórz logo dla fintechu.",
+        prompt: "Stwórz logo dla fintechu używając DALL-E",
+      },
+      {
+        id: "devops-status",
+        title: "DevOps",
+        description: "Sprawdź status serwerów.",
+        prompt: "Sprawdź status serwerów w infrastrukturze",
+      },
+      {
+        id: "project-status",
+        title: "Status projektu",
+        description: "Podsumowanie roadmapy.",
+        prompt: "Pokaż status projektu",
+      },
+      {
+        id: "research",
+        title: "Research",
+        description: "Trend AI 2024.",
+        prompt: "Zrób research o trendach AI w 2024",
+      },
+      {
+        id: "code",
+        title: "Kod",
+        description: "Napisz testy jednostkowe.",
+        prompt: "Napisz testy jednostkowe dla modułu API",
+      },
+      {
+        id: "help",
+        title: "Pomoc",
+        description: "Co potrafisz?",
+        prompt: "Co potrafisz?",
+      },
+    ],
+    [],
+  );
 
   const { data: metrics } = useMetrics();
   const { data: tasks, refresh: refreshTasks } = useTasks();
@@ -85,8 +139,10 @@ export default function Home() {
   const { data: models, refresh: refreshModels } = useModels();
   const { data: git, refresh: refreshGit } = useGitStatus();
   const { data: tokenMetrics } = useTokenMetrics();
+  const { data: modelsUsageResponse, refresh: refreshModelsUsage } = useModelsUsage(10000);
   const { data: history } = useHistory(6);
   const { connected, entries } = useTelemetryFeed();
+  const usageMetrics = modelsUsageResponse?.usage ?? null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -133,6 +189,45 @@ export default function Home() {
     { name: "Gardener", status: "healthy", detail: "Lekcje i graf wiedzy" },
   ];
   const agentDeck = services && services.length > 0 ? services : fallbackAgents;
+  const formatPercentMetric = (value?: number) =>
+    typeof value === "number" ? `${value.toFixed(1)}%` : "—";
+  const formatGbPair = (used?: number, total?: number) =>
+    typeof used === "number" && typeof total === "number"
+      ? `${used.toFixed(1)} / ${total.toFixed(1)} GB`
+      : "—";
+  const formatVramMetric = (usedMb?: number, totalMb?: number) => {
+    if (typeof usedMb === "number" && typeof totalMb === "number" && totalMb > 0) {
+      const usedGb = usedMb / 1024;
+      const totalGb = totalMb / 1024;
+      return `${usedGb.toFixed(1)} / ${totalGb.toFixed(1)} GB`;
+    }
+    if (typeof usedMb === "number" && usedMb > 0) {
+      return `${(usedMb / 1024).toFixed(1)} GB`;
+    }
+    return "—";
+  };
+  const cpuUsageValue = formatPercentMetric(usageMetrics?.cpu_usage_percent);
+  const gpuUsageValue =
+    usageMetrics?.gpu_usage_percent !== undefined
+      ? formatPercentMetric(usageMetrics.gpu_usage_percent)
+      : usageMetrics?.vram_usage_mb && usageMetrics.vram_usage_mb > 0
+        ? "Aktywne"
+        : "—";
+  const ramValue = formatGbPair(usageMetrics?.memory_used_gb, usageMetrics?.memory_total_gb);
+  const vramValue = formatVramMetric(usageMetrics?.vram_usage_mb, usageMetrics?.vram_total_mb);
+  const diskValue =
+    typeof usageMetrics?.disk_usage_gb === "number" &&
+    typeof usageMetrics?.disk_limit_gb === "number"
+      ? `${usageMetrics.disk_usage_gb.toFixed(2)} GB / ${usageMetrics.disk_limit_gb.toFixed(0)} GB`
+      : "—";
+  const diskPercent =
+    usageMetrics?.disk_usage_percent !== undefined
+      ? `${usageMetrics.disk_usage_percent.toFixed(1)}%`
+      : null;
+  const sessionCostValue =
+    tokenMetrics?.session_cost_usd !== undefined
+      ? `$${tokenMetrics.session_cost_usd.toFixed(4)}`
+      : "—";
   const chatMessages = useMemo(
     () =>
       (history || []).map((item, index) => ({
@@ -238,14 +333,32 @@ export default function Home() {
     ],
     [],
   );
-  const modelCount = models?.count ?? models?.models?.length ?? 0;
+  const modelHistoryEntries = useMemo(() => {
+    return (models?.models ?? []).map((model) => {
+      const sizeLabel =
+        typeof model.size_gb === "number" ? `${model.size_gb.toFixed(2)} GB` : "—";
+      const sourceLabel =
+        model.source || model.type || model.path || "Lokalny model";
+      const badgeTone = model.active ? "success" : "neutral";
+      return {
+        name: model.name,
+        sizeLabel,
+        sourceLabel,
+        statusLabel: model.active ? "Aktywny" : "W gotowości",
+        quantizationLabel: model.quantization ?? "—",
+        badgeTone,
+      } as const;
+    });
+  }, [models]);
+  const baseModelCount = models?.count ?? models?.models?.length ?? 0;
+  const displayedModelCount = usageMetrics?.models_count ?? baseModelCount;
 
   const allMacros = useMemo(
     () => [...macroActions, ...customMacros],
     [macroActions, customMacros],
   );
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!taskContent.trim()) {
       setMessage("Podaj treść zadania.");
       return;
@@ -265,7 +378,7 @@ export default function Home() {
     } finally {
       setSending(false);
     }
-  };
+  }, [taskContent, labMode, refreshTasks, refreshQueue]);
 
   const handleMacroRun = async (macro: { id: string; content: string; label: string }) => {
     if (macroSending) return;
@@ -280,6 +393,27 @@ export default function Home() {
       setMessage(err instanceof Error ? err.message : "Nie udało się wykonać makra.");
     } finally {
       setMacroSending(null);
+    }
+  };
+
+  const handleUnloadModels = async () => {
+    if (unloadingModels) return;
+    setUnloadingModels(true);
+    try {
+      const res = await unloadAllModels();
+      setMessage(res.message || "Zasoby modeli zostały zwolnione.");
+      refreshModels();
+      refreshModelsUsage();
+      refreshTasks();
+      refreshQueue();
+    } catch (err) {
+      setMessage(
+        err instanceof Error
+          ? err.message
+          : "Nie udało się zwolnić zasobów modeli.",
+      );
+    } finally {
+      setUnloadingModels(false);
     }
   };
 
@@ -303,6 +437,59 @@ export default function Home() {
       console.error("Clipboard error:", err);
     } finally {
       setExportingPinned(false);
+    }
+  };
+
+  const handleToggleQueue = async () => {
+    if (!queue) return;
+    const action = queue.paused ? "resume" : "pause";
+    if (queueAction) return;
+    setQueueAction(action);
+    setQueueActionMessage(null);
+    try {
+      await toggleQueue(action === "pause");
+      setQueueActionMessage(
+        action === "pause"
+          ? "Kolejka wstrzymana."
+          : "Kolejka wznowiona.",
+      );
+      refreshQueue();
+      refreshTasks();
+    } catch (err) {
+      setQueueActionMessage(
+        err instanceof Error
+          ? err.message
+          : "Nie udało się zmienić stanu kolejki.",
+      );
+    } finally {
+      setQueueAction(null);
+    }
+  };
+
+  const executeQueueMutation = async (type: "purge" | "emergency") => {
+    if (queueAction) return;
+    setQueueAction(type);
+    setQueueActionMessage(null);
+    try {
+      if (type === "purge") {
+        const res = await purgeQueue();
+        setQueueActionMessage(`Wyczyszczono kolejkę (${res.removed} zadań).`);
+      } else {
+        const res = await emergencyStop();
+        setQueueActionMessage(
+          `Zatrzymano zadania: cancelled ${res.cancelled}, purged ${res.purged}.`,
+        );
+      }
+      refreshQueue();
+      refreshTasks();
+    } catch (err) {
+      setQueueActionMessage(
+        err instanceof Error
+          ? err.message
+          : "Nie udało się wykonać akcji na kolejce.",
+      );
+    } finally {
+      setQueueAction(null);
     }
   };
 
@@ -341,6 +528,22 @@ export default function Home() {
       setTimeout(() => setCopyStepsMessage(null), 2000);
     }
   };
+
+  const handleSuggestionClick = (prompt: string) => {
+    setTaskContent(prompt);
+  };
+
+  const handleTextareaKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      const isEnter = event.key === "Enter";
+      const isModifier = event.ctrlKey || event.metaKey;
+      if (isEnter && isModifier) {
+        event.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
 
   const handleGitSync = async () => {
     if (gitAction) return;
@@ -381,245 +584,457 @@ export default function Home() {
         size="lg"
       />
       <section className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-        <Panel
-          title="Live Feed"
-          description="/ws/events stream – ostatnie logi operacyjne"
-          action={
-            <Badge tone={connected ? "success" : "warning"}>
-              {connected ? "Połączono" : "Brak sygnału"}
-            </Badge>
-          }
-        >
-          <div className="space-y-4">
-            <input
-              className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
-              placeholder="Filtruj logi..."
-              value={logFilter}
-              onChange={(e) => setLogFilter(e.target.value)}
-            />
-            <div className="terminal h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
-              {logEntries.length === 0 && (
-                <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
-              )}
-              {logEntries
-                .filter((entry) => {
-                  if (!logFilter.trim()) return true;
-                  const payload = entry.payload;
-                  const text =
-                    typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-                  return text.toLowerCase().includes(logFilter.toLowerCase());
-                })
-                .map((entry) => (
-                  <LogEntry
-                    key={entry.id}
-                    entry={entry}
-                    pinned={pinnedLogs.some((log) => log.id === entry.id)}
-                    onPin={() =>
-                      setPinnedLogs((prev) =>
-                        prev.some((log) => log.id === entry.id)
-                          ? prev.filter((log) => log.id !== entry.id)
-                          : [...prev, entry],
-                      )
-                    }
-                  />
-                ))}
-            </div>
-            {pinnedLogs.length > 0 && (
-              <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs text-white shadow-card">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
-                      Przypięte logi
-                    </p>
-                    <p className="text-sm text-emerald-100/80">
-                      Najważniejsze zdarzenia z kanału /ws/events.
-                    </p>
-                  </div>
-                  <div className="ml-auto flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      className="px-3 text-white"
-                      disabled={exportingPinned}
-                      onClick={handleExportPinnedLogs}
-                    >
-                      {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="xs"
-                      className="px-3"
-                      onClick={() => setPinnedLogs([])}
-                    >
-                      Wyczyść
-                    </Button>
-                  </div>
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  {pinnedLogs.map((log) => (
-                    <PinnedLogCard
-                      key={`pinned-${log.id}`}
-                      log={log}
-                      onUnpin={() =>
-                        setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+        <div className="space-y-6">
+          <Panel
+            title="Live Feed"
+            description="/ws/events stream – ostatnie logi operacyjne"
+            action={
+              <Badge tone={connected ? "success" : "warning"}>
+                {connected ? "Połączono" : "Brak sygnału"}
+              </Badge>
+            }
+          >
+            <div className="space-y-4">
+              <input
+                className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
+                placeholder="Filtruj logi..."
+                value={logFilter}
+                onChange={(e) => setLogFilter(e.target.value)}
+              />
+              <div className="terminal h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
+                {logEntries.length === 0 && (
+                  <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
+                )}
+                {logEntries
+                  .filter((entry) => {
+                    if (!logFilter.trim()) return true;
+                    const payload = entry.payload;
+                    const text =
+                      typeof payload === "string"
+                        ? payload
+                        : JSON.stringify(payload, null, 2);
+                    return text.toLowerCase().includes(logFilter.toLowerCase());
+                  })
+                  .map((entry) => (
+                    <LogEntry
+                      key={entry.id}
+                      entry={entry}
+                      pinned={pinnedLogs.some((log) => log.id === entry.id)}
+                      onPin={() =>
+                        setPinnedLogs((prev) =>
+                          prev.some((log) => log.id === entry.id)
+                            ? prev.filter((log) => log.id !== entry.id)
+                            : [...prev, entry],
+                        )
                       }
                     />
                   ))}
-                </div>
               </div>
-            )}
-          </div>
-        </Panel>
-        <div className="grid gap-6">
-          <Panel
-            eyebrow="KPI kolejki"
-            title="Skuteczność operacji"
-            description="Monitoruj SLA tasków i uptime backendu."
-          >
-            <CockpitMetricCard
-              primaryValue={successRate !== null ? `${successRate}%` : "—"}
-              secondaryLabel={
-                tasksCreated > 0
-                  ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
-                  : "Brak zadań"
-              }
-              progress={successRate}
-              footer={`Uptime: ${
-                metrics?.uptime_seconds !== undefined
-                  ? formatUptime(metrics.uptime_seconds)
-                  : "—"
-              }`}
-            />
-          </Panel>
-          <Panel eyebrow="KPI kolejki" title="Zużycie tokenów" description="Trend prompt/completion/cached.">
-            <CockpitTokenCard
-              totalValue={totalTokens}
-              splits={
-                tokenSplits.length > 0
-                  ? tokenSplits
-                  : [{ label: "Brak danych", value: 0 }]
-              }
-              chartSlot={
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                      Trend próbek
-                    </p>
-                    <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
-                      {tokenTrendLabel}
-                    </Badge>
-                  </div>
-                  {tokenHistory.length < 2 ? (
-                    <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
-                      Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
-                    </p>
-                  ) : (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                        Przebieg ostatnich próbek
+              {pinnedLogs.length > 0 && (
+                <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs text-white shadow-card">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
+                        Przypięte logi
                       </p>
-                      <div className="mt-3 h-32">
-                        <TokenChart history={tokenHistory} height={128} />
-                      </div>
+                      <p className="text-sm text-emerald-100/80">
+                        Najważniejsze zdarzenia z kanału /ws/events.
+                      </p>
                     </div>
-                  )}
+                    <div className="ml-auto flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        className="px-3 text-white"
+                        disabled={exportingPinned}
+                        onClick={handleExportPinnedLogs}
+                      >
+                        {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="xs"
+                        className="px-3"
+                        onClick={() => setPinnedLogs([])}
+                      >
+                        Wyczyść
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {pinnedLogs.map((log) => (
+                      <PinnedLogCard
+                        key={`pinned-${log.id}`}
+                        log={log}
+                        onUnpin={() =>
+                          setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
-              }
-            />
+              )}
+            </div>
+          </Panel>
+          <Panel
+            title="Aktywne zadania"
+            description="Podgląd ostatnich requestów /api/v1/tasks."
+          >
+            <div className="space-y-3">
+              {tasksPreview.length === 0 && (
+                <EmptyState
+                  icon={<Inbox className="h-4 w-4" />}
+                  title="Brak zadań"
+                  description="Wyślij nowe polecenie, aby pojawiło się na liście."
+                />
+              )}
+              {tasksPreview.map((task, index) => (
+                <ListCard
+                  key={`${task.task_id ?? "task"}-${index}`}
+                  title={task.content}
+                  subtitle={
+                    task.created_at
+                      ? new Date(task.created_at).toLocaleString()
+                      : "—"
+                  }
+                  badge={<Badge tone={statusTone(task.status)}>{task.status}</Badge>}
+                />
+              ))}
+            </div>
           </Panel>
         </div>
-      </section>
-      <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
-          <SectionHeading
-            eyebrow="Command Console"
-            title="Cockpit AI"
-            description="Chat operacyjny z Orchestratora i logami runtime."
-            as="h1"
-            size="lg"
-            className="items-center"
-            rightSlot={
-              <Badge tone={labMode ? "warning" : "success"}>
-                {labMode ? "Lab Mode" : "Prod"}
-              </Badge>
-            }
-          />
-          <div className="grid-overlay relative mt-5 flex-1 rounded-3xl border border-white/5 bg-black/30 p-6">
-            <div className="flex h-full flex-col">
-              <div className="flex-1 space-y-4 overflow-y-auto pr-4">
-                <AnimatePresence initial={false}>
-                  {chatMessages.length === 0 && (
-                    <p className="text-sm text-zinc-500">
-                      Brak historii – wyślij pierwsze zadanie.
-                    </p>
-                  )}
-                  {chatMessages.map((msg) => {
-                    const isSelected = selectedRequestId === msg.id;
-                    return (
-                      <motion.div
-                        key={msg.id}
-                        layout
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -12 }}
+        <div className="space-y-6">
+          <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
+            <SectionHeading
+              eyebrow="Command Console"
+              title="Cockpit AI"
+              description="Chat operacyjny z Orchestratora i logami runtime."
+              as="h1"
+              size="lg"
+              className="items-center"
+              rightSlot={
+                <Badge tone={labMode ? "warning" : "success"}>
+                  {labMode ? "Lab Mode" : "Prod"}
+                </Badge>
+              }
+            />
+            <div className="grid-overlay relative mt-5 flex-1 rounded-3xl border border-white/5 bg-black/30 p-6">
+              <div className="flex h-full flex-col">
+                <div className="flex-1 space-y-4 overflow-y-auto pr-4">
+                  <AnimatePresence initial={false}>
+                    {chatMessages.length === 0 && (
+                      <p className="text-sm text-zinc-500">
+                        Brak historii – wyślij pierwsze zadanie.
+                      </p>
+                    )}
+                    {chatMessages.map((msg) => {
+                      const isSelected = selectedRequestId === msg.id;
+                      return (
+                        <motion.div
+                          key={msg.id}
+                          layout
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -12 }}
+                        >
+                          <ConversationBubble
+                            role={msg.role === "user" ? "user" : "assistant"}
+                            timestamp={msg.created_at}
+                            text={msg.text}
+                            status={msg.status}
+                            requestId={msg.id}
+                            isSelected={isSelected}
+                            onSelect={() => openRequestDetail(msg.id)}
+                          />
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+                <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
+                  <textarea
+                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60"
+                    placeholder="Opisz zadanie dla Venoma..."
+                    value={taskContent}
+                    onChange={(e) => setTaskContent(e.target.value)}
+                    onKeyDown={handleTextareaKeyDown}
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={labMode}
+                        onChange={(e) => setLabMode(e.target.checked)}
+                      />
+                      Lab Mode (nie zapisuj lekcji)
+                    </label>
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTaskContent("")}
+                        className="text-zinc-300"
                       >
-                        <ConversationBubble
-                          role={msg.role === "user" ? "user" : "assistant"}
-                          timestamp={msg.created_at}
-                          text={msg.text}
-                          status={msg.status}
-                          requestId={msg.id}
-                          isSelected={isSelected}
-                          onSelect={() => openRequestDetail(msg.id)}
-                        />
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-              <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
-                <textarea
-                  className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60"
-                  placeholder="Opisz zadanie dla Venoma..."
-                  value={taskContent}
-                  onChange={(e) => setTaskContent(e.target.value)}
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs text-zinc-400">
-                    <input
-                      type="checkbox"
-                      checked={labMode}
-                      onChange={(e) => setLabMode(e.target.checked)}
-                    />
-                    Lab Mode (nie zapisuj lekcji)
-                  </label>
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTaskContent("")}
-                      className="text-zinc-300"
-                    >
-                      Wyczyść
-                    </Button>
-                    <Button
-                      onClick={handleSend}
-                      disabled={sending}
-                      size="sm"
-                      className="px-6"
-                    >
-                      {sending ? "Wysyłanie..." : "Wyślij"}
-                    </Button>
-      </div>
-    </div>
+                        Wyczyść
+                      </Button>
+                      <Button
+                        onClick={handleSend}
+                        disabled={sending}
+                        size="sm"
+                        className="px-6"
+                      >
+                        {sending ? "Wysyłanie..." : "Wyślij"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
 
-    <QuickActions open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
+                <QuickActions open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
                 {message && (
                   <p className="mt-2 text-xs text-amber-300">{message}</p>
                 )}
               </div>
             </div>
           </div>
+          <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300">
+            <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+              Sugestie szybkich promptów
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {suggestionChips.map((suggestion) => (
+                <Button
+                  key={suggestion.id}
+                  size="xs"
+                  variant="ghost"
+                  className="px-3 text-white"
+                  onClick={() => handleSuggestionClick(suggestion.prompt)}
+                  title={suggestion.description}
+                >
+                  {suggestion.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-6">
+            <Panel
+              eyebrow="KPI kolejki"
+              title="Skuteczność operacji"
+              description="Monitoruj SLA tasków i uptime backendu."
+            >
+              <CockpitMetricCard
+                primaryValue={successRate !== null ? `${successRate}%` : "—"}
+                secondaryLabel={
+                  tasksCreated > 0
+                    ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
+                    : "Brak zadań"
+                }
+                progress={successRate}
+                footer={`Uptime: ${
+                  metrics?.uptime_seconds !== undefined
+                    ? formatUptime(metrics.uptime_seconds)
+                    : "—"
+                }`}
+              />
+            </Panel>
+            <Panel eyebrow="KPI kolejki" title="Zużycie tokenów" description="Trend prompt/completion/cached.">
+              <CockpitTokenCard
+                totalValue={totalTokens}
+                splits={
+                  tokenSplits.length > 0
+                    ? tokenSplits
+                    : [{ label: "Brak danych", value: 0 }]
+                }
+                chartSlot={
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                        Trend próbek
+                      </p>
+                      <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
+                        {tokenTrendLabel}
+                      </Badge>
+                    </div>
+                    {tokenHistory.length < 2 ? (
+                      <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
+                        Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
+                      </p>
+                    ) : (
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                          Przebieg ostatnich próbek
+                        </p>
+                        <div className="mt-3 h-32">
+                          <TokenChart history={tokenHistory} height={128} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                }
+              />
+            </Panel>
+          </div>
         </div>
+      </section>
+      <section className="grid gap-6 lg:grid-cols-2">
+        <Panel
+          title="Modele"
+          description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral" data-testid="models-count">
+                {displayedModelCount} modeli
+              </Badge>
+              <Button
+                variant="danger"
+                size="xs"
+                className="rounded-full px-3"
+                onClick={handleUnloadModels}
+                disabled={unloadingModels}
+              >
+                {unloadingModels ? "Zwalnianie..." : "PANIC: Zwolnij zasoby"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Instalacja</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
+                  placeholder="Nazwa modelu do instalacji"
+                  value={modelName}
+                  onChange={(e) => setModelName(e.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    if (!modelName.trim()) {
+                      setMessage("Podaj nazwę modelu.");
+                      return;
+                    }
+                    try {
+                      const res = await installModel(modelName.trim());
+                      setMessage(res.message || "Rozpoczęto instalację.");
+                      setModelName("");
+                      refreshModels();
+                    } catch (err) {
+                      setMessage(err instanceof Error ? err.message : "Błąd instalacji");
+                    }
+                  }}
+                >
+                  Zainstaluj
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    refreshModels();
+                    refreshTasks();
+                  }}
+                >
+                  Odśwież
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. Instalacja rozpoczyna job w tle.
+              </p>
+            </div>
+            {(models?.models || []).length === 0 ? (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Brak modeli"
+                description="Zainstaluj model, aby rozpocząć pracę."
+              />
+            ) : (
+              <>
+                <div className="grid gap-3">
+                  {(models?.models || []).map((model) => (
+                    <ModelListItem
+                      key={model.name}
+                      name={model.name}
+                      sizeGb={model.size_gb}
+                      source={model.source || model.type || model.path}
+                      active={model.active}
+                      onActivate={async () => {
+                        if (model.active) return;
+                        try {
+                          await switchModel(model.name);
+                          setMessage(`Aktywowano model ${model.name}`);
+                          refreshModels();
+                        } catch (err) {
+                          setMessage(
+                            err instanceof Error
+                              ? err.message
+                              : "Nie udało się przełączyć modelu",
+                          );
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+                {modelHistoryEntries.length > 0 && (
+                  <div className="mt-6 space-y-2">
+                    <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+                      Historia modeli
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {modelHistoryEntries.map((entry) => (
+                        <ListCard
+                          key={`history-${entry.name}`}
+                          title={entry.name}
+                          subtitle={entry.sourceLabel}
+                          badge={<Badge tone={entry.badgeTone}>{entry.statusLabel}</Badge>}
+                          meta={`Rozmiar: ${entry.sizeLabel} • Kwantyzacja: ${entry.quantizationLabel}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Panel>
+        <Panel
+          title="Zasoby modeli"
+          description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ResourceMetricCard
+              label="CPU"
+              value={cpuUsageValue}
+              hint="Średnie obciążenie modeli"
+            />
+            <ResourceMetricCard
+              label="GPU"
+              value={gpuUsageValue}
+              hint="Wskaźnik wykorzystania akceleratora"
+            />
+            <ResourceMetricCard
+              label="RAM"
+              value={ramValue}
+              hint={usageMetrics?.memory_usage_percent ? `${usageMetrics.memory_usage_percent.toFixed(0)}%` : ""}
+            />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <ResourceMetricCard
+              label="VRAM"
+              value={vramValue}
+              hint="Aktywny model/GPU"
+            />
+            <ResourceMetricCard
+              label="Dysk"
+              value={diskValue}
+              hint={diskPercent ?? ""}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-zinc-400">
+            <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
+            <span className="text-base font-semibold text-white">{sessionCostValue}</span>
+          </div>
+        </Panel>
+      </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
         <div className="glass-panel flex flex-col gap-4">
@@ -690,34 +1105,62 @@ export default function Home() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Aktywne zadania"
-          description="Podgląd ostatnich requestów /api/v1/tasks."
-        >
-          <div className="space-y-3">
-            {tasksPreview.length === 0 && (
-              <EmptyState
-                icon={<Inbox className="h-4 w-4" />}
-                title="Brak zadań"
-                description="Wyślij nowe polecenie, aby pojawiło się na liście."
-              />
-            )}
-            {tasksPreview.map((task) => (
-              <ListCard
-                key={task.task_id}
-                title={task.content}
-                subtitle={
-                  task.created_at
-                    ? new Date(task.created_at).toLocaleString()
-                    : "—"
-                }
-                badge={<Badge tone={statusTone(task.status)}>{task.status}</Badge>}
-              />
-            ))}
-          </div>
-        </Panel>
+      <Panel
+        title="Queue governance"
+        description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Aktywne"
+            value={queue?.active ?? "—"}
+            hint="Zadania w toku"
+            accent="violet"
+          />
+          <StatCard
+            label="Oczekujące"
+            value={queue?.pending ?? "—"}
+            hint="Czekają na wykonanie"
+            accent="indigo"
+          />
+          <StatCard
+            label="Limit"
+            value={queue?.limit ?? "∞"}
+            hint="Maksymalna pojemność"
+            accent="blue"
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={handleToggleQueue}
+            disabled={queueAction === "pause" || queueAction === "resume"}
+          >
+            {queue?.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => executeQueueMutation("purge")}
+            disabled={queueAction === "purge"}
+          >
+            Wyczyść kolejkę
+          </Button>
+          <Button
+            variant="danger"
+            size="xs"
+            onClick={() => executeQueueMutation("emergency")}
+            disabled={queueAction === "emergency"}
+          >
+            Emergency stop
+          </Button>
+        </div>
+        {queueActionMessage && (
+          <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
+        )}
+      </Panel>
 
+      <div className="grid gap-6">
         <Panel
           title="Historia requestów"
           description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
@@ -870,102 +1313,11 @@ export default function Home() {
         </div>
       </Panel>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Panel
-          title="Modele"
-          description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
-          action={
-            <span data-testid="models-count">
-              <Badge tone="neutral">{modelCount} modeli</Badge>
-            </span>
-          }
-        >
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Instalacja</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <input
-                  className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
-                  placeholder="Nazwa modelu do instalacji"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={async () => {
-                    if (!modelName.trim()) {
-                      setMessage("Podaj nazwę modelu.");
-                      return;
-                    }
-                    try {
-                      const res = await installModel(modelName.trim());
-                      setMessage(res.message || "Rozpoczęto instalację.");
-                      setModelName("");
-                      refreshModels();
-                    } catch (err) {
-                      setMessage(err instanceof Error ? err.message : "Błąd instalacji");
-                    }
-                  }}
-                >
-                  Zainstaluj
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    refreshModels();
-                    refreshTasks();
-                  }}
-                >
-                  Odśwież
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. Instalacja rozpoczyna job w tle.
-              </p>
-            </div>
-            {(models?.models || []).length === 0 ? (
-              <EmptyState
-                icon={<Package className="h-4 w-4" />}
-                title="Brak modeli"
-                description="Zainstaluj model, aby rozpocząć pracę."
-              />
-            ) : (
-              <div className="grid gap-3">
-                {(models?.models || []).map((model) => (
-                  <ModelListItem
-                    key={model.name}
-                    name={model.name}
-                    sizeGb={model.size_gb}
-                    source={model.source}
-                    active={model.active}
-                    onActivate={async () => {
-                      if (model.active) return;
-                      try {
-                        await switchModel(model.name);
-                        setMessage(`Aktywowano model ${model.name}`);
-                        refreshModels();
-                      } catch (err) {
-                        setMessage(
-                          err instanceof Error
-                            ? err.message
-                            : "Nie udało się przełączyć modelu",
-                        );
-                      }
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </Panel>
-
-        <Panel
-          title="Repozytorium"
-          description="Status i szybkie akcje git (/api/v1/git/*)."
-          action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
-        >
+      <Panel
+        title="Repozytorium"
+        description="Status i szybkie akcje git (/api/v1/git/*)."
+        action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
+      >
           <div className="space-y-4">
             <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
@@ -993,7 +1345,6 @@ export default function Home() {
             </div>
           </div>
         </Panel>
-      </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Panel
@@ -1331,6 +1682,22 @@ function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
           style={{ width: percent !== null ? `${Math.min(percent, 100)}%` : "0%" }}
         />
       </div>
+    </div>
+  );
+}
+
+type ResourceMetricCardProps = {
+  label: string;
+  value: string;
+  hint?: string;
+};
+
+function ResourceMetricCard({ label, value, hint }: ResourceMetricCardProps) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-white">
+      <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      {hint ? <p className="text-[11px] text-zinc-400">{hint}</p> : null}
     </div>
   );
 }

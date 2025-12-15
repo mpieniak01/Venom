@@ -32,20 +32,25 @@ export function Panel({ eyebrow, title, description, action, children }: PanelPr
   );
 }
 
+type StatCardAccent = "purple" | "green" | "blue" | "violet" | "indigo";
+
 type StatCardProps = {
   label: string;
   value: string | number;
   hint?: string;
-  accent?: "purple" | "green" | "blue";
+  accent?: StatCardAccent;
 };
 
 export function StatCard({ label, value, hint, accent = "purple" }: StatCardProps) {
-  const accentColor =
-    accent === "green"
-      ? "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30"
-      : accent === "blue"
-        ? "from-sky-500/20 to-sky-500/5 border-sky-500/30"
-        : "from-purple-500/25 to-purple-500/5 border-purple-500/30";
+  const accentPalette: Record<StatCardAccent, string> = {
+    purple: "from-purple-500/25 to-purple-500/5 border-purple-500/30",
+    green: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30",
+    blue: "from-sky-500/20 to-sky-500/5 border-sky-500/30",
+    violet: "from-violet-500/20 to-violet-500/5 border-violet-500/30",
+    indigo: "from-indigo-500/20 to-indigo-500/5 border-indigo-500/30",
+  };
+
+  const accentColor = accentPalette[accent] ?? accentPalette.purple;
 
   return (
     <div

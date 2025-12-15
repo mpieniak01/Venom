@@ -6,7 +6,6 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { setCostMode, useCostMode } from "@/hooks/use-api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { IconButton } from "@/components/ui/icon-button";
 import { CommandCenter } from "./command-center";
 import { AlertCenter } from "./alert-center";
 import { MobileNav } from "./mobile-nav";
@@ -186,17 +185,17 @@ function TopBarIconAction({
         : "flex";
 
   return (
-    <div className={cn("items-center gap-2 text-xs uppercase tracking-wider text-white", visibilityClass)}>
-      <IconButton
-        label={label}
-        icon={icon}
-        variant="outline"
-        size="sm"
-        onClick={onClick}
-        className="p-0"
-        dataTestId={testId}
-      />
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className={cn(
+        "flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-400",
+        visibilityClass,
+      )}
+    >
+      {icon}
       <span className="hidden md:inline-flex">{label}</span>
-    </div>
+    </button>
   );
 }

@@ -22,6 +22,7 @@ type ServiceStatusDrawerProps = {
 export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerProps) {
   const { data: services } = useServiceStatus(20000);
   const serviceEntries = useMemo(() => services ?? [], [services]);
+  const servicesOffline = !serviceEntries || serviceEntries.length === 0;
 
   const summary = useMemo(() => {
     if (!serviceEntries.length) {
@@ -69,7 +70,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
           </div>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto">
-          {serviceEntries.length === 0 ? (
+          {servicesOffline && (
             <OverlayFallback
               icon={<RefreshCw className="h-4 w-4" />}
               title="Brak usług"
@@ -77,7 +78,8 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
               hint="Service status"
               testId="service-status-offline"
             />
-          ) : (
+          )}
+          {!servicesOffline &&
             serviceEntries.map((svc) => (
               <ListCard
                 key={`${svc.name}-${svc.status}`}
@@ -85,8 +87,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
                 subtitle={svc.detail ?? "Brak opisu"}
                 badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
               />
-            ))
-          )}
+            ))}
         </div>
       </SheetContent>
     </Sheet>

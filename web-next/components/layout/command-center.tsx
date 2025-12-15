@@ -30,7 +30,9 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   const successRateRaw = metrics?.tasks?.success_rate;
   const queueAvailable = Boolean(queue);
   const metricsAvailable = typeof successRateRaw === "number";
-  const servicesAvailable = Boolean(services && services.length);
+  const servicesAvailable = Array.isArray(services) && services.length > 0;
+  const queueOffline = !queueAvailable;
+  const servicesOffline = !servicesAvailable;
 
   const successRate = successRateRaw ?? 0;
   const queueStatus = useMemo(
@@ -44,7 +46,10 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
   );
 
   const taskSummary = useMemo(() => aggregateTaskStatuses(tasks || []), [tasks]);
-  const visibleServices = useMemo(() => services?.slice(0, 5) ?? [], [services]);
+  const visibleServices = useMemo(
+    () => (Array.isArray(services) ? services.slice(0, 5) : []),
+    [services],
+  );
 
   const queueOfflineMessage = "Brak danych kolejki – sprawdź połączenie API.";
 
@@ -85,7 +90,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
             accent="green"
           />
         </div>
-        {!queueAvailable && (
+        {queueOffline && (
           <p className="text-xs text-zinc-500" data-testid="command-center-queue-offline">
             {queueOfflineMessage}
           </p>
@@ -163,7 +168,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
                 badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
               />
             ))}
-            {!servicesAvailable && (
+            {servicesOffline && (
               <OverlayFallback
                 icon={<RefreshCw className="h-4 w-4 text-sky-300" />}
                 title="Brak usług"

@@ -6,7 +6,12 @@ const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
 const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
 const webServerCommand = isProdServer
-  ? `npm run start -- --hostname ${devHost} --port ${devPort}`
+  ? [
+      // Zapewnia dostępność zasobów statycznych dla standalone builda.
+      `mkdir -p .next/standalone/web-next/.next`,
+      `cp -r .next/static .next/standalone/web-next/.next/static`,
+      `PORT=${devPort} HOSTNAME=${devHost} node .next/standalone/web-next/server.js`,
+    ].join(" && ")
   : `npm run dev -- --hostname ${devHost} --port ${devPort}`;
 
 const config: PlaywrightTestConfig = {

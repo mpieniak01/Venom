@@ -75,6 +75,7 @@ export interface TokenMetrics {
   prompt_tokens?: number;
   completion_tokens?: number;
   cached_tokens?: number;
+  session_cost_usd?: number;
 }
 
 export interface GitStatus {
@@ -90,12 +91,28 @@ export interface ModelInfo {
   installed?: boolean;
   active?: boolean;
   source?: string;
+  type?: string;
+  quantization?: string;
+  path?: string;
 }
 
 export interface ModelsResponse {
   success?: boolean;
   models: ModelInfo[];
   count: number;
+}
+
+export interface ModelsUsage {
+  cpu_usage_percent?: number;
+  gpu_usage_percent?: number;
+  vram_usage_mb?: number;
+  vram_total_mb?: number;
+  memory_used_gb?: number;
+  memory_total_gb?: number;
+  memory_usage_percent?: number;
+  disk_usage_gb?: number;
+  disk_limit_gb?: number;
+  disk_usage_percent?: number;
 }
 
 export interface CostMode {

@@ -115,6 +115,8 @@ export default function StrategyPage() {
   };
 
   const handleStartCampaign = async () => {
+    if (!confirm("😳 Na pewno uruchomić kampanię? Wyśle to żądanie do API."))
+      return;
     setActionMessage(null);
     try {
       const res = await startCampaign();

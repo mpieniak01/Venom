@@ -15,7 +15,14 @@ export function QueueStatusCard({
   offlineMessage = "Brak danych kolejki – sprawdź połączenie API.",
   testId,
 }: QueueStatusCardProps) {
-  if (!queue) {
+  const offline =
+    !queue ||
+    (queue.active === undefined &&
+      queue.pending === undefined &&
+      queue.limit === undefined &&
+      queue.paused === undefined);
+
+  if (offline) {
     return (
       <div data-testid={testId}>
         <EmptyState
@@ -34,7 +41,10 @@ export function QueueStatusCard({
   ];
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm text-white shadow-card">
+    <div
+      className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm text-white shadow-card"
+      data-testid={testId ? `${testId}-online` : undefined}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Queue</p>

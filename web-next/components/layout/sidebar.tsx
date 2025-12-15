@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Command, Brain, BugPlay, Target, Sparkles, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   setAutonomy,
@@ -178,19 +176,21 @@ export function Sidebar() {
               const Icon = item.icon;
               const active = pathname === item.href;
               return (
-                <IconButton
+                <a
                   key={item.href}
-                  label={item.label}
-                  variant={active ? "primary" : "ghost"}
-                  size="sm"
-                  className="w-full justify-start rounded-2xl border border-white/5 bg-black/30 hover:border-white/20"
-                  asChild
+                  href={item.href}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-sm font-medium transition pointer-events-auto",
+                    active
+                      ? "border-emerald-300/60 bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-200 shadow-neon"
+                      : "border-white/10 bg-black/30 text-white hover:border-white/30 hover:bg-white/5",
+                    "cursor-pointer",
+                  )}
+                  aria-current={active ? "page" : undefined}
                 >
-                  <Link href={item.href} className="flex w-full items-center gap-3 px-3 py-2 text-sm">
-                    <Icon className={cn("h-4 w-4", active ? "text-emerald-300" : "text-zinc-400")} />
-                    <span className="font-medium">{item.label}</span>
-                  </Link>
-                </IconButton>
+                  <Icon className={cn("h-4 w-4", active ? "text-emerald-300" : "text-zinc-400")} />
+                  <span>{item.label}</span>
+                </a>
               );
             })}
           </div>

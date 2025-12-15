@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ListCard } from "@/components/ui/list-card";
 import { emergencyStop, purgeQueue, toggleQueue, useQueueStatus, useTasks } from "@/hooks/use-api";
 import {
@@ -13,14 +13,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { QueueStatusCard } from "@/components/queue/queue-status-card";
+import { useTranslation } from "@/lib/i18n";
 
 type QuickActionsProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
-
-const deriveQueueActionLabel = (paused?: boolean) =>
-  paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę";
 
 const deriveQueueActionEndpoint = (paused?: boolean) =>
   paused ? "/api/v1/queue/resume" : "/api/v1/queue/pause";
@@ -46,7 +44,8 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const queueAvailable = Boolean(queue) && !queueLoading;
-  const queueOfflineMessage = "Brak danych kolejki – sprawdź połączenie API.";
+  const t = useTranslation();
+  const queueOfflineMessage = t("quickActions.offlineMessage");
 
   const runAction = async (name: string, fn: () => Promise<unknown>) => {
     if (running) return;
@@ -54,47 +53,58 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
     setMessage(null);
     try {
       await fn();
-      setMessage(`${name} wykonane.`);
+      setMessage(t("quickActions.successMessage", { action: name }));
       refreshQueue();
       refreshTasks();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : `Błąd podczas ${name}.`);
+      setMessage(
+        err instanceof Error ? err.message : t("quickActions.errorMessage", { action: name }),
+      );
     } finally {
       setRunning(null);
     }
   };
 
-  const actions: QuickActionItem[] = [
-    {
-      id: "toggle",
-      label: deriveQueueActionLabel(queue?.paused),
-      description: "Kontroluje state kolejki (pause/resume).",
-      endpoint: deriveQueueActionEndpoint(queue?.paused),
-      icon: queue?.paused ? <Play className="h-4 w-4 text-emerald-300" /> : <Pause className="h-4 w-4 text-amber-300" />,
-      tone: queue?.paused ? "success" : "warning",
-      handler: () => toggleQueue(queue?.paused ?? false),
-    },
-    {
-      id: "purge",
-      label: "Purge queue",
-      description: "Oczyszcza wszystkie oczekujące taski.",
-      endpoint: "/api/v1/queue/purge",
-      icon: <Trash2 className="h-4 w-4" />,
-      tone: "warning",
-      confirm: "Wyczyścić wszystkie oczekujące zadania?",
-      handler: () => purgeQueue(),
-    },
-    {
-      id: "emergency",
-      label: "Emergency stop",
-      description: "Natychmiast zatrzymuje kolejkę (awaryjnie).",
-      endpoint: "/api/v1/queue/emergency-stop",
-      icon: <AlertTriangle className="h-4 w-4" />,
-      tone: "danger",
-      confirm: "Awaryjny stop zatrzyma wszystkie operacje. Kontynuować?",
-      handler: () => emergencyStop(),
-    },
-  ];
+  const actions: QuickActionItem[] = useMemo(
+    () => [
+      {
+        id: "toggle",
+        label: queue?.paused
+          ? t("quickActions.actions.toggleResume")
+          : t("quickActions.actions.togglePause"),
+        description: t("quickActions.actions.toggleDescription"),
+        endpoint: deriveQueueActionEndpoint(queue?.paused),
+        icon: queue?.paused ? (
+          <Play className="h-4 w-4 text-emerald-300" />
+        ) : (
+          <Pause className="h-4 w-4 text-amber-300" />
+        ),
+        tone: queue?.paused ? "success" : "warning",
+        handler: () => toggleQueue(queue?.paused ?? false),
+      },
+      {
+        id: "purge",
+        label: t("quickActions.actions.purgeLabel"),
+        description: t("quickActions.actions.purgeDescription"),
+        endpoint: "/api/v1/queue/purge",
+        icon: <Trash2 className="h-4 w-4" />,
+        tone: "warning",
+        confirm: t("quickActions.actions.purgeConfirm"),
+        handler: () => purgeQueue(),
+      },
+      {
+        id: "emergency",
+        label: t("quickActions.actions.emergencyLabel"),
+        description: t("quickActions.actions.emergencyDescription"),
+        endpoint: "/api/v1/queue/emergency-stop",
+        icon: <AlertTriangle className="h-4 w-4" />,
+        tone: "danger",
+        confirm: t("quickActions.actions.emergencyConfirm"),
+        handler: () => emergencyStop(),
+      },
+    ],
+    [queue?.paused, t],
+  );
 
   const handleQuickAction = async (action: QuickActionItem) => {
     if (!queueAvailable) {
@@ -106,22 +116,20 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
   };
 
   const badgeLabel = (action: QuickActionItem) => {
-    if (action.id === "emergency") return "Emergency";
-    return "Queue";
+    if (action.id === "emergency") return t("quickActions.badgeEmergency");
+    return t("quickActions.badgeQueue");
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex h-full max-w-lg flex-col gap-4 border-l border-white/10 bg-zinc-950/95">
         <SheetHeader>
-          <SheetTitle>Quick Actions</SheetTitle>
-          <SheetDescription>
-            Najczęstsze akcje operacyjne /api/v1/queue z każdego widoku.
-          </SheetDescription>
+          <SheetTitle>{t("quickActions.title")}</SheetTitle>
+          <SheetDescription>{t("quickActions.description")}</SheetDescription>
         </SheetHeader>
         <QueueStatusCard
           queue={queue}
-          offlineMessage="Brak danych kolejki – sprawdź połączenie API."
+          offlineMessage={t("quickActions.offlineMessage")}
           testId="queue-offline-state"
         />
         <div className="space-y-2">
@@ -136,7 +144,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
                 meta={
                   <div className="flex items-center gap-2 text-[11px] text-zinc-500">
                     <span>{action.endpoint}</span>
-                    {isRunning && <span className="text-emerald-300">Wysyłam...</span>}
+                    {isRunning && <span className="text-emerald-300">{t("quickActions.sending")}</span>}
                   </div>
                 }
                 icon={action.icon}

@@ -23,21 +23,21 @@ export function StatusPills() {
     () => [
       {
         id: "queue",
-        label: "Queue",
+        label: "Kolejka",
         value: queueAvailable ? `${queueActive}/${queue?.limit ?? "∞"}` : "—",
-        hint: queueAvailable ? `${queuePending} pending` : "Brak danych",
+        hint: queueAvailable ? `${queuePending} oczekujących` : "Brak danych",
         tone: queueAvailable ? (queue?.paused ? "warning" : "success") : "neutral",
       },
       {
         id: "success",
-        label: "Success",
+        label: "Skuteczność",
         value: metricsAvailable ? `${successRate}%` : "—",
         hint: metricsAvailable ? "ostatnie zadania" : "Metryki offline",
         tone: metricsAvailable ? (successRate > 70 ? "success" : "danger") : "neutral",
       },
       {
         id: "tasks",
-        label: "Tasks",
+        label: "Zadania",
         value: tasksAvailable ? activeTasks : "—",
         hint: tasksAvailable ? "aktywnych" : "Brak danych",
         tone: tasksAvailable ? (activeTasks > 0 ? "warning" : "neutral") : "neutral",

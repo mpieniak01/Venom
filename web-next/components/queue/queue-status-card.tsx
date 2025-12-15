@@ -3,6 +3,7 @@
 import type { QueueStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useTranslation } from "@/lib/i18n";
 
 type QueueStatusCardProps = {
   queue?: QueueStatus | null;
@@ -12,9 +13,11 @@ type QueueStatusCardProps = {
 
 export function QueueStatusCard({
   queue,
-  offlineMessage = "Brak danych kolejki – sprawdź połączenie API.",
+  offlineMessage,
   testId,
 }: QueueStatusCardProps) {
+  const t = useTranslation();
+  const offlineDescription = offlineMessage ?? t("queueCard.offlineDescription");
   const offline =
     !queue ||
     (queue.active === undefined &&
@@ -26,8 +29,8 @@ export function QueueStatusCard({
     return (
       <div data-testid={testId}>
         <EmptyState
-          title="Kolejka offline"
-          description={offlineMessage}
+          title={t("queueCard.offlineTitle")}
+          description={offlineDescription}
           className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm"
         />
       </div>
@@ -35,9 +38,9 @@ export function QueueStatusCard({
   }
 
   const metrics = [
-    { label: "Active", value: queue.active ?? 0 },
-    { label: "Pending", value: queue.pending ?? 0 },
-    { label: "Limit", value: queue.limit ?? "∞" },
+    { label: t("queueCard.metricActive"), value: queue.active ?? 0 },
+    { label: t("queueCard.metricPending"), value: queue.pending ?? 0 },
+    { label: t("queueCard.metricLimit"), value: queue.limit ?? "∞" },
   ];
 
   return (
@@ -47,11 +50,13 @@ export function QueueStatusCard({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Queue</p>
-          <p className="text-base font-semibold">/api/v1/queue/status</p>
+          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            {t("queueCard.heading")}
+          </p>
+          <p className="text-base font-semibold">{t("queueCard.endpoint")}</p>
         </div>
         <Badge tone={queue.paused ? "warning" : "success"}>
-          {queue.paused ? "Wstrzymana" : "Aktywna"}
+          {queue.paused ? t("queueCard.statusPaused") : t("queueCard.statusActive")}
         </Badge>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">

@@ -14,10 +14,11 @@ import {
 } from "@/hooks/use-api";
 import { ProgressBar } from "@tremor/react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { statusTone } from "@/lib/status";
 import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
+import { cn } from "@/lib/utils";
 
 export default function StrategyPage() {
   const { data: roadmap, refresh: refreshRoadmap } = useRoadmap();
@@ -27,6 +28,16 @@ export default function StrategyPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
+  const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const showToast = (tone: "success" | "error", message: string) => {
+    setToast({ tone, message });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const kpis = roadmap?.kpis;
   const visionProgress = roadmap?.vision?.progress ?? 0;
@@ -86,12 +97,13 @@ export default function StrategyPage() {
     setActionMessage(null);
     try {
       await createRoadmap(visionInput.trim());
-      setActionMessage("Roadmapa utworzona.");
+      showToast("success", "Roadmapa utworzona.");
       setVisionInput("");
       setShowVisionForm(false);
       refreshRoadmap();
     } catch (err) {
-      setActionMessage(
+      showToast(
+        "error",
         err instanceof Error ? err.message : "Nie udało się utworzyć roadmapy.",
       );
     } finally {
@@ -105,10 +117,12 @@ export default function StrategyPage() {
     try {
       const res = await requestRoadmapStatus();
       setStatusReport(res.report || "Brak danych z Executive.");
+      showToast("success", "Pobrano raport statusu.");
     } catch (err) {
-      setStatusReport(
-        err instanceof Error ? err.message : "Nie udało się pobrać raportu.",
-      );
+      const message =
+        err instanceof Error ? err.message : "Nie udało się pobrać raportu.";
+      setStatusReport(message);
+      showToast("error", message);
     } finally {
       setReportLoading(false);
     }
@@ -120,9 +134,10 @@ export default function StrategyPage() {
     setActionMessage(null);
     try {
       const res = await startCampaign();
-      setActionMessage(res.message || "Kampania wystartowała (patrz logi).");
+      showToast("success", res.message || "Kampania wystartowała (patrz logi).");
     } catch (err) {
-      setActionMessage(
+      showToast(
+        "error",
         err instanceof Error ? err.message : "Nie udało się uruchomić kampanii.",
       );
     }
@@ -144,6 +159,19 @@ export default function StrategyPage() {
           </div>
         }
       />
+      {toast && (
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm shadow-card",
+            toast.tone === "success"
+              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-50"
+              : "border-rose-400/40 bg-rose-500/10 text-rose-50",
+          )}
+        >
+          <span>{toast.tone === "success" ? "✅" : "⚠️"}</span>
+          <p>{toast.message}</p>
+        </div>
+      )}
       <div className="glass-panel flex flex-wrap gap-3 border border-white/10 p-6 shadow-card">
         <Button variant="primary" size="sm" onClick={() => refreshRoadmap()}>
           🔄 Odśwież Roadmapę
@@ -202,7 +230,7 @@ export default function StrategyPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Wizja" description="Goal Store snapshot">
+        <Panel title="Wizja" description="Migawka magazynu celów">
           {roadmap?.vision ? (
             <div className="space-y-3 text-sm text-zinc-400">
               <div className="flex items-center justify-between">
@@ -257,17 +285,39 @@ export default function StrategyPage() {
           <Accordion type="multiple" className="space-y-3">
             {milestones.map((milestone, index) => {
               const progressValue = milestone.progress ?? 0;
+              const totalTasks = milestone.tasks?.length ?? 0;
+              const completedTasks = (milestone.tasks || []).filter((task) =>
+                (task.status || "").toUpperCase().includes("DONE"),
+              ).length;
+              const emoji =
+                totalTasks === 0
+                  ? "🧭"
+                  : completedTasks === totalTasks
+                    ? "✅"
+                    : completedTasks === 0
+                      ? "🚧"
+                      : "⚙️";
               return (
                 <AccordionItem key={milestone.title ?? `ms-${index}`} value={milestone.title ?? `ms-${index}`}>
                   <AccordionTrigger className="text-white">
                     <div className="flex w-full items-center justify-between pr-4">
-                      <div>
-                        <p className="text-sm font-semibold">{milestone.title}</p>
-                        <p className="text-xs text-zinc-400">
-                          Postęp {progressValue.toFixed(1)}% • Priorytet {milestone.priority ?? "-"}
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg" aria-hidden>
+                          {emoji}
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold">{milestone.title}</p>
+                          <p className="text-xs text-zinc-400">
+                            Postęp {progressValue.toFixed(1)}% • Priorytet {milestone.priority ?? "-"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge tone={statusTone(milestone.status)}>{milestone.status ?? "n/a"}</Badge>
+                        <p className="text-[11px] text-zinc-500">
+                          {completedTasks}/{totalTasks} zadań
                         </p>
                       </div>
-                      <Badge tone={statusTone(milestone.status)}>{milestone.status ?? "n/a"}</Badge>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>

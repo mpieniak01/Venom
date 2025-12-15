@@ -37,3 +37,6 @@
 
 ## Wykonane kroki
 - Dodano panel „Queue governance” na stronie głównej (`web-next/app/page.tsx`), który pokazuje metryki `/api/v1/queue/status` (active/pending/limit) oraz przyciski „Wstrzymaj/Wznów kolejkę”, „Wyczyść kolejkę” i „Emergency stop” wraz z komunikatami o wyniku, co odwzorowuje panelek z legacy web.
+- W sidebarze pojawiło się potwierdzenie przełączenia trybu kosztowego (Eco ↔ Paid), dzięki czemu operator musi świadomie zaakceptować tryb płatnych modeli tak jak w starym kokpicie (`web-next/components/layout/sidebar.tsx`).
+- Strona główna zawiera „Voice Command Center” z obsługą `/ws/audio`, wizualizatorem, transkrypcją i sekcją Rider-Pi (panel `VoiceCommandCenter`), co przenosi funkcję tablicy głosowej ze starego kokpitu.
+- Dodano panel „Integracje i operacje” (`IntegrationMatrix`), który grupuje `/api/v1/system/services` oraz ostatnie eventy `/ws/events`, odtwarzając legacy matrix integracji i listę aktywnych sygnałów.

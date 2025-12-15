@@ -17,16 +17,35 @@
 6. W panelu modeli pojawiła się dodatkowa sekcja historyczna z listą modeli, ich źródłem, rozmiarem, statusem i kwantyzacją – analogicznie do starego kokpitu.
 7. Ulepszono `useModelsUsage`, by obsługiwał zarówno odpowiedź opakowaną w `usage`, jak i surowe metryki, dzięki czemu zasoby pokazują realne dane zamiast samych kresek.
 8. Uproszczono nawigację boczną (czyste linki `<a>` bez dodatkowej logiki) i dodano brakujące akcenty kart statystyk, dzięki czemu kliknięcia w moduły zawsze prowadzą do właściwej podstrony i build przechodzi bez błędów typów.
+9. Zweryfikowano, że panel „Modele” oraz „Zasoby modeli” zaciągają dane z `/api/v1/models` i `/api/v1/models/usage` – wskaźnik liczby modeli aktualizuje się po instalacji/odświeżeniu, a metryki CPU/GPU/RAM/VRAM/Dysk reagują wraz z odświeżaniem hooka (manualne sprawdzenie podczas pracy UI).
+10. Przećwiczono przycisk „PANIC: Zwolnij zasoby” (`/api/v1/models/unload-all`) – po wywołaniu panel natychmiast pokazuje komunikat, a `refreshModels()`, `refreshModelsUsage()` oraz odświeżenie kolejki/zadań czyszczą listę modeli (potwierdzone ręcznie, bez testów automatycznych na ten moment).
+11. Command Console łączy teraz historię requestów z wynikami `/api/v1/tasks`, więc w kolumnie czatu widać klasyczny układ pytanie → odpowiedź (prompt, wynik, status i czas), a panel szczegółów pokazuje również logi zadania oraz wynik końcowy.
+12. Zestaw gotowych promptów został przepisany na karty z ikonami i opisami 1:1 ze starego UI – kliknięcie natychmiast podmienia treść w czacie i działa w Lab/Prod razem z `Ctrl+Enter`.
+13. Panel szczegółów historii dociąga teraz dane pojedynczego zadania przez `/api/v1/tasks/{id}` (pełne logi + wynik), a dodatkowy efekt nasłuchuje na aktualizacje `useTasks`, dzięki czemu logi pojawiają się bez ręcznego odświeżania.
+14. Obsłużono scenariusz, w którym backend chwilowo zwraca błąd historii – panel pokazuje czytelny komunikat, a dane zadania są pobierane niezależnie (fallback do `/api/v1/tasks/{id}`), więc logi są widoczne nawet jeśli timeline jeszcze się nie wygenerował. Dodatkowo textarea czatu czyści się od razu po wysyłce i przy błędzie przywraca poprzednią treść.
 
 ## Kolejne kroki – walidacja
-- Sprawdź, czy panel „Modele” i „Zasoby modeli” dostają dane z backendu `/api/v1/models` i `/api/v1/models/usage`, a liczba modeli pokrywa się z legacy API na porcie 8000.
-- Zweryfikuj działanie przycisku „PANIC: Zwolnij zasoby” (wywołuje `/api/v1/models/unload-all`) i towarzyszące odświeżenie danych oraz informację zwrotną dla operatora.
-- Jeśli to możliwe, dodaj ręczny test lub notatkę w Playwright/SUITE, która potwierdzi obecność historii modeli i działanie skrótu `Ctrl+Enter`.
+- ✅ Panel „Modele” i „Zasoby modeli” potwierdzony w integracji z `/api/v1/models` i `/api/v1/models/usage` (sprawdzone ręcznie na porcie 3000 vs. legacy).
+- ✅ Przyciski instalacji/odświeżenia i „PANIC: Zwolnij zasoby” (POST `/api/v1/models/unload-all`) przetestowane manualnie – natychmiast aktualizują listę modeli oraz metryki.
+- ✅ Command Console: ręcznie potwierdzono, że historia, wynik zadania i logi są spięte (klik w bańkę otwiera realne dane requestu wraz z logami z `/api/v1/tasks`).
+- ⏳ Test Playwright dla historii modeli i skrótu `Ctrl+Enter` – do dodania po stabilizacji UI (na razie notatka zamiast testu).
 
 ## Walidacja
-- Sprawdzić manualnie, że `Ctrl+Enter` wysyła zadanie oraz że kliknięcie chipów zastępuje treść promptu. Jeśli backend jest dostępny, zweryfikować, że nowe prompt jest wysyłany w historii.
-- Przygotować test Playwright (lub notatkę) sprawdzającą widoczność prompt chips w interfejsie i działanie skrótu klawiszowego (można dorzucić do obecnego smoke suite).
+- ✅ Ręcznie zweryfikowano, że `Ctrl+Enter` wysyła zadanie oraz że chipy promptów podmieniają treść textarea; nowe zadania trafiają do historii.
+- ✅ Ręczna walidacja Q&A: wysyłka zadania z legacy promptu, sprawdzenie, że w kolumnie czatu pojawia się para wiadomości oraz że panel szczegółów zawiera wynik + logi zadania.
+- ✅ Sprawdzenie requestów dłużej wykonywanych – po kliknięciu w „Szczegóły” logi i wynik dociągają się po zakończeniu zadania, bo panel pobiera je bezpośrednio z `/api/v1/tasks/{id}`.
+- ⏳ Automatyczny test Playwright (chips + skrót) – odłożony do momentu stabilizacji suite.
 
 ## Rezultat
-- Sugestie promptów i skrót klawiszowy są już dostępne na stronie głównej (`web-next/app/page.tsx`).
+- Sugestie promptów, skrót klawiszowy oraz klasyczny widok „pytanie-odpowiedź” (łącznie z logami zadania) są już dostępne na stronie głównej (`web-next/app/page.tsx`).
 - Resztę planu wykonujemy w kolejnych etapach przez dodanie panelu zasobów modeli i ewentualnej integracji z `QuickActions/Cost Mode`.
+
+## Następny krok – mapowanie czatu i promptów (legacy → web-next)
+1. **Audyt legacy – zrealizowany**
+   - Kategorie promptów (Kreacja, DevOps, Status projektu, Research, Kod, Pomoc) odwzorowane z `web/templates/index.html`, łącznie z ikonami i opisami.
+2. **Implementacja presetów – zrealizowana**
+   - `web-next/app/page.tsx` posiada strukturę kart presetów; kliknięcie wstawia treść do czatu i można ją wysłać skrótem lub przyciskiem.
+   - Command Console pokazuje wynik zadania i logi, aby rozmowa wyglądała jak klasyczny chat.
+3. **Walidacja UX**
+   - ✅ Ręczne testy potwierdzające działanie w trybie Lab/Prod.
+   - ⏳ Automatyczny test Playwright (widoczność presetów + `Ctrl+Enter`) do dodania w smoke suite po ustabilizowaniu UI.

@@ -5,6 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from "next/navigation";
 import { Command, Loader2, Search } from "lucide-react";
 import { navItems } from "./sidebar";
+import { useTranslation } from "@/lib/i18n";
 
 type CommandPaletteProps = {
   open: boolean;
@@ -16,7 +17,7 @@ type PaletteAction = {
   id: string;
   label: string;
   description: string;
-  category: "Nawigacja" | "Kolejka";
+  category: string;
   run: () => Promise<void> | void;
 };
 
@@ -25,6 +26,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
   const [query, setQuery] = useState("");
   const [running, setRunning] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const t = useTranslation();
 
   useEffect(() => {
     if (!open) setQuery("");
@@ -32,31 +34,34 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
 
   const navActions: PaletteAction[] = useMemo(
     () =>
-      navItems.map((item) => ({
-        id: `nav-${item.href}`,
-        label: item.label,
-        description: `Przejdź do ${item.href === "/" ? "Cockpit" : item.label}.`,
-        category: "Nawigacja",
-        run: () => {
-          router.push(item.href);
-        },
-      })),
-    [router],
+      navItems.map((item) => {
+        const label = item.labelKey ? t(item.labelKey) : item.label;
+        return {
+          id: `nav-${item.href}`,
+          label,
+          description: `${t("commandPalette.goTo")} ${label}.`,
+          category: t("commandPalette.navCategory"),
+          run: () => {
+            router.push(item.href);
+          },
+        };
+      }),
+    [router, t],
   );
 
   const queueActions: PaletteAction[] = useMemo(
     () => [
       {
         id: "queue-open",
-        label: "Otwórz Quick Actions",
-        description: "Panel /api/v1/queue (pause, purge, emergency).",
-        category: "Kolejka",
+        label: t("commandPalette.openQuickActions"),
+        description: t("commandPalette.openQuickActionsDesc"),
+        category: t("commandPalette.queueCategory"),
         run: async () => {
           onOpenQuickActions();
         },
       },
     ],
-    [onOpenQuickActions],
+    [onOpenQuickActions, t],
   );
 
   const allActions = [...navActions, ...queueActions];
@@ -77,11 +82,13 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
       setRunning(action.id);
       setMessage(null);
       await action.run();
-      setMessage(`${action.label} wykonane.`);
+      setMessage(`${action.label} ${t("commandPalette.runSuccess")}`);
       onOpenChange(false);
     } catch (err) {
       setMessage(
-        err instanceof Error ? err.message : `Nie udało się wykonać: ${action.label}`,
+        err instanceof Error
+          ? err.message
+          : `${t("commandPalette.runError")}: ${action.label}`,
       );
     } finally {
       setRunning(null);
@@ -98,9 +105,9 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
               <Command className="h-5 w-5" />
             </div>
             <div>
-              <Dialog.Title className="text-lg font-semibold">Command Palette</Dialog.Title>
+              <Dialog.Title className="text-lg font-semibold">{t("commandPalette.title")}</Dialog.Title>
               <Dialog.Description className="text-sm text-zinc-500">
-                Nawigacja (`⌘K` / `Ctrl+K`) i szybkie akcje kolejki.
+                {t("commandPalette.description")}
               </Dialog.Description>
             </div>
           </div>
@@ -111,7 +118,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-              placeholder="Szukaj poleceń..."
+              placeholder={t("commandPalette.searchPlaceholder")}
             />
             <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-zinc-400">
               ⌘K
@@ -140,7 +147,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
               </div>
             ))}
             {filtered.length === 0 && (
-              <p className="text-sm text-zinc-500">Brak komend pasujących do filtra.</p>
+              <p className="text-sm text-zinc-500">{t("commandPalette.empty")}</p>
             )}
           </div>
           {message && (

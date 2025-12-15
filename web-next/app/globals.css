@@ -116,6 +116,7 @@ a { color: inherit; text-decoration: none; }
 .glass-panel.fixed { position: fixed; }
 .glass-panel.sticky { position: sticky; }
 .glass-panel.absolute { position: absolute; }
+.glass-panel.allow-overflow { overflow: visible; }
 
 /* Obrys */
 .glass-panel::before {

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   fetchHistoryDetail,
+  fetchTaskDetail,
   gitSync,
   gitUndo,
   installModel,
@@ -44,7 +45,7 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import type { Chart } from "chart.js/auto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { HistoryRequestDetail, ServiceStatus } from "@/lib/types";
+import type { HistoryRequestDetail, ServiceStatus, Task } from "@/lib/types";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { AnimatePresence, motion } from "framer-motion";
@@ -56,8 +57,14 @@ import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { RecentRequestList } from "@/components/tasks/recent-request-list";
 import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { QuickActions } from "@/components/layout/quick-actions";
+import { VoiceCommandCenter } from "@/components/voice/voice-command-center";
+import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
 
 export default function Home() {
+  const [isClientReady, setIsClientReady] = useState(false);
+  useEffect(() => {
+    setIsClientReady(true);
+  }, []);
   const [taskContent, setTaskContent] = useState("");
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
@@ -78,6 +85,7 @@ export default function Home() {
   const [logFilter, setLogFilter] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [copyStepsMessage, setCopyStepsMessage] = useState<string | null>(null);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [exportingPinned, setExportingPinned] = useState(false);
@@ -89,43 +97,49 @@ export default function Home() {
   const [queueActionMessage, setQueueActionMessage] = useState<string | null>(
     null,
   );
-  const suggestionChips = useMemo(
+  const promptPresets = useMemo(
     () => [
       {
-        id: "create-logo",
-        title: "Kreacja",
-        description: "Stwórz logo dla fintechu.",
+        id: "preset-creative",
+        category: "Kreacja",
+        description: "Stwórz logo dla fintechu używając DALL-E",
         prompt: "Stwórz logo dla fintechu używając DALL-E",
+        icon: "🎨",
       },
       {
-        id: "devops-status",
-        title: "DevOps",
-        description: "Sprawdź status serwerów.",
+        id: "preset-devops",
+        category: "DevOps",
+        description: "Sprawdź status serwerów w infrastrukturze",
         prompt: "Sprawdź status serwerów w infrastrukturze",
+        icon: "☁️",
       },
       {
-        id: "project-status",
-        title: "Status projektu",
-        description: "Podsumowanie roadmapy.",
+        id: "preset-project",
+        category: "Status projektu",
+        description: "Pokaż status projektu i roadmapy",
         prompt: "Pokaż status projektu",
+        icon: "📊",
       },
       {
-        id: "research",
-        title: "Research",
-        description: "Trend AI 2024.",
+        id: "preset-research",
+        category: "Research",
+        description: "Zrób research o trendach AI w 2024",
         prompt: "Zrób research o trendach AI w 2024",
+        icon: "🧠",
       },
       {
-        id: "code",
-        title: "Kod",
-        description: "Napisz testy jednostkowe.",
+        id: "preset-code",
+        category: "Kod",
+        description: "Napisz testy jednostkowe dla modułu API",
         prompt: "Napisz testy jednostkowe dla modułu API",
+        icon: "🛠️",
       },
       {
-        id: "help",
-        title: "Pomoc",
-        description: "Co potrafisz?",
+        id: "preset-help",
+        category: "Pomoc",
+        description: "Co potrafisz? Pokaż dostępne funkcje systemu",
         prompt: "Co potrafisz?",
+        icon: "❓",
       },
     ],
     [],
@@ -140,9 +154,44 @@ export default function Home() {
   const { data: git, refresh: refreshGit } = useGitStatus();
   const { data: tokenMetrics } = useTokenMetrics();
   const { data: modelsUsageResponse, refresh: refreshModelsUsage } = useModelsUsage(10000);
-  const { data: history } = useHistory(6);
+  const { data: history, refresh: refreshHistory } = useHistory(6);
   const { connected, entries } = useTelemetryFeed();
   const usageMetrics = modelsUsageResponse?.usage ?? null;
+  const tasksByPrompt = useMemo(() => {
+    const bucket = new Map<string, Task>();
+    (tasks || []).forEach((task) => {
+      if (task.content) {
+        bucket.set(task.content.trim(), task);
+      }
+    });
+    return bucket;
+  }, [tasks]);
+  const tasksById = useMemo(() => {
+    const bucket = new Map<string, Task>();
+    (tasks || []).forEach((task) => {
+      const key = task.task_id || task.id;
+      if (key) {
+        bucket.set(key, task);
+      }
+    });
+    return bucket;
+  }, [tasks]);
+  const findTaskMatch = useCallback(
+    (requestId?: string, prompt?: string | null) => {
+      if (requestId) {
+        const byId = tasksById.get(requestId);
+        if (byId) return byId;
+      }
+      if (prompt) {
+        const trimmed = prompt.trim();
+        if (trimmed.length > 0) {
+          return tasksByPrompt.get(trimmed) ?? null;
+        }
+      }
+      return null;
+    },
+    [tasksById, tasksByPrompt],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -181,6 +230,19 @@ export default function Home() {
       return next.slice(-20);
     });
   }, [tokenMetrics?.total_tokens]);
+
+  useEffect(() => {
+    if (!detailOpen || !selectedRequestId) return;
+    const fallback = findTaskMatch(selectedRequestId, historyDetail?.prompt);
+    if (!fallback) return;
+    if (
+      !selectedTask ||
+      (fallback.logs?.length ?? 0) !== (selectedTask.logs?.length ?? 0) ||
+      (fallback.result ?? "") !== (selectedTask.result ?? "")
+    ) {
+      setSelectedTask(fallback);
+    }
+  }, [detailOpen, selectedRequestId, historyDetail?.prompt, findTaskMatch, selectedTask]);
 
   const tasksPreview = (tasks || []).slice(0, 4);
   const fallbackAgents: ServiceStatus[] = [
@@ -228,17 +290,44 @@ export default function Home() {
     tokenMetrics?.session_cost_usd !== undefined
       ? `$${tokenMetrics.session_cost_usd.toFixed(4)}`
       : "—";
-  const chatMessages = useMemo(
-    () =>
-      (history || []).map((item, index) => ({
-        id: item.request_id,
-        text: item.prompt,
-        status: item.status,
-        created_at: item.created_at,
-        role: index % 2 === 0 ? "user" : "assistant",
-      })),
-    [history],
-  );
+  const chatMessages = useMemo(() => {
+    if (!history) return [];
+    return history.flatMap((item) => {
+      const prompt = item.prompt?.trim() ?? "";
+      const matchedTask = findTaskMatch(item.request_id, prompt);
+      const assistantText =
+        matchedTask?.result?.trim() ??
+        (item.status === "COMPLETED"
+          ? "Brak zapisanej odpowiedzi – sprawdź szczegóły zadania."
+          : "Odpowiedź w trakcie generowania…");
+      const assistantStatus = matchedTask?.status ?? item.status;
+      const assistantTimestamp =
+        matchedTask?.updated_at ||
+        matchedTask?.created_at ||
+        item.finished_at ||
+        item.created_at;
+      return [
+        {
+          bubbleId: `${item.request_id}-prompt`,
+          requestId: item.request_id,
+          role: "user" as const,
+          text: prompt || "Brak treści zadania.",
+          status: item.status,
+          timestamp: item.created_at,
+          prompt,
+        },
+        {
+          bubbleId: `${item.request_id}-response`,
+          requestId: item.request_id,
+          role: "assistant" as const,
+          text: assistantText,
+          status: assistantStatus,
+          timestamp: assistantTimestamp ?? item.created_at,
+          prompt,
+        },
+      ];
+    });
+  }, [history, findTaskMatch]);
   const logEntries = entries.slice(0, 8);
   const tokenSplits = [
     { label: "Prompt", value: tokenMetrics?.prompt_tokens ?? 0 },
@@ -359,26 +448,27 @@ export default function Home() {
   );
 
   const handleSend = useCallback(async () => {
-    if (!taskContent.trim()) {
+    const payload = taskContent.trim();
+    if (!payload) {
       setMessage("Podaj treść zadania.");
       return;
     }
     setSending(true);
     setMessage(null);
+    setTaskContent("");
     try {
-      const res = await sendTask(taskContent.trim(), !labMode);
+      const res = await sendTask(payload, !labMode);
       setMessage(`Wysłano zadanie: ${res.task_id}`);
-      setTaskContent("");
-      refreshTasks();
-      refreshQueue();
+      await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
     } catch (err) {
+      setTaskContent(payload);
       setMessage(
         err instanceof Error ? err.message : "Nie udało się wysłać zadania",
       );
     } finally {
       setSending(false);
     }
-  }, [taskContent, labMode, refreshTasks, refreshQueue]);
+  }, [taskContent, labMode, refreshTasks, refreshQueue, refreshHistory]);
 
   const handleMacroRun = async (macro: { id: string; content: string; label: string }) => {
     if (macroSending) return;
@@ -387,8 +477,7 @@ export default function Home() {
     try {
       const res = await sendTask(macro.content, !labMode);
       setMessage(`Makro ${macro.label} wysłane: ${res.task_id}`);
-      refreshTasks();
-      refreshQueue();
+      await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Nie udało się wykonać makra.");
     } finally {
@@ -493,20 +582,43 @@ export default function Home() {
     }
   };
 
-  const openRequestDetail = async (requestId: string) => {
+  const openRequestDetail = async (requestId: string, prompt?: string) => {
     setSelectedRequestId(requestId);
     setDetailOpen(true);
     setHistoryDetail(null);
     setHistoryError(null);
     setCopyStepsMessage(null);
+    setSelectedTask(null);
     setLoadingHistory(true);
+    const fallback = findTaskMatch(requestId, prompt);
     try {
-      const detail = await fetchHistoryDetail(requestId);
-      setHistoryDetail(detail);
+      const [detailResult, taskResult] = await Promise.allSettled([
+        fetchHistoryDetail(requestId),
+        fetchTaskDetail(requestId),
+      ]);
+
+      if (detailResult.status === "fulfilled") {
+        setHistoryDetail(detailResult.value);
+      } else {
+        setHistoryError(
+          detailResult.reason instanceof Error
+            ? detailResult.reason.message
+            : "Nie udało się pobrać szczegółów",
+        );
+      }
+
+      if (taskResult.status === "fulfilled") {
+        setSelectedTask(taskResult.value);
+      } else if (fallback) {
+        setSelectedTask(fallback);
+      }
     } catch (err) {
       setHistoryError(
         err instanceof Error ? err.message : "Nie udało się pobrać szczegółów",
       );
+      if (fallback) {
+        setSelectedTask(fallback);
+      }
     } finally {
       setLoadingHistory(false);
     }
@@ -573,6 +685,14 @@ export default function Home() {
       setGitAction(null);
     }
   };
+
+  if (!isClientReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#020617] p-6 text-sm text-zinc-400">
+        Ładowanie kokpitu…
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 pb-14">
@@ -690,7 +810,7 @@ export default function Home() {
               )}
               {tasksPreview.map((task, index) => (
                 <ListCard
-                  key={`${task.task_id ?? "task"}-${index}`}
+                  key={`${task.task_id ?? task.id ?? "task"}-${index}`}
                   title={task.content}
                   subtitle={
                     task.created_at
@@ -728,23 +848,25 @@ export default function Home() {
                       </p>
                     )}
                     {chatMessages.map((msg) => {
-                      const isSelected = selectedRequestId === msg.id;
+                      const isSelected = selectedRequestId === msg.requestId;
                       return (
                         <motion.div
-                          key={msg.id}
+                          key={msg.bubbleId}
                           layout
                           initial={{ opacity: 0, y: 12 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -12 }}
                         >
                           <ConversationBubble
-                            role={msg.role === "user" ? "user" : "assistant"}
-                            timestamp={msg.created_at}
+                            role={msg.role}
+                            timestamp={msg.timestamp}
                             text={msg.text}
                             status={msg.status}
-                            requestId={msg.id}
+                            requestId={msg.requestId}
                             isSelected={isSelected}
-                            onSelect={() => openRequestDetail(msg.id)}
+                            onSelect={() =>
+                              msg.requestId && openRequestDetail(msg.requestId, msg.prompt)
+                            }
                           />
                         </motion.div>
                       );
@@ -796,22 +918,35 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300">
-            <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
-              Sugestie szybkich promptów
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {suggestionChips.map((suggestion) => (
-                <Button
-                  key={suggestion.id}
-                  size="xs"
-                  variant="ghost"
-                  className="px-3 text-white"
-                  onClick={() => handleSuggestionClick(suggestion.prompt)}
-                  title={suggestion.description}
+          <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-zinc-300">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+                Sugestie szybkich promptów
+              </p>
+              <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-600">
+                Kliknij, aby wypełnić chat
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {promptPresets.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleSuggestionClick(preset.prompt)}
+                  title={preset.description}
+                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
                 >
-                  {suggestion.title}
-                </Button>
+                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-lg">
+                    {preset.icon}
+                  </span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-white">{preset.category}</p>
+                    <p className="text-xs text-zinc-400">{preset.description}</p>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-violet-200">
+                    Wstaw
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -1081,7 +1216,7 @@ export default function Home() {
           hint="Łącznie utworzonych"
         />
         <StatCard
-          label="Success rate"
+          label="Skuteczność"
           value={successRate !== null ? `${successRate}%` : "—"}
           hint="Aktualna skuteczność"
           accent="green"
@@ -1097,16 +1232,14 @@ export default function Home() {
         />
         <StatCard
           label="Kolejka"
-          value={
-            queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"
-          }
-          hint="Active / limit"
+          value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
+          hint="Aktywne / limit"
           accent="blue"
         />
       </div>
 
       <Panel
-        title="Queue governance"
+        title="Zarządzanie kolejką"
         description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
       >
         <div className="grid gap-3 sm:grid-cols-3">
@@ -1152,7 +1285,7 @@ export default function Home() {
             onClick={() => executeQueueMutation("emergency")}
             disabled={queueAction === "emergency"}
           >
-            Emergency stop
+            Awaryjne zatrzymanie
           </Button>
         </div>
         {queueActionMessage && (
@@ -1169,7 +1302,7 @@ export default function Home() {
             entries={history}
             limit={5}
             selectedId={selectedRequestId}
-            onSelect={(entry) => openRequestDetail(entry.request_id)}
+            onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
             variant="preview"
             viewAllHref="/inspector"
             emptyTitle="Brak historii"
@@ -1186,6 +1319,11 @@ export default function Home() {
           </p>
         </Panel>
       </div>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <VoiceCommandCenter />
+        <IntegrationMatrix services={services} events={entries} />
+      </section>
 
       <Panel
         title="Makra Cockpitu"
@@ -1286,8 +1424,8 @@ export default function Home() {
         </div>
       </Panel>
 
-      <Panel
-        title="Queue governance"
+        <Panel
+          title="Zarządzanie kolejką"
         description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
         action={
           <Badge tone={queue?.paused ? "warning" : "success"}>
@@ -1431,6 +1569,7 @@ export default function Home() {
           if (!open) {
             setHistoryError(null);
             setSelectedRequestId(null);
+            setSelectedTask(null);
           }
         }}
       >
@@ -1475,6 +1614,42 @@ export default function Home() {
                   />
                 </div>
               </div>
+              {selectedTask && (
+                <div className="mt-4 rounded-2xl border border-emerald-400/10 bg-emerald-400/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">
+                    Odpowiedź / wynik
+                  </p>
+                  <div className="mt-2 text-sm text-white">
+                    <MarkdownPreview
+                      content={
+                        selectedTask.result && selectedTask.result.trim().length > 0
+                          ? selectedTask.result
+                          : "Brak odpowiedzi. Zadanie mogło zakończyć się niepowodzeniem lub jeszcze trwa."
+                      }
+                      emptyState="Brak danych wyjściowych."
+                    />
+                  </div>
+                </div>
+              )}
+              {selectedTask?.logs && selectedTask.logs.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-white">
+                      Logi zadania ({selectedTask.logs.length})
+                    </h4>
+                  </div>
+                  <div className="mt-3 max-h-[180px] space-y-2 overflow-y-auto pr-2 text-xs text-zinc-300">
+                    {selectedTask.logs.map((log, idx) => (
+                      <p
+                        key={`task-log-${idx}`}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                      >
+                        {log}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-black/40 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h4 className="text-sm font-semibold text-white">

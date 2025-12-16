@@ -19,6 +19,7 @@ data/timelines/
 .env
 
 .venom.pid
+test-results/
 data/audio/
 models/
 

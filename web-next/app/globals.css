@@ -1,0 +1,228 @@
+@config "../tailwind.config.ts";
+@import "tailwindcss";
+
+/* =========================================
+   1. KONFIGURACJA (VENOM TECH)
+   ========================================= */
+:root {
+  /* TŁO */
+  --bg-dark: #031627;
+  --bg-gradient-body: radial-gradient(
+    circle at 45% 0%,
+    #031627 0%,
+    #041120 45%,
+    #051b2d 100%
+  );
+
+  /* PANELE */
+  --bg-panel: rgba(3, 10, 23, 0.92);
+  --bg-sidebar: #020b16;
+
+  /* KOLORY */
+  --primary: #00ff9d;
+  --primary-glow: #00ff9d;
+  --primary-dim: rgba(0, 255, 157, 0.1);
+  --secondary: #00b8ff;
+  --danger: #ff0055;
+  --warning: #ffcc00;
+
+  --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+
+  /* GEOMETRIA (4px) */
+  --radius-panel: 4px;
+  --radius-card: 4px;
+
+  /* FONTY */
+  --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --font-tech: "JetBrains Mono", ui-monospace, monospace;
+
+  --background: var(--bg-dark);
+  --panel: var(--bg-panel);
+  --muted: #64748b;
+  --accent: var(--primary);
+  --accent-2: var(--secondary);
+  --border: var(--border-glass);
+  --grid-color: rgba(0, 255, 157, 0.08);
+  --font-jetbrains: var(--font-tech);
+  --shadow-card: 0 4px 30px rgba(0, 0, 0, 0.5);
+
+  /* PANEL FLARE (Rozświetlenie boksów) */
+  --panel-highlight: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 255, 157, 0.0) 20%,
+      rgba(0, 255, 157, 0.8) 50%,
+      rgba(0, 255, 157, 0.0) 80%,
+      transparent 100%
+  );
+
+  --noise-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; }
+
+/* =========================================
+   2. TŁO I STRUKTURA
+   ========================================= */
+body {
+  min-height: 100vh;
+  margin: 0;
+  background-color: var(--bg-dark);
+  background-image: var(--bg-gradient-body);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: #fff;
+  font-family: var(--font-ui);
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: ""; position: fixed; inset: 0;
+  background-image: var(--noise-image);
+  opacity: 0.04; mix-blend-mode: overlay;
+  pointer-events: none; z-index: 9999;
+}
+
+body::after {
+  content: ""; position: fixed; inset: 0;
+  background: radial-gradient(circle at center, transparent 40%, #000000 120%);
+  pointer-events: none; z-index: -1;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* Scrollbary */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
+
+/* =========================================
+   3. PANELE (BOX FOCUS)
+   ========================================= */
+
+.glass-panel {
+  background: var(--bg-panel) !important;
+  border: var(--border-glass) !important;
+  backdrop-filter: blur(16px) !important;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel.fixed { position: fixed; }
+.glass-panel.sticky { position: sticky; }
+.glass-panel.absolute { position: absolute; }
+.glass-panel.allow-overflow { overflow: visible; }
+
+.kpi-panel {
+  padding: 1.5rem !important;
+  border: 1px solid rgba(0, 255, 157, 0.15) !important;
+  background: linear-gradient(135deg, rgba(3, 18, 32, 0.9), rgba(5, 27, 45, 0.95)) !important;
+}
+
+.queue-panel {
+  border: 1px solid rgba(0, 184, 255, 0.25) !important;
+  box-shadow: 0 0 30px rgba(0, 184, 255, 0.08);
+}
+
+.command-console-panel {
+  padding: 2rem !important;
+}
+
+/* Obrys */
+.glass-panel::before {
+  content: ""; position: absolute; inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+/* TOP FLARE - Rozświetlona góra boksów */
+.glass-panel::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; height: 1px;
+  background: var(--panel-highlight);
+  box-shadow: 0 0 15px var(--primary-glow);
+  opacity: 1;
+  filter: blur(0.5px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* =========================================
+   4. SIDEBAR (BEZPIECZNIK)
+   ========================================= */
+.sidebar, aside, nav {
+  background-color: var(--bg-sidebar) !important;
+  backdrop-filter: none !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+}
+aside.glass-panel::after, nav.glass-panel::after { display: none !important; }
+
+/* =========================================
+   5. SEKCJA NAGŁÓWKA (POPRAWIONA)
+   ========================================= */
+
+/* 1. Mały napis "// DASHBOARD CONTROL" -> NEON ZIELONY */
+main .space-y-10 > .flex > div:first-child > p.uppercase {
+    color: var(--primary) !important;
+    text-shadow: 0 0 15px var(--primary-glow) !important; /* Glow */
+    letter-spacing: 3px !important;
+    font-weight: 700 !important;
+    font-family: var(--font-tech) !important;
+}
+
+/* 2. Główny Tytuł "Centrum Dowodzenia AI" -> CZYSTA BIEL (bez neonu) */
+main .space-y-10 > .flex > div:first-child > h1 {
+     color: #ffffff !important; /* Biały */
+     text-shadow: none !important; /* Brak poświaty */
+     font-family: var(--font-tech) !important;
+     font-weight: 600 !important;
+     letter-spacing: -1px !important;
+}
+
+/* Opis pod spodem -> Szary */
+main .space-y-10 > .flex > div:first-child > p.text-zinc-400 {
+    color: #888 !important;
+}
+
+/* Reszta nagłówków w panelach -> Biała */
+.glass-panel h1, .glass-panel h2, .glass-panel h3,
+.rounded-panel h1, .rounded-panel h2, .rounded-panel h3,
+section h3 {
+    color: #ffffff !important;
+    text-shadow: none !important;
+}
+
+/* =========================================
+   6. DETALE UI
+   ========================================= */
+.font-tech, code, pre, .text-xs {
+  font-family: var(--font-tech) !important;
+}
+
+input, textarea {
+  background-color: #050608 !important;
+  border: 1px solid #27272a !important;
+  color: var(--primary) !important;
+  font-family: var(--font-tech) !important;
+  border-radius: 4px !important;
+}
+input:focus, textarea:focus {
+  border-color: var(--primary) !important;
+  outline: none !important;
+  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2) !important;
+}
+
+.terminal {
+  font-family: var(--font-tech);
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--primary);
+}

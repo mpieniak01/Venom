@@ -3,7 +3,7 @@
 from typing import Annotated, Optional
 
 import httpx
-from github import Github, GithubException
+from github import Auth, Github, GithubException
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
@@ -69,7 +69,7 @@ class PlatformSkill:
         self.github_client = None
         if self.github_token:
             try:
-                self.github_client = Github(self.github_token)
+                self.github_client = Github(auth=Auth.Token(self.github_token))
                 # Maskuj token w logach (zabezpieczenie przed krótkimi tokenami)
                 if len(self.github_token) > 8:
                     masked_token = (

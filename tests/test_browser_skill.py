@@ -1,14 +1,21 @@
 """Testy dla BrowserSkill."""
 
 import pytest
+import pytest_asyncio
 
 from venom_core.execution.skills.browser_skill import BrowserSkill
 
 
-@pytest.fixture
-def browser_skill():
+@pytest_asyncio.fixture
+async def browser_skill():
     """Fixture dla BrowserSkill."""
-    return BrowserSkill()
+    skill = BrowserSkill()
+    yield skill
+    try:
+        await skill.close_browser()
+    except Exception:
+        # Ignorujemy wyjątki przy zamykaniu przeglądarki w teardown — nie chcemy, by błąd w sprzątaniu psuł testy.
+        pass
 
 
 @pytest.mark.asyncio

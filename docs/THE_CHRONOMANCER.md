@@ -210,20 +210,20 @@ DreamEngine został zintegrowany z Chronos do bezpiecznego eksperymentowania:
 class DreamEngine:
     def __init__(self, ..., chronos_engine=None):
         self.chronos = chronos_engine or ChronosEngine()
-    
+
     async def enter_rem_phase(self, ...):
         # Utwórz tymczasową timeline dla snów
         timeline_name = f"dream_{session_id}"
         self.chronos.create_timeline(timeline_name)
-        
+
         # Utwórz checkpoint bezpieczeństwa
         checkpoint_id = self.chronos.create_checkpoint(
             name=f"dream_start_{session_id}",
             timeline=timeline_name
         )
-        
+
         # ... śnij ...
-        
+
         # Jeśli sukces (>50% sukcesów), zachowaj wiedzę
         # Jeśli porażka, timeline pozostaje jako historia
 ```
@@ -335,7 +335,7 @@ pytest tests/test_chrono*.py tests/test_historian*.py -v
 **Rozwiązanie**: Sprawdź czy znajdujesz się w repozytorium Git. ChronosEngine używa `git diff` i `git apply`.
 
 ### Problem: Brak miejsca na dysku
-**Rozwiązanie**: 
+**Rozwiązanie**:
 1. Usuń stare checkpointy: `chronos.delete_checkpoint(id)`
 2. Włącz kompresję: `CHRONOS_COMPRESS_SNAPSHOTS = True`
 3. Zmniejsz limit: `CHRONOS_MAX_CHECKPOINTS_PER_TIMELINE = 10`
@@ -384,7 +384,7 @@ except Exception as e:
         error=str(e),
         checkpoint_before=checkpoint_id
     )
-    
+
     # Przywróć checkpoint
     chronos.restore_checkpoint(checkpoint_id)
     logger.error("Migracja nie powiodła się, system przywrócony")
@@ -401,7 +401,7 @@ else:
 
 ---
 
-**Autorzy**: Venom Core Team  
-**Wersja**: 1.0  
-**Data**: 2024-12-08  
+**Autorzy**: Venom Core Team
+**Wersja**: 1.0
+**Data**: 2024-12-08
 **Status**: Implemented ✅

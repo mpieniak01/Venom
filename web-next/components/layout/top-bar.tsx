@@ -38,22 +38,24 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
   }, []);
 
   return (
-    <div className="glass-panel allow-overflow sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-black/40 px-6 py-4 backdrop-blur-2xl">
-      <div className="flex items-center gap-3">
-        <MobileNav />
-        <span
-          className={cn(
-            "relative h-3 w-3 rounded-full",
-            connected ? "bg-emerald-400" : "bg-rose-500",
-          )}
-        >
+    <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-white/5 bg-black/40 px-4 py-4 backdrop-blur-2xl sm:px-6">
+      <div className="mr-auto flex w-full max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
+        <div className="flex items-center gap-3">
+          <MobileNav />
           <span
             className={cn(
-              "absolute inset-0 rounded-full",
-              connected ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
+              "relative h-3 w-3 rounded-full",
+              connected ? "bg-emerald-400" : "bg-rose-500",
             )}
-          />
-        </span>
+          >
+            <span
+              className={cn(
+                "absolute inset-0 rounded-full",
+                connected ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
+              )}
+            />
+          </span>
+        </div>
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
             {t("topBar.wsLabel")}
@@ -70,55 +72,55 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
             )}
           </p>
         </div>
-      </div>
-      <div className="flex items-center gap-4">
-        <StatusPills initialData={initialStatusData} />
-        <TopBarIconAction
-          icon={<BellRing className="h-4 w-4 text-amber-300" />}
-          label={t("topBar.alertCenter")}
-          onClick={() => setAlertsOpen(true)}
-          testId="topbar-alerts"
-        />
-        <TopBarIconAction
-          icon={<Rows className="h-4 w-4 text-emerald-300" />}
-          label={t("topBar.notifications")}
-          onClick={() => setNotificationsOpen(true)}
-          hidden="mobile"
-          testId="topbar-notifications"
-        />
-        <TopBarIconAction
-          icon={<CommandIcon className="h-4 w-4 text-zinc-200" />}
-          label={t("topBar.commandPalette")}
-          onClick={() => setPaletteOpen(true)}
-          hidden="mobile"
-          testId="topbar-command"
-        />
-        <TopBarIconAction
-          icon={<Cpu className="h-4 w-4 text-sky-300" />}
-          label={t("topBar.quickActions")}
-          onClick={() => setActionsOpen(true)}
-          hidden="mobile"
-          testId="topbar-quick-actions"
-        />
-        <TopBarIconAction
-          icon={<ServerCog className="h-4 w-4 text-indigo-300" />}
-          label={t("topBar.services")}
-          onClick={() => setServicesOpen(true)}
-          hidden="mobile"
-          testId="topbar-services"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCommandOpen(true)}
-          data-testid="topbar-command-center"
-        >
-          <Sparkles className="h-4 w-4 text-violet-300" />
-          <span className="text-xs uppercase tracking-wider">
-            {t("topBar.commandCenter")}
-          </span>
-        </Button>
-        <LanguageSwitcher />
+        <div className="flex flex-1 items-center justify-end gap-4">
+          <StatusPills initialData={initialStatusData} />
+          <TopBarIconAction
+            icon={<BellRing className="h-4 w-4 text-amber-300" />}
+            label={t("topBar.alertCenter")}
+            onClick={() => setAlertsOpen(true)}
+            testId="topbar-alerts"
+          />
+          <TopBarIconAction
+            icon={<Rows className="h-4 w-4 text-emerald-300" />}
+            label={t("topBar.notifications")}
+            onClick={() => setNotificationsOpen(true)}
+            hidden="mobile"
+            testId="topbar-notifications"
+          />
+          <TopBarIconAction
+            icon={<CommandIcon className="h-4 w-4 text-zinc-200" />}
+            label={t("topBar.commandPalette")}
+            onClick={() => setPaletteOpen(true)}
+            hidden="mobile"
+            testId="topbar-command"
+          />
+          <TopBarIconAction
+            icon={<Cpu className="h-4 w-4 text-sky-300" />}
+            label={t("topBar.quickActions")}
+            onClick={() => setActionsOpen(true)}
+            hidden="mobile"
+            testId="topbar-quick-actions"
+          />
+          <TopBarIconAction
+            icon={<ServerCog className="h-4 w-4 text-indigo-300" />}
+            label={t("topBar.services")}
+            onClick={() => setServicesOpen(true)}
+            hidden="mobile"
+            testId="topbar-services"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCommandOpen(true)}
+            data-testid="topbar-command-center"
+          >
+            <Sparkles className="h-4 w-4 text-violet-300" />
+            <span className="text-xs uppercase tracking-wider">
+              {t("topBar.commandCenter")}
+            </span>
+          </Button>
+          <LanguageSwitcher />
+        </div>
       </div>
       <CommandCenter open={commandOpen} onOpenChange={setCommandOpen} />
       <AlertCenter open={alertsOpen} onOpenChange={setAlertsOpen} />

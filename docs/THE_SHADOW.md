@@ -265,7 +265,7 @@ import win32gui
 
 while True:
     window_title = win32gui.GetWindowText(win32gui.GetForegroundWindow())
-    requests.post("http://localhost:8000/api/v1/shadow/window", 
+    requests.post("http://localhost:8000/api/v1/shadow/window",
                   json={"title": window_title})
     time.sleep(1)
 ```
@@ -327,6 +327,6 @@ Część projektu Venom - patrz główny README.md
 
 ---
 
-**Status:** ✅ Production Ready  
-**Last Updated:** 2025-12-08  
+**Status:** ✅ Production Ready
+**Last Updated:** 2025-12-08
 **Version:** 1.0.0

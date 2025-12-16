@@ -210,7 +210,7 @@ AI_MODE=CLOUD
 ```python
 # Przykład: hasło w zapytaniu
 routing = router.route_task(
-    TaskType.SENSITIVE, 
+    TaskType.SENSITIVE,
     "Wygeneruj skrypt z hasłem: secret123"
 )
 print(routing["target"])  # "local" - ZAWSZE
@@ -287,14 +287,14 @@ class MyCustomAgent:
     def __init__(self, state_manager: StateManager):
         # Przekaż state_manager do routera
         self.router = HybridModelRouter(state_manager=state_manager)
-    
+
     async def process_task(self, prompt: str):
         # Routing z Cost Guard
         routing = self.router.route_task(TaskType.STANDARD, prompt)
-        
+
         # Użyj routing["model_name"], routing["provider"]
         # ...
-        
+
         # Zwróć odpowiedź z metadanymi
         return {
             "response": "...",

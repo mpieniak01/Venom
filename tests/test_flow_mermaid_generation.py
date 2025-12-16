@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from venom_core.api.routes.flow import _generate_mermaid_diagram, FlowStep
+from venom_core.api.routes.flow import FlowStep, _generate_mermaid_diagram
 from venom_core.core.tracer import RequestTracer, TraceStatus
 
 

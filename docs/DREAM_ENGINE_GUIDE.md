@@ -47,8 +47,8 @@ knowledge_fragments = await dream_engine._get_knowledge_clusters(count=10)
 ```python
 # ScenarioWeaver tworzy zadania programistyczne
 scenarios = await scenario_weaver.weave_multiple_scenarios(
-    knowledge_fragments, 
-    count=10, 
+    knowledge_fragments,
+    count=10,
     difficulty="medium"
 )
 ```
@@ -147,8 +147,8 @@ dream_engine = DreamEngine(kernel, graph_rag, lessons_store, energy_manager)
 # Zaplanuj nocne śnienie (2:00-6:00)
 await scheduler.start()
 scheduler.schedule_nightly_dreaming(
-    dream_engine, 
-    start_hour=2, 
+    dream_engine,
+    start_hour=2,
     end_hour=6
 )
 ```
@@ -158,7 +158,7 @@ scheduler.schedule_nightly_dreaming(
 ```python
 # Sprawdzaj bezczynność co 5 minut
 scheduler.schedule_idle_dreaming(
-    dream_engine, 
+    dream_engine,
     check_interval_minutes=5
 )
 ```
@@ -276,7 +276,7 @@ for example in curator.examples:
 ## Troubleshooting
 
 ### Problem: Brak snów w `data/synthetic_training/`
-**Przyczyna**: Graf wiedzy pusty lub walidacja zawsze failuje  
+**Przyczyna**: Graf wiedzy pusty lub walidacja zawsze failuje
 **Rozwiązanie**:
 ```python
 # Sprawdź graf wiedzy
@@ -288,7 +288,7 @@ tail -f logs/venom.log | grep Guardian
 ```
 
 ### Problem: Śnienie nie przerywa się gdy użytkownik wraca
-**Przyczyna**: EnergyManager nie monitoruje lub progi za wysokie  
+**Przyczyna**: EnergyManager nie monitoruje lub progi za wysokie
 **Rozwiązanie**:
 ```python
 # Sprawdź czy monitoring działa
@@ -299,7 +299,7 @@ energy_manager.cpu_threshold = 0.5  # 50%
 ```
 
 ### Problem: Scenariusze są trywialne ("Hello World")
-**Przyczyna**: Niski poziom złożoności lub uboga dokumentacja  
+**Przyczyna**: Niski poziom złożoności lub uboga dokumentacja
 **Rozwiązanie**:
 ```bash
 # Zwiększ złożoność
@@ -462,10 +462,10 @@ for lib, count in sorted(libraries_count.items(), key=lambda x: x[1], reverse=Tr
 
 THE DREAMER to potężne narzędzie do self-improvement Venoma. Kluczowe zalety:
 
-✅ **Automatyczne uczenie** - brak potrzeby manualnego tworzenia przykładów  
-✅ **High quality data** - Guardian zapewnia 100% jakość  
-✅ **Niewymagające zasobów** - działa w tle, niski priorytet  
-✅ **Inteligentne przerwanie** - natychmiastowa reakcja na aktywność użytkownika  
-✅ **Skalowalność** - od prostych do złożonych scenariuszy  
+✅ **Automatyczne uczenie** - brak potrzeby manualnego tworzenia przykładów
+✅ **High quality data** - Guardian zapewnia 100% jakość
+✅ **Niewymagające zasobów** - działa w tle, niski priorytet
+✅ **Inteligentne przerwanie** - natychmiastowa reakcja na aktywność użytkownika
+✅ **Skalowalność** - od prostych do złożonych scenariuszy
 
 Pamiętaj: Im bogatszy Graf Wiedzy (GraphRAG), tym lepsze sny! 🌙

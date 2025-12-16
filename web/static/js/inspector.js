@@ -39,7 +39,7 @@ let panZoomInstance = null;
  */
 function sanitizeMermaidText(text) {
     if (!text) return '';
-    
+
     // Usuń potencjalnie niebezpieczne znaki dla Mermaid
     return text
         .replace(/[<>]/g, '') // Usuń znaki HTML
@@ -94,7 +94,7 @@ function inspectorApp() {
             console.log(`🎯 Selecting trace: ${traceId}`);
             this.currentTraceId = traceId;
             this.selectedStep = null;
-            
+
             try {
                 const response = await fetch(`/api/v1/flow/${traceId}`);
                 if (!response.ok) {
@@ -102,7 +102,7 @@ function inspectorApp() {
                 }
                 this.currentFlowData = await response.json();
                 console.log('✅ Flow data loaded:', this.currentFlowData);
-                
+
                 // Renderuj diagram
                 await this.renderDiagram();
             } catch (error) {
@@ -116,11 +116,11 @@ function inspectorApp() {
         generateMermaidDiagram(flowData) {
             const lines = ['sequenceDiagram'];
             lines.push('    autonumber');
-            
+
             // Dodaj uczestników
             const participants = new Set();
             participants.add('User');
-            
+
             for (const step of flowData.steps) {
                 if (step.component !== 'DecisionGate') {
                     // Sanityzuj nazwę komponentu
@@ -130,28 +130,28 @@ function inspectorApp() {
                     }
                 }
             }
-            
+
             // Definicje uczestników
             for (const participant of Array.from(participants).sort()) {
                 if (participant !== 'User') {
                     lines.push(`    participant ${participant}`);
                 }
             }
-            
+
             // Prompt użytkownika - sanityzuj
             lines.push('');
             const safePrompt = sanitizeMermaidText(flowData.prompt);
-            const promptText = safePrompt.length > 50 
-                ? safePrompt.slice(0, 50) + '...' 
+            const promptText = safePrompt.length > 50
+                ? safePrompt.slice(0, 50) + '...'
                 : safePrompt;
             lines.push(`    User->>Orchestrator: ${promptText}`);
-            
+
             let lastComponent = 'Orchestrator';
-            
+
             // Dodaj kroki
             for (let i = 0; i < flowData.steps.length; i++) {
                 const step = flowData.steps[i];
-                
+
                 if (step.is_decision_gate) {
                     // Decision Gate - wyróżnij jako notatka z tłem
                     const safeDetails = sanitizeMermaidText(step.details || '');
@@ -165,11 +165,11 @@ function inspectorApp() {
                     const safeComponent = sanitizeMermaidText(step.component);
                     const safeAction = sanitizeMermaidText(step.action);
                     const safeDetails = sanitizeMermaidText(step.details || '');
-                    
+
                     const arrow = step.status === 'ok' ? '->>' : '--x';
                     const detailText = safeDetails.length > 40 ? safeDetails.slice(0, 40) + '...' : safeDetails;
                     const message = detailText ? `${safeAction}: ${detailText}` : safeAction;
-                    
+
                     if (safeComponent && safeComponent !== lastComponent) {
                         lines.push(`    ${lastComponent}${arrow}${safeComponent}: ${message}`);
                         lastComponent = safeComponent;
@@ -178,7 +178,7 @@ function inspectorApp() {
                     }
                 }
             }
-            
+
             // Zwrot do użytkownika
             if (flowData.status === 'COMPLETED') {
                 lines.push(`    ${lastComponent}->>User: ✅ Task completed`);
@@ -187,7 +187,7 @@ function inspectorApp() {
             } else if (flowData.status === 'PROCESSING') {
                 lines.push(`    Note over ${lastComponent}: ⏳ Processing...`);
             }
-            
+
             return lines.join('\n');
         },
 
@@ -196,7 +196,7 @@ function inspectorApp() {
          */
         async renderDiagram() {
             if (!this.currentFlowData) return;
-            
+
             // Sprawdź dostępność Mermaid
             if (typeof mermaid === 'undefined') {
                 console.error('❌ Mermaid.js library not available');
@@ -209,27 +209,27 @@ function inspectorApp() {
                 `;
                 return;
             }
-            
+
             const container = document.getElementById('mermaidSvgContainer');
-            
+
             // Wygeneruj kod Mermaid
             const mermaidCode = this.generateMermaidDiagram(this.currentFlowData);
             console.log('📝 Generated Mermaid code:', mermaidCode);
-            
+
             // Wyczyść kontener
             container.innerHTML = '';
-            
+
             try {
                 // Renderuj diagram
                 const { svg, bindFunctions } = await mermaid.render('mermaidDiagram', mermaidCode);
                 container.innerHTML = svg;
-                
+
                 // Hydrate - dodaj interaktywność
                 this.hydrateDiagram(container);
-                
+
                 // Inicjalizuj svg-pan-zoom
                 this.initPanZoom();
-                
+
                 console.log('✅ Diagram rendered successfully');
             } catch (error) {
                 console.error('❌ Error rendering Mermaid diagram:', error);
@@ -248,12 +248,12 @@ function inspectorApp() {
         hydrateDiagram(container) {
             const svg = container.querySelector('svg');
             if (!svg) return;
-            
+
             // Znajdź wszystkie klikalne elementy
             const actors = svg.querySelectorAll('.actor');
             const messages = svg.querySelectorAll('.messageLine0, .messageLine1');
             const notes = svg.querySelectorAll('.note');
-            
+
             // Dodaj handlery kliknięć
             const addClickHandler = (elements, stepIndex) => {
                 elements.forEach((element, idx) => {
@@ -266,7 +266,7 @@ function inspectorApp() {
                             console.log('🎯 Selected step:', step);
                         }
                     });
-                    
+
                     // Dodaj hover effect
                     element.addEventListener('mouseenter', () => {
                         element.style.opacity = '0.7';
@@ -276,10 +276,10 @@ function inspectorApp() {
                     });
                 });
             };
-            
+
             addClickHandler(messages);
             addClickHandler(notes);
-            
+
             // Aktorzy - pokaż podstawowe info
             actors.forEach((actor) => {
                 actor.style.cursor = 'pointer';
@@ -305,18 +305,18 @@ function inspectorApp() {
                 console.error('❌ svg-pan-zoom library not available');
                 return;
             }
-            
+
             // Zniszcz poprzednią instancję jeśli istnieje
             if (panZoomInstance) {
                 panZoomInstance.destroy();
                 panZoomInstance = null;
             }
-            
+
             const container = document.getElementById('mermaidSvgContainer');
             const svg = container.querySelector('svg');
-            
+
             if (!svg) return;
-            
+
             try {
                 panZoomInstance = svgPanZoom(svg, {
                     zoomEnabled: true,
@@ -327,7 +327,7 @@ function inspectorApp() {
                     maxZoom: 10,
                     zoomScaleSensitivity: 0.3
                 });
-                
+
                 console.log('✅ Pan-Zoom initialized');
             } catch (error) {
                 console.error('❌ Error initializing pan-zoom:', error);

@@ -34,7 +34,8 @@ export function ConversationBubble({
       onClick={disabled ? undefined : onSelect}
       disabled={pending}
       aria-disabled={disabled}
-      className={`w-full max-w-2xl rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${
+      data-testid={isUser ? "conversation-bubble-user" : "conversation-bubble-assistant"}
+      className={`w-full rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${
         isUser
           ? "ml-auto border-violet-500/40 bg-gradient-to-r from-violet-500/20 via-violet-500/10 to-transparent text-violet-50"
           : "border-white/10 bg-white/5 text-zinc-100"

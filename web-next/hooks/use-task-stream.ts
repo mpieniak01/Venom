@@ -12,6 +12,12 @@ export type TaskStreamEvent = {
   logs?: string[];
   result?: string | null;
   timestamp?: string | null;
+  llmProvider?: string | null;
+  llmModel?: string | null;
+  llmEndpoint?: string | null;
+  llmStatus?: string | null;
+  llmRuntimeError?: string | null;
+  context?: Record<string, unknown> | null;
 };
 
 export type TaskStreamState = {
@@ -22,6 +28,11 @@ export type TaskStreamState = {
   heartbeatAt: string | null;
   connected: boolean;
   error: string | null;
+  llmProvider: string | null;
+  llmModel: string | null;
+  llmEndpoint: string | null;
+  llmStatus: string | null;
+  context: Record<string, unknown> | null;
 };
 
 export type UseTaskStreamResult = {
@@ -44,6 +55,11 @@ const defaultState: TaskStreamState = {
   heartbeatAt: null,
   connected: false,
   error: null,
+  llmProvider: null,
+  llmModel: null,
+  llmEndpoint: null,
+  llmStatus: null,
+  context: null,
 };
 
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
@@ -117,6 +133,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         const timestamp =
           typeof payload.timestamp === "string" ? payload.timestamp : null;
         const derivedTaskId = typeof payload.task_id === "string" ? payload.task_id : taskId;
+        const runtime = extractRuntime(payload);
         const entry: TaskStreamEvent = {
           taskId: derivedTaskId,
           event: eventName,
@@ -124,6 +141,12 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           logs,
           result,
           timestamp,
+          llmProvider: runtime.provider,
+          llmModel: runtime.model,
+          llmEndpoint: runtime.endpoint,
+          llmStatus: runtime.status,
+          llmRuntimeError: runtime.error,
+          context: runtime.context,
         };
 
         if (eventName === "heartbeat") {
@@ -131,6 +154,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
             heartbeatAt: timestamp ?? new Date().toISOString(),
             connected: true,
             error: null,
+            llmProvider: runtime.provider,
+            llmModel: runtime.model,
+            llmEndpoint: runtime.endpoint,
+            llmStatus: runtime.status ?? null,
+            context: runtime.context,
           });
           emitEvent(entry);
           return;
@@ -143,6 +171,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           lastEventAt: timestamp ?? new Date().toISOString(),
           connected: true,
           error: null,
+          llmProvider: runtime.provider,
+          llmModel: runtime.model,
+          llmEndpoint: runtime.endpoint,
+          llmStatus: runtime.status ?? null,
+          context: runtime.context,
         });
         emitEvent(entry);
 
@@ -268,4 +301,38 @@ function normalizeStatus(status: unknown): TaskStatus | null {
     default:
       return null;
   }
+}
+
+function extractRuntime(payload: Record<string, unknown>) {
+  const provider =
+    typeof payload.llm_provider === "string" ? payload.llm_provider : null;
+  const model = typeof payload.llm_model === "string" ? payload.llm_model : null;
+  const endpoint =
+    typeof payload.llm_endpoint === "string" ? payload.llm_endpoint : null;
+  const status =
+    typeof payload.llm_status === "string" ? payload.llm_status : null;
+  const context = isRecord(payload.context_history)
+    ? (payload.context_history as Record<string, unknown>)
+    : null;
+  const runtimeContext =
+    context && isRecord(context.llm_runtime)
+      ? (context.llm_runtime as Record<string, unknown>)
+      : null;
+  const error =
+    runtimeContext && typeof runtimeContext.error === "string"
+      ? runtimeContext.error
+      : null;
+
+  return {
+    provider,
+    model,
+    endpoint,
+    status,
+    error,
+    context,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

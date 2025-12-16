@@ -30,6 +30,9 @@ class HistoryRequestSummary(BaseModel):
     created_at: str
     finished_at: str = None
     duration_seconds: float = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_endpoint: Optional[str] = None
 
 
 class HistoryRequestDetail(BaseModel):
@@ -42,6 +45,9 @@ class HistoryRequestDetail(BaseModel):
     finished_at: str = None
     duration_seconds: float = None
     steps: list
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_endpoint: Optional[str] = None
 
 
 # Dependency - będzie ustawione w main.py
@@ -56,6 +62,13 @@ def set_dependencies(orchestrator, state_manager, request_tracer):
     _orchestrator = orchestrator
     _state_manager = state_manager
     _request_tracer = request_tracer
+
+
+def _get_llm_runtime(task: VenomTask) -> dict:
+    """Wyciąga informacje o runtime LLM zapisane w zadaniu."""
+    context = getattr(task, "context_history", {}) or {}
+    runtime = context.get("llm_runtime", {}) or {}
+    return runtime
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)
@@ -161,12 +174,18 @@ async def stream_task(task_id: UUID):
             )
 
             if should_emit:
+                runtime_info = _get_llm_runtime(task)
                 payload = {
                     "task_id": str(task.id),
                     "status": task.status,
                     "logs": logs_delta,
                     "result": task.result,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "llm_provider": runtime_info.get("provider"),
+                    "llm_model": runtime_info.get("model"),
+                    "llm_endpoint": runtime_info.get("endpoint"),
+                    "llm_status": runtime_info.get("status"),
+                    "context_history": task.context_history,
                 }
 
                 event_name = (
@@ -187,11 +206,17 @@ async def stream_task(task_id: UUID):
 
             if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                 # Wyślij końcowy event i zamknij stream
+                runtime_info = _get_llm_runtime(task)
                 complete_payload = {
                     "task_id": str(task.id),
                     "status": task.status,
                     "result": task.result,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "llm_provider": runtime_info.get("provider"),
+                    "llm_model": runtime_info.get("model"),
+                    "llm_endpoint": runtime_info.get("endpoint"),
+                    "llm_status": runtime_info.get("status"),
+                    "context_history": task.context_history,
                 }
                 yield "event:task_finished\ndata:{data}\n\n".format(
                     data=json.dumps(complete_payload, default=str),
@@ -279,6 +304,9 @@ async def get_request_history(
                     trace.finished_at.isoformat() if trace.finished_at else None
                 ),
                 duration_seconds=duration,
+                llm_provider=trace.llm_provider,
+                llm_model=trace.llm_model,
+                llm_endpoint=trace.llm_endpoint,
             )
         )
 
@@ -333,4 +361,7 @@ async def get_request_detail(request_id: UUID):
         finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
         duration_seconds=duration,
         steps=steps_list,
+        llm_provider=trace.llm_provider,
+        llm_model=trace.llm_model,
+        llm_endpoint=trace.llm_endpoint,
     )

@@ -1,0 +1,47 @@
+name: Full CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend (pytest + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Lint (pre-commit)
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+      - name: Pytest (smoke)
+        run: pytest -q
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18.19.1"
+          cache: "npm"
+          cache-dependency-path: web-next/package-lock.json
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+      - name: Lint
+        run: npm --prefix web-next run lint
+      - name: Build
+        run: npm --prefix web-next run build

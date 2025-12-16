@@ -119,5 +119,6 @@ mss>=9.0.1              # Fast screenshot library
 
 pytest                  # Testy
 pytest-asyncio          # Obsługa testów asynchronicznych
+locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie

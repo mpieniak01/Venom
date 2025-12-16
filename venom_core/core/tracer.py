@@ -46,6 +46,9 @@ class RequestTrace(BaseModel):
     finished_at: Optional[datetime] = None
     steps: List[TraceStep] = Field(default_factory=list)
     last_activity: datetime = Field(default_factory=datetime.now)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_endpoint: Optional[str] = None
 
 
 class RequestTracer:
@@ -215,6 +218,37 @@ class RequestTracer:
                 trace.finished_at = datetime.now()
 
         logger.debug(f"Zaktualizowano status trace {request_id}: {status}")
+
+    def set_llm_metadata(
+        self,
+        request_id: UUID,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ):
+        """Ustawia informacje o LLM, które obsługuje zadanie."""
+
+        metadata = metadata or {}
+        provider = provider or metadata.get("provider")
+        model = model or metadata.get("model")
+        endpoint = endpoint or metadata.get("endpoint")
+
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba ustawienia metadanych LLM dla nieistniejącego trace {request_id}"
+                )
+                return
+
+            trace.llm_provider = provider
+            trace.llm_model = model
+            trace.llm_endpoint = endpoint
+
+        logger.debug(
+            f"Zaktualizowano informacje o LLM dla trace {request_id}: {provider}/{model}"
+        )
 
     def get_trace(self, request_id: UUID) -> Optional[RequestTrace]:
         """

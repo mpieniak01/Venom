@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, field_validator
@@ -73,6 +73,16 @@ async def list_models():
 
     try:
         models = await _model_manager.list_local_models()
+        provider_buckets: Dict[str, List[dict]] = {}
+
+        def resolve_provider(model: dict) -> str:
+            provider = model.get("provider")
+            if isinstance(provider, str) and provider:
+                return provider
+            if model.get("source") == "ollama":
+                return "ollama"
+            return "vllm"
+
         runtime_info = get_active_llm_runtime()
         runtime_payload = runtime_info.to_payload()
         runtime_payload["status"] = "ready"
@@ -97,11 +107,15 @@ async def list_models():
             if any(name in active_names for name in candidate_names if name):
                 model["active"] = True
                 model.setdefault("source", runtime_info.provider)
+            provider = resolve_provider(model)
+            model.setdefault("provider", provider)
+            provider_buckets.setdefault(provider, []).append(model)
         return {
             "success": True,
             "models": models,
             "count": len(models),
             "active": runtime_payload,
+            "providers": provider_buckets,
         }
     except Exception as e:
         logger.error(f"Błąd podczas listowania modeli: {e}")

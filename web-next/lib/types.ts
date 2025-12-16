@@ -101,6 +101,33 @@ export interface ServiceStatus {
   detail?: string;
 }
 
+export interface LlmServerInfo {
+  name: string;
+  display_name: string;
+  description?: string;
+  endpoint?: string;
+  provider?: string;
+  status?: string;
+  latency_ms?: number;
+  last_check?: string | null;
+  error_message?: string | null;
+  supports: {
+    start?: boolean;
+    stop?: boolean;
+    restart?: boolean;
+    [key: string]: boolean | undefined;
+  };
+}
+
+export interface LlmActionResponse {
+  status: string;
+  action: string;
+  message?: string;
+  stdout?: string;
+  stderr?: string;
+  exit_code?: number | null;
+}
+
 export interface TokenMetrics {
   total_tokens?: number;
   prompt_tokens?: number;
@@ -125,6 +152,7 @@ export interface ModelInfo {
   type?: string;
   quantization?: string;
   path?: string;
+  provider?: string | null;
 }
 
 export interface ModelsResponse {
@@ -132,6 +160,7 @@ export interface ModelsResponse {
   models: ModelInfo[];
   count: number;
   active?: ActiveModelRuntime;
+  providers?: Record<string, ModelInfo[]>;
 }
 
 export interface ActiveModelRuntime {

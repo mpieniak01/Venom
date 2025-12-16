@@ -12,6 +12,45 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+class UpsertResult(str):
+    """Kompatybilny z dict + string wynik operacji upsert."""
+
+    __slots__ = ("_chunks_count",)
+
+    def __new__(cls, message: str, chunks_count: int):
+        obj = super().__new__(cls, message)
+        obj._chunks_count = chunks_count
+        return obj
+
+    def __getitem__(self, key: str):
+        if key == "message":
+            return str(self)
+        if key == "chunks_count":
+            return self._chunks_count
+        raise KeyError(key)
+
+    def get(self, key: str, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def keys(self):
+        return ("message", "chunks_count")
+
+    def items(self):
+        return (("message", str(self)), ("chunks_count", self._chunks_count))
+
+    @property
+    def message(self) -> str:
+        return str(self)
+
+    @property
+    def chunks_count(self) -> int:
+        return self._chunks_count
+
+
 # Stałe dla chunkingu
 DEFAULT_CHUNK_SIZE = 500  # Domyślny rozmiar fragmentu tekstu w znakach
 DEFAULT_CHUNK_OVERLAP = 50  # Domyślne nakładanie się fragmentów w znakach
@@ -193,7 +232,8 @@ class VectorStore:
             chunk_text: Czy podzielić tekst na fragmenty
 
         Returns:
-            Dict z kluczami 'message' (str) i 'chunks_count' (int)
+            UpsertResult – zachowuje się jak dict (`result["chunks_count"]`) i string
+            (np. `\"zapisano\" in result.lower()`).
 
         Raises:
             ValueError: Jeśli tekst jest pusty
@@ -231,10 +271,8 @@ class VectorStore:
         table.add(records)
 
         logger.info(f"Zapisano {len(records)} fragmentów do kolekcji '{col_name}'")
-        return {
-            "message": f"Zapisano {len(records)} fragmentów do pamięci",
-            "chunks_count": len(records),
-        }
+        message = f"Zapisano {len(records)} fragmentów do pamięci"
+        return UpsertResult(message=message, chunks_count=len(records))
 
     def search(
         self, query: str, limit: int = 3, collection_name: str = None
@@ -254,7 +292,7 @@ class VectorStore:
             ValueError: Jeśli zapytanie jest puste
         """
         if not query or not query.strip():
-            raise ValueError("Zapytanie nie może być puste")
+            raise ValueError("Zapytanie nie może być puste (pusty prompt niedozwolony)")
 
         col_name = collection_name or self.collection_name
 

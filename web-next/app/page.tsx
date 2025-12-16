@@ -59,6 +59,13 @@ import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { QuickActions } from "@/components/layout/quick-actions";
 import { VoiceCommandCenter } from "@/components/voice/voice-command-center";
 import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
+import {
+  formatDiskUsage,
+  formatGbPair,
+  formatPercentMetric,
+  formatUsd,
+  formatVramMetric,
+} from "@/lib/formatters";
 
 export default function Home() {
   const [isClientReady, setIsClientReady] = useState(false);
@@ -251,23 +258,6 @@ export default function Home() {
     { name: "Gardener", status: "healthy", detail: "Lekcje i graf wiedzy" },
   ];
   const agentDeck = services && services.length > 0 ? services : fallbackAgents;
-  const formatPercentMetric = (value?: number) =>
-    typeof value === "number" ? `${value.toFixed(1)}%` : "—";
-  const formatGbPair = (used?: number, total?: number) =>
-    typeof used === "number" && typeof total === "number"
-      ? `${used.toFixed(1)} / ${total.toFixed(1)} GB`
-      : "—";
-  const formatVramMetric = (usedMb?: number, totalMb?: number) => {
-    if (typeof usedMb === "number" && typeof totalMb === "number" && totalMb > 0) {
-      const usedGb = usedMb / 1024;
-      const totalGb = totalMb / 1024;
-      return `${usedGb.toFixed(1)} / ${totalGb.toFixed(1)} GB`;
-    }
-    if (typeof usedMb === "number" && usedMb > 0) {
-      return `${(usedMb / 1024).toFixed(1)} GB`;
-    }
-    return "—";
-  };
   const cpuUsageValue = formatPercentMetric(usageMetrics?.cpu_usage_percent);
   const gpuUsageValue =
     usageMetrics?.gpu_usage_percent !== undefined
@@ -277,19 +267,12 @@ export default function Home() {
         : "—";
   const ramValue = formatGbPair(usageMetrics?.memory_used_gb, usageMetrics?.memory_total_gb);
   const vramValue = formatVramMetric(usageMetrics?.vram_usage_mb, usageMetrics?.vram_total_mb);
-  const diskValue =
-    typeof usageMetrics?.disk_usage_gb === "number" &&
-    typeof usageMetrics?.disk_limit_gb === "number"
-      ? `${usageMetrics.disk_usage_gb.toFixed(2)} GB / ${usageMetrics.disk_limit_gb.toFixed(0)} GB`
-      : "—";
+  const diskValue = formatDiskUsage(usageMetrics?.disk_usage_gb, usageMetrics?.disk_limit_gb);
   const diskPercent =
     usageMetrics?.disk_usage_percent !== undefined
       ? `${usageMetrics.disk_usage_percent.toFixed(1)}%`
       : null;
-  const sessionCostValue =
-    tokenMetrics?.session_cost_usd !== undefined
-      ? `$${tokenMetrics.session_cost_usd.toFixed(4)}`
-      : "—";
+  const sessionCostValue = formatUsd(tokenMetrics?.session_cost_usd);
   const chatMessages = useMemo(() => {
     if (!history) return [];
     return history.flatMap((item) => {
@@ -490,7 +473,7 @@ export default function Home() {
     setUnloadingModels(true);
     try {
       const res = await unloadAllModels();
-      setMessage(res.message || "Zasoby modeli zostały zwolnione.");
+      setMessage(res.message || "Zasoby zostały zwolnione.");
       refreshModels();
       refreshModelsUsage();
       refreshTasks();
@@ -943,9 +926,6 @@ export default function Home() {
                     <p className="font-semibold text-white">{preset.category}</p>
                     <p className="text-xs text-zinc-400">{preset.description}</p>
                   </div>
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-violet-200">
-                    Wstaw
-                  </span>
                 </button>
               ))}
             </div>
@@ -1146,7 +1126,7 @@ export default function Home() {
           </div>
         </Panel>
         <Panel
-          title="Zasoby modeli"
+          title="Zasoby"
           description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
         >
           <div className="grid gap-3 sm:grid-cols-3">

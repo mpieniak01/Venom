@@ -1,11 +1,53 @@
-# FRONTEND NEXT – CHECKLISTA MIGRACYJNA
+# FRONTEND NEXT – ARCHITEKTURA I CHECKLISTA
 
 Dokument rozszerza `docs/DASHBOARD_GUIDE.md` o informacje specyficzne dla wersji `web-next`. Zawiera:
-1. Opis źródeł danych wykorzystywanych przez kluczowe widoki (Brain, Strategy) – łącznie z fallbackami.
-2. Checklistę testów ręcznych i Playwright, która potwierdza gotowość funkcjonalną.
-3. Kryteria wejścia do **Etapu 29** i listę elementów uznanych nadal za „legacy”.
+1. Architekturę i katalogi Next.js (App Router, SCC – Server/Client Components) oraz konfigurację środowiska.
+2. Opis źródeł danych wykorzystywanych przez kluczowe widoki (Brain, Strategy, Cockpit) – łącznie z fallbackami.
+3. Checklistę testów ręcznych i Playwright, która potwierdza gotowość funkcjonalną.
+4. Kryteria wejścia do **Etapu 29** i listę elementów uznanych nadal za „legacy”.
 
 ---
+
+## 0. Stack i struktura `web-next`
+
+### 0.1 Katalogi
+```
+web-next/
+├── app/                    # App Router, server components (`page.tsx`, layouty, route handlers)
+│   ├── page.tsx            # Cockpit
+│   ├── brain/page.tsx      # Widok Brain
+│   ├── inspector/page.tsx  # Flow Inspector
+│   └── strategy/page.tsx   # Strategy / KPI
+├── components/             # Wspólne komponenty (layout, UI, overlaye)
+├── hooks/                  # Hooki danych (`use-api.ts`, `use-telemetry.ts`)
+├── lib/                    # Narzędzia (i18n, formatery, API client)
+├── public/                 # statyczne zasoby (`meta.json`)
+├── scripts/                # narzędzia buildowe (`generate-meta.mjs`, `prepare-standalone.mjs`)
+└── tests/                  # Playwright (smoke suite)
+```
+
+### 0.2 S C C – zasady (Server / Client Components)
+- Domyślnie komponenty w `app/*` są serwerowe – nie dodajemy `"use client"` jeżeli nie musimy.
+- Komponenty interaktywne (chat, belki, overlaye) deklarują `"use client"` i korzystają z hooków Reacta.
+- `components/layout/*` to mieszanka: np. `SystemStatusBar` jest klientowy (aktualizuje się w czasie rzeczywistym), natomiast sekcje Brain/Strategy pozostają serwerowe z lazy-hydrationem tylko tam, gdzie to konieczne.
+- Re-używamy stylów przez tokeny (`surface-card`, `glass-panel` itd.) w `globals.css`.
+
+### 0.3 Skrypty NPM / workflow
+| Komenda                               | Cel                                                                                   |
+|---------------------------------------|----------------------------------------------------------------------------------------|
+| `npm --prefix web-next install`       | Instalacja zależności                                                                |
+| `npm --prefix web-next run dev`       | Dev server (Next 15) z automatyczną generacją meta (`predev → generate-meta.mjs`)     |
+| `npm --prefix web-next run build`     | Build prod, generuje `public/meta.json` i standalone `.next/standalone`               |
+| `npm --prefix web-next run test:e2e`  | Playwright smoke w trybie prod (15 scenariuszy Cockpit + belki)                       |
+| `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                  |
+| `npm --prefix web-next run lint:locales` | Walidacja spójności słowników i18n (`scripts/check-locales.ts`)                     |
+
+### 0.4 Konfiguracja i proxy
+- backend FastAPI domyślnie nasłuchuje na porcie 8000 – front łączy się poprzez *rewrites* Next (patrz `next.config.mjs`) lub poprzez zmienne:
+  - `NEXT_PUBLIC_API_BASE` – baza `/api/v1/*` (gdy uruchamiamy dashboard w trybie standalone)
+  - `NEXT_PUBLIC_WS_BASE` – WebSocket telemetry (`ws://localhost:8000/ws/events`)
+  - `API_PROXY_TARGET` – bezpośredni URL backendu; Next buduje rewritera, więc w trybie dev nie trzeba modyfikować kodu.
+- `scripts/generate-meta.mjs` zapisuje `public/meta.json` z `version`, `commit`, `timestamp`. Dane konsumuje dolna belka statusu.
 
 ## 1. Brain / Strategy – Źródła danych i hooki
 

@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import {
   AutonomyLevel,
   CampaignResponse,
   CostMode,
+  FlowTrace,
+  GitStatus,
   GraphFileInfoResponse,
   GraphImpactResponse,
   GraphScanResponse,
   GraphSummary,
   HistoryRequest,
   HistoryRequestDetail,
-  FlowTrace,
-  GitStatus,
   KnowledgeGraph,
   Lesson,
-  LessonsStats,
   LessonsResponse,
+  LessonsStats,
   Metrics,
   ModelsResponse,
+  ModelsUsage,
+  ModelsUsageResponse,
   QueueStatus,
   RoadmapResponse,
   RoadmapStatusResponse,
@@ -51,9 +53,12 @@ type PollingEntry<T> = {
   listeners: Set<() => void>;
   timer?: ReturnType<typeof setInterval>;
   fetching: boolean;
+  suspendedUntil?: number;
 };
 
 const pollingRegistry = new Map<string, PollingEntry<unknown>>();
+const SERVICE_UNAVAILABLE_CODES = new Set([502, 503, 504]);
+const OFFLINE_BACKOFF_MS = 15000;
 
 function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number) {
   const existing = pollingRegistry.get(key) as PollingEntry<T> | undefined;
@@ -82,6 +87,15 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
 
 async function triggerFetch<T>(entry: PollingEntry<T>, key: string) {
   if (entry.fetching) return;
+  const now = Date.now();
+  if (entry.suspendedUntil && entry.suspendedUntil > now) {
+    entry.state = {
+      ...entry.state,
+      loading: false,
+    };
+    notifyEntry(entry);
+    return;
+  }
   entry.fetching = true;
   entry.state = { ...entry.state, loading: true };
   notifyEntry(entry);
@@ -92,11 +106,19 @@ async function triggerFetch<T>(entry: PollingEntry<T>, key: string) {
       loading: false,
       error: null,
     };
+    entry.suspendedUntil = undefined;
   } catch (err) {
+    let message = defaultHandleError(err);
+    if (err instanceof ApiError && SERVICE_UNAVAILABLE_CODES.has(err.status)) {
+      entry.suspendedUntil = Date.now() + OFFLINE_BACKOFF_MS;
+      message = "API tymczasowo niedostępne (503) – ponowię próbę za 15s.";
+    } else {
+      entry.suspendedUntil = undefined;
+    }
     entry.state = {
       ...entry.state,
       loading: false,
-      error: defaultHandleError(err),
+      error: message,
     };
   } finally {
     entry.fetching = false;
@@ -166,6 +188,7 @@ function usePolling<T>(
 
   const refresh = useCallback(async () => {
     if (entry === fallbackEntry) return;
+    entry.suspendedUntil = undefined;
     await triggerFetch(entry, key);
   }, [entry, key, fallbackEntry]);
 
@@ -215,7 +238,8 @@ export async function fetchTaskDetail(taskId: string) {
 export function useQueueStatus(intervalMs = 5000) {
   return usePolling<QueueStatus>(
     "queue",
-    () => apiFetch("/api/v1/queue/status"),
+    () =>
+      apiFetch("/api/v1/queue/status"),
     intervalMs,
   );
 }
@@ -269,25 +293,6 @@ export function useTokenMetrics(intervalMs = 5000) {
     () => apiFetch("/api/v1/metrics/tokens"),
     intervalMs,
   );
-}
-
-export interface ModelsUsage {
-  cpu_usage_percent?: number;
-  gpu_usage_percent?: number;
-  vram_usage_mb?: number;
-  vram_total_mb?: number;
-  memory_used_gb?: number;
-  memory_total_gb?: number;
-  memory_usage_percent?: number;
-  disk_usage_gb?: number;
-  disk_limit_gb?: number;
-  disk_usage_percent?: number;
-  models_count?: number;
-}
-
-export interface ModelsUsageResponse {
-  success?: boolean;
-  usage?: ModelsUsage;
 }
 
 type ModelsUsagePayload = ModelsUsageResponse | ModelsUsage;

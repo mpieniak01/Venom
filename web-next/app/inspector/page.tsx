@@ -1,6 +1,4 @@
 "use client";
-
-import mermaid from "mermaid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -8,8 +6,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Panel, StatCard } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { fetchFlowTrace, fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
+import { useTaskStream } from "@/hooks/use-task-stream";
 import type { FlowTrace, HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { Activity, Layers, Radar, TimerReset, ListFilter, ZoomIn, ZoomOut, RotateCcw, RefreshCw, Loader2 } from "lucide-react";
 import { LatencyCard } from "@/components/inspector/lag-card";
@@ -41,9 +40,11 @@ export default function InspectorPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const [mermaidReloadKey, setMermaidReloadKey] = useState(0);
+  const [mermaidApi, setMermaidApi] = useState<typeof import("mermaid") | null>(null);
   const svgRef = useRef<HTMLDivElement | null>(null);
   const mermaidInitializedRef = useRef(false);
   const fitViewRef = useRef<(() => void) | null>(null);
+  const streamRefreshRef = useRef<Record<string, string | null>>({});
   const filteredSteps = useMemo(() => filterSteps(steps, stepFilter), [steps, stepFilter]);
   const stepsCount = steps.length;
   const selectedRequest = useMemo(
@@ -56,6 +57,31 @@ export default function InspectorPage() {
   );
   const inspectorStats = useMemo(() => buildInspectorStats(history, tasks), [history, tasks]);
   const taskBreakdown = useMemo(() => buildTaskBreakdown(tasks), [tasks]);
+  const trackedTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    (history ?? []).forEach((entry) => {
+      if (entry.status === "PENDING" || entry.status === "PROCESSING") {
+        ids.add(entry.request_id);
+      }
+    });
+    (tasks ?? []).forEach((task) => {
+      const identifier = task.task_id || task.id;
+      if (!identifier) return;
+      const normalized = (task.status || "").toUpperCase();
+      if (normalized === "PENDING" || normalized === "PROCESSING") {
+        ids.add(identifier);
+      }
+    });
+    if (selectedId) {
+      ids.add(selectedId);
+    }
+    return Array.from(ids);
+  }, [history, tasks, selectedId]);
+  const { streams: inspectorStreams } = useTaskStream(trackedTaskIds, {
+    enabled: trackedTaskIds.length > 0,
+  });
+  const streamForSelected = selectedId ? inspectorStreams[selectedId] : undefined;
+  const liveSelectedStatus = streamForSelected?.status ?? selectedRequest?.status ?? "—";
   const latencyCards = useMemo(
     () => [
       {
@@ -78,10 +104,29 @@ export default function InspectorPage() {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined" || mermaidInitializedRef.current) {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    import("mermaid")
+      .then((mod) => {
+        if (cancelled) return;
+        setMermaidApi(mod.default ?? mod);
+      })
+      .catch((err) => {
+        console.error("Mermaid import failed:", err);
+        if (!cancelled) {
+          setMermaidError("Nie udało się załadować biblioteki Mermaid.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mermaidApi || mermaidInitializedRef.current) {
       return;
     }
-    mermaid.initialize({
+    mermaidApi.initialize({
       startOnLoad: false,
       theme: "dark",
       securityLevel: "loose",
@@ -113,7 +158,7 @@ export default function InspectorPage() {
       `,
     });
     mermaidInitializedRef.current = true;
-  }, []);
+  }, [DEFAULT_DIAGRAM, mermaidApi]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,7 +168,10 @@ export default function InspectorPage() {
       try {
         const container = svgRef.current;
         container.innerHTML = `<div class="mermaid">${diagram}</div>`;
-        await mermaid.run({
+        if (!mermaidApi) {
+          throw new Error("Mermaid API not ready.");
+        }
+        await mermaidApi.run({
           nodes: container.querySelectorAll(".mermaid"),
         });
         adjustMermaidSizing(container);
@@ -141,7 +189,7 @@ export default function InspectorPage() {
       }
     };
 
-    if (diagram) {
+    if (diagram && mermaidApi) {
       render();
     } else if (svgRef.current) {
       svgRef.current.innerHTML = "";
@@ -150,7 +198,7 @@ export default function InspectorPage() {
     return () => {
       cancelled = true;
     };
-  }, [diagram, mermaidReloadKey]);
+  }, [diagram, mermaidReloadKey, mermaidApi]);
 
   useEffect(() => {
     if (!filteredSteps.length) {
@@ -174,7 +222,7 @@ export default function InspectorPage() {
     }
   };
 
-  const handleHistorySelect = async (requestId: string) => {
+  const handleHistorySelect = useCallback(async (requestId: string) => {
     setDiagramLoading(true);
     setDetailError(null);
     setSelectedId(requestId);
@@ -212,7 +260,26 @@ export default function InspectorPage() {
     } finally {
       setDiagramLoading(false);
     }
-  };
+  }, [DEFAULT_DIAGRAM]);
+
+  useEffect(() => {
+    if (historyLoading) return;
+    if (!history || history.length === 0) return;
+    if (selectedId) return;
+    handleHistorySelect(history[0].request_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyLoading, history, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const stream = inspectorStreams[selectedId];
+    if (!stream?.lastEventAt) return;
+    const previousTs = streamRefreshRef.current[selectedId];
+    if (previousTs === stream.lastEventAt) return;
+    streamRefreshRef.current[selectedId] = stream.lastEventAt;
+    refreshHistory();
+    handleHistorySelect(selectedId);
+  }, [inspectorStreams, selectedId, refreshHistory, handleHistorySelect]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -289,16 +356,21 @@ export default function InspectorPage() {
               </Button>
             }
           >
-            {historyLoading && !history?.length && (
-              <p className="mb-2 text-xs text-zinc-500">Ładuję historię...</p>
-            )}
-            <HistoryList
-              entries={history}
-              selectedId={selectedId}
-              onSelect={(entry) => handleHistorySelect(entry.request_id)}
-              emptyTitle="Brak historii do wyświetlenia"
-              emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
-            />
+            <div className="relative min-h-[280px]">
+              {historyLoading && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/40 text-xs text-zinc-300">
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+                  Ładuję historię...
+                </div>
+              )}
+              <HistoryList
+                entries={history}
+                selectedId={selectedId}
+                onSelect={(entry) => handleHistorySelect(entry.request_id)}
+                emptyTitle="Brak historii do wyświetlenia"
+                emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
+              />
+            </div>
           </Panel>
 
           <Panel
@@ -472,8 +544,14 @@ export default function InspectorPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <StatCard
                   label="Status"
-                  value={selectedRequest?.status ?? "—"}
-                  hint={selectedRequest ? `Zakończone: ${formatRelativeTime(selectedRequest.finished_at)}` : "Wybierz request z listy"}
+                  value={liveSelectedStatus}
+                  hint={
+                    streamForSelected?.connected
+                      ? "Aktualizowane strumieniem SSE"
+                      : selectedRequest
+                        ? `Zakończone: ${formatRelativeTime(selectedRequest.finished_at)}`
+                        : "Wybierz request z listy"
+                  }
                   accent="purple"
                 />
                 <StatCard

@@ -1,6 +1,6 @@
 "use client";
 
-import type { TagEntry } from "@/app/brain/page";
+import type { TagEntry } from "@/components/brain/types";
 import { Button } from "@/components/ui/button";
 
 type LessonActionsProps = {

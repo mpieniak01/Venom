@@ -581,43 +581,46 @@ app.include_router(models_routes.router)
 app.include_router(flow_routes.router)
 
 # Montowanie plików statycznych
-web_dir = Path(__file__).parent.parent / "web"
-if web_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
-    logger.info(f"Static files served from: {web_dir / 'static'}")
+if SETTINGS.SERVE_LEGACY_UI:
+    web_dir = Path(__file__).parent.parent / "web"
+    if web_dir.exists():
+        app.mount(
+            "/static", StaticFiles(directory=str(web_dir / "static")), name="static"
+        )
+        logger.info(f"Static files served from: {web_dir / 'static'}")
+    else:
+        logger.warning("SERVE_LEGACY_UI=True, ale katalog 'web/' nie istnieje.")
 
-# Konfiguracja szablonów Jinja2
-templates = Jinja2Templates(directory=str(web_dir / "templates"))
+    templates = Jinja2Templates(directory=str(web_dir / "templates"))
 
+    @app.get("/", include_in_schema=False)
+    async def serve_dashboard(request: Request):
+        """Serwuje główny dashboard (Cockpit) – legacy."""
+        return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/")
-async def serve_dashboard(request: Request):
-    """Serwuje główny dashboard (Cockpit)."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    @app.get("/strategy", include_in_schema=False)
+    async def serve_strategy(request: Request):
+        """Serwuje War Room (Strategy Dashboard) – legacy."""
+        return templates.TemplateResponse("strategy.html", {"request": request})
 
+    @app.get("/flow-inspector", include_in_schema=False)
+    async def serve_flow_inspector(request: Request):
+        """Serwuje Flow Inspector - wizualizację procesów decyzyjnych – legacy."""
+        return templates.TemplateResponse("flow_inspector.html", {"request": request})
 
-@app.get("/strategy")
-async def serve_strategy(request: Request):
-    """Serwuje War Room (Strategy Dashboard)."""
-    return templates.TemplateResponse("strategy.html", {"request": request})
+    @app.get("/inspector", include_in_schema=False)
+    async def serve_inspector(request: Request):
+        """Serwuje Interactive Inspector (Alpine.js + svg-pan-zoom) – legacy."""
+        return templates.TemplateResponse("inspector.html", {"request": request})
 
+    @app.get("/brain", include_in_schema=False)
+    async def serve_brain(request: Request):
+        """Serwuje The Brain - interaktywny graf wiedzy (Cytoscape.js) – legacy."""
+        return templates.TemplateResponse("brain.html", {"request": request})
 
-@app.get("/flow-inspector")
-async def serve_flow_inspector(request: Request):
-    """Serwuje Flow Inspector - wizualizację procesów decyzyjnych."""
-    return templates.TemplateResponse("flow_inspector.html", {"request": request})
-
-
-@app.get("/inspector")
-async def serve_inspector(request: Request):
-    """Serwuje Interactive Inspector (Alpine.js + svg-pan-zoom)."""
-    return templates.TemplateResponse("inspector.html", {"request": request})
-
-
-@app.get("/brain")
-async def serve_brain(request: Request):
-    """Serwuje The Brain - interaktywny graf wiedzy (Cytoscape.js)."""
-    return templates.TemplateResponse("brain.html", {"request": request})
+    logger.info("Legacy FastAPI UI włączone (SERVE_LEGACY_UI=True).")
+else:
+    logger.info("Legacy FastAPI UI wyłączone (SERVE_LEGACY_UI=False).")
 
 
 @app.websocket("/ws/events")

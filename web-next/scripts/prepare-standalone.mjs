@@ -2,6 +2,11 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
+if (process.env.SKIP_PREPARE_STANDALONE === "1") {
+  console.log("[prepare-standalone] Pominięto (SKIP_PREPARE_STANDALONE=1).");
+  process.exit(0);
+}
+
 const rootDir = path.join(process.cwd());
 const staticSrc = path.join(rootDir, ".next", "static");
 const standaloneTarget = path.join(rootDir, ".next", "standalone", ".next", "static");

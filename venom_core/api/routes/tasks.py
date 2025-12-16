@@ -1,13 +1,17 @@
 """Moduł: routes/tasks - Endpointy API dla zadań i historii."""
 
+import asyncio
+import json
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from venom_core.core.metrics import metrics_collector
-from venom_core.core.models import TaskRequest, TaskResponse, VenomTask
+from venom_core.core import metrics as metrics_module
+from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus, VenomTask
 from venom_core.core.tracer import TraceStatus
 from venom_core.utils.logger import get_logger
 
@@ -73,8 +77,9 @@ async def create_task(request: TaskRequest):
 
     try:
         # Inkrementuj licznik zadań
-        if metrics_collector:
-            metrics_collector.increment_task_created()
+        collector = metrics_module.metrics_collector
+        if collector:
+            collector.increment_task_created()
 
         response = await _orchestrator.submit_task(request)
         return response
@@ -106,6 +111,100 @@ async def get_task(task_id: UUID):
     if task is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
     return task
+
+
+@router.get("/tasks/{task_id}/stream")
+async def stream_task(task_id: UUID):
+    """
+    Strumieniuje zmiany zadania jako Server-Sent Events (SSE).
+
+    Args:
+        task_id: UUID zadania
+
+    Returns:
+        StreamingResponse z wydarzeniami `task_update`/`heartbeat`
+    """
+
+    if _state_manager is None:
+        raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
+
+    if _state_manager.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
+
+    async def event_generator():
+        """Asynchroniczny generator zdarzeń SSE."""
+
+        poll_interval_seconds = 1.0
+        heartbeat_every_ticks = 10
+        previous_status: Optional[TaskStatus] = None
+        previous_log_index = 0
+        ticks_since_emit = 0
+
+        while True:
+            task: Optional[VenomTask] = _state_manager.get_task(task_id)
+            if task is None:
+                payload = {
+                    "task_id": str(task_id),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "event": "gone",
+                    "detail": "Task no longer available in StateManager",
+                }
+                yield f"event:task_missing\ndata:{json.dumps(payload)}\n\n"
+                break
+
+            logs_delta = task.logs[previous_log_index:]
+            status_changed = task.status != previous_status
+            should_emit = (
+                status_changed
+                or logs_delta
+                or ticks_since_emit >= heartbeat_every_ticks
+            )
+
+            if should_emit:
+                payload = {
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "logs": logs_delta,
+                    "result": task.result,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+
+                event_name = (
+                    "task_update" if (status_changed or logs_delta) else "heartbeat"
+                )
+
+                # json.dumps nie obsługuje Enum więc wymuś str()
+                yield "event:{event}\ndata:{data}\n\n".format(
+                    event=event_name,
+                    data=json.dumps(payload, default=str),
+                )
+
+                previous_status = task.status
+                previous_log_index = len(task.logs)
+                ticks_since_emit = 0
+            else:
+                ticks_since_emit += 1
+
+            if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+                # Wyślij końcowy event i zamknij stream
+                complete_payload = {
+                    "task_id": str(task.id),
+                    "status": task.status,
+                    "result": task.result,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                yield "event:task_finished\ndata:{data}\n\n".format(
+                    data=json.dumps(complete_payload, default=str),
+                )
+                break
+
+            try:
+                await asyncio.sleep(poll_interval_seconds)
+            except asyncio.CancelledError:
+                logger.debug("Zamknięto stream SSE dla zadania %s", task_id)
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/tasks", response_model=list[VenomTask])

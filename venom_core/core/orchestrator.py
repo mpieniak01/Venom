@@ -6,6 +6,7 @@ from typing import Optional
 from uuid import UUID
 
 from venom_core.config import SETTINGS
+from venom_core.core import metrics as metrics_module
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import (
@@ -22,7 +23,6 @@ from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
 from venom_core.core.intent_manager import IntentManager
-from venom_core.core.metrics import metrics_collector
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.queue_manager import QueueManager
 from venom_core.core.state_manager import StateManager
@@ -546,8 +546,9 @@ class Orchestrator:
                         details="Task processed successfully",
                     )
                 # Inkrementuj licznik użycia agenta
-                if metrics_collector:
-                    metrics_collector.increment_agent_usage(agent_name)
+                collector = metrics_module.metrics_collector
+                if collector:
+                    collector.increment_agent_usage(agent_name)
 
                 # Wyślij odpowiedź agenta do dashboardu (np. ChatAgent)
                 formatted_result = ""
@@ -608,8 +609,9 @@ class Orchestrator:
                 )
 
             # Inkrementuj licznik ukończonych zadań
-            if metrics_collector:
-                metrics_collector.increment_task_completed()
+            collector = metrics_module.metrics_collector
+            if collector:
+                collector.increment_task_completed()
 
             # Broadcast ukończenia zadania
             await self._broadcast_event(
@@ -651,8 +653,9 @@ class Orchestrator:
                 )
 
             # Inkrementuj licznik nieudanych zadań
-            if metrics_collector:
-                metrics_collector.increment_task_failed()
+            collector = metrics_module.metrics_collector
+            if collector:
+                collector.increment_task_failed()
 
             # Broadcast błędu
             await self._broadcast_event(

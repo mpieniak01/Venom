@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CommandCenter } from "./command-center";
 import { AlertCenter } from "./alert-center";
 import { MobileNav } from "./mobile-nav";
-import { StatusPills } from "./status-pills";
+import { StatusPills, type StatusPillsInitialData } from "./status-pills";
 import { QuickActions } from "./quick-actions";
 import { CommandPalette } from "./command-palette";
 import { NotificationDrawer } from "./notification-drawer";
@@ -16,7 +16,7 @@ import { ServiceStatusDrawer } from "./service-status-drawer";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
 
-export function TopBar() {
+export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsInitialData }) {
   const { connected } = useTelemetryFeed();
   const [commandOpen, setCommandOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -72,7 +72,7 @@ export function TopBar() {
         </div>
       </div>
       <div className="flex items-center gap-4">
-        <StatusPills />
+        <StatusPills initialData={initialStatusData} />
         <TopBarIconAction
           icon={<BellRing className="h-4 w-4 text-amber-300" />}
           label={t("topBar.alertCenter")}

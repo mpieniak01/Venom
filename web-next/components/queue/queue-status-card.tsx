@@ -4,17 +4,20 @@ import type { QueueStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/i18n";
+import { Loader2 } from "lucide-react";
 
 type QueueStatusCardProps = {
   queue?: QueueStatus | null;
   offlineMessage?: string;
   testId?: string;
+  loading?: boolean;
 };
 
 export function QueueStatusCard({
   queue,
   offlineMessage,
   testId,
+  loading,
 }: QueueStatusCardProps) {
   const t = useTranslation();
   const offlineDescription = offlineMessage ?? t("queueCard.offlineDescription");
@@ -28,11 +31,18 @@ export function QueueStatusCard({
   if (offline) {
     return (
       <div data-testid={testId}>
-        <EmptyState
-          title={t("queueCard.offlineTitle")}
-          description={offlineDescription}
-          className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm"
-        />
+        {loading ? (
+          <div className="flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Ładuję status kolejki…
+          </div>
+        ) : (
+          <EmptyState
+            title={t("queueCard.offlineTitle")}
+            description={offlineDescription}
+            className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm"
+          />
+        )}
       </div>
     );
   }
@@ -45,7 +55,7 @@ export function QueueStatusCard({
 
   return (
     <div
-      className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm text-white shadow-card"
+      className="relative rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm text-white shadow-card"
       data-testid={testId ? `${testId}-online` : undefined}
     >
       <div className="flex items-center justify-between gap-3">
@@ -72,6 +82,12 @@ export function QueueStatusCard({
           </div>
         ))}
       </div>
+      {loading && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-3xl bg-black/60 text-xs text-zinc-300">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Ładuję status kolejki…
+        </div>
+      )}
     </div>
   );
 }

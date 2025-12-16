@@ -14,33 +14,105 @@ import {
   useRoadmap,
   useTasks,
 } from "@/hooks/use-api";
-import { ProgressBar } from "@tremor/react";
+import { useTaskStream } from "@/hooks/use-task-stream";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { statusTone } from "@/lib/status";
 import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date";
-import type { Task } from "@/lib/types";
+import type { RoadmapResponse, Task } from "@/lib/types";
+
+const ROADMAP_CACHE_KEY = "strategy-roadmap-cache";
+const REPORT_CACHE_KEY = "strategy-status-report";
+const REPORT_TS_KEY = "strategy-status-report-ts";
+const REPORT_STALE_MS = 60_000;
+
+const safeParseJson = <T,>(payload: string | null): T | null => {
+  if (!payload) return null;
+  try {
+    return JSON.parse(payload) as T;
+  } catch {
+    return null;
+  }
+};
+
+const safeNumber = (payload: string | null): number | null => {
+  if (!payload) return null;
+  const parsed = Number(payload);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 export default function StrategyPage() {
-  const { data: roadmap, refresh: refreshRoadmap } = useRoadmap();
+  const { data: liveRoadmap, refresh: refreshRoadmap } = useRoadmap();
   const { data: liveTasks, loading: liveTasksLoading } = useTasks();
-  const {
-    data: timelineHistory,
-    loading: timelineLoading,
-  } = useHistory(10);
+  const { data: timelineHistory, loading: timelineLoading } = useHistory(10);
+  const [cachedRoadmap, setCachedRoadmap] = useState<RoadmapResponse | null>(() =>
+    typeof window === "undefined" ? null : safeParseJson<RoadmapResponse>(window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
+  );
   const [visionInput, setVisionInput] = useState("");
   const [showVisionForm, setShowVisionForm] = useState(false);
-  const [statusReport, setStatusReport] = useState<string | null>(null);
+  const [statusReport, setStatusReport] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : window.sessionStorage.getItem(REPORT_CACHE_KEY),
+  );
+  const [reportTimestamp, setReportTimestamp] = useState<number | null>(() =>
+    typeof window === "undefined" ? null : safeNumber(window.sessionStorage.getItem(REPORT_TS_KEY)),
+  );
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [toast, setToast] = useState<{ tone: "success" | "error"; message: string } | null>(null);
-  const showToast = (tone: "success" | "error", message: string) => {
-    setToast({ tone, message });
-  };
+  const showToast = useCallback(
+    (tone: "success" | "error", message: string) => {
+      setToast({ tone, message });
+    },
+    [],
+  );
+  const roadmapData = liveRoadmap ?? cachedRoadmap;
+  const autoReportTriggered = useRef(false);
+  const persistStatusReport = useCallback((value: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      const timestamp = Date.now();
+      window.sessionStorage.setItem(REPORT_CACHE_KEY, value);
+      window.sessionStorage.setItem(REPORT_TS_KEY, timestamp.toString());
+      setReportTimestamp(timestamp);
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[strategy] Nie udało się zapisać raportu statusu w sessionStorage", err);
+      }
+    }
+  }, []);
+  const fetchStatusReport = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) {
+        setReportLoading(true);
+        setStatusReport(null);
+      }
+      try {
+        const res = await requestRoadmapStatus();
+        const reportText = res.report || "Brak danych z Executive.";
+        setStatusReport(reportText);
+        persistStatusReport(reportText);
+        if (!silent) {
+          showToast("success", "Pobrano raport statusu.");
+        }
+      } catch (err) {
+        if (!silent) {
+          const message =
+            err instanceof Error ? err.message : "Nie udało się pobrać raportu.";
+          setStatusReport(message);
+          showToast("error", message);
+        }
+      } finally {
+        if (!silent) {
+          setReportLoading(false);
+        }
+      }
+    },
+    [persistStatusReport, showToast],
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -48,8 +120,31 @@ export default function StrategyPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const kpis = roadmap?.kpis;
-  const visionProgress = roadmap?.vision?.progress ?? 0;
+  useEffect(() => {
+    if (!liveRoadmap) return;
+    setCachedRoadmap(liveRoadmap);
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(ROADMAP_CACHE_KEY, JSON.stringify(liveRoadmap));
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[strategy] Nie udało się zapisać roadmapy w sessionStorage", err);
+      }
+    }
+  }, [liveRoadmap]);
+
+  useEffect(() => {
+    if (autoReportTriggered.current) return;
+    autoReportTriggered.current = true;
+    const shouldRefresh =
+      !reportTimestamp || Date.now() - reportTimestamp > REPORT_STALE_MS;
+    if (shouldRefresh) {
+      fetchStatusReport({ silent: true }).catch(() => undefined);
+    }
+  }, [fetchStatusReport, reportTimestamp]);
+
+  const kpis = roadmapData?.kpis;
+  const visionProgress = roadmapData?.vision?.progress ?? 0;
   const milestonesRaw =
     kpis && kpis.milestones_total
       ? ((kpis.milestones_completed ?? 0) / Math.max(kpis.milestones_total, 1)) * 100
@@ -58,11 +153,56 @@ export default function StrategyPage() {
     kpis && kpis.tasks_total
       ? ((kpis.tasks_completed ?? 0) / Math.max(kpis.tasks_total, 1)) * 100
       : 0;
-  const milestones = useMemo(() => roadmap?.milestones ?? [], [roadmap?.milestones]);
-  const liveTaskStats = useMemo(() => buildLiveTaskStats(liveTasks), [liveTasks]);
-  const timelineEntries = useMemo(
+  const milestones = useMemo(
+    () => roadmapData?.milestones ?? [],
+    [roadmapData?.milestones],
+  );
+  const timelineEntriesRaw = useMemo(
     () => (timelineHistory ?? []).slice(0, 8),
     [timelineHistory],
+  );
+  const trackedStrategyTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    (liveTasks ?? []).forEach((task) => {
+      const identifier = task.task_id || task.id;
+      if (!identifier) return;
+      const normalized = (task.status || "").toUpperCase();
+      if (["PENDING", "PROCESSING", "IN_PROGRESS", "RUNNING"].includes(normalized)) {
+        ids.add(identifier);
+      }
+    });
+    timelineEntriesRaw.forEach((entry) => {
+      if (!entry.request_id) return;
+      if (entry.status === "PENDING" || entry.status === "PROCESSING") {
+        ids.add(entry.request_id);
+      }
+    });
+    return Array.from(ids);
+  }, [liveTasks, timelineEntriesRaw]);
+  const { streams: strategyStreams } = useTaskStream(trackedStrategyTaskIds, {
+    enabled: trackedStrategyTaskIds.length > 0,
+  });
+  const mergedLiveTasks = useMemo(() => {
+    if (!liveTasks) return liveTasks;
+    return liveTasks.map((task) => {
+      const identifier = task.task_id || task.id;
+      if (!identifier) return task;
+      const stream = strategyStreams[identifier];
+      if (stream?.status) {
+        return { ...task, status: stream.status };
+      }
+      return task;
+    });
+  }, [liveTasks, strategyStreams]);
+  const liveTaskStats = useMemo(() => buildLiveTaskStats(mergedLiveTasks), [mergedLiveTasks]);
+  const timelineEntries = useMemo(
+    () =>
+      timelineEntriesRaw.map((entry) => {
+        const stream = entry.request_id ? strategyStreams[entry.request_id] : undefined;
+        if (!stream?.status) return entry;
+        return { ...entry, status: stream.status };
+      }),
+    [timelineEntriesRaw, strategyStreams],
   );
   const taskSummary = useMemo(() => {
     const summary: Record<string, number> = {};
@@ -125,21 +265,8 @@ export default function StrategyPage() {
     }
   };
 
-  const handleStatusReport = async () => {
-    setReportLoading(true);
-    setStatusReport(null);
-    try {
-      const res = await requestRoadmapStatus();
-      setStatusReport(res.report || "Brak danych z Executive.");
-      showToast("success", "Pobrano raport statusu.");
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Nie udało się pobrać raportu.";
-      setStatusReport(message);
-      showToast("error", message);
-    } finally {
-      setReportLoading(false);
-    }
+  const handleStatusReport = () => {
+    fetchStatusReport();
   };
 
   const handleStartCampaign = async () => {
@@ -245,16 +372,16 @@ export default function StrategyPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Wizja" description="Migawka magazynu celów">
-          {roadmap?.vision ? (
+          {roadmapData?.vision ? (
             <div className="space-y-3 text-sm text-zinc-400">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">{roadmap.vision.title}</h3>
-                <Badge tone="neutral">{roadmap.vision.status ?? "n/a"}</Badge>
+                <h3 className="text-lg font-semibold text-white">{roadmapData.vision.title}</h3>
+                <Badge tone="neutral">{roadmapData.vision.status ?? "n/a"}</Badge>
               </div>
-              <MarkdownPreview content={roadmap.vision.description} />
+              <MarkdownPreview content={roadmapData.vision.description} />
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Postęp wizji</p>
-                <ProgressBar value={visionProgress} color="violet" className="mt-2" />
+                <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
               </div>
             </div>
           ) : (
@@ -385,7 +512,7 @@ export default function StrategyPage() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <ProgressBar value={progressValue} color="indigo" className="mb-3" />
+                    <GradientProgress value={progressValue} tone="indigo" className="mb-3" />
                     <p className="text-sm text-zinc-400">{milestone.description}</p>
                     <div className="mt-3 space-y-2 text-xs text-zinc-300">
                       {(milestone.tasks || []).length === 0 && <p className="text-zinc-500">Brak zadań.</p>}
@@ -410,7 +537,7 @@ export default function StrategyPage() {
       </Panel>
 
       <Panel title="Pełny raport" description="/api/roadmap (pole report)">
-        <MarkdownPreview content={roadmap?.report} emptyState="Brak raportu." />
+        <MarkdownPreview content={roadmapData?.report} emptyState="Brak raportu." />
       </Panel>
     </div>
   );
@@ -454,4 +581,29 @@ function buildLiveTaskStats(tasks: Task[] | null | undefined) {
       accent: "indigo" as const,
     },
   ];
+}
+
+type GradientProgressProps = {
+  value?: number;
+  tone?: "violet" | "indigo" | "emerald";
+  className?: string;
+};
+
+const progressToneClasses: Record<NonNullable<GradientProgressProps["tone"]>, string> = {
+  violet: "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 shadow-[0_0_15px_rgba(167,139,250,0.6)]",
+  indigo: "bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500 shadow-[0_0_15px_rgba(99,102,241,0.5)]",
+  emerald: "bg-gradient-to-r from-emerald-500 via-lime-400 to-amber-300 shadow-[0_0_15px_rgba(16,185,129,0.5)]",
+};
+
+function GradientProgress({ value = 0, tone = "violet", className }: GradientProgressProps) {
+  const safeValue = Math.max(0, Math.min(100, Number.isFinite(value) ? (value as number) : 0));
+  const toneClass = progressToneClasses[tone] ?? progressToneClasses.violet;
+  return (
+    <div className={cn("h-2 w-full rounded-full bg-white/10", className)}>
+      <div
+        className={cn("h-full rounded-full transition-[width] duration-300 ease-out", toneClass)}
+        style={{ width: `${safeValue}%` }}
+      />
+    </div>
+  );
 }

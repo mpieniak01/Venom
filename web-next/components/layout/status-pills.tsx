@@ -2,57 +2,78 @@
 
 import { useMemo } from "react";
 import { useQueueStatus, useMetrics, useTasks } from "@/hooks/use-api";
+import type { Metrics, QueueStatus, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
-export function StatusPills() {
-  const { data: queue } = useQueueStatus(10000);
-  const { data: metrics } = useMetrics(15000);
-  const { data: tasks } = useTasks(15000);
+export type StatusPillsInitialData = {
+  queue?: QueueStatus | null;
+  metrics?: Metrics | null;
+  tasks?: Task[] | null;
+};
 
-  const successRateRaw = metrics?.tasks?.success_rate;
+export function StatusPills({ initialData }: { initialData?: StatusPillsInitialData }) {
+  const { data: queue, loading: queueLoading } = useQueueStatus(10000);
+  const { data: metrics, loading: metricsLoading } = useMetrics(15000);
+  const { data: tasks, loading: tasksLoading } = useTasks(15000);
+
+  const queueData = queue ?? initialData?.queue ?? null;
+  const metricsData = metrics ?? initialData?.metrics ?? null;
+  const tasksData = tasks ?? initialData?.tasks ?? null;
+
+  const successRateRaw = metricsData?.tasks?.success_rate;
   const metricsAvailable = typeof successRateRaw === "number";
-  const queueAvailable = Boolean(queue);
-  const tasksAvailable = Array.isArray(tasks);
+  const queueAvailable = Boolean(queueData);
+  const tasksAvailable = Array.isArray(tasksData);
+  const queuePendingLoading = queueLoading && !queueData;
+  const metricsPendingLoading = metricsLoading && !metricsData;
+  const tasksPendingLoading = tasksLoading && !tasksData;
 
   const successRate = successRateRaw ?? 0;
-  const activeTasks = tasks?.length ?? 0;
-  const queueActive = queue?.active ?? 0;
-  const queuePending = queue?.pending ?? 0;
+  const activeTasks = tasksData?.length ?? 0;
+  const queueActive = queueData?.active ?? 0;
+  const queuePending = queueData?.pending ?? 0;
 
   const pills = useMemo(
     () => [
       {
         id: "queue",
         label: "Kolejka",
-        value: queueAvailable ? `${queueActive}/${queue?.limit ?? "∞"}` : "—",
-        hint: queueAvailable ? `${queuePending} oczekujących` : "Brak danych",
-        tone: queueAvailable ? (queue?.paused ? "warning" : "success") : "neutral",
+        value: queueAvailable ? `${queueActive}/${queueData?.limit ?? "∞"}` : "—",
+        hint: queuePendingLoading ? "Ładuję dane..." : queueAvailable ? `${queuePending} oczekujących` : "Brak danych",
+        tone: queueAvailable ? (queueData?.paused ? "warning" : "success") : "neutral",
+        loading: queuePendingLoading,
       },
       {
         id: "success",
         label: "Skuteczność",
         value: metricsAvailable ? `${successRate}%` : "—",
-        hint: metricsAvailable ? "ostatnie zadania" : "Metryki offline",
+        hint: metricsPendingLoading ? "Ładuję dane..." : metricsAvailable ? "ostatnie zadania" : "Metryki offline",
         tone: metricsAvailable ? (successRate > 70 ? "success" : "danger") : "neutral",
+        loading: metricsPendingLoading,
       },
       {
         id: "tasks",
         label: "Zadania",
         value: tasksAvailable ? activeTasks : "—",
-        hint: tasksAvailable ? "aktywnych" : "Brak danych",
+        hint: tasksPendingLoading ? "Ładuję dane..." : tasksAvailable ? "aktywnych" : "Brak danych",
         tone: tasksAvailable ? (activeTasks > 0 ? "warning" : "neutral") : "neutral",
+        loading: tasksPendingLoading,
       },
     ],
     [
       queueAvailable,
       queueActive,
       queuePending,
-      queue?.limit,
-      queue?.paused,
+      queueData?.limit,
+      queueData?.paused,
       metricsAvailable,
       successRate,
       tasksAvailable,
       activeTasks,
+      queuePendingLoading,
+      metricsPendingLoading,
+      tasksPendingLoading,
     ],
   );
 
@@ -75,7 +96,14 @@ export function StatusPills() {
         >
           <span className="text-[11px] uppercase tracking-[0.3em]">{pill.label}</span>
           <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`}>
-            {pill.value}
+            {pill.loading ? (
+              <span className="flex items-center gap-1 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin text-white/90" />
+                Ładuje…
+              </span>
+            ) : (
+              pill.value
+            )}
           </span>
           <span className="text-[11px] text-white/70">{pill.hint}</span>
         </div>

@@ -335,7 +335,10 @@ export default function InspectorPage() {
           >
             <TransformWrapper wheel={{ step: 0.15 }}>
               {({ zoomIn, zoomOut, resetTransform, setTransform }) => {
-                fitViewRef.current = () => autoFitDiagram(svgRef.current, setTransform);
+                fitViewRef.current = () =>
+                  autoFitDiagram(svgRef.current, (x, y, scale, duration, easing) =>
+                    setTransform(x, y, scale, duration, easing as Parameters<typeof setTransform>[4]),
+                  );
                 return (
                   <>
                     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">

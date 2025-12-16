@@ -824,7 +824,7 @@ export default function Home() {
           </Panel>
         </div>
         <div className="space-y-6">
-          <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
+          <div className="glass-panel command-console-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
             <SectionHeading
               eyebrow="Command Console"
               title="Cockpit AI"
@@ -955,23 +955,37 @@ export default function Home() {
               eyebrow="KPI kolejki"
               title="Skuteczność operacji"
               description="Monitoruj SLA tasków i uptime backendu."
+              className="kpi-panel"
             >
-              <CockpitMetricCard
-                primaryValue={successRate !== null ? `${successRate}%` : "—"}
-                secondaryLabel={
-                  tasksCreated > 0
-                    ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
-                    : "Brak zadań"
-                }
-                progress={successRate}
-                footer={`Uptime: ${
-                  metrics?.uptime_seconds !== undefined
-                    ? formatUptime(metrics.uptime_seconds)
-                    : "—"
-                }`}
-              />
+              {successRate === null ? (
+                <EmptyState
+                  icon={<Bot className="h-4 w-4" />}
+                  title="Brak danych SLA"
+                  description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
+                />
+              ) : (
+                <CockpitMetricCard
+                  primaryValue={`${successRate}%`}
+                  secondaryLabel={
+                    tasksCreated > 0
+                      ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
+                      : "Brak zadań"
+                  }
+                  progress={successRate}
+                  footer={`Uptime: ${
+                    metrics?.uptime_seconds !== undefined
+                      ? formatUptime(metrics.uptime_seconds)
+                      : "—"
+                  }`}
+                />
+              )}
             </Panel>
-            <Panel eyebrow="KPI kolejki" title="Zużycie tokenów" description="Trend prompt/completion/cached.">
+            <Panel
+              eyebrow="KPI kolejki"
+              title="Zużycie tokenów"
+              description="Trend prompt/completion/cached."
+              className="kpi-panel"
+            >
               <CockpitTokenCard
                 totalValue={totalTokens}
                 splits={
@@ -1209,87 +1223,105 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <StatCard
-          label="Zadania"
-          value={metrics?.tasks?.created ?? "—"}
-          hint="Łącznie utworzonych"
-        />
-        <StatCard
-          label="Skuteczność"
-          value={successRate !== null ? `${successRate}%` : "—"}
-          hint="Aktualna skuteczność"
-          accent="green"
-        />
-        <StatCard
-          label="Uptime"
-          value={
-            metrics?.uptime_seconds !== undefined
-              ? formatUptime(metrics.uptime_seconds)
-              : "—"
-          }
-          hint="Od startu backendu"
-        />
-        <StatCard
-          label="Kolejka"
-          value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
-          hint="Aktywne / limit"
-          accent="blue"
-        />
-      </div>
+      <Panel
+        eyebrow="System KPIs"
+        title="Status operacyjny"
+        description="Najważniejsze liczby backendu."
+        className="kpi-panel"
+      >
+        <div className="grid gap-4 md:grid-cols-4">
+          <StatCard
+            label="Zadania"
+            value={metrics?.tasks?.created ?? "—"}
+            hint="Łącznie utworzonych"
+          />
+          <StatCard
+            label="Skuteczność"
+            value={successRate !== null ? `${successRate}%` : "—"}
+            hint="Aktualna skuteczność"
+            accent="green"
+          />
+          <StatCard
+            label="Uptime"
+            value={
+              metrics?.uptime_seconds !== undefined
+                ? formatUptime(metrics.uptime_seconds)
+                : "—"
+            }
+            hint="Od startu backendu"
+          />
+          <StatCard
+            label="Kolejka"
+            value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
+            hint="Aktywne / limit"
+            accent="blue"
+          />
+        </div>
+      </Panel>
 
       <Panel
         title="Zarządzanie kolejką"
         description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
+        className="queue-panel"
       >
-        <div className="grid gap-3 sm:grid-cols-3">
-          <StatCard
-            label="Aktywne"
-            value={queue?.active ?? "—"}
-            hint="Zadania w toku"
-            accent="violet"
+        {queue ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatCard
+                label="Aktywne"
+                value={queue.active ?? "—"}
+                hint="Zadania w toku"
+                accent="violet"
+              />
+              <StatCard
+                label="Oczekujące"
+                value={queue.pending ?? "—"}
+                hint="Czekają na wykonanie"
+                accent="indigo"
+              />
+              <StatCard
+                label="Limit"
+                value={queue.limit ?? "∞"}
+                hint="Maksymalna pojemność"
+                accent="blue"
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={handleToggleQueue}
+                disabled={queueAction === "pause" || queueAction === "resume"}
+              >
+                {queue.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => executeQueueMutation("purge")}
+                disabled={queueAction === "purge"}
+              >
+                Wyczyść kolejkę
+              </Button>
+              <Button
+                variant="danger"
+                size="xs"
+                onClick={() => executeQueueMutation("emergency")}
+                disabled={queueAction === "emergency"}
+              >
+                Awaryjne zatrzymanie
+              </Button>
+            </div>
+            {queueActionMessage && (
+              <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
+            )}
+          </>
+        ) : (
+          <EmptyState
+            icon={<Package className="h-4 w-4" />}
+            title="Kolejka offline"
+            description="Brak danych `/api/v1/queue/status` – sprawdź backend lub użyj Quick Actions."
           />
-          <StatCard
-            label="Oczekujące"
-            value={queue?.pending ?? "—"}
-            hint="Czekają na wykonanie"
-            accent="indigo"
-          />
-          <StatCard
-            label="Limit"
-            value={queue?.limit ?? "∞"}
-            hint="Maksymalna pojemność"
-            accent="blue"
-          />
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={handleToggleQueue}
-            disabled={queueAction === "pause" || queueAction === "resume"}
-          >
-            {queue?.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
-          </Button>
-          <Button
-            variant="outline"
-            size="xs"
-            onClick={() => executeQueueMutation("purge")}
-            disabled={queueAction === "purge"}
-          >
-            Wyczyść kolejkę
-          </Button>
-          <Button
-            variant="danger"
-            size="xs"
-            onClick={() => executeQueueMutation("emergency")}
-            disabled={queueAction === "emergency"}
-          >
-            Awaryjne zatrzymanie
-          </Button>
-        </div>
-        {queueActionMessage && (
-          <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
         )}
       </Panel>
 

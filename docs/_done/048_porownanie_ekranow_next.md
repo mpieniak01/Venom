@@ -9,14 +9,13 @@
 
 ## Inspector / Trace Intelligence
 - ✅ **Źródło danych diagramu**: front korzysta teraz z `/api/v1/flow/{id}` (tak jak legacy) i renderuje gotowy Mermaid sequence diagram z dedykowanym theme/fallback. Do dopracowania pozostają akcenty decision gates i dodatkowe markery.
-- **Manualne odświeżanie + loading**: `inspector.html` ma przycisk „🔄” i widok ładowania w liście (`web/templates/inspector.html:33-101`), a `inspector.js` ustawia `loading` flagę podczas fetchowania trace’ów (`inspector.js:60-110`). Obecna wersja bazuje wyłącznie na polllingu `useHistory` i nie pokazuje spinnera ani przycisku „Odśwież” — warto przywrócić opcję ręcznego odświeżenia z widocznym stanem ładowania, aby operator miał kontrolę.
-- **Panel szczegółów kroków**: stary `details panel` pokazywał JSON `selectedStep` w `pre` i zachęcał do klikania elementów diagramu (`web/templates/inspector.html:200-250`). W Next pod nagłówkiem „Telemetria requestu” opisuje się jeden krok, ale nie ma osadzonego JSON-a. Warto dodać dodatkowy blok z pełnym JSON/konsolą, żeby nie tracić szczegółów (np. `historyDetail.steps` w formacie `pre`).
+- 🔁 **Manualne odświeżanie i panel JSON**: brakujące elementy (przycisk „Odśwież” ze spinnerem oraz blok `pre` z pełnym JSON-em kroku) zostały przeniesione do `docs/_to_do/051_backlog_niedobitki.md` (zadanie 051) jako follow-up.
 
 ## Strategy / War Room
-- **Potwierdzenie akcji „Kampania”**: `strategy.js` pyta o confirm przed wysłaniem `/api/campaign/start` (`web/static/js/strategy.js:170-185`). W `web-next/app/strategy/page.tsx` `handleStartCampaign` wywołuje endpoint bez potwierdzenia – należy dodać modal/confirm, aby nie uruchamiać kampanii przypadkowo tak jak w poprzednim kokpicie.
+- ✅ **Potwierdzenie akcji „Kampania”**: `handleStartCampaign` pyta teraz o potwierdzenie tak jak legacy.
 - ✅ **Toast/alerty dla akcji**: wpięto globalne powiadomienia dla akcji Roadmapy/Kampanii/Statusu – feedback identyczny jak w legacy.
 - ✅ **Szybki widok milestone/task summary**: akordeony pokazują teraz status emoji i completed/total (dane z `/api/v1/roadmap`).
-- ⏳ **Widok KPI / timeline**: należy zasilić puste sekcje danymi (`/api/v1/tasks`, `/api/v1/history`) – do zaplanowania.
+- 🔁 **Widok KPI / timeline**: wypełnienie sekcji danymi z `/api/v1/tasks` / `/api/v1/history` jest śledzone w `docs/_to_do/051_backlog_niedobitki.md` (zadanie 051).
 
 ## Uwagi końcowe
 - Można rozszerzyć dokumentację (np. nowy checkpoint w `docs/_to_do`) o follow-up, gdy powyższe moduły zostaną odświeżone i przetestowane (np. przywrócenie spinnerów, testy Playwright, walidacja `buildMermaid`).

@@ -51,6 +51,7 @@ export interface HistoryRequest {
   request_id: string;
   prompt: string;
   status: TaskStatus;
+  model?: string;
   created_at: string;
   finished_at?: string | null;
   duration_seconds?: number | null;

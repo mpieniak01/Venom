@@ -83,16 +83,22 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
 async function triggerFetch<T>(entry: PollingEntry<T>, key: string) {
   if (entry.fetching) return;
   entry.fetching = true;
-  entry.state.loading = true;
+  entry.state = { ...entry.state, loading: true };
   notifyEntry(entry);
   try {
     const result = await entry.fetcher();
-    entry.state.data = result;
-    entry.state.error = null;
+    entry.state = {
+      data: result,
+      loading: false,
+      error: null,
+    };
   } catch (err) {
-    entry.state.error = defaultHandleError(err);
+    entry.state = {
+      ...entry.state,
+      loading: false,
+      error: defaultHandleError(err),
+    };
   } finally {
-    entry.state.loading = false;
     entry.fetching = false;
     notifyEntry(entry);
   }

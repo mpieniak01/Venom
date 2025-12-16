@@ -65,7 +65,7 @@ export default function BrainPage() {
       id: lesson.id ?? `${lesson.title ?? "lesson"}-${lesson.created_at ?? index}`,
       title: lesson.title ?? "Operacja grafu",
       summary: lesson.summary || "Brak dodatkowych informacji.",
-      timestamp: lesson.created_at || lesson.updated_at || null,
+      timestamp: lesson.created_at || null,
       tags: lesson.tags ?? [],
     }));
   }, [lessons?.lessons]);

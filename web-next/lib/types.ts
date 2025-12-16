@@ -8,6 +8,9 @@ export interface Task {
   result?: string | null;
   logs?: string[];
   context_history?: Record<string, unknown>;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  llm_endpoint?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -52,6 +55,9 @@ export interface HistoryRequest {
   prompt: string;
   status: TaskStatus;
   model?: string;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  llm_endpoint?: string | null;
   created_at: string;
   finished_at?: string | null;
   duration_seconds?: number | null;
@@ -125,6 +131,27 @@ export interface ModelsResponse {
   success?: boolean;
   models: ModelInfo[];
   count: number;
+  active?: ActiveModelRuntime;
+}
+
+export interface ActiveModelRuntime {
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  endpoint_host?: string | null;
+  endpoint_port?: number | null;
+  service_type?: string;
+  mode?: string;
+  label?: string;
+  configured_models?: {
+    local?: string | null;
+    hybrid_local?: string | null;
+    cloud?: string | null;
+  };
+  status?: string;
+  last_success_at?: string;
+  last_error_at?: string;
+  error?: string;
 }
 
 export interface ModelsUsage {

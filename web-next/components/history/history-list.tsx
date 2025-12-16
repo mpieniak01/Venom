@@ -85,20 +85,23 @@ export function HistoryList({
                   ? "border-emerald-400/60 shadow-[0_0_20px_rgba(0,255,157,0.15)]"
                   : "border-white/5",
               )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">
-                    {formatRelativeTime(item.created_at)}
-                  </p>
-                  <p className="mt-1 font-mono text-sm text-white">
-                    #{item.request_id.slice(0, 10)}
-                  </p>
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">
+                      {formatRelativeTime(item.created_at)}
+                    </p>
+                    <p className="mt-1 font-mono text-sm text-white">
+                      #{item.request_id.slice(0, 10)}
+                    </p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                      {formatHistoryModel(item)}
+                    </p>
+                  </div>
+                  <Badge tone={historyStatusTone(item.status)}>
+                    {item.status ?? "UNKNOWN"}
+                  </Badge>
                 </div>
-                <Badge tone={historyStatusTone(item.status)}>
-                  {item.status ?? "UNKNOWN"}
-                </Badge>
-              </div>
               <p className="mt-2 line-clamp-2 text-sm text-zinc-300">
                 {item.prompt?.trim() ? item.prompt : "Brak promptu."}
               </p>
@@ -126,4 +129,13 @@ function historyStatusTone(status?: string | null) {
   if (normalized === "FAILED") return "danger" as const;
   if (normalized === "PROCESSING") return "warning" as const;
   return "neutral" as const;
+}
+
+function formatHistoryModel(entry: HistoryRequest): string {
+  const model = entry.llm_model ?? entry.model ?? "LLM";
+  const provider = entry.llm_provider ?? "local";
+  if (entry.llm_endpoint) {
+    return `${model} • ${provider} @ ${entry.llm_endpoint}`;
+  }
+  return `${model} • ${provider}`;
 }

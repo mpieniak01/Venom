@@ -245,7 +245,7 @@ async def test_consolidate_integration_with_real_logs(consolidator, mock_kernel)
     mock_response = MagicMock()
     mock_response.__str__ = (
         lambda self: """PODSUMOWANIE:
-Dzisiaj użytkownik pracował nad refaktoryzacją kodu. Stworzono nowy plik utils.py 
+Dzisiaj użytkownik pracował nad refaktoryzacją kodu. Stworzono nowy plik utils.py
 z funkcjami pomocniczymi i zrefaktoryzowano main.py. Wszystkie testy przeszły pomyślnie.
 
 LEKCJE:

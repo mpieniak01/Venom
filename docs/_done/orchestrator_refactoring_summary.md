@@ -1,7 +1,7 @@
 # 🛠️ Refaktoryzacja Orchestratora - Podsumowanie
 
-**Data:** 2025-12-11  
-**Status:** ✅ Zakończone  
+**Data:** 2025-12-11
+**Status:** ✅ Zakończone
 **Redukcja kodu:** 732 linie (38.8%)
 
 ---
@@ -73,7 +73,7 @@ Orchestrator został odchudzony poprzez:
    # Przed:
    async def execute_campaign_mode(self, goal_store, max_iterations):
        # 229 linii logiki...
-   
+
    # Po:
    async def execute_campaign_mode(self, goal_store, max_iterations):
        if self._campaign_flow is None:
@@ -87,7 +87,7 @@ Orchestrator został odchudzony poprzez:
    async def pause_queue(self):
        self.is_paused = True
        # 15 linii logiki...
-   
+
    # Po:
    async def pause_queue(self):
        return await self.queue_manager.pause()

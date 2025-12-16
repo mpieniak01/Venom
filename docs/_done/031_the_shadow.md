@@ -133,4 +133,3 @@ Shadow Agent używa prostych heurystyk + LLM:
 - `tests/test_desktop_sensor.py` (NOWY)
 - `tests/test_shadow_agent.py` (NOWY)
 - `tests/test_notifier.py` (NOWY)
-

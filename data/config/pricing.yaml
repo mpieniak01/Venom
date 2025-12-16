@@ -7,42 +7,42 @@ models:
   local:
     input_cost_per_1k: 0.0
     output_cost_per_1k: 0.0
-  
+
   # OpenAI Models
   gpt-4o-mini:
     input_cost_per_1k: 0.00015
     output_cost_per_1k: 0.0006
-  
+
   gpt-4o:
     input_cost_per_1k: 0.005
     output_cost_per_1k: 0.015
-  
+
   gpt-3.5-turbo:
     input_cost_per_1k: 0.0005
     output_cost_per_1k: 0.0015
-  
+
   gpt-4-turbo:
     input_cost_per_1k: 0.01
     output_cost_per_1k: 0.03
-  
+
   # Google Gemini Models
   gemini-1.5-flash:
     input_cost_per_1k: 0.00001
     output_cost_per_1k: 0.00003
-  
+
   gemini-1.5-pro:
     input_cost_per_1k: 0.00125
     output_cost_per_1k: 0.005
-  
+
   gemini-pro:
     input_cost_per_1k: 0.0005
     output_cost_per_1k: 0.0015
-  
+
   # Claude Models
   claude-opus:
     input_cost_per_1k: 0.015
     output_cost_per_1k: 0.075
-  
+
   claude-sonnet:
     input_cost_per_1k: 0.003
     output_cost_per_1k: 0.015
@@ -52,7 +52,7 @@ tools:
   # Wyszukiwarki
   duckduckgo: 0.0          # Darmowe
   tavily: 0.01             # Per request (około $0.01 za zapytanie)
-  
+
   # Inne narzędzia (placeholder dla przyszłych rozszerzeń)
   github_api: 0.0          # Darmowe (w limitach rate limit)
   huggingface_api: 0.0     # Darmowe dla podstawowych operacji

@@ -1,12 +1,15 @@
 """Moduł: routes/models - Endpointy API dla zarządzania modelami AI."""
 
 import re
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, field_validator
 
+from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -70,10 +73,35 @@ async def list_models():
 
     try:
         models = await _model_manager.list_local_models()
+        runtime_info = get_active_llm_runtime()
+        runtime_payload = runtime_info.to_payload()
+        runtime_payload["status"] = "ready"
+        runtime_payload["configured_models"] = {
+            "local": SETTINGS.LLM_MODEL_NAME,
+            "hybrid_local": getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
+            "cloud": getattr(SETTINGS, "HYBRID_CLOUD_MODEL", None),
+        }
+
+        active_names = {
+            SETTINGS.LLM_MODEL_NAME,
+            getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
+        }
+        active_names = {name for name in active_names if name}  # usuń None
+        active_names.update({Path(name).name for name in list(active_names)})
+
+        for model in models:
+            candidate_names = {model.get("name")}
+            path_value = model.get("path")
+            if path_value:
+                candidate_names.add(Path(path_value).name)
+            if any(name in active_names for name in candidate_names if name):
+                model["active"] = True
+                model.setdefault("source", runtime_info.provider)
         return {
             "success": True,
             "models": models,
             "count": len(models),
+            "active": runtime_payload,
         }
     except Exception as e:
         logger.error(f"Błąd podczas listowania modeli: {e}")

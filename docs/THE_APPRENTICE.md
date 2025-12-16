@@ -188,17 +188,17 @@ await apprentice.process("Generuj skill bank_login_skill")
 async def bank_login_skill(ghost_agent: GhostAgent, **kwargs):
     username = kwargs.get("username", "user@example.com")
     password = kwargs.get("password", "")
-    
+
     await ghost_agent.vision_click(description="browser icon")
     await ghost_agent.input_skill.keyboard_type(text="https://bank.example.com")
     await ghost_agent.input_skill.keyboard_hotkey(["enter"])
-    
+
     await ghost_agent.vision_click(description="username field")
     await ghost_agent.input_skill.keyboard_type(text=username)
-    
+
     await ghost_agent.vision_click(description="password field")
     await ghost_agent.input_skill.keyboard_type(text=password)
-    
+
     await ghost_agent.vision_click(description="login button")
 """
 ```
@@ -428,7 +428,7 @@ results = store.search_workflows(query)
 ### Problem: Wygenerowany kod nie działa
 
 **Przyczyna**: Nieodpowiednie opisy elementów
-**Rozwiązanie**: 
+**Rozwiązanie**:
 1. Sprawdź logi analizy
 2. Ręcznie edytuj workflow w WorkflowStore
 3. Dodaj bardziej szczegółowe opisy elementów

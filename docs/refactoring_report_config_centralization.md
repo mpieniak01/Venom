@@ -1,7 +1,7 @@
 # Raport Refaktoryzacji: Centralizacja Konfiguracji
 
-**Data:** 2025-12-11  
-**Zadanie:** Hierarchiczna Refaktoryzacja Konfiguracji - Usunięcie hardcoded values  
+**Data:** 2025-12-11
+**Zadanie:** Hierarchiczna Refaktoryzacja Konfiguracji - Usunięcie hardcoded values
 **Status:** ✅ Zakończone (Faza główna)
 
 ## 1. Podsumowanie
@@ -305,23 +305,23 @@ Dodano 52 nowe zmienne konfiguracyjne w sekcjach:
 ## 4. Wpływ na System
 
 ### 4.1 Bezpieczeństwo
-✅ Wszystkie wrażliwe wartości (endpoints, porty, nazwy modeli) są teraz konfigurowalne  
-✅ Łatwiejsza zmiana konfiguracji bez modyfikacji kodu źródłowego  
-✅ Możliwość różnych konfiguracji dla dev/staging/production  
+✅ Wszystkie wrażliwe wartości (endpoints, porty, nazwy modeli) są teraz konfigurowalne
+✅ Łatwiejsza zmiana konfiguracji bez modyfikacji kodu źródłowego
+✅ Możliwość różnych konfiguracji dla dev/staging/production
 
 ### 4.2 Utrzymywalność
-✅ Centralna lokalizacja wszystkich wartości konfiguracyjnych  
-✅ Łatwiejsza aktualizacja nazw modeli (np. przy nowych wersjach GPT)  
-✅ Dokumentacja zmiennych w .env.example  
+✅ Centralna lokalizacja wszystkich wartości konfiguracyjnych
+✅ Łatwiejsza aktualizacja nazw modeli (np. przy nowych wersjach GPT)
+✅ Dokumentacja zmiennych w .env.example
 
 ### 4.3 Testowalność
-✅ Możliwość łatwego mockowania konfiguracji w testach  
-✅ Możliwość testowania z różnymi wartościami bez zmian kodu  
+✅ Możliwość łatwego mockowania konfiguracji w testach
+✅ Możliwość testowania z różnymi wartościami bez zmian kodu
 
 ### 4.4 Backward Compatibility
-✅ Wszystkie zmienne mają wartości domyślne zgodne z poprzednimi hardcoded values  
-✅ Istniejące wywołania funkcji z parametrami nadal działają (optional parameters)  
-✅ System działa bez zmian w .env (używa domyślnych wartości)  
+✅ Wszystkie zmienne mają wartości domyślne zgodne z poprzednimi hardcoded values
+✅ Istniejące wywołania funkcji z parametrami nadal działają (optional parameters)
+✅ System działa bez zmian w .env (używa domyślnych wartości)
 
 ## 5. Kryteria Akceptacyjne
 
@@ -361,5 +361,5 @@ Dodano 52 nowe zmienne konfiguracyjne w sekcjach:
 Refaktoryzacja została przeprowadzona zgodnie z wymaganiami. Wszystkie hardcoded values zostały przeniesione do centralnej konfiguracji, zachowując przy tym backward compatibility i nie wymagając zmian w testach. System jest teraz bardziej konfigurowalny, bezpieczniejszy i łatwiejszy w utrzymaniu.
 
 ---
-**Wykonane przez:** GitHub Copilot  
+**Wykonane przez:** GitHub Copilot
 **Data zakończenia:** 2025-12-11

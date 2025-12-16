@@ -1,8 +1,8 @@
 # Architectural Pivot: Dual-Mode Discovery (mDNS + Hive Registration)
 
-**Data:** 2025-12-09  
-**Context:** Odpowiedź na komentarz PR #6 od @mpieniak01  
-**Zmiana:** Rozszerzenie architektury o Client-Side Registration Pattern  
+**Data:** 2025-12-09
+**Context:** Odpowiedź na komentarz PR #6 od @mpieniak01
+**Zmiana:** Rozszerzenie architektury o Client-Side Registration Pattern
 
 ---
 
@@ -22,13 +22,13 @@ Agent może znajdować się za NAT/Firewallem, a centralny "Ul" (Hive Server) mo
 ## Rozwiązanie: Dual-Mode Discovery
 
 ### 1. mDNS (Zeroconf) - ZACHOWANE
-**Cel:** Lokalne wykrywanie przez administratora  
-**Użycie:** `ping venom.local` w sieci LAN  
+**Cel:** Lokalne wykrywanie przez administratora
+**Użycie:** `ping venom.local` w sieci LAN
 **Status:** Pomocniczy, nie główny kanał komunikacji
 
 ### 2. Hive Registration - NOWE
-**Cel:** Aktywna rejestracja w zdalnym Ulu  
-**Model:** Client-Side Registration (Agent dzwoni do Ula)  
+**Cel:** Aktywna rejestracja w zdalnym Ulu
+**Model:** Client-Side Registration (Agent dzwoni do Ula)
 **Protokół:** HTTP POST do `{HIVE_URL}/api/agents/register`
 
 ---
@@ -55,13 +55,13 @@ self.hive_registered: bool     # Status rejestracji
 #### Nowa metoda: `register_in_hive()`
 ```python
 async def register_in_hive(
-    self, 
-    hive_url: Optional[str] = None, 
+    self,
+    hive_url: Optional[str] = None,
     metadata: Optional[dict] = None
 ) -> dict[str, Any]:
     """
     Rejestruje agenta w centralnym Ulu (Hive Server).
-    
+
     Agent inicjuje połączenie wychodzące do Ula,
     dzięki czemu działa za NAT/Firewallem.
     """

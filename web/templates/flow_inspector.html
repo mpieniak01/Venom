@@ -338,7 +338,7 @@
 <script>
     // Konfiguracja
     const AUTO_REFRESH_INTERVAL_MS = 3000; // Co 3 sekundy dla zadań w trakcie
-    
+
     // Helper function do escapowania HTML
     function escapeHtml(text) {
         if (!text) return '';
@@ -346,9 +346,9 @@
         div.textContent = text;
         return div.innerHTML;
     }
-    
+
     // Inicjalizacja Mermaid
-    mermaid.initialize({ 
+    mermaid.initialize({
         startOnLoad: false,
         theme: 'default',
         securityLevel: 'strict',  // Bezpieczniejszy tryb dla production
@@ -370,7 +370,7 @@
         try {
             const response = await fetch('/api/v1/history/requests?limit=50');
             const tasks = await response.json();
-            
+
             const container = document.getElementById('taskListContainer');
             if (tasks.length === 0) {
                 container.innerHTML = `
@@ -412,7 +412,7 @@
     // Funkcja do wyboru zadania
     function selectTask(taskId) {
         selectedTaskId = taskId;
-        
+
         // Oznacz wybraną kartę
         document.querySelectorAll('.task-item').forEach(item => {
             item.classList.remove('selected');
@@ -421,7 +421,7 @@
         if (taskElement) {
             taskElement.classList.add('selected');
         }
-        
+
         // Załaduj dane przepływu
         loadFlowData(taskId);
     }
@@ -431,16 +431,16 @@
         try {
             document.getElementById('flowVisualization').style.display = 'block';
             document.getElementById('flowDetails').style.display = 'block';
-            
+
             const response = await fetch(`/api/v1/flow/${taskId}`);
             const flowData = await response.json();
-            
+
             // Renderuj diagram Mermaid
             renderMermaidDiagram(flowData.mermaid_diagram);
-            
+
             // Renderuj szczegóły kroków
             renderFlowSteps(flowData.steps);
-            
+
             // Ustaw auto-refresh dla zadań w trakcie
             if (flowData.status === 'PROCESSING') {
                 startAutoRefresh(taskId);
@@ -461,7 +461,7 @@
     async function renderMermaidDiagram(mermaidCode) {
         const container = document.getElementById('mermaidContainer');
         container.innerHTML = `<div class="mermaid">${mermaidCode}</div>`;
-        
+
         try {
             await mermaid.run({
                 querySelector: '#mermaidContainer .mermaid'
@@ -480,7 +480,7 @@
     // Funkcja do renderowania kroków przepływu
     function renderFlowSteps(steps) {
         const container = document.getElementById('flowStepsList');
-        
+
         container.innerHTML = steps.map(step => `
             <li class="flow-step ${step.is_decision_gate ? 'decision-gate' : ''} ${step.status === 'error' ? 'error' : ''}">
                 <div class="flow-step-header">

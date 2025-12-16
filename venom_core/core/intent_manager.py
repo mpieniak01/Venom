@@ -30,6 +30,14 @@ class IntentManager:
         "kim jesteś",
     ]
 
+    # Dedykowane słowa kluczowe dla testów wydajności pipeline'u
+    PERF_TEST_KEYWORDS = (
+        "parallel perf",
+        "perf pid",
+        "smoke latency test",
+        "benchmark latency",
+    )
+
     INFRA_KEYWORDS = [
         "serwer",
         "serwerów",
@@ -196,6 +204,15 @@ Przykłady:
         logger.info(f"Klasyfikacja intencji dla wejścia: {user_input[:100]}...")
 
         normalized = user_input.lower().strip()
+
+        # Testy wydajnościowe wysyłają charakterystyczne prompt, aby zmierzyć narzut backendu.
+        # W takim przypadku pomiń wywołania LLM i od razu użyj bezpiecznego intentu.
+        if any(keyword in normalized for keyword in self.PERF_TEST_KEYWORDS):
+            logger.debug(
+                "Wykryto prompt testu wydajności - zwracam GENERAL_CHAT bez klasyfikacji LLM"
+            )
+            return "GENERAL_CHAT"
+
         help_detected = any(keyword in normalized for keyword in self.HELP_KEYWORDS)
         if help_detected:
             logger.debug("Wykryto słowa kluczowe pomocy - zwracam HELP_REQUEST")

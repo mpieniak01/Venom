@@ -18,13 +18,13 @@ function brainControls() {
             functions: true,
             classes: true
         },
-        
+
         applyFilters() {
             if (!cy) return;
-            
+
             // Pokaż wszystkie elementy
             cy.elements().style('display', 'element');
-            
+
             // Ukryj te, które nie są zaznaczone
             if (!this.filters.agents) {
                 cy.nodes('[type="agent"]').style('display', 'none');
@@ -41,12 +41,12 @@ function brainControls() {
             if (!this.filters.classes) {
                 cy.nodes('[type="class"]').style('display', 'none');
             }
-            
+
             // Ukryj krawędzie, których źródło lub cel jest ukryte (batchowo, wydajnie)
             const hiddenNodeIds = new Set(
                 cy.nodes().filter(n => n.style('display') === 'none').map(n => n.id())
             );
-            const edgesToHide = cy.edges().filter(edge => 
+            const edgesToHide = cy.edges().filter(edge =>
                 hiddenNodeIds.has(edge.source().id()) || hiddenNodeIds.has(edge.target().id())
             );
             edgesToHide.style('display', 'none');
@@ -57,27 +57,27 @@ function brainControls() {
 // Funkcja inicjalizująca graf
 async function initGraph() {
     showLoading();
-    
+
     try {
         // Pobierz dane grafu z API
         const response = await fetch('/api/v1/knowledge/graph');
         const data = await response.json();
-        
+
         if (data.status !== 'success') {
             throw new Error('Błąd podczas ładowania danych grafu');
         }
-        
+
         graphData = data;
-        
+
         // Aktualizuj statystyki w Alpine
         updateStats(data.stats);
-        
+
         // Inicjalizuj Cytoscape
         cy = cytoscape({
             container: document.getElementById('cy'),
-            
+
             elements: data.elements,
-            
+
             style: [
                 // Styl węzłów - bazowy
                 {
@@ -98,7 +98,7 @@ async function initGraph() {
                         'background-color': '#1e293b'
                     }
                 },
-                
+
                 // Agenci - diament, fioletowy
                 {
                     selector: 'node[type="agent"]',
@@ -110,7 +110,7 @@ async function initGraph() {
                         'height': 80
                     }
                 },
-                
+
                 // Pliki - kwadrat, niebieski
                 {
                     selector: 'node[type="file"]',
@@ -122,7 +122,7 @@ async function initGraph() {
                         'height': 60
                     }
                 },
-                
+
                 // Lekcje/Pamięć - koło, zielony
                 {
                     selector: 'node[type="memory"]',
@@ -134,7 +134,7 @@ async function initGraph() {
                         'height': 70
                     }
                 },
-                
+
                 // Funkcje/Metody - okrąg, pomarańczowy
                 {
                     selector: 'node[type="function"]',
@@ -146,7 +146,7 @@ async function initGraph() {
                         'height': 55
                     }
                 },
-                
+
                 // Klasy - sześciokąt, różowy
                 {
                     selector: 'node[type="class"]',
@@ -158,7 +158,7 @@ async function initGraph() {
                         'height': 65
                     }
                 },
-                
+
                 // Styl krawędzi
                 {
                     selector: 'edge',
@@ -172,7 +172,7 @@ async function initGraph() {
                         'opacity': 0.6
                     }
                 },
-                
+
                 // Krawędzie różnych typów
                 {
                     selector: 'edge[type="DELEGATES"]',
@@ -202,7 +202,7 @@ async function initGraph() {
                         'target-arrow-color': '#f59e0b'
                     }
                 },
-                
+
                 // Węzeł wybrany (highlighted)
                 {
                     selector: 'node.highlighted',
@@ -212,7 +212,7 @@ async function initGraph() {
                         'z-index': 9999
                     }
                 },
-                
+
                 // Sąsiedzi podświetlonego węzła
                 {
                     selector: 'node.neighbor',
@@ -221,7 +221,7 @@ async function initGraph() {
                         'border-color': '#fbbf24'
                     }
                 },
-                
+
                 // Krawędzie podświetlone
                 {
                     selector: 'edge.highlighted',
@@ -231,7 +231,7 @@ async function initGraph() {
                         'z-index': 9999
                     }
                 },
-                
+
                 // Przygaszone elementy
                 {
                     selector: 'node.faded',
@@ -246,7 +246,7 @@ async function initGraph() {
                     }
                 }
             ],
-            
+
             layout: {
                 name: 'cose', // Compound Spring Embedder - fizyka!
                 animate: true,
@@ -262,19 +262,19 @@ async function initGraph() {
                 coolingFactor: 0.95,
                 minTemp: 1.0
             },
-            
+
             // Interakcje
             minZoom: 0.3,
             maxZoom: 3,
             wheelSensitivity: 0.2
         });
-        
+
         // Event handlers
         setupEventHandlers();
-        
+
         updateStatus('Gotowy');
         hideLoading();
-        
+
     } catch (error) {
         console.error('Błąd podczas inicjalizacji grafu:', error);
         updateStatus('Błąd');
@@ -291,7 +291,7 @@ function setupEventHandlers() {
         showNodeDetails(node);
         highlightNode(node);
     });
-    
+
     // Kliknięcie w tło - schowaj szczegóły i usuń podświetlenia
     cy.on('tap', function(evt) {
         if (evt.target === cy) {
@@ -299,7 +299,7 @@ function setupEventHandlers() {
             clearHighlights();
         }
     });
-    
+
     // Najazd na węzeł - podświetl
     cy.on('mouseover', 'node', function(evt) {
         const node = evt.target;
@@ -307,7 +307,7 @@ function setupEventHandlers() {
             highlightNode(node, true);
         }
     });
-    
+
     // Zjazd z węzła - usuń podświetlenie (jeśli nie jest wybrany)
     cy.on('mouseout', 'node', function(evt) {
         const node = evt.target;
@@ -323,13 +323,13 @@ function highlightNode(node, isHover = false) {
     if (!isHover) {
         clearHighlights();
     }
-    
+
     // Przygaś wszystkie elementy
     cy.elements().addClass('faded');
-    
+
     // Podświetl wybrany węzeł
     node.removeClass('faded').addClass(isHover ? 'neighbor' : 'highlighted');
-    
+
     // Podświetl sąsiadów (połączone węzły)
     const neighbors = node.neighborhood();
     neighbors.nodes().removeClass('faded').addClass('neighbor');
@@ -348,7 +348,7 @@ function showNodeDetails(node) {
     const title = document.getElementById('nodeDetailsLabel');
     const icon = document.getElementById('nodeDetailsIcon');
     const content = document.getElementById('nodeDetailsContent');
-    
+
     // Ikona zależna od typu
     const icons = {
         'agent': '🔷',
@@ -359,7 +359,7 @@ function showNodeDetails(node) {
     };
     icon.textContent = icons[data.type] || '📦';
     title.textContent = data.label;
-    
+
     // Buduj zawartość
     // Escape HTML characters
     const escapeHtml = (text) => {
@@ -367,19 +367,19 @@ function showNodeDetails(node) {
         div.textContent = text;
         return div.innerHTML;
     };
-    
+
     let html = '';
-    
+
     html += `<div class="detail-row">
         <div class="detail-label">Typ</div>
         <div class="detail-value"><code>${escapeHtml(data.type)}</code></div>
     </div>`;
-    
+
     html += `<div class="detail-row">
         <div class="detail-label">ID</div>
         <div class="detail-value"><code>${escapeHtml(data.id)}</code></div>
     </div>`;
-    
+
     // Dodatkowe właściwości
     if (data.properties) {
         for (const [key, value] of Object.entries(data.properties)) {
@@ -393,14 +393,14 @@ function showNodeDetails(node) {
             }
         }
     }
-    
+
     // Pokaż połączenia
     const edges = node.connectedEdges();
     html += `<div class="detail-row">
         <div class="detail-label">Połączenia</div>
         <div class="detail-value">${edges.length}</div>
     </div>`;
-    
+
     content.innerHTML = html;
     panel.classList.add('visible');
 }

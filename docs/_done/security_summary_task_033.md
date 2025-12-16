@@ -109,7 +109,7 @@ def _is_likely_password(self, text: str) -> bool:
 
 ### 1. Screenshot Privacy
 **Risk**: Screenshots may capture sensitive information
-**Mitigation**: 
+**Mitigation**:
 - Local storage only (workspace/demonstrations/)
 - User can manually delete sessions after generating skill
 - Future: Implement automatic PII detection and masking

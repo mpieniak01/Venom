@@ -42,7 +42,7 @@ import {
   emergencyStop,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
-import { useTaskStream } from "@/hooks/use-task-stream";
+import { TaskStreamEvent, useTaskStream } from "@/hooks/use-task-stream";
 import type { Chart } from "chart.js/auto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -82,6 +82,15 @@ const TELEMETRY_REFRESH_EVENTS = new Set([
   "EMERGENCY_STOP",
 ]);
 
+type LlmAlertState = {
+  provider?: string | null;
+  model?: string | null;
+  endpoint?: string | null;
+  error?: string | null;
+  taskId?: string;
+  timestamp?: string | null;
+};
+
 type TelemetryEventPayload = {
   type?: string;
   data?: Record<string, unknown>;
@@ -103,6 +112,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [llmAlert, setLlmAlert] = useState<LlmAlertState | null>(null);
   const [modelName, setModelName] = useState("");
   const [historyDetail, setHistoryDetail] = useState<HistoryRequestDetail | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -213,14 +223,39 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     if (selectedRequestId) ids.add(selectedRequestId);
     return Array.from(ids);
   }, [optimisticRequests, history, selectedRequestId]);
+  const handleTaskEvent = useCallback(
+    (event: TaskStreamEvent) => {
+      if (event.llmStatus === "error" || event.llmRuntimeError) {
+        setLlmAlert({
+          provider: event.llmProvider,
+          model: event.llmModel,
+          endpoint: event.llmEndpoint,
+          error:
+            event.llmRuntimeError ||
+            `Błąd podczas wykonywania zadania ${event.taskId}`,
+          taskId: event.taskId,
+          timestamp: event.timestamp ?? new Date().toISOString(),
+        });
+      } else if (event.llmStatus === "ready") {
+        setLlmAlert((current) =>
+          current && (!current.taskId || current.taskId === event.taskId)
+            ? null
+            : current,
+        );
+      }
+    },
+    [],
+  );
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
+    onEvent: handleTaskEvent,
   });
   const { data: liveModelsUsageResponse, refresh: refreshModelsUsage } = useModelsUsage(10000);
   const modelsUsageResponse =
     liveModelsUsageResponse ?? initialData.modelsUsage ?? null;
   const { connected, entries } = useTelemetryFeed();
   const usageMetrics = modelsUsageResponse?.usage ?? null;
+  const activeRuntime = models?.active;
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -240,6 +275,19 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     });
     return bucket;
   }, [tasks]);
+  const selectedTaskRuntime = useMemo(() => {
+    const runtime = selectedTask?.context_history?.["llm_runtime"];
+    if (runtime && typeof runtime === "object") {
+      const ctx = runtime as Record<string, unknown>;
+      const statusValue = ctx["status"];
+      const errorValue = ctx["error"];
+      return {
+        status: typeof statusValue === "string" ? statusValue : null,
+        error: typeof errorValue === "string" ? errorValue : null,
+      };
+    }
+    return null;
+  }, [selectedTask]);
   const findTaskMatch = useCallback(
     (requestId?: string, prompt?: string | null) => {
       if (requestId) {
@@ -1148,11 +1196,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 </div>
                 <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
                   <textarea
-                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60"
+                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
                     placeholder="Opisz zadanie dla Venoma..."
                     value={taskContent}
                     onChange={(e) => setTaskContent(e.target.value)}
                     onKeyDown={handleTextareaKeyDown}
+                    data-testid="cockpit-prompt-input"
                   />
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-xs text-zinc-400">
@@ -1177,6 +1226,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         disabled={sending}
                         size="sm"
                         className="px-6"
+                        data-testid="cockpit-send-button"
                       >
                         {sending ? "Wysyłanie..." : "Wyślij"}
                       </Button>
@@ -1348,6 +1398,49 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           }
         >
           <div className="space-y-4">
+            <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-black/50 to-transparent p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-200/80">
+                    Aktywny runtime
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {activeRuntime?.label ?? "Brak aktywnego modelu"}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {activeRuntime?.provider
+                      ? `Serwer: ${activeRuntime.provider}`
+                      : "Ustaw LLM_MODEL_NAME i endpoint w .env"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
+                  </p>
+                </div>
+                <Badge tone={llmAlert ? "danger" : "success"}>
+                  {llmAlert ? "Błąd" : "Online"}
+                </Badge>
+              </div>
+              {llmAlert ? (
+                <div className="mt-3 space-y-2 rounded-2xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-100">
+                  <p>{llmAlert.error}</p>
+                  <p className="text-xs text-rose-200/80">
+                    {llmAlert.model ?? "?"} • {llmAlert.provider ?? "LLM"}
+                    {llmAlert.endpoint ? ` @ ${llmAlert.endpoint}` : ""}
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setLlmAlert(null)}
+                  >
+                    Ukryj alert
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-zinc-400">
+                  Monitoruję błędy SSE i raportuję źródło modelu przy każdej odpowiedzi.
+                </p>
+              )}
+            </div>
             <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Instalacja</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1936,6 +2029,30 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 <span>Start: {formatDateTime(historyDetail.created_at)}</span>
                 <span>Stop: {formatDateTime(historyDetail.finished_at)}</span>
                 <span>Czas: {formatDurationSeconds(historyDetail.duration_seconds)}</span>
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                      Źródło LLM
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-white">
+                      {historyDetail.llm_model ?? "Nieznany model"}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {historyDetail.llm_provider ?? "—"}
+                      {historyDetail.llm_endpoint ? ` @ ${historyDetail.llm_endpoint}` : ""}
+                    </p>
+                  </div>
+                  <Badge tone={selectedTaskRuntime?.status === "error" ? "danger" : "success"}>
+                    {selectedTaskRuntime?.status === "error" ? "Błąd" : "OK"}
+                  </Badge>
+                </div>
+                {selectedTaskRuntime?.error && (
+                  <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-2 text-xs text-rose-100">
+                    {selectedTaskRuntime.error}
+                  </p>
+                )}
               </div>
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">

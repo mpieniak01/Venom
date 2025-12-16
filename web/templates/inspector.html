@@ -290,7 +290,7 @@
             <h2>📋 Ślady</h2>
             <button class="refresh-btn" @click="loadTraces">🔄</button>
         </div>
-        
+
         <ul class="trace-list">
             <template x-if="loading">
                 <li class="loading">
@@ -298,15 +298,15 @@
                     <p>Ładowanie...</p>
                 </li>
             </template>
-            
+
             <template x-if="!loading && traces.length === 0">
                 <li class="empty-state">
                     <p>Brak śladów w historii</p>
                 </li>
             </template>
-            
+
             <template x-for="trace in traces" :key="trace.request_id">
-                <li 
+                <li
                     class="trace-item"
                     :class="['status-' + trace.status, currentTraceId === trace.request_id ? 'selected' : '']"
                     @click="selectTrace(trace.request_id)"
@@ -321,7 +321,7 @@
             </template>
         </ul>
     </div>
-    
+
     <!-- Main Content -->
     <div class="main-content">
         <!-- Diagram Panel -->
@@ -334,31 +334,31 @@
                     <button class="zoom-btn" @click="resetZoom">↺</button>
                 </div>
             </div>
-            
+
             <div class="diagram-container">
                 <template x-if="!currentTraceId">
                     <div class="empty-state">
                         <p>👈 Wybierz ślad z listy</p>
                     </div>
                 </template>
-                
+
                 <div id="mermaidSvgContainer"></div>
             </div>
         </div>
-        
+
         <!-- Details Panel -->
         <div class="details-panel">
             <div class="panel-header">
                 <h2>🔍 Szczegóły kroku</h2>
             </div>
-            
+
             <div class="details-content">
                 <template x-if="!selectedStep">
                     <div class="empty-state">
                         <p>👆 Kliknij element na diagramie</p>
                     </div>
                 </template>
-                
+
                 <template x-if="selectedStep">
                     <pre x-text="JSON.stringify(selectedStep, null, 2)"></pre>
                 </template>

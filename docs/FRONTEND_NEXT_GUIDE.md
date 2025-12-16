@@ -31,7 +31,7 @@ web-next/
 - Komponenty interaktywne (chat, belki, overlaye) deklarują `"use client"` i korzystają z hooków Reacta.
 - `components/layout/*` to mieszanka: np. `SystemStatusBar` jest klientowy (aktualizuje się w czasie rzeczywistym), natomiast sekcje Brain/Strategy pozostają serwerowe z lazy-hydrationem tylko tam, gdzie to konieczne.
 - Re-używamy stylów przez tokeny (`surface-card`, `glass-panel` itd.) w `globals.css`.
-- **Konwencje nazewnictwa typów:** wszystkie interfejsy/typy w `web-next/lib/types.ts` używają angielskich nazw (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`). Jeśli dokumentacja odnosi się do dawnych nazw polskich (np. „Lekcja”, „StatusSłużba”), należy traktować je wyłącznie jako opis legacy – w kodzie Nexta utrzymujemy nazewnictwo angielskie, aby uniknąć rozjazdów i duplikacji typów.
+- **Konwencje nazewnictwa:** wszystkie interfejsy/typy w `web-next/lib/types.ts` używają angielskich nazw (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`, `ModelsUsageResponse`). Nie dopisujemy równoległych aliasów PL ani skrótów w importach – zamiast `Lekcja` używamy `Lesson`, zamiast `StatusSłużba` → `ServiceStatus`. Translacje dla UI żyją w `lib/i18n`, ale kod/typy zachowują jednolity, angielski prefiks, żeby uniknąć dryfowania konwencji przy dodawaniu nowych modułów.
 
 ### 0.3 Skrypty NPM / workflow
 | Komenda                               | Cel                                                                                   |
@@ -49,6 +49,14 @@ web-next/
   - `NEXT_PUBLIC_WS_BASE` – WebSocket telemetry (`ws://localhost:8000/ws/events`)
   - `API_PROXY_TARGET` – bezpośredni URL backendu; Next buduje rewritera, więc w trybie dev nie trzeba modyfikować kodu.
 - `scripts/generate-meta.mjs` zapisuje `public/meta.json` z `version`, `commit`, `timestamp`. Dane konsumuje dolna belka statusu.
+
+### 0.5 Optymalizacje ładowania (zad. 054)
+- `lib/server-data.ts` wykonuje SSR-prefetch krytycznych endpointów (`/api/v1/metrics`, `/queue/status`, `/tasks`, `/models/usage`, `/metrics/tokens`, `/git/status`). Layout przekazuje je do `TopBar` (`StatusPills`) i `SystemStatusBar` jako `initialData`, dzięki czemu przy pierwszym renderze nie widać już pustych kresek.
+- `StatusPills` i dolna belka pracują w trybie „stale-while-revalidate”: pokazują dane z SSR, a hook `usePolling` dociąga aktualizację po montowaniu (spinnery pojawiają się dopiero jeśli nie mamy żadnego snapshotu).
+- `/strategy` posiada lokalny cache `sessionStorage` (`strategy-roadmap-cache`, `strategy-status-report`). Roadmapa jest prezentowana natychmiast po wejściu, a raport statusu pobiera się automatycznie w tle, jeśli poprzedni snapshot jest starszy niż 60 sekund. Cache nie blokuje ręcznego „Raport statusu” – kliknięcie wymusza nowe zapytanie.
+- `next.config.ts` ma włączone `experimental.optimizePackageImports` dla `lucide-react`, `framer-motion`, `chart.js`, `mermaid`, co obcina JS „first load” i przyśpiesza dynamiczne importy ikon/animacji.
+- Cockpit i Brain korzystają z serwerowych wrapperów (`app/page.tsx`, `app/brain/page.tsx`), które pobierają snapshot danych przez `fetchCockpitInitialData` / `fetchBrainInitialData`. Klientowe komponenty (`components/cockpit/cockpit-home.tsx`, `components/brain/brain-home.tsx`) łączą te snapshoty z hookami `usePolling`, więc KPI, lista modeli, lekcje i graf pokazują ostatni stan już po SSR i tylko dociągają aktualizacje po hydratacji.
+- Command Console (chat) ma optimistic UI: `optimisticRequests` renderują bąbelki użytkownika + placeholder odpowiedzi jeszcze przed zwrotką API, blokują otwieranie szczegółów do czasu zsynchronizowania z `useHistory`, a `ConversationBubble` pokazuje spinner oraz raportuje ostatni czas odpowiedzi w nagłówku.
 
 ## 1. Brain / Strategy – Źródła danych i hooki
 

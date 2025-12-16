@@ -64,9 +64,6 @@ async function measureLatency(page: Page, target: TargetConfig) {
     }
     throw error;
   }
-  if (latency === null) {
-    return;
-  }
 
   test.info().annotations.push({
     type: "latency",

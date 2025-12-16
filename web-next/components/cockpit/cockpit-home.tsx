@@ -1190,6 +1190,49 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             }
           >
             <div className="space-y-4">
+            <div className="rounded-3xl border border-emerald-400/15 bg-gradient-to-br from-emerald-500/10 via-black/40 to-transparent p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-200/70">
+                    Aktywny runtime
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {activeRuntime?.label ?? "Brak aktywnego modelu"}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {activeRuntime?.provider
+                      ? `Serwer: ${activeRuntime.provider}`
+                      : "Ustaw LLM_MODEL_NAME i endpoint w .env"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
+                  </p>
+                </div>
+                <Badge tone={llmAlert ? "danger" : "success"}>
+                  {llmAlert ? "Błąd" : "Online"}
+                </Badge>
+              </div>
+              {llmAlert ? (
+                <div className="mt-4 space-y-2 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                  <p>{llmAlert.error}</p>
+                  <p className="text-xs text-rose-200/80">
+                    {llmAlert.model ?? "?"} • {llmAlert.provider ?? "LLM"}
+                    {llmAlert.endpoint ? ` @ ${llmAlert.endpoint}` : ""}
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setLlmAlert(null)}
+                  >
+                    Ukryj alert
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-4 text-xs text-zinc-400">
+                  Monitoruję błędy SSE i raportuję źródło modelu przy każdej odpowiedzi.
+                </p>
+              )}
+            </div>
             <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
                 Instalacja

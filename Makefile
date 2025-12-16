@@ -26,7 +26,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test precommit install-hooks start start-dev start-prod stop restart status clean-ports
+.PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports
 
 lint:
 	pre-commit run --all-files
@@ -36,9 +36,6 @@ format:
 
 test:
 	pytest -q
-
-precommit:
-	pre-commit run --all-files
 
 install-hooks:
 	pre-commit install

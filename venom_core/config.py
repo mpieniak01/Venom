@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     WORKSPACE_ROOT: str = "./workspace"
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
-    SERVE_LEGACY_UI: bool = False  # Serwuj stare szablony FastAPI (Cockpit/Strategy)
+    SERVE_LEGACY_UI: bool = True  # Serwuj stare szablony FastAPI (Cockpit/Strategy)
 
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"

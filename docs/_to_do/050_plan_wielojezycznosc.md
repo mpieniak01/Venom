@@ -45,6 +45,9 @@
 - Strategia dla dokumentacji (`docs/`): na razie pozostaje po polsku, ale można rozważyć analogiczną strukturę MD dla EN/DE.
 - Automatyczne pobieranie języka z przeglądarki – planowo po wdrożeniu contextu.
 
+## Status realizacji
+- Całość wdrożenia i18n zostanie domknięta dopiero po zakończeniu porządkowania struktury serwisu/UI (zadanie 051). Do tego czasu utrzymujemy istniejący `LanguageProvider` i słowniki, ale nie rozszerzamy tłumaczeń na kolejne moduły.
+
 ## Wykonane kroki
 - Dodano `LanguageProvider` (`web-next/lib/i18n`) z kontekstem, który przechowuje wybór języka w `localStorage`, posiada fallback na polski oraz udostępnia hook `useTranslation`. Warstwa jest podpięta globalnie w `app/providers.tsx`, więc każdy komponent może korzystać z `t(...)`.
 - Przygotowano pierwsze słowniki `pl/en/de` (top bar, sidebar, mobile nav, paleta poleceń) – wszystkie klucze dla wymienionych modułów znajdują się w `web-next/lib/i18n/locales/*.ts`.

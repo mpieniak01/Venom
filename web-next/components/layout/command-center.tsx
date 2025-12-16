@@ -83,7 +83,10 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-white/10 bg-zinc-950/95">
+      <SheetContent
+        data-testid="command-center-drawer"
+        className="flex h-full max-w-2xl flex-col gap-6 overflow-y-auto border-l border-white/10 bg-zinc-950/95"
+      >
         <SheetHeader>
           <SheetTitle>{t("commandCenter.title")}</SheetTitle>
           <SheetDescription>{t("commandCenter.description")}</SheetDescription>
@@ -190,7 +193,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
           </div>
         </section>
 
-        <section className="surface-card p-4">
+        <section className="surface-card p-4" data-testid="command-center-services-section">
           <header className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
@@ -202,7 +205,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
             </div>
             <RefreshCw className="h-5 w-5 text-sky-300" />
           </header>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2" data-testid="command-center-services-list">
             {visibleServices.map((svc) => (
               <ListCard
                 key={svc.name}

@@ -60,7 +60,10 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-white/10 bg-zinc-950/95">
+      <SheetContent
+        data-testid="alert-center-drawer"
+        className="flex h-full max-w-3xl flex-col gap-4 overflow-hidden border-l border-white/10 bg-zinc-950/95"
+      >
         <SheetHeader>
           <SheetTitle>{t("alertCenter.title")}</SheetTitle>
           <SheetDescription>{t("alertCenter.description")}</SheetDescription>
@@ -103,9 +106,10 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
               title={t("alertCenter.emptyTitle")}
               description={t("alertCenter.emptyDescription")}
               hint={t("alertCenter.hint")}
+              testId="alert-center-empty-state"
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3" data-testid="alert-center-entries">
               {visibleEntries.map((entry) => (
                 <ListCard
                   key={entry.id}

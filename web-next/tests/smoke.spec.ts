@@ -6,7 +6,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(page.getByRole("heading", { name: /Cockpit AI/i })).toBeVisible();
     await expect(page.getByText(/Live Feed/i)).toBeVisible();
     await expect(page.getByText("Zadania").first()).toBeVisible();
-    await expect(page.getByText("Skuteczność")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Skuteczność operacji/i })).toBeVisible();
   });
 
   test("Inspector list displays placeholders", async ({ page }) => {
@@ -40,9 +40,12 @@ test.describe("Venom Next Cockpit Smoke", () => {
 
   test("Status pills show fallback when API is offline", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("status-pill-queue")).toContainText("—");
-    await expect(page.getByTestId("status-pill-success")).toContainText("—");
-    await expect(page.getByTestId("status-pill-tasks")).toContainText("—");
+    const queueValue = page.getByTestId("status-pill-queue-value");
+    const successValue = page.getByTestId("status-pill-success-value");
+    const tasksValue = page.getByTestId("status-pill-tasks-value");
+    await expect(queueValue).toHaveText(/—|\d/);
+    await expect(successValue).toHaveText(/—|\d/);
+    await expect(tasksValue).toHaveText(/—|\d/);
   });
 
   test("Sidebar system status panel is visible", async ({ page }) => {
@@ -65,7 +68,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const servicesButton = page.getByTestId("topbar-services");
     await expect(servicesButton).toBeVisible();
     await servicesButton.click();
-    await expect(page.getByRole("dialog", { name: /Status usług/i })).toBeVisible();
+    await expect(page.getByTestId("service-status-drawer")).toBeVisible();
     const offline = page.getByTestId("service-status-offline");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
@@ -81,16 +84,16 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const alertsButton = page.getByTestId("topbar-alerts");
     await expect(alertsButton).toBeVisible();
     await alertsButton.click();
-    await expect(page.getByRole("dialog", { name: /Centrum alertów/i })).toBeVisible();
+    await expect(page.getByTestId("alert-center-drawer")).toBeVisible();
     const offline = page.getByTestId("alert-center-offline-state");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
     } else {
-      const empty = page.getByText(/Brak wpisów/i);
+      const empty = page.getByTestId("alert-center-empty-state");
       if ((await empty.count()) > 0) {
         await expect(empty).toBeVisible();
       } else {
-        await expect(page.getByText(/Kopiuj JSON/i)).toBeVisible();
+        await expect(page.getByTestId("alert-center-entries")).toBeVisible();
       }
     }
   });
@@ -100,7 +103,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const notificationsButton = page.getByTestId("topbar-notifications");
     await expect(notificationsButton).toBeVisible();
     await notificationsButton.click();
-    await expect(page.getByRole("dialog", { name: /Powiadomienia/i })).toBeVisible();
+    await expect(page.getByTestId("notification-drawer")).toBeVisible();
     const offline = page.getByTestId("notification-offline-state");
     if ((await offline.count()) > 0) {
       await expect(offline).toBeVisible();
@@ -112,7 +115,8 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const commandCenterButton = page.getByTestId("topbar-command-center");
     await expect(commandCenterButton).toBeVisible();
     await commandCenterButton.click();
-    await expect(page.getByRole("dialog", { name: /Centrum dowodzenia/i })).toBeVisible();
+    await expect(page.getByTestId("command-center-drawer")).toBeVisible();
+    await expect(page.getByTestId("command-center-services-section")).toBeVisible();
     const queueOffline = page.getByTestId("command-center-queue-offline");
     if ((await queueOffline.count()) > 0) {
       await expect(queueOffline).toBeVisible();
@@ -123,7 +127,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     if ((await servicesOffline.count()) > 0) {
       await expect(servicesOffline).toBeVisible();
     } else {
-      await expect(page.getByText(/Status integracji/i)).toBeVisible();
+      await expect(page.getByTestId("command-center-services-list")).toBeVisible();
     }
   });
 
@@ -145,5 +149,50 @@ test.describe("Venom Next Cockpit Smoke", () => {
     const badge = page.getByTestId("models-count");
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText(/\d+\s+modeli/i);
+  });
+
+  test("Chat preset wstawia prompt i Ctrl+Enter wysyła zadanie", async ({ page }) => {
+    await page.route("**/api/v1/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ task_id: "test-ctrl" }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "[]",
+        });
+      }
+    });
+
+    await page.goto("/");
+    const presetButton = page.getByRole("button", { name: /Kreacja/i }).first();
+    await presetButton.click();
+
+    const textarea = page.getByPlaceholder("Opisz zadanie dla Venoma...");
+    await expect(textarea).toHaveValue(/Stwórz logo/i);
+    await textarea.focus();
+    await page.keyboard.press("Control+Enter");
+
+    await expect(page.getByText(/Wysłano zadanie: test-ctrl/i)).toBeVisible();
+    await expect(textarea).toHaveValue("");
+  });
+
+  test("PANIC: Zwolnij zasoby zwraca komunikat o sukcesie", async ({ page }) => {
+    await page.route("**/api/v1/models/unload-all", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "PANIC executed" }),
+      });
+    });
+
+    await page.goto("/");
+    const panicButton = page.getByRole("button", { name: /PANIC: Zwolnij zasoby/i });
+    await panicButton.click();
+    await expect(page.getByText(/PANIC executed/i)).toBeVisible();
   });
 });

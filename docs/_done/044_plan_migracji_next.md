@@ -76,11 +76,11 @@
     - W razie potrzeby zablokować wersje w `package.json` lub rozważyć downgrade/alternatywy.
     - W fazie discovery potwierdzić minimalne i maksymalne wspierane wersje kluczowych zależności.
 
-## 7. Następne kroki wykonawcze (do rozpoczęcia migracji)
-- Utworzyć lub zaktualizować plik opisu zadania w `docs/_to_do` zgodnie z wytycznymi projektu (numer, cel, Definition of Done, notatki). Dokument powinien zawierać jasno określone kryteria DoD dla całej migracji, aby po spełnieniu wszystkich warunków można było przenieść zadanie do `docs/_done`.
-- Potwierdzić strukturę katalogu (`web-next/` vs zastąpienie `web/`) i wybór stacku stylów.
-- Wygenerować projekt Next.js i skonfigurować proxy do `http://localhost:8000`.
-- Zaimportować typy z Pydantic (ręcznie lub generacja `openapi-typescript`), stworzyć warstwę klienta i placeholdery stron.
+## 7. Następne kroki wykonawcze (aktualizacja 2025-12-13)
+- **Parzystość funkcjonalna** – dopilnować, aby wszystkie widoki Cockpit/Brain/Inspector/Strategy korzystały już wyłącznie z `web-next` i oferowały 1:1 funkcje z legacy (czat, kolejka, makra, modele, kampanie). Legacy `web/` zostaje jako fallback, ale nie rozwijamy go dalej.
+- **Testy i regresje** – utrzymać zielony `npm run lint` + `npm run test:e2e`, rozszerzając Playwrighta o nowe scenariusze (np. interakcje Cockpitu, odświeżanie Inspectora, overlaye TopBaru). Włączamy te testy w pipeline CI.
+- **Dokumentacja migracji** – spisać finalny przewodnik `docs/FRONTEND_NEXT_GUIDE.md` (uruchomienie, env, proxy, testy) i zaktualizować README tak, aby każdy nowy deweloper startował już z Next.js.
+- **Wyłączenie starego frontu** – po potwierdzeniu parity i testach smoke przygotować plan cutover (przekierowanie ruchu na Next, ewentualne usunięcie serwowania Jinja w produkcji, archiwizacja `web/`).
 
 ## 8. Postęp implementacji (aktualizacja)
 - Cockpit Next: realtime telemetry, zadania, kolejka, modele/git/cost/autonomy + tokenomics oraz wykres Chart.js trendu tokenów, podgląd historii z detale `/history/requests`.

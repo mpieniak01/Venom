@@ -74,7 +74,9 @@ export function StatusPills() {
           )}
         >
           <span className="text-[11px] uppercase tracking-[0.3em]">{pill.label}</span>
-          <span className="text-lg font-semibold">{pill.value}</span>
+          <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`}>
+            {pill.value}
+          </span>
           <span className="text-[11px] text-white/70">{pill.hint}</span>
         </div>
       ))}

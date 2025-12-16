@@ -47,7 +47,10 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full max-w-lg flex-col border-l border-white/10 bg-zinc-950/95">
+      <SheetContent
+        data-testid="notification-drawer"
+        className="flex h-full max-w-lg flex-col border-l border-white/10 bg-zinc-950/95"
+      >
         <SheetHeader>
           <SheetTitle>{t("notifications.title")}</SheetTitle>
           <SheetDescription>{t("notifications.description")}</SheetDescription>

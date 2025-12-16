@@ -48,7 +48,10 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full max-w-xl flex-col gap-4 border-l border-white/10 bg-zinc-950/95">
+      <SheetContent
+        data-testid="service-status-drawer"
+        className="flex h-full max-w-xl flex-col gap-4 border-l border-white/10 bg-zinc-950/95"
+      >
         <SheetHeader>
           <SheetTitle>{t("serviceStatus.title")}</SheetTitle>
           <SheetDescription>{t("serviceStatus.description")}</SheetDescription>

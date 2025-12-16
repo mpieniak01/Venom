@@ -6,11 +6,12 @@ type PanelProps = {
   description?: string;
   action?: ReactNode;
   children: ReactNode;
+  className?: string;
 };
 
-export function Panel({ eyebrow, title, description, action, children }: PanelProps) {
+export function Panel({ eyebrow, title, description, action, children, className }: PanelProps) {
   return (
-    <section className="glass-panel w-full rounded-panel shadow-card px-6 py-5">
+    <section className={`glass-panel w-full rounded-panel shadow-card px-6 py-5 ${className ?? ""}`}>
       {(title || description || action) && (
         <header className="mb-4 flex items-start justify-between gap-3">
           <div>

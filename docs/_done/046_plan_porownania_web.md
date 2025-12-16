@@ -197,14 +197,12 @@
 - Zmiany z etapów 21–26 przygotowały wskaźniki usług/kolejki w Next, ale nie istnieje jeszcze statyczne odwzorowanie tych sekcji dla obecnego frontu – brak spójności między gałęziami pod kątem kolorystyki i modułów.
 
 ## Plan etapu 27 – odwzorowanie szablonu wizerunkowego (web-next)
-1. **Tokeny i tło**
-   - Zidentyfikować kolory, gradienty i efekty (noise/glass/flare) z `_szablon.html`, a następnie przenieść je do `web-next/app/globals.css` oraz `tailwind.config.ts`, aby całe Next UI korzystało z jednej palety (background, panel, akcenty neonowe, shadow).
-2. **Layout bazowy**
-   - Ujednolicić podstawowe komponenty layoutu (`app/layout.tsx`, `components/layout/sidebar.tsx`, `components/layout/top-bar.tsx`) tak, by używały nowych klas glass/glow i spacingu odpowiadającego referencyjnemu szablonowi – bez zmian logiki hooków.
-3. **Widoki funkcjonalne**
-   - Dostosować główne strony (`app/page.tsx`, `app/brain/page.tsx`, `app/inspector/page.tsx`, `app/strategy/page.tsx`), aby hero sekcje, flare-card i command console odwzorowywały `_szablon.html` (układ kolumn, spacing, neonowe nagłówki).
-4. **Weryfikacja**
-   - Uruchomić `npm run lint` i `npm run test:e2e`, przygotować screeny porównawcze oraz zanotować wszystkie kompromisy w tej sekcji planu.
+1. **Tokeny i tło** – ✅ przeniesione do `web-next/app/globals.css` + `tailwind.config.ts` wraz z gradientem i noise (sekcja „Postęp etapu 27 – kickoff…”).
+2. **Layout bazowy** – ✅ Sidebar/TopBar/Layout używają glass-paneli i spacingu `_szablon.html`.
+3. **Widoki funkcjonalne** – ✅ Cockpit/Brain/Inspector/Strategy zostały dostosowane wizualnie (ciąg wpisów „Postęp etapu 28 – …”).
+4. **Weryfikacja** – ✅ smoketest działa na buildzie produkcyjnym (`npm run lint`, `npm run test:e2e`), screeny i kompromisy są opisane.
+
+**Status:** etap 27 zamknięty; kolejne poprawki wizualne trafiają już do backlogu etapu 28+.
 
 ## Przygotowanie etapu 28 – mapa bloków i deduplikacja
 - Po ujednoliceniu wyglądu przygotować tabelaryczną mapę bloków (sidebar, telemetry tabs, command console, hero cards, integracje, KPI, overlaye) wraz z przypisaną funkcjonalnością i źródłem danych (legacy `app.js`, Next hook, brak).
@@ -248,13 +246,8 @@ Wnioski:
 
 Testy: brak (zmiany dokumentacyjne).
 
-### Backlog etapu 28 (cele, zanim ruszymy dalej)
-1. **History & Timeline** – przygotować wspólny komponent listy historii (Cockpit/Inspector), dodać tryb „preview” w Cockpit (2 ostatnie wpisy + link do pełnego widoku Inspector), a w Inspectorze używać tego samego komponentu z rozszerzonymi filtrami.
-2. **Queue governance vs QuickActions** – zostawić pełną logikę akcji w overlayu, a w Cockpitu zamienić panel na skrót (status + CTA otwierające QuickActions); w ten sposób unikamy dwóch miejsc modyfikujących `/api/v1/queue/*`.
-3. **Token/KPI bloki** – sprawdzić, czy statystyki tokenów z hero i sekcji „Tokenomics” nie duplikują danych; jeśli tak, przesunąć wykres/BarList do hero i wprowadzić inny moduł (np. koszt per model) w dolnej części.
-4. **Brain/Strategy dokumentacja** – doprowadzić widok Brain do pełnej zgodności z `_szablon` (z gotowym opisem bloków w README), a w Strategy uporządkować interakcje formularzy (wizja, kampanie, raport) i potwierdzić mapping endpointów.
-5. **TopBar overlaye – wspólne fallbacki** – ujednolicić copy i strukturę `EmptyState` w Alert/Notification/Command/Services (jedna utilka, te same ikony/kolory i testy).
-6. **Mapa bloków → kolejny etap** – przed startem etapu 29 przygotować checklistę wykonanych scaleni oraz wskazać, które elementy wciąż są „legacy” względem `_szablon`. Cel nadrzędny: zachować wizerunkową spójność (kolory, spacing, glass) i zminimalizować liczbę równoległych implementacji tej samej funkcji.
+### Backlog etapu 28
+Pozostałe niedobitki (Brain/Strategy dokumentacja, mapa bloków itp.) zostały przeniesione do `docs/_to_do/051_backlog_niedobitki.md` i są śledzone w zadaniu 051.
 
 ### Postęp etapu 28 – wspólna historia Cockpit/Inspector
 - Stworzyłem komponent `HistoryList` (`components/history/history-list.tsx`) wykorzystujący neonową paletę ze `_szablon.html` (gradient emerald/black, badge w tonach success/warning/danger) oraz nowy helper `formatRelativeTime` (`lib/date.ts`). Komponent obsługuje tryb „preview” (Cockpit) i „full” (Inspector) oraz opcjonalne CTA „+N w Inspectorze”.
@@ -384,18 +377,11 @@ Testy: brak (zmiany dokumentacyjne).
    - „Queue governance”, „Modele” i „Repozytorium” mają stare border-boxy; trzeba dopilnować, by `ModelListItem` i `RepoActionCard` były widoczne (deployment + styl).
    - Panel „Task Insights” pokazuje placeholdery – warto dodać fallback `EmptyState`, żeby uniknąć twardego „Brak danych”.
 
-## Zadanie – domknięcie Cockpitu do 100% (etap 28)
-1. **Zweryfikować build** – upewnić się, że `web-next/app/page.tsx` z nowymi komponentami jest widoczny w preview. Jeśli nie, uruchomić `make stop && make start`, zbudować `web-next` i zrobić świeży screenshot referencyjny.
-2. **Dopolerować hero** – do `CockpitMetricCard` i `CockpitTokenCard` dodać brakujące elementy wizualne (badge trendu na karcie KPI, placeholder ikon dla „Brak danych”, podbity gradient).
-3. **Spójne glass-panels** – przejrzeć wszystkie sekcje Cockpitu i przepiąć na `glass-panel / rounded-panel / shadow-card`, żeby karta makr, Task Insights, Queue governance wyglądały jak w `_szablon.html`.
-4. **Fallbacki danych** – dodać `EmptyState` tam, gdzie API zwraca `0` (np. hero tokens), aby uniknąć „pustych” kart w screenshotach.
-5. **Dokumentacja** – po domknięciu wykonać screenshot + opis w tej sekcji dokumentu, potwierdzając, że Cockpit jest gotowy wizualnie i funkcjonalnie.
+## Zadanie – domknięcie Cockpitu do 100%
+Szczegółowa lista kroków przeniesiona do `docs/_to_do/051_backlog_niedobitki.md` (zadanie 051).
 
-## Uwagi z przeglądu wizualnego (nie wykonane, zapisane do backlogu)
-1. **Brak ramki w „KPI kolejki”** – karta po prawej od Live Feed ma inne obramowanie i wygląda jak płaski prostokąt. Trzeba odtworzyć tę samą ramkę/glow co w „Live Feed”.
-2. **Brak marginesów w bloku „Centrum dowodzenia”** – hero chat („Cockpit AI”) klei się do krawędzi sekcji; konieczne jest dodanie paddingu zgodnie z `_szablon.html`.
-3. **Kolor tła** – główne tło Cockpitu ma turkusowy gradient, a w `_szablon.html` centralny panel jest ciemnoniebieski (`#031627` → `#051B2D`). Należy pobrać oryginalne wartości i zaktualizować `app/globals.css`.
-4. **Nazwy boxów** – każdy panel (KPI, tokeny, makra itd.) powinien mieć identyczny styl nagłówka jak „Live Feed” (font-size, uppercase eyebrow, badge akcji). Aktualnie część sekcji wciąż ma stare tytuły.
+## Uwagi z przeglądu wizualnego
+Przeniesione do `docs/_to_do/051_backlog_niedobitki.md` (zadanie 051) jako lista QA do domknięcia.
 
 ### Postęp etapu 28 – dostosowanie hero Cockpitu do uwag QA
 - Zamiast luźnych `<div>` hero korzysta teraz z komponentu `Panel` (uzupełnionego o `eyebrow`), więc „Skuteczność operacji” i „Zużycie tokenów” mają tę samą ramkę i header jak „Live Feed”. Dzięki temu zniknął problem „brak ramki w KPI kolejki”.

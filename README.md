@@ -119,6 +119,9 @@ Orchestrator (decyzja o przepływie)
 
 ## 🚀 Szybki start
 
+> 🔎 **Nowy dashboard web-next**
+> Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
+
 ### Instalacja
 
 ```bash
@@ -213,8 +216,8 @@ DISCORD_WEBHOOK_URL=https://...     # Opcjonalne
 ENABLE_ISSUE_POLLING=false          # Włącz auto-polling Issues
 ```
 
-📖 **Pełna lista zmiennych:** [.env.example](.env.example)  
-📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)  
+📖 **Pełna lista zmiennych:** [.env.example](.env.example)
+📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
 📖 **Dokumentacja Hybrid AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
 
 ### Uruchomienie
@@ -382,7 +385,7 @@ docker-compose -f docker-compose.spores.yml up
 python examples/nexus_demo.py
 ```
 
-📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)  
+📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)
 📖 **Architektura Hive:** [docs/THE_HIVE.md](docs/THE_HIVE.md)
 
 ## 👥 Zespół

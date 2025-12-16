@@ -28,13 +28,13 @@
 - ✅ Panel „Modele” i „Zasoby modeli” potwierdzony w integracji z `/api/v1/models` i `/api/v1/models/usage` (sprawdzone ręcznie na porcie 3000 vs. legacy).
 - ✅ Przyciski instalacji/odświeżenia i „PANIC: Zwolnij zasoby” (POST `/api/v1/models/unload-all`) przetestowane manualnie – natychmiast aktualizują listę modeli oraz metryki.
 - ✅ Command Console: ręcznie potwierdzono, że historia, wynik zadania i logi są spięte (klik w bańkę otwiera realne dane requestu wraz z logami z `/api/v1/tasks`).
-- ⏳ Test Playwright dla historii modeli i skrótu `Ctrl+Enter` – do dodania po stabilizacji UI (na razie notatka zamiast testu).
+- 🔁 Testy Playwright (historia modeli, `Ctrl+Enter`) przeniesiono do `docs/_to_do/051_backlog_niedobitki.md` i zostaną dodane po stabilizacji UI.
 
 ## Walidacja
 - ✅ Ręcznie zweryfikowano, że `Ctrl+Enter` wysyła zadanie oraz że chipy promptów podmieniają treść textarea; nowe zadania trafiają do historii.
 - ✅ Ręczna walidacja Q&A: wysyłka zadania z legacy promptu, sprawdzenie, że w kolumnie czatu pojawia się para wiadomości oraz że panel szczegółów zawiera wynik + logi zadania.
 - ✅ Sprawdzenie requestów dłużej wykonywanych – po kliknięciu w „Szczegóły” logi i wynik dociągają się po zakończeniu zadania, bo panel pobiera je bezpośrednio z `/api/v1/tasks/{id}`.
-- ⏳ Automatyczny test Playwright (chips + skrót) – odłożony do momentu stabilizacji suite.
+- 🔁 Automatyczne testy Playwright (chips + skrót) – włączone do zadania 051.
 
 ## Rezultat
 - Sugestie promptów, skrót klawiszowy oraz klasyczny widok „pytanie-odpowiedź” (łącznie z logami zadania) są już dostępne na stronie głównej (`web-next/app/page.tsx`).
@@ -48,4 +48,4 @@
    - Command Console pokazuje wynik zadania i logi, aby rozmowa wyglądała jak klasyczny chat.
 3. **Walidacja UX**
    - ✅ Ręczne testy potwierdzające działanie w trybie Lab/Prod.
-   - ⏳ Automatyczny test Playwright (widoczność presetów + `Ctrl+Enter`) do dodania w smoke suite po ustabilizowaniu UI.
+   - 🔁 Automatyczny test Playwright (widoczność presetów + `Ctrl+Enter`) śledzony w zadaniu 051.

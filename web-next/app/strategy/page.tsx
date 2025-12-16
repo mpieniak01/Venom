@@ -3,14 +3,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Panel } from "@/components/ui/panel";
+import { Panel, StatCard } from "@/components/ui/panel";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { SectionHeading } from "@/components/ui/section-heading";
 import {
   createRoadmap,
   requestRoadmapStatus,
   startCampaign,
+  useHistory,
   useRoadmap,
+  useTasks,
 } from "@/hooks/use-api";
 import { ProgressBar } from "@tremor/react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -19,9 +21,16 @@ import { statusTone } from "@/lib/status";
 import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { cn } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/date";
+import type { Task } from "@/lib/types";
 
 export default function StrategyPage() {
   const { data: roadmap, refresh: refreshRoadmap } = useRoadmap();
+  const { data: liveTasks, loading: liveTasksLoading } = useTasks();
+  const {
+    data: timelineHistory,
+    loading: timelineLoading,
+  } = useHistory(10);
   const [visionInput, setVisionInput] = useState("");
   const [showVisionForm, setShowVisionForm] = useState(false);
   const [statusReport, setStatusReport] = useState<string | null>(null);
@@ -50,6 +59,11 @@ export default function StrategyPage() {
       ? ((kpis.tasks_completed ?? 0) / Math.max(kpis.tasks_total, 1)) * 100
       : 0;
   const milestones = useMemo(() => roadmap?.milestones ?? [], [roadmap?.milestones]);
+  const liveTaskStats = useMemo(() => buildLiveTaskStats(liveTasks), [liveTasks]);
+  const timelineEntries = useMemo(
+    () => (timelineHistory ?? []).slice(0, 8),
+    [timelineHistory],
+  );
   const taskSummary = useMemo(() => {
     const summary: Record<string, number> = {};
     milestones.forEach((milestone) =>
@@ -274,6 +288,56 @@ export default function StrategyPage() {
         </Panel>
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel title="Live KPIs" description="/api/v1/tasks – bieżące operacje agentów.">
+          {liveTasksLoading ? (
+            <p className="text-sm text-zinc-400">Ładuję metryki zadań…</p>
+          ) : liveTaskStats.length ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              {liveTaskStats.map((stat) => (
+                <StatCard key={stat.label} label={stat.label} value={stat.value} hint={stat.hint} accent={stat.accent} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<span className="text-lg">🛰️</span>}
+              title="Brak danych o zadaniach"
+              description="Gdy agenci uruchomią nowe zadania, pojawią się tutaj statystyki."
+            />
+          )}
+        </Panel>
+
+        <Panel title="Timeline KPI" description="/api/v1/history – ostatnie przepływy.">
+          {timelineLoading && <p className="text-sm text-zinc-400">Ładuję historię requestów…</p>}
+          {!timelineLoading && timelineEntries.length === 0 ? (
+            <EmptyState
+              icon={<span className="text-lg">🕒</span>}
+              title="Brak historii"
+              description="Wyślij zadanie lub odśwież backend, by wypełnić timeline."
+            />
+          ) : (
+            <div className="space-y-3">
+              {timelineEntries.map((entry) => (
+                <div
+                  key={entry.request_id}
+                  className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      #{entry.request_id.slice(0, 8)} • {entry.prompt?.slice(0, 32) ?? "Request"}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {formatRelativeTime(entry.created_at)} • {entry.model ?? "model n/d"}
+                    </p>
+                  </div>
+                  <Badge tone={statusTone(entry.status)}>{entry.status ?? "n/a"}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+
       <Panel title="Milestones" description="Accordion + progress dla kluczowych etapów.">
         {milestones.length === 0 ? (
           <EmptyState
@@ -350,4 +414,44 @@ export default function StrategyPage() {
       </Panel>
     </div>
   );
+}
+
+function buildLiveTaskStats(tasks: Task[] | null | undefined) {
+  const list = tasks ?? [];
+  const total = list.length;
+
+  const normalized = (status?: string | null) => (status ?? "").toUpperCase();
+  const matches = (status: string, candidates: string[]) =>
+    candidates.includes(normalized(status));
+
+  const inProgress = list.filter((task) =>
+    matches(task.status ?? "", ["IN_PROGRESS", "RUNNING", "EXECUTING"]),
+  ).length;
+  const queued = list.filter((task) =>
+    matches(task.status ?? "", ["PENDING", "QUEUED", "WAITING"]),
+  ).length;
+  const failed = list.filter((task) =>
+    matches(task.status ?? "", ["FAILED", "ERROR"]),
+  ).length;
+
+  return [
+    {
+      label: "Aktywne",
+      value: inProgress,
+      hint: `z ${total} zadań`,
+      accent: "violet" as const,
+    },
+    {
+      label: "W kolejce",
+      value: queued,
+      hint: "oczekuje na wykonanie",
+      accent: "blue" as const,
+    },
+    {
+      label: "Niepowodzenia",
+      value: failed,
+      hint: "ostatnie incydenty",
+      accent: "indigo" as const,
+    },
+  ];
 }

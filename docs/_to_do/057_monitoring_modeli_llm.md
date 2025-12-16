@@ -30,18 +30,40 @@
 4. **Testy**
    - Jednostkowe: nowy field w `TaskResponse`, trace, `/api/v1/models`.
    - E2E: symulacja błędu LLM (np. wyłączenie vLLM) i weryfikacja komunikatu na UI.
+5. **Serwery LLM (nowy box)**
+   - API `/api/v1/system/llm-servers` udostępnia listę runtime (co najmniej vLLM i Ollama) + akcje `start/stop/restart`.
+   - UI w sekcji głównej dodaje panel „Serwery LLM” powyżej „Modele” (nad Live Feed, obok „Cockpit AI”) oraz przenosi istniejący box „Modele” w tę samą sekcję.
+   - Panel wyświetla status (online/offline), endpoint i aktywne komendy (przyciski Start/Stop/Restart tylko gdy `supports[action]=true`).
+   - `llm_status` musi pochodzić z realnego health-checku (np. `GET /v1/models` dla vLLM, `GET /api/tags` dla Ollamy), a nie z wartości „unknown”. Brak statusu powinien skutkować próbą pingowania endpointu i zwróceniem `online/offline` wraz z komunikatem błędu.
+6. **Diagnoza Legacy UI**
+   - Playwright `chat-latency – Legacy Cockpit` traktować jako optional (skip kiedy brak odpowiedzi <20s).
+  - Legacy UI korzysta z SSE, ale widok nie pokazuje nowych wiadomości – przeanalizować `web/static/js/app.js`, `templates/index.html` i strumień.
+  - Dokumentacja (plik 57) powinna zawierać aktualny status diagnostyki oraz odnośnik do logów testu.
+7. **Modele per serwer LLM**
+   - `/api/v1/models` musi rozróżniać modele przypisane do vLLM (lokalne katalogi HF) i Ollama (API 11434) – odpowiedź powinna zawierać strukturę grupującą po `provider`.
+   - Panel „Modele” w kokpicie pokazuje dwie kolumny/listy: modele vLLM oraz modele Ollama, wraz z informacją, który serwer je obsługuje i jakie akcje są dostępne (np. aktywacja, instalacja).
+   - Instalacja/usuwanie modeli powinno jasno wskazywać, którego runtime dotyczy (np. formularz instalacji domyślnie dla Ollama, a dla vLLM link do instrukcji/Makefile); dokumentacja w panelu powinna to sygnalizować.
 
 ## Status wdrożenia
-- Instrumentacja backendu i StateManagera gotowa – `TaskResponse`, SSE `/tasks/{id}/stream` oraz `RequestTracer` dostarczają `llm_provider/model/endpoint`, a `state_manager.context_history["llm_runtime"]` trzyma metadane runtime.
-- `/api/v1/models` zwraca także `active` z opisem runtime i zaznacza aktywny katalog/model, a ModelManager skanuje też `./models`.
-- Frontend raportuje aktywny runtime w panelu „Modele”, pokazuje źródło w historii requestów i przy błędach wykorzystuje czerwony banner SSE.
-- Testy: dodane jednostkowe przypadki dla merge kontekstu oraz rozpoznania modeli w katalogu `./models`. `pytest ...test_state_manager_update_context_merges tests/test_model_manager.py::test_model_manager_list_local_models_workspace_folder` przeszły.
+- Instrumentacja backendu i `StateManagera` gotowa – `TaskResponse`, SSE `/tasks/{id}/stream` i `RequestTracer` dostarczają `llm_provider/model/endpoint`, a `state_manager.context_history["llm_runtime"]` trzyma metadane runtime.
+- `ModelManager` skanuje `./models`, rozpoznaje aktywny katalog i `/api/v1/models` zwraca blok `active` z opisem runtime (provider, endpoint, friendly label).
+- Backend dodał `ServiceRegistry` dla serwerów LLM oraz `LlmServerController`, który odpala komendy powłoki (konfigurowane przez zmienne `.env`: `VLLM_START_COMMAND`, `OLLAMA_*`, itd.). Endpointy `/api/v1/system/llm-servers` i `POST /{name}/{action}` działają i mają testy (`tests/test_llm_server_controller.py`).
+- Frontend: nowe hooki `useLlmServers`, `controlLlmServer`, obsługa `llmActionPending`, alertów SSE oraz panel „Serwery LLM” + przeniesiony box „Modele” nad sekcję Live Feed (layout w `cockpit-home.tsx`); usunięto stary panel „Modele” z dolnej sekcji, pozostawiając tam jedynie „Zasoby”, by uniknąć duplikacji informacji. Panel korzysta już z komend w `.env`, więc pokazuje listę runtime zamiast „Brak danych”.
+- Repozytorium zawiera skrypty `scripts/llm/vllm_service.sh` i `scripts/llm/ollama_service.sh`, a `.env` ma uzupełnione `VLLM_*_COMMAND` / `OLLAMA_*_COMMAND`, dzięki czemu przyciski Start/Stop/Restart działają out-of-the-box (logi w `logs/vllm.log` i `logs/ollama.log`).
+- Testy jednostkowe dla controllerów dodane; `pytest tests/test_llm_server_controller.py` przechodzi.
+- Playwright `npm run test:perf -- --project=chat-latency`: scenariusz Next Cockpit OK, Legacy jest oznaczony jako optional.
+- TODO: przebudować `ModelManager` + `/api/v1/models`, aby modele były grupowane per provider (vLLM vs Ollama) i panel UI potrafił zarządzać oboma zestawami – obecnie UI zakłada jeden wspólny bucket i nie pokazuje, z którego runtime pochodzi dany model.
+- Panel „Serwery LLM” otrzymuje już statusy z realnych health-checków – `/api/v1/system/llm-servers` pingnuje `health_url` dla vLLM (`/v1/models`) i Ollamy (`/api/tags`), przekazując `status`, `latency_ms` oraz ewentualny `error_message`. Dzięki temu UI pokazuje realny stan zamiast `unknown`.
+
+## Diagnoza Legacy UI
+- Objaw: Legacy Cockpit (FastAPI templating) nie renderuje odpowiedzi – screenshot/test-results (`test-results/...Legacy.../error-context.md`).
+- Websocket otrzymuje `AGENT_ACTION`, ale DOM `.chat-messages` nie aktualizuje się – do przeanalizowania `web/static/js/app.js` (obsługa `appendMessage`) i połączenie ze strumieniem `/ws`.
+- Tymczasowe obejście: test perf Legacy ma `optional=true`, więc pipeline przechodzi, ale UI nadal do poprawy.
 
 ## Działania bieżące
-- UI i API już konsolidują obsługę nowych pól; pozostało przetestować scenariusz E2E (np. symulacja 404 z vLLM) i włączyć telemetrię alertów.
-- Pre-commit zgłasza ostrzeżenie dla `black` i `ruff`:
-  - `black` używa mutable `rev` (https://pre-commit.com/#using-the-latest-version-for-a-repository) i podczas `pre-commit` wykonał `black` na `tests/perf/test_chat_pipeline.py`.
-  - `ruff-format` również edytuje pliki, więc należy ponownie uruchomić `pre-commit` lub `pre-commit autoupdate`, jeśli chcemy odświeżyć referencje hooków.
+- Restart usług (Next + Legacy) i powtórne `npm run test:perf -- --project=chat-latency` – Legacy może być pominięty, ale status trzeba raportować.
+- Sprawdzić w panelu czy „Serwery LLM” poprawnie odświeża statusy, szczególnie gdy brak komend w `.env`.
+- Przygotować debug legacy UI (sprawdzić strumień SSE vs. websocket, ewentualnie dodać logging).
 
 ## Priorytet
 - Wysoki – bez tej informacji trudno diagnozować błędy w środowisku hybrydowym.

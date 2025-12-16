@@ -63,15 +63,15 @@ async def ingest_to_memory(request: MemoryIngestRequest):
     Raises:
         HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
     """
-    if _vector_store is None:
-        raise HTTPException(
-            status_code=503,
-            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        )
-
     try:
         if not request.text or not request.text.strip():
             raise HTTPException(status_code=400, detail="Tekst nie może być pusty")
+
+        if _vector_store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+            )
 
         # Zapisz do pamięci
         metadata = {"category": request.category}
@@ -115,15 +115,18 @@ async def search_memory(request: MemorySearchRequest):
     Raises:
         HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
     """
-    if _vector_store is None:
-        raise HTTPException(
-            status_code=503,
-            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        )
-
     try:
         if not request.query or not request.query.strip():
-            raise HTTPException(status_code=400, detail="Zapytanie nie może być puste")
+            raise HTTPException(
+                status_code=400,
+                detail="Zapytanie nie może być puste (pusty prompt niedozwolony)",
+            )
+
+        if _vector_store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+            )
 
         results = _vector_store.search(
             query=request.query,

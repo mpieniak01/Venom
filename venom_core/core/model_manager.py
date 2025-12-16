@@ -493,7 +493,9 @@ PARAMETER top_k 40
         """
         models: Dict[str, Dict[str, Any]] = {}
 
-        def _register_local_entry(model_path: Path, source: str):
+        def _register_local_entry(
+            model_path: Path, source: str, provider: str = "vllm"
+        ):
             size_bytes = 0
             if model_path.is_file():
                 size_bytes = model_path.stat().st_size
@@ -517,6 +519,7 @@ PARAMETER top_k 40
                 "quantization": "unknown",
                 "path": str(model_path),
                 "source": source,
+                "provider": provider,
                 "active": False,
             }
 
@@ -536,7 +539,9 @@ PARAMETER top_k 40
                     ".bin",
                 }:
                     try:
-                        _register_local_entry(model_path, source=base_dir.name)
+                        _register_local_entry(
+                            model_path, source=base_dir.name, provider="vllm"
+                        )
                     except Exception as e:
                         logger.warning(
                             f"Nie udało się odczytać modelu {model_path}: {e}"
@@ -559,6 +564,7 @@ PARAMETER top_k 40
                             "quantization": model.get("quantization", "unknown"),
                             "path": "ollama://",
                             "source": "ollama",
+                            "provider": "ollama",
                             "active": False,
                         }
                 else:

@@ -16,7 +16,7 @@ START_MODE ?= dev
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
 SERVE_LEGACY_DEV ?= True
-SERVE_LEGACY_PROD ?= False
+SERVE_LEGACY_PROD ?= True
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 

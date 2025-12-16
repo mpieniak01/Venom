@@ -34,5 +34,10 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "chat-latency",
+      testMatch: /chat-latency\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });

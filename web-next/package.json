@@ -1,0 +1,51 @@
+{
+  "name": "web-next",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/generate-meta.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/generate-meta.mjs",
+    "build": "next build",
+    "postbuild": "node scripts/prepare-standalone.mjs",
+    "start": "node scripts/start-server.mjs",
+    "lint": "next lint",
+    "test:e2e": "npm run build && PLAYWRIGHT_MODE=prod playwright test",
+    "lint:locales": "tsx scripts/check-locales.ts"
+  },
+  "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@tremor/react": "^3.18.7",
+    "chart.js": "^4.5.1",
+    "clsx": "^2.1.1",
+    "cytoscape": "^3.33.1",
+    "dompurify": "^3.3.1",
+    "framer-motion": "^12.23.26",
+    "lucide-react": "^0.561.0",
+    "marked": "^17.0.1",
+    "mermaid": "^11.12.2",
+    "next": "15.5.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-zoom-pan-pinch": "^3.7.0",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.57.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.9",
+    "playwright": "^1.57.0",
+    "tailwindcss": "^4",
+    "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

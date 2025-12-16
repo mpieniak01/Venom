@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" fill="none">
+  <rect width="512" height="512" fill="rgba(2,6,23,0.95)"/>
+  <g stroke="rgba(124,58,237,0.15)" stroke-width="1">
+    <path d="M0 32h512M0 64h512M0 96h512M0 128h512M0 160h512M0 192h512M0 224h512M0 256h512M0 288h512M0 320h512M0 352h512M0 384h512M0 416h512M0 448h512M0 480h512"/>
+    <path d="M32 0v512M64 0v512M96 0v512M128 0v512M160 0v512M192 0v512M224 0v512M256 0v512M288 0v512M320 0v512M352 0v512M384 0v512M416 0v512M448 0v512M480 0v512"/>
+  </g>
+</svg>

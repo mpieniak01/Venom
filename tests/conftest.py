@@ -1,8 +1,16 @@
 import shutil
 import subprocess
+import warnings
 from typing import Any, Dict
 
 import pytest
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=".*PydanticDeprecatedSince211.*",
+    module="pydantic._internal._generate_schema",
+)
 
 
 def _has_docker() -> bool:

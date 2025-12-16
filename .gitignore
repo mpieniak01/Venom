@@ -30,3 +30,16 @@ venom_core/execution/skills/custom/test_*.py
 # Template backups
 *.backup
 node_modules/
+.web-next.pid
+web-next/test-results/
+web-next/.next/
+web-next/.turbo/
+
+# Next
+web-next/.next/
+web-next/node_modules/
+web-next/.pytest_cache/
+web-next/out/
+web-next/.cache/
+web-next/.eslintcache
+web-next/.vercel/

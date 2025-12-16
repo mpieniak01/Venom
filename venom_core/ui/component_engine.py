@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from venom_core.utils.logger import get_logger
 
@@ -34,10 +34,7 @@ class Widget(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
-    class Config:
-        """Konfiguracja modelu."""
-
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class ComponentEngine:

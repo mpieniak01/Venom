@@ -14,6 +14,7 @@ async def browser_skill():
     try:
         await skill.close_browser()
     except Exception:
+        # Ignorujemy wyjątki przy zamykaniu przeglądarki w teardown — nie chcemy, by błąd w sprzątaniu psuł testy.
         pass
 
 

@@ -31,6 +31,7 @@ web-next/
 - Komponenty interaktywne (chat, belki, overlaye) deklarują `"use client"` i korzystają z hooków Reacta.
 - `components/layout/*` to mieszanka: np. `SystemStatusBar` jest klientowy (aktualizuje się w czasie rzeczywistym), natomiast sekcje Brain/Strategy pozostają serwerowe z lazy-hydrationem tylko tam, gdzie to konieczne.
 - Re-używamy stylów przez tokeny (`surface-card`, `glass-panel` itd.) w `globals.css`.
+- **Konwencje nazewnictwa typów:** wszystkie interfejsy/typy w `web-next/lib/types.ts` używają angielskich nazw (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`). Jeśli dokumentacja odnosi się do dawnych nazw polskich (np. „Lekcja”, „StatusSłużba”), należy traktować je wyłącznie jako opis legacy – w kodzie Nexta utrzymujemy nazewnictwo angielskie, aby uniknąć rozjazdów i duplikacji typów.
 
 ### 0.3 Skrypty NPM / workflow
 | Komenda                               | Cel                                                                                   |

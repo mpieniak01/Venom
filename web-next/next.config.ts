@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Pozwala uniknąć ostrzeżeń przy wielu lockfile w repo (monorepo).
   outputFileTracingRoot: path.join(__dirname, ".."),
+  experimental: {
+    optimizePackageImports: ["lucide-react", "framer-motion", "chart.js", "mermaid"],
+  },
   // Proxy do FastAPI w trybie dev, żeby uniknąć problemów z CORS.
   async rewrites() {
     if (!API_PROXY_TARGET) {

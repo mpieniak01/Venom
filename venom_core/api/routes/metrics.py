@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from venom_core.core.metrics import metrics_collector
+from venom_core.core import metrics as metrics_module
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,14 +33,15 @@ async def get_token_metrics():
     Raises:
         HTTPException: 503 jeśli TokenEconomist nie jest dostępny
     """
+    collector = metrics_module.metrics_collector
     if _token_economist is None:
         # Zwróć podstawowe metryki z metrics_collector
-        if metrics_collector is None:
+        if collector is None:
             raise HTTPException(
                 status_code=503, detail="Metrics collector nie jest dostępny"
             )
 
-        metrics = metrics_collector.get_metrics()
+        metrics = collector.get_metrics()
         return {
             "session_total_tokens": metrics.get("tokens_used_session", 0),
             "session_cost_usd": 0.0,  # Nie możemy obliczyć bez TokenEconomist
@@ -52,12 +53,13 @@ async def get_token_metrics():
         # W przyszłości: TokenEconomist powinien przechowywać dane o użyciu per-model
         # Na razie zwracamy podstawowe dane z metrics_collector
 
-        if metrics_collector is None:
+        collector = metrics_module.metrics_collector
+        if collector is None:
             raise HTTPException(
                 status_code=503, detail="Metrics collector nie jest dostępny"
             )
 
-        metrics = metrics_collector.get_metrics()
+        metrics = collector.get_metrics()
         total_tokens = metrics.get("tokens_used_session", 0)
 
         # Szacunkowy koszt (zakładając konfigurowalny split i model)
@@ -107,13 +109,14 @@ async def get_system_metrics():
     Raises:
         HTTPException: 503 jeśli metrics_collector nie jest dostępny
     """
-    if metrics_collector is None:
+    collector = metrics_module.metrics_collector
+    if collector is None:
         raise HTTPException(
             status_code=503, detail="Metrics collector nie jest dostępny"
         )
 
     try:
-        metrics = metrics_collector.get_metrics()
+        metrics = collector.get_metrics()
         return metrics
     except Exception as e:
         logger.exception("Błąd podczas pobierania metryk systemowych")

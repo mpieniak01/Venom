@@ -138,6 +138,12 @@ export interface ModelsUsage {
   disk_usage_gb?: number;
   disk_limit_gb?: number;
   disk_usage_percent?: number;
+  models_count?: number;
+}
+
+export interface ModelsUsageResponse {
+  success?: boolean;
+  usage?: ModelsUsage;
 }
 
 export interface CostMode {

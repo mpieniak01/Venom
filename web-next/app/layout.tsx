@@ -3,6 +3,7 @@ import { Geist, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
 import { SystemStatusBar } from "@/components/layout/system-status-bar";
+import { fetchLayoutInitialData } from "@/lib/server-data";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -24,11 +25,23 @@ export const metadata: Metadata = {
     "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War Room.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const layoutData = await fetchLayoutInitialData();
+  const initialStatusData = {
+    queue: layoutData.queue,
+    metrics: layoutData.metrics,
+    tasks: layoutData.tasks,
+  };
+  const initialSystemStatus = {
+    modelsUsage: layoutData.modelsUsage,
+    tokenMetrics: layoutData.tokenMetrics,
+    gitStatus: layoutData.gitStatus,
+  };
+
   return (
     <html lang="pl">
       <body className={`${geistSans.variable} ${jetBrains.variable} antialiased`}>
@@ -41,11 +54,11 @@ export default function RootLayout({
             <div className="relative z-10 flex">
               <Sidebar />
               <div className="relative flex flex-1 flex-col lg:pl-72">
-                <TopBar />
+                <TopBar initialStatusData={initialStatusData} />
                 <main className="flex-1 overflow-y-auto px-4 py-10 pb-24 sm:px-10">
                   <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
                 </main>
-                <SystemStatusBar />
+                <SystemStatusBar initialData={initialSystemStatus} />
               </div>
             </div>
           </div>

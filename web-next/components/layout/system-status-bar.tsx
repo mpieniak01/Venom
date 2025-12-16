@@ -1,21 +1,35 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  useGitStatus,
-  useModelsUsage,
-  useTokenMetrics,
-} from "@/hooks/use-api";
+import { useGitStatus, useModelsUsage, useTokenMetrics } from "@/hooks/use-api";
 import { formatGbPair, formatPercentMetric, formatUsd, formatVramMetric } from "@/lib/formatters";
 import { useTranslation } from "@/lib/i18n";
 import { useAppMeta } from "@/lib/app-meta";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
+import type { GitStatus, ModelsUsageResponse, TokenMetrics } from "@/lib/types";
 
-export function SystemStatusBar() {
+type SystemStatusInitialData = {
+  modelsUsage?: ModelsUsageResponse | null;
+  tokenMetrics?: TokenMetrics | null;
+  gitStatus?: GitStatus | null;
+};
+
+export function SystemStatusBar({ initialData }: { initialData?: SystemStatusInitialData }) {
   const { data: usageResponse } = useModelsUsage(10000);
-  const usage = usageResponse?.usage;
-  const { data: tokenMetrics } = useTokenMetrics(15000);
-  const { data: gitStatus } = useGitStatus(10000);
+  const usage = usageResponse?.usage ?? initialData?.modelsUsage?.usage;
+  const {
+    data: liveTokenMetrics,
+    loading: tokenLoadingLive,
+  } = useTokenMetrics(15000);
+  const {
+    data: liveGitStatus,
+    loading: gitLoadingLive,
+  } = useGitStatus(10000);
+  const tokenMetrics = liveTokenMetrics ?? initialData?.tokenMetrics ?? null;
+  const gitStatus = liveGitStatus ?? initialData?.gitStatus ?? null;
+  const tokenLoading = tokenLoadingLive && !liveTokenMetrics;
+  const gitLoading = gitLoadingLive && !liveGitStatus;
   const appMeta = useAppMeta();
   const t = useTranslation();
 
@@ -73,7 +87,9 @@ export function SystemStatusBar() {
     ? gitStatus.dirty
       ? t("statusBar.repoDirty")
       : t("statusBar.repoClean")
-    : t("statusBar.repoUnknown");
+    : gitLoading
+      ? t("statusBar.versionLoading")
+      : t("statusBar.repoUnknown");
   const repoTone = cn(
     "font-semibold",
     gitStatus
@@ -109,12 +125,16 @@ export function SystemStatusBar() {
           >
             <span>{t("statusBar.versionLabel")}:</span>
             <span data-testid="status-bar-version" className="font-semibold text-white">
-              {versionText}
+              {tokenLoading ? <Loader2 className="h-4 w-4 animate-spin text-emerald-300" /> : versionText}
             </span>
             <span className="text-zinc-600">•</span>
             <span>{t("statusBar.repoLabel")}:</span>
             <span data-testid="status-bar-repo" className={repoTone} title={repoTitle}>
-              {repoText}
+              {gitLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+              ) : (
+                repoText
+              )}
             </span>
           </div>
         </div>

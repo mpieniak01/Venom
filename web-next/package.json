@@ -18,15 +18,14 @@
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@radix-ui/react-slot": "^1.2.4",
-    "@tremor/react": "^3.18.7",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "dompurify": "^3.3.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.561.0",
-    "marked": "^17.0.1",
-    "mermaid": "^11.12.2",
+    "marked": "15.0.12",
+    "mermaid": "10.9.1",
     "next": "15.5.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -47,5 +46,8 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "overrides": {
+    "marked": "15.0.12"
   }
 }

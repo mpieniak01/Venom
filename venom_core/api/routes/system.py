@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from venom_core.core.metrics import metrics_collector
+from venom_core.core import metrics as metrics_module
 from venom_core.core.permission_guard import permission_guard
 from venom_core.utils.logger import get_logger
 
@@ -49,9 +49,10 @@ async def get_metrics():
     Raises:
         HTTPException: 503 jeśli MetricsCollector nie jest dostępny
     """
-    if metrics_collector is None:
+    collector = metrics_module.metrics_collector
+    if collector is None:
         raise HTTPException(status_code=503, detail="Metrics collector not initialized")
-    return metrics_collector.get_metrics()
+    return collector.get_metrics()
 
 
 @router.get("/scheduler/status")

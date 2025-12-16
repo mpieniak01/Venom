@@ -50,8 +50,22 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 const logFetchError = (path: string, details: unknown) => {
-  if (process.env.NODE_ENV === "production") return;
-  console.warn(`[server-data] Nie udało się pobrać ${path}`, details);
+  const message = `[server-data] Nie udało się pobrać ${path}`;
+  if (process.env.NODE_ENV === "production") {
+    console.error(message, normalizeDetail(details));
+  } else {
+    console.warn(message, details);
+  }
+};
+
+const normalizeDetail = (details: unknown) => {
+  if (details instanceof Error) {
+    return {
+      message: details.message,
+      stack: details.stack,
+    };
+  }
+  return details;
 };
 
 const normalizeModelsUsage = (

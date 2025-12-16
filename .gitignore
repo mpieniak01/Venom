@@ -43,3 +43,7 @@ web-next/out/
 web-next/.cache/
 web-next/.eslintcache
 web-next/.vercel/
+
+# runtime pid files
+.web-next.pid
+*.pid

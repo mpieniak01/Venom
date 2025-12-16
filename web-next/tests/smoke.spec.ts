@@ -38,6 +38,17 @@ test.describe("Venom Next Cockpit Smoke", () => {
     }
   });
 
+  test("Bottom status bar jest widoczna na każdej podstronie", async ({ page }) => {
+    await page.goto("/");
+    const bar = page.getByTestId("bottom-status-bar");
+    await expect(bar).toBeVisible();
+    await expect(bar.getByTestId("status-bar-resources")).toBeVisible();
+    await expect(bar.getByTestId("status-bar-version")).toBeVisible();
+    await expect(bar.getByTestId("status-bar-repo")).toBeVisible();
+    await page.goto("/brain");
+    await expect(page.getByTestId("bottom-status-bar")).toBeVisible();
+  });
+
   test("Status pills show fallback when API is offline", async ({ page }) => {
     await page.goto("/");
     const queueValue = page.getByTestId("status-pill-queue-value");

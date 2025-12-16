@@ -1,6 +1,65 @@
-# Venom Dashboard - Instrukcja Uruchomienia
+# Venom Dashboard – Instrukcja Uruchomienia
 
-## Opis
+Dokument opisuje dwa frontendy:
+- **Nowy Next.js (`web-next`)** – domyślny interfejs z App Routerem i Playwright smoke.
+- **Legacy (`web/` + FastAPI templates)** – zachowany dla kompatybilności (ostatnie wdrożenia przed migracją).
+
+Szczegłowe źródła danych, testy i zasady SCC znajdziesz również w `docs/FRONTEND_NEXT_GUIDE.md`.
+
+---
+
+## 1. web-next (Next.js 15)
+
+### 1.1 Wymagania
+- Node.js 20+
+- Działający backend FastAPI (`uvicorn main:app …`) – standardowo na porcie 8000
+- Środowisko `.env` w katalogu głównym (backend) + opcjonalne zmienne frontowe (`NEXT_PUBLIC_*`)
+
+### 1.2 Instalacja i uruchomienie
+
+```bash
+npm --prefix web-next install          # jednorazowo
+npm --prefix web-next run dev          # http://localhost:3000 (proxy do API)
+```
+
+Najważniejsze zmienne środowiskowe frontu:
+
+```
+NEXT_PUBLIC_API_BASE=http://localhost:8000          # gdy nie chcemy korzystać z wbudowanego proxy
+NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events   # kanał telemetryczny
+API_PROXY_TARGET=http://localhost:8000              # cel rewritera Next (dev)
+```
+
+### 1.3 Skrypty
+
+| Cel                                 | Komenda                                              |
+|-------------------------------------|-------------------------------------------------------|
+| Build produkcyjny                   | `npm --prefix web-next run build`                     |
+| Serwowanie buildu (`next start`)    | `npm --prefix web-next run start`                     |
+| Playwright smoke (15 testów)        | `npm --prefix web-next run test:e2e`                  |
+| Lint + typy                         | `npm --prefix web-next run lint`                      |
+| Walidacja tłumaczeń                 | `npm --prefix web-next run lint:locales`              |
+
+### 1.4 Struktura
+```
+web-next/
+├── app/ (Cockpit, Brain, Inspector, Strategy – server components)
+├── components/ (layout, UI, overlaye)
+├── hooks/ (use-api.ts, use-telemetry.ts)
+├── lib/ (i18n, formatery, api-client, app-meta)
+├── scripts/ (generate-meta.mjs, prepare-standalone.mjs)
+└── tests/ (Playwright smoke)
+```
+
+### 1.5 Różnice względem legacy
+- Interfejs korzysta z `useTranslation` (PL/EN/DE) i SCC – komponenty klientowe posiadają `"use client"`.
+- Aktualizacje w czasie rzeczywistym realizuje `usePolling` (fetch + odświeżanie) oraz WebSocket (`useTelemetryFeed`).
+- Dolna belka statusu i overlaye TopBaru mają `data-testid`, co umożliwia stabilne testy E2E.
+- Build generuje `public/meta.json` (wersja + commit) – wykorzystywany do weryfikacji środowiska w UI.
+
+---
+
+## 2. Legacy dashboard (`web/`)
 
 Venom Cockpit to dashboard do monitorowania i kontrolowania systemu Venom w czasie rzeczywistym.
 Dashboard oferuje:
@@ -17,13 +76,13 @@ Dashboard oferuje:
 
 ## Uruchomienie
 
-### 1. Instalacja zależności
+### 2.1 Instalacja zależności
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Konfiguracja (opcjonalna)
+### 2.2 Konfiguracja (opcjonalna)
 
 Utwórz plik `.env` w katalogu głównym projektu:
 
@@ -33,21 +92,21 @@ LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
 LLM_MODEL_NAME=phi3:latest
 ```
 
-### 3. Uruchomienie serwera
+### 2.3 Uruchomienie serwera
 
 ```bash
 cd venom_core
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Otwarcie dashboardu
+### 2.4 Otwarcie dashboardu
 
 Otwórz przeglądarkę i przejdź do:
 ```
 http://localhost:8000
 ```
 
-## Struktura Plików
+## Załącznik – Struktura (legacy)
 
 ```
 venom_core/
@@ -102,7 +161,7 @@ Dashboard odbiera następujące typy zdarzeń:
 - `AGENT_THOUGHT` - "Myśl" agenta
 - `SYSTEM_LOG` - Log systemowy
 
-## Testowanie
+## Testowanie (legacy)
 
 ### Test manualny
 
@@ -125,7 +184,7 @@ Dashboard odbiera następujące typy zdarzeń:
 pytest tests/test_dashboard_api.py -v
 ```
 
-## Troubleshooting
+## Troubleshooting (legacy)
 
 ### WebSocket nie łączy się
 

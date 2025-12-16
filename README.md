@@ -122,6 +122,41 @@ Orchestrator (decyzja o przepływie)
 > 🔎 **Nowy dashboard web-next**
 > Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
 
+## 🖥️ Frontend (Next.js – `web-next`)
+
+Nowa warstwa prezentacji działa na Next.js 15 (App Router, React 19). Interfejs jest złożony z dwóch typów komponentów:
+- **SCC (Server/Client Components)** – domyślnie tworzymy komponenty serwerowe (bez dyrektywy `"use client"`), a interaktywne fragmenty oznaczamy jako klientowe. Dzięki temu widoki Brain/Strategy i Cockpit mogą strumieniować dane bez dodatkowych fetchy.
+- **Wspólny layout** (`components/layout/*`) – TopBar, Sidebar, dolna belka statusu oraz overlaye dzielą tokeny graficzne i tłumaczenia (`useTranslation`).
+
+### Kluczowe komendy
+
+```bash
+# instalacja zależności
+npm --prefix web-next install
+
+# środowisko developerskie (http://localhost:3000)
+npm --prefix web-next run dev
+
+# build produkcyjny (generuje meta version + standalone)
+npm --prefix web-next run build
+
+# smoke E2E (Playwright, tryb prod)
+npm --prefix web-next run test:e2e
+
+# walidacja spójności tłumaczeń
+npm --prefix web-next run lint:locales
+```
+
+Skrypt `predev/prebuild` uruchamia `scripts/generate-meta.mjs`, który zapisuje `public/meta.json` (wersja + commit). Wszystkie hooki HTTP korzystają z `lib/api-client.ts`; w trybie lokalnym możesz wskazać backend przez zmienne:
+
+```
+NEXT_PUBLIC_API_BASE=http://localhost:8000
+NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
+API_PROXY_TARGET=http://localhost:8000
+```
+
+> Szczegóły (architektura katalogów, guidelines dla SCC, źródła danych widoków) opisuje `docs/FRONTEND_NEXT_GUIDE.md`.
+
 ### Instalacja
 
 ```bash

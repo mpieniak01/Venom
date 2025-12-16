@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { SystemStatusBar } from "@/components/layout/system-status-bar";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -39,11 +40,12 @@ export default function RootLayout({
             </div>
             <div className="relative z-10 flex">
               <Sidebar />
-              <div className="flex flex-1 flex-col lg:pl-72">
+              <div className="relative flex flex-1 flex-col lg:pl-72">
                 <TopBar />
-                <main className="flex-1 overflow-y-auto px-4 py-10 sm:px-10">
+                <main className="flex-1 overflow-y-auto px-4 py-10 pb-24 sm:px-10">
                   <div className="mx-auto w-full max-w-6xl space-y-6">{children}</div>
                 </main>
+                <SystemStatusBar />
               </div>
             </div>
           </div>

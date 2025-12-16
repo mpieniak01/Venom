@@ -174,4 +174,22 @@ export const pl = {
     metricPending: "Oczekujące",
     metricLimit: "Limit",
   },
+  statusBar: {
+    resourcesLabel: "Zasoby",
+    versionLabel: "Wersja",
+    versionUnknown: "Nieznana wersja",
+    repoLabel: "Repozytorium",
+    repoClean: "Repo aktualne",
+    repoDirty: "Repo z lokalnymi zmianami",
+    repoUnknown: "Repo offline",
+    labels: {
+      cpu: "CPU",
+      gpu: "GPU",
+      gpuActive: "Aktywne",
+      ram: "RAM",
+      vram: "VRAM",
+      disk: "Dysk",
+      cost: "Koszt",
+    },
+  },
 };

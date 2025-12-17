@@ -12,6 +12,7 @@ from venom_core.api.audio_stream import AudioStreamHandler
 
 # Import routers
 from venom_core.api.routes import agents as agents_routes
+from venom_core.api.routes import benchmark as benchmark_routes
 from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
@@ -93,6 +94,9 @@ llm_controller = None
 # Inicjalizacja Model Manager (THE_ARMORY)
 model_manager = None
 
+# Inicjalizacja Benchmark Service
+benchmark_service = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -103,6 +107,7 @@ async def lifespan(app: FastAPI):
     global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
     global service_registry, service_monitor, model_manager, llm_controller
+    global benchmark_service
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -149,6 +154,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Nie udało się zainicjalizować ModelManager: {e}")
         model_manager = None
+
+    # Inicjalizuj Benchmark Service
+    try:
+        from venom_core.core.model_registry import ModelRegistry
+        from venom_core.services.benchmark import BenchmarkService
+
+        model_registry = ModelRegistry()
+        benchmark_service = BenchmarkService(
+            model_registry=model_registry,
+            service_monitor=service_monitor,
+            llm_controller=llm_controller,
+        )
+        logger.info("BenchmarkService zainicjalizowany")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować BenchmarkService: {e}")
+        benchmark_service = None
 
     # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
     if SETTINGS.ENABLE_NEXUS:
@@ -573,6 +594,7 @@ def setup_router_dependencies():
     strategy_routes.set_dependencies(orchestrator)
     models_routes.set_dependencies(model_manager)
     flow_routes.set_dependencies(request_tracer)
+    benchmark_routes.set_dependencies(benchmark_service)
 
 
 # Montowanie routerów
@@ -588,6 +610,7 @@ app.include_router(nodes_routes.router)
 app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
 app.include_router(flow_routes.router)
+app.include_router(benchmark_routes.router)
 
 # Montowanie plików statycznych
 if SETTINGS.SERVE_LEGACY_UI:

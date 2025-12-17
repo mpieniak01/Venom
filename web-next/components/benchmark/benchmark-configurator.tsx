@@ -55,9 +55,11 @@ export function BenchmarkConfigurator({
         <label className="mb-2 block text-sm font-medium text-zinc-300">
           Runtime
         </label>
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="group" aria-label="Wybór runtime">
           <button
             type="button"
+            role="radio"
+            aria-checked={runtime === "vllm"}
             onClick={() => {
               setRuntime("vllm");
               setSelectedModels([]);
@@ -75,6 +77,8 @@ export function BenchmarkConfigurator({
           </button>
           <button
             type="button"
+            role="radio"
+            aria-checked={runtime === "ollama"}
             onClick={() => {
               setRuntime("ollama");
               setSelectedModels([]);
@@ -148,7 +152,7 @@ export function BenchmarkConfigurator({
           min="1"
           max="100"
           value={numQuestions}
-          onChange={(e) => setNumQuestions(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          onChange={(e) => setNumQuestions(Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 1)))}
           disabled={disabled}
           className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white outline-none transition focus:border-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
         />

@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from venom_core.utils.logger import get_logger
@@ -105,7 +105,10 @@ async def start_benchmark(request: BenchmarkStartRequest):
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania benchmarku")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        raise HTTPException(
+            status_code=500,
+            detail="Nie udało się uruchomić benchmarku. Sprawdź logi serwera.",
+        ) from e
 
 
 @router.get("/{benchmark_id}/status", response_model=BenchmarkStatusResponse)
@@ -148,11 +151,14 @@ async def get_benchmark_status(benchmark_id: str):
         raise
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu benchmarku")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        raise HTTPException(
+            status_code=500,
+            detail="Nie udało się pobrać statusu benchmarku. Sprawdź logi serwera.",
+        ) from e
 
 
 @router.get("/list")
-async def list_benchmarks(limit: int = 10):
+async def list_benchmarks(limit: int = Query(default=10, ge=1, le=100)):
     """
     Lista ostatnich benchmarków.
 
@@ -176,4 +182,7 @@ async def list_benchmarks(limit: int = 10):
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy benchmarków")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        raise HTTPException(
+            status_code=500,
+            detail="Nie udało się pobrać listy benchmarków. Sprawdź logi serwera.",
+        ) from e

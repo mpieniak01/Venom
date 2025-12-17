@@ -254,6 +254,7 @@ async def test_sample_vram_during_generation(benchmark_service):
         try:
             await task
         except asyncio.CancelledError:
+            # Oczekiwane - task został anulowany
             pass
 
     # Sprawdź czy zebrano próbki

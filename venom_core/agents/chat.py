@@ -76,6 +76,25 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
 
         logger.info("ChatAgent zainicjalizowany z MemorySkill")
 
+    async def process_with_params(
+        self, input_text: str, generation_params: dict
+    ) -> str:
+        """
+        Odpowiada z niestandardowymi parametrami generacji.
+
+        Args:
+            input_text: Pytanie lub wiadomość od użytkownika
+            generation_params: Parametry generacji (temperature, max_tokens, etc.)
+
+        Returns:
+            Odpowiedź na pytanie lub wiadomość
+        """
+        logger.info(
+            f"ChatAgent przetwarza żądanie z parametrami: {input_text[:100]}..."
+        )
+        logger.debug(f"Parametry generacji: {generation_params}")
+        return await self._process_internal(input_text, generation_params)
+
     async def process(self, input_text: str) -> str:
         """
         Odpowiada na pytanie lub prowadzi rozmowę z użytkownikiem.
@@ -87,6 +106,21 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             Odpowiedź na pytanie lub wiadomość
         """
         logger.info(f"ChatAgent przetwarza żądanie: {input_text[:100]}...")
+        return await self._process_internal(input_text, None)
+
+    async def _process_internal(
+        self, input_text: str, generation_params: dict = None
+    ) -> str:
+        """
+        Wewnętrzna metoda przetwarzania z opcjonalnymi parametrami generacji.
+
+        Args:
+            input_text: Pytanie lub wiadomość od użytkownika
+            generation_params: Opcjonalne parametry generacji
+
+        Returns:
+            Odpowiedź na pytanie lub wiadomość
+        """
 
         if self._test_mode:
             kernel_is_mock = MagicMock is not None and isinstance(
@@ -134,6 +168,7 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                     chat_service=chat_service,
                     chat_history=chat_history,
                     enable_functions=supports_functions,
+                    generation_params=generation_params,
                 )
             except Exception as api_error:
                 error_text = str(api_error).lower()
@@ -154,6 +189,7 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                         chat_service=chat_service,
                         chat_history=chat_history,
                         enable_functions=False,
+                        generation_params=generation_params,
                     )
                 else:
                     raise
@@ -235,7 +271,11 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         return service_id not in self.LOCAL_SERVICE_IDS
 
     async def _invoke_chat_service(
-        self, chat_service, chat_history: ChatHistory, enable_functions: bool
+        self,
+        chat_service,
+        chat_history: ChatHistory,
+        enable_functions: bool,
+        generation_params: dict = None,
     ) -> ChatMessageContent:
         """
         Wykonuje połączenie z serwisem czatu z odpowiednią konfiguracją funkcji.
@@ -244,8 +284,9 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             chat_service: Serwis OpenAIChatCompletion
             chat_history: Historia rozmowy
             enable_functions: Czy pozwolić na wywołania funkcji
+            generation_params: Opcjonalne parametry generacji
         """
-        settings = self._build_execution_settings(enable_functions)
+        settings = self._build_execution_settings(enable_functions, generation_params)
         kwargs = {}
         if enable_functions:
             kwargs["kernel"] = self.kernel
@@ -256,13 +297,22 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             **kwargs,
         )
 
-    def _build_execution_settings(self, enable_functions: bool):
+    def _build_execution_settings(
+        self, enable_functions: bool, generation_params: dict = None
+    ):
         """
-        Tworzy ustawienia wykonania promptu zależnie od wsparcia funkcji.
+        Tworzy ustawienia wykonania promptu zależnie od wsparcia funkcji i parametrów generacji.
+
+        Args:
+            enable_functions: Czy włączyć function calling
+            generation_params: Opcjonalne parametry generacji
         """
+        kwargs = {}
         if enable_functions:
             behavior = FunctionChoiceBehavior.Auto()
-            return OpenAIChatPromptExecutionSettings(function_choice_behavior=behavior)
+            kwargs["function_choice_behavior"] = behavior
 
-        # Brak funkcji → użyj domyślnych ustawień bez konfiguracji behavior
-        return OpenAIChatPromptExecutionSettings()
+        # Użyj helpera z BaseAgent do utworzenia ustawień z parametrami
+        return self._create_execution_settings(
+            generation_params=generation_params, **kwargs
+        )

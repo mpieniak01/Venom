@@ -96,6 +96,25 @@ def hello_world():
             f"CoderAgent zainicjalizowany z FileSkill, ShellSkill i ComposeSkill (self_repair={enable_self_repair})"
         )
 
+    async def process_with_params(
+        self, input_text: str, generation_params: dict
+    ) -> str:
+        """
+        Generuje kod z niestandardowymi parametrami generacji.
+
+        Args:
+            input_text: Opis zadania programistycznego
+            generation_params: Parametry generacji (temperature, max_tokens, etc.)
+
+        Returns:
+            Wygenerowany kod w bloku markdown lub potwierdzenie zapisu
+        """
+        logger.info(
+            f"CoderAgent przetwarza żądanie z parametrami: {input_text[:100]}..."
+        )
+        logger.debug(f"Parametry generacji: {generation_params}")
+        return await self._process_internal(input_text, generation_params)
+
     async def process(self, input_text: str) -> str:
         """
         Generuje kod na podstawie żądania użytkownika.
@@ -108,7 +127,21 @@ def hello_world():
 
         """
         logger.info(f"CoderAgent przetwarza żądanie: {input_text[:100]}...")
+        return await self._process_internal(input_text, None)
 
+    async def _process_internal(
+        self, input_text: str, generation_params: dict = None
+    ) -> str:
+        """
+        Wewnętrzna metoda generowania kodu z opcjonalnymi parametrami.
+
+        Args:
+            input_text: Opis zadania programistycznego
+            generation_params: Opcjonalne parametry generacji
+
+        Returns:
+            Wygenerowany kod
+        """
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
         chat_history.add_message(
@@ -122,9 +155,9 @@ def hello_world():
             # Pobierz serwis chat completion
             chat_service = self.kernel.get_service()
 
-            # Włącz automatyczne wywoływanie funkcji
-            settings = OpenAIChatPromptExecutionSettings(
-                function_choice_behavior="auto"
+            # Włącz automatyczne wywoływanie funkcji i użyj parametrów generacji
+            settings = self._create_execution_settings(
+                generation_params=generation_params, function_choice_behavior="auto"
             )
 
             # Wywołaj model z możliwością auto-wywołania funkcji

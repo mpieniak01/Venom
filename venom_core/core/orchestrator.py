@@ -418,6 +418,15 @@ class Orchestrator:
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
 
+            # Zapisz generation_params w kontekście zadania jeśli zostały przekazane
+            if request.generation_params:
+                self.state_manager.update_context(
+                    task_id, {"generation_params": request.generation_params}
+                )
+                logger.info(
+                    f"Zapisano parametry generacji dla zadania {task_id}: {request.generation_params}"
+                )
+
             # Jeśli to zadanie testu wydajności, zakończ je natychmiast (bez LLM)
             if self._is_perf_test_prompt(context):
                 await self._complete_perf_test_task(task_id)
@@ -544,7 +553,9 @@ class Orchestrator:
                     agent="Architect",
                     data={"task_id": str(task_id)},
                 )
-                result = await self.task_dispatcher.dispatch(intent, context)
+                result = await self.task_dispatcher.dispatch(
+                    intent, context, generation_params=request.generation_params
+                )
             else:
                 # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
                 # Decision Gate: Standard dispatch
@@ -558,7 +569,9 @@ class Orchestrator:
                         status="ok",
                         details=f"📤 Routing to {agent_name} (intent={intent})",
                     )
-                result = await self.task_dispatcher.dispatch(intent, context)
+                result = await self.task_dispatcher.dispatch(
+                    intent, context, generation_params=request.generation_params
+                )
 
             # Zaloguj które agent przejął zadanie
             agent = self.task_dispatcher.agent_map.get(intent)

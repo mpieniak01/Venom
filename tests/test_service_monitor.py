@@ -287,9 +287,9 @@ def test_get_memory_metrics(service_monitor):
         mock_memory.percent = 50.0
         mock_psutil.virtual_memory.return_value = mock_memory
 
-        # Mock subprocess dla nvidia-smi (symuluj brak GPU)
-        with patch("subprocess.run") as mock_subprocess:
-            mock_subprocess.side_effect = FileNotFoundError()
+        # Mock shutil.which to return None (no nvidia-smi)
+        with patch("shutil.which") as mock_which:
+            mock_which.return_value = None
 
             metrics = service_monitor.get_memory_metrics()
 
@@ -315,16 +315,20 @@ def test_get_memory_metrics_with_gpu(service_monitor):
         mock_memory.percent = 50.0
         mock_psutil.virtual_memory.return_value = mock_memory
 
-        # Mock subprocess dla nvidia-smi (symuluj GPU)
-        with patch("subprocess.run") as mock_subprocess:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_result.stdout = "2048, 8192\n"  # 2 GB used, 8 GB total
-            mock_subprocess.return_value = mock_result
+        # Mock shutil.which to return nvidia-smi path
+        with patch("shutil.which") as mock_which:
+            mock_which.return_value = "/usr/bin/nvidia-smi"
 
-            metrics = service_monitor.get_memory_metrics()
+            # Mock subprocess dla nvidia-smi (symuluj GPU)
+            with patch("venom_core.core.service_monitor.subprocess.run") as mock_run:
+                mock_result = MagicMock()
+                mock_result.returncode = 0
+                mock_result.stdout = "2048, 8192\n"  # 2 GB used, 8 GB total
+                mock_run.return_value = mock_result
 
-            assert metrics["memory_usage_mb"] > 0
-            assert metrics["vram_usage_mb"] == 2048.0
-            assert metrics["vram_total_mb"] == 8192.0
-            assert metrics["vram_usage_percent"] == 25.0
+                metrics = service_monitor.get_memory_metrics()
+
+                assert metrics["memory_usage_mb"] > 0
+                assert metrics["vram_usage_mb"] == 2048.0
+                assert metrics["vram_total_mb"] == 8192.0
+                assert metrics["vram_usage_percent"] == 25.0

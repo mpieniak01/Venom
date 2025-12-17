@@ -459,9 +459,16 @@ class ServiceHealthMonitor:
 
         # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
         try:
+            import shutil
+
+            # Sprawdź czy nvidia-smi jest dostępne
+            nvidia_smi_path = shutil.which("nvidia-smi")
+            if not nvidia_smi_path:
+                return metrics
+
             result = subprocess.run(
                 [
-                    "nvidia-smi",
+                    nvidia_smi_path,
                     "--query-gpu=memory.used,memory.total",
                     "--format=csv,noheader,nounits",
                 ],
@@ -499,7 +506,11 @@ class ServiceHealthMonitor:
                             metrics["vram_usage_percent"] = round(
                                 (metrics["vram_usage_mb"] / total_mb) * 100, 2
                             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+        ):
             # nvidia-smi nie jest dostępne lub wystąpił błąd - ignorujemy
             pass
 

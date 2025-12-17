@@ -71,6 +71,7 @@ stop() {
     rm -f "$PID_FILE"
   fi
 
+  # Graceful cleanup zombie processes
   pkill -f "ollama serve" 2>/dev/null || true
   echo "Ollama zatrzymana"
 }

@@ -18,7 +18,30 @@ if [ -z "$SERVED_MODEL_NAME" ]; then
   SERVED_MODEL_NAME="$(basename "$MODEL_PATH")"
 fi
 
+# Wykryj czy używamy systemd
+SYSTEMCTL_BIN="$(command -v systemctl || true)"
+SYSTEMD_UNIT="${VLLM_SYSTEMD_UNIT:-vllm.service}"
+SYSTEMD_SCOPE="${VLLM_SYSTEMD_SCOPE:-system}"
+SYSTEMD_SCOPE_ARGS=()
+if [ "$SYSTEMD_SCOPE" = "user" ]; then
+  SYSTEMD_SCOPE_ARGS=(--user)
+fi
+
+USE_SYSTEMD=false
+if [ -n "$SYSTEMCTL_BIN" ]; then
+  if "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" list-unit-files "$SYSTEMD_UNIT" >/dev/null 2>&1 || \
+     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" status "$SYSTEMD_UNIT" >/dev/null 2>&1; then
+    USE_SYSTEMD=true
+  fi
+fi
+
 start() {
+  if [ "$USE_SYSTEMD" = "true" ]; then
+    echo "Uruchamiam usługę systemd ${SYSTEMD_UNIT}"
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" start "$SYSTEMD_UNIT"
+    return
+  fi
+
   if [ ! -x "$VLLM_BIN" ]; then
     echo "Nie znaleziono binarki vLLM pod $VLLM_BIN" >&2
     exit 1
@@ -59,16 +82,30 @@ start() {
 }
 
 stop() {
+  if [ "$USE_SYSTEMD" = "true" ]; then
+    echo "Zatrzymuję usługę systemd ${SYSTEMD_UNIT}"
+    "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
+    return
+  fi
+
   if [ -f "$PID_FILE" ]; then
     local pid
     pid="$(cat "$PID_FILE")"
     if kill -0 "$pid" 2>/dev/null; then
       echo "Zatrzymuję vLLM (PID $pid)"
       kill "$pid" 2>/dev/null || true
+      # Graceful shutdown: poczekaj chwilę
+      sleep 2
+      # Jeśli jeszcze działa, wymuś
+      if kill -0 "$pid" 2>/dev/null; then
+        echo "Wymuszam zatrzymanie vLLM (SIGKILL)"
+        kill -9 "$pid" 2>/dev/null || true
+      fi
     fi
     rm -f "$PID_FILE"
   fi
 
+  # Cleanup zombie processes
   pkill -f "vllm serve" 2>/dev/null || true
   echo "vLLM zatrzymany"
 }

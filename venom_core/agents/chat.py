@@ -182,9 +182,15 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
 
         # Jeśli mamy ModelRegistry, sprawdź capabilities
         if self.model_registry:
-            # Najpierw sprawdź dokładne dopasowanie (case-insensitive)
+            # Oblicz base name raz na początku
+            model_base = model_id.split("/")[-1].lower()
+
+            # Pojedyncza iteracja z priorytetyzowanym dopasowaniem
             for manifest_name in self.model_registry.manifest.keys():
-                if manifest_name.lower() == model_id:
+                manifest_name_lower = manifest_name.lower()
+
+                # Priorytet 1: Dokładne dopasowanie
+                if manifest_name_lower == model_id:
                     capabilities = self.model_registry.get_model_capabilities(
                         manifest_name
                     )
@@ -195,11 +201,8 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                         )
                         return supports
 
-            # Jeśli nie znaleziono dokładnego dopasowania, spróbuj dopasować po ostatniej części nazwy
-            # (np. "gemma-2b-it" z "google/gemma-2b-it")
-            for manifest_name in self.model_registry.manifest.keys():
-                manifest_base = manifest_name.split("/")[-1].lower()
-                model_base = model_id.split("/")[-1].lower()
+                # Priorytet 2: Dopasowanie po base name
+                manifest_base = manifest_name_lower.split("/")[-1]
                 if manifest_base == model_base:
                     capabilities = self.model_registry.get_model_capabilities(
                         manifest_name

@@ -51,6 +51,15 @@ function ParameterControl({
     const step = type === "float" ? 0.1 : 1;
     const numValue = Number(value);
 
+    const handleNumericChange = (rawValue: string) => {
+      const parsed = type === "float" ? parseFloat(rawValue) : parseInt(rawValue, 10);
+      // Walidacja NaN i zakresu
+      if (!isNaN(parsed)) {
+        const clamped = Math.max(min ?? -Infinity, Math.min(max ?? Infinity, parsed));
+        onChange(clamped);
+      }
+    };
+
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -58,7 +67,7 @@ function ParameterControl({
           <input
             type="number"
             value={numValue}
-            onChange={(e) => onChange(type === "float" ? parseFloat(e.target.value) : parseInt(e.target.value, 10))}
+            onChange={(e) => handleNumericChange(e.target.value)}
             step={step}
             min={min}
             max={max}
@@ -68,7 +77,7 @@ function ParameterControl({
         <input
           type="range"
           value={numValue}
-          onChange={(e) => onChange(type === "float" ? parseFloat(e.target.value) : parseInt(e.target.value, 10))}
+          onChange={(e) => handleNumericChange(e.target.value)}
           step={step}
           min={min}
           max={max}

@@ -5,6 +5,7 @@ import {
   CampaignResponse,
   CostMode,
   FlowTrace,
+  GenerationParams,
   GitStatus,
   GraphFileInfoResponse,
   GraphImpactResponse,
@@ -396,12 +397,12 @@ export function useLessonsStats(intervalMs = 30000) {
 export async function sendTask(
   content: string,
   storeKnowledge = true,
-  generationParams?: Record<string, any> | null
+  generationParams?: GenerationParams | null
 ) {
   const body: {
     content: string;
     store_knowledge: boolean;
-    generation_params?: Record<string, any>;
+    generation_params?: GenerationParams;
   } = {
     content,
     store_knowledge: storeKnowledge,

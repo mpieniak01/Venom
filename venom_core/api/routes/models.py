@@ -9,7 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import get_active_llm_runtime, probe_runtime_status
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -151,8 +151,11 @@ async def list_models():
             return "vllm"
 
         runtime_info = get_active_llm_runtime()
+        runtime_status, runtime_error = await probe_runtime_status(runtime_info)
         runtime_payload = runtime_info.to_payload()
-        runtime_payload["status"] = "ready"
+        runtime_payload["status"] = runtime_status
+        if runtime_error:
+            runtime_payload["error"] = runtime_error
         runtime_payload["configured_models"] = {
             "local": SETTINGS.LLM_MODEL_NAME,
             "hybrid_local": getattr(SETTINGS, "HYBRID_LOCAL_MODEL", None),
@@ -675,13 +678,13 @@ async def get_model_capabilities_endpoint(model_name: str):
             "max_context_length": capabilities.max_context_length,
             "quantization": capabilities.quantization,
         }
-        
+
         if capabilities.generation_schema:
             capabilities_dict["generation_schema"] = {
-                key: param.to_dict() 
+                key: param.to_dict()
                 for key, param in capabilities.generation_schema.items()
             }
-        
+
         return {
             "success": True,
             "model_name": model_name,
@@ -698,7 +701,7 @@ async def get_model_capabilities_endpoint(model_name: str):
 async def get_model_config_endpoint(model_name: str):
     """
     Pobiera schemat parametrów generacji dla modelu (generation_schema).
-    
+
     Ten endpoint zwraca dynamiczną konfigurację parametrów dostępnych dla danego modelu,
     takich jak temperature, max_tokens, top_p, etc.
 
@@ -723,7 +726,7 @@ async def get_model_config_endpoint(model_name: str):
                 status_code=404,
                 detail=f"Model {model_name} nie znaleziony w manifeście",
             )
-        
+
         if capabilities.generation_schema is None:
             raise HTTPException(
                 status_code=404,
@@ -731,7 +734,7 @@ async def get_model_config_endpoint(model_name: str):
             )
 
         schema = {
-            key: param.to_dict() 
+            key: param.to_dict()
             for key, param in capabilities.generation_schema.items()
         }
 

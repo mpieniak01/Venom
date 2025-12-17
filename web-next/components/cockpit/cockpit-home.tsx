@@ -289,6 +289,35 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const usageMetrics = modelsUsageResponse?.usage ?? null;
   const llmServers = liveLlmServers ?? [];
   const activeRuntime = models?.active;
+  const runtimeStatus = useMemo(() => {
+    if (!activeRuntime) return "unknown";
+    const statusValue = activeRuntime.status;
+    if (typeof statusValue === "string" && statusValue.length > 0) {
+      return statusValue.toLowerCase();
+    }
+    return "unknown";
+  }, [activeRuntime]);
+  const runtimeIsOnline = runtimeStatus === "online" || runtimeStatus === "ready";
+  const runtimeStatusLabel = useMemo(() => {
+    if (runtimeIsOnline) return "Online";
+    if (!runtimeStatus || runtimeStatus === "unknown") return "Unknown";
+    return runtimeStatus.charAt(0).toUpperCase() + runtimeStatus.slice(1);
+  }, [runtimeIsOnline, runtimeStatus]);
+  const runtimeAlert = useMemo(() => {
+    if (llmAlert) return llmAlert;
+    if (!runtimeIsOnline) {
+      return {
+        provider: activeRuntime?.provider,
+        model: activeRuntime?.model,
+        endpoint: activeRuntime?.endpoint,
+        error:
+          activeRuntime?.error ??
+          `Runtime (${runtimeStatusLabel.toLowerCase()}) jest niedostępny.`,
+      };
+    }
+    return null;
+  }, [llmAlert, runtimeIsOnline, activeRuntime, runtimeStatusLabel]);
+  const runtimeAlertDismissible = Boolean(llmAlert);
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -1231,24 +1260,26 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
                   </p>
                 </div>
-                <Badge tone={llmAlert ? "danger" : "success"}>
-                  {llmAlert ? "Błąd" : "Online"}
+                <Badge tone={runtimeIsOnline ? "success" : runtimeAlert ? "danger" : "neutral"}>
+                  {runtimeStatusLabel}
                 </Badge>
               </div>
-              {llmAlert ? (
+              {runtimeAlert ? (
                 <div className="mt-4 space-y-2 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
-                  <p>{llmAlert.error}</p>
+                  <p>{runtimeAlert.error}</p>
                   <p className="text-xs text-rose-200/80">
-                    {llmAlert.model ?? "?"} • {llmAlert.provider ?? "LLM"}
-                    {llmAlert.endpoint ? ` @ ${llmAlert.endpoint}` : ""}
+                    {runtimeAlert.model ?? "?"} • {runtimeAlert.provider ?? "LLM"}
+                    {runtimeAlert.endpoint ? ` @ ${runtimeAlert.endpoint}` : ""}
                   </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => setLlmAlert(null)}
-                  >
-                    Ukryj alert
-                  </Button>
+                  {runtimeAlertDismissible ? (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setLlmAlert(null)}
+                    >
+                      Ukryj alert
+                    </Button>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-4 text-xs text-zinc-400">

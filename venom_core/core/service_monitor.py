@@ -567,5 +567,7 @@ class ServiceHealthMonitor:
         ):
             # nvidia-smi nie jest dostępne lub wystąpił błąd
             pass
+        except Exception as exc:  # pragma: no cover - defensywne logowanie
+            logger.warning(f"Błąd get_gpu_memory_usage: {exc}")
 
         return None

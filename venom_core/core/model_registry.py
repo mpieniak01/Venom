@@ -18,26 +18,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
-# Optional imports for HuggingFace
-try:
-    from huggingface_hub import snapshot_download
-    HF_AVAILABLE = True
-except ImportError:
-    HF_AVAILABLE = False
-    snapshot_download = None
-
 logger = get_logger(__name__)
 
 
 class ModelProvider(str, Enum):
     """Providery modeli."""
+
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
     LOCAL = "local"
@@ -45,6 +38,7 @@ class ModelProvider(str, Enum):
 
 class ModelStatus(str, Enum):
     """Statusy modelu."""
+
     AVAILABLE = "available"
     DOWNLOADING = "downloading"
     INSTALLED = "installed"
@@ -54,6 +48,7 @@ class ModelStatus(str, Enum):
 
 class OperationStatus(str, Enum):
     """Statusy operacji."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -63,6 +58,7 @@ class OperationStatus(str, Enum):
 @dataclass
 class GenerationParameter:
     """Definicja pojedynczego parametru generacji dla modelu."""
+
     type: str  # "float", "int", "bool", "list", "enum"
     default: Any
     min: Optional[float] = None
@@ -90,9 +86,12 @@ class GenerationParameter:
 @dataclass
 class ModelCapabilities:
     """Możliwości modelu (obsługa ról, templaty, etc.)."""
+
     supports_system_role: bool = True
     supports_function_calling: bool = False
-    allowed_roles: List[str] = field(default_factory=lambda: ["system", "user", "assistant"])
+    allowed_roles: List[str] = field(
+        default_factory=lambda: ["system", "user", "assistant"]
+    )
     prompt_template: Optional[str] = None
     max_context_length: int = 4096
     quantization: Optional[str] = None
@@ -102,6 +101,7 @@ class ModelCapabilities:
 @dataclass
 class ModelMetadata:
     """Metadane modelu."""
+
     name: str
     provider: ModelProvider
     display_name: str
@@ -113,6 +113,11 @@ class ModelMetadata:
     installed_at: Optional[str] = None
     runtime: str = "vllm"  # "vllm" lub "ollama"
 
+    @property
+    def supports_system_role(self) -> bool:
+        """Zachowuje kompatybilność ze starszym kodem oczekującym pola bezpośrednio w metadata."""
+        return self.capabilities.supports_system_role
+
     def to_dict(self) -> Dict[str, Any]:
         """Konwertuje do słownika."""
         capabilities_dict = {
@@ -123,13 +128,13 @@ class ModelMetadata:
             "max_context_length": self.capabilities.max_context_length,
             "quantization": self.capabilities.quantization,
         }
-        
+
         if self.capabilities.generation_schema:
             capabilities_dict["generation_schema"] = {
-                key: param.to_dict() 
+                key: param.to_dict()
                 for key, param in self.capabilities.generation_schema.items()
             }
-        
+
         return {
             "name": self.name,
             "provider": self.provider.value,
@@ -147,6 +152,7 @@ class ModelMetadata:
 @dataclass
 class ModelOperation:
     """Operacja na modelu (instalacja/usuwanie)."""
+
     operation_id: str
     model_name: str
     operation_type: str  # "install", "remove", "activate"
@@ -211,7 +217,7 @@ class OllamaModelProvider(BaseModelProvider):
                     for model in data.get("models", []):
                         name = model.get("name", "unknown")
                         size_bytes = model.get("size", 0)
-                        
+
                         # Określ generation_schema na podstawie nazwy modelu
                         generation_schema = _create_default_generation_schema()
                         # Używamy regex do precyzyjnego wykrycia modeli Llama 3
@@ -226,7 +232,7 @@ class OllamaModelProvider(BaseModelProvider):
                                 max=1.0,
                                 desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
                             )
-                        
+
                         models.append(
                             ModelMetadata(
                                 name=name,
@@ -255,7 +261,7 @@ class OllamaModelProvider(BaseModelProvider):
 
         try:
             logger.info(f"Rozpoczynam pobieranie modelu Ollama: {model_name}")
-            
+
             # Use asyncio subprocess for proper async handling
             process = await asyncio.create_subprocess_exec(
                 "ollama",
@@ -277,13 +283,15 @@ class OllamaModelProvider(BaseModelProvider):
                         await progress_callback(line_str)
 
                 await process.wait()
-                
+
                 if process.returncode == 0:
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
                     return True
                 else:
                     stderr = await process.stderr.read()
-                    logger.error(f"❌ Błąd podczas pobierania modelu: {stderr.decode()}")
+                    logger.error(
+                        f"❌ Błąd podczas pobierania modelu: {stderr.decode()}"
+                    )
                     return False
             finally:
                 if process.returncode is None:
@@ -419,13 +427,15 @@ class HuggingFaceModelProvider(BaseModelProvider):
         self, model_name: str, progress_callback: Optional[Callable] = None
     ) -> bool:
         """Pobiera model z HuggingFace."""
-        if not HF_AVAILABLE:
+        try:
+            from huggingface_hub import snapshot_download as hf_snapshot_download
+        except ImportError:
             logger.error(
                 "Biblioteka huggingface_hub nie jest zainstalowana. "
                 "Zainstaluj: pip install huggingface_hub"
             )
             return False
-            
+
         try:
             logger.info(f"Rozpoczynam pobieranie modelu HF: {model_name}")
 
@@ -434,7 +444,7 @@ class HuggingFaceModelProvider(BaseModelProvider):
 
             # Pobierz model do cache (wrap in thread to avoid blocking)
             local_path = await asyncio.to_thread(
-                snapshot_download,
+                hf_snapshot_download,
                 repo_id=model_name,
                 cache_dir=str(self.cache_dir),
                 token=self.token,
@@ -526,12 +536,14 @@ class ModelRegistry:
                     for model_data in data.get("models", []):
                         # Safely extract capabilities with known fields only
                         caps_data = model_data.get("capabilities", {})
-                        
+
                         # Parse generation_schema if present
                         generation_schema = None
                         if "generation_schema" in caps_data:
                             generation_schema = {}
-                            for param_name, param_data in caps_data["generation_schema"].items():
+                            for param_name, param_data in caps_data[
+                                "generation_schema"
+                            ].items():
                                 generation_schema[param_name] = GenerationParameter(
                                     type=param_data.get("type", "float"),
                                     default=param_data.get("default"),
@@ -540,21 +552,31 @@ class ModelRegistry:
                                     desc=param_data.get("desc"),
                                     options=param_data.get("options"),
                                 )
-                        
+
                         capabilities = ModelCapabilities(
-                            supports_system_role=caps_data.get("supports_system_role", True),
-                            supports_function_calling=caps_data.get("supports_function_calling", False),
-                            allowed_roles=caps_data.get("allowed_roles", ["system", "user", "assistant"]),
+                            supports_system_role=caps_data.get(
+                                "supports_system_role", True
+                            ),
+                            supports_function_calling=caps_data.get(
+                                "supports_function_calling", False
+                            ),
+                            allowed_roles=caps_data.get(
+                                "allowed_roles", ["system", "user", "assistant"]
+                            ),
                             prompt_template=caps_data.get("prompt_template"),
-                            max_context_length=caps_data.get("max_context_length", 4096),
+                            max_context_length=caps_data.get(
+                                "max_context_length", 4096
+                            ),
                             quantization=caps_data.get("quantization"),
                             generation_schema=generation_schema,
                         )
-                        
+
                         metadata = ModelMetadata(
                             name=model_data["name"],
                             provider=ModelProvider(model_data["provider"]),
-                            display_name=model_data.get("display_name", model_data["name"]),
+                            display_name=model_data.get(
+                                "display_name", model_data["name"]
+                            ),
                             size_gb=model_data.get("size_gb"),
                             status=ModelStatus(model_data.get("status", "available")),
                             capabilities=capabilities,
@@ -586,9 +608,7 @@ class ModelRegistry:
     ) -> List[ModelMetadata]:
         """Lista dostępnych modeli ze wszystkich providerów."""
         all_models = []
-        providers_to_query = (
-            [provider] if provider else list(self.providers.keys())
-        )
+        providers_to_query = [provider] if provider else list(self.providers.keys())
 
         for prov in providers_to_query:
             provider_obj = self.providers.get(prov)
@@ -626,7 +646,9 @@ class ModelRegistry:
         self.operations[operation_id] = operation
 
         # Uruchom instalację w tle z obsługą wyjątków
-        task = asyncio.create_task(self._install_model_task(operation, provider, runtime))
+        task = asyncio.create_task(
+            self._install_model_task(operation, provider, runtime)
+        )
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
         return operation_id
@@ -755,9 +777,7 @@ class ModelRegistry:
             return self.manifest[model_name].capabilities
         return None
 
-    async def activate_model(
-        self, model_name: str, runtime: str
-    ) -> bool:
+    async def activate_model(self, model_name: str, runtime: str) -> bool:
         """
         Aktywuje model dla danego runtime (stub - wymaga integracji z LlmServerController).
 

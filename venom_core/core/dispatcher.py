@@ -231,7 +231,11 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             return Intent(action="unknown", targets=[], params={})
 
     async def dispatch(
-        self, intent: str, content: str, node_preference: dict = None
+        self,
+        intent: str,
+        content: str,
+        node_preference: dict = None,
+        generation_params: dict = None,
     ) -> str:
         """
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
@@ -240,6 +244,7 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             intent: Sklasyfikowana intencja
             content: Treść zadania do wykonania
             node_preference: Opcjonalne preferencje węzła (np. {"tag": "location:server_room", "skill": "ShellSkill"})
+            generation_params: Opcjonalne parametry generacji (temperature, max_tokens, etc.)
 
         Returns:
             Wynik przetworzenia zadania przez agenta
@@ -277,7 +282,14 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             if intent == "STATUS_REPORT" and hasattr(agent, "generate_status_report"):
                 result = await agent.generate_status_report()
             else:
-                result = await agent.process(content)
+                # Sprawdź czy agent wspiera generation_params
+                if generation_params and hasattr(agent, "process_with_params"):
+                    logger.debug(
+                        f"Przekazuję parametry generacji do agenta: {generation_params}"
+                    )
+                    result = await agent.process_with_params(content, generation_params)
+                else:
+                    result = await agent.process(content)
             logger.info(f"Agent {agent.__class__.__name__} zakończył przetwarzanie")
             return result
 

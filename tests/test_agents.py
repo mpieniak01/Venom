@@ -161,3 +161,193 @@ async def test_chat_agent_handles_error(mock_kernel, mock_chat_service):
 
     with pytest.raises(Exception, match="LLM error"):
         await agent.process("Jakieś pytanie")
+
+
+# --- Testy ChatAgent z ModelRegistry ---
+
+
+def test_chat_agent_initialization_with_model_registry(mock_kernel):
+    """Test inicjalizacji ChatAgent z ModelRegistry."""
+    from venom_core.core.model_registry import ModelRegistry
+
+    mock_registry = MagicMock(spec=ModelRegistry)
+    agent = ChatAgent(mock_kernel, model_registry=mock_registry)
+    assert agent.kernel == mock_kernel
+    assert agent.model_registry == mock_registry
+
+
+def test_chat_agent_supports_system_prompt_with_registry(mock_kernel):
+    """Test sprawdzania wsparcia system prompt przez ModelRegistry."""
+    from venom_core.core.model_registry import (
+        ModelCapabilities,
+        ModelMetadata,
+        ModelProvider,
+        ModelRegistry,
+    )
+
+    # Utwórz registry z modelem wspierającym system role
+    mock_registry = MagicMock(spec=ModelRegistry)
+    mock_registry.manifest = {
+        "google/gemma-2b-it": ModelMetadata(
+            name="google/gemma-2b-it",
+            provider=ModelProvider.HUGGINGFACE,
+            display_name="Gemma 2B IT",
+            capabilities=ModelCapabilities(supports_system_role=False),
+        )
+    }
+    mock_registry.get_model_capabilities = MagicMock(
+        return_value=ModelCapabilities(supports_system_role=False)
+    )
+
+    agent = ChatAgent(mock_kernel, model_registry=mock_registry)
+
+    # Mock chat service z model_id = "gemma-2b"
+    mock_service = MagicMock()
+    mock_service.ai_model_id = "gemma-2b"
+
+    result = agent._supports_system_prompt(mock_service)
+    assert result is False
+    assert mock_registry.get_model_capabilities.called
+
+
+def test_chat_agent_supports_system_prompt_fallback(mock_kernel):
+    """Test fallback do hardcoded listy gdy model nie w manifeście."""
+    from venom_core.core.model_registry import ModelRegistry
+
+    # Registry bez modelu gemma
+    mock_registry = MagicMock(spec=ModelRegistry)
+    mock_registry.manifest = {}
+
+    agent = ChatAgent(mock_kernel, model_registry=mock_registry)
+
+    # Mock chat service z model_id zawierającym "gemma-2b"
+    mock_service = MagicMock()
+    mock_service.ai_model_id = "gemma-2b-local"
+
+    result = agent._supports_system_prompt(mock_service)
+    # Powinno użyć fallback i zwrócić False (gemma-2b jest w MODELS_WITHOUT_SYSTEM_ROLE)
+    assert result is False
+
+
+def test_chat_agent_supports_system_prompt_without_registry(mock_kernel):
+    """Test sprawdzania wsparcia system prompt bez ModelRegistry."""
+    agent = ChatAgent(mock_kernel)  # Bez registry
+
+    # Model wspierający system prompt
+    mock_service = MagicMock()
+    mock_service.ai_model_id = "gpt-4o"
+
+    result = agent._supports_system_prompt(mock_service)
+    assert result is True
+
+    # Model niewspierający system prompt (z hardcoded listy)
+    mock_service.ai_model_id = "gemma-2b"
+    result = agent._supports_system_prompt(mock_service)
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_combines_prompt_for_gemma(mock_kernel, mock_chat_service):
+    """Test łączenia system prompt z user message dla Gemma 2B."""
+    from venom_core.core.model_registry import (
+        ModelCapabilities,
+        ModelMetadata,
+        ModelProvider,
+        ModelRegistry,
+    )
+
+    # Utwórz registry z Gemma 2B
+    mock_registry = MagicMock(spec=ModelRegistry)
+    mock_registry.manifest = {
+        "google/gemma-2b-it": ModelMetadata(
+            name="google/gemma-2b-it",
+            provider=ModelProvider.HUGGINGFACE,
+            display_name="Gemma 2B IT",
+            capabilities=ModelCapabilities(supports_system_role=False),
+        )
+    }
+    mock_registry.get_model_capabilities = MagicMock(
+        return_value=ModelCapabilities(supports_system_role=False)
+    )
+
+    # Mock odpowiedzi
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(return_value="Test response")
+    mock_chat_service.get_chat_message_content.return_value = mock_response
+    mock_chat_service.ai_model_id = "gemma-2b-it"
+    mock_chat_service.service_id = "local_llm"
+    mock_kernel.get_service.return_value = mock_chat_service
+
+    agent = ChatAgent(mock_kernel, model_registry=mock_registry)
+    await agent.process("Test question")
+
+    # Sprawdź że została wywołana funkcja get_chat_message_content
+    assert mock_chat_service.get_chat_message_content.called
+
+    # Sprawdź że chat_history zawiera połączoną wiadomość
+    call_args = mock_chat_service.get_chat_message_content.call_args
+    chat_history = call_args[1]["chat_history"]
+
+    # Powinno być tylko 1 wiadomość (USER) zamiast 2 (SYSTEM + USER)
+    assert len(chat_history.messages) == 1
+    assert chat_history.messages[0].role.value == "user"
+
+    # Wiadomość powinna zawierać zarówno system prompt jak i pytanie użytkownika
+    message_content = str(chat_history.messages[0].content)
+    assert "Venom" in message_content or "asystent" in message_content.lower()
+    assert "Test question" in message_content
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_separate_prompt_for_standard_models(
+    mock_kernel, mock_chat_service
+):
+    """Test osobnych wiadomości system/user dla standardowych modeli."""
+    from venom_core.core.model_registry import (
+        ModelCapabilities,
+        ModelMetadata,
+        ModelProvider,
+        ModelRegistry,
+    )
+
+    # Utwórz registry z modelem wspierającym system role
+    mock_registry = MagicMock(spec=ModelRegistry)
+    mock_registry.manifest = {
+        "gpt-4o": ModelMetadata(
+            name="gpt-4o",
+            provider=ModelProvider.HUGGINGFACE,
+            display_name="GPT-4o",
+            capabilities=ModelCapabilities(supports_system_role=True),
+        )
+    }
+    mock_registry.get_model_capabilities = MagicMock(
+        return_value=ModelCapabilities(supports_system_role=True)
+    )
+
+    # Mock odpowiedzi
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(return_value="Test response")
+    mock_chat_service.get_chat_message_content.return_value = mock_response
+    mock_chat_service.ai_model_id = "gpt-4o"
+    mock_chat_service.service_id = "cloud_high"
+    mock_kernel.get_service.return_value = mock_chat_service
+
+    agent = ChatAgent(mock_kernel, model_registry=mock_registry)
+    await agent.process("Test question")
+
+    # Sprawdź że została wywołana funkcja get_chat_message_content
+    assert mock_chat_service.get_chat_message_content.called
+
+    # Sprawdź że chat_history zawiera 2 oddzielne wiadomości
+    call_args = mock_chat_service.get_chat_message_content.call_args
+    chat_history = call_args[1]["chat_history"]
+
+    # Powinno być 2 wiadomości: SYSTEM i USER
+    assert len(chat_history.messages) == 2
+    assert chat_history.messages[0].role.value == "system"
+    assert chat_history.messages[1].role.value == "user"
+
+    # System message powinno zawierać prompt
+    assert "Venom" in str(chat_history.messages[0].content)
+    # User message powinno zawierać tylko pytanie
+    assert str(chat_history.messages[1].content) == "Test question"

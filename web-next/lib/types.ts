@@ -315,3 +315,43 @@ export interface CampaignResponse {
   message?: string;
   result?: unknown;
 }
+
+// Benchmark types
+export type BenchmarkStatus = "idle" | "running" | "completed" | "failed";
+
+export interface BenchmarkConfig {
+  runtime: "vllm" | "ollama";
+  models: string[];
+  num_questions: number;
+}
+
+export interface BenchmarkLog {
+  timestamp: string;
+  message: string;
+  level: "info" | "warning" | "error";
+}
+
+export interface BenchmarkModelResult {
+  model_name: string;
+  avg_response_time_ms: number;
+  tokens_per_sec: number;
+  max_vram_mb: number;
+  status: "success" | "oom" | "error";
+  error_message?: string;
+}
+
+export interface BenchmarkResult {
+  benchmark_id: string;
+  config: BenchmarkConfig;
+  results: BenchmarkModelResult[];
+  started_at: string;
+  finished_at?: string;
+  duration_seconds?: number;
+}
+
+export interface BenchmarkResponse {
+  success: boolean;
+  benchmark_id?: string;
+  message?: string;
+  result?: BenchmarkResult;
+}

@@ -4,8 +4,6 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-
 # Ensure venom_core is in path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 

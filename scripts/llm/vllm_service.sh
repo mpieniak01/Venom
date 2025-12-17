@@ -106,7 +106,7 @@ stop() {
   fi
 
   # Cleanup zombie processes
-  pkill -f "vllm serve" 2>/dev/null || true
+  pkill -9 -f "vllm serve" 2>/dev/null || true
   echo "vLLM zatrzymany"
 }
 

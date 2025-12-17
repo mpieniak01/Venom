@@ -8,7 +8,7 @@ User=venom
 Group=venom
 WorkingDirectory=/home/venom/Venom
 Environment="VLLM_MODEL_PATH=/home/venom/Venom/models/gemma-2b-it"
-Environment="VLLM_HOST=0.0.0.0"
+Environment="VLLM_HOST=127.0.0.1"
 Environment="VLLM_PORT=8001"
 Environment="VLLM_GPU_MEMORY_UTILIZATION=0.85"
 Environment="VLLM_MAX_BATCHED_TOKENS=2048"
@@ -21,6 +21,10 @@ StandardError=append:/home/venom/Venom/logs/vllm.log
 # Security options
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/venom/Venom/logs /home/venom/Venom/models
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 # Resource limits
 LimitCORE=0

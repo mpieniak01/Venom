@@ -11,13 +11,14 @@ Odpowiedzialny za:
 import asyncio
 import json
 import re
+import shutil
 import subprocess
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
-from urllib.parse import urlparse
 
 import httpx
 
@@ -247,8 +248,9 @@ class OllamaModelProvider(BaseModelProvider):
         self, model_name: str, progress_callback: Optional[Callable] = None
     ) -> bool:
         """Instaluje model przez `ollama pull`."""
+        # Ollama models don't support forward slashes
         if not model_name or not re.match(r"^[\w\-.:]+$", model_name):
-            logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
+            logger.error(f"Nieprawidłowa nazwa modelu Ollama: {model_name}")
             return False
 
         try:
@@ -430,8 +432,9 @@ class HuggingFaceModelProvider(BaseModelProvider):
             if progress_callback:
                 await progress_callback(f"Pobieranie {model_name} z HuggingFace...")
 
-            # Pobierz model do cache
-            local_path = snapshot_download(
+            # Pobierz model do cache (wrap in thread to avoid blocking)
+            local_path = await asyncio.to_thread(
+                snapshot_download,
                 repo_id=model_name,
                 cache_dir=str(self.cache_dir),
                 token=self.token,
@@ -450,10 +453,14 @@ class HuggingFaceModelProvider(BaseModelProvider):
 
     async def remove_model(self, model_name: str) -> bool:
         """Usuwa model z cache HF."""
-        import shutil
+        # Szukaj katalogu modelu w cache z walidacją ścieżki
+        model_cache_dir = (self.cache_dir / model_name.replace("/", "--")).resolve()
+        cache_root = self.cache_dir.resolve()
 
-        # Szukaj katalogu modelu w cache
-        model_cache_dir = self.cache_dir / model_name.replace("/", "--")
+        if not model_cache_dir.is_relative_to(cache_root):
+            logger.error(f"Nieprawidłowa ścieżka modelu: {model_name}")
+            return False
+
         if model_cache_dir.exists():
             try:
                 shutil.rmtree(model_cache_dir)
@@ -603,8 +610,6 @@ class ModelRegistry:
         Returns:
             operation_id - ID operacji do sprawdzania statusu
         """
-        import uuid
-
         operation_id = str(uuid.uuid4())
 
         # Sprawdź czy provider istnieje
@@ -620,8 +625,9 @@ class ModelRegistry:
         )
         self.operations[operation_id] = operation
 
-        # Uruchom instalację w tle
-        asyncio.create_task(self._install_model_task(operation, provider, runtime))
+        # Uruchom instalację w tle z obsługą wyjątków
+        task = asyncio.create_task(self._install_model_task(operation, provider, runtime))
+        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
         return operation_id
 
@@ -632,6 +638,9 @@ class ModelRegistry:
         runtime: str,
     ):
         """Zadanie instalacji modelu."""
+        if runtime not in self._runtime_locks:
+            raise ValueError(f"Nieznany runtime: {runtime}")
+
         async with self._runtime_locks[runtime]:
             try:
                 operation.status = OperationStatus.IN_PROGRESS
@@ -674,8 +683,6 @@ class ModelRegistry:
 
     async def remove_model(self, model_name: str) -> str:
         """Usuwa model."""
-        import uuid
-
         operation_id = str(uuid.uuid4())
 
         # Sprawdź czy model istnieje w manifeście

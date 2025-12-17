@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -138,19 +137,22 @@ async def test_ollama_provider_list_models_error():
 @pytest.mark.asyncio
 async def test_ollama_provider_install_model_success():
     """Test instalacji modelu przez Ollama."""
-    with patch("subprocess.Popen") as mock_popen:
-        mock_process = MagicMock()
-        mock_process.stdout = iter(["pulling manifest", "success"])
-        mock_process.wait.return_value = 0
-        mock_process.poll.return_value = 0
-        mock_process.stderr = MagicMock()
-        mock_popen.return_value = mock_process
+    with patch("asyncio.create_subprocess_exec") as mock_subprocess:
+        mock_process = AsyncMock()
+        mock_process.stdout = MagicMock()
+        mock_process.stdout.readline = AsyncMock(
+            side_effect=[b"pulling manifest\n", b"success\n", b""]
+        )
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+        mock_process.stderr = AsyncMock()
+        mock_subprocess.return_value = mock_process
 
         provider = OllamaModelProvider()
         result = await provider.install_model("llama3:latest")
 
         assert result is True
-        mock_popen.assert_called_once()
+        mock_subprocess.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -291,13 +293,16 @@ async def test_model_registry_list_available_models(tmp_path):
 @pytest.mark.asyncio
 async def test_model_registry_install_model(tmp_path):
     """Test instalacji modelu przez registry."""
-    with patch("subprocess.Popen") as mock_popen:
-        mock_process = MagicMock()
-        mock_process.stdout = iter(["pulling manifest"])
-        mock_process.wait.return_value = 0
-        mock_process.poll.return_value = 0
-        mock_process.stderr = MagicMock()
-        mock_popen.return_value = mock_process
+    with patch("asyncio.create_subprocess_exec") as mock_subprocess:
+        mock_process = AsyncMock()
+        mock_process.stdout = MagicMock()
+        mock_process.stdout.readline = AsyncMock(
+            side_effect=[b"pulling manifest\n", b""]
+        )
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+        mock_process.stderr = AsyncMock()
+        mock_subprocess.return_value = mock_process
 
         registry = ModelRegistry(models_dir=str(tmp_path))
         operation_id = await registry.install_model(
@@ -426,23 +431,52 @@ async def test_model_registry_concurrent_operations(tmp_path):
     """Test że operacje per runtime są serializowane."""
     registry = ModelRegistry(models_dir=str(tmp_path))
 
-    # Spróbuj uruchomić dwie operacje jednocześnie
-    with patch("subprocess.Popen") as mock_popen:
-        mock_process = MagicMock()
-        mock_process.stdout = iter(["pulling"])
-        mock_process.wait.return_value = 0
-        mock_process.poll.return_value = 0
-        mock_process.stderr = MagicMock()
-        mock_popen.return_value = mock_process
+    # Timestamps to verify serialization
+    timestamps = []
 
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        """Fake subprocess that records timestamps."""
+        loop = asyncio.get_event_loop()
+        timestamps.append(loop.time())
+
+        mock_process = AsyncMock()
+        mock_process.stdout = MagicMock()
+
+        # Create a simple list for readline to iterate through
+        lines = [b"pulling manifest\n", b""]
+        line_idx = [0]  # Use list to allow mutation in closure
+
+        async def fake_readline():
+            # Symuluj czas trwania operacji
+            if line_idx[0] == 0:
+                await asyncio.sleep(0.2)
+            idx = line_idx[0]
+            line_idx[0] += 1
+            return lines[idx] if idx < len(lines) else b""
+
+        mock_process.stdout.readline = fake_readline
+        mock_process.wait = AsyncMock(return_value=None)
+        mock_process.returncode = 0
+        mock_process.stderr = AsyncMock()
+        return mock_process
+
+    with patch(
+        "asyncio.create_subprocess_exec",
+        side_effect=fake_create_subprocess_exec,
+    ):
+        # Uruchamiamy dwie instalacje współbieżnie
         op1 = await registry.install_model("model1", ModelProvider.OLLAMA, "ollama")
         op2 = await registry.install_model("model2", ModelProvider.OLLAMA, "ollama")
 
         assert op1 != op2
 
-        # Poczekaj na zakończenie
+        # Poczekaj na zakończenie obu operacji
         await asyncio.sleep(1.0)
 
         # Obie operacje powinny się zakończyć
         assert registry.get_operation_status(op1) is not None
         assert registry.get_operation_status(op2) is not None
+
+        # Sprawdzamy, że subprocess dla drugiej operacji startuje dopiero po zakończeniu pierwszej
+        assert len(timestamps) == 2
+        assert timestamps[1] - timestamps[0] >= 0.2

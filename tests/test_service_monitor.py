@@ -288,7 +288,7 @@ def test_get_memory_metrics(service_monitor):
         mock_psutil.virtual_memory.return_value = mock_memory
 
         # Mock shutil.which to return None (no nvidia-smi)
-        with patch("shutil.which") as mock_which:
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
             mock_which.return_value = None
 
             metrics = service_monitor.get_memory_metrics()
@@ -316,7 +316,7 @@ def test_get_memory_metrics_with_gpu(service_monitor):
         mock_psutil.virtual_memory.return_value = mock_memory
 
         # Mock shutil.which to return nvidia-smi path
-        with patch("shutil.which") as mock_which:
+        with patch("venom_core.core.service_monitor.shutil.which") as mock_which:
             mock_which.return_value = "/usr/bin/nvidia-smi"
 
             # Mock subprocess dla nvidia-smi (symuluj GPU)

@@ -14,7 +14,7 @@ import type {
 } from "@/lib/types";
 
 export default function BenchmarkPage() {
-  const { data: modelsData, loading: modelsLoading } = useModels(0);
+  const { data: modelsData, loading: modelsLoading } = useModels(15000);
   const [status, setStatus] = useState<BenchmarkStatus>("idle");
   const [logs, setLogs] = useState<BenchmarkLog[]>([]);
   const [results, setResults] = useState<BenchmarkModelResult[]>([]);

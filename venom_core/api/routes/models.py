@@ -9,7 +9,6 @@ from pydantic import BaseModel, field_validator
 
 from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
-from venom_core.core.model_registry import GenerationParameter
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -692,7 +691,7 @@ async def get_model_config_endpoint(model_name: str):
         model_name: Nazwa modelu
 
     Returns:
-        Schemat parametrów generacji w formacie JSON Schema
+        Słownik z konfiguracją parametrów generacji (wewnętrzny format aplikacji)
 
     Raises:
         HTTPException: 503 jeśli ModelRegistry nie jest dostępny

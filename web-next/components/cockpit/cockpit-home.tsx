@@ -874,7 +874,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     } finally {
       setLoadingSchema(false);
     }
-  }, [models]);
+  }, [models, setTuningOpen, setLoadingSchema, setModelSchema]);
 
   const handleMacroRun = useCallback(
     async (macro: { id: string; content: string; label: string }) => {

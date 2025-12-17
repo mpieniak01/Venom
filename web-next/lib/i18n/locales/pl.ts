@@ -28,6 +28,7 @@ export const pl = {
       brain: "Graf wiedzy",
       inspector: "Inspektor",
       strategy: "Strategia",
+      benchmark: "Benchmark",
     },
     cost: {
       title: "Tryb kosztów",

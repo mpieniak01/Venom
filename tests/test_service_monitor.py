@@ -275,3 +275,56 @@ async def test_check_local_database_service(service_monitor):
         result = await service_monitor._check_service_health(test_service)
 
         assert result.status == ServiceStatus.ONLINE
+
+
+def test_get_memory_metrics(service_monitor):
+    """Test pobierania metryk pamięci RAM i VRAM."""
+    # Mock psutil
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 8 * 1024**3  # 8 GB
+        mock_memory.total = 16 * 1024**3  # 16 GB
+        mock_memory.percent = 50.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        # Mock subprocess dla nvidia-smi (symuluj brak GPU)
+        with patch("subprocess.run") as mock_subprocess:
+            mock_subprocess.side_effect = FileNotFoundError()
+
+            metrics = service_monitor.get_memory_metrics()
+
+            assert "memory_usage_mb" in metrics
+            assert "memory_total_mb" in metrics
+            assert "memory_usage_percent" in metrics
+            assert metrics["memory_usage_mb"] > 0
+            assert metrics["memory_total_mb"] > 0
+            assert metrics["memory_usage_percent"] == 50.0
+            # GPU metrics powinny być None gdy nvidia-smi niedostępne
+            assert metrics["vram_usage_mb"] is None
+            assert metrics["vram_total_mb"] is None
+            assert metrics["vram_usage_percent"] is None
+
+
+def test_get_memory_metrics_with_gpu(service_monitor):
+    """Test pobierania metryk pamięci z GPU."""
+    # Mock psutil
+    with patch("venom_core.core.service_monitor.psutil") as mock_psutil:
+        mock_memory = MagicMock()
+        mock_memory.used = 8 * 1024**3
+        mock_memory.total = 16 * 1024**3
+        mock_memory.percent = 50.0
+        mock_psutil.virtual_memory.return_value = mock_memory
+
+        # Mock subprocess dla nvidia-smi (symuluj GPU)
+        with patch("subprocess.run") as mock_subprocess:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = "2048, 8192\n"  # 2 GB used, 8 GB total
+            mock_subprocess.return_value = mock_result
+
+            metrics = service_monitor.get_memory_metrics()
+
+            assert metrics["memory_usage_mb"] > 0
+            assert metrics["vram_usage_mb"] == 2048.0
+            assert metrics["vram_total_mb"] == 8192.0
+            assert metrics["vram_usage_percent"] == 25.0

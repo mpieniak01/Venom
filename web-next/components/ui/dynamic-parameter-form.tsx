@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -117,6 +117,17 @@ function ParameterControl({
 
   // List/Enum - Dropdown (Select)
   if (type === "list" || type === "enum") {
+    // Walidacja options - jeśli brak lub puste, pokaż komunikat
+    if (!options || options.length === 0) {
+      return (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-zinc-200">{name}</label>
+          <p className="text-sm text-amber-400">Brak dostępnych opcji dla tego parametru</p>
+          {desc && <p className="text-xs text-zinc-400">{desc}</p>}
+        </div>
+      );
+    }
+    
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium text-zinc-200">{name}</label>
@@ -125,7 +136,7 @@ function ParameterControl({
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded border border-white/20 bg-white/5 px-3 py-2 text-sm text-white focus:border-violet-500 focus:outline-none"
         >
-          {options?.map((option) => (
+          {options.map((option) => (
             <option key={option} value={option} className="bg-zinc-800">
               {option}
             </option>
@@ -171,11 +182,17 @@ export function DynamicParameterForm({
   }, [initialValues]);
 
   // Wywołaj onChange gdy wartości się zmienią
+  // Używamy ref aby uniknąć problemów z zależnościami i potencjalnych pętli
+  const onChangeRef = useRef(onChange);
   useEffect(() => {
-    if (onChange) {
-      onChange(values);
+    onChangeRef.current = onChange;
+  }, [onChange]);
+  
+  useEffect(() => {
+    if (onChangeRef.current) {
+      onChangeRef.current(values);
     }
-  }, [values, onChange]);
+  }, [values]);
 
   const handleValueChange = (name: string, value: any) => {
     setValues((prev) => ({

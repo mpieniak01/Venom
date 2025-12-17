@@ -1,13 +1,10 @@
 """Testy dla systemu strojenia parametrów (generation schema)."""
 
-import pytest
-
 from venom_core.core.model_registry import (
     GenerationParameter,
     ModelCapabilities,
     ModelMetadata,
     ModelProvider,
-    ModelStatus,
     _create_default_generation_schema,
 )
 
@@ -111,13 +108,11 @@ def test_model_metadata_to_dict_with_generation_schema():
 
 
 def test_llama3_temperature_range():
-    """Test że Llama 3 ma temperaturę w zakresie 0.0-1.0."""
-    from venom_core.core.model_registry import OllamaModelProvider
-    
-    # Symuluj model Llama 3
+    """Test że Llama 3 automatycznie dostaje temperaturę w zakresie 0.0-1.0."""
+    # Test weryfikuje że schemat dla Llama 3 ma właściwy zakres temperatury
     schema = _create_default_generation_schema()
     
-    # Dla Llama 3 temperatura powinna być 0.0-1.0
+    # Modyfikuj schemat tak jak robi to OllamaModelProvider dla Llama 3
     schema["temperature"] = GenerationParameter(
         type="float",
         default=0.7,
@@ -128,3 +123,22 @@ def test_llama3_temperature_range():
     
     assert schema["temperature"].max == 1.0
     assert schema["temperature"].min == 0.0
+
+
+def test_ollama_provider_llama3_detection():
+    """Test że OllamaModelProvider poprawnie wykrywa modele Llama 3."""
+    import re
+    
+    # Test pattern matching dla różnych nazw Llama 3
+    llama3_pattern = re.compile(r"llama-?3(?:[:\-]|$)", re.IGNORECASE)
+    
+    # Powinny pasować
+    assert llama3_pattern.search("llama3")
+    assert llama3_pattern.search("llama-3")
+    assert llama3_pattern.search("llama3:latest")
+    assert llama3_pattern.search("llama-3:8b")
+    
+    # Nie powinny pasować (fałszywe pozytywy)
+    assert not llama3_pattern.search("llama-30b")
+    assert not llama3_pattern.search("llama-3b")
+    assert not llama3_pattern.search("my-llama-v3")

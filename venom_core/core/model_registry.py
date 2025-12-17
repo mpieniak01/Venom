@@ -213,7 +213,10 @@ class OllamaModelProvider(BaseModelProvider):
                         
                         # Określ generation_schema na podstawie nazwy modelu
                         generation_schema = _create_default_generation_schema()
-                        if "llama" in name.lower() and "3" in name:
+                        # Używamy regex do precyzyjnego wykrycia modeli Llama 3
+                        # Pasuje do: llama3, llama-3, llama3:latest, llama-3:8b
+                        # Nie pasuje do: llama-30b, llama-3b, my-llama-v3
+                        if re.search(r"llama-?3(?:[:\-]|$)", name, re.IGNORECASE):
                             # Llama 3 ma temperaturę 0.0-1.0
                             generation_schema["temperature"] = GenerationParameter(
                                 type="float",

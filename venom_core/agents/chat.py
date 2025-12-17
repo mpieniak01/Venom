@@ -1,6 +1,7 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
 import os
+from typing import Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -12,6 +13,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.model_router import ServiceId
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
@@ -52,17 +54,21 @@ Odpowiedź: "Stolicą Francji jest Paryż."
 Pytanie: "Opowiedz kawał"
 Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga błędy! 😄"
 """
+    # Fallback: modele, które nie wspierają roli system, używane gdy ModelRegistry
+    # nie jest dostępny lub model nie jest opisany w manifeście.
     MODELS_WITHOUT_SYSTEM_ROLE = ("gemma-2b",)
 
-    def __init__(self, kernel: Kernel):
+    def __init__(self, kernel: Kernel, model_registry: Optional[ModelRegistry] = None):
         """
         Inicjalizacja ChatAgent.
 
         Args:
             kernel: Skonfigurowane jądro Semantic Kernel
+            model_registry: Opcjonalny ModelRegistry do odczytu capabilities modeli
         """
         super().__init__(kernel)
         self._test_mode = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        self.model_registry = model_registry
 
         # Dodaj MemorySkill do kernela
         memory_skill = MemorySkill()
@@ -162,7 +168,60 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             raise
 
     def _supports_system_prompt(self, chat_service) -> bool:
-        model_id = (getattr(chat_service, "ai_model_id", "") or "").lower()
+        """
+        Sprawdza czy model wspiera system prompt.
+
+        Najpierw sprawdza w ModelRegistry (jeśli dostępny), następnie
+        używa fallback do hardcoded listy.
+
+        Args:
+            chat_service: Serwis czatu z informacją o modelu
+
+        Returns:
+            True jeśli model wspiera system prompt, False w przeciwnym razie
+        """
+        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
+        model_id = raw_model_id.lower()
+
+        # Jeśli mamy ModelRegistry, sprawdź capabilities
+        if self.model_registry:
+            manifest = self.model_registry.manifest or {}
+            # Oblicz base name raz na początku
+            model_base = model_id.split("/")[-1]
+
+            # Krok 1: spróbuj dokładnego dopasowania po kluczu słownika
+            capabilities = None
+            manifest_name_for_log = None
+
+            if raw_model_id and raw_model_id in manifest:
+                capabilities = manifest.get(raw_model_id)
+                manifest_name_for_log = raw_model_id
+            elif model_id and model_id in manifest:
+                capabilities = manifest.get(model_id)
+                manifest_name_for_log = model_id
+
+            if capabilities:
+                supports = capabilities.supports_system_role
+                logger.debug(
+                    f"Model {model_id} → manifest {manifest_name_for_log} (exact match): supports_system_role={supports}"
+                )
+                return supports
+
+            # Krok 2: dopasowanie po base name (case-insensitive)
+            for manifest_name, capabilities in manifest.items():
+                if not capabilities:
+                    continue
+
+                manifest_name_lower = manifest_name.lower()
+                manifest_base = manifest_name_lower.split("/")[-1]
+                if manifest_base == model_base:
+                    supports = capabilities.supports_system_role
+                    logger.debug(
+                        f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
+                    )
+                    return supports
+
+        # Fallback do hardcoded listy jeśli brak ModelRegistry lub nie znaleziono w manifeście
         return not any(marker in model_id for marker in self.MODELS_WITHOUT_SYSTEM_ROLE)
 
     def _supports_function_calling(self, chat_service) -> bool:

@@ -1,5 +1,6 @@
 """Testy dla modułu benchmark service."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -158,11 +159,11 @@ def test_list_benchmarks(benchmark_service):
 async def test_wait_for_healthcheck_success(benchmark_service):
     """Test oczekiwania na healthcheck - sukces."""
     with patch("httpx.AsyncClient") as mock_client_class:
-        mock_response = AsyncMock()
+        mock_response = MagicMock()
         mock_response.status_code = 200
 
-        mock_client = MagicMock()
-        mock_client.get.return_value = mock_response
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
 
@@ -176,8 +177,8 @@ async def test_wait_for_healthcheck_success(benchmark_service):
 async def test_wait_for_healthcheck_timeout(benchmark_service):
     """Test oczekiwania na healthcheck - timeout."""
     with patch("httpx.AsyncClient") as mock_client_class:
-        mock_client = MagicMock()
-        mock_client.get.side_effect = Exception("Connection refused")
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("Connection refused"))
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = None
 
@@ -236,17 +237,18 @@ async def test_sample_vram_during_generation(benchmark_service):
     samples = []
 
     # Mock get_gpu_memory_usage
+    vram_series = [100.0, 150.0, 200.0]
     with patch.object(
         benchmark_service.service_monitor,
         "get_gpu_memory_usage",
-        side_effect=[100.0, 150.0, 200.0],
+        side_effect=vram_series + [vram_series[-1]] * 5,
     ):
         # Uruchom sampling task na krótki czas
-        task = benchmark_service._sample_vram_during_generation(samples)
+        task = asyncio.create_task(
+            benchmark_service._sample_vram_during_generation(samples)
+        )
 
         # Czekaj trochę
-        import asyncio
-
         await asyncio.sleep(0.35)  # 3 próbki po 100ms
 
         # Anuluj task

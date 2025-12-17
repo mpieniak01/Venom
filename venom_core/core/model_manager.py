@@ -529,10 +529,14 @@ PARAMETER top_k 40
         if default_models_dir.exists() and default_models_dir not in search_dirs:
             search_dirs.append(default_models_dir)
 
+        skip_dirs = {"hf_cache", "__pycache__", ".cache"}
+
         for base_dir in search_dirs:
             if not base_dir.exists():
                 continue
             for model_path in base_dir.iterdir():
+                if model_path.name in skip_dirs:
+                    continue
                 if model_path.is_dir() or model_path.suffix in {
                     ".onnx",
                     ".gguf",

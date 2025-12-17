@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
-from urllib.parse import urlparse
+from typing import Optional, Tuple
+from urllib.parse import urlparse, urlunparse
+
+import httpx
 
 from venom_core.config import SETTINGS
 
@@ -105,3 +107,48 @@ def format_runtime_label(runtime: LLMRuntimeInfo) -> str:
     provider_display = runtime.provider or runtime.service_type
 
     return f"{model_display} · {provider_display} @ {endpoint_display}"
+
+
+def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
+    """Tworzy URL do health-checka na podstawie providera."""
+    if not runtime.endpoint:
+        return None
+
+    parsed = urlparse(runtime.endpoint)
+    if runtime.provider == "ollama":
+        base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+        return f"{base}/api/tags" if base else "http://localhost:11434/api/tags"
+
+    endpoint = runtime.endpoint.rstrip("/")
+    if endpoint.endswith("/models"):
+        return endpoint
+    if endpoint.endswith("/v1"):
+        return f"{endpoint}/models"
+    if endpoint.endswith("/v1/"):
+        return f"{endpoint}models"
+    return f"{endpoint}/models"
+
+
+async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[str]]:
+    """
+    Sprawdza rzeczywisty stan runtime i zwraca status + ewentualny błąd.
+    """
+
+    if runtime.service_type != "local":
+        # Zakładamy poprawny stan dla zewnętrznych providerów
+        return "ready", None
+
+    health_url = _build_health_url(runtime)
+    if not health_url:
+        return "offline", "Brak endpointu runtime"
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(health_url)
+        if response.status_code < 400:
+            return "online", None
+        return "degraded", f"HTTP {response.status_code}"
+    except httpx.HTTPError as exc:
+        return "offline", str(exc)
+    except Exception as exc:  # pragma: no cover - defensywnie
+        return "offline", str(exc)

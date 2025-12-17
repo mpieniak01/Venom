@@ -51,11 +51,13 @@ class LlmServerController:
 
         cfg = self.settings
 
-        # Wykryj czy używamy systemd dla vLLM
-        vllm_start_cmd = cfg.VLLM_START_COMMAND.strip()
-        if not vllm_start_cmd:
-            # Fallback do skryptu
-            vllm_start_cmd = "bash scripts/llm/vllm_service.sh start"
+        def _normalize(command: Optional[str]) -> str:
+            return (command or "").strip()
+
+        # Komendy dla vLLM (puste = akcja niedostępna)
+        vllm_start_cmd = _normalize(cfg.VLLM_START_COMMAND)
+        vllm_stop_cmd = _normalize(cfg.VLLM_STOP_COMMAND)
+        vllm_restart_cmd = _normalize(cfg.VLLM_RESTART_COMMAND)
 
         servers["vllm"] = LlmServerConfig(
             name="vllm",
@@ -66,16 +68,15 @@ class LlmServerController:
             health_url=f"{cfg.LLM_LOCAL_ENDPOINT.rstrip('/')}/models",
             commands={
                 "start": vllm_start_cmd,
-                "stop": cfg.VLLM_STOP_COMMAND.strip() or "bash scripts/llm/vllm_service.sh stop",
-                "restart": cfg.VLLM_RESTART_COMMAND.strip() or "bash scripts/llm/vllm_service.sh restart",
+                "stop": vllm_stop_cmd,
+                "restart": vllm_restart_cmd,
             },
         )
 
-        # Wykryj czy używamy systemd dla Ollama
-        ollama_start_cmd = cfg.OLLAMA_START_COMMAND.strip()
-        if not ollama_start_cmd:
-            # Fallback do skryptu
-            ollama_start_cmd = "bash scripts/llm/ollama_service.sh start"
+        # Komendy dla Ollama (puste = brak akcji)
+        ollama_start_cmd = _normalize(cfg.OLLAMA_START_COMMAND)
+        ollama_stop_cmd = _normalize(cfg.OLLAMA_STOP_COMMAND)
+        ollama_restart_cmd = _normalize(cfg.OLLAMA_RESTART_COMMAND)
 
         servers["ollama"] = LlmServerConfig(
             name="ollama",
@@ -86,8 +87,8 @@ class LlmServerController:
             health_url="http://localhost:11434/api/tags",
             commands={
                 "start": ollama_start_cmd,
-                "stop": cfg.OLLAMA_STOP_COMMAND.strip() or "bash scripts/llm/ollama_service.sh stop",
-                "restart": cfg.OLLAMA_RESTART_COMMAND.strip() or "bash scripts/llm/ollama_service.sh restart",
+                "stop": ollama_stop_cmd,
+                "restart": ollama_restart_cmd,
             },
         )
 
@@ -119,7 +120,9 @@ class LlmServerController:
         """Sprawdza czy mamy konfigurację serwera."""
         return server_name in self._servers
 
-    async def check_systemd_available(self, service_name: str = "ollama.service") -> bool:
+    async def check_systemd_available(
+        self, service_name: str = "ollama.service"
+    ) -> bool:
         """
         Sprawdza czy systemd jest dostępny i czy dana usługa istnieje.
 

@@ -7,7 +7,6 @@ from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
 )
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -227,33 +226,58 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             # Oblicz base name raz na początku
             model_base = model_id.split("/")[-1]
 
+            def _resolve_support(manifest_key: str):
+                entry = manifest.get(manifest_key)
+                if not entry:
+                    return None
+                # Najpierw spróbuj użyć oficjalnej metody registry (łatwiej mockować w testach)
+                try:
+                    capabilities = self.model_registry.get_model_capabilities(
+                        manifest_key
+                    )
+                    if capabilities:
+                        return capabilities.supports_system_role
+                except Exception as exc:  # pragma: no cover - defensywne logowanie
+                    logger.debug(
+                        "Nie udało się pobrać capabilities z registry dla %s: %s",
+                        manifest_key,
+                        exc,
+                    )
+
+                # Fallback do danych zapisanych w manifeście
+                candidate = getattr(entry, "capabilities", None)
+                if candidate:
+                    return candidate.supports_system_role
+                return getattr(entry, "supports_system_role", None)
+
             # Krok 1: spróbuj dokładnego dopasowania po kluczu słownika
-            capabilities = None
+            supports = None
             manifest_name_for_log = None
 
             if raw_model_id and raw_model_id in manifest:
-                capabilities = manifest.get(raw_model_id)
+                supports = _resolve_support(raw_model_id)
                 manifest_name_for_log = raw_model_id
             elif model_id and model_id in manifest:
-                capabilities = manifest.get(model_id)
+                supports = _resolve_support(model_id)
                 manifest_name_for_log = model_id
 
-            if capabilities:
-                supports = capabilities.supports_system_role
+            if supports is not None:
                 logger.debug(
                     f"Model {model_id} → manifest {manifest_name_for_log} (exact match): supports_system_role={supports}"
                 )
                 return supports
 
             # Krok 2: dopasowanie po base name (case-insensitive)
-            for manifest_name, capabilities in manifest.items():
-                if not capabilities:
+            for manifest_name, entry in manifest.items():
+                if not entry:
                     continue
 
                 manifest_name_lower = manifest_name.lower()
                 manifest_base = manifest_name_lower.split("/")[-1]
                 if manifest_base == model_base:
-                    supports = capabilities.supports_system_role
+                    supports = _resolve_support(manifest_name)
+                    if supports is None:
+                        continue
                     logger.debug(
                         f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
                     )

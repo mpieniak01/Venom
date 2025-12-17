@@ -63,7 +63,7 @@ class ModelRegistryInstallRequest(BaseModel):
     def validate_name(cls, v):
         if not v or len(v) > 200:
             raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
-        #允许 HF model names with /
+        # Allow HF model names with forward slash
         if not re.match(r"^[\w\-.:\/]+$", v):
             raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
         return v

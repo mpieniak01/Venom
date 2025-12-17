@@ -131,8 +131,11 @@ class LlmServerController:
             True jeśli systemd jest dostępny i usługa istnieje
         """
         try:
-            process = await asyncio.create_subprocess_shell(
-                f"systemctl list-unit-files {service_name}",
+            # Use list instead of shell=True for security
+            process = await asyncio.create_subprocess_exec(
+                "systemctl",
+                "list-unit-files",
+                service_name,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

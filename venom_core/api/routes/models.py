@@ -63,7 +63,7 @@ class ModelRegistryInstallRequest(BaseModel):
     def validate_name(cls, v):
         if not v or len(v) > 200:
             raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
-        # Allow HF model names with forward slash
+        # Generic validation - specific validation happens per provider
         if not re.match(r"^[\w\-.:\/]+$", v):
             raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
         return v
@@ -73,6 +73,21 @@ class ModelRegistryInstallRequest(BaseModel):
         if v not in ["huggingface", "ollama"]:
             raise ValueError("Provider musi być 'huggingface' lub 'ollama'")
         return v
+
+    def model_post_init(self, __context):
+        """Validate model name format based on provider."""
+        if self.provider == "huggingface":
+            # HF models should have org/model format
+            if "/" not in self.name:
+                raise ValueError("HuggingFace model must be in 'org/model' format")
+            if not re.match(r"^[\w\-]+\/[\w\-.:]+$", self.name):
+                raise ValueError("Invalid HuggingFace model name format")
+        elif self.provider == "ollama":
+            # Ollama models don't support forward slashes
+            if "/" in self.name:
+                raise ValueError("Ollama model names cannot contain forward slashes")
+            if not re.match(r"^[\w\-.:]+$", self.name):
+                raise ValueError("Invalid Ollama model name format")
 
     @field_validator("runtime")
     def validate_runtime(cls, v):

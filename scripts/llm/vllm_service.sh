@@ -8,9 +8,15 @@ VLLM_BIN="$VENV_BIN/vllm"
 LOG_DIR="$ROOT_DIR/logs"
 PID_FILE="$LOG_DIR/vllm.pid"
 LOG_FILE="$LOG_DIR/vllm.log"
-MODEL_PATH="${VLLM_MODEL_PATH:-$ROOT_DIR/models/gemma-3-4b-it}"
+MODEL_PATH="${VLLM_MODEL_PATH:-$ROOT_DIR/models/gemma-2b-it}"
 HOST="${VLLM_HOST:-0.0.0.0}"
 PORT="${VLLM_PORT:-8001}"
+GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
+MAX_BATCHED_TOKENS="${VLLM_MAX_BATCHED_TOKENS:-2048}"
+SERVED_MODEL_NAME="${VLLM_SERVED_MODEL_NAME:-}"
+if [ -z "$SERVED_MODEL_NAME" ]; then
+  SERVED_MODEL_NAME="$(basename "$MODEL_PATH")"
+fi
 
 start() {
   if [ ! -x "$VLLM_BIN" ]; then
@@ -36,8 +42,18 @@ start() {
     exit 1
   fi
 
-  echo "Uruchamiam vLLM z modelem ${MODEL_PATH} na ${HOST}:${PORT}"
-  nohup "$VLLM_BIN" serve "$MODEL_PATH" --host "$HOST" --port "$PORT" >>"$LOG_FILE" 2>&1 &
+  echo "Uruchamiam vLLM z modelem ${MODEL_PATH} na ${HOST}:${PORT} (gpu_mem=${GPU_MEMORY_UTILIZATION}, max_tokens=${MAX_BATCHED_TOKENS}, served_name=${SERVED_MODEL_NAME})"
+  cmd=(
+    "$VLLM_BIN" serve "$MODEL_PATH"
+    --host "$HOST"
+    --port "$PORT"
+    --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
+    --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
+  )
+  if [ -n "$SERVED_MODEL_NAME" ]; then
+    cmd+=(--served-model-name "$SERVED_MODEL_NAME")
+  fi
+  nohup "${cmd[@]}" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
   echo "vLLM start - PID $(cat "$PID_FILE"), log: $LOG_FILE"
 }

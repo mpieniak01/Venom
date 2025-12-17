@@ -96,6 +96,7 @@ class BenchmarkJob:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error_message: Optional[str] = None
+    task: Optional[Any] = field(default=None, repr=False)  # Referencja do asyncio.Task
 
     def to_dict(self) -> Dict[str, Any]:
         """Konwertuje job do słownika."""
@@ -162,8 +163,10 @@ class BenchmarkService:
             questions_path or "./data/datasets/eval_questions.json"
         )
 
-        # Aktywne joby benchmarkowe
+        # Aktywne joby benchmarkowe (z limitem pamięci)
         self.jobs: Dict[str, BenchmarkJob] = {}
+        self._max_jobs = 1000  # Maksymalna liczba przechowywanych jobów
+        self._job_ttl_hours = 24  # Czas życia joba w godzinach
 
         # Lock dla sekwencyjnego wykonywania benchmarków
         self._benchmark_lock = asyncio.Lock()
@@ -236,10 +239,15 @@ class BenchmarkService:
             num_questions=num_questions,
             results=[ModelBenchmarkResult(model_name=m) for m in models],
         )
+
+        # Wyczyść stare joby przed dodaniem nowego
+        self._cleanup_old_jobs()
+
         self.jobs[benchmark_id] = job
 
-        # Uruchom benchmark w tle
-        asyncio.create_task(self._run_benchmark_task(benchmark_id))
+        # Uruchom benchmark w tle i zachowaj referencję do zadania
+        task = asyncio.create_task(self._run_benchmark_task(benchmark_id))
+        job.task = task  # Przechowuj referencję do zadania
 
         logger.info(
             f"Rozpoczęto benchmark {benchmark_id}: {len(models)} modeli, "
@@ -270,10 +278,43 @@ class BenchmarkService:
         Returns:
             Lista benchmarków posortowanych od najnowszych
         """
+        # Dla małej liczby jobów (<1000) sortowanie jest akceptowalne
+        # Dla większych zbiorów można rozważyć cache lub SortedDict
         sorted_jobs = sorted(
             self.jobs.values(), key=lambda j: j.created_at, reverse=True
         )
         return [job.to_dict() for job in sorted_jobs[:limit]]
+
+    def _cleanup_old_jobs(self):
+        """
+        Usuwa stare joby aby zapobiec wyciekowi pamięci.
+
+        Strategia czyszczenia:
+        1. Jeśli przekroczono max_jobs, usuń najstarsze joby
+        2. Usuń joby starsze niż TTL
+        """
+        from datetime import datetime, timedelta
+
+        # Usuń joby starsze niż TTL
+        cutoff_time = datetime.now() - timedelta(hours=self._job_ttl_hours)
+        jobs_to_remove = [
+            job_id
+            for job_id, job in self.jobs.items()
+            if datetime.fromisoformat(job.created_at) < cutoff_time
+        ]
+
+        for job_id in jobs_to_remove:
+            del self.jobs[job_id]
+            logger.debug(f"Usunięto stary job: {job_id}")
+
+        # Jeśli nadal za dużo jobów, usuń najstarsze
+        if len(self.jobs) >= self._max_jobs:
+            sorted_jobs = sorted(self.jobs.items(), key=lambda x: x[1].created_at)
+            # Usuń 10% najstarszych
+            to_remove = int(self._max_jobs * 0.1)
+            for job_id, _ in sorted_jobs[:to_remove]:
+                del self.jobs[job_id]
+                logger.debug(f"Usunięto job z powodu limitu: {job_id}")
 
     async def _run_benchmark_task(self, benchmark_id: str):
         """
@@ -354,13 +395,13 @@ class BenchmarkService:
             logger.info(f"Aktywacja modelu: {model_name}")
             # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
             try:
-                # ModelRegistry.activate_model jest obecnie stub - log warning
+                # ModelRegistry.activate_model jest obecnie stub
+                # TODO: Zaimplementować pełną aktywację modelu w ModelRegistry
                 logger.warning(
                     f"ModelRegistry.activate_model() jest obecnie stub. "
                     f"Benchmark użyje obecnego modelu zamiast {model_name}. "
                     f"Aby w pełni przełączać modele, zaimplementuj aktywację w ModelRegistry."
                 )
-                # await self.model_registry.activate_model(model_name, runtime="vllm")
             except Exception as e:
                 logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
 
@@ -369,6 +410,8 @@ class BenchmarkService:
 
             # Testuj z pytaniami
             total_latency = 0.0
+            total_ttft = 0.0  # Suma time-to-first-token
+            ttft_count = 0  # Liczba udanych pomiarów TTFT
             total_tokens = 0
             total_duration = 0.0
             peak_vram = 0.0
@@ -377,11 +420,22 @@ class BenchmarkService:
                 # Mierz metryki dla pojedynczego pytania
                 metrics = await self._query_model_with_metrics(question.question)
 
-                # Sumuj latencję tylko jeśli jest dostępna
+                # Sumuj TTFT osobno od latencji
+                if metrics.get("time_to_first_token_ms") is not None:
+                    total_ttft += metrics["time_to_first_token_ms"]
+                    ttft_count += 1
+
+                # Sumuj latencję tylko jeśli jest dostępna (backward compatibility)
                 if metrics["latency_ms"] is not None:
                     total_latency += metrics["latency_ms"]
+
                 total_tokens += metrics.get("tokens_generated", 0)
-                total_duration += metrics["duration_ms"]
+
+                # Sprawdź czy duration_ms nie jest None
+                if metrics["duration_ms"] is not None:
+                    total_duration += metrics["duration_ms"]
+                else:
+                    logger.warning("Brak duration_ms w metrykach - pomijam")
 
                 # Śledź szczytowe VRAM
                 if metrics.get("peak_vram_mb") and metrics["peak_vram_mb"] > peak_vram:
@@ -392,7 +446,9 @@ class BenchmarkService:
             result.latency_ms = (
                 round(total_latency / num_questions, 2) if total_latency > 0 else None
             )
-            result.time_to_first_token_ms = result.latency_ms  # TTFT = średnia latencja
+            result.time_to_first_token_ms = (
+                round(total_ttft / ttft_count, 2) if ttft_count > 0 else None
+            )
             result.total_duration_ms = round(total_duration, 2)
             result.peak_vram_mb = round(peak_vram, 2) if peak_vram > 0 else None
 
@@ -443,6 +499,7 @@ class BenchmarkService:
                         logger.info("Healthcheck OK - serwis gotowy")
                         return
             except Exception:
+                # Ignoruj błędy połączenia - będziemy próbować ponownie
                 pass
 
             await asyncio.sleep(2)
@@ -507,6 +564,9 @@ class BenchmarkService:
                             time_to_first_token = (time.time() - start_time) * 1000
 
                         # Szacunkowe zliczanie tokenów z chunków streamu
+                        # UWAGA: To jest tymczasowe rozwiązanie przybliżone!
+                        # Należy zastąpić właściwym zliczaniem tokenów (np. tiktoken
+                        # lub parsowanie pola 'usage' z odpowiedzi API)
                         # Każdy chunk może zawierać ~1-3 tokeny w zależności od modelu
                         # Używamy konserwatywnego przelicznika 1.5 tokena/chunk
                         tokens_generated = int(chunk_count * 1.5)
@@ -518,6 +578,7 @@ class BenchmarkService:
             try:
                 await sampling_task
             except asyncio.CancelledError:
+                # Zadanie anulowane - to normalne, próbkowanie zakończone
                 pass
 
             # Znajdź szczytowe VRAM
@@ -525,6 +586,11 @@ class BenchmarkService:
 
             return {
                 "latency_ms": (
+                    round(time_to_first_token, 2)
+                    if time_to_first_token is not None
+                    else None
+                ),
+                "time_to_first_token_ms": (
                     round(time_to_first_token, 2)
                     if time_to_first_token is not None
                     else None
@@ -540,6 +606,7 @@ class BenchmarkService:
             try:
                 await sampling_task
             except asyncio.CancelledError:
+                # Zadanie anulowane - to normalne przy błędzie
                 pass
             raise e
 
@@ -557,5 +624,5 @@ class BenchmarkService:
                     samples.append(vram)
                 await asyncio.sleep(0.1)  # 100ms
         except asyncio.CancelledError:
-            # Zadanie anulowane - to normalne
+            # Zadanie anulowane przez cancel() - zakończ próbkowanie
             pass

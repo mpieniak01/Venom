@@ -2810,6 +2810,125 @@
           "last_success_at": "2025-12-16T23:14:58.089406"
         }
       }
+    },
+    {
+      "id": "d5fd4dce-2749-4791-8e50-60cdc63c279c",
+      "content": "Pomóż mi",
+      "created_at": "2025-12-17T06:26:54.735967",
+      "status": "COMPLETED",
+      "result": "Help text",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.739913",
+        "Sklasyfikowana intencja: HELP_REQUEST - 2025-12-17T06:26:54.740188",
+        "❓ Generuję informacje pomocy",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.742886"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.742897"
+        }
+      }
+    },
+    {
+      "id": "3411569b-e7ad-4621-9fd1-fc65abd2808d",
+      "content": "Napisz funkcję sortującą",
+      "created_at": "2025-12-17T06:26:54.777352",
+      "status": "COMPLETED",
+      "result": "Generated code",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.780860",
+        "Sklasyfikowana intencja: CODE_GENERATION - 2025-12-17T06:26:54.781125",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.783751"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.783760"
+        }
+      }
+    },
+    {
+      "id": "226186ed-38c9-4880-bd55-4e0b44032c34",
+      "content": "Złożone zadanie",
+      "created_at": "2025-12-17T06:26:54.815516",
+      "status": "COMPLETED",
+      "result": "Council result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.819252",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-17T06:26:54.819516",
+        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.822138"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.822159"
+        }
+      }
+    },
+    {
+      "id": "666e8a48-6d5b-4ba5-8991-0e417a501827",
+      "content": "Zaprojektuj system",
+      "created_at": "2025-12-17T06:26:54.855790",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.859289",
+        "Sklasyfikowana intencja: COMPLEX_PLANNING - 2025-12-17T06:26:54.859564",
+        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.862310"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.862320"
+        }
+      }
+    },
+    {
+      "id": "86d63dba-40a2-4900-bfb3-f5d91e51eeac",
+      "content": "Znajdź informacje",
+      "created_at": "2025-12-17T06:26:54.897492",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.901009",
+        "Sklasyfikowana intencja: RESEARCH - 2025-12-17T06:26:54.901267",
+        "Agent ResearcherAgent przetworzył zadanie - 2025-12-17T06:26:54.901560",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.904052"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.904062"
+        }
+      }
+    },
+    {
+      "id": "eda48070-b12d-4413-ac33-2218d37f1bc7",
+      "content": "Test task",
+      "created_at": "2025-12-17T06:26:54.938651",
+      "status": "COMPLETED",
+      "result": "Mocked result",
+      "logs": [
+        "Rozpoczęto przetwarzanie: 2025-12-17T06:26:54.942545",
+        "Sklasyfikowana intencja: GENERAL_CHAT - 2025-12-17T06:26:54.942832",
+        "Agent AssistantAgent przetworzył zadanie - 2025-12-17T06:26:54.943127",
+        "Zakończono przetwarzanie: 2025-12-17T06:26:54.945947"
+      ],
+      "context_history": {
+        "llm_runtime": {
+          "status": "ready",
+          "error": null,
+          "last_success_at": "2025-12-17T06:26:54.945956"
+        }
+      }
     }
   ],
   "paid_mode_enabled": false,

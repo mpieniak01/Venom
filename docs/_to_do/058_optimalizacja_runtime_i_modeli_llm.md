@@ -20,6 +20,9 @@
    - Podmienia config,
    - Restartuje odpowiedni runtime,
    - Potwierdza w panelu nowy stan.
+6. **Niespójne aliasy modeli** – vLLM może publikować model pod aliasem innym niż katalog HF (`--served-model-name`). Gdy backend i UI korzystają z innej nazwy niż runtime, kończy się to 404 mimo działającego serwera. Potrzebna centralna rejestracja nazw oraz walidacja przy aktywacji.
+7. **Obsługa szablonów czatu** – np. Gemma 2B IT nie wspiera ról `system` i rzuca `System role not supported`. Obecny ChatAgent zawsze dodaje systemową wiadomość, więc musimy znać ograniczenia modelu i adaptować prompt.
+8. **Historia requestów** – API wymaga `finished_at` i `duration_seconds`, mimo że zadania w toku mają tam `null`, co skutkuje 500 w `GET /api/v1/history/requests`. Trzeba zmiękczyć walidację + migrować istniejące wpisy.
 
 ## Zakres wysokopoziomowy
 1. **Runbook runtime**
@@ -41,10 +44,18 @@
    - Panel „Serwery LLM”: dodatkowa zakładka „Modele” per runtime (instalacja/usuwanie/aktywacja).
    - Progress bary i logi instalacji (np. streaming SSE).
    - Blokada akcji, gdy runtime jest w trakcie restartu/instalacji.
+   - Weryfikacja, czy alias runtime == `LLM_MODEL_NAME`; w razie rozjazdu ostrzeżenie + akcja naprawcza (np. wymuszenie restartu z poprawnym aliasem).
 5. **Bezpieczeństwo i limity**
    - Konfiguracja `MODELS_MAX_DISK_GB`, `MODELS_CACHE_DIR`.
    - Walidacja, czy model jest kompatybilny (quantization, GPU vs CPU).
    - Idempotentne operacje (ponowienie pobierania dokończy przerwany download).
+6. **Metadane promptów**
+   - Manifest modelu przechowuje flagi typu `supports_system_role`, `allowed_roles`, `prompt_template`.
+   - ChatAgent/TokenEconomist pobierają te dane i odpowiednio składają `ChatHistory`.
+   - API udostępnia `GET /api/v1/models/{id}/capabilities` do debugowania.
+7. **Historia i telemetria**
+   - DTO historii mają opcjonalne `finished_at` / `duration_seconds`.
+   - Sanitizer naprawia stare rekordy (np. przy pierwszym uruchomieniu ModelRegistry).
 
 ## Plan działania (propozycja)
 1. **Analiza obecnych procesów**
@@ -69,13 +80,17 @@
    - Aktywacja:
      1. Walidacja, czy model jest pobrany.
      2. Aktualizacja configu (np. `SETTINGS.LLM_MODEL_NAME` + dedicated `VLLM_ACTIVE_MODEL`).
-     3. Restart runtime (systemd + health-check).
-     4. Powiadomienie UI (`task_update` / SSE).
-6. **UI**
+    3. Restart runtime (systemd + health-check).
+    4. Powiadomienie UI (`task_update` / SSE).
+6. **Alias & template guard**
+   - ModelRegistry pilnuje spójności nazw (`served_model_name`, `LLM_MODEL_NAME`, alias w historii) i odrzuca aktywację, jeśli runtime nie potwierdził health-checkiem.
+   - Dla modeli bez ról `system` generujemy fallback prompt (instrukcja + wiadomość użytkownika).
+   - Testy regresyjne na Gemma 2B IT oraz standardowych modelach (np. `phi3-mini`) żeby potwierdzić zgodność.
+7. **UI**
    - Dwa panele: „vLLM Models”, „Ollama Models”.
    - Przyciski: Install, Activate, Remove. Tabela statusów (Installed / Downloading / Available remote).
    - Sekcja logów operacji (ostatnie 5).
-7. **Testy**
+8. **Testy**
    - Unit: `ModelRegistry` (download HF stub, progress).
    - Integration: `tests/test_model_install_api.py` – używa lokalnego HTTP serwera do udawania HF.
    - E2E: Playwright scenario instalacji i przełączenia modelu (mock backend).
@@ -92,5 +107,8 @@
 - [ ] Dodać API do instalacji/usuwania/aktywacji modeli.
 - [ ] Zmodernizować panel Cockpit (sekcja Modele + logi operacji).
 - [ ] Testy jednostkowe + E2E pokrywające cały flow.
+- [ ] Wymusić spójność aliasów modeli (manifest + walidacja przy aktywacji) i zautomatyzować restart runtime w razie rozjazdu.
+- [ ] Manifesty z flagami wsparcia ról (`supports_system_role` itp.) oraz adaptacja ChatAgenta do tych ograniczeń.
+- [ ] Przebudować API historii: opcjonalne `finished_at`/`duration_seconds` + migracja istniejących rekordów.
 
 > Po akceptacji planu przygotujemy osobne PR-y: (1) runtime/systemd, (2) backend ModelRegistry + API, (3) UI + testy.

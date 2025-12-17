@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         True  # ZAWSZE kieruj wrażliwe dane do lokalnego modelu
     )
     # Komendy sterujące lokalnymi serwerami LLM (opcjonalne, wykonywane w powłoce)
+    VLLM_MODEL_PATH: str = "models/gemma-3-4b-it"
+    VLLM_SERVED_MODEL_NAME: str = ""
+    VLLM_GPU_MEMORY_UTILIZATION: float = 0.95
+    VLLM_MAX_BATCHED_TOKENS: int = 2048
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""

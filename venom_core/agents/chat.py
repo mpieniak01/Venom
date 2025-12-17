@@ -52,6 +52,7 @@ Odpowiedź: "Stolicą Francji jest Paryż."
 Pytanie: "Opowiedz kawał"
 Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga błędy! 😄"
 """
+    MODELS_WITHOUT_SYSTEM_ROLE = ("gemma-2b",)
 
     def __init__(self, kernel: Kernel):
         """
@@ -95,17 +96,30 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                 return f"Przetworzono: {input_text}"
 
         # Przygotuj historię rozmowy
+        chat_service = self.kernel.get_service()
+        system_supported = self._supports_system_prompt(chat_service)
         chat_history = ChatHistory()
-        chat_history.add_message(
-            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
-        )
-        chat_history.add_message(
-            ChatMessageContent(role=AuthorRole.USER, content=input_text)
-        )
+        if system_supported:
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+            )
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=input_text)
+            )
+        else:
+            logger.debug(
+                "Model %s nie wspiera roli SYSTEM – łączę instrukcję z wiadomością użytkownika.",
+                getattr(chat_service, "ai_model_id", "unknown"),
+            )
+            combined_prompt = (
+                f"{self.SYSTEM_PROMPT.strip()}\n\n[Pytanie użytkownika]\n{input_text}"
+            )
+            chat_history.add_message(
+                ChatMessageContent(role=AuthorRole.USER, content=combined_prompt)
+            )
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
             supports_functions = self._supports_function_calling(chat_service)
 
             try:
@@ -146,6 +160,10 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
 
             raise
+
+    def _supports_system_prompt(self, chat_service) -> bool:
+        model_id = (getattr(chat_service, "ai_model_id", "") or "").lower()
+        return not any(marker in model_id for marker in self.MODELS_WITHOUT_SYSTEM_ROLE)
 
     def _supports_function_calling(self, chat_service) -> bool:
         """

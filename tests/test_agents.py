@@ -311,11 +311,14 @@ async def test_chat_agent_separate_prompt_for_standard_models(
     )
 
     # Utwórz registry z modelem wspierającym system role
+    # Uwaga: Używamy ModelProvider.LOCAL tylko w kontekście testu mockowego,
+    # aby nie wprowadzać zależności od providera OpenAI w ModelProvider enum.
+    # W rzeczywistych scenariuszach gpt-4o byłby obsługiwany przez OpenAI API.
     mock_registry = MagicMock(spec=ModelRegistry)
     mock_registry.manifest = {
         "gpt-4o": ModelMetadata(
             name="gpt-4o",
-            provider=ModelProvider.LOCAL,  # Używamy LOCAL dla testów mockowych
+            provider=ModelProvider.LOCAL,
             display_name="GPT-4o",
             capabilities=ModelCapabilities(supports_system_role=True),
         )

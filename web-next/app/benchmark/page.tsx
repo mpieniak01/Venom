@@ -32,20 +32,25 @@ export default function BenchmarkPage() {
   const [results, setResults] = useState<BenchmarkModelResult[]>([]);
 
   const addLog = (message: string, level: BenchmarkLog["level"] = "info") => {
-    setLogs((prev) => [
-      ...prev,
-      {
+    setLogs((prev) => {
+      const newLog: BenchmarkLog = {
         timestamp: new Date().toISOString(),
         message,
         level,
-      },
-    ]);
+      };
+      // Używamy concat zamiast spread dla lepszej wydajności
+      return prev.concat(newLog);
+    });
   };
 
   /**
    * Symulacja benchmarku - funkcja demonstracyjna
    * 
    * Ta funkcja generuje losowe wyniki dla celów demonstracyjnych.
+   * Używa stałych zdefiniowanych na górze pliku (SIMULATION_MODEL_LOAD_DELAY_MS,
+   * SIMULATION_QUESTION_DELAY_MS, OOM_PROBABILITY, ERROR_PROBABILITY, itp.)
+   * do kontrolowania symulacji.
+   * 
    * W finalnej implementacji będzie zastąpiona przez prawdziwe wywołania API:
    * - POST /api/v1/models/benchmark/start
    * - WebSocket/SSE dla live logów
@@ -114,7 +119,9 @@ export default function BenchmarkPage() {
       addLog("🎉 Benchmark zakończony pomyślnie!", "info");
       setStatus("completed");
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Nieznany błąd podczas benchmarku";
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Nieznany błąd podczas wykonywania benchmarku. Sprawdź logi systemu lub spróbuj ponownie.";
       addLog(`Błąd podczas benchmarku: ${errorMessage}`, "error");
       setStatus("failed");
     }

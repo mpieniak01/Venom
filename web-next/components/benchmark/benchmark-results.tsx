@@ -7,6 +7,33 @@ interface BenchmarkResultsProps {
   results: BenchmarkModelResult[];
 }
 
+// Funkcje pomocnicze wyodrębnione poza komponent dla lepszej wydajności
+function getStatusColor(status: BenchmarkModelResult["status"]): string {
+  switch (status) {
+    case "success":
+      return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
+    case "oom":
+      return "text-rose-400 bg-rose-500/10 border-rose-500/30";
+    case "error":
+      return "text-amber-400 bg-amber-500/10 border-amber-500/30";
+    default:
+      return "text-zinc-400 bg-zinc-500/10 border-zinc-500/30";
+  }
+}
+
+function getStatusLabel(status: BenchmarkModelResult["status"]): string {
+  switch (status) {
+    case "success":
+      return "✓ Sukces";
+    case "oom":
+      return "⚠ OOM (brak pamięci)";
+    case "error":
+      return "✗ Błąd";
+    default:
+      return "—";
+  }
+}
+
 // Funkcja pomocnicza do sortowania wyników benchmarku
 function sortBenchmarkResults(results: BenchmarkModelResult[]): BenchmarkModelResult[] {
   return [...results].sort((a, b) => {
@@ -17,7 +44,8 @@ function sortBenchmarkResults(results: BenchmarkModelResult[]): BenchmarkModelRe
     if (a.status === "success" && b.status === "success") {
       return a.avg_response_time_ms - b.avg_response_time_ms;
     }
-    return 0;
+    // Dla innych statusów sortuj alfabetycznie według nazwy modelu
+    return a.model_name.localeCompare(b.model_name);
   });
 }
 
@@ -32,32 +60,6 @@ export function BenchmarkResults({ results }: BenchmarkResultsProps) {
     );
   }
 
-  const getStatusColor = (status: BenchmarkModelResult["status"]) => {
-    switch (status) {
-      case "success":
-        return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
-      case "oom":
-        return "text-rose-400 bg-rose-500/10 border-rose-500/30";
-      case "error":
-        return "text-amber-400 bg-amber-500/10 border-amber-500/30";
-      default:
-        return "text-zinc-400 bg-zinc-500/10 border-zinc-500/30";
-    }
-  };
-
-  const getStatusLabel = (status: BenchmarkModelResult["status"]) => {
-    switch (status) {
-      case "success":
-        return "✓ Sukces";
-      case "oom":
-        return "⚠ OOM (brak pamięci)";
-      case "error":
-        return "✗ Błąd";
-      default:
-        return "—";
-    }
-  };
-
   const sortedResults = sortBenchmarkResults(results);
 
   return (
@@ -67,7 +69,8 @@ export function BenchmarkResults({ results }: BenchmarkResultsProps) {
       </h4>
 
       <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/30">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Wyniki benchmarku modeli">
+          <caption className="sr-only">Wyniki benchmarku modeli</caption>
           <thead>
             <tr className="border-b border-white/10">
               <th className="px-4 py-3 text-left font-medium text-zinc-400">

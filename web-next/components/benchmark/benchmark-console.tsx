@@ -9,6 +9,29 @@ interface BenchmarkConsoleProps {
   isRunning?: boolean;
 }
 
+// Stałe dla ikon poziomu logów
+const LEVEL_ICONS = {
+  error: "❌",
+  warning: "⚠️",
+  info: "ℹ️",
+} as const;
+
+// Funkcje pomocnicze wyodrębnione poza komponent dla lepszej wydajności
+function getLevelColor(level: BenchmarkLog["level"]): string {
+  switch (level) {
+    case "error":
+      return "text-rose-400";
+    case "warning":
+      return "text-amber-400";
+    default:
+      return "text-emerald-400";
+  }
+}
+
+function getLevelIcon(level: BenchmarkLog["level"]): string {
+  return LEVEL_ICONS[level] || LEVEL_ICONS.info;
+}
+
 export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsoleProps) {
   const consoleRef = useRef<HTMLDivElement>(null);
 
@@ -18,28 +41,6 @@ export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsolePr
       consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
     }
   }, [logs]);
-
-  const getLevelColor = (level: BenchmarkLog["level"]) => {
-    switch (level) {
-      case "error":
-        return "text-rose-400";
-      case "warning":
-        return "text-amber-400";
-      default:
-        return "text-emerald-400";
-    }
-  };
-
-  const getLevelIcon = (level: BenchmarkLog["level"]) => {
-    switch (level) {
-      case "error":
-        return "❌";
-      case "warning":
-        return "⚠️";
-      default:
-        return "ℹ️";
-    }
-  };
 
   return (
     <div className="space-y-3">
@@ -60,11 +61,11 @@ export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsolePr
         className="h-64 overflow-y-auto rounded-xl border border-white/10 bg-black/50 p-4 font-mono text-xs"
       >
         {logs.length === 0 ? (
-          <p className="text-zinc-500">Brak logów. Uruchom benchmark aby zobaczyć postęp.</p>
+          <p className="text-zinc-500">Brak logów. Uruchom benchmark, aby zobaczyć postęp.</p>
         ) : (
           <div className="space-y-1">
             {logs.map((log, index) => (
-              <div key={`${log.timestamp}-${index}`} className="flex gap-2">
+              <div key={index} className="flex gap-2">
                 <span className="text-zinc-600">
                   {new Date(log.timestamp).toLocaleTimeString("pl-PL")}
                 </span>

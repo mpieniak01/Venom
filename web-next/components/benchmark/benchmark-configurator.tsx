@@ -111,29 +111,34 @@ export function BenchmarkConfigurator({
               Brak dostępnych modeli dla {runtime}
             </p>
           ) : (
-            filteredModels.map((model) => (
-              <label
-                key={model.name}
-                className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition",
-                  selectedModels.includes(model.name)
-                    ? "border-violet-500/40 bg-violet-500/10"
-                    : "border-white/5 bg-black/20 hover:border-white/20",
-                  disabled && "cursor-not-allowed opacity-50"
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedModels.includes(model.name)}
-                  onChange={() => handleModelToggle(model.name)}
-                  disabled={disabled}
-                  className="h-4 w-4 rounded border-white/20 bg-black/50 text-violet-500 focus:ring-violet-500/50"
-                />
-                <span className="flex-1 text-sm text-zinc-200">
-                  {model.name}
-                </span>
-              </label>
-            ))
+            filteredModels.map((model) => {
+              const checkboxId = `model-${model.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
+              return (
+                <label
+                  key={model.name}
+                  htmlFor={checkboxId}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 transition",
+                    selectedModels.includes(model.name)
+                      ? "border-violet-500/40 bg-violet-500/10"
+                      : "border-white/5 bg-black/20 hover:border-white/20",
+                    disabled && "cursor-not-allowed opacity-50"
+                  )}
+                >
+                  <input
+                    id={checkboxId}
+                    type="checkbox"
+                    checked={selectedModels.includes(model.name)}
+                    onChange={() => handleModelToggle(model.name)}
+                    disabled={disabled}
+                    className="h-4 w-4 rounded border-white/20 bg-black/50 text-violet-500 focus:ring-violet-500/50"
+                  />
+                  <span className="flex-1 text-sm text-zinc-200">
+                    {model.name}
+                  </span>
+                </label>
+              );
+            })
           )}
         </div>
       </div>

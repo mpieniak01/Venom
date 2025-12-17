@@ -20,6 +20,13 @@ data/timelines/
 
 .venom.pid
 test-results/
+**/test-results/
+**/.pytest_cache/
+**/.ruff_cache/
+**/playwright-report/
+**/.playwright-report/
+perf-artifacts/
+perf-results/
 data/audio/
 models/
 
@@ -44,7 +51,17 @@ web-next/out/
 web-next/.cache/
 web-next/.eslintcache
 web-next/.vercel/
+web-next/test-results/
+web-next/playwright-report/
 
 # runtime pid files
 .web-next.pid
 *.pid
+
+# perf tooling
+.locust_history
+locust.log
+locustfile.pyc
+
+# misc
+next-dev.log

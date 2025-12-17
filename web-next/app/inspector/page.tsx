@@ -45,6 +45,8 @@ export default function InspectorPage() {
   const mermaidInitializedRef = useRef(false);
   const fitViewRef = useRef<(() => void) | null>(null);
   const streamRefreshRef = useRef<Record<string, string | null>>({});
+  const lastHistoryAutoRefreshRef = useRef<number>(0);
+  const HISTORY_AUTO_REFRESH_MS = 5000;
   const filteredSteps = useMemo(() => filterSteps(steps, stepFilter), [steps, stepFilter]);
   const stepsCount = steps.length;
   const selectedRequest = useMemo(
@@ -222,7 +224,13 @@ export default function InspectorPage() {
     }
   };
 
-  const handleHistorySelect = useCallback(async (requestId: string) => {
+  const currentDiagramRequestRef = useRef<string | null>(null);
+
+  const handleHistorySelect = useCallback(async (requestId: string, force = false) => {
+    if (!force && currentDiagramRequestRef.current === requestId) {
+      return;
+    }
+    currentDiagramRequestRef.current = requestId;
     setDiagramLoading(true);
     setDetailError(null);
     setSelectedId(requestId);
@@ -277,9 +285,13 @@ export default function InspectorPage() {
     const previousTs = streamRefreshRef.current[selectedId];
     if (previousTs === stream.lastEventAt) return;
     streamRefreshRef.current[selectedId] = stream.lastEventAt;
+    const now = Date.now();
+    if (now - lastHistoryAutoRefreshRef.current < HISTORY_AUTO_REFRESH_MS) {
+      return;
+    }
+    lastHistoryAutoRefreshRef.current = now;
     refreshHistory();
-    handleHistorySelect(selectedId);
-  }, [inspectorStreams, selectedId, refreshHistory, handleHistorySelect]);
+  }, [inspectorStreams, selectedId, refreshHistory]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -342,27 +354,12 @@ export default function InspectorPage() {
                 onClick={handleHistoryRefresh}
                 disabled={historyRefreshPending}
               >
-                {historyRefreshPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    Odświeżam…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                    Odśwież
-                  </>
-                )}
+                <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                {historyRefreshPending ? "Odświeżam…" : "Odśwież"}
               </Button>
             }
           >
             <div className="relative min-h-[280px]">
-              {historyLoading && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/40 text-xs text-zinc-300">
-                  <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
-                  Ładuję historię...
-                </div>
-              )}
               <HistoryList
                 entries={history}
                 selectedId={selectedId}
@@ -458,7 +455,7 @@ export default function InspectorPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => handleHistorySelect(selectedId as string)}
+                                  onClick={() => handleHistorySelect(selectedId as string, true)}
                                   disabled={!selectedId}
                                 >
                                   Spróbuj ponownie
@@ -701,19 +698,32 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
     }
   });
 
-  participants.delete("User");
+  const participantAliases = new Map<string, string>();
+  let participantIndex = 0;
   participants.forEach((participant) => {
-    lines.push(`    participant ${participant}`);
+    const alias = createParticipantAlias(participant, participantIndex++);
+    participantAliases.set(participant, alias);
+    if (participant === "User" || participant === "Orchestrator") {
+      lines.push(`    participant ${alias} as ${participant}`);
+    } else {
+      const display = participant.replace(/"/g, "'");
+      lines.push(`    participant ${alias} as "${display}"`);
+    }
   });
 
   lines.push("");
   const prompt = truncateText(sanitizeSequenceText(flow.prompt || "Zapytanie"), 70);
-  lines.push(`    User->>Orchestrator: ${prompt || "Zapytanie"}`);
+  const userAlias = participantAliases.get("User") ?? "User";
+  const orchestratorAlias = participantAliases.get("Orchestrator") ?? "Orchestrator";
+  lines.push(`    ${userAlias}->>${orchestratorAlias}: ${prompt || "Zapytanie"}`);
 
-  let lastComponent = "Orchestrator";
+  let lastComponent = orchestratorAlias;
   steps.forEach((step) => {
-    const component = sanitizeSequenceText(step.component || lastComponent);
-    if (!component) return;
+    const componentName = sanitizeSequenceText(step.component || "");
+    const componentAlias = componentName
+      ? participantAliases.get(componentName) || participantAliases.get("Orchestrator")
+      : lastComponent;
+    const component = componentAlias ?? lastComponent;
     const action = truncateText(
       sanitizeSequenceText(step.action || step.details || "Krok"),
       80,
@@ -737,14 +747,19 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
   });
 
   if (flow.status === "COMPLETED") {
-    lines.push(`    ${lastComponent}->>User: ✅ Task completed`);
+    lines.push(`    ${lastComponent}->>${userAlias}: ✅ Task completed`);
   } else if (flow.status === "FAILED") {
-    lines.push(`    ${lastComponent}--xUser: ❌ Task failed`);
+    lines.push(`    ${lastComponent}--x${userAlias}: ❌ Task failed`);
   } else if (flow.status === "PROCESSING") {
     lines.push(`    Note over ${lastComponent}: ⏳ Processing...`);
   }
 
   return lines.join("\n");
+}
+
+function createParticipantAlias(participant: string, index: number) {
+  const base = participant.replace(/[^a-zA-Z0-9]/g, "_") || `P${index + 1}`;
+  return `${base}_${index + 1}`;
 }
 
 function sanitizeSequenceText(value?: string | null) {

@@ -491,36 +491,61 @@ PARAMETER top_k 40
             Lista słowników z informacjami o modelach:
             {name, size_gb, type, quantization, path, active}
         """
-        models = []
+        models: Dict[str, Dict[str, Any]] = {}
 
-        # 1. Skanowanie lokalnych plików ONNX/GGUF
-        if self.models_dir.exists():
-            for model_path in self.models_dir.iterdir():
-                if model_path.is_dir() or model_path.suffix in [
+        def _register_local_entry(
+            model_path: Path, source: str, provider: str = "vllm"
+        ):
+            size_bytes = 0
+            if model_path.is_file():
+                size_bytes = model_path.stat().st_size
+            else:
+                for file_path in model_path.rglob("*"):
+                    if file_path.is_file():
+                        size_bytes += file_path.stat().st_size
+
+            lower_path = str(model_path).lower()
+            if ".onnx" in lower_path:
+                model_type = "onnx"
+            elif ".gguf" in lower_path:
+                model_type = "gguf"
+            else:
+                model_type = "folder"
+
+            models[model_path.name] = {
+                "name": model_path.name,
+                "size_gb": size_bytes / (1024**3) if size_bytes else None,
+                "type": model_type,
+                "quantization": "unknown",
+                "path": str(model_path),
+                "source": source,
+                "provider": provider,
+                "active": False,
+            }
+
+        # 1. Skanowanie lokalnych katalogów modeli (data/models oraz ./models)
+        search_dirs = [self.models_dir]
+        default_models_dir = Path("./models")
+        if default_models_dir.exists() and default_models_dir not in search_dirs:
+            search_dirs.append(default_models_dir)
+
+        for base_dir in search_dirs:
+            if not base_dir.exists():
+                continue
+            for model_path in base_dir.iterdir():
+                if model_path.is_dir() or model_path.suffix in {
                     ".onnx",
                     ".gguf",
                     ".bin",
-                ]:
-                    size_bytes = 0
-                    if model_path.is_file():
-                        size_bytes = model_path.stat().st_size
-                    else:
-                        # Dla katalogów, sumuj rozmiary plików
-                        for file_path in model_path.rglob("*"):
-                            if file_path.is_file():
-                                size_bytes += file_path.stat().st_size
-
-                    model_type = "onnx" if ".onnx" in str(model_path) else "gguf"
-                    models.append(
-                        {
-                            "name": model_path.name,
-                            "size_gb": size_bytes / (1024**3),
-                            "type": model_type,
-                            "quantization": "unknown",
-                            "path": str(model_path),
-                            "active": False,
-                        }
-                    )
+                }:
+                    try:
+                        _register_local_entry(
+                            model_path, source=base_dir.name, provider="vllm"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Nie udało się odczytać modelu {model_path}: {e}"
+                        )
 
         # 2. Pobieranie modeli z Ollama API
         try:
@@ -531,16 +556,17 @@ PARAMETER top_k 40
                     for model in ollama_data.get("models", []):
                         # Ollama zwraca rozmiar w bajtach
                         size_bytes = model.get("size", 0)
-                        models.append(
-                            {
-                                "name": model.get("name", "unknown"),
-                                "size_gb": size_bytes / (1024**3),
-                                "type": "ollama",
-                                "quantization": model.get("quantization", "unknown"),
-                                "path": "ollama://",
-                                "active": False,  # TODO: sprawdzić aktywny model
-                            }
-                        )
+                        entry_name = model.get("name", "unknown")
+                        models[f"ollama::{entry_name}"] = {
+                            "name": entry_name,
+                            "size_gb": size_bytes / (1024**3),
+                            "type": "ollama",
+                            "quantization": model.get("quantization", "unknown"),
+                            "path": "ollama://",
+                            "source": "ollama",
+                            "provider": "ollama",
+                            "active": False,
+                        }
                 else:
                     logger.warning(
                         f"Nie udało się pobrać listy modeli z Ollama: {response.status_code}"
@@ -550,7 +576,7 @@ PARAMETER top_k 40
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
 
-        return models
+        return list(models.values())
 
     async def pull_model(
         self, model_name: str, progress_callback: Optional[callable] = None

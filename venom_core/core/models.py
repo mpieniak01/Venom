@@ -60,6 +60,9 @@ class TaskResponse(BaseModel):
 
     task_id: UUID
     status: TaskStatus
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_endpoint: Optional[str] = None
 
 
 class ExecutionStep(BaseModel):

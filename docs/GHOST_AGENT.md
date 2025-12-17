@@ -239,7 +239,7 @@ class GhostAgent(BaseAgent):
         step_delay: float = 1.0,
         verification_enabled: bool = True
     )
-    
+
     async def process(input_text: str) -> str
     def emergency_stop_trigger() -> None
     def get_status() -> Dict[str, Any]
@@ -251,16 +251,16 @@ class GhostAgent(BaseAgent):
 class InputSkill:
     @kernel_function
     async def mouse_click(x: int, y: int, button: str = "left", double: bool = False) -> str
-    
+
     @kernel_function
     async def keyboard_type(text: str, interval: float = 0.05) -> str
-    
+
     @kernel_function
     async def keyboard_hotkey(keys: str) -> str
-    
+
     @kernel_function
     async def get_mouse_position() -> str
-    
+
     @kernel_function
     async def take_screenshot(region: Optional[str] = None) -> str
 ```
@@ -274,7 +274,7 @@ class VisionGrounding:
         description: str,
         confidence_threshold: float = 0.7
     ) -> Optional[Tuple[int, int]]
-    
+
     def load_screenshot(path_or_bytes) -> Image.Image
 ```
 

@@ -94,7 +94,7 @@ result = await graph.local_search(
 
 **Typy wyszukiwania:**
 
-1. **Global Search**: 
+1. **Global Search**:
    - Analizuje społeczności w grafie
    - Tworzy podsumowania klastrów
    - Dobre dla pytań typu "O czym jest ten projekt?"
@@ -200,19 +200,19 @@ from venom_core.agents.oracle import OracleAgent
 async def analyze_pdf():
     kernel = Kernel()
     # ... konfiguracja ...
-    
+
     oracle = OracleAgent(kernel)
-    
+
     # Przetwórz PDF
     await oracle.process(
         "Przeczytaj plik ./docs/washing_machine_manual.pdf i dodaj do grafu wiedzy"
     )
-    
+
     # Zadaj pytanie
     result = await oracle.process(
         "Dlaczego miga czerwona dioda w pralce?"
     )
-    
+
     print(result)
 
 asyncio.run(analyze_pdf())
@@ -261,14 +261,14 @@ graph TD
     D -->|Ekstrahuje| E[GraphRAG Service]
     E -->|Buduje| F[Graf Wiedzy]
     F -->|Zapisuje| G[LanceDB + NetworkX]
-    
+
     B -->|Ma wiedzę?| H{Typ pytania}
     H -->|Ogólny obraz| I[Global Search]
     H -->|Konkretne relacje| J[Local Search]
-    
+
     I -->|Analizuje społeczności| F
     J -->|Multi-hop BFS| F
-    
+
     I -->|Synteza| K[LLM]
     J -->|Synteza| K
     K -->|Odpowiedź z cytatami| A

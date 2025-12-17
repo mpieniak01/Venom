@@ -8,6 +8,9 @@ export interface Task {
   result?: string | null;
   logs?: string[];
   context_history?: Record<string, unknown>;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  llm_endpoint?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -52,6 +55,9 @@ export interface HistoryRequest {
   prompt: string;
   status: TaskStatus;
   model?: string;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+  llm_endpoint?: string | null;
   created_at: string;
   finished_at?: string | null;
   duration_seconds?: number | null;
@@ -95,6 +101,33 @@ export interface ServiceStatus {
   detail?: string;
 }
 
+export interface LlmServerInfo {
+  name: string;
+  display_name: string;
+  description?: string;
+  endpoint?: string;
+  provider?: string;
+  status?: string;
+  latency_ms?: number;
+  last_check?: string | null;
+  error_message?: string | null;
+  supports: {
+    start?: boolean;
+    stop?: boolean;
+    restart?: boolean;
+    [key: string]: boolean | undefined;
+  };
+}
+
+export interface LlmActionResponse {
+  status: string;
+  action: string;
+  message?: string;
+  stdout?: string;
+  stderr?: string;
+  exit_code?: number | null;
+}
+
 export interface TokenMetrics {
   total_tokens?: number;
   prompt_tokens?: number;
@@ -119,12 +152,35 @@ export interface ModelInfo {
   type?: string;
   quantization?: string;
   path?: string;
+  provider?: string | null;
 }
 
 export interface ModelsResponse {
   success?: boolean;
   models: ModelInfo[];
   count: number;
+  active?: ActiveModelRuntime;
+  providers?: Record<string, ModelInfo[]>;
+}
+
+export interface ActiveModelRuntime {
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  endpoint_host?: string | null;
+  endpoint_port?: number | null;
+  service_type?: string;
+  mode?: string;
+  label?: string;
+  configured_models?: {
+    local?: string | null;
+    hybrid_local?: string | null;
+    cloud?: string | null;
+  };
+  status?: string;
+  last_success_at?: string;
+  last_error_at?: string;
+  error?: string;
 }
 
 export interface ModelsUsage {

@@ -26,9 +26,9 @@ Metoda `_create_action_plan` jest **w pełni zaimplementowana** z wykorzystaniem
 1. **Semantic Function z Promptem** - Wysyła szczegółowy prompt do LLM (linie 222-247):
    ```python
    planning_prompt = f"""Jesteś ekspertem od automatyzacji GUI. Stwórz szczegółowy plan akcji dla następującego zadania:
-   
+
    ZADANIE: {task}
-   
+
    Dostępne akcje:
    1. "locate" - Znajdź element na ekranie po opisie (params: description)
    2. "click" - Kliknij w element (params: x, y lub use_located: true)
@@ -127,14 +127,14 @@ Metoda `_find_similar_lessons` jest **w pełni zaimplementowana** z semantycznym
 2. **Fallback: EmbeddingService + Cosine Similarity** (linie 535-593):
    ```python
    embedding_service = EmbeddingService()
-   
+
    # Generuj embedding dla kontekstu zapytania
    query_embedding = embedding_service.get_embedding(context)
-   
+
    # Generuj embeddingi dla wszystkich lekcji (batch processing)
    lesson_texts = [lesson.to_text() for lesson in all_lessons]
    lesson_embeddings = embedding_service.get_embeddings_batch(lesson_texts)
-   
+
    # Oblicz cosine similarity
    for i, lesson_embedding in enumerate(lesson_embeddings):
        # ... obliczenia similarity
@@ -171,7 +171,7 @@ Metoda `_check_task_context` jest **w pełni zaimplementowana** z integracją Go
    ```python
    # Pobierz zadania w trakcie realizacji
    active_tasks = self.goal_store.get_tasks(status=GoalStatus.IN_PROGRESS)
-   
+
    if not active_tasks:
        logger.debug("Brak aktywnych zadań do sprawdzenia")
        return None
@@ -180,12 +180,12 @@ Metoda `_check_task_context` jest **w pełni zaimplementowana** z integracją Go
 2. **Użycie LLM do oceny kontekstu** (linie 441-469):
    ```python
    prompt = f"""Przeanalizuj czy użytkownik pracuje nad jednym z aktywnych zadań.
-   
+
    TYTUŁ OKNA: {window_title}
-   
+
    AKTYWNE ZADANIA:
    {tasks_text}
-   
+
    Czy tytuł okna sugeruje pracę nad którymś z tych zadań?
    Odpowiedz tylko: TAK (i podaj numer zadania) lub NIE
    ```
@@ -193,11 +193,11 @@ Metoda `_check_task_context` jest **w pełni zaimplementowana** z integracją Go
 3. **Parsowanie odpowiedzi LLM** (linie 470-503):
    ```python
    response_text = str(response).strip().upper()
-   
+
    # Parsuj odpowiedź
    if "TAK" in response_text:
        confidence = self.CONFIDENCE_TASK_UPDATE
-       
+
        if confidence >= self.confidence_threshold:
            # Znajdź najbardziej pasujące zadanie
            matched_task = None
@@ -363,7 +363,7 @@ W `tests/test_strategist_agent.py`:
 
 ## Konkluzja
 
-Projekt **Venom** jest na bardzo wysokim poziomie technicznym. Większość funkcjonalności opisanych w issue jako "brakujące" była **już zaimplementowana** i działała poprawnie. 
+Projekt **Venom** jest na bardzo wysokim poziomie technicznym. Większość funkcjonalności opisanych w issue jako "brakujące" była **już zaimplementowana** i działała poprawnie.
 
 Jedyne rzeczywiste ulepszenie dotyczyło **Strategist Agent - Robust Parsing**, gdzie dodano:
 - Spójny format JSON
@@ -373,6 +373,6 @@ Jedyne rzeczywiste ulepszenie dotyczyło **Strategist Agent - Robust Parsing**, 
 
 Kod jest **production-ready** i spełnia wszystkie kryteria akceptacji.
 
-**Autor:** GitHub Copilot Agent  
-**Data:** 2025-12-09  
+**Autor:** GitHub Copilot Agent
+**Data:** 2025-12-09
 **Status:** ✅ ZAKOŃCZONE

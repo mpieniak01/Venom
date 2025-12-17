@@ -1,7 +1,8 @@
-# Makefile dla Venom
+# Makefile dla Venom – rozdzielony backend FastAPI + frontend Next.js
 
 VENV ?= .venv
 UVICORN ?= $(VENV)/bin/uvicorn
+API_APP ?= venom_core.main:app
 HOST ?= 0.0.0.0
 PORT ?= 8000
 PID_FILE ?= .venom.pid
@@ -9,6 +10,15 @@ NPM ?= npm
 WEB_DIR ?= web-next
 WEB_PORT ?= 3000
 WEB_PID_FILE ?= .web-next.pid
+NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
+NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
+START_MODE ?= dev
+UVICORN_DEV_FLAGS ?= --reload
+UVICORN_PROD_FLAGS ?= --no-server-header
+SERVE_LEGACY_DEV ?= True
+SERVE_LEGACY_PROD ?= True
+BACKEND_LOG ?= logs/backend.log
+WEB_LOG ?= logs/web-next.log
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -16,7 +26,7 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test precommit install-hooks start stop restart status clean-ports
+.PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports
 
 lint:
 	pre-commit run --all-files
@@ -30,35 +40,61 @@ test:
 install-hooks:
 	pre-commit install
 
-start:
+define ensure_process_not_running
+	@if [ -f $(2) ]; then \
+		PID=$$(cat $(2)); \
+		if kill -0 $$PID 2>/dev/null; then \
+			echo "⚠️  $(1) już działa (PID $$PID). Użyj 'make stop' lub 'make restart'."; \
+			exit 1; \
+		else \
+			rm -f $(2); \
+		fi; \
+	fi
+endef
+
+start: start-dev
+
+start-dev: START_MODE=dev
+start-dev:
+	$(MAKE) --no-print-directory _start
+
+start-prod: START_MODE=prod
+start-prod:
+	$(MAKE) --no-print-directory _start
+
+_start:
 	@if [ ! -x "$(UVICORN)" ]; then \
 		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
 		exit 1; \
 	fi
-	@if [ -f $(PID_FILE) ]; then \
-		PID=$$(cat $(PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			echo "⚠️  Venom już działa (PID $$PID). Użyj 'make stop' lub 'make restart'."; \
-			exit 1; \
-		else \
-			rm -f $(PID_FILE); \
-		fi; \
+	@mkdir -p logs
+	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
+	@if [ "$(START_MODE)" = "prod" ]; then \
+		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
+		export SERVE_LEGACY_UI=$(SERVE_LEGACY_PROD); \
+	else \
+		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
+		export SERVE_LEGACY_UI=$(SERVE_LEGACY_DEV); \
+	fi; \
+	echo "▶️  Uruchamiam Venom backend (uvicorn na $(HOST):$(PORT))"; \
+	: > $(BACKEND_LOG); \
+	setsid $(UVICORN) $(API_APP) $$UVICORN_FLAGS >> $(BACKEND_LOG) 2>&1 & \
+	echo $$! > $(PID_FILE); \
+	echo "✅ Venom backend wystartował z PID $$(cat $(PID_FILE))"
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@if [ "$(START_MODE)" = "prod" ]; then \
+		echo "🛠  Buduję Next.js (npm run build)"; \
+		$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
+		echo "▶️  Uruchamiam UI (Next.js start, port $(WEB_PORT))"; \
+		$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+		echo $$! > $(WEB_PID_FILE); \
+	else \
+		echo "▶️  Uruchamiam UI (Next.js dev, port $(WEB_PORT))"; \
+		$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+		echo $$! > $(WEB_PID_FILE); \
 	fi
-	@echo "▶️  Uruchamiam Venom (uvicorn na $(HOST):$(PORT))"
-	@$(UVICORN) venom_core.main:app --host $(HOST) --port $(PORT) --reload >/dev/null 2>&1 & echo $$! > $(PID_FILE)
-	@echo "✅ Venom wystartował z PID $$(cat $(PID_FILE))"
-	@if [ -f $(WEB_PID_FILE) ]; then \
-		WPID=$$(cat $(WEB_PID_FILE)); \
-		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⚠️  UI (Next.js) już działa (PID $$WPID). Użyj 'make stop' lub 'make restart'."; \
-			exit 1; \
-		else \
-			rm -f $(WEB_PID_FILE); \
-		fi; \
-	fi
-	@echo "▶️  Uruchamiam UI (Next.js na porcie $(WEB_PORT))"
-	@$(NPM) --prefix $(WEB_DIR) run dev -- --hostname 0.0.0.0 --port $(WEB_PORT) >/dev/null 2>&1 & echo $$! > $(WEB_PID_FILE)
-	@echo "✅ UI wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🚀 Gotowe: backend http://$(HOST):$(PORT), dashboard http://127.0.0.1:$(WEB_PORT)"
 
 stop:
@@ -82,7 +118,7 @@ stop:
 	else \
 		echo "ℹ️  Brak aktywnego procesu (PID_FILE nie istnieje)"; \
 	fi
-	@pkill -f "uvicorn[[:space:]]+venom_core.main:app" 2>/dev/null || true
+	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
 	@if [ -f $(WEB_PID_FILE) ]; then \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		if kill -0 $$WPID 2>/dev/null; then \
@@ -103,6 +139,7 @@ stop:
 		echo "ℹ️  UI nie był uruchomiony (WEB_PID_FILE nie istnieje)"; \
 	fi
 	@pkill -f "next dev" 2>/dev/null || true
+	@pkill -f "next start" 2>/dev/null || true
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@echo "✅ Procesy Venom/Next zostały zatrzymane"
 

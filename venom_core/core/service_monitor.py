@@ -84,6 +84,24 @@ class ServiceRegistry:
                     is_critical=True,
                 )
             )
+            self.register_service(
+                ServiceInfo(
+                    name="vLLM",
+                    service_type="api",
+                    endpoint=SETTINGS.LLM_LOCAL_ENDPOINT,
+                    description="Serwer vLLM (OpenAI-compatible)",
+                    is_critical=True,
+                )
+            )
+            self.register_service(
+                ServiceInfo(
+                    name="Ollama",
+                    service_type="api",
+                    endpoint="http://localhost:11434/api/tags",
+                    description="Daemon Ollama dla modeli GGUF",
+                    is_critical=False,
+                )
+            )
 
         # GitHub API (jeśli skonfigurowane)
         github_token = SETTINGS.GITHUB_TOKEN.get_secret_value()

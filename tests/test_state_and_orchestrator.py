@@ -91,6 +91,31 @@ def test_state_manager_add_log(temp_state_file):
     assert "Log message 2" in updated_task.logs
 
 
+def test_state_manager_update_context_merges(temp_state_file):
+    """StateManager powinien scalać i czyścić kontekst LLMa."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+    task = state_manager.create_task("Monitoruj runtime")
+
+    state_manager.update_context(
+        task.id, {"llm_runtime": {"provider": "vllm", "status": "ready"}}
+    )
+    state_manager.update_context(
+        task.id,
+        {"llm_runtime": {"status": "error", "error": "404 Not Found"}},
+    )
+
+    runtime = state_manager.get_task(task.id).context_history.get("llm_runtime")
+    assert runtime["provider"] == "vllm"
+    assert runtime["status"] == "error"
+    assert runtime["error"] == "404 Not Found"
+
+    state_manager.update_context(task.id, {"llm_runtime": {"error": None}})
+    runtime_after_reset = state_manager.get_task(task.id).context_history.get(
+        "llm_runtime"
+    )
+    assert "error" not in runtime_after_reset
+
+
 def test_state_manager_get_all_tasks(temp_state_file):
     """Test pobierania wszystkich zadań."""
     state_manager = StateManager(state_file_path=temp_state_file)

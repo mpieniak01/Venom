@@ -119,8 +119,22 @@ class GenerationParamsAdapter:
         elif "openai" in provider_lower or "azure" in provider_lower:
             return "openai"
         elif provider_lower == "local":
-            # Dla lokalnego providera domyślnie zakładamy vLLM
-            # (najczęstszy wybór w tym projekcie)
+            # Dla lokalnego providera spróbuj wykryć z runtime info
+            try:
+                from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+                runtime = get_active_llm_runtime()
+                detected = runtime.provider.lower()
+                if detected in ["ollama", "vllm", "openai"]:
+                    logger.debug(
+                        f"Wykryto provider z runtime: {detected} (dla 'local')"
+                    )
+                    return detected
+            except Exception as e:
+                logger.debug(f"Nie udało się wykryć providera z runtime: {e}")
+
+            # Fallback do vLLM (najczęstszy w projekcie)
+            logger.debug("Używam domyślnego mapowania vLLM dla providera 'local'")
             return "vllm"
         else:
             # Domyślnie zwróć oryginalną wartość

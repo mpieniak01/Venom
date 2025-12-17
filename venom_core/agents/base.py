@@ -57,7 +57,8 @@ class BaseAgent(ABC):
             Wynik przetwarzania zadania
         """
         logger.debug(
-            f"Agent {self.__class__.__name__} otrzymał parametry generacji, ale nie są one jeszcze obsługiwane"
+            f"Agent {self.__class__.__name__} używa domyślnej implementacji process_with_params - "
+            "parametry generacji zostaną zignorowane. Nadpisz tę metodę aby ich użyć."
         )
         return await self.process(input_text)
 

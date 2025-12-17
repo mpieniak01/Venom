@@ -28,8 +28,8 @@ class HistoryRequestSummary(BaseModel):
     prompt: str
     status: str
     created_at: str
-    finished_at: str = None
-    duration_seconds: float = None
+    finished_at: Optional[str] = None
+    duration_seconds: Optional[float] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
@@ -42,8 +42,8 @@ class HistoryRequestDetail(BaseModel):
     prompt: str
     status: str
     created_at: str
-    finished_at: str = None
-    duration_seconds: float = None
+    finished_at: Optional[str] = None
+    duration_seconds: Optional[float] = None
     steps: list
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None

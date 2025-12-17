@@ -340,8 +340,8 @@ class MyCustomAgent(BaseAgent):
         # Użyj helpera z BaseAgent
         settings = self._create_execution_settings(
             generation_params=generation_params,
-            # Dodaj własne parametry jeśli potrzeba
-            temperature=0.7,  # domyślna temperatura dla tego agenta
+            # Dodaj własne domyślne parametry jeśli potrzeba
+            default_settings={'temperature': 0.7},  # domyślna temperatura dla tego agenta
         )
         
         # Wywołaj LLM

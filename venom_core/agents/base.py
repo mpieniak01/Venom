@@ -62,6 +62,26 @@ class BaseAgent(ABC):
         )
         return await self.process(input_text)
 
+    def _get_safe_params_for_logging(
+        self, generation_params: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Filtruje parametry generacji do bezpiecznego logowania.
+
+        Zwraca tylko kluczowe parametry, aby nie ujawniać wrażliwej konfiguracji.
+
+        Args:
+            generation_params: Pełny słownik parametrów generacji
+
+        Returns:
+            Słownik z tylko bezpiecznymi parametrami do logowania
+        """
+        if not generation_params:
+            return {}
+
+        safe_keys = ["temperature", "max_tokens", "top_p", "top_k", "repeat_penalty"]
+        return {k: v for k, v in generation_params.items() if k in safe_keys}
+
     def _create_execution_settings(
         self,
         generation_params: Optional[Dict[str, Any]] = None,
@@ -72,12 +92,16 @@ class BaseAgent(ABC):
         Tworzy ustawienia wykonania z uwzględnieniem parametrów generacji.
 
         Args:
-            generation_params: Parametry generacji od użytkownika
+            generation_params: Parametry generacji od użytkownika (mają najwyższy priorytet)
             default_settings: Domyślne parametry agenta
-            **kwargs: Dodatkowe parametry (np. function_choice_behavior)
+            **kwargs: Dodatkowe parametry niegeneracyjne (np. function_choice_behavior)
 
         Returns:
             Skonfigurowane OpenAIChatPromptExecutionSettings
+
+        Note:
+            Kolejność priorytetów: generation_params > default_settings > kwargs
+            kwargs powinny zawierać tylko parametry niegeneracyjne
         """
         # Wykryj aktywny provider
         runtime_info = get_active_llm_runtime()
@@ -96,7 +120,8 @@ class BaseAgent(ABC):
                 f"Utworzono ustawienia wykonania z parametrami: {adapted_params}"
             )
 
-        # Połącz z dodatkowymi kwargs (np. function_choice_behavior)
-        all_params = {**adapted_params, **kwargs}
+        # Najpierw kwargs (parametry niegeneracyjne), potem adapted_params (nadpisują jeśli konflikt)
+        # To zapewnia, że generation_params użytkownika mają priorytet nad kwargs
+        all_params = {**kwargs, **adapted_params}
 
         return OpenAIChatPromptExecutionSettings(**all_params)

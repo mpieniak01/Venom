@@ -93,12 +93,7 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
             f"ChatAgent przetwarza żądanie z parametrami: {input_text[:100]}..."
         )
         if generation_params:
-            # Loguj tylko kluczowe parametry aby nie ujawniać wrażliwej konfiguracji
-            safe_params = {
-                k: v
-                for k, v in generation_params.items()
-                if k in ["temperature", "max_tokens", "top_p", "top_k"]
-            }
+            safe_params = self._get_safe_params_for_logging(generation_params)
             logger.debug(f"Kluczowe parametry generacji: {safe_params}")
         return await self._process_internal(input_text, generation_params)
 

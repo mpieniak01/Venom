@@ -652,20 +652,83 @@ async def get_model_capabilities_endpoint(model_name: str):
                 detail=f"Model {model_name} nie znaleziony w manifeście",
             )
 
+        capabilities_dict = {
+            "supports_system_role": capabilities.supports_system_role,
+            "supports_function_calling": capabilities.supports_function_calling,
+            "allowed_roles": capabilities.allowed_roles,
+            "prompt_template": capabilities.prompt_template,
+            "max_context_length": capabilities.max_context_length,
+            "quantization": capabilities.quantization,
+        }
+        
+        if capabilities.generation_schema:
+            from venom_core.core.model_registry import GenerationParameter
+            capabilities_dict["generation_schema"] = {
+                key: param.to_dict() 
+                for key, param in capabilities.generation_schema.items()
+            }
+        
         return {
             "success": True,
             "model_name": model_name,
-            "capabilities": {
-                "supports_system_role": capabilities.supports_system_role,
-                "supports_function_calling": capabilities.supports_function_calling,
-                "allowed_roles": capabilities.allowed_roles,
-                "prompt_template": capabilities.prompt_template,
-                "max_context_length": capabilities.max_context_length,
-                "quantization": capabilities.quantization,
-            },
+            "capabilities": capabilities_dict,
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Błąd podczas pobierania capabilities: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.get("/models/{model_name}/config")
+async def get_model_config_endpoint(model_name: str):
+    """
+    Pobiera schemat parametrów generacji dla modelu (generation_schema).
+    
+    Ten endpoint zwraca dynamiczną konfigurację parametrów dostępnych dla danego modelu,
+    takich jak temperature, max_tokens, top_p, etc.
+
+    Args:
+        model_name: Nazwa modelu
+
+    Returns:
+        Schemat parametrów generacji w formacie JSON Schema
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 404 jeśli model nie znaleziony lub nie ma schematu
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        capabilities = _model_registry.get_model_capabilities(model_name)
+
+        if capabilities is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model {model_name} nie znaleziony w manifeście",
+            )
+        
+        if capabilities.generation_schema is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model {model_name} nie ma zdefiniowanego schematu parametrów",
+            )
+
+        from venom_core.core.model_registry import GenerationParameter
+        schema = {
+            key: param.to_dict() 
+            for key, param in capabilities.generation_schema.items()
+        }
+
+        return {
+            "success": True,
+            "model_name": model_name,
+            "generation_schema": schema,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Błąd podczas pobierania config: {e}")
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")

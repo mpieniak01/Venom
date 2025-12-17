@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -51,6 +52,12 @@ class LlmServerController:
 
         cfg = self.settings
 
+        # Wykryj czy używamy systemd dla vLLM
+        vllm_start_cmd = cfg.VLLM_START_COMMAND.strip()
+        if not vllm_start_cmd:
+            # Fallback do skryptu
+            vllm_start_cmd = "bash scripts/llm/vllm_service.sh start"
+
         servers["vllm"] = LlmServerConfig(
             name="vllm",
             display_name="vLLM",
@@ -59,11 +66,17 @@ class LlmServerController:
             endpoint=cfg.LLM_LOCAL_ENDPOINT,
             health_url=f"{cfg.LLM_LOCAL_ENDPOINT.rstrip('/')}/models",
             commands={
-                "start": cfg.VLLM_START_COMMAND.strip(),
-                "stop": cfg.VLLM_STOP_COMMAND.strip(),
-                "restart": cfg.VLLM_RESTART_COMMAND.strip(),
+                "start": vllm_start_cmd,
+                "stop": cfg.VLLM_STOP_COMMAND.strip() or "bash scripts/llm/vllm_service.sh stop",
+                "restart": cfg.VLLM_RESTART_COMMAND.strip() or "bash scripts/llm/vllm_service.sh restart",
             },
         )
+
+        # Wykryj czy używamy systemd dla Ollama
+        ollama_start_cmd = cfg.OLLAMA_START_COMMAND.strip()
+        if not ollama_start_cmd:
+            # Fallback do skryptu
+            ollama_start_cmd = "bash scripts/llm/ollama_service.sh start"
 
         servers["ollama"] = LlmServerConfig(
             name="ollama",
@@ -73,9 +86,9 @@ class LlmServerController:
             endpoint="http://localhost:11434",
             health_url="http://localhost:11434/api/tags",
             commands={
-                "start": cfg.OLLAMA_START_COMMAND.strip(),
-                "stop": cfg.OLLAMA_STOP_COMMAND.strip(),
-                "restart": cfg.OLLAMA_RESTART_COMMAND.strip(),
+                "start": ollama_start_cmd,
+                "stop": cfg.OLLAMA_STOP_COMMAND.strip() or "bash scripts/llm/ollama_service.sh stop",
+                "restart": cfg.OLLAMA_RESTART_COMMAND.strip() or "bash scripts/llm/ollama_service.sh restart",
             },
         )
 
@@ -106,6 +119,28 @@ class LlmServerController:
     def has_server(self, server_name: str) -> bool:
         """Sprawdza czy mamy konfigurację serwera."""
         return server_name in self._servers
+
+    async def check_systemd_available(self, service_name: str = "ollama.service") -> bool:
+        """
+        Sprawdza czy systemd jest dostępny i czy dana usługa istnieje.
+
+        Args:
+            service_name: Nazwa usługi systemd
+
+        Returns:
+            True jeśli systemd jest dostępny i usługa istnieje
+        """
+        try:
+            process = await asyncio.create_subprocess_shell(
+                f"systemctl list-unit-files {service_name}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await process.communicate()
+            return process.returncode == 0 and service_name in stdout.decode()
+        except Exception as e:
+            logger.debug(f"Systemd nie jest dostępny: {e}")
+            return False
 
     async def run_action(self, server_name: str, action: str) -> LlmCommandResult:
         """

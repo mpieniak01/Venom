@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["models"])
 
 # Dependencies - będą ustawione w main.py
 _model_manager = None
+_model_registry = None
 
 
 class ModelInstallRequest(BaseModel):
@@ -51,10 +52,61 @@ class ModelSwitchRequest(BaseModel):
         return v
 
 
-def set_dependencies(model_manager):
+class ModelRegistryInstallRequest(BaseModel):
+    """Request do instalacji modelu przez ModelRegistry."""
+
+    name: str
+    provider: str  # "huggingface" lub "ollama"
+    runtime: str = "vllm"  # "vllm" lub "ollama"
+
+    @field_validator("name")
+    def validate_name(cls, v):
+        if not v or len(v) > 200:
+            raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
+        #允许 HF model names with /
+        if not re.match(r"^[\w\-.:\/]+$", v):
+            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
+        return v
+
+    @field_validator("provider")
+    def validate_provider(cls, v):
+        if v not in ["huggingface", "ollama"]:
+            raise ValueError("Provider musi być 'huggingface' lub 'ollama'")
+        return v
+
+    @field_validator("runtime")
+    def validate_runtime(cls, v):
+        if v not in ["vllm", "ollama"]:
+            raise ValueError("Runtime musi być 'vllm' lub 'ollama'")
+        return v
+
+
+class ModelActivateRequest(BaseModel):
+    """Request do aktywacji modelu."""
+
+    name: str
+    runtime: str
+
+    @field_validator("name")
+    def validate_name(cls, v):
+        if not v or len(v) > 200:
+            raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
+        if not re.match(r"^[\w\-.:\/]+$", v):
+            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
+        return v
+
+    @field_validator("runtime")
+    def validate_runtime(cls, v):
+        if v not in ["vllm", "ollama"]:
+            raise ValueError("Runtime musi być 'vllm' lub 'ollama'")
+        return v
+
+
+def set_dependencies(model_manager, model_registry=None):
     """Ustaw zależności dla routera."""
-    global _model_manager
+    global _model_manager, _model_registry
     _model_manager = model_manager
+    _model_registry = model_registry
 
 
 @router.get("/models")
@@ -346,4 +398,274 @@ async def unload_all_models():
         raise
     except Exception as e:
         logger.error(f"Błąd podczas zwalniania zasobów: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+# ===== Nowe endpointy ModelRegistry =====
+
+
+@router.get("/models/providers")
+async def list_model_providers(provider: Optional[str] = None):
+    """
+    Lista dostępnych modeli ze wszystkich providerów.
+
+    Args:
+        provider: Opcjonalny filtr po providerze (huggingface, ollama)
+
+    Returns:
+        Lista modeli dostępnych do instalacji
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        from venom_core.core.model_registry import ModelProvider
+
+        provider_enum = None
+        if provider:
+            try:
+                provider_enum = ModelProvider(provider.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail=f"Nieprawidłowy provider: {provider}"
+                )
+
+        models = await _model_registry.list_available_models(provider=provider_enum)
+
+        return {
+            "success": True,
+            "models": [model.to_dict() for model in models],
+            "count": len(models),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Błąd podczas listowania providerów: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.post("/models/registry/install")
+async def install_model_registry(request: ModelRegistryInstallRequest):
+    """
+    Instaluje model przez ModelRegistry (HuggingFace lub Ollama).
+
+    Args:
+        request: Żądanie z nazwą modelu, providerem i runtime
+
+    Returns:
+        operation_id do sprawdzania statusu instalacji
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 400 jeśli nieprawidłowe dane wejściowe
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        from venom_core.core.model_registry import ModelProvider
+
+        provider_enum = ModelProvider(request.provider.lower())
+
+        operation_id = await _model_registry.install_model(
+            model_name=request.name,
+            provider=provider_enum,
+            runtime=request.runtime,
+        )
+
+        return {
+            "success": True,
+            "operation_id": operation_id,
+            "message": f"Instalacja modelu {request.name} rozpoczęta",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Błąd podczas rozpoczynania instalacji: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.delete("/models/registry/{model_name}")
+async def remove_model_registry(model_name: str):
+    """
+    Usuwa model przez ModelRegistry.
+
+    Args:
+        model_name: Nazwa modelu do usunięcia
+
+    Returns:
+        operation_id do sprawdzania statusu usuwania
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 404 jeśli model nie znaleziony
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        operation_id = await _model_registry.remove_model(model_name)
+
+        return {
+            "success": True,
+            "operation_id": operation_id,
+            "message": f"Usuwanie modelu {model_name} rozpoczęte",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Błąd podczas usuwania modelu: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.post("/models/activate")
+async def activate_model_endpoint(request: ModelActivateRequest):
+    """
+    Aktywuje model dla danego runtime.
+
+    Args:
+        request: Żądanie z nazwą modelu i runtime
+
+    Returns:
+        Status aktywacji
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 404 jeśli model nie znaleziony
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        success = await _model_registry.activate_model(
+            model_name=request.name, runtime=request.runtime
+        )
+
+        if success:
+            return {
+                "success": True,
+                "message": f"Model {request.name} aktywowany dla runtime {request.runtime}",
+            }
+        else:
+            raise HTTPException(
+                status_code=500, detail="Nie udało się aktywować modelu"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Błąd podczas aktywacji modelu: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.get("/models/operations")
+async def list_model_operations(limit: int = 10):
+    """
+    Lista ostatnich operacji na modelach.
+
+    Args:
+        limit: Maksymalna liczba operacji do zwrócenia
+
+    Returns:
+        Lista operacji z ich statusami
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        operations = _model_registry.list_operations(limit=limit)
+
+        return {
+            "success": True,
+            "operations": [op.to_dict() for op in operations],
+            "count": len(operations),
+        }
+    except Exception as e:
+        logger.error(f"Błąd podczas listowania operacji: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.get("/models/operations/{operation_id}")
+async def get_operation_status_endpoint(operation_id: str):
+    """
+    Pobiera status operacji.
+
+    Args:
+        operation_id: ID operacji
+
+    Returns:
+        Status operacji
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 404 jeśli operacja nie znaleziona
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        operation = _model_registry.get_operation_status(operation_id)
+
+        if operation is None:
+            raise HTTPException(status_code=404, detail="Operacja nie znaleziona")
+
+        return {
+            "success": True,
+            "operation": operation.to_dict(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Błąd podczas pobierania statusu operacji: {e}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")
+
+
+@router.get("/models/{model_name}/capabilities")
+async def get_model_capabilities_endpoint(model_name: str):
+    """
+    Pobiera capabilities modelu (wsparcie ról, templaty, etc.).
+
+    Args:
+        model_name: Nazwa modelu
+
+    Returns:
+        Capabilities modelu
+
+    Raises:
+        HTTPException: 503 jeśli ModelRegistry nie jest dostępny
+        HTTPException: 404 jeśli model nie znaleziony
+    """
+    if _model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        capabilities = _model_registry.get_model_capabilities(model_name)
+
+        if capabilities is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model {model_name} nie znaleziony w manifeście",
+            )
+
+        return {
+            "success": True,
+            "model_name": model_name,
+            "capabilities": {
+                "supports_system_role": capabilities.supports_system_role,
+                "supports_function_calling": capabilities.supports_function_calling,
+                "allowed_roles": capabilities.allowed_roles,
+                "prompt_template": capabilities.prompt_template,
+                "max_context_length": capabilities.max_context_length,
+                "quantization": capabilities.quantization,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Błąd podczas pobierania capabilities: {e}")
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(e)}")

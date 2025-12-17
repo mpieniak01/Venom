@@ -8,6 +8,7 @@ Odpowiada za:
 """
 
 import asyncio
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -459,8 +460,6 @@ class ServiceHealthMonitor:
 
         # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
         try:
-            import shutil
-
             # Sprawdź czy nvidia-smi jest dostępne
             nvidia_smi_path = shutil.which("nvidia-smi")
             if not nvidia_smi_path:
@@ -483,29 +482,28 @@ class ServiceHealthMonitor:
                     if line.strip()
                 ]
 
-                vram_used_values = []
-                vram_total_values = []
-
+                # Zbierz dane VRAM dla wszystkich GPU i znajdź GPU z największym użyciem
+                gpu_data = []
                 for line in lines:
                     parts = [p.strip() for p in line.split(",")]
                     if len(parts) < 2:
                         continue
                     try:
-                        vram_used_values.append(float(parts[0]))
-                        vram_total_values.append(float(parts[1]))
+                        used = float(parts[0])
+                        total = float(parts[1])
+                        gpu_data.append((used, total))
                     except ValueError:
                         continue
 
-                if vram_used_values:
-                    max_index = vram_used_values.index(max(vram_used_values))
-                    metrics["vram_usage_mb"] = round(vram_used_values[max_index], 2)
-                    if max_index < len(vram_total_values):
-                        total_mb = vram_total_values[max_index]
-                        metrics["vram_total_mb"] = round(total_mb, 2)
-                        if total_mb > 0:
-                            metrics["vram_usage_percent"] = round(
-                                (metrics["vram_usage_mb"] / total_mb) * 100, 2
-                            )
+                if gpu_data:
+                    # Znajdź GPU z największym użyciem pamięci
+                    vram_used_mb, vram_total_mb = max(gpu_data, key=lambda x: x[0])
+                    metrics["vram_usage_mb"] = round(vram_used_mb, 2)
+                    metrics["vram_total_mb"] = round(vram_total_mb, 2)
+                    if vram_total_mb > 0:
+                        metrics["vram_usage_percent"] = round(
+                            (vram_used_mb / vram_total_mb) * 100, 2
+                        )
         except (
             FileNotFoundError,
             subprocess.TimeoutExpired,

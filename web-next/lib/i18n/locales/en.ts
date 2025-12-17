@@ -28,6 +28,7 @@ export const en = {
       brain: "Knowledge Graph",
       inspector: "Inspector",
       strategy: "Strategy",
+      benchmark: "Benchmark",
     },
     cost: {
       title: "Cost mode",

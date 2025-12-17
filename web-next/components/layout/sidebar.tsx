@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Command, Brain, BugPlay, Target, Sparkles, Shield } from "lucide-react";
+import { Command, Brain, BugPlay, Target, Sparkles, Shield, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ export const navItems = [
   { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
   { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
   { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target },
+  { href: "/benchmark", label: "Benchmark", labelKey: "sidebar.nav.benchmark", icon: Gauge },
 ];
 
 const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];

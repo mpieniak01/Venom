@@ -1,0 +1,104 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "Wyjaśnij czym jest uczenie maszynowe w prosty sposób.",
+      "category": "ml_basics"
+    },
+    {
+      "id": 2,
+      "question": "Napisz funkcję w Pythonie, która oblicza silnię liczby.",
+      "category": "coding"
+    },
+    {
+      "id": 3,
+      "question": "Jakie są główne różnice między pamięcią RAM a ROM?",
+      "category": "hardware"
+    },
+    {
+      "id": 4,
+      "question": "Opisz architekturę REST API i jej podstawowe zasady.",
+      "category": "software_architecture"
+    },
+    {
+      "id": 5,
+      "question": "Co to jest Docker i do czego służy?",
+      "category": "devops"
+    },
+    {
+      "id": 6,
+      "question": "Wyjaśnij algorytm sortowania quicksort.",
+      "category": "algorithms"
+    },
+    {
+      "id": 7,
+      "question": "Jakie są zalety i wady mikroserwisów w porównaniu do architektury monolitycznej?",
+      "category": "software_architecture"
+    },
+    {
+      "id": 8,
+      "question": "Napisz kod który znajduje najdłuższy wspólny podciąg dwóch stringów.",
+      "category": "coding"
+    },
+    {
+      "id": 9,
+      "question": "Czym różni się uczenie nadzorowane od nienadzorowanego?",
+      "category": "ml_basics"
+    },
+    {
+      "id": 10,
+      "question": "Wyjaśnij co to jest CI/CD i jakie są jego korzyści.",
+      "category": "devops"
+    },
+    {
+      "id": 11,
+      "question": "Co to jest model Transformer w deep learning?",
+      "category": "ml_advanced"
+    },
+    {
+      "id": 12,
+      "question": "Opisz wzorzec projektowy Singleton i podaj przykład użycia.",
+      "category": "design_patterns"
+    },
+    {
+      "id": 13,
+      "question": "Jakie są główne typy baz danych NoSQL?",
+      "category": "databases"
+    },
+    {
+      "id": 14,
+      "question": "Napisz funkcję która sprawdza czy słowo jest palindromem.",
+      "category": "coding"
+    },
+    {
+      "id": 15,
+      "question": "Wyjaśnij czym jest overfitting w uczeniu maszynowym i jak temu zapobiegać.",
+      "category": "ml_basics"
+    },
+    {
+      "id": 16,
+      "question": "Co to jest Kubernetes i jakie problemy rozwiązuje?",
+      "category": "devops"
+    },
+    {
+      "id": 17,
+      "question": "Opisz różnice między procesem a wątkiem.",
+      "category": "operating_systems"
+    },
+    {
+      "id": 18,
+      "question": "Napisz kod implementujący kolejkę FIFO w Pythonie.",
+      "category": "coding"
+    },
+    {
+      "id": 19,
+      "question": "Czym jest attention mechanism w sieciach neuronowych?",
+      "category": "ml_advanced"
+    },
+    {
+      "id": 20,
+      "question": "Wyjaśnij wzorzec MVC w programowaniu.",
+      "category": "design_patterns"
+    }
+  ]
+}

@@ -24,6 +24,14 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
+# Optional imports for HuggingFace
+try:
+    from huggingface_hub import snapshot_download
+    HF_AVAILABLE = True
+except ImportError:
+    HF_AVAILABLE = False
+    snapshot_download = None
+
 logger = get_logger(__name__)
 
 
@@ -190,31 +198,40 @@ class OllamaModelProvider(BaseModelProvider):
 
         try:
             logger.info(f"Rozpoczynam pobieranie modelu Ollama: {model_name}")
-            process = subprocess.Popen(
-                ["ollama", "pull", model_name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            
+            # Use asyncio subprocess for proper async handling
+            process = await asyncio.create_subprocess_exec(
+                "ollama",
+                "pull",
+                model_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
 
             try:
-                for line in process.stdout:
-                    logger.info(f"Ollama: {line.strip()}")
+                # Read stdout line by line asynchronously
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.decode().strip()
+                    logger.info(f"Ollama: {line_str}")
                     if progress_callback:
-                        await progress_callback(line.strip())
+                        await progress_callback(line_str)
 
-                return_code = process.wait()
-                if return_code == 0:
+                await process.wait()
+                
+                if process.returncode == 0:
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
                     return True
                 else:
-                    stderr = process.stderr.read()
-                    logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
+                    stderr = await process.stderr.read()
+                    logger.error(f"❌ Błąd podczas pobierania modelu: {stderr.decode()}")
                     return False
             finally:
-                if process.poll() is None:
+                if process.returncode is None:
                     process.kill()
-                    process.wait()
+                    await process.wait()
 
         except FileNotFoundError:
             logger.error("Ollama nie jest zainstalowane lub niedostępne w PATH")
@@ -300,9 +317,14 @@ class HuggingFaceModelProvider(BaseModelProvider):
         self, model_name: str, progress_callback: Optional[Callable] = None
     ) -> bool:
         """Pobiera model z HuggingFace."""
+        if not HF_AVAILABLE:
+            logger.error(
+                "Biblioteka huggingface_hub nie jest zainstalowana. "
+                "Zainstaluj: pip install huggingface_hub"
+            )
+            return False
+            
         try:
-            from huggingface_hub import snapshot_download
-
             logger.info(f"Rozpoczynam pobieranie modelu HF: {model_name}")
 
             if progress_callback:
@@ -322,12 +344,6 @@ class HuggingFaceModelProvider(BaseModelProvider):
 
             return True
 
-        except ImportError:
-            logger.error(
-                "Biblioteka huggingface_hub nie jest zainstalowana. "
-                "Zainstaluj: pip install huggingface_hub"
-            )
-            return False
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modelu z HF: {e}")
             return False
@@ -401,13 +417,24 @@ class ModelRegistry:
                 with open(self.manifest_path, "r") as f:
                     data = json.load(f)
                     for model_data in data.get("models", []):
+                        # Safely extract capabilities with known fields only
+                        caps_data = model_data.get("capabilities", {})
+                        capabilities = ModelCapabilities(
+                            supports_system_role=caps_data.get("supports_system_role", True),
+                            supports_function_calling=caps_data.get("supports_function_calling", False),
+                            allowed_roles=caps_data.get("allowed_roles", ["system", "user", "assistant"]),
+                            prompt_template=caps_data.get("prompt_template"),
+                            max_context_length=caps_data.get("max_context_length", 4096),
+                            quantization=caps_data.get("quantization"),
+                        )
+                        
                         metadata = ModelMetadata(
                             name=model_data["name"],
                             provider=ModelProvider(model_data["provider"]),
                             display_name=model_data.get("display_name", model_data["name"]),
                             size_gb=model_data.get("size_gb"),
                             status=ModelStatus(model_data.get("status", "available")),
-                            capabilities=ModelCapabilities(**model_data.get("capabilities", {})),
+                            capabilities=capabilities,
                             local_path=model_data.get("local_path"),
                             sha256=model_data.get("sha256"),
                             installed_at=model_data.get("installed_at"),

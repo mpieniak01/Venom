@@ -64,7 +64,7 @@ export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsolePr
         ) : (
           <div className="space-y-1">
             {logs.map((log, index) => (
-              <div key={index} className="flex gap-2">
+              <div key={`${log.timestamp}-${index}`} className="flex gap-2">
                 <span className="text-zinc-600">
                   {new Date(log.timestamp).toLocaleTimeString("pl-PL")}
                 </span>

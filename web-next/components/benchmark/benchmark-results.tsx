@@ -7,6 +7,20 @@ interface BenchmarkResultsProps {
   results: BenchmarkModelResult[];
 }
 
+// Funkcja pomocnicza do sortowania wyników benchmarku
+function sortBenchmarkResults(results: BenchmarkModelResult[]): BenchmarkModelResult[] {
+  return [...results].sort((a, b) => {
+    // Sukces na górze
+    if (a.status === "success" && b.status !== "success") return -1;
+    if (a.status !== "success" && b.status === "success") return 1;
+    // Jeśli oba sukces, sortuj według czasu
+    if (a.status === "success" && b.status === "success") {
+      return a.avg_response_time_ms - b.avg_response_time_ms;
+    }
+    return 0;
+  });
+}
+
 export function BenchmarkResults({ results }: BenchmarkResultsProps) {
   if (results.length === 0) {
     return (
@@ -44,15 +58,7 @@ export function BenchmarkResults({ results }: BenchmarkResultsProps) {
     }
   };
 
-  // Sortuj wyniki: sukces najpierw, potem według czasu odpowiedzi
-  const sortedResults = [...results].sort((a, b) => {
-    if (a.status === "success" && b.status !== "success") return -1;
-    if (a.status !== "success" && b.status === "success") return 1;
-    if (a.status === "success" && b.status === "success") {
-      return a.avg_response_time_ms - b.avg_response_time_ms;
-    }
-    return 0;
-  });
+  const sortedResults = sortBenchmarkResults(results);
 
   return (
     <div className="space-y-3">
@@ -82,9 +88,9 @@ export function BenchmarkResults({ results }: BenchmarkResultsProps) {
             </tr>
           </thead>
           <tbody>
-            {sortedResults.map((result, index) => (
+            {sortedResults.map((result) => (
               <tr
-                key={index}
+                key={result.model_name}
                 className={cn(
                   "border-b border-white/5 transition hover:bg-white/5",
                   result.status === "oom" && "bg-rose-500/5"

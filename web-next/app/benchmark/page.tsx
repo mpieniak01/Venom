@@ -13,6 +13,18 @@ import type {
   BenchmarkStatus,
 } from "@/lib/types";
 
+// Stałe dla symulacji benchmarku
+const SIMULATION_MODEL_LOAD_DELAY_MS = 1500;
+const SIMULATION_QUESTION_DELAY_MS = 800;
+const OOM_PROBABILITY = 0.15; // 15% szans na OOM
+const ERROR_PROBABILITY = 0.1; // 10% szans na błąd
+const MIN_RESPONSE_TIME_MS = 800;
+const RESPONSE_TIME_RANGE_MS = 2000;
+const MIN_TOKENS_PER_SEC = 10;
+const TOKENS_PER_SEC_RANGE = 40;
+const MIN_VRAM_MB = 2048;
+const VRAM_RANGE_MB = 4096;
+
 export default function BenchmarkPage() {
   const { data: modelsData, loading: modelsLoading } = useModels(15000);
   const [status, setStatus] = useState<BenchmarkStatus>("idle");
@@ -30,7 +42,15 @@ export default function BenchmarkPage() {
     ]);
   };
 
-  // Symulacja benchmarku (do zastąpienia prawdziwym API)
+  /**
+   * Symulacja benchmarku - funkcja demonstracyjna
+   * 
+   * Ta funkcja generuje losowe wyniki dla celów demonstracyjnych.
+   * W finalnej implementacji będzie zastąpiona przez prawdziwe wywołania API:
+   * - POST /api/v1/models/benchmark/start
+   * - WebSocket/SSE dla live logów
+   * - GET /api/v1/models/benchmark/{id}
+   */
   const runBenchmark = async (config: BenchmarkConfig) => {
     setStatus("running");
     setLogs([]);
@@ -47,28 +67,28 @@ export default function BenchmarkPage() {
         const modelName = config.models[i];
         addLog(`[${i + 1}/${config.models.length}] Ładowanie modelu: ${modelName}...`);
 
-        // Symulacja opóźnienia ładowania
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Symulacja opóźnienia ładowania (zastąpi prawdziwy czas ładowania modelu)
+        await new Promise((resolve) => setTimeout(resolve, SIMULATION_MODEL_LOAD_DELAY_MS));
 
         addLog(`Model ${modelName} załadowany. Rozpoczynam generowanie odpowiedzi...`);
 
-        // Symulacja testowania
+        // Symulacja testowania (zastąpi prawdziwe wywołania API do modelu)
         for (let q = 1; q <= config.num_questions; q++) {
           addLog(
             `  Generowanie odpowiedzi ${q}/${config.num_questions} dla ${modelName}...`
           );
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          await new Promise((resolve) => setTimeout(resolve, SIMULATION_QUESTION_DELAY_MS));
         }
 
         // Symulacja wyników - losowe wartości dla demonstracji
-        const isOOM = Math.random() < 0.15; // 15% szans na OOM
-        const isError = !isOOM && Math.random() < 0.1; // 10% szans na błąd
+        const isOOM = Math.random() < OOM_PROBABILITY;
+        const isError = !isOOM && Math.random() < ERROR_PROBABILITY;
 
         const result: BenchmarkModelResult = {
           model_name: modelName,
-          avg_response_time_ms: isOOM || isError ? 0 : 800 + Math.random() * 2000,
-          tokens_per_sec: isOOM || isError ? 0 : 10 + Math.random() * 40,
-          max_vram_mb: 2048 + Math.random() * 4096,
+          avg_response_time_ms: isOOM || isError ? 0 : MIN_RESPONSE_TIME_MS + Math.random() * RESPONSE_TIME_RANGE_MS,
+          tokens_per_sec: isOOM || isError ? 0 : MIN_TOKENS_PER_SEC + Math.random() * TOKENS_PER_SEC_RANGE,
+          max_vram_mb: MIN_VRAM_MB + Math.random() * VRAM_RANGE_MB,
           status: isOOM ? "oom" : isError ? "error" : "success",
           error_message: isError ? "Connection timeout" : undefined,
         };
@@ -94,13 +114,14 @@ export default function BenchmarkPage() {
       addLog("🎉 Benchmark zakończony pomyślnie!", "info");
       setStatus("completed");
     } catch (error) {
-      addLog(`Błąd podczas benchmarku: ${error}`, "error");
+      const errorMessage = error instanceof Error ? error.message : "Nieznany błąd podczas benchmarku";
+      addLog(`Błąd podczas benchmarku: ${errorMessage}`, "error");
       setStatus("failed");
     }
   };
 
-  const handleStart = (config: BenchmarkConfig) => {
-    runBenchmark(config);
+  const handleStart = async (config: BenchmarkConfig) => {
+    await runBenchmark(config);
   };
 
   // Przygotuj listę modeli do wyboru

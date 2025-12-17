@@ -178,41 +178,46 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         Returns:
             True jeśli model wspiera system prompt, False w przeciwnym razie
         """
-        model_id = (getattr(chat_service, "ai_model_id", "") or "").lower()
+        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
+        model_id = raw_model_id.lower()
 
         # Jeśli mamy ModelRegistry, sprawdź capabilities
         if self.model_registry:
+            manifest = self.model_registry.manifest or {}
             # Oblicz base name raz na początku
-            model_base = model_id.split("/")[-1].lower()
+            model_base = model_id.split("/")[-1]
 
-            # Pojedyncza iteracja z priorytetyzowanym dopasowaniem
-            for manifest_name in self.model_registry.manifest.keys():
+            # Krok 1: spróbuj dokładnego dopasowania po kluczu słownika
+            capabilities = None
+            manifest_name_for_log = None
+
+            if raw_model_id and raw_model_id in manifest:
+                capabilities = manifest.get(raw_model_id)
+                manifest_name_for_log = raw_model_id
+            elif model_id and model_id in manifest:
+                capabilities = manifest.get(model_id)
+                manifest_name_for_log = model_id
+
+            if capabilities:
+                supports = capabilities.supports_system_role
+                logger.debug(
+                    f"Model {model_id} → manifest {manifest_name_for_log} (exact match): supports_system_role={supports}"
+                )
+                return supports
+
+            # Krok 2: dopasowanie po base name (case-insensitive)
+            for manifest_name, capabilities in manifest.items():
+                if not capabilities:
+                    continue
+
                 manifest_name_lower = manifest_name.lower()
-
-                # Priorytet 1: Dokładne dopasowanie
-                if manifest_name_lower == model_id:
-                    capabilities = self.model_registry.get_model_capabilities(
-                        manifest_name
-                    )
-                    if capabilities:
-                        supports = capabilities.supports_system_role
-                        logger.debug(
-                            f"Model {model_id} → manifest {manifest_name} (exact match): supports_system_role={supports}"
-                        )
-                        return supports
-
-                # Priorytet 2: Dopasowanie po base name
                 manifest_base = manifest_name_lower.split("/")[-1]
                 if manifest_base == model_base:
-                    capabilities = self.model_registry.get_model_capabilities(
-                        manifest_name
+                    supports = capabilities.supports_system_role
+                    logger.debug(
+                        f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
                     )
-                    if capabilities:
-                        supports = capabilities.supports_system_role
-                        logger.debug(
-                            f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
-                        )
-                        return supports
+                    return supports
 
         # Fallback do hardcoded listy jeśli brak ModelRegistry lub nie znaleziono w manifeście
         return not any(marker in model_id for marker in self.MODELS_WITHOUT_SYSTEM_ROLE)

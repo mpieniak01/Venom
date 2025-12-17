@@ -182,23 +182,32 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
 
         # Jeśli mamy ModelRegistry, sprawdź capabilities
         if self.model_registry:
-            # Spróbuj dopasować model_id do nazw w manifeście
-            # Obsługuje zarówno pełne nazwy (google/gemma-2b-it) jak i krótkie (gemma-2b)
+            # Najpierw sprawdź dokładne dopasowanie (case-insensitive)
             for manifest_name in self.model_registry.manifest.keys():
-                manifest_name_lower = manifest_name.lower()
-                # Sprawdź czy model_id zawiera nazwę z manifestu lub odwrotnie
-                if (
-                    manifest_name_lower in model_id
-                    or model_id in manifest_name_lower
-                    or manifest_name_lower.split("/")[-1] in model_id
-                ):
+                if manifest_name.lower() == model_id:
                     capabilities = self.model_registry.get_model_capabilities(
                         manifest_name
                     )
                     if capabilities:
                         supports = capabilities.supports_system_role
                         logger.debug(
-                            f"Model {model_id} → manifest {manifest_name}: supports_system_role={supports}"
+                            f"Model {model_id} → manifest {manifest_name} (exact match): supports_system_role={supports}"
+                        )
+                        return supports
+
+            # Jeśli nie znaleziono dokładnego dopasowania, spróbuj dopasować po ostatniej części nazwy
+            # (np. "gemma-2b-it" z "google/gemma-2b-it")
+            for manifest_name in self.model_registry.manifest.keys():
+                manifest_base = manifest_name.split("/")[-1].lower()
+                model_base = model_id.split("/")[-1].lower()
+                if manifest_base == model_base:
+                    capabilities = self.model_registry.get_model_capabilities(
+                        manifest_name
+                    )
+                    if capabilities:
+                        supports = capabilities.supports_system_role
+                        logger.debug(
+                            f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
                         )
                         return supports
 

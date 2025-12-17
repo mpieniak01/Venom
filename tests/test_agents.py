@@ -201,9 +201,9 @@ def test_chat_agent_supports_system_prompt_with_registry(mock_kernel):
 
     agent = ChatAgent(mock_kernel, model_registry=mock_registry)
 
-    # Mock chat service z model_id = "gemma-2b"
+    # Mock chat service z model_id = "gemma-2b-it" (base name matches)
     mock_service = MagicMock()
-    mock_service.ai_model_id = "gemma-2b"
+    mock_service.ai_model_id = "gemma-2b-it"
 
     result = agent._supports_system_prompt(mock_service)
     assert result is False
@@ -315,7 +315,7 @@ async def test_chat_agent_separate_prompt_for_standard_models(
     mock_registry.manifest = {
         "gpt-4o": ModelMetadata(
             name="gpt-4o",
-            provider=ModelProvider.HUGGINGFACE,
+            provider=ModelProvider.LOCAL,  # Używamy LOCAL dla testów mockowych
             display_name="GPT-4o",
             capabilities=ModelCapabilities(supports_system_role=True),
         )

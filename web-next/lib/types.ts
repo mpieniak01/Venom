@@ -315,3 +315,13 @@ export interface CampaignResponse {
   message?: string;
   result?: unknown;
 }
+
+// Generation Parameters Types
+export interface GenerationParams {
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  repeat_penalty?: number;
+  [key: string]: number | string | boolean | undefined;
+}

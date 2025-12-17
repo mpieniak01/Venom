@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 
 from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
+from venom_core.core.model_registry import GenerationParameter
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -662,7 +663,6 @@ async def get_model_capabilities_endpoint(model_name: str):
         }
         
         if capabilities.generation_schema:
-            from venom_core.core.model_registry import GenerationParameter
             capabilities_dict["generation_schema"] = {
                 key: param.to_dict() 
                 for key, param in capabilities.generation_schema.items()
@@ -716,7 +716,6 @@ async def get_model_config_endpoint(model_name: str):
                 detail=f"Model {model_name} nie ma zdefiniowanego schematu parametrów",
             )
 
-        from venom_core.core.model_registry import GenerationParameter
         schema = {
             key: param.to_dict() 
             for key, param in capabilities.generation_schema.items()

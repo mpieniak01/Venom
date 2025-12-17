@@ -513,3 +513,59 @@ class ServiceHealthMonitor:
             pass
 
         return metrics
+
+    def get_gpu_memory_usage(self) -> Optional[float]:
+        """
+        Zwraca bieżące zużycie pamięci GPU (VRAM) w MB.
+
+        Używa nvidia-smi do pobrania informacji o zużyciu VRAM.
+        Jeśli dostępnych jest wiele GPU, zwraca wartość dla GPU z największym użyciem.
+
+        Returns:
+            Zużycie VRAM w MB lub None jeśli GPU nie jest dostępne
+        """
+        try:
+            # Sprawdź czy nvidia-smi jest dostępne
+            nvidia_smi_path = shutil.which("nvidia-smi")
+            if not nvidia_smi_path:
+                return None
+
+            result = subprocess.run(
+                [
+                    nvidia_smi_path,
+                    "--query-gpu=memory.used",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            if result.returncode == 0:
+                lines = [
+                    line.strip()
+                    for line in result.stdout.strip().split("\n")
+                    if line.strip()
+                ]
+
+                # Znajdź GPU z największym użyciem pamięci
+                max_usage = 0.0
+                for line in lines:
+                    try:
+                        usage = float(line)
+                        if usage > max_usage:
+                            max_usage = usage
+                    except ValueError:
+                        continue
+
+                return round(max_usage, 2) if max_usage > 0 else None
+
+        except (
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+        ):
+            # nvidia-smi nie jest dostępne lub wystąpił błąd
+            pass
+
+        return None

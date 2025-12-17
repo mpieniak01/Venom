@@ -16,7 +16,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.core.goal_store import GoalStore, GoalStatus
+from venom_core.core.goal_store import GoalStatus, GoalStore
 from venom_core.memory.embedding_service import EmbeddingService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.utils.logger import get_logger

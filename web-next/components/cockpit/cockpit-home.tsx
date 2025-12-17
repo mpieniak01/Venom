@@ -19,30 +19,32 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  controlLlmServer,
+  emergencyStop,
   fetchHistoryDetail,
   fetchTaskDetail,
   gitSync,
   gitUndo,
   installModel,
+  purgeQueue,
   sendTask,
   switchModel,
   toggleQueue,
   unloadAllModels,
+  useGitStatus,
   useGraphSummary,
   useHistory,
+  useLlmServers,
   useMetrics,
   useModels,
   useModelsUsage,
   useQueueStatus,
-  useTokenMetrics,
-  useGitStatus,
   useServiceStatus,
   useTasks,
-  purgeQueue,
-  emergencyStop,
+  useTokenMetrics,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
-import { useTaskStream } from "@/hooks/use-task-stream";
+import { TaskStreamEvent, useTaskStream } from "@/hooks/use-task-stream";
 import type { Chart } from "chart.js/auto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -82,6 +84,15 @@ const TELEMETRY_REFRESH_EVENTS = new Set([
   "EMERGENCY_STOP",
 ]);
 
+type LlmAlertState = {
+  provider?: string | null;
+  model?: string | null;
+  endpoint?: string | null;
+  error?: string | null;
+  taskId?: string;
+  timestamp?: string | null;
+};
+
 type TelemetryEventPayload = {
   type?: string;
   data?: Record<string, unknown>;
@@ -103,6 +114,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [llmActionPending, setLlmActionPending] = useState<string | null>(null);
+  const [llmAlert, setLlmAlert] = useState<LlmAlertState | null>(null);
   const [modelName, setModelName] = useState("");
   const [historyDetail, setHistoryDetail] = useState<HistoryRequestDetail | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -183,6 +196,24 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     ],
     [],
   );
+  const modelProviderMeta: Record<
+    string,
+    { title: string; description: string; installHint?: string }
+  > = useMemo(
+    () => ({
+      vllm: {
+        title: "Modele vLLM",
+        description: "Pakiety Hugging Face / safetensors w katalogu ./models lub ./data/models.",
+        installHint: "Dodaj model do katalogu i zrestartuj serwer vLLM.",
+      },
+      ollama: {
+        title: "Modele Ollama",
+        description: "Modele GGUF zarządzane przez daemon Ollama (port 11434).",
+        installHint: "Użyj formularza instalacji lub `ollama pull <model>`.",
+      },
+    }),
+    [],
+  );
 
   const { data: liveMetrics, loading: metricsLoading } = useMetrics();
   const metrics = liveMetrics ?? initialData.metrics ?? null;
@@ -191,6 +222,11 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const { data: liveQueue, loading: queueLoading, refresh: refreshQueue } = useQueueStatus();
   const queue = liveQueue ?? initialData.queue ?? null;
   const { data: liveServices } = useServiceStatus();
+  const {
+    data: liveLlmServers,
+    loading: llmServersLoading,
+    refresh: refreshLlmServers,
+  } = useLlmServers();
   const services = liveServices ?? initialData.services ?? null;
   const { data: liveGraph } = useGraphSummary();
   const graph = liveGraph ?? initialData.graphSummary ?? null;
@@ -213,14 +249,40 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     if (selectedRequestId) ids.add(selectedRequestId);
     return Array.from(ids);
   }, [optimisticRequests, history, selectedRequestId]);
+  const handleTaskEvent = useCallback(
+    (event: TaskStreamEvent) => {
+      if (event.llmStatus === "error" || event.llmRuntimeError) {
+        setLlmAlert({
+          provider: event.llmProvider,
+          model: event.llmModel,
+          endpoint: event.llmEndpoint,
+          error:
+            event.llmRuntimeError ||
+            `Błąd podczas wykonywania zadania ${event.taskId}`,
+          taskId: event.taskId,
+          timestamp: event.timestamp ?? new Date().toISOString(),
+        });
+      } else if (event.llmStatus === "ready") {
+        setLlmAlert((current) =>
+          current && (!current.taskId || current.taskId === event.taskId)
+            ? null
+            : current,
+        );
+      }
+    },
+    [],
+  );
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
+    onEvent: handleTaskEvent,
   });
   const { data: liveModelsUsageResponse, refresh: refreshModelsUsage } = useModelsUsage(10000);
   const modelsUsageResponse =
     liveModelsUsageResponse ?? initialData.modelsUsage ?? null;
   const { connected, entries } = useTelemetryFeed();
   const usageMetrics = modelsUsageResponse?.usage ?? null;
+  const llmServers = liveLlmServers ?? [];
+  const activeRuntime = models?.active;
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -240,6 +302,28 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     });
     return bucket;
   }, [tasks]);
+  const serviceStatusMap = useMemo(() => {
+    const map = new Map<string, ServiceStatus>();
+    (services || []).forEach((svc) => {
+      if (svc?.name) {
+        map.set(svc.name.toLowerCase(), svc);
+      }
+    });
+    return map;
+  }, [services]);
+  const selectedTaskRuntime = useMemo(() => {
+    const runtime = selectedTask?.context_history?.["llm_runtime"];
+    if (runtime && typeof runtime === "object") {
+      const ctx = runtime as Record<string, unknown>;
+      const statusValue = ctx["status"];
+      const errorValue = ctx["error"];
+      return {
+        status: typeof statusValue === "string" ? statusValue : null,
+        error: typeof errorValue === "string" ? errorValue : null,
+      };
+    }
+    return null;
+  }, [selectedTask]);
   const findTaskMatch = useCallback(
     (requestId?: string, prompt?: string | null) => {
       if (requestId) {
@@ -256,6 +340,48 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     },
     [tasksById, tasksByPrompt],
   );
+
+  const handleLlmServerAction = useCallback(
+    async (server: string, action: "start" | "stop" | "restart") => {
+      try {
+        setLlmActionPending(`${server}:${action}`);
+        const response = await controlLlmServer(server, action);
+        setMessage(
+          response.message ||
+            `Akcja ${action.toUpperCase()} dla ${server} ${
+              response.status === "success" ? "zakończona pomyślnie" : "zwróciła błąd"
+            }.`,
+        );
+      } catch (err) {
+        const fallback =
+          err instanceof Error ? err.message : `Nie udało się wykonać akcji ${action}`;
+        setMessage(fallback);
+      } finally {
+        setLlmActionPending(null);
+        refreshLlmServers();
+      }
+    },
+    [refreshLlmServers],
+  );
+
+  const resolveServerStatus = useCallback(
+    (serverName: string, fallback?: string | null) => {
+      const lowered = serverName.toLowerCase();
+      const match =
+        serviceStatusMap.get(lowered) ||
+        serviceStatusMap.get(serverName.toLowerCase());
+      return (fallback || match?.status || "unknown").toLowerCase();
+    },
+    [serviceStatusMap],
+  );
+
+  const statusToneFor = (status: string) => {
+    const normalized = status.toLowerCase();
+    if (["online", "healthy", "success"].includes(normalized)) return "success" as const;
+    if (["offline", "down", "error"].includes(normalized)) return "danger" as const;
+    if (["degraded", "warning"].includes(normalized)) return "warning" as const;
+    return "neutral" as const;
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -637,6 +763,21 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   }, [models]);
   const baseModelCount = models?.count ?? models?.models?.length ?? 0;
   const displayedModelCount = usageMetrics?.models_count ?? baseModelCount;
+  const groupedModels = useMemo(() => {
+    if (!models) return [];
+    if (models.providers && Object.keys(models.providers).length > 0) {
+      return Object.entries(models.providers).map(([provider, items]) => ({
+        provider,
+        items,
+      }));
+    }
+    return [
+      {
+        provider: activeRuntime?.provider ?? "local",
+        items: models.models ?? [],
+      },
+    ];
+  }, [models, activeRuntime]);
 
   const allMacros = useMemo(
     () => [...macroActions, ...customMacros],
@@ -963,6 +1104,276 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       <section className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <div className="space-y-6">
           <Panel
+            title="Serwery LLM"
+            description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
+            action={
+              <Button variant="secondary" size="xs" onClick={refreshLlmServers}>
+                Odśwież
+              </Button>
+            }
+          >
+            {llmServersLoading ? (
+              <p className="text-sm text-zinc-500">Ładuję status serwerów…</p>
+            ) : llmServers.length === 0 ? (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Brak danych"
+                description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
+              />
+            ) : (
+              <div className="space-y-3">
+                {llmServers.map((server) => {
+                  const statusValue = resolveServerStatus(
+                    server.display_name,
+                    server.status,
+                  );
+                  const tone = statusToneFor(statusValue);
+                  const pendingPrefix = `${server.name}:`;
+                  return (
+                    <div
+                      key={server.name}
+                      className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold">{server.display_name}</p>
+                          <p className="text-xs text-zinc-400">
+                            {server.description || "Lokalny serwer LLM"}
+                          </p>
+                          {server.endpoint && (
+                            <p className="text-xs text-zinc-500">{server.endpoint}</p>
+                          )}
+                        </div>
+                        <Badge tone={tone}>{statusValue}</Badge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(["start", "stop", "restart"] as const).map((action) => {
+                          const supported = server.supports?.[action];
+                          const actionKey = `${pendingPrefix}${action}`;
+                          return (
+                            <Button
+                              key={`${server.name}-${action}`}
+                              size="xs"
+                              variant="outline"
+                              disabled={!supported || llmActionPending === actionKey}
+                              onClick={() => handleLlmServerAction(server.name, action)}
+                            >
+                              {llmActionPending === actionKey ? "..." : action.toUpperCase()}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+          <Panel
+            title="Modele"
+            description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="neutral" data-testid="models-count">
+                  {displayedModelCount} modeli
+                </Badge>
+                <Button
+                  variant="danger"
+                  size="xs"
+                  className="rounded-full px-3"
+                  onClick={handleUnloadModels}
+                  disabled={unloadingModels}
+                >
+                  {unloadingModels ? "Zwalnianie..." : "PANIC: Zwolnij zasoby"}
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+            <div className="rounded-3xl border border-emerald-400/15 bg-gradient-to-br from-emerald-500/10 via-black/40 to-transparent p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-200/70">
+                    Aktywny runtime
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-white">
+                    {activeRuntime?.label ?? "Brak aktywnego modelu"}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {activeRuntime?.provider
+                      ? `Serwer: ${activeRuntime.provider}`
+                      : "Ustaw LLM_MODEL_NAME i endpoint w .env"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
+                  </p>
+                </div>
+                <Badge tone={llmAlert ? "danger" : "success"}>
+                  {llmAlert ? "Błąd" : "Online"}
+                </Badge>
+              </div>
+              {llmAlert ? (
+                <div className="mt-4 space-y-2 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                  <p>{llmAlert.error}</p>
+                  <p className="text-xs text-rose-200/80">
+                    {llmAlert.model ?? "?"} • {llmAlert.provider ?? "LLM"}
+                    {llmAlert.endpoint ? ` @ ${llmAlert.endpoint}` : ""}
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setLlmAlert(null)}
+                  >
+                    Ukryj alert
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-4 text-xs text-zinc-400">
+                  Monitoruję błędy SSE i raportuję źródło modelu przy każdej odpowiedzi.
+                </p>
+              )}
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                Instalacja
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                  <input
+                    className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
+                    placeholder="Nazwa modelu do instalacji"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      if (!modelName.trim()) {
+                        setMessage("Podaj nazwę modelu.");
+                        return;
+                      }
+                      try {
+                        const res = await installModel(modelName.trim());
+                        setMessage(res.message || "Rozpoczęto instalację.");
+                        setModelName("");
+                        refreshModels();
+                      } catch (err) {
+                        setMessage(
+                          err instanceof Error ? err.message : "Błąd instalacji",
+                        );
+                      }
+                    }}
+                  >
+                    Zainstaluj
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      refreshModels();
+                      refreshTasks();
+                    }}
+                  >
+                    Odśwież
+                  </Button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. (Ollama). Modele do vLLM skopiuj
+                do katalogu `./models` lub `./data/models` i ponownie wczytaj serwer.
+              </p>
+            </div>
+            {groupedModels.every((entry) => entry.items.length === 0) ? (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Brak modeli"
+                description="Zainstaluj model, aby rozpocząć pracę."
+              />
+            ) : (
+              <>
+                {groupedModels.map(({ provider, items }) => {
+                  const meta =
+                    modelProviderMeta[provider] ?? {
+                      title: `Modele ${provider}`,
+                      description: "Modele przypisane do tego runtime.",
+                    };
+                  return (
+                    <div
+                      key={`provider-${provider}`}
+                      className="rounded-3xl border border-white/10 bg-white/5 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                            {meta.title}
+                          </p>
+                          <p className="text-xs text-zinc-400">{meta.description}</p>
+                          {meta.installHint && (
+                            <p className="text-[11px] text-zinc-500">{meta.installHint}</p>
+                          )}
+                        </div>
+                        <Badge tone="neutral">{provider.toUpperCase()}</Badge>
+                      </div>
+                      {items.length === 0 ? (
+                        <div className="mt-4">
+                          <EmptyState
+                            icon={<Package className="h-4 w-4" />}
+                            title="Brak modeli"
+                            description="Dodaj model do tego runtime."
+                          />
+                        </div>
+                      ) : (
+                        <div className="mt-4 grid gap-3">
+                          {items.map((model) => (
+                            <ModelListItem
+                              key={`${provider}-${model.name}`}
+                              name={model.name}
+                              sizeGb={model.size_gb}
+                              source={model.source || model.type || model.path}
+                              active={model.active}
+                              onActivate={async () => {
+                                if (model.active) return;
+                                try {
+                                  await switchModel(model.name);
+                                  setMessage(`Aktywowano model ${model.name}`);
+                                  refreshModels();
+                                } catch (err) {
+                                  setMessage(
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Nie udało się przełączyć modelu",
+                                  );
+                                }
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {modelHistoryEntries.length > 0 && (
+                  <div className="mt-6 space-y-2">
+                    <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+                      Historia modeli
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {modelHistoryEntries.map((entry) => (
+                          <ListCard
+                            key={`history-${entry.name}`}
+                            title={entry.name}
+                            subtitle={entry.sourceLabel}
+                            badge={<Badge tone={entry.badgeTone}>{entry.statusLabel}</Badge>}
+                            meta={`Rozmiar: ${entry.sizeLabel} • Kwantyzacja: ${entry.quantizationLabel}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </Panel>
+          <Panel
             title="Live Feed"
             description="/ws/events stream – ostatnie logi operacyjne"
             action={
@@ -1148,11 +1559,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 </div>
                 <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
                   <textarea
-                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60"
+                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
                     placeholder="Opisz zadanie dla Venoma..."
                     value={taskContent}
                     onChange={(e) => setTaskContent(e.target.value)}
                     onKeyDown={handleTextareaKeyDown}
+                    data-testid="cockpit-prompt-input"
                   />
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-xs text-zinc-400">
@@ -1177,6 +1589,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         disabled={sending}
                         size="sm"
                         className="px-6"
+                        data-testid="cockpit-send-button"
                       >
                         {sending ? "Wysyłanie..." : "Wyślij"}
                       </Button>
@@ -1326,127 +1739,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           </Panel>
         </div>
       </section>
-      <section className="grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Modele"
-          description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
-          action={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="neutral" data-testid="models-count">
-                {displayedModelCount} modeli
-              </Badge>
-              <Button
-                variant="danger"
-                size="xs"
-                className="rounded-full px-3"
-                onClick={handleUnloadModels}
-                disabled={unloadingModels}
-              >
-                {unloadingModels ? "Zwalnianie..." : "PANIC: Zwolnij zasoby"}
-              </Button>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Instalacja</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <input
-                  className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
-                  placeholder="Nazwa modelu do instalacji"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={async () => {
-                    if (!modelName.trim()) {
-                      setMessage("Podaj nazwę modelu.");
-                      return;
-                    }
-                    try {
-                      const res = await installModel(modelName.trim());
-                      setMessage(res.message || "Rozpoczęto instalację.");
-                      setModelName("");
-                      refreshModels();
-                    } catch (err) {
-                      setMessage(err instanceof Error ? err.message : "Błąd instalacji");
-                    }
-                  }}
-                >
-                  Zainstaluj
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    refreshModels();
-                    refreshTasks();
-                  }}
-                >
-                  Odśwież
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. Instalacja rozpoczyna job w tle.
-              </p>
-            </div>
-            {(models?.models || []).length === 0 ? (
-              <EmptyState
-                icon={<Package className="h-4 w-4" />}
-                title="Brak modeli"
-                description="Zainstaluj model, aby rozpocząć pracę."
-              />
-            ) : (
-              <>
-                <div className="grid gap-3">
-                  {(models?.models || []).map((model) => (
-                    <ModelListItem
-                      key={model.name}
-                      name={model.name}
-                      sizeGb={model.size_gb}
-                      source={model.source || model.type || model.path}
-                      active={model.active}
-                      onActivate={async () => {
-                        if (model.active) return;
-                        try {
-                          await switchModel(model.name);
-                          setMessage(`Aktywowano model ${model.name}`);
-                          refreshModels();
-                        } catch (err) {
-                          setMessage(
-                            err instanceof Error
-                              ? err.message
-                              : "Nie udało się przełączyć modelu",
-                          );
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-                {modelHistoryEntries.length > 0 && (
-                  <div className="mt-6 space-y-2">
-                    <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
-                      Historia modeli
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {modelHistoryEntries.map((entry) => (
-                        <ListCard
-                          key={`history-${entry.name}`}
-                          title={entry.name}
-                          subtitle={entry.sourceLabel}
-                          badge={<Badge tone={entry.badgeTone}>{entry.statusLabel}</Badge>}
-                          meta={`Rozmiar: ${entry.sizeLabel} • Kwantyzacja: ${entry.quantizationLabel}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </Panel>
+      <section className="grid gap-6">
         <Panel
           title="Zasoby"
           description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
@@ -1936,6 +2229,30 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 <span>Start: {formatDateTime(historyDetail.created_at)}</span>
                 <span>Stop: {formatDateTime(historyDetail.finished_at)}</span>
                 <span>Czas: {formatDurationSeconds(historyDetail.duration_seconds)}</span>
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                      Źródło LLM
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-white">
+                      {historyDetail.llm_model ?? "Nieznany model"}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {historyDetail.llm_provider ?? "—"}
+                      {historyDetail.llm_endpoint ? ` @ ${historyDetail.llm_endpoint}` : ""}
+                    </p>
+                  </div>
+                  <Badge tone={selectedTaskRuntime?.status === "error" ? "danger" : "success"}>
+                    {selectedTaskRuntime?.status === "error" ? "Błąd" : "OK"}
+                  </Badge>
+                </div>
+                {selectedTaskRuntime?.error && (
+                  <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-2 text-xs text-rose-100">
+                    {selectedTaskRuntime.error}
+                  </p>
+                )}
               </div>
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">

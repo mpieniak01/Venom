@@ -255,4 +255,3 @@ Nawet jeśli nie liczymy finansów, to **zewnętrzne API są zasobem operacyjnym
 - [ ] Integracja z ComposeSkill - automatyczne task cards dla projektów
 - [ ] ML-based estimation - uczenie się z historycznych danych
 - [ ] Real-time monitoring w trakcie wykonywania zadań
-

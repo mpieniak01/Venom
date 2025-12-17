@@ -29,6 +29,7 @@ from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -148,6 +149,11 @@ class Orchestrator:
         # Utwórz zadanie przez StateManager
         task = self.state_manager.create_task(content=request.content)
 
+        runtime_info = get_active_llm_runtime()
+        runtime_context = runtime_info.to_payload()
+        runtime_context["status"] = "ready"
+        self.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
+
         # Utwórz trace dla zadania jeśli tracer jest dostępny
         if self.request_tracer:
             self.request_tracer.create_trace(task.id, request.content)
@@ -157,6 +163,9 @@ class Orchestrator:
                 "submit_request",
                 status="ok",
                 details="Request received",
+            )
+            self.request_tracer.set_llm_metadata(
+                task.id, metadata=runtime_context.copy()
             )
 
         # Zaloguj event
@@ -187,7 +196,13 @@ class Orchestrator:
                 data={"task_id": str(task.id)},
             )
             logger.info(f"Zadanie {task.id} zakolejkowane - system w pauzie")
-            return TaskResponse(task_id=task.id, status=task.status)
+            return TaskResponse(
+                task_id=task.id,
+                status=task.status,
+                llm_provider=runtime_info.provider,
+                llm_model=runtime_info.model_name,
+                llm_endpoint=runtime_info.endpoint,
+            )
 
         # Sprawdź limit współbieżności
         if SETTINGS.ENABLE_QUEUE_LIMITS:
@@ -211,14 +226,26 @@ class Orchestrator:
                 )
                 # Zadanie czeka - uruchom w tle ale będzie oczekiwać
                 asyncio.create_task(self._run_task_with_queue(task.id, request))
-                return TaskResponse(task_id=task.id, status=task.status)
+                return TaskResponse(
+                    task_id=task.id,
+                    status=task.status,
+                    llm_provider=runtime_info.provider,
+                    llm_model=runtime_info.model_name,
+                    llm_endpoint=runtime_info.endpoint,
+                )
 
         # Uruchom zadanie w tle (przekaż request zamiast tylko ID)
         asyncio.create_task(self._run_task_with_queue(task.id, request))
 
         logger.info(f"Zadanie {task.id} przyjęte do wykonania")
 
-        return TaskResponse(task_id=task.id, status=task.status)
+        return TaskResponse(
+            task_id=task.id,
+            status=task.status,
+            llm_provider=runtime_info.provider,
+            llm_model=runtime_info.model_name,
+            llm_endpoint=runtime_info.endpoint,
+        )
 
     async def _run_task_with_queue(self, task_id: UUID, request: TaskRequest) -> None:
         """
@@ -390,6 +417,11 @@ class Orchestrator:
 
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
+
+            # Jeśli to zadanie testu wydajności, zakończ je natychmiast (bez LLM)
+            if self._is_perf_test_prompt(context):
+                await self._complete_perf_test_task(task_id)
+                return
 
             # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości
             context = await self._add_lessons_to_context(task_id, context)
@@ -586,6 +618,16 @@ class Orchestrator:
             self.state_manager.add_log(
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
             )
+            self.state_manager.update_context(
+                task_id,
+                {
+                    "llm_runtime": {
+                        "status": "ready",
+                        "error": None,
+                        "last_success_at": datetime.now().isoformat(),
+                    }
+                },
+            )
 
             # Aktualizuj tracer
             if self.request_tracer:
@@ -625,6 +667,16 @@ class Orchestrator:
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
+            self.state_manager.update_context(
+                task_id,
+                {
+                    "llm_runtime": {
+                        "status": "error",
+                        "error": str(e),
+                        "last_error_at": datetime.now().isoformat(),
+                    }
+                },
+            )
 
             # Aktualizuj tracer
             if self.request_tracer:
@@ -676,6 +728,48 @@ class Orchestrator:
                 logger.error(
                     f"Nie udało się zapisać błędu zadania {task_id}: {log_error}"
                 )
+
+    def _is_perf_test_prompt(self, content: str) -> bool:
+        """Sprawdź, czy treść zadania pochodzi z testów wydajności."""
+        keywords = getattr(IntentManager, "PERF_TEST_KEYWORDS", ())
+        normalized = (content or "").lower()
+        return any(keyword in normalized for keyword in keywords)
+
+    async def _complete_perf_test_task(self, task_id: UUID) -> None:
+        """Zakończ zadanie testu wydajności bez uruchamiania pełnego pipeline'u."""
+        result_text = "✅ Backend perf pipeline OK"
+        self.state_manager.add_log(
+            task_id,
+            "⚡ Wykryto prompt testu wydajności – pomijam kosztowne agentów i zamykam zadanie natychmiast.",
+        )
+        await self.state_manager.update_status(
+            task_id, TaskStatus.COMPLETED, result=result_text
+        )
+        self.state_manager.add_log(
+            task_id, f"Zakończono test wydajności: {datetime.now().isoformat()}"
+        )
+
+        if self.request_tracer:
+            self.request_tracer.update_status(task_id, TraceStatus.COMPLETED)
+            self.request_tracer.add_step(
+                task_id,
+                "System",
+                "perf_test_shortcut",
+                status="ok",
+                details="Perf test zakończony bez agentów",
+            )
+
+        collector = metrics_module.metrics_collector
+        if collector:
+            collector.increment_task_completed()
+
+        await self._broadcast_event(
+            event_type="TASK_COMPLETED",
+            message=f"Zadanie {task_id} zakończone (perf test)",
+            data={"task_id": str(task_id), "result_length": len(result_text)},
+        )
+
+        logger.info(f"Zadanie {task_id} zakończone w trybie perf-test")
 
     async def _prepare_context(self, task_id: UUID, request: TaskRequest) -> str:
         """

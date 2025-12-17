@@ -260,13 +260,13 @@ python -m pytest tests/test_knowledge_hygiene.py -v
 class LessonsStore:
     def delete_last_n(self, n: int) -> int:
         """Usuwa n najnowszych lekcji."""
-        
+
     def delete_by_time_range(self, start: datetime, end: datetime) -> int:
         """Usuwa lekcje z zakresu czasu."""
-        
+
     def delete_by_tag(self, tag: str) -> int:
         """Usuwa lekcje z danym tagiem."""
-        
+
     def clear_all(self) -> bool:
         """Czyści całą bazę lekcji."""
 ```

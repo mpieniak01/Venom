@@ -1,0 +1,486 @@
+INFO:     Will watch for changes in these directories: ['/home/ubuntu/venom']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [253101] using WatchFiles
+18:49:13 | INFO     | venom_core.core.permission_guard:_load_autonomy_matrix - Załadowano 5 poziomów autonomii
+18:49:13 | INFO     | venom_core.core.permission_guard:_load_skill_permissions - Załadowano uprawnienia dla 46 skillów
+18:49:13 | INFO     | venom_core.core.permission_guard:__init__ - PermissionGuard zainicjalizowany - poziom: ISOLATED
+18:49:13 | INFO     | venom_core.core.state_manager:_load_state - Załadowano 3 zadań z pliku data/memory/state_dump.json
+18:49:13 | INFO     | venom_core.core.permission_guard:set_state_manager - Załadowano poziom autonomii z StateManager: FUNDED
+18:49:13 | INFO     | venom_core.main:<module> - Static files served from: /home/ubuntu/venom/web/static
+18:49:13 | INFO     | venom_core.main:<module> - Legacy FastAPI UI włączone (SERVE_LEGACY_UI=True).
+INFO:     Started server process [253121]
+INFO:     Waiting for application startup.
+18:49:13 | INFO     | venom_core.core.metrics:init_metrics_collector - MetricsCollector initialized
+18:49:13 | INFO     | venom_core.main:lifespan - Live log streaming włączony
+18:49:13 | INFO     | venom_core.core.tracer:start_watchdog - RequestTracer watchdog uruchomiony
+18:49:13 | INFO     | venom_core.main:lifespan - RequestTracer zainicjalizowany z watchdog
+18:49:13 | DEBUG    | venom_core.core.service_monitor:register_service - Zarejestrowano usługę: Local LLM
+18:49:13 | DEBUG    | venom_core.core.service_monitor:register_service - Zarejestrowano usługę: Docker Daemon
+18:49:13 | DEBUG    | venom_core.core.service_monitor:register_service - Zarejestrowano usługę: Local Memory
+18:49:13 | INFO     | venom_core.core.service_monitor:_register_default_services - Zarejestrowano 3 usług do monitorowania
+18:49:13 | INFO     | venom_core.main:lifespan - Service Health Monitor zainicjalizowany
+18:49:13 | INFO     | venom_core.core.model_manager:__init__ - ModelManager zainicjalizowany (models_dir=data/models)
+18:49:13 | INFO     | venom_core.main:lifespan - ModelManager zainicjalizowany (models_dir=data/models)
+18:49:13 | INFO     | venom_core.core.model_router:__init__ - ModelRouter zainicjalizowany (routing=True, force_local=False)
+18:49:13 | INFO     | venom_core.core.prompt_manager:__init__ - PromptManager zainicjalizowany (katalog: data/prompts)
+18:49:13 | INFO     | venom_core.core.token_economist:__init__ - TokenEconomist zainicjalizowany (compression=True, pricing_file=not loaded)
+18:49:13 | INFO     | venom_core.execution.kernel_builder:__init__ - KernelBuilder zainicjalizowany (routing=True, multi_service=False)
+18:49:13 | INFO     | venom_core.execution.kernel_builder:build_kernel - Inicjalizacja Kernel z typem serwisu: local
+18:49:13 | DEBUG    | venom_core.execution.kernel_builder:_register_service - Konfiguracja lokalnego LLM: endpoint=http://localhost:8001/v1, model=google/gemma-3-4b-it
+18:49:13 | INFO     | venom_core.core.intent_manager:__init__ - IntentManager zainicjalizowany
+18:49:13 | INFO     | venom_core.core.model_router:__init__ - ModelRouter zainicjalizowany (routing=True, force_local=False)
+18:49:13 | INFO     | venom_core.core.prompt_manager:__init__ - PromptManager zainicjalizowany (katalog: data/prompts)
+18:49:13 | INFO     | venom_core.core.token_economist:__init__ - TokenEconomist zainicjalizowany (compression=True, pricing_file=not loaded)
+18:49:13 | INFO     | venom_core.execution.kernel_builder:__init__ - KernelBuilder zainicjalizowany (routing=True, multi_service=False)
+18:49:13 | INFO     | venom_core.execution.kernel_builder:build_kernel - Inicjalizacja Kernel z typem serwisu: local
+18:49:13 | DEBUG    | venom_core.execution.kernel_builder:_register_service - Konfiguracja lokalnego LLM: endpoint=http://localhost:8001/v1, model=google/gemma-3-4b-it
+18:49:13 | DEBUG    | venom_core.core.goal_store:_load_from_disk - Brak pliku roadmap, tworzę nowy magazyn
+18:49:13 | INFO     | venom_core.core.goal_store:__init__ - GoalStore zainicjalizowany z 0 celami
+18:49:13 | INFO     | venom_core.execution.skill_manager:__init__ - SkillManager zainicjalizowany z katalogiem: /home/ubuntu/venom/workspace/custom
+18:49:13 | INFO     | venom_core.execution.skill_manager:load_skills_from_dir - Szukam skills w katalogu: /home/ubuntu/venom/workspace/custom
+18:49:13 | INFO     | venom_core.execution.skill_manager:load_skills_from_dir - Nie znaleziono żadnych skills w /home/ubuntu/venom/workspace/custom
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | ERROR    | venom_core.infrastructure.docker_habitat:__init__ - Nie można połączyć się z Docker daemon: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+18:49:13 | WARNING  | venom_core.execution.skills.shell_skill:__init__ - Nie można zainicjalizować Docker Sandbox: Nie można połączyć się z Docker daemon: Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
+18:49:13 | WARNING  | venom_core.execution.skills.shell_skill:__init__ - Przełączanie na tryb lokalny
+18:49:13 | ERROR    | venom_core.infrastructure.stack_manager:_check_docker_compose - Docker Compose nie jest dostępny: [Errno 2] No such file or directory: 'docker'
+18:49:13 | WARNING  | venom_core.execution.skills.compose_skill:__init__ - ComposeSkill wyłączony - Docker Compose niedostępny: %s
+18:49:13 | INFO     | venom_core.agents.coder:__init__ - CoderAgent zainicjalizowany z FileSkill, ShellSkill i ComposeSkill (self_repair=True)
+18:49:13 | INFO     | venom_core.memory.embedding_service:__init__ - EmbeddingService inicjalizowany z typem: local
+18:49:13 | INFO     | venom_core.memory.vector_store:__init__ - VectorStore zainicjalizowany: db_path=data/memory/lancedb
+18:49:13 | INFO     | venom_core.memory.memory_skill:__init__ - MemorySkill zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.chat:__init__ - ChatAgent zainicjalizowany z MemorySkill
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.memory.embedding_service:__init__ - EmbeddingService inicjalizowany z typem: local
+18:49:13 | INFO     | venom_core.memory.vector_store:__init__ - VectorStore zainicjalizowany: db_path=data/memory/lancedb
+18:49:13 | INFO     | venom_core.memory.memory_skill:__init__ - MemorySkill zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.librarian:__init__ - LibrarianAgent zainicjalizowany z FileSkill i MemorySkill
+18:49:13 | INFO     | venom_core.agents.critic:__init__ - CriticAgent zainicjalizowany z PolicyEngine
+18:49:13 | INFO     | venom_core.execution.skills.web_skill:__init__ - WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)
+18:49:13 | INFO     | venom_core.execution.skills.github_skill:__init__ - GitHubSkill zainicjalizowany bez tokenu (niższe limity API, ~60 req/h)
+18:49:13 | INFO     | venom_core.execution.skills.huggingface_skill:__init__ - HuggingFaceSkill zainicjalizowany
+18:49:13 | INFO     | venom_core.memory.embedding_service:__init__ - EmbeddingService inicjalizowany z typem: local
+18:49:13 | INFO     | venom_core.memory.vector_store:__init__ - VectorStore zainicjalizowany: db_path=data/memory/lancedb
+18:49:13 | INFO     | venom_core.memory.memory_skill:__init__ - MemorySkill zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.researcher:__init__ - ResearcherAgent zainicjalizowany z WebSearchSkill, GitHubSkill, HuggingFaceSkill i MemorySkill
+18:49:13 | INFO     | venom_core.execution.skills.git_skill:__init__ - GitSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | WARNING  | venom_core.execution.skills.platform_skill:__init__ - PlatformSkill: GITHUB_TOKEN nie skonfigurowany - funkcje GitHub niedostępne
+18:49:13 | INFO     | venom_core.execution.skills.platform_skill:__init__ - PlatformSkill zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.integrator:__init__ - IntegratorAgent zainicjalizowany z GitSkill i PlatformSkill
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.agents.toolmaker:__init__ - ToolmakerAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.architect:__init__ - ArchitectAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.execution.skills.browser_skill:__init__ - BrowserSkill zainicjalizowany
+18:49:13 | DEBUG    | venom_core.perception.eyes:_check_local_vision - Nie można sprawdzić lokalnych modeli vision: [Errno 111] Connection refused
+18:49:13 | WARNING  | venom_core.perception.eyes:__init__ - Eyes: Brak dostępnych modeli vision (ani local, ani cloud)
+18:49:13 | INFO     | venom_core.agents.tester:__init__ - TesterAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.execution.skills.docs_skill:__init__ - DocsSkill zainicjalizowany
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.agents.publisher:__init__ - PublisherAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.execution.skills.git_skill:__init__ - GitSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.agents.release_manager:__init__ - ReleaseManagerAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.executive:__init__ - ExecutiveAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.agents.system_status:__init__ - SystemStatusAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.core.dispatcher:__init__ - TaskDispatcher zainicjalizowany z agentami (+ Executive layer)
+18:49:13 | DEBUG    | venom_core.perception.eyes:_check_local_vision - Nie można sprawdzić lokalnych modeli vision: [Errno 111] Connection refused
+18:49:13 | WARNING  | venom_core.perception.eyes:__init__ - Eyes: Brak dostępnych modeli vision (ani local, ani cloud)
+18:49:13 | INFO     | venom_core.main:lifespan - Orchestrator zainicjalizowany
+18:49:13 | INFO     | venom_core.main:lifespan - Workspace directory: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.main:lifespan - Memory directory: /home/ubuntu/venom/data/memory
+18:49:13 | INFO     | venom_core.memory.embedding_service:__init__ - EmbeddingService inicjalizowany z typem: local
+18:49:13 | INFO     | venom_core.memory.vector_store:__init__ - VectorStore zainicjalizowany: db_path=data/memory/lancedb
+18:49:13 | INFO     | venom_core.main:lifespan - VectorStore zainicjalizowany
+18:49:13 | INFO     | venom_core.memory.graph_store:__init__ - CodeGraphStore zainicjalizowany: workspace=/home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.memory.graph_store:load_graph - Graf załadowany: 6 węzłów, 3 krawędzi
+18:49:13 | INFO     | venom_core.main:lifespan - CodeGraphStore zainicjalizowany
+18:49:13 | INFO     | venom_core.memory.lessons_store:load_lessons - Załadowano 18 lekcji z data/memory/lessons.json
+18:49:13 | INFO     | venom_core.memory.lessons_store:__init__ - LessonsStore zainicjalizowany: 18 lekcji
+18:49:13 | INFO     | venom_core.main:lifespan - LessonsStore zainicjalizowany z 18 lekcjami
+18:49:13 | INFO     | venom_core.main:lifespan - LessonsStore podłączony do Orchestrator (meta-uczenie włączone)
+18:49:13 | INFO     | venom_core.agents.gardener:__init__ - GardenerAgent zainicjalizowany: workspace=/home/ubuntu/venom/workspace, interval=300s
+18:49:13 | INFO     | venom_core.agents.gardener:start - Uruchamianie GardenerAgent...
+18:49:13 | INFO     | venom_core.agents.gardener:scan_and_update - Rozpoczynam skanowanie workspace...
+18:49:13 | INFO     | venom_core.memory.graph_store:load_graph - Graf załadowany: 6 węzłów, 3 krawędzi
+18:49:13 | INFO     | venom_core.memory.graph_store:scan_workspace - Rozpoczynam skanowanie workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.memory.graph_store:scan_workspace - Znaleziono 0 plików Python
+18:49:13 | INFO     | venom_core.memory.graph_store:save_graph - Graf zapisany do data/memory/code_graph.json
+18:49:13 | INFO     | venom_core.memory.graph_store:scan_workspace - Skanowanie zakończone: {'files_scanned': 0, 'total_files': 0, 'nodes': 6, 'edges': 3, 'errors': 0}
+18:49:13 | INFO     | venom_core.agents.gardener:scan_and_update - Skanowanie zakończone w 0.00s: {'files_scanned': 0, 'total_files': 0, 'nodes': 6, 'edges': 3, 'errors': 0}
+18:49:13 | INFO     | venom_core.agents.gardener:start - GardenerAgent uruchomiony
+18:49:13 | INFO     | venom_core.main:lifespan - GardenerAgent uruchomiony
+18:49:13 | INFO     | venom_core.execution.skills.git_skill:__init__ - GitSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.main:lifespan - GitSkill zainicjalizowany dla API
+18:49:13 | INFO     | venom_core.core.scheduler:__init__ - BackgroundScheduler zainicjalizowany
+18:49:13 | WARNING  | venom_core.core.scheduler:start - Zadania w tle są wstrzymane (VENOM_PAUSE_BACKGROUND_TASKS=True)
+18:49:13 | INFO     | venom_core.main:lifespan - BackgroundScheduler uruchomiony
+18:49:13 | INFO     | venom_core.execution.skills.file_skill:__init__ - FileSkill zainicjalizowany z workspace: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.agents.documenter:__init__ - DocumenterAgent zainicjalizowany dla: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.main:lifespan - DocumenterAgent zainicjalizowany
+18:49:13 | INFO     | venom_core.perception.watcher:__init__ - [WATCHER] Zainicjalizowany dla: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.perception.watcher:start - [WATCHER] Uruchomiony, monitoruje: /home/ubuntu/venom/workspace
+18:49:13 | INFO     | venom_core.main:lifespan - FileWatcher uruchomiony
+18:49:13 | INFO     | venom_core.main:lifespan - Proactive Mode wyłączony (ENABLE_PROACTIVE_MODE=False)
+18:49:13 | INFO     | venom_core.main:lifespan - Aplikacja uruchomiona - zależności routerów ustawione
+INFO:     Application startup complete.
+INFO:     127.0.0.1:34004 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34016 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34024 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34046 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34062 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+18:49:14 | INFO     | venom_core.execution.skills.git_skill:_notify_missing_repo_once - ℹ️ Workspace '/home/ubuntu/venom/workspace' nie jest repozytorium Git. Użyj init_repo() aby je zainicjalizować.
+INFO:     127.0.0.1:34078 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34088 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34104 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34110 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34126 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:34138 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:34154 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34164 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34168 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34172 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34184 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34192 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34206 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34208 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52966 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:52980 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:52990 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52994 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53008 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53022 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53032 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53038 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53046 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53050 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:53056 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:53058 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53072 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53082 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53098 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55748 - "WebSocket /ws/events" [accepted]
+18:49:32 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 1
+INFO:     connection open
+INFO:     127.0.0.1:55764 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55772 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55782 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55784 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55788 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55794 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55810 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55818 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55826 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55842 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55850 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55866 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55848 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55882 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55886 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55888 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55892 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55896 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55910 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55918 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55932 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55938 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:48358 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48372 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48384 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48402 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48406 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48418 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48430 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48442 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48394 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48434 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48458 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:48468 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48472 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48488 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48492 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48498 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48514 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48520 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48536 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48550 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48566 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48578 - "WebSocket /ws/events" [accepted]
+18:49:44 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 2
+INFO:     connection open
+INFO:     127.0.0.1:48522 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48572 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48594 - "WebSocket /ws/events" [accepted]
+18:49:44 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 3
+INFO:     connection open
+INFO:     127.0.0.1:48598 - "WebSocket /ws/events" [accepted]
+18:49:44 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 4
+INFO:     connection open
+INFO:     127.0.0.1:48610 - "GET /api/v1/iot/status HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48626 - "GET /api/v1/iot/status HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48636 - "WebSocket /ws/events" [accepted]
+18:49:44 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 5
+INFO:     connection open
+INFO:     127.0.0.1:48638 - "WebSocket /ws/events" [accepted]
+18:49:45 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 6
+INFO:     connection open
+INFO:     127.0.0.1:48650 - "WebSocket /ws/events" [accepted]
+18:49:45 | INFO     | venom_core.api.stream:connect - Nowe połączenie WebSocket. Aktywne połączenia: 7
+INFO:     connection open
+INFO:     127.0.0.1:48666 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:48668 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48684 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48696 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48708 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48718 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:48722 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:60986 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:60992 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32774 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32788 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32802 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32806 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32820 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32836 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32852 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:34040 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34040 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32914 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:32930 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32932 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32944 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32958 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32966 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32978 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33006 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32992 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33016 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:50686 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:50694 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50700 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50710 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50714 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50722 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50724 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50730 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50734 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50742 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:50754 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:50764 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50774 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50788 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50802 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50812 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:40584 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:40588 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40600 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40608 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40622 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40644 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40652 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40656 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40660 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40668 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40670 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40672 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:40678 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:40692 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40706 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40716 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40728 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40732 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55790 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55796 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55800 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55808 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55812 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55822 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55834 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55842 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55854 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55856 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55866 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55872 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55888 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55904 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55914 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55916 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55928 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55942 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55944 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55950 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55962 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:55964 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:54740 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54744 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54754 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54770 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54776 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54788 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54790 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54804 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:54820 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:54826 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54838 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54854 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54858 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54860 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:54870 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:54884 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:35860 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35864 - "GET /api/v1/system/cost-mode HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35874 - "GET /api/v1/system/autonomy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35888 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35892 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35906 - "GET /api/v1/system/services HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35920 - "GET /api/v1/graph/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35934 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35924 - "GET /api/v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35938 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35940 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35950 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35966 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:35968 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:35970 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35984 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36000 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36006 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36008 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:36024 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:36032 - "WebSocket /ws/audio" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+INFO:     127.0.0.1:36044 - "GET /api/v1/queue/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37152 - "GET /api/v1/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37160 - "GET /api/v1/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37162 - "GET /api/v1/git/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37172 - "GET /api/v1/metrics/tokens HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37188 - "GET /api/v1/history/requests?limit=6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37192 - "GET /api/v1/models/usage HTTP/1.1" 200 OK
+INFO:     Shutting down
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 6
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 5
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 4
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 3
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 2
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 1
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+18:50:55 | INFO     | venom_core.api.stream:disconnect - Zamknięto połączenie WebSocket. Aktywne połączenia: 0
+18:50:55 | INFO     | venom_core.main:websocket_endpoint - Client disconnected WebSocket
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+18:50:55 | INFO     | venom_core.main:lifespan - Zamykanie aplikacji...
+18:50:55 | INFO     | venom_core.core.tracer:stop_watchdog - RequestTracer watchdog zatrzymany
+18:50:55 | INFO     | venom_core.main:lifespan - RequestTracer watchdog zatrzymany
+18:50:55 | WARNING  | venom_core.core.scheduler:stop - Scheduler nie działa
+18:50:55 | INFO     | venom_core.main:lifespan - BackgroundScheduler zatrzymany
+18:50:55 | INFO     | venom_core.perception.watcher:stop - [WATCHER] Zatrzymany
+18:50:55 | INFO     | venom_core.main:lifespan - FileWatcher zatrzymany
+18:50:55 | INFO     | venom_core.agents.gardener:stop - Zatrzymywanie GardenerAgent...
+18:50:55 | INFO     | venom_core.agents.gardener:_monitoring_loop - Monitoring loop anulowany
+18:50:55 | INFO     | venom_core.agents.gardener:stop - GardenerAgent zatrzymany
+18:50:55 | INFO     | venom_core.main:lifespan - GardenerAgent zatrzymany
+18:50:55 | INFO     | venom_core.main:lifespan - Aplikacja zamknięta
+INFO:     Application shutdown complete.
+INFO:     Finished server process [253121]
+INFO:     Stopping reloader process [253101]

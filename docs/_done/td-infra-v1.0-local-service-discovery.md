@@ -1,8 +1,8 @@
 # Zadanie: Infra v1.0 - Local Service Discovery & System Hardening
 
-**Status:** ✅ COMPLETED  
-**Data realizacji:** 2025-12-09  
-**PR:** mpieniak01/Venom#6 - Adaptacja do Intranetu  
+**Status:** ✅ COMPLETED
+**Data realizacji:** 2025-12-09
+**PR:** mpieniak01/Venom#6 - Adaptacja do Intranetu
 
 ## Cel
 
@@ -95,15 +95,15 @@ tests/test_tracer.py - wszystkie testy przeszły
 - ✅ **Z innej maszyny w tej samej sieci można wykonać `ping venom.local`**
   - Zweryfikowano ręcznie - mDNS discovery działa
   - Test script: `/tmp/test_mdns_discovery.py`
-  
+
 - ✅ **Kod jest wolny od zależności do API chmury publicznej**
   - Usunięto `configure_domain()` (Cloudflare/Route53)
   - Brak wychodzących połączeń HTTP
-  
+
 - ✅ **Logi zawierają wyraźne ostrzeżenia w przypadku awarii odczytu temperatury CPU**
   - `logger.warning(f"Hardware sensor failure: {e}")`
   - Flaga `sensors_active = False` przy awarii
-  
+
 - ✅ **Dodano `zeroconf` do pliku zależności projektu**
   - `requirements.txt` zaktualizowany
 
@@ -114,13 +114,13 @@ tests/test_tracer.py - wszystkie testy przeszły
 1. **IP Detection** - Poprawiono wykrywanie lokalnego IP:
    - Metoda 1: Połączenie z zewnętrznym adresem (nie wysyła danych)
    - Metoda 2: Fallback do `gethostbyname()` z walidacją (unikanie localhost)
-   
+
 2. **Magic Number** - Usunięto magic number `6`:
    ```python
    local_suffix = ".local"
    service_name[:-len(local_suffix)]
    ```
-   
+
 3. **Exception Handling** - Poprawiono w `energy_manager.py`:
    ```python
    except (AttributeError, OSError, KeyError) as e:

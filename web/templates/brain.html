@@ -227,7 +227,7 @@
         <span>🧠</span>
         <span>The Brain</span>
     </h3>
-    
+
     <div class="stats">
         <div class="stat-row">
             <span class="stat-label">Węzły:</span>
@@ -242,7 +242,7 @@
             <span class="stat-value" x-text="status"></span>
         </div>
     </div>
-    
+
     <div class="filters">
         <label class="filter-label" for="filter-agents">
             <input type="checkbox" id="filter-agents" x-model="filters.agents" @change="applyFilters()">
@@ -285,14 +285,14 @@
 
 {% block extra_js %}
 <!-- Cytoscape.js CDN with integrity check -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" 
-        integrity="sha512-gt0OGsN5GWmK4eZTdepGEyDGRaXXALaxw7svEQ+bVXwPJ2JJXmBmF0DaYqRvDVXOvTiXUflQcTznRdLGiCJnXw==" 
-        crossorigin="anonymous" 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"
+        integrity="sha512-gt0OGsN5GWmK4eZTdepGEyDGRaXXALaxw7svEQ+bVXwPJ2JJXmBmF0DaYqRvDVXOvTiXUflQcTznRdLGiCJnXw=="
+        crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
 <!-- Alpine.js CDN (potrzebne dla panelu kontrolnego) with integrity check -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" 
-        integrity="sha512-pJXTUPWanXZSZ/+s6/QJBZxdXgLZQ6k8uKRTHW5mS5G5EqrBKHZvLw4VgVqaLCpxf/TFvYJtpCZ7KJpLKO0lZw==" 
-        crossorigin="anonymous" 
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"
+        integrity="sha512-pJXTUPWanXZSZ/+s6/QJBZxdXgLZQ6k8uKRTHW5mS5G5EqrBKHZvLw4VgVqaLCpxf/TFvYJtpCZ7KJpLKO0lZw=="
+        crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
 
 <!-- Inicjalizacja Alpine Store (musi być przed brain.js) -->

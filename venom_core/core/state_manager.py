@@ -3,7 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
 from venom_core.config import SETTINGS
@@ -213,6 +213,39 @@ class StateManager:
             return
 
         task.logs.append(log_message)
+        self._schedule_save()
+
+    def update_context(self, task_id: UUID, updates: Dict[str, Any]) -> None:
+        """
+        Aktualizuje słownik context_history zadania (shallow merge).
+
+        Args:
+            task_id: ID zadania
+            updates: Klucze i wartości do scalania
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            logger.warning(
+                f"Próba aktualizacji kontekstu nieistniejącego zadania: {task_id}"
+            )
+            return
+
+        for key, value in updates.items():
+            if value is None:
+                task.context_history.pop(key, None)
+                continue
+
+            existing = task.context_history.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                for nested_key, nested_value in value.items():
+                    if nested_value is None:
+                        existing.pop(nested_key, None)
+                    else:
+                        existing[nested_key] = nested_value
+                task.context_history[key] = existing
+            else:
+                task.context_history[key] = value
+
         self._schedule_save()
 
     def set_paid_mode(self, enabled: bool) -> None:

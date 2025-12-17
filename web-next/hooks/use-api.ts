@@ -12,6 +12,8 @@ import {
   GraphSummary,
   HistoryRequest,
   HistoryRequestDetail,
+  LlmActionResponse,
+  LlmServerInfo,
   KnowledgeGraph,
   Lesson,
   LessonsResponse,
@@ -308,6 +310,35 @@ export function useModelsUsage(intervalMs = 10000) {
       return { usage: result as ModelsUsage };
     },
     intervalMs,
+  );
+}
+
+export function useLlmServers(intervalMs = 0) {
+  return usePolling<LlmServerInfo[]>(
+    "llm-servers",
+    async () => {
+      const data = await apiFetch<{ servers?: LlmServerInfo[] } | LlmServerInfo[]>(
+        "/api/v1/system/llm-servers",
+      );
+      if (Array.isArray(data)) {
+        return data;
+      }
+      if (Array.isArray(data?.servers)) {
+        return data.servers;
+      }
+      return [];
+    },
+    intervalMs,
+  );
+}
+
+export async function controlLlmServer(
+  serverName: string,
+  action: "start" | "stop" | "restart",
+) {
+  return apiFetch<LlmActionResponse>(
+    `/api/v1/system/llm-servers/${serverName}/${action}`,
+    { method: "POST" },
   );
 }
 

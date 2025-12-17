@@ -1,5 +1,9 @@
 """Moduł: routes/system - Endpointy API dla systemu (metrics, scheduler, services)."""
 
+import asyncio
+import time
+
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -15,6 +19,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 _background_scheduler = None
 _service_monitor = None
 _state_manager = None  # Nowa zależność dla Cost Guard
+_llm_controller = None
 
 
 class CostModeRequest(BaseModel):
@@ -30,12 +35,15 @@ class CostModeResponse(BaseModel):
     provider: str
 
 
-def set_dependencies(background_scheduler, service_monitor, state_manager=None):
+def set_dependencies(
+    background_scheduler, service_monitor, state_manager=None, llm_controller=None
+):
     """Ustaw zależności dla routera."""
-    global _background_scheduler, _service_monitor, _state_manager
+    global _background_scheduler, _service_monitor, _state_manager, _llm_controller
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
     _state_manager = state_manager
+    _llm_controller = llm_controller
 
 
 @router.get("/metrics")
@@ -234,6 +242,99 @@ async def get_service_status(service_name: str):
     except Exception as e:
         logger.exception(f"Błąd podczas sprawdzania statusu usługi {service_name}")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get("/system/llm-servers")
+async def get_llm_servers():
+    """
+    Zwraca listę znanych serwerów LLM z informacją o dostępnych akcjach.
+    """
+    if _llm_controller is None:
+        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+
+    servers = _llm_controller.list_servers()
+
+    if _service_monitor:
+        status_lookup = {
+            service.name.lower(): service
+            for service in _service_monitor.get_all_services()
+        }
+        for server in servers:
+            status = None
+            for key in (server["name"].lower(), server["display_name"].lower()):
+                status = status_lookup.get(key)
+                if status:
+                    break
+            if status:
+                server["status"] = status.status.value
+                server["latency_ms"] = status.latency_ms
+                server["last_check"] = status.last_check
+                server["error_message"] = status.error_message
+
+    async def probe_server(candidate: dict):
+        url = candidate.get("health_url") or candidate.get("endpoint")
+        if not url:
+            return
+        # Skip if status already znany
+        if candidate.get("status") and candidate.get("status") not in {"unknown", None}:
+            return
+        try:
+            start = time.perf_counter()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(url)
+            elapsed = (time.perf_counter() - start) * 1000
+            candidate["latency_ms"] = elapsed
+            if response.status_code < 400:
+                candidate["status"] = "online"
+                candidate["error_message"] = None
+            else:
+                candidate["status"] = "degraded"
+                candidate["error_message"] = f"HTTP {response.status_code}"
+        except Exception as exc:  # pragma: no cover - zależne od środowiska
+            candidate["status"] = candidate.get("status") or "offline"
+            candidate["error_message"] = str(exc)
+
+    probe_tasks = [probe_server(server) for server in servers]
+    if probe_tasks:
+        await asyncio.gather(*probe_tasks)
+
+    return {"status": "success", "servers": servers, "count": len(servers)}
+
+
+@router.post("/system/llm-servers/{server_name}/{action}")
+async def control_llm_server(server_name: str, action: str):
+    """
+    Wykonuje akcję (start/stop/restart) na wskazanym serwerze LLM.
+    """
+
+    if _llm_controller is None:
+        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+
+    try:
+        result = await _llm_controller.run_action(server_name, action)
+        response = {
+            "status": "success" if result.ok else "error",
+            "action": result.action,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "exit_code": result.exit_code,
+        }
+        if result.ok:
+            response["message"] = (
+                f"Akcja {action} dla {server_name} zakończona sukcesem."
+            )
+        else:
+            response["message"] = (
+                f"Akcja {action} dla {server_name} zwróciła kod {result.exit_code}."
+            )
+        return response
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Błąd akcji serwera LLM")
+        raise HTTPException(
+            status_code=500, detail="Błąd podczas wykonywania komendy"
+        ) from exc
 
 
 # ========================================

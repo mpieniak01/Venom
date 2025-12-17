@@ -25,6 +25,7 @@ from venom_core.api.routes import system as system_routes
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
+from venom_core.core.llm_server_controller import LlmServerController
 from venom_core.core.metrics import init_metrics_collector
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.permission_guard import permission_guard
@@ -87,6 +88,7 @@ notifier = None
 # Inicjalizacja Service Health Monitor
 service_registry = None
 service_monitor = None
+llm_controller = None
 
 # Inicjalizacja Model Manager (THE_ARMORY)
 model_manager = None
@@ -100,7 +102,7 @@ async def lifespan(app: FastAPI):
     global audio_engine, operator_agent, hardware_bridge, audio_stream_handler
     global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
-    global service_registry, service_monitor, model_manager
+    global service_registry, service_monitor, model_manager, llm_controller
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -130,6 +132,11 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {e}")
         service_registry = None
         service_monitor = None
+    try:
+        llm_controller = LlmServerController(SETTINGS)
+    except Exception as e:  # pragma: no cover - błędy inicjalizacji są logowane
+        logger.warning(f"Nie udało się utworzyć kontrolera LLM: {e}")
+        llm_controller = None
 
     # Inicjalizuj Model Manager (THE_ARMORY)
     from venom_core.core.model_manager import ModelManager
@@ -559,7 +566,9 @@ def setup_router_dependencies():
     agents_routes.set_dependencies(
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
     )
-    system_routes.set_dependencies(background_scheduler, service_monitor, state_manager)
+    system_routes.set_dependencies(
+        background_scheduler, service_monitor, state_manager, llm_controller
+    )
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
     models_routes.set_dependencies(model_manager)

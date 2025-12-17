@@ -11,6 +11,7 @@
     "start": "node scripts/start-server.mjs",
     "lint": "next lint",
     "test:e2e": "npm run build && PLAYWRIGHT_MODE=prod playwright test",
+    "test:perf": "playwright test --config playwright.perf.config.ts",
     "lint:locales": "tsx scripts/check-locales.ts"
   },
   "dependencies": {

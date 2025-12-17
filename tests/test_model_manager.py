@@ -329,6 +329,30 @@ async def test_model_manager_list_local_models_with_local_file(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_model_manager_list_local_models_workspace_folder(tmp_path, monkeypatch):
+    """ModelManager powinien również skanować ./models w bieżącym katalogu roboczym."""
+    from unittest.mock import AsyncMock, patch
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+
+    manager = ModelManager(models_dir=str(workspace / "data_models"))
+    hf_dir = workspace / "models"
+    hf_dir.mkdir()
+    (hf_dir / "gemma-3").mkdir()
+
+    with patch("httpx.AsyncClient") as mock_client:
+        mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+            side_effect=Exception("Ollama offline")
+        )
+        models = await manager.list_local_models()
+
+    assert any(model["name"] == "gemma-3" for model in models)
+    assert any(model.get("source") == "models" for model in models)
+
+
+@pytest.mark.asyncio
 async def test_model_manager_pull_model_no_space(tmp_path):
     """Test pobierania modelu bez miejsca (Resource Guard)."""
     from unittest.mock import patch

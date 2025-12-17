@@ -218,6 +218,31 @@ async def test_orchestrator_result_contains_intent_and_content(
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_perf_prompt_shortcut(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test że prompt testu wydajności omija klasyfikację i dispatch."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+    )
+
+    response = await orchestrator.submit_task(
+        TaskRequest(content="Parallel perf PID 123 #0")
+    )
+    # Pozwól zadaniu zakończyć się w tle
+    await asyncio.sleep(0.2)
+
+    task = state_manager.get_task(response.task_id)
+    assert task.status == TaskStatus.COMPLETED
+    assert "perf pipeline" in (task.result or "").lower()
+    mock_intent_manager.classify_intent.assert_not_called()
+    mock_task_dispatcher.dispatch.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_help_request_intent(
     temp_state_file, mock_intent_manager, mock_task_dispatcher
 ):

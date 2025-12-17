@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     SENSITIVE_DATA_LOCAL_ONLY: bool = (
         True  # ZAWSZE kieruj wrażliwe dane do lokalnego modelu
     )
+    # Komendy sterujące lokalnymi serwerami LLM (opcjonalne, wykonywane w powłoce)
+    VLLM_START_COMMAND: str = ""
+    VLLM_STOP_COMMAND: str = ""
+    VLLM_RESTART_COMMAND: str = ""
+    OLLAMA_START_COMMAND: str = ""
+    OLLAMA_STOP_COMMAND: str = ""
+    OLLAMA_RESTART_COMMAND: str = ""
     # Czy w trybach LOCAL/ECO zawsze wymuszać darmowe źródła (np. DuckDuckGo)
     LOW_COST_FORCE_DDG: bool = False
 

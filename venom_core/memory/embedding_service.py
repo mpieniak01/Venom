@@ -1,15 +1,12 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
+from functools import lru_cache
 from typing import List
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-# Cache na poziomie modułu, aby uniknąć problemów z lru_cache na metodach instancji
-_embedding_cache = {}
 
 
 class EmbeddingService:
@@ -29,6 +26,10 @@ class EmbeddingService:
         self._model = None
         self._client = None
         logger.info(f"EmbeddingService inicjalizowany z typem: {self.service_type}")
+        # Zachowaj kompatybilność z testami: expose cached getter z cache_info/cache_clear.
+        self._get_embedding_cached = lru_cache(maxsize=1000)(
+            self._get_embedding_impl_wrapper
+        )
 
     def _ensure_model_loaded(self):
         """Lazy loading modelu embeddingów."""
@@ -90,6 +91,12 @@ class EmbeddingService:
                 model="text-embedding-3-small", input=text
             )
             return response.data[0].embedding
+        else:  # pragma: no cover - nieobsługiwane typy
+            raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")
+
+    def _get_embedding_impl_wrapper(self, text: str) -> List[float]:
+        """Opakowanie funkcji z cache LRU (kompatybilne z testami)."""
+        return self._get_embedding_impl(text)
 
     def get_embedding(self, text: str) -> List[float]:
         """
@@ -108,24 +115,9 @@ class EmbeddingService:
             raise ValueError("Tekst nie może być pusty")
 
         text_normalized = text.strip()
-        cache_key = (self.service_type, text_normalized)
 
-        # Sprawdź cache
-        if cache_key in _embedding_cache:
-            logger.debug(f"Embedding z cache dla tekstu ({len(text)} znaków)")
-            return _embedding_cache[cache_key]
-
-        # Generuj nowy embedding
         logger.debug(f"Generowanie embeddingu dla tekstu ({len(text)} znaków)")
-        embedding = self._get_embedding_impl(text_normalized)
-
-        # Zapisz do cache (ogranicz rozmiar cache do 1000 wpisów)
-        if len(_embedding_cache) >= 1000:
-            # Usuń najstarszy wpis (FIFO)
-            _embedding_cache.pop(next(iter(_embedding_cache)))
-        _embedding_cache[cache_key] = embedding
-
-        return embedding
+        return self._get_embedding_cached(text_normalized)
 
     def get_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
@@ -160,7 +152,7 @@ class EmbeddingService:
 
     def clear_cache(self):
         """Czyści cache embeddingów."""
-        _embedding_cache.clear()
+        self._get_embedding_cached.cache_clear()
         logger.info("Cache embeddingów wyczyszczony")
 
     @property

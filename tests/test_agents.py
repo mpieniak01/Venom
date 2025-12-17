@@ -185,7 +185,7 @@ def test_chat_agent_supports_system_prompt_with_registry(mock_kernel):
         ModelRegistry,
     )
 
-    # Utwórz registry z modelem wspierającym system role
+    # Utwórz registry z modelem niewspierającym system role
     mock_registry = MagicMock(spec=ModelRegistry)
     mock_registry.manifest = {
         "google/gemma-2b-it": ModelMetadata(

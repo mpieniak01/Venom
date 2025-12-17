@@ -8,12 +8,15 @@ Odpowiada za:
 """
 
 import asyncio
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -430,3 +433,83 @@ class ServiceHealthMonitor:
             "critical_offline": critical_offline,
             "system_healthy": len(critical_offline) == 0,
         }
+
+    def get_memory_metrics(self) -> Dict[str, Any]:
+        """
+        Zwraca metryki użycia pamięci RAM i VRAM.
+
+        Returns:
+            Słownik z metrykami pamięci:
+            - memory_usage_mb: Użycie pamięci RAM w MB
+            - memory_total_mb: Całkowita pamięć RAM w MB
+            - memory_usage_percent: Procent użycia RAM
+            - vram_usage_mb: Użycie pamięci VRAM w MB (jeśli dostępne GPU)
+            - vram_total_mb: Całkowita pamięć VRAM w MB (jeśli dostępne)
+            - vram_usage_percent: Procent użycia VRAM (jeśli dostępne)
+        """
+        memory = psutil.virtual_memory()
+
+        metrics = {
+            "memory_usage_mb": round(memory.used / (1024**2), 2),
+            "memory_total_mb": round(memory.total / (1024**2), 2),
+            "memory_usage_percent": round(memory.percent, 2),
+            "vram_usage_mb": None,
+            "vram_total_mb": None,
+            "vram_usage_percent": None,
+        }
+
+        # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
+        try:
+            # Sprawdź czy nvidia-smi jest dostępne
+            nvidia_smi_path = shutil.which("nvidia-smi")
+            if not nvidia_smi_path:
+                return metrics
+
+            result = subprocess.run(
+                [
+                    nvidia_smi_path,
+                    "--query-gpu=memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                lines = [
+                    line.strip()
+                    for line in result.stdout.strip().split("\n")
+                    if line.strip()
+                ]
+
+                # Zbierz dane VRAM dla wszystkich GPU i znajdź GPU z największym użyciem
+                gpu_data = []
+                for line in lines:
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) < 2:
+                        continue
+                    try:
+                        used = float(parts[0])
+                        total = float(parts[1])
+                        gpu_data.append((used, total))
+                    except ValueError:
+                        continue
+
+                if gpu_data:
+                    # Znajdź GPU z największym użyciem pamięci
+                    vram_used_mb, vram_total_mb = max(gpu_data, key=lambda x: x[0])
+                    metrics["vram_usage_mb"] = round(vram_used_mb, 2)
+                    metrics["vram_total_mb"] = round(vram_total_mb, 2)
+                    if vram_total_mb > 0:
+                        metrics["vram_usage_percent"] = round(
+                            (vram_used_mb / vram_total_mb) * 100, 2
+                        )
+        except (
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+        ):
+            # nvidia-smi nie jest dostępne lub wystąpił błąd - ignorujemy
+            pass
+
+        return metrics

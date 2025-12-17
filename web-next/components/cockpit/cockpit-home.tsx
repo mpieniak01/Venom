@@ -22,6 +22,7 @@ import {
   controlLlmServer,
   emergencyStop,
   fetchHistoryDetail,
+  fetchModelConfig,
   fetchTaskDetail,
   gitSync,
   gitUndo,
@@ -54,8 +55,9 @@ import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { AnimatePresence, motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
-import { Bot, Pin, PinOff, Inbox, Package, Loader2 } from "lucide-react";
+import { Bot, Pin, PinOff, Inbox, Package, Loader2, Settings } from "lucide-react";
 import Link from "next/link";
+import { DynamicParameterForm, type GenerationSchema } from "@/components/ui/dynamic-parameter-form";
 import { HistoryList } from "@/components/history/history-list";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { RecentRequestList } from "@/components/tasks/recent-request-list";
@@ -148,6 +150,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [lastResponseDurationMs, setLastResponseDurationMs] = useState<number | null>(null);
   const [responseDurations, setResponseDurations] = useState<number[]>([]);
   const lastTelemetryRefreshRef = useRef<string | null>(null);
+  const [tuningOpen, setTuningOpen] = useState(false);
+  const [generationParams, setGenerationParams] = useState<Record<string, any> | null>(null);
+  const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
+  const [loadingSchema, setLoadingSchema] = useState(false);
   const streamCompletionRef = useRef<Set<string>>(new Set());
   const promptPresets = useMemo(
     () => [
@@ -828,7 +834,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     setTaskContent("");
     const clientId = enqueueOptimisticRequest(payload);
     try {
-      const res = await sendTask(payload, !labMode);
+      const res = await sendTask(payload, !labMode, generationParams);
       const resolvedId = res.task_id ?? null;
       linkOptimisticRequest(clientId, resolvedId);
       setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
@@ -846,12 +852,29 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     taskContent,
     enqueueOptimisticRequest,
     labMode,
+    generationParams,
     linkOptimisticRequest,
     dropOptimisticRequest,
     refreshTasks,
     refreshQueue,
     refreshHistory,
   ]);
+
+  const handleOpenTuning = useCallback(async () => {
+    setTuningOpen(true);
+    setLoadingSchema(true);
+    try {
+      // Pobierz aktywny model z runtime info
+      const activeModelName = models?.active?.model || "llama3";
+      const config = await fetchModelConfig(activeModelName);
+      setModelSchema(config.generation_schema || null);
+    } catch (err) {
+      console.error("Nie udało się pobrać konfiguracji modelu:", err);
+      setModelSchema(null);
+    } finally {
+      setLoadingSchema(false);
+    }
+  }, [models, setTuningOpen, setLoadingSchema, setModelSchema]);
 
   const handleMacroRun = useCallback(
     async (macro: { id: string; content: string; label: string }) => {
@@ -1576,6 +1599,16 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       Lab Mode (nie zapisuj lekcji)
                     </label>
                     <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenTuning}
+                        className="text-zinc-300"
+                        title="Dostosuj parametry generacji"
+                      >
+                        <Settings className="h-4 w-4 mr-1" />
+                        Tuning
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -2367,6 +2400,38 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Tuning Drawer */}
+      <Sheet open={tuningOpen} onOpenChange={setTuningOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Parametry Generacji</SheetTitle>
+            <SheetDescription>
+              Dostosuj parametry modelu, takie jak temperatura, max_tokens, etc.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            {loadingSchema && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+              </div>
+            )}
+            {!loadingSchema && !modelSchema && (
+              <p className="text-sm text-zinc-400">
+                Brak schematu parametrów dla aktywnego modelu.
+              </p>
+            )}
+            {!loadingSchema && modelSchema && (
+              <DynamicParameterForm
+                schema={modelSchema}
+                values={generationParams || undefined}
+                onChange={(values) => setGenerationParams(values)}
+                onReset={() => setGenerationParams(null)}
+              />
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>

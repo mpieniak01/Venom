@@ -60,6 +60,33 @@ class OperationStatus(str, Enum):
 
 
 @dataclass
+class GenerationParameter:
+    """Definicja pojedynczego parametru generacji dla modelu."""
+    type: str  # "float", "int", "bool", "list", "enum"
+    default: Any
+    min: Optional[float] = None
+    max: Optional[float] = None
+    desc: Optional[str] = None
+    options: Optional[List[Any]] = None  # dla enum/list
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Konwertuje do słownika."""
+        result = {
+            "type": self.type,
+            "default": self.default,
+        }
+        if self.min is not None:
+            result["min"] = self.min
+        if self.max is not None:
+            result["max"] = self.max
+        if self.desc is not None:
+            result["desc"] = self.desc
+        if self.options is not None:
+            result["options"] = self.options
+        return result
+
+
+@dataclass
 class ModelCapabilities:
     """Możliwości modelu (obsługa ról, templaty, etc.)."""
     supports_system_role: bool = True
@@ -68,6 +95,7 @@ class ModelCapabilities:
     prompt_template: Optional[str] = None
     max_context_length: int = 4096
     quantization: Optional[str] = None
+    generation_schema: Optional[Dict[str, GenerationParameter]] = None
 
 
 @dataclass
@@ -86,20 +114,28 @@ class ModelMetadata:
 
     def to_dict(self) -> Dict[str, Any]:
         """Konwertuje do słownika."""
+        capabilities_dict = {
+            "supports_system_role": self.capabilities.supports_system_role,
+            "supports_function_calling": self.capabilities.supports_function_calling,
+            "allowed_roles": self.capabilities.allowed_roles,
+            "prompt_template": self.capabilities.prompt_template,
+            "max_context_length": self.capabilities.max_context_length,
+            "quantization": self.capabilities.quantization,
+        }
+        
+        if self.capabilities.generation_schema:
+            capabilities_dict["generation_schema"] = {
+                key: param.to_dict() 
+                for key, param in self.capabilities.generation_schema.items()
+            }
+        
         return {
             "name": self.name,
             "provider": self.provider.value,
             "display_name": self.display_name,
             "size_gb": self.size_gb,
             "status": self.status.value,
-            "capabilities": {
-                "supports_system_role": self.capabilities.supports_system_role,
-                "supports_function_calling": self.capabilities.supports_function_calling,
-                "allowed_roles": self.capabilities.allowed_roles,
-                "prompt_template": self.capabilities.prompt_template,
-                "max_context_length": self.capabilities.max_context_length,
-                "quantization": self.capabilities.quantization,
-            },
+            "capabilities": capabilities_dict,
             "local_path": self.local_path,
             "sha256": self.sha256,
             "installed_at": self.installed_at,
@@ -174,6 +210,22 @@ class OllamaModelProvider(BaseModelProvider):
                     for model in data.get("models", []):
                         name = model.get("name", "unknown")
                         size_bytes = model.get("size", 0)
+                        
+                        # Określ generation_schema na podstawie nazwy modelu
+                        generation_schema = _create_default_generation_schema()
+                        # Używamy regex do precyzyjnego wykrycia modeli Llama 3
+                        # Pasuje do: llama3, llama-3, llama3:latest, llama-3:8b
+                        # Nie pasuje do: llama-30b, llama-3b, my-llama-v3
+                        if re.search(r"llama-?3(?:[:\-]|$)", name, re.IGNORECASE):
+                            # Llama 3 ma temperaturę 0.0-1.0
+                            generation_schema["temperature"] = GenerationParameter(
+                                type="float",
+                                default=0.7,
+                                min=0.0,
+                                max=1.0,
+                                desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
+                            )
+                        
                         models.append(
                             ModelMetadata(
                                 name=name,
@@ -182,6 +234,9 @@ class OllamaModelProvider(BaseModelProvider):
                                 size_gb=size_bytes / (1024**3) if size_bytes else None,
                                 status=ModelStatus.INSTALLED,
                                 runtime="ollama",
+                                capabilities=ModelCapabilities(
+                                    generation_schema=generation_schema,
+                                ),
                             )
                         )
         except Exception as e:
@@ -278,6 +333,47 @@ class OllamaModelProvider(BaseModelProvider):
         return None
 
 
+def _create_default_generation_schema() -> Dict[str, GenerationParameter]:
+    """Tworzy domyślny schemat parametrów generacji dla modeli."""
+    return {
+        "temperature": GenerationParameter(
+            type="float",
+            default=0.7,
+            min=0.0,
+            max=2.0,
+            desc="Kreatywność modelu (0 = deterministyczny, 2 = bardzo kreatywny)",
+        ),
+        "max_tokens": GenerationParameter(
+            type="int",
+            default=2048,
+            min=128,
+            max=8192,
+            desc="Maksymalna liczba tokenów w odpowiedzi",
+        ),
+        "top_p": GenerationParameter(
+            type="float",
+            default=0.9,
+            min=0.0,
+            max=1.0,
+            desc="Nucleus sampling - próg kumulatywnego prawdopodobieństwa",
+        ),
+        "top_k": GenerationParameter(
+            type="int",
+            default=40,
+            min=1,
+            max=100,
+            desc="Top-K sampling - liczba najlepszych tokenów do rozważenia",
+        ),
+        "repeat_penalty": GenerationParameter(
+            type="float",
+            default=1.1,
+            min=1.0,
+            max=2.0,
+            desc="Kara za powtarzanie tokenów",
+        ),
+    }
+
+
 class HuggingFaceModelProvider(BaseModelProvider):
     """Provider dla modeli HuggingFace."""
 
@@ -300,6 +396,7 @@ class HuggingFaceModelProvider(BaseModelProvider):
                 capabilities=ModelCapabilities(
                     supports_system_role=False,  # Gemma nie wspiera roli system
                     allowed_roles=["user", "assistant"],
+                    generation_schema=_create_default_generation_schema(),
                 ),
             ),
             ModelMetadata(
@@ -309,6 +406,9 @@ class HuggingFaceModelProvider(BaseModelProvider):
                 size_gb=7.0,
                 status=ModelStatus.AVAILABLE,
                 runtime="vllm",
+                capabilities=ModelCapabilities(
+                    generation_schema=_create_default_generation_schema(),
+                ),
             ),
         ]
         return popular_models
@@ -419,6 +519,21 @@ class ModelRegistry:
                     for model_data in data.get("models", []):
                         # Safely extract capabilities with known fields only
                         caps_data = model_data.get("capabilities", {})
+                        
+                        # Parse generation_schema if present
+                        generation_schema = None
+                        if "generation_schema" in caps_data:
+                            generation_schema = {}
+                            for param_name, param_data in caps_data["generation_schema"].items():
+                                generation_schema[param_name] = GenerationParameter(
+                                    type=param_data.get("type", "float"),
+                                    default=param_data.get("default"),
+                                    min=param_data.get("min"),
+                                    max=param_data.get("max"),
+                                    desc=param_data.get("desc"),
+                                    options=param_data.get("options"),
+                                )
+                        
                         capabilities = ModelCapabilities(
                             supports_system_role=caps_data.get("supports_system_role", True),
                             supports_function_calling=caps_data.get("supports_function_calling", False),
@@ -426,6 +541,7 @@ class ModelRegistry:
                             prompt_template=caps_data.get("prompt_template"),
                             max_context_length=caps_data.get("max_context_length", 4096),
                             quantization=caps_data.get("quantization"),
+                            generation_schema=generation_schema,
                         )
                         
                         metadata = ModelMetadata(

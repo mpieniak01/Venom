@@ -41,6 +41,9 @@ class TaskRequest(BaseModel):
     store_knowledge: bool = Field(
         default=True, description="Czy zapisywać lekcje i wnioski z tego zadania"
     )
+    generation_params: Optional[Dict[str, Any]] = Field(
+        default=None, description="Parametry generacji (temperature, max_tokens, etc.)"
+    )
 
 
 class Intent(BaseModel):

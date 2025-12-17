@@ -1,0 +1,25 @@
+[Unit]
+Description=Ollama GGUF Model Server
+After=network.target
+
+[Service]
+Type=simple
+User=venom
+Group=venom
+WorkingDirectory=/home/venom/Venom
+ExecStart=/usr/bin/ollama serve
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/venom/Venom/logs/ollama.log
+StandardError=append:/home/venom/Venom/logs/ollama.log
+
+# Security options
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitCORE=0
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

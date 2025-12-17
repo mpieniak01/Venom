@@ -1,7 +1,5 @@
 """Testy dla adaptera parametrów generacji."""
 
-import pytest
-
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 
 

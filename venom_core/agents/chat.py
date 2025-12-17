@@ -54,6 +54,8 @@ Odpowiedź: "Stolicą Francji jest Paryż."
 Pytanie: "Opowiedz kawał"
 Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga błędy! 😄"
 """
+    # Fallback: modele, które nie wspierają roli system, używane gdy ModelRegistry
+    # nie jest dostępny lub model nie jest opisany w manifeście.
     MODELS_WITHOUT_SYSTEM_ROLE = ("gemma-2b",)
 
     def __init__(self, kernel: Kernel, model_registry: Optional[ModelRegistry] = None):

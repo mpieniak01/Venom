@@ -37,11 +37,6 @@ export function BenchmarkConfigurator({
   };
 
   const handleStart = () => {
-    if (selectedModels.length === 0) {
-      alert("Wybierz co najmniej jeden model");
-      return;
-    }
-
     const config: BenchmarkConfig = {
       runtime,
       models: selectedModels,
@@ -153,7 +148,7 @@ export function BenchmarkConfigurator({
           min="1"
           max="100"
           value={numQuestions}
-          onChange={(e) => setNumQuestions(Math.max(1, parseInt(e.target.value) || 1))}
+          onChange={(e) => setNumQuestions(Math.max(1, parseInt(e.target.value, 10) || 1))}
           disabled={disabled}
           className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white outline-none transition focus:border-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
         />

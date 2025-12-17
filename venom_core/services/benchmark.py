@@ -350,12 +350,21 @@ class BenchmarkService:
         result.status = "running"
 
         try:
-            # Aktywuj model (jeśli ModelRegistry wspiera)
+            # Aktywuj model przez ModelRegistry
             logger.info(f"Aktywacja modelu: {model_name}")
-            # TODO: Implementacja aktywacji modelu w przyszłości
-            # await self.model_registry.activate_model(model_name, runtime="vllm")
+            # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
+            try:
+                # ModelRegistry.activate_model jest obecnie stub - log warning
+                logger.warning(
+                    f"ModelRegistry.activate_model() jest obecnie stub. "
+                    f"Benchmark użyje obecnego modelu zamiast {model_name}. "
+                    f"Aby w pełni przełączać modele, zaimplementuj aktywację w ModelRegistry."
+                )
+                # await self.model_registry.activate_model(model_name, runtime="vllm")
+            except Exception as e:
+                logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
 
-            # Czekaj na healthcheck (stub - wymaga rozszerzenia)
+            # Czekaj na healthcheck
             await self._wait_for_healthcheck(timeout=60)
 
             # Testuj z pytaniami
@@ -368,7 +377,9 @@ class BenchmarkService:
                 # Mierz metryki dla pojedynczego pytania
                 metrics = await self._query_model_with_metrics(question.question)
 
-                total_latency += metrics["latency_ms"]
+                # Sumuj latencję tylko jeśli jest dostępna
+                if metrics["latency_ms"] is not None:
+                    total_latency += metrics["latency_ms"]
                 total_tokens += metrics.get("tokens_generated", 0)
                 total_duration += metrics["duration_ms"]
 
@@ -378,9 +389,12 @@ class BenchmarkService:
 
             # Oblicz średnie
             num_questions = len(questions)
-            result.latency_ms = round(total_latency / num_questions, 2)
+            result.latency_ms = (
+                round(total_latency / num_questions, 2) if total_latency > 0 else None
+            )
+            result.time_to_first_token_ms = result.latency_ms  # TTFT = średnia latencja
             result.total_duration_ms = round(total_duration, 2)
-            result.peak_vram_mb = round(peak_vram, 2)
+            result.peak_vram_mb = round(peak_vram, 2) if peak_vram > 0 else None
 
             # Oblicz tokens per second
             if total_duration > 0:
@@ -466,11 +480,13 @@ class BenchmarkService:
 
             async with httpx.AsyncClient(timeout=120.0) as client:
                 # Wysyłamy request do modelu
+                # UWAGA: Obecnie używamy SETTINGS.LLM_MODEL_NAME jako fallback
+                # Po zaimplementowaniu activate_model(), model_name będzie dynamiczny
                 async with client.stream(
                     "POST",
                     f"{endpoint}/chat/completions",
                     json={
-                        "model": SETTINGS.LLM_MODEL_NAME,
+                        "model": SETTINGS.LLM_MODEL_NAME,  # TODO: użyj model_name po pełnej implementacji activate_model
                         "messages": [{"role": "user", "content": question}],
                         "stream": True,
                         "max_tokens": 200,
@@ -479,16 +495,21 @@ class BenchmarkService:
                     response.raise_for_status()
 
                     tokens_generated = 0
+                    chunk_count = 0
                     async for line in response.aiter_lines():
                         if not line.strip() or not line.startswith("data: "):
                             continue
+
+                        chunk_count += 1
 
                         # Pierwszy token
                         if time_to_first_token is None:
                             time_to_first_token = (time.time() - start_time) * 1000
 
-                        # Zliczaj tokeny (uproszczone)
-                        tokens_generated += 1
+                        # Szacunkowe zliczanie tokenów z chunków streamu
+                        # Każdy chunk może zawierać ~1-3 tokeny w zależności od modelu
+                        # Używamy konserwatywnego przelicznika 1.5 tokena/chunk
+                        tokens_generated = int(chunk_count * 1.5)
 
             duration_ms = (time.time() - start_time) * 1000
 
@@ -503,7 +524,11 @@ class BenchmarkService:
             peak_vram = max(vram_samples) if vram_samples else None
 
             return {
-                "latency_ms": round(time_to_first_token or duration_ms, 2),
+                "latency_ms": (
+                    round(time_to_first_token, 2)
+                    if time_to_first_token is not None
+                    else None
+                ),
                 "duration_ms": round(duration_ms, 2),
                 "peak_vram_mb": peak_vram,
                 "tokens_generated": tokens_generated,

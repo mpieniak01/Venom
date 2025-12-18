@@ -280,17 +280,15 @@ export function ServicesPanel() {
                   <div className={`${getStatusColor(service.status)}`}>
                     {getServiceIcon(service.service_type)}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">{service.name}</h3>
-                    <span
-                      className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${getStatusBadge(
-                        service.status
-                      )}`}
-                    >
-                      {service.status}
-                    </span>
-                  </div>
+                  <h3 className="text-sm font-semibold text-white">{service.name}</h3>
                 </div>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${getStatusBadge(
+                    service.status
+                  )}`}
+                >
+                  {service.status}
+                </span>
               </div>
 
               {/* Info */}

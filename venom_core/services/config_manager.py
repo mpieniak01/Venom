@@ -424,13 +424,6 @@ class ConfigManager:
                 "message": "Nieprawidłowa nazwa pliku backupu",
             }
         
-        # Ensure the filename doesn't contain path separators
-        if '/' in backup_filename or '\\' in backup_filename or '..' in backup_filename:
-            return {
-                "success": False,
-                "message": "Nieprawidłowa nazwa pliku backupu",
-            }
-        
         backup_path = self.env_history_dir / backup_filename
 
         if not backup_path.exists():

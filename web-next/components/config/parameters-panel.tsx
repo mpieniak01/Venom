@@ -27,17 +27,36 @@ export function ParametersPanel() {
     setLoading(true);
     try {
       const response = await fetch("/api/v1/config/runtime");
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const errorMessage =
+          errorText || `Nie udało się pobrać konfiguracji (HTTP ${response.status})`;
+        console.error("Błąd pobierania konfiguracji (HTTP):", response.status, errorText);
+        setMessage({
+          type: "error",
+          text: errorMessage,
+        });
+        return;
+      }
+      
       const data = await response.json();
       if (data.status === "success") {
         setConfig(data.config);
         setOriginalConfig(data.config);
+      } else {
+        const errorMessage = data.message || "Nie udało się pobrać konfiguracji";
+        setMessage({
+          type: "error",
+          text: errorMessage,
+        });
       }
     } catch (error) {
       // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania konfiguracji:", error);
       setMessage({
         type: "error",
-        text: "Nie udało się pobrać konfiguracji",
+        text: "Wystąpił błąd podczas pobierania konfiguracji",
       });
     } finally {
       setLoading(false);

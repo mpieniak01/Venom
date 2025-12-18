@@ -211,8 +211,8 @@ class ConfigUpdateRequest(BaseModel):
                         f"{param} musi być wartością boolean (true/false)"
                     )
 
-        # Walidacja liczb całkowitych dodatnich
-        positive_int_params = [
+        # Walidacja liczb całkowitych nieujemnych
+        non_negative_int_params = [
             "REDIS_DB",
             "HIVE_TASK_TIMEOUT",
             "HIVE_MAX_RETRIES",
@@ -226,7 +226,7 @@ class ConfigUpdateRequest(BaseModel):
             "SHADOW_CHECK_INTERVAL",
             "SILENCE_DURATION",
         ]
-        for param in positive_int_params:
+        for param in non_negative_int_params:
             if param in v:
                 try:
                     val = int(v[param])

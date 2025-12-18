@@ -26,7 +26,10 @@ SHELL := /bin/bash
 
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
-.PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports
+.PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
+	api api-dev api-stop web web-dev web-stop \
+	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
+	monitor
 
 lint:
 	pre-commit run --all-files
@@ -178,4 +181,157 @@ clean-ports:
 				kill $$PIDS 2>/dev/null || true; \
 			fi; \
 		done; \
+	fi
+
+# =============================================================================
+# Profil lekki (Light Profile) - komponenty do uruchamiania osobno
+# =============================================================================
+
+# Backend API (tylko) - produkcyjny (bez autoreload)
+api:
+	@if [ ! -x "$(UVICORN)" ]; then \
+		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
+		exit 1; \
+	fi
+	@mkdir -p logs
+	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
+	@echo "▶️  Uruchamiam Venom API (produkcyjny, bez --reload) na $(HOST):$(PORT)"
+	: > $(BACKEND_LOG)
+	export SERVE_LEGACY_UI=$(SERVE_LEGACY_PROD); \
+	setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
+	echo $$! > $(PID_FILE)
+	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
+	@echo "📡 Backend: http://$(HOST):$(PORT)"
+
+# Backend API (tylko) - developerski (z autoreload)
+api-dev:
+	@if [ ! -x "$(UVICORN)" ]; then \
+		echo "❌ Nie znaleziono uvicorn w $(UVICORN). Czy środowisko .venv jest zainstalowane?"; \
+		exit 1; \
+	fi
+	@mkdir -p logs
+	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
+	@echo "▶️  Uruchamiam Venom API (developerski, z --reload) na $(HOST):$(PORT)"
+	: > $(BACKEND_LOG)
+	export SERVE_LEGACY_UI=$(SERVE_LEGACY_DEV); \
+	setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
+	echo $$! > $(PID_FILE)
+	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
+	@echo "📡 Backend: http://$(HOST):$(PORT)"
+	@echo "🔄 Autoreload: aktywny (zmiana plików → restart)"
+
+# Zatrzymaj tylko backend
+api-stop:
+	@trap '' TERM INT
+	@if [ -f $(PID_FILE) ]; then \
+		PID=$$(cat $(PID_FILE)); \
+		if kill -0 $$PID 2>/dev/null; then \
+			echo "⏹️  Zatrzymuję Venom API (PID $$PID)"; \
+			kill $$PID 2>/dev/null || true; \
+			for attempt in {1..20}; do \
+				if kill -0 $$PID 2>/dev/null; then \
+					sleep 0.2; \
+				else \
+					break; \
+				fi; \
+			done; \
+		else \
+			echo "⚠️  Proces ($$PID) już nie działa"; \
+		fi; \
+		rm -f $(PID_FILE); \
+	else \
+		echo "ℹ️  Venom API nie jest uruchomiony"; \
+	fi
+	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
+	@echo "✅ Venom API zatrzymany"
+
+# Frontend Web (tylko) - produkcyjny (build + start)
+web:
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "🛠  Buduję Next.js (npm run build)..."
+	$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1
+	@echo "▶️  Uruchamiam UI (Next.js start, port $(WEB_PORT))"
+	$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://127.0.0.1:$(WEB_PORT)"
+
+# Frontend Web (tylko) - developerski (next dev)
+web-dev:
+	@mkdir -p logs
+	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
+	: > $(WEB_LOG)
+	@echo "▶️  Uruchamiam UI (Next.js dev, port $(WEB_PORT))"
+	$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	echo $$! > $(WEB_PID_FILE)
+	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
+	@echo "🎨 Dashboard: http://127.0.0.1:$(WEB_PORT)"
+	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
+
+# Zatrzymaj tylko frontend
+web-stop:
+	@trap '' TERM INT
+	@if [ -f $(WEB_PID_FILE) ]; then \
+		WPID=$$(cat $(WEB_PID_FILE)); \
+		if kill -0 $$WPID 2>/dev/null; then \
+			echo "⏹️  Zatrzymuję UI (PID $$WPID)"; \
+			kill $$WPID 2>/dev/null || true; \
+			for attempt in {1..20}; do \
+				if kill -0 $$WPID 2>/dev/null; then \
+					sleep 0.2; \
+				else \
+					break; \
+				fi; \
+			done; \
+		else \
+			echo "⚠️  Proces UI ($$WPID) już nie działa"; \
+		fi; \
+		rm -f $(WEB_PID_FILE); \
+	else \
+		echo "ℹ️  UI (Next.js) nie jest uruchomione"; \
+	fi
+	@pkill -f "next dev" 2>/dev/null || true
+	@pkill -f "next start" 2>/dev/null || true
+	@echo "✅ UI (Next.js) zatrzymany"
+
+# =============================================================================
+# Kontrola LLM Runtime (vLLM, Ollama)
+# =============================================================================
+
+vllm-start:
+	@echo "🚀 Uruchamiam vLLM..."
+	@bash scripts/llm/vllm_service.sh start
+
+vllm-stop:
+	@echo "⏹️  Zatrzymuję vLLM..."
+	@bash scripts/llm/vllm_service.sh stop
+
+vllm-restart:
+	@echo "🔄 Restartuję vLLM..."
+	@bash scripts/llm/vllm_service.sh restart
+
+ollama-start:
+	@echo "🚀 Uruchamiam Ollama..."
+	@bash scripts/llm/ollama_service.sh start
+
+ollama-stop:
+	@echo "⏹️  Zatrzymuję Ollama..."
+	@bash scripts/llm/ollama_service.sh stop
+
+ollama-restart:
+	@echo "🔄 Restartuję Ollama..."
+	@bash scripts/llm/ollama_service.sh restart
+
+# =============================================================================
+# Monitoring zasobów
+# =============================================================================
+
+monitor:
+	@if [ -f scripts/diagnostics/system_snapshot.sh ]; then \
+		bash scripts/diagnostics/system_snapshot.sh; \
+	else \
+		echo "❌ Skrypt scripts/diagnostics/system_snapshot.sh nie istnieje"; \
+		exit 1; \
 	fi

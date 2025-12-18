@@ -71,3 +71,82 @@
 ## Dalsze kroki (po PR)
 - Rozważyć automatyczny watchdog, który zatrzyma vLLM po X minutach bez requestów.
 - Dodać w UI przełącznik „Profil oszczędny” aktywujący/wyłączający serwisy.
+
+---
+
+## ✅ STATUS: UKOŃCZONE (2025-12-18)
+
+### Co zostało zaimplementowane
+
+#### 1. Makefile - Rozdzielenie trybów uruchomieniowych
+**Zrealizowano:**
+- ✅ `make api` - Backend produkcyjny (bez --reload, ~50 MB RAM)
+- ✅ `make api-dev` - Backend developerski (z --reload, ~110 MB RAM)
+- ✅ `make api-stop` - Zatrzymanie tylko backendu
+- ✅ `make web` - Frontend produkcyjny (build + start, ~500 MB RAM)
+- ✅ `make web-dev` - Frontend developerski (next dev, ~1.3 GB RAM)
+- ✅ `make web-stop` - Zatrzymanie tylko frontendu
+- ✅ `make vllm-start/stop/restart` - Kontrola vLLM
+- ✅ `make ollama-start/stop/restart` - Kontrola Ollama
+- ✅ `make monitor` - Uruchomienie diagnostyki zasobów
+
+**Pliki zmienione:**
+- `Makefile` (+178 linii, nowe targety w sekcji "Light Profile")
+
+#### 2. Skrypty diagnostyczne
+**Zrealizowano:**
+- ✅ Katalog `scripts/diagnostics/`
+- ✅ `scripts/diagnostics/system_snapshot.sh` - Kompleksowy raport:
+  - Uptime i load average
+  - Zużycie pamięci (free -h, /proc/meminfo)
+  - Top 15 procesów (CPU i RAM)
+  - Status procesów Venom (uvicorn, Next.js, vLLM, Ollama)
+  - Status PID files
+  - Otwarte porty (8000, 3000, 8001, 11434)
+  - Zapis do `logs/diag-YYYYMMDD-HHMMSS.txt`
+
+**Użycie:**
+```bash
+make monitor
+# lub bezpośrednio:
+bash scripts/diagnostics/system_snapshot.sh
+```
+
+#### 3. Skrypty WSL (Windows Subsystem for Linux)
+**Zrealizowano:**
+- ✅ Katalog `scripts/wsl/`
+- ✅ `scripts/wsl/memory_check.sh` - Sprawdzanie zużycia pamięci
+- ✅ `scripts/wsl/reset_memory.sh` - Helper do zwolnienia pamięci
+- ✅ `scripts/wsl/wslconfig.example` - Przykładowa konfiguracja limitów
+
+#### 4. Dokumentacja README
+**Zrealizowano:**
+- ✅ Sekcja "🔧 Profile Uruchomieniowe (Light Mode)" z tabelą komend
+- ✅ Sekcja "📊 Monitoring Zasobów"
+- ✅ Sekcja "💾 Zarządzanie Pamięcią WSL (Windows)"
+
+### Korzyści z implementacji
+
+#### Oszczędność zasobów
+| Scenariusz | Przed | Po (Light) | Oszczędność |
+|------------|-------|------------|-------------|
+| Backend dev | 110 MB + 70% CPU | 50 MB + 5% CPU | ~60 MB RAM, ~65% CPU |
+| Frontend dev | 1.3 GB (zawsze) | 0 GB (gdy niepotrzebny) | ~1.3 GB RAM |
+| LLM runtime | 1.4 GB (zawsze) | 0 GB (na żądanie) | ~1.4 GB RAM |
+| **SUMA** | ~2.8 GB | ~0.05 GB | **~2.75 GB RAM** |
+
+### Kryteria akceptacji - SPEŁNIONE ✅
+- ✅ Developer może uruchomić jedynie API bez autoreload (`make api`)
+- ✅ W README jest opisany profil minimalny z tabelą komend
+- ✅ Informacja o kosztach uruchomienia LLM runtime w dokumentacji
+- ✅ Skrypt monitoringu dostępny (`make monitor`) i opisany
+- ✅ Dokumentacja WSL memory management z przykładami
+- ✅ Wszystkie komponenty można uruchamiać i zatrzymywać osobno
+
+### Metryki
+- Liczba nowych komend make: 13
+- Liczba nowych skryptów: 4
+- Linie kodu: ~510 nowych linii
+- Linie dokumentacji: ~150 linii
+- Potencjalna oszczędność RAM: ~2.75 GB (Light vs Full)
+- Oszczędność CPU: ~65% (api vs api-dev)

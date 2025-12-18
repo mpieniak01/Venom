@@ -194,4 +194,107 @@ export const pl = {
       cost: "Koszt",
     },
   },
+  config: {
+    title: "Konfiguracja",
+    description: "Zarządzanie usługami i parametrami systemu Venom",
+    tabs: {
+      services: "Usługi",
+      parameters: "Parametry",
+    },
+    services: {
+      title: "Zarządzanie usługami",
+      description: "Kontrola procesów i statusów usług systemowych",
+      profiles: {
+        title: "Profile szybkie",
+        full: "Full Stack",
+        light: "Light (bez LLM)",
+        llmOff: "LLM OFF",
+        description: "Profile szybko ustawiają zestaw usług",
+      },
+      status: {
+        running: "Działa",
+        stopped: "Zatrzymany",
+        unknown: "Nieznany",
+        error: "Błąd",
+      },
+      actions: {
+        start: "Start",
+        stop: "Stop",
+        restart: "Restart",
+      },
+      info: {
+        pid: "PID",
+        port: "Port",
+        cpu: "CPU",
+        ram: "RAM",
+        uptime: "Uptime",
+        lastLog: "Ostatni log",
+      },
+      history: {
+        title: "Historia akcji",
+        empty: "Brak historii",
+      },
+    },
+    parameters: {
+      title: "Parametry systemu",
+      description: "Edycja konfiguracji runtime Venom",
+      unsavedChanges: "Masz niezapisane zmiany ({{count}} parametrów)",
+      buttons: {
+        save: "Zapisz konfigurację",
+        saving: "Zapisywanie...",
+        reset: "Resetuj",
+      },
+      messages: {
+        saveSuccess: "Konfiguracja zapisana pomyślnie",
+        saveError: "Błąd zapisu konfiguracji",
+        noChanges: "Brak zmian do zapisania",
+      },
+      restartRequired: {
+        title: "Restart wymagany",
+        message: "Następujące usługi wymagają restartu: {{services}}",
+        hint: "Przejdź do zakładki 'Usługi' aby zrestartować odpowiednie komponenty.",
+      },
+      sections: {
+        aiMode: {
+          title: "Tryb AI",
+          description: "Konfiguracja modeli AI: lokalny, hybrydowy lub cloud",
+        },
+        commands: {
+          title: "Komendy serwera LLM",
+          description: "Komendy do uruchamiania/zatrzymywania serwerów Ollama i vLLM",
+        },
+        hive: {
+          title: "Hive - Przetwarzanie rozproszone",
+          description: "Konfiguracja architektury rozproszonej z Redis message broker",
+        },
+        nexus: {
+          title: "Nexus - Distributed Mesh",
+          description: "Master-Worker architecture dla zdalnych węzłów",
+        },
+        tasks: {
+          title: "Zadania w tle",
+          description: "Automatyczne zadania: dokumentacja, refaktoryzacja, konsolidacja pamięci",
+        },
+        shadow: {
+          title: "Shadow - Desktop Awareness",
+          description: "Agent świadomości desktopowej i proaktywnego działania",
+        },
+        ghost: {
+          title: "Ghost - Visual GUI Automation",
+          description: "Agent automatyzacji GUI (RPA)",
+        },
+        avatar: {
+          title: "Avatar - Audio Interface",
+          description: "Interfejs audio: rozpoznawanie mowy i synteza głosu",
+        },
+      },
+      runtimeInfo: {
+        title: "Runtime LLM: Ollama vs vLLM",
+        ollama: "Ollama (Light): Priorytet na najkrótszy czas pytanie→odpowiedź, niski footprint (single user). Idealny do codziennej pracy.",
+        vllm: "vLLM (Full): Pipeline benchmarkowy, dłuższy start, rezerwuje cały VRAM, ale pozwala na testy wydajności i większą przepustowość.",
+        hint: "💡 Domyślnie uruchamiamy tylko jeden runtime naraz. Druga opcja ma sens jedynie, gdy rozdzielamy role (np. UI vs. kodowanie).",
+        benchmark: "przejdź do benchmarków",
+      },
+    },
+  },
 };

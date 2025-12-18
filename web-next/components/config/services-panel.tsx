@@ -37,7 +37,7 @@ export function ServicesPanel() {
   const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/runtime/status");
-      
+
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
@@ -46,7 +46,7 @@ export function ServicesPanel() {
         setMessage({ type: "error", text: errorMessage });
         return;
       }
-      
+
       const data = await response.json();
       if (data.status === "success") {
         setServices(data.services);
@@ -67,7 +67,7 @@ export function ServicesPanel() {
   const fetchHistory = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/runtime/history?limit=10");
-      
+
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
@@ -76,7 +76,7 @@ export function ServicesPanel() {
         setMessage({ type: "error", text: errorMessage });
         return;
       }
-      
+
       const data = await response.json();
       if (data.status === "success") {
         setHistory(data.history);
@@ -264,7 +264,7 @@ export function ServicesPanel() {
       </div>
 
       {/* Services Grid */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {services.map((service) => {
           const isRunning = service.status === "running";
           const actionKey = `${service.service_type}`;
@@ -272,18 +272,18 @@ export function ServicesPanel() {
           return (
             <div
               key={service.service_type}
-              className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6"
+              className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-4"
             >
               {/* Header */}
-              <div className="mb-4 flex items-start justify-between">
+              <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className={`${getStatusColor(service.status)}`}>
                     {getServiceIcon(service.service_type)}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">{service.name}</h3>
+                    <h3 className="text-sm font-semibold text-white">{service.name}</h3>
                     <span
-                      className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs font-medium uppercase ${getStatusBadge(
+                      className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${getStatusBadge(
                         service.status
                       )}`}
                     >
@@ -294,47 +294,43 @@ export function ServicesPanel() {
               </div>
 
               {/* Info */}
-              <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
+              <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <p className="text-zinc-500">PID</p>
-                  <p className="font-mono text-white">{service.pid || "—"}</p>
+                  <p className="font-mono text-[11px] text-white">{service.pid || "—"}</p>
                 </div>
-                <div>
-                  <p className="text-zinc-500">Port</p>
-                  <p className="font-mono text-white">{service.port || "—"}</p>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-zinc-500">Port</p>
+                    <p className="font-mono text-[11px] text-white">{service.port || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500">RAM</p>
+                    <p className="font-mono text-[11px] text-white">
+                      {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-zinc-500">CPU</p>
-                  <p className="font-mono text-white">
-                    {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-zinc-500">RAM</p>
-                  <p className="font-mono text-white">
-                    {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-zinc-500">Uptime</p>
-                  <p className="font-mono text-white">{formatUptime(service.uptime_seconds)}</p>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-zinc-500">Uptime</p>
+                    <p className="font-mono text-[11px] text-white">
+                      {formatUptime(service.uptime_seconds)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500">CPU</p>
+                    <p className="font-mono text-[11px] text-white">
+                      {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Last Log */}
-              {service.last_log && (
-                <div className="mb-4 rounded-lg bg-black/40 p-3">
-                  <p className="text-xs text-zinc-500">Ostatni log:</p>
-                  <p className="mt-1 truncate font-mono text-xs text-zinc-400">
-                    {service.last_log}
-                  </p>
-                </div>
-              )}
-
               {/* Error */}
               {service.error_message && (
-                <div className="mb-4 rounded-lg bg-red-500/10 p-3">
-                  <p className="text-xs text-red-400">{service.error_message}</p>
+                <div className="mb-3 rounded-lg bg-red-500/10 p-2">
+                  <p className="text-[11px] text-red-400">{service.error_message}</p>
                 </div>
               )}
 
@@ -347,7 +343,7 @@ export function ServicesPanel() {
                   }
                   variant="secondary"
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
                 >
                   <Play className="mr-1 h-3 w-3" />
                   Start
@@ -359,7 +355,7 @@ export function ServicesPanel() {
                   }
                   variant="secondary"
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
                 >
                   <Square className="mr-1 h-3 w-3" />
                   Stop
@@ -369,7 +365,7 @@ export function ServicesPanel() {
                   disabled={actionInProgress === `${actionKey}-restart` || loading}
                   variant="secondary"
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
                 >
                   <RotateCw className="mr-1 h-3 w-3" />
                   Restart

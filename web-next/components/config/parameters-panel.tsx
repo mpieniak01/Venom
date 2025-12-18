@@ -1,11 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Save, Eye, EyeOff, AlertTriangle, Info } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Config {
   [key: string]: string;
+}
+
+function ConfigSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+
+  return (
+    <div className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-start justify-between gap-4 text-left"
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <p className="mt-1 text-sm text-zinc-400">{description}</p>
+        </div>
+        <ChevronDown
+          className={`mt-1 h-5 w-5 text-zinc-500 transition-transform duration-300 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      <div
+        id={contentId}
+        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
+          open ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1"
+        }`}
+      >
+        <div className="pt-4 space-y-4">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export function ParametersPanel() {
@@ -27,7 +70,7 @@ export function ParametersPanel() {
     setLoading(true);
     try {
       const response = await fetch("/api/v1/config/runtime");
-      
+
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
@@ -39,7 +82,7 @@ export function ParametersPanel() {
         });
         return;
       }
-      
+
       const data = await response.json();
       if (data.status === "success") {
         setConfig(data.config);
@@ -166,13 +209,9 @@ export function ParametersPanel() {
     if (sectionKeys.length === 0) return null;
 
     return (
-      <div className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6">
-        <h3 className="mb-2 text-lg font-semibold text-white">{title}</h3>
-        <p className="mb-4 text-sm text-zinc-400">{description}</p>
-        <div className="space-y-4">
-          {sectionKeys.map((key) => renderInput(key, config[key] || ""))}
-        </div>
-      </div>
+      <ConfigSection title={title} description={description}>
+        {sectionKeys.map((key) => renderInput(key, config[key] || ""))}
+      </ConfigSection>
     );
   };
 

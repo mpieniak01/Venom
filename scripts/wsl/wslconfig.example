@@ -1,0 +1,78 @@
+# Przykładowy plik .wslconfig dla ograniczenia zużycia zasobów WSL
+# Umieść ten plik w: %USERPROFILE%\.wslconfig (Windows)
+# Np. C:\Users\TwojaNazwa\.wslconfig
+#
+# Po zapisaniu zmian wykonaj: wsl --shutdown (w PowerShell/CMD)
+# Następnie ponownie uruchom WSL
+
+[wsl2]
+# Limit pamięci dla WSL (np. 12GB, 16GB)
+# Domyślnie WSL może użyć do 50% RAM hosta lub 8GB (cokolwiek mniejsze)
+memory=12GB
+
+# Liczba procesorów logicznych
+# Domyślnie WSL używa wszystkich dostępnych CPU
+processors=4
+
+# Limit swap (wymiana na dysku)
+# Domyślnie 25% pamięci fizycznej
+swap=8GB
+
+# Lokalizacja pliku swap (opcjonalnie)
+# swapfile=C:\\temp\\wsl-swap.vhdx
+
+# Lokalizacja pamięci page file (opcjonalnie, dla Windows 11)
+# pageReporting=true
+
+# Ile pamięci WSL może zaalokować przed wymuszeniem garbage collection
+# Wartości: gradual (domyślnie), conservative, aggressive
+# autoMemoryReclaim=gradual
+
+# Czy WSL ma zwolnić całą cache po zamknięciu wszystkich procesów (Experimental)
+# sparseVhd=true
+
+# ==============================================================================
+# PRZYKŁADOWE KONFIGURACJE
+# ==============================================================================
+
+# --- PC z 16 GB RAM (scenariusz oszczędny) ---
+# memory=8GB
+# processors=4
+# swap=4GB
+
+# --- PC z 32 GB RAM (scenariusz zbalansowany) ---
+# memory=12GB
+# processors=6
+# swap=8GB
+
+# --- Workstation z 64 GB RAM (scenariusz performance) ---
+# memory=32GB
+# processors=12
+# swap=16GB
+
+# ==============================================================================
+# DODATKOWE OPCJE (Windows 11 22H2+)
+# ==============================================================================
+
+# Sieciowe połączenie mirrored (Windows 11 23H2+)
+# networkingMode=mirrored
+
+# Automatyczne proxy dla DNS
+# dnsTunneling=true
+
+# Automatyczne zwolnienie pamięci po bezczynności
+# autoMemoryReclaim=gradual  # opcje: disabled, dropcache, gradual
+
+# ==============================================================================
+# MONITOROWANIE
+# ==============================================================================
+# Aby sprawdzić aktywne zużycie WSL w Windows:
+# 1. Otwórz Task Manager (Ctrl+Shift+Esc)
+# 2. Zakładka "Details" lub "Processes"
+# 3. Znajdź proces "vmmem" - to jest pamięć używana przez WSL
+#
+# Aby sprawdzić limity w WSL:
+#   grep -E "MemTotal|SwapTotal" /proc/meminfo
+#
+# Aby wymusić zwolnienie cache w WSL:
+#   sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'

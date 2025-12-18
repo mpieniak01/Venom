@@ -592,3 +592,247 @@ async def get_all_autonomy_levels():
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy poziomów")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ========================================
+# Runtime Controller Endpoints
+# ========================================
+
+
+@router.get("/runtime/status")
+async def get_runtime_status():
+    """
+    Zwraca status wszystkich usług Venom (backend, UI, LLM, Hive, Nexus, background tasks).
+
+    Returns:
+        Lista usług z ich statusem, PID, portem, CPU/RAM
+    """
+    try:
+        from venom_core.services.runtime_controller import runtime_controller
+
+        services = runtime_controller.get_all_services_status()
+
+        services_data = [
+            {
+                "name": s.name,
+                "service_type": s.service_type.value,
+                "status": s.status.value,
+                "pid": s.pid,
+                "port": s.port,
+                "cpu_percent": s.cpu_percent,
+                "memory_mb": s.memory_mb,
+                "uptime_seconds": s.uptime_seconds,
+                "last_log": s.last_log,
+                "error_message": s.error_message,
+            }
+            for s in services
+        ]
+
+        return {"status": "success", "services": services_data, "count": len(services_data)}
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu runtime")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.post("/runtime/{service}/{action}")
+async def runtime_service_action(service: str, action: str):
+    """
+    Wykonuje akcję (start/stop/restart) na wskazanej usłudze.
+
+    Args:
+        service: Nazwa usługi (backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks)
+        action: Akcja (start, stop, restart)
+
+    Returns:
+        Rezultat akcji
+    """
+    try:
+        from venom_core.services.runtime_controller import runtime_controller, ServiceType
+
+        # Walidacja service
+        try:
+            service_type = ServiceType(service)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nieznana usługa: {service}. Dostępne: backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks",
+            )
+
+        # Walidacja action
+        if action not in ["start", "stop", "restart"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Nieznana akcja: {action}. Dostępne: start, stop, restart",
+            )
+
+        # Wykonaj akcję
+        if action == "start":
+            result = runtime_controller.start_service(service_type)
+        elif action == "stop":
+            result = runtime_controller.stop_service(service_type)
+        elif action == "restart":
+            result = runtime_controller.restart_service(service_type)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas wykonywania akcji {action} na {service}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get("/runtime/history")
+async def get_runtime_history(limit: int = 50):
+    """
+    Zwraca historię akcji runtime (start/stop/restart).
+
+    Args:
+        limit: Maksymalna liczba wpisów (domyślnie 50)
+
+    Returns:
+        Lista akcji z historii
+    """
+    try:
+        from venom_core.services.runtime_controller import runtime_controller
+
+        history = runtime_controller.get_history(limit=limit)
+
+        return {"status": "success", "history": history, "count": len(history)}
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania historii runtime")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.post("/runtime/profile/{profile_name}")
+async def apply_runtime_profile(profile_name: str):
+    """
+    Aplikuje profil konfiguracji (full, light, llm_off).
+
+    Args:
+        profile_name: Nazwa profilu (full, light, llm_off)
+
+    Returns:
+        Rezultat aplikacji profilu
+    """
+    try:
+        from venom_core.services.runtime_controller import runtime_controller
+
+        result = runtime_controller.apply_profile(profile_name)
+
+        return result
+
+    except Exception as e:
+        logger.exception(f"Błąd podczas aplikowania profilu {profile_name}")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ========================================
+# Configuration Manager Endpoints
+# ========================================
+
+
+@router.get("/config/runtime")
+async def get_runtime_config(mask_secrets: bool = True):
+    """
+    Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
+
+    Args:
+        mask_secrets: Czy maskować sekrety (domyślnie True)
+
+    Returns:
+        Słownik z parametrami konfiguracji
+    """
+    try:
+        from venom_core.services.config_manager import config_manager
+
+        config = config_manager.get_config(mask_secrets=mask_secrets)
+
+        return {"status": "success", "config": config}
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania konfiguracji")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request do aktualizacji konfiguracji."""
+
+    updates: dict
+
+
+@router.post("/config/runtime")
+async def update_runtime_config(request: ConfigUpdateRequest):
+    """
+    Aktualizuje konfigurację runtime (zapis do .env z backupem).
+
+    Args:
+        request: Słownik zmian (klucz->wartość)
+
+    Returns:
+        Rezultat aktualizacji + lista usług wymagających restartu
+    """
+    try:
+        from venom_core.services.config_manager import config_manager
+
+        result = config_manager.update_config(request.updates)
+
+        return result
+
+    except Exception as e:
+        logger.exception("Błąd podczas aktualizacji konfiguracji")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get("/config/backups")
+async def get_config_backups(limit: int = 20):
+    """
+    Zwraca listę backupów .env.
+
+    Args:
+        limit: Maksymalna liczba backupów (domyślnie 20)
+
+    Returns:
+        Lista backupów
+    """
+    try:
+        from venom_core.services.config_manager import config_manager
+
+        backups = config_manager.get_backup_list(limit=limit)
+
+        return {"status": "success", "backups": backups, "count": len(backups)}
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania listy backupów")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+class RestoreBackupRequest(BaseModel):
+    """Request do przywrócenia backupu."""
+
+    backup_filename: str
+
+
+@router.post("/config/restore")
+async def restore_config_backup(request: RestoreBackupRequest):
+    """
+    Przywraca .env z backupu.
+
+    Args:
+        request: Nazwa pliku backupu
+
+    Returns:
+        Rezultat przywrócenia
+    """
+    try:
+        from venom_core.services.config_manager import config_manager
+
+        result = config_manager.restore_backup(request.backup_filename)
+
+        return result
+
+    except Exception as e:
+        logger.exception("Błąd podczas przywracania backupu")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

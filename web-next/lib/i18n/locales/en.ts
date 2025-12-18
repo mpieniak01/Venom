@@ -29,6 +29,7 @@ export const en = {
       inspector: "Inspector",
       strategy: "Strategy",
       benchmark: "Benchmark",
+      config: "Configuration",
     },
     cost: {
       title: "Cost mode",

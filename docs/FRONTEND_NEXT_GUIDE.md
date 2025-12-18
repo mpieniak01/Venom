@@ -17,7 +17,8 @@ web-next/
 │   ├── page.tsx            # Cockpit
 │   ├── brain/page.tsx      # Widok Brain
 │   ├── inspector/page.tsx  # Flow Inspector
-│   └── strategy/page.tsx   # Strategy / KPI
+│   ├── strategy/page.tsx   # Strategy / KPI
+│   └── config/page.tsx     # Configuration Panel (Zadanie 060)
 ├── components/             # Wspólne komponenty (layout, UI, overlaye)
 ├── hooks/                  # Hooki danych (`use-api.ts`, `use-telemetry.ts`)
 ├── lib/                    # Narzędzia (i18n, formatery, API client)
@@ -68,8 +69,82 @@ web-next/
 | **Strategy** – KPI / Vision      | `useRoadmap` (`/api/v1/roadmap`), `requestRoadmapStatus`, `createRoadmap`, `startCampaign`                      | Wszystkie akcje owinięte w `useToast`; w razie 4xx/5xx panel wyświetla `OverlayFallback`.                   |
 | **Strategy** – Milestones/Tasks  | `RoadmapKpiCard`, `TaskStatusBreakdown` (wykorzystuje `/api/v1/roadmap` oraz `/api/v1/tasks` dla statusów)      | Brak zadań → komunikat „Brak zdefiniowanych milestone’ów” (EmptyState).                                     |
 | **Strategy** – Kampanie          | `handleStartCampaign` pyta `window.confirm` (jak legacy), po czym wysyła `/api/campaign/start`.                 | W razie braku API informuje użytkownika toastem i nie zmienia lokalnego stanu.                              |
+| **Config** – Usługi              | `/api/v1/runtime/status`, `/api/v1/runtime/{service}/{action}`, `/api/v1/runtime/profile/{profile}`             | Wyświetla live status usług (backend, UI, LLM, Hive, Nexus) z metrykami CPU/RAM. Akcje start/stop/restart.    |
+| **Config** – Parametry           | `/api/v1/config/runtime` (GET/POST), `/api/v1/config/backups`, `/api/v1/config/restore`                         | Edycja whitelisty parametrów z `.env`, maskowanie sekretów, backup do `config/env-history/`, restart warnings. |
 
 > **Notatka:** wszystkie hooki korzystają z `lib/api-client.ts`, który automatycznie pobiera bazowy URL z `NEXT_PUBLIC_API_BASE` lub rewritów Next. Dzięki temu UI działa zarówno na HTTP jak i HTTPS bez ręcznej konfiguracji.
+
+---
+
+## 1.1 Configuration Panel – Zarządzanie stosem (Zadanie 060)
+
+### Cel
+Panel konfiguracji (`/config`) pozwala zarządzać usługami Venom (backend, UI, LLM, moduły rozproszone) oraz edytować kluczowe parametry z poziomu UI, bez ręcznej edycji `.env`.
+
+### Funkcjonalność
+
+#### Panel "Usługi"
+- **Kafelki statusów**: Każda usługa (backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks) pokazuje:
+  - Status (running/stopped/error)
+  - PID i port
+  - CPU i RAM
+  - Uptime
+  - Ostatni log
+- **Akcje**: Przyciski start/stop/restart dla każdej usługi
+- **Profile szybkie**:
+  - **Full Stack**: Uruchamia wszystkie usługi
+  - **Light**: Tylko backend i UI (bez LLM)
+  - **LLM OFF**: Backend i UI, wyłącza modele językowe
+- **Historia akcji**: Lista ostatnich 10 akcji z timestampem
+
+#### Panel "Parametry"
+- **Sekcje konfiguracji**:
+  - Tryb AI (AI_MODE, LLM_SERVICE_TYPE, endpointy modeli, klucze API)
+  - Komendy serwera LLM (VLLM_START_COMMAND, OLLAMA_START_COMMAND)
+  - Hive – przetwarzanie rozproszone (ENABLE_HIVE, Redis config)
+  - Nexus – distributed mesh (ENABLE_NEXUS, port, token)
+  - Zadania w tle (auto-dokumentacja, gardening, konsolidacja pamięci)
+  - Shadow Agent (desktop awareness)
+  - Ghost Agent (GUI automation)
+  - Avatar (audio interface)
+- **Maskowanie sekretów**: API keys i tokeny są domyślnie maskowane, przycisk "pokaż" odkrywa wartość
+- **Walidacja**: Frontend sprawdza obecność wartości, backend waliduje whitelistę
+- **Backup**: Każdy zapis tworzy backup `.env` w `config/env-history/.env-YYYYMMDD-HHMMSS`
+- **Restart warnings**: Po zapisie UI informuje, które komponenty wymagają restartu
+
+#### Info Box: Ollama vs vLLM
+Panel zawiera sekcję informacyjną wyjaśniającą różnice między runtime'ami LLM:
+- **Ollama (Light)**: Szybki start, niski footprint, single user
+- **vLLM (Full)**: Dłuższy start, większy VRAM, benchmarki i testy wydajności
+- Link do `/benchmark` z sugestią porównania modeli
+
+### Backend API
+
+#### Runtime Controller
+```
+GET  /api/v1/runtime/status            # Lista usług z statusem, PID, CPU/RAM
+POST /api/v1/runtime/{service}/{action} # start/stop/restart (service: backend, ui, llm_ollama, etc.)
+GET  /api/v1/runtime/history           # Historia akcji (limit 50)
+POST /api/v1/runtime/profile/{name}    # Aplikuj profil (full, light, llm_off)
+```
+
+#### Config Manager
+```
+GET  /api/v1/config/runtime            # Pobierz whitelistę parametrów (mask_secrets=true)
+POST /api/v1/config/runtime            # Zapisz zmiany (updates: {key: value})
+GET  /api/v1/config/backups            # Lista backupów .env
+POST /api/v1/config/restore            # Przywróć backup (backup_filename)
+```
+
+### Bezpieczeństwo
+- **Whitelist parametrów**: Tylko wybrane parametry (55 kluczy) są edytowalne przez UI
+- **Maskowanie sekretów**: Pola zawierające "KEY", "TOKEN", "PASSWORD" są maskowane
+- **Backup automatyczny**: Każda zmiana `.env` tworzy kopię zapasową
+- **Restart notification**: UI informuje które usługi wymagają restartu po zmianie konfiguracji
+
+### Testy
+- Backend: `tests/test_runtime_controller_api.py`, `tests/test_config_manager_api.py`
+- Frontend: TODO – Playwright scenarios dla nawigacji, start/stop, edycji parametrów
 
 ---
 

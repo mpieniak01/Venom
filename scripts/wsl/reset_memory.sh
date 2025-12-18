@@ -25,7 +25,7 @@ echo "Procesy Venom:"
 ps aux | grep -E "(uvicorn|venom_core|next|vllm|ollama)" | grep -v grep || echo "Brak aktywnych procesów Venom"
 echo ""
 
-read -p "Czy chcesz zatrzymać wszystkie procesy Venom przed shutdown? (t/n): " -n 1 -r
+read -p "Czy chcesz zatrzymać wszystkie procesy Venom przed shutdown? (t=tak, n=nie): " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[TtYy]$ ]]; then
     echo "🛑 Zatrzymuję procesy Venom..."
@@ -53,7 +53,7 @@ echo "💡 Po wykonaniu tej komendy WSL zostanie zamknięty."
 echo "   Aby kontynuować pracę, ponownie uruchom terminal WSL."
 echo ""
 
-read -p "Kontynuować? (t/n): " -n 1 -r
+read -p "Kontynuować? (t=tak, n=nie): " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[TtYy]$ ]]; then
     # Wywołaj wsl.exe --shutdown z Windows

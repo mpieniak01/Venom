@@ -283,6 +283,51 @@ ENABLE_ISSUE_POLLING=false          # Włącz auto-polling Issues
 📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
 📖 **Dokumentacja Hybrid AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
 
+### Panel Konfiguracji (Configuration UI)
+
+Venom 2.0 wprowadza **graficzny panel konfiguracji** dostępny w interfejsie webowym pod adresem `http://localhost:3000/config`. Panel umożliwia:
+
+#### Zarządzanie Usługami
+- **Monitoring statusów** - Backend, UI, LLM (Ollama/vLLM), Hive, Nexus, Background Tasks
+- **Kontrola procesów** - Start/Stop/Restart z UI bez konieczności korzystania z terminala
+- **Metryki w czasie rzeczywistym** - PID, port, CPU%, RAM, uptime, ostatnie logi
+- **Profile szybkie**:
+  - `Full Stack` - Wszystkie usługi aktywne
+  - `Light` - Tylko Backend i UI (oszczędność zasobów)
+  - `LLM OFF` - Wszystko oprócz modeli językowych
+
+#### Edycja Parametrów
+Panel umożliwia edycję kluczowych parametrów runtime z poziomu UI, z automatyczną:
+- **Walidacją zakresów** - Porty (1-65535), progi pewności (0.0-1.0), wartości boolean
+- **Maskowaniem sekretów** - API keys, tokeny, hasła są domyślnie ukryte
+- **Backupem konfiguracji** - Automatyczny backup `.env` do `config/env-history/` przed każdą zmianą
+- **Informacją o restartach** - System wskazuje które usługi wymagają restartu po zmianie
+
+#### Dostępne sekcje parametrów:
+1. **AI Mode** - Tryb AI, endpoint LLM, klucze API, routing modeli
+2. **Commands** - Komendy start/stop dla Ollama i vLLM
+3. **Hive** - Konfiguracja Redis, kolejki, timeouty
+4. **Nexus** - Distributed mesh, port, tokeny, heartbeat
+5. **Tasks** - Zadania w tle (dokumentacja, gardening, memory consolidation)
+6. **Shadow** - Desktop awareness, progi pewności, privacy filter
+7. **Ghost** - Visual GUI automation, verification, safety delays
+8. **Avatar** - Audio interface, Whisper, TTS, VAD
+
+#### Bezpieczeństwo
+- **Whitelist parametrów** - Tylko zdefiniowane parametry można edytować przez UI
+- **Walidacja typów i zakresów** - Sprawdzanie poprawności wartości przed zapisem
+- **Sprawdzanie zależności** - System nie pozwoli uruchomić usługi bez spełnienia wymagań (np. Nexus wymaga działającego backendu)
+- **Historia zmian** - Każda modyfikacja `.env` jest zapisywana z timestampem (zachowywanych ostatnie 50 backupów)
+
+#### Przywracanie konfiguracji
+Panel oferuje funkcję przywracania `.env` z wcześniejszych backupów:
+```bash
+# Backupy znajdują się w:
+config/env-history/.env-YYYYMMDD-HHMMSS
+```
+
+> 💡 **Tip**: Profile szybkie są idealne do przełączania między trybami pracy. Użyj `Light` podczas developmentu na laptopie, a `Full Stack` na stacji roboczej z GPU.
+
 ### Uruchomienie
 
 ```bash

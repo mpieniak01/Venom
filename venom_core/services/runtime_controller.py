@@ -281,6 +281,45 @@ class RuntimeController:
             self.get_service_status(service_type) for service_type in ServiceType
         ]
 
+    def _check_service_dependencies(self, service_type: ServiceType) -> Optional[str]:
+        """
+        Sprawdza czy zależności usługi są spełnione.
+
+        Args:
+            service_type: Typ usługi do sprawdzenia
+
+        Returns:
+            None jeśli wszystko OK, komunikat błędu jeśli brak zależności
+        """
+        # Hive wymaga Redis (sprawdzane przez konfigurację)
+        if service_type == ServiceType.HIVE:
+            if not SETTINGS.ENABLE_HIVE:
+                return "Hive jest wyłączone w konfiguracji (ENABLE_HIVE=false)"
+
+        # Nexus wymaga backendu
+        if service_type == ServiceType.NEXUS:
+            if not SETTINGS.ENABLE_NEXUS:
+                return "Nexus jest wyłączone w konfiguracji (ENABLE_NEXUS=false)"
+            backend_status = self.get_service_status(ServiceType.BACKEND)
+            if backend_status.status != ServiceStatus.RUNNING:
+                return "Nexus wymaga działającego backendu. Uruchom najpierw backend."
+
+        # Background tasks wymagają backendu
+        if service_type == ServiceType.BACKGROUND_TASKS:
+            backend_status = self.get_service_status(ServiceType.BACKEND)
+            if backend_status.status != ServiceStatus.RUNNING:
+                return "Background tasks wymagają działającego backendu. Uruchom najpierw backend."
+
+        # UI wymaga backendu w większości przypadków
+        if service_type == ServiceType.UI:
+            backend_status = self.get_service_status(ServiceType.BACKEND)
+            if backend_status.status != ServiceStatus.RUNNING:
+                logger.warning(
+                    "UI uruchamiany bez backendu - ograniczona funkcjonalność"
+                )
+
+        return None
+
     def start_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Uruchamia usługę."""
         service_name = service_type.value
@@ -292,6 +331,13 @@ class RuntimeController:
             message = f"Usługa {service_name} już działa (PID {current_status.pid})"
             self._add_to_history(service_name, "start", False, message)
             return {"success": False, "message": message}
+
+        # Sprawdź zależności
+        dependency_error = self._check_service_dependencies(service_type)
+        if dependency_error:
+            logger.warning(f"Zależności niespełnione dla {service_name}: {dependency_error}")
+            self._add_to_history(service_name, "start", False, dependency_error)
+            return {"success": False, "message": dependency_error}
 
         try:
             if service_type == ServiceType.BACKEND:

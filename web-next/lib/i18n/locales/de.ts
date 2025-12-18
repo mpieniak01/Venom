@@ -194,4 +194,107 @@ export const de = {
       cost: "Sitzungskosten",
     },
   },
+  config: {
+    title: "Konfiguration",
+    description: "Venom-Systemdienste und Parameter verwalten",
+    tabs: {
+      services: "Dienste",
+      parameters: "Parameter",
+    },
+    services: {
+      title: "Dienstverwaltung",
+      description: "Systemprozesse und Dienststatus steuern",
+      profiles: {
+        title: "Schnellprofile",
+        full: "Full Stack",
+        light: "Light (ohne LLM)",
+        llmOff: "LLM AUS",
+        description: "Profile konfigurieren schnell Dienstsätze",
+      },
+      status: {
+        running: "Läuft",
+        stopped: "Gestoppt",
+        unknown: "Unbekannt",
+        error: "Fehler",
+      },
+      actions: {
+        start: "Start",
+        stop: "Stopp",
+        restart: "Neustart",
+      },
+      info: {
+        pid: "PID",
+        port: "Port",
+        cpu: "CPU",
+        ram: "RAM",
+        uptime: "Laufzeit",
+        lastLog: "Letztes Log",
+      },
+      history: {
+        title: "Aktionsverlauf",
+        empty: "Kein Verlauf",
+      },
+    },
+    parameters: {
+      title: "Systemparameter",
+      description: "Venom Runtime-Konfiguration bearbeiten",
+      unsavedChanges: "Sie haben ungespeicherte Änderungen ({{count}} Parameter)",
+      buttons: {
+        save: "Konfiguration speichern",
+        saving: "Speichern...",
+        reset: "Zurücksetzen",
+      },
+      messages: {
+        saveSuccess: "Konfiguration erfolgreich gespeichert",
+        saveError: "Fehler beim Speichern der Konfiguration",
+        noChanges: "Keine Änderungen zum Speichern",
+      },
+      restartRequired: {
+        title: "Neustart erforderlich",
+        message: "Folgende Dienste erfordern einen Neustart: {{services}}",
+        hint: "Gehen Sie zur Registerkarte 'Dienste', um die entsprechenden Komponenten neu zu starten.",
+      },
+      sections: {
+        aiMode: {
+          title: "KI-Modus",
+          description: "KI-Modellkonfiguration: lokal, hybrid oder Cloud",
+        },
+        commands: {
+          title: "LLM-Serverbefehle",
+          description: "Befehle zum Starten/Stoppen von Ollama- und vLLM-Servern",
+        },
+        hive: {
+          title: "Hive - Verteilte Verarbeitung",
+          description: "Verteilte Architekturkonfiguration mit Redis Message Broker",
+        },
+        nexus: {
+          title: "Nexus - Verteiltes Mesh",
+          description: "Master-Worker-Architektur für entfernte Knoten",
+        },
+        tasks: {
+          title: "Hintergrundaufgaben",
+          description: "Automatische Aufgaben: Dokumentation, Refactoring, Speicherkonsolidierung",
+        },
+        shadow: {
+          title: "Shadow - Desktop-Bewusstsein",
+          description: "Desktop-Awareness- und proaktiver Aktionsagent",
+        },
+        ghost: {
+          title: "Ghost - Visuelle GUI-Automatisierung",
+          description: "GUI-Automatisierungsagent (RPA)",
+        },
+        avatar: {
+          title: "Avatar - Audio-Schnittstelle",
+          description: "Audio-Schnittstelle: Spracherkennung und Sprachsynthese",
+        },
+      },
+      runtimeInfo: {
+        title: "LLM-Runtime: Ollama vs vLLM",
+        ollama: "Ollama (Light): Priorität auf kürzester Frage→Antwort-Zeit, geringer Footprint (Einzelbenutzer). Ideal für tägliche Arbeit.",
+        vllm: "vLLM (Full): Benchmark-Pipeline, längerer Start, reserviert gesamtes VRAM, ermöglicht aber Leistungstests und höheren Durchsatz.",
+        hint: "💡 Standardmäßig führen wir nur eine Runtime gleichzeitig aus. Die zweite Option ist nur sinnvoll, wenn Rollen getrennt werden (z. B. UI vs. Codierung).",
+        benchmark: "zu Benchmarks gehen",
+      },
+    },
+  },
 };

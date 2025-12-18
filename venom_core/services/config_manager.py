@@ -144,8 +144,9 @@ class ConfigUpdateRequest(BaseModel):
         """Sprawdź czy wszystkie klucze są na whiteliście."""
         invalid_keys = set(v.keys()) - CONFIG_WHITELIST
         if invalid_keys:
+            # Nie ujawniamy które klucze są nieprawidłowe ze względów bezpieczeństwa
             raise ValueError(
-                f"Niektóre klucze nie są dozwolone: {', '.join(invalid_keys)}"
+                f"Znaleziono {len(invalid_keys)} nieprawidłowych kluczy konfiguracji"
             )
         return v
 

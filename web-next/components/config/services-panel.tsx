@@ -42,6 +42,7 @@ export function ServicesPanel() {
         setServices(data.services);
       }
     } catch (error) {
+      // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania statusu:", error);
     }
   };
@@ -54,6 +55,7 @@ export function ServicesPanel() {
         setHistory(data.history);
       }
     } catch (error) {
+      // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania historii:", error);
     }
   };

@@ -28,6 +28,8 @@ export const de = {
       brain: "Wissensgraph",
       inspector: "Inspektor",
       strategy: "Strategie",
+      benchmark: "Benchmark",
+      config: "Konfiguration",
     },
     cost: {
       title: "Kostenmodus",

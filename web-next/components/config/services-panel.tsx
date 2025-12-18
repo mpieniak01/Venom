@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -34,31 +34,65 @@ export function ServicesPanel() {
     null
   );
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/runtime/status");
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const errorMessage =
+          errorText || `Nie udało się pobrać statusu usług (HTTP ${response.status})`;
+        console.error("Błąd pobierania statusu (HTTP):", response.status, errorText);
+        setMessage({ type: "error", text: errorMessage });
+        return;
+      }
+      
       const data = await response.json();
       if (data.status === "success") {
         setServices(data.services);
+      } else {
+        const errorMessage = data.message || "Nie udało się pobrać statusu usług";
+        setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
       // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania statusu:", error);
+      setMessage({
+        type: "error",
+        text: "Wystąpił błąd podczas pobierania statusu usług",
+      });
     }
-  };
+  }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/runtime/history?limit=10");
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const errorMessage =
+          errorText || `Nie udało się pobrać historii akcji (HTTP ${response.status})`;
+        console.error("Błąd pobierania historii (HTTP):", response.status, errorText);
+        setMessage({ type: "error", text: errorMessage });
+        return;
+      }
+      
       const data = await response.json();
       if (data.status === "success") {
         setHistory(data.history);
+      } else {
+        const errorMessage = data.message || "Nie udało się pobrać historii akcji";
+        setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
       // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania historii:", error);
+      setMessage({
+        type: "error",
+        text: "Wystąpił błąd podczas pobierania historii akcji",
+      });
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStatus();
@@ -70,7 +104,7 @@ export function ServicesPanel() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus, fetchHistory]);
 
   const executeAction = async (service: string, action: string) => {
     const actionKey = `${service}-${action}`;

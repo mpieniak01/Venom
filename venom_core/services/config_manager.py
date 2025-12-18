@@ -8,7 +8,6 @@ Odpowiada za:
 - Określanie, które usługi wymagają restartu po zmianie
 """
 
-import os
 import re
 import shutil
 from datetime import datetime
@@ -101,6 +100,7 @@ SECRET_PARAMS = {
     "HIVE_REGISTRATION_TOKEN",
     "NEXUS_SHARED_TOKEN",
     "REDIS_PASSWORD",
+    "LLM_LOCAL_API_KEY",
     "TTS_MODEL_PATH",
 }
 
@@ -416,6 +416,21 @@ class ConfigManager:
 
     def restore_backup(self, backup_filename: str) -> Dict[str, Any]:
         """Przywraca .env z backupu."""
+        # SECURITY: Validate backup_filename to prevent path traversal
+        # Only allow filenames matching the expected pattern: .env-YYYYMMDD-HHMMSS
+        if not re.match(r'^\.env-\d{8}-\d{6}$', backup_filename):
+            return {
+                "success": False,
+                "message": "Nieprawidłowa nazwa pliku backupu",
+            }
+        
+        # Ensure the filename doesn't contain path separators
+        if '/' in backup_filename or '\\' in backup_filename or '..' in backup_filename:
+            return {
+                "success": False,
+                "message": "Nieprawidłowa nazwa pliku backupu",
+            }
+        
         backup_path = self.env_history_dir / backup_filename
 
         if not backup_path.exists():

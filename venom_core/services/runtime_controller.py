@@ -8,16 +8,13 @@ Odpowiada za:
 - Wsparcie dla profili (Full stack, Light, LLM OFF)
 """
 
-import os
-import re
-import signal
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 
@@ -271,13 +268,12 @@ class RuntimeController:
         except (psutil.AccessDenied, AttributeError):
             # Fallback: spróbuj otworzyć socket na porcie
             import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.bind(("localhost", port))
-                sock.close()
-                return False  # Port jest wolny
-            except OSError:
-                return True  # Port jest zajęty
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind(("localhost", port))
+                    return False  # Port jest wolny
+                except OSError:
+                    return True  # Port jest zajęty
 
     def get_all_services_status(self) -> List[ServiceInfo]:
         """Pobiera status wszystkich usług."""
@@ -285,7 +281,7 @@ class RuntimeController:
             self.get_service_status(service_type) for service_type in ServiceType
         ]
 
-    def start_service(self, service_type: ServiceType) -> Dict[str, any]:
+    def start_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Uruchamia usługę."""
         service_name = service_type.value
         logger.info(f"Próba uruchomienia usługi: {service_name}")
@@ -329,7 +325,7 @@ class RuntimeController:
             self._add_to_history(service_name, "start", False, message)
             return {"success": False, "message": message}
 
-    def stop_service(self, service_type: ServiceType) -> Dict[str, any]:
+    def stop_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Zatrzymuje usługę."""
         service_name = service_type.value
         logger.info(f"Próba zatrzymania usługi: {service_name}")
@@ -373,7 +369,7 @@ class RuntimeController:
             self._add_to_history(service_name, "stop", False, message)
             return {"success": False, "message": message}
 
-    def restart_service(self, service_type: ServiceType) -> Dict[str, any]:
+    def restart_service(self, service_type: ServiceType) -> Dict[str, Any]:
         """Restartuje usługę."""
         service_name = service_type.value
         logger.info(f"Próba restartu usługi: {service_name}")
@@ -397,7 +393,7 @@ class RuntimeController:
 
         return start_result
 
-    def _start_backend(self) -> Dict[str, any]:
+    def _start_backend(self) -> Dict[str, Any]:
         """Uruchamia backend (uvicorn)."""
         try:
             # Uruchom przez Makefile
@@ -428,7 +424,7 @@ class RuntimeController:
         except Exception as e:
             return {"success": False, "message": f"Błąd uruchamiania backend: {str(e)}"}
 
-    def _stop_backend(self) -> Dict[str, any]:
+    def _stop_backend(self) -> Dict[str, Any]:
         """Zatrzymuje backend."""
         try:
             # Użyj make stop
@@ -451,7 +447,7 @@ class RuntimeController:
         except Exception as e:
             return {"success": False, "message": f"Błąd zatrzymywania backend: {str(e)}"}
 
-    def _start_ui(self) -> Dict[str, any]:
+    def _start_ui(self) -> Dict[str, Any]:
         """Uruchamia UI (Next.js) - już uruchomiony przez make start-dev."""
         # UI jest uruchamiany razem z backendem przez make start-dev
         status = self.get_service_status(ServiceType.UI)
@@ -466,17 +462,20 @@ class RuntimeController:
                 "message": "UI nie jest uruchomiony. Użyj 'make start-dev' aby uruchomić cały stos.",
             }
 
-    def _stop_ui(self) -> Dict[str, any]:
+    def _stop_ui(self) -> Dict[str, Any]:
         """Zatrzymuje UI - zatrzymane przez make stop."""
         return {
             "success": True,
             "message": "UI zatrzymywany przez 'make stop'",
         }
 
-    def _start_ollama(self) -> Dict[str, any]:
+    def _start_ollama(self) -> Dict[str, Any]:
         """Uruchamia Ollama."""
         if SETTINGS.OLLAMA_START_COMMAND:
             try:
+                # SECURITY NOTE: shell=True używany z environment variables z .env
+                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 subprocess.Popen(
                     SETTINGS.OLLAMA_START_COMMAND,
                     shell=True,
@@ -501,10 +500,13 @@ class RuntimeController:
                 "message": "Brak skonfigurowanego OLLAMA_START_COMMAND w .env",
             }
 
-    def _stop_ollama(self) -> Dict[str, any]:
+    def _stop_ollama(self) -> Dict[str, Any]:
         """Zatrzymuje Ollama."""
         if SETTINGS.OLLAMA_STOP_COMMAND:
             try:
+                # SECURITY NOTE: shell=True używany z environment variables z .env
+                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 result = subprocess.run(
                     SETTINGS.OLLAMA_STOP_COMMAND,
                     shell=True,
@@ -527,10 +529,13 @@ class RuntimeController:
                 "message": "Brak skonfigurowanego OLLAMA_STOP_COMMAND w .env",
             }
 
-    def _start_vllm(self) -> Dict[str, any]:
+    def _start_vllm(self) -> Dict[str, Any]:
         """Uruchamia vLLM."""
         if SETTINGS.VLLM_START_COMMAND:
             try:
+                # SECURITY NOTE: shell=True używany z environment variables z .env
+                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 subprocess.Popen(
                     SETTINGS.VLLM_START_COMMAND,
                     shell=True,
@@ -555,10 +560,13 @@ class RuntimeController:
                 "message": "Brak skonfigurowanego VLLM_START_COMMAND w .env",
             }
 
-    def _stop_vllm(self) -> Dict[str, any]:
+    def _stop_vllm(self) -> Dict[str, Any]:
         """Zatrzymuje vLLM."""
         if SETTINGS.VLLM_STOP_COMMAND:
             try:
+                # SECURITY NOTE: shell=True używany z environment variables z .env
+                # Tylko administrator może edytować .env bezpośrednio (nie przez UI)
+                # UI używa whitelisty i nie pozwala edytować *_COMMAND parametrów
                 result = subprocess.run(
                     SETTINGS.VLLM_STOP_COMMAND,
                     shell=True,
@@ -594,7 +602,7 @@ class RuntimeController:
             for h in self.history[-limit:]
         ]
 
-    def apply_profile(self, profile_name: str) -> Dict[str, any]:
+    def apply_profile(self, profile_name: str) -> Dict[str, Any]:
         """Aplikuje profil konfiguracji."""
         logger.info(f"Aplikowanie profilu: {profile_name}")
 

@@ -29,6 +29,7 @@ export const pl = {
       inspector: "Inspektor",
       strategy: "Strategia",
       benchmark: "Benchmark",
+      config: "Konfiguracja",
     },
     cost: {
       title: "Tryb kosztów",

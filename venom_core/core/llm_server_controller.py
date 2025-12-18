@@ -51,6 +51,14 @@ class LlmServerController:
 
         cfg = self.settings
 
+        def _normalize(command: Optional[str]) -> str:
+            return (command or "").strip()
+
+        # Komendy dla vLLM (puste = akcja niedostępna)
+        vllm_start_cmd = _normalize(cfg.VLLM_START_COMMAND)
+        vllm_stop_cmd = _normalize(cfg.VLLM_STOP_COMMAND)
+        vllm_restart_cmd = _normalize(cfg.VLLM_RESTART_COMMAND)
+
         servers["vllm"] = LlmServerConfig(
             name="vllm",
             display_name="vLLM",
@@ -59,11 +67,16 @@ class LlmServerController:
             endpoint=cfg.LLM_LOCAL_ENDPOINT,
             health_url=f"{cfg.LLM_LOCAL_ENDPOINT.rstrip('/')}/models",
             commands={
-                "start": cfg.VLLM_START_COMMAND.strip(),
-                "stop": cfg.VLLM_STOP_COMMAND.strip(),
-                "restart": cfg.VLLM_RESTART_COMMAND.strip(),
+                "start": vllm_start_cmd,
+                "stop": vllm_stop_cmd,
+                "restart": vllm_restart_cmd,
             },
         )
+
+        # Komendy dla Ollama (puste = brak akcji)
+        ollama_start_cmd = _normalize(cfg.OLLAMA_START_COMMAND)
+        ollama_stop_cmd = _normalize(cfg.OLLAMA_STOP_COMMAND)
+        ollama_restart_cmd = _normalize(cfg.OLLAMA_RESTART_COMMAND)
 
         servers["ollama"] = LlmServerConfig(
             name="ollama",
@@ -73,9 +86,9 @@ class LlmServerController:
             endpoint="http://localhost:11434",
             health_url="http://localhost:11434/api/tags",
             commands={
-                "start": cfg.OLLAMA_START_COMMAND.strip(),
-                "stop": cfg.OLLAMA_STOP_COMMAND.strip(),
-                "restart": cfg.OLLAMA_RESTART_COMMAND.strip(),
+                "start": ollama_start_cmd,
+                "stop": ollama_stop_cmd,
+                "restart": ollama_restart_cmd,
             },
         )
 
@@ -106,6 +119,33 @@ class LlmServerController:
     def has_server(self, server_name: str) -> bool:
         """Sprawdza czy mamy konfigurację serwera."""
         return server_name in self._servers
+
+    async def check_systemd_available(
+        self, service_name: str = "ollama.service"
+    ) -> bool:
+        """
+        Sprawdza czy systemd jest dostępny i czy dana usługa istnieje.
+
+        Args:
+            service_name: Nazwa usługi systemd
+
+        Returns:
+            True jeśli systemd jest dostępny i usługa istnieje
+        """
+        try:
+            # Use list instead of shell=True for security
+            process = await asyncio.create_subprocess_exec(
+                "systemctl",
+                "list-unit-files",
+                service_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await process.communicate()
+            return process.returncode == 0 and service_name in stdout.decode()
+        except Exception as e:
+            logger.debug(f"Systemd nie jest dostępny: {e}")
+            return False
 
     async def run_action(self, server_name: str, action: str) -> LlmCommandResult:
         """

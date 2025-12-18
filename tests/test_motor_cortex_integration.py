@@ -240,7 +240,7 @@ async def test_orchestrator_processes_multiple_tasks_in_parallel(
         call_count += 1
         return intent
 
-    async def mock_dispatch_func(intent, content):
+    async def mock_dispatch_func(intent, content, **kwargs):
         for i, r in intents_and_results:
             if i == intent:
                 return r

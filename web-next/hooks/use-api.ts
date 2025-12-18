@@ -5,6 +5,7 @@ import {
   CampaignResponse,
   CostMode,
   FlowTrace,
+  GenerationParams,
   GitStatus,
   GraphFileInfoResponse,
   GraphImpactResponse,
@@ -393,13 +394,27 @@ export function useLessonsStats(intervalMs = 30000) {
   );
 }
 
-export async function sendTask(content: string, storeKnowledge = true) {
+export async function sendTask(
+  content: string,
+  storeKnowledge = true,
+  generationParams?: GenerationParams | null
+) {
+  const body: {
+    content: string;
+    store_knowledge: boolean;
+    generation_params?: GenerationParams;
+  } = {
+    content,
+    store_knowledge: storeKnowledge,
+  };
+  
+  if (generationParams) {
+    body.generation_params = generationParams;
+  }
+  
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {
     method: "POST",
-    body: JSON.stringify({
-      content,
-      store_knowledge: storeKnowledge,
-    }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -492,4 +507,22 @@ export async function fetchGraphImpact(filePath: string) {
   return apiFetch<GraphImpactResponse>(
     `/api/v1/graph/impact/${encodeURIComponent(filePath)}`,
   );
+}
+
+/**
+ * Pobiera schemat parametrów generacji dla modelu
+ */
+export async function fetchModelConfig(modelName: string) {
+  return apiFetch<{
+    success: boolean;
+    model_name: string;
+    generation_schema: Record<string, {
+      type: string;
+      default: any;
+      min?: number;
+      max?: number;
+      desc?: string;
+      options?: any[];
+    }>;
+  }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`);
 }

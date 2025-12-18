@@ -109,8 +109,10 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
         for port in 8000 3000 8001 11434; do
             PIDS=$(lsof -ti tcp:$port 2>/dev/null || true)
             if [ -n "$PIDS" ]; then
-                echo "Port $port: zajęty przez PID $PIDS"
-                ps -p "$PIDS" -o pid,comm,args 2>/dev/null || true
+                # Convert newlines to spaces for ps command
+                PIDS_SPACE=$(echo "$PIDS" | tr '\n' ' ')
+                echo "Port $port: zajęty przez PID $PIDS_SPACE"
+                ps -p $PIDS_SPACE -o pid,comm,args 2>/dev/null || true
             else
                 echo "Port $port: wolny"
             fi

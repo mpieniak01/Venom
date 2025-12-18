@@ -21,7 +21,7 @@ swap=8GB
 # Lokalizacja pliku swap (opcjonalnie)
 # swapfile=C:\\temp\\wsl-swap.vhdx
 
-# Lokalizacja pamięci page file (opcjonalnie, dla Windows 11)
+# Page reporting - raportowanie użycia pamięci do hosta (opcjonalnie, dla Windows 11)
 # pageReporting=true
 
 # Ile pamięci WSL może zaalokować przed wymuszeniem garbage collection

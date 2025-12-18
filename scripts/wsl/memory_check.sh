@@ -44,7 +44,7 @@ ps aux | grep "[u]vicorn.*venom_core" | awk '{print "  PID:", $2, "MEM:", $4"%",
 echo ""
 
 echo "Next.js:"
-ps aux | grep "[n]ode.*web-next" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "  Not running"
+ps aux | grep -E "[n]ode.*(next|web-next)" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "  Not running"
 echo ""
 
 echo "vLLM:"

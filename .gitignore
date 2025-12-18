@@ -19,6 +19,7 @@ data/timelines/
 .env
 
 .venom.pid
+.vllm.pid
 test-results/
 **/test-results/
 **/.pytest_cache/
@@ -65,3 +66,7 @@ locustfile.pyc
 
 # misc
 next-dev.log
+
+# Local runtime artifacts
+:memory:
+models_cache/

@@ -33,6 +33,7 @@ export function ParametersPanel() {
         setOriginalConfig(data.config);
       }
     } catch (error) {
+      // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania konfiguracji:", error);
       setMessage({
         type: "error",

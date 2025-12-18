@@ -263,12 +263,21 @@ class RuntimeController:
     def _check_port_listening(self, port: int) -> bool:
         """Sprawdza czy port jest nasłuchiwany."""
         try:
-            for conn in psutil.net_connections():
+            # Optymalizacja: sprawdź tylko połączenia TCP nasłuchujące
+            for conn in psutil.net_connections(kind='tcp'):
                 if conn.status == "LISTEN" and conn.laddr.port == port:
                     return True
             return False
         except (psutil.AccessDenied, AttributeError):
-            return False
+            # Fallback: spróbuj otworzyć socket na porcie
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                sock.bind(("localhost", port))
+                sock.close()
+                return False  # Port jest wolny
+            except OSError:
+                return True  # Port jest zajęty
 
     def get_all_services_status(self) -> List[ServiceInfo]:
         """Pobiera status wszystkich usług."""

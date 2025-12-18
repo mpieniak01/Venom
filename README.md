@@ -225,6 +225,74 @@ make stop
 - Next.js serwuje UI na `http://localhost:3000`,
 - flaga `SERVE_LEGACY_UI=True` uruchamia stary panel FastAPI na porcie 8000 (rozwiązanie awaryjne / referencyjne).
 
+### 🔧 Profile Uruchomieniowe (Light Mode)
+
+Venom oferuje elastyczne tryby uruchamiania komponentów osobno - idealnie dla środowisk developerskich z ograniczonymi zasobami (PC, laptop).
+
+#### Uruchamianie komponentów osobno
+
+| Komenda | Opis | Zużycie zasobów | Kiedy używać |
+|---------|------|-----------------|--------------|
+| `make api` | Backend (produkcyjny, **bez** autoreload) | ~50 MB RAM, ~5% CPU | Praca nad frontendem lub gdy nie edytujesz kodu backendu |
+| `make api-dev` | Backend (developerski, **z** autoreload) | ~110 MB RAM, ~70% CPU (spike) | Aktywna praca nad kodem backendu |
+| `make api-stop` | Zatrzymaj tylko backend | - | Zwalnia port 8000 i pamięć backendu |
+| `make web` | Frontend (produkcyjny build + start) | ~500 MB RAM, ~3% CPU | Demo lub gdy nie edytujesz UI |
+| `make web-dev` | Frontend (dev server z hot reload) | ~1.3 GB RAM, ~7% CPU | Aktywna praca nad UI |
+| `make web-stop` | Zatrzymaj tylko frontend | - | Zwalnia port 3000 i pamięć frontend |
+| `make vllm-start` | Uruchom vLLM (lokalny model LLM) | ~1.4 GB RAM, 13% RAM | Tylko gdy pracujesz z lokalnymi modelami |
+| `make vllm-stop` | Zatrzymaj vLLM | - | Zwalnia ~1.4 GB RAM |
+| `make ollama-start` | Uruchom Ollama | ~400 MB RAM | Alternatywa dla vLLM |
+| `make ollama-stop` | Zatrzymaj Ollama | - | Zwalnia pamięć Ollama |
+
+#### Przykładowe scenariusze użycia
+
+**Scenariusz 1: Praca tylko nad API (Light)**
+```bash
+make api          # Backend bez autoreload (~50 MB)
+# Nie uruchamiaj web ani LLM - oszczędzasz ~2.7 GB RAM
+```
+
+**Scenariusz 2: Praca nad frontendem**
+```bash
+make api          # Backend w tle (stabilny, bez reload)
+make web-dev      # Frontend z hot reload do pracy nad UI
+# Nie uruchamiaj LLM jeśli nie jest potrzebny
+```
+
+**Scenariusz 3: Pełny stack development**
+```bash
+make api-dev      # Backend z autoreload
+make web-dev      # Frontend z hot reload
+make vllm-start   # LLM tylko jeśli pracujesz z lokalnymi modelami
+```
+
+**Scenariusz 4: Demo / prezentacja**
+```bash
+make start-prod   # Wszystko w trybie produkcyjnym (niższe zużycie CPU)
+```
+
+**Scenariusz 5: Tylko testowanie API**
+```bash
+make api          # Backend bez UI
+curl http://localhost:8000/health
+```
+
+#### 💡 Wskazówki optymalizacji
+
+- **VS Code Server**: Jeśli pracujesz w CLI, zamknij zdalne VS Code:
+  ```bash
+  # Z poziomu WSL/Linux
+  pkill -f vscode-server
+  # Lub jeśli używasz code tunnel
+  code tunnel exit
+  ```
+
+- **Autoreload**: `--reload` w uvicorn spawnuje dodatkowy proces watchera. Używaj `make api` zamiast `make api-dev` gdy nie edytujesz kodu backendu.
+
+- **Next.js dev**: `next dev` zużywa ~1.3 GB RAM przez hot reload. Używaj `make web` (produkcyjny) gdy tylko testujesz, nie edytujesz UI.
+
+- **LLM runtime**: vLLM/Ollama zużywają 1-2 GB RAM. Uruchamiaj je **tylko** gdy pracujesz z lokalnymi modelami. W trybie `AI_MODE=CLOUD` nie są potrzebne.
+
 > Wszystkie dane i testy są traktowane jako lokalny eksperyment – Venom działa na prywatnej maszynie użytkownika i **nie szyfrujemy artefaktów**. Zamiast tego katalogi z wynikami (`**/test-results/`, `perf-artifacts/`, raporty Playwright/Locust) trafiają na listę `.gitignore`, aby uniknąć przypadkowego commitowania wrażliwych danych. Transparencja ma priorytet nad formalnym „shadow data”.
 
 #### Kluczowe zmienne środowiskowe:
@@ -327,6 +395,144 @@ config/env-history/.env-YYYYMMDD-HHMMSS
 ```
 
 > 💡 **Tip**: Profile szybkie są idealne do przełączania między trybami pracy. Użyj `Light` podczas developmentu na laptopie, a `Full Stack` na stacji roboczej z GPU.
+
+### 📊 Monitoring Zasobów
+
+Venom oferuje narzędzia do szybkiej diagnostyki zużycia zasobów systemowych.
+
+#### System Snapshot
+```bash
+# Generuje raport diagnostyczny (procesy, pamięć, CPU, status usług)
+make monitor
+
+# Ręczne uruchomienie
+bash scripts/diagnostics/system_snapshot.sh
+```
+
+Raport zostanie zapisany w `logs/diag-YYYYMMDD-HHMMSS.txt` i zawiera:
+- Uptime i load average
+- Zużycie pamięci (free -h, /proc/meminfo)
+- Top 15 procesów (CPU i RAM)
+- Status procesów Venom (uvicorn, Next.js, vLLM, Ollama)
+- Status PID files i otwarte porty (8000, 3000, 8001, 11434)
+
+**Przykład użycia:**
+```bash
+# Przed rozpoczęciem pracy - sprawdź baseline
+make monitor
+
+# Po uruchomieniu usług - porównaj zużycie
+make api-dev
+make web-dev
+make monitor
+
+# Po zakończeniu - upewnij się że wszystko zostało zatrzymane
+make stop
+make monitor
+```
+
+### 💾 Zarządzanie Pamięcią WSL (Windows)
+
+Jeśli uruchamiasz Venom w WSL (Windows Subsystem for Linux), możesz napotkać problem z `vmmem` - procesem Windows, który rezerwuje dużo RAM mimo niewielkiego zużycia po stronie Linuxa.
+
+#### Sprawdzanie zużycia pamięci
+```bash
+# Pokaż szczegółowe statystyki pamięci WSL
+bash scripts/wsl/memory_check.sh
+```
+
+Skrypt wyświetli:
+- Podsumowanie pamięci (free -h)
+- Szczegółowe info z /proc/meminfo
+- Top 10 procesów zużywających RAM
+- Zużycie pamięci przez poszczególne komponenty Venom
+
+#### Problem: vmmem zajmuje 20+ GB na Windows
+
+**Symptom:** Task Manager w Windows pokazuje proces `vmmem` zajmujący 20-30 GB RAM, mimo że `free -h` w WSL pokazuje tylko 3-4 GB.
+
+**Przyczyna:** WSL nie zwraca pamięci do Windows natychmiast. Cache i bufory są trzymane "na wszelki wypadek".
+
+**Rozwiązanie:**
+
+1. **Doraźne:** Reset pamięci WSL
+   ```bash
+   # Z poziomu WSL (zatrzyma wszystkie procesy Venom i wykona shutdown)
+   bash scripts/wsl/reset_memory.sh
+   
+   # LUB z poziomu Windows (PowerShell/CMD)
+   wsl --shutdown
+   ```
+
+2. **Trwałe:** Limituj zużycie przez `.wslconfig`
+   
+   Utwórz plik `%USERPROFILE%\.wslconfig` (np. `C:\Users\TwojaNazwa\.wslconfig`):
+   ```ini
+   [wsl2]
+   # Limit pamięci dla WSL
+   memory=12GB
+   
+   # Liczba procesorów
+   processors=4
+   
+   # Limit swap
+   swap=8GB
+   ```
+   
+   Dostępny przykład z komentarzami:
+   ```bash
+   # Zobacz pełną konfigurację z przykładami
+   cat scripts/wsl/wslconfig.example
+   
+   # Skopiuj do Windows (z poziomu WSL)
+   cp scripts/wsl/wslconfig.example /mnt/c/Users/TwojaNazwa/.wslconfig
+   ```
+   
+   Po zapisaniu `.wslconfig` wykonaj:
+   ```powershell
+   # Z poziomu Windows (PowerShell/CMD)
+   wsl --shutdown
+   ```
+   
+   Następnie uruchom ponownie terminal WSL.
+
+#### Przykładowe konfiguracje .wslconfig
+
+**PC z 16 GB RAM (oszczędny):**
+```ini
+[wsl2]
+memory=8GB
+processors=4
+swap=4GB
+```
+
+**PC z 32 GB RAM (zbalansowany):**
+```ini
+[wsl2]
+memory=12GB
+processors=6
+swap=8GB
+```
+
+**Workstation z 64 GB RAM (performance):**
+```ini
+[wsl2]
+memory=32GB
+processors=12
+swap=16GB
+```
+
+#### Monitorowanie vmmem w Windows
+
+1. Otwórz Task Manager (Ctrl+Shift+Esc)
+2. Zakładka "Details" lub "Processes"
+3. Znajdź proces "vmmem" - to jest pamięć używana przez WSL
+4. Porównaj z wynikami `free -h` w WSL
+
+Jeśli różnica jest znaczna (>50%), rozważ:
+- Wykonanie `wsl --shutdown` aby zwolnić cache
+- Ustawienie limitów w `.wslconfig`
+- Używanie profili Light (`make api` zamiast `make start-dev`)
 
 ### Uruchomienie
 

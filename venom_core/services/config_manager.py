@@ -150,6 +150,112 @@ class ConfigUpdateRequest(BaseModel):
             )
         return v
 
+    @validator("updates")
+    def validate_ranges(cls, v):
+        """Walidacja zakresów wartości dla specyficznych parametrów."""
+        errors = []
+
+        # Walidacja portów (1-65535)
+        port_params = [
+            "REDIS_PORT",
+            "NEXUS_PORT",
+        ]
+        for param in port_params:
+            if param in v:
+                try:
+                    port = int(v[param])
+                    if port < 1 or port > 65535:
+                        errors.append(f"{param} musi być w zakresie 1-65535")
+                except (ValueError, TypeError):
+                    errors.append(f"{param} musi być liczbą całkowitą")
+
+        # Walidacja progów pewności (0.0-1.0)
+        threshold_params = [
+            "SHADOW_CONFIDENCE_THRESHOLD",
+            "GHOST_VISION_CONFIDENCE",
+            "VAD_THRESHOLD",
+        ]
+        for param in threshold_params:
+            if param in v:
+                try:
+                    threshold = float(v[param])
+                    if threshold < 0.0 or threshold > 1.0:
+                        errors.append(f"{param} musi być w zakresie 0.0-1.0")
+                except (ValueError, TypeError):
+                    errors.append(f"{param} musi być liczbą zmiennoprzecinkową")
+
+        # Walidacja wartości boolean
+        bool_params = [
+            "ENABLE_HIVE",
+            "ENABLE_NEXUS",
+            "ENABLE_GHOST_AGENT",
+            "ENABLE_DESKTOP_SENSOR",
+            "ENABLE_PROACTIVE_MODE",
+            "ENABLE_AUDIO_INTERFACE",
+            "ENABLE_AUTO_DOCUMENTATION",
+            "ENABLE_AUTO_GARDENING",
+            "ENABLE_MEMORY_CONSOLIDATION",
+            "ENABLE_HEALTH_CHECKS",
+            "VENOM_PAUSE_BACKGROUND_TASKS",
+            "SENSITIVE_DATA_LOCAL_ONLY",
+            "ENABLE_MODEL_ROUTING",
+            "FORCE_LOCAL_MODEL",
+            "ENABLE_MULTI_SERVICE",
+            "GHOST_VERIFICATION_ENABLED",
+        ]
+        for param in bool_params:
+            if param in v:
+                val_str = str(v[param]).lower()
+                if val_str not in ["true", "false", "0", "1", "yes", "no"]:
+                    errors.append(
+                        f"{param} musi być wartością boolean (true/false)"
+                    )
+
+        # Walidacja liczb całkowitych dodatnich
+        positive_int_params = [
+            "REDIS_DB",
+            "HIVE_TASK_TIMEOUT",
+            "HIVE_MAX_RETRIES",
+            "NEXUS_HEARTBEAT_TIMEOUT",
+            "WATCHER_DEBOUNCE_SECONDS",
+            "IDLE_THRESHOLD_MINUTES",
+            "GHOST_MAX_STEPS",
+            "GHOST_STEP_DELAY",
+            "GHOST_SAFETY_DELAY",
+            "SHADOW_CLIPBOARD_MAX_LENGTH",
+            "SHADOW_CHECK_INTERVAL",
+            "SILENCE_DURATION",
+        ]
+        for param in positive_int_params:
+            if param in v:
+                try:
+                    val = int(v[param])
+                    if val < 0:
+                        errors.append(f"{param} musi być liczbą nieujemną")
+                except (ValueError, TypeError):
+                    errors.append(f"{param} musi być liczbą całkowitą")
+
+        # Walidacja AI_MODE
+        if "AI_MODE" in v:
+            valid_modes = ["LOCAL", "CLOUD", "HYBRID"]
+            if str(v["AI_MODE"]).upper() not in valid_modes:
+                errors.append(
+                    f"AI_MODE musi być jednym z: {', '.join(valid_modes)}"
+                )
+
+        # Walidacja LLM_SERVICE_TYPE
+        if "LLM_SERVICE_TYPE" in v:
+            valid_types = ["local", "openai", "google", "ollama", "vllm"]
+            if str(v["LLM_SERVICE_TYPE"]).lower() not in valid_types:
+                errors.append(
+                    f"LLM_SERVICE_TYPE musi być jednym z: {', '.join(valid_types)}"
+                )
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return v
+
 
 class ConfigManager:
     """Manager konfiguracji runtime."""

@@ -1,0 +1,34 @@
+[Unit]
+Description=vLLM OpenAI-compatible API Server
+After=network.target
+
+[Service]
+Type=simple
+User=venom
+Group=venom
+WorkingDirectory=/home/venom/Venom
+Environment="VLLM_MODEL_PATH=/home/venom/Venom/models/gemma-2b-it"
+Environment="VLLM_HOST=127.0.0.1"
+Environment="VLLM_PORT=8001"
+Environment="VLLM_GPU_MEMORY_UTILIZATION=0.85"
+Environment="VLLM_MAX_BATCHED_TOKENS=2048"
+ExecStart=/home/venom/Venom/.venv/bin/vllm serve ${VLLM_MODEL_PATH} --host ${VLLM_HOST} --port ${VLLM_PORT} --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION} --max-num-batched-tokens ${VLLM_MAX_BATCHED_TOKENS}
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/venom/Venom/logs/vllm.log
+StandardError=append:/home/venom/Venom/logs/vllm.log
+
+# Security options
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/venom/Venom/logs /home/venom/Venom/models
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Resource limits
+LimitCORE=0
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

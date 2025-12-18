@@ -244,6 +244,46 @@ async def get_service_status(service_name: str):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
+@router.get("/system/status")
+async def get_system_status():
+    """
+    Zwraca status systemu wraz z metrykami użycia pamięci RAM i VRAM.
+
+    Returns:
+        Status systemu z metrykami pamięci:
+        - memory_usage_mb: Użycie pamięci RAM w MB
+        - memory_total_mb: Całkowita pamięć RAM w MB
+        - memory_usage_percent: Procent użycia RAM
+        - vram_usage_mb: Użycie pamięci VRAM w MB (jeśli dostępne GPU)
+        - vram_total_mb: Całkowita pamięć VRAM w MB (jeśli dostępne)
+        - vram_usage_percent: Procent użycia VRAM (jeśli dostępne)
+
+    Raises:
+        HTTPException: 503 jeśli ServiceMonitor nie jest dostępny
+    """
+    if _service_monitor is None:
+        raise HTTPException(status_code=503, detail="ServiceMonitor nie jest dostępny")
+
+    try:
+        memory_metrics = _service_monitor.get_memory_metrics()
+        system_summary = _service_monitor.get_summary()
+
+        return {
+            "status": "success",
+            "system_healthy": system_summary["system_healthy"],
+            "memory_usage_mb": memory_metrics["memory_usage_mb"],
+            "memory_total_mb": memory_metrics["memory_total_mb"],
+            "memory_usage_percent": memory_metrics["memory_usage_percent"],
+            "vram_usage_mb": memory_metrics["vram_usage_mb"],
+            "vram_total_mb": memory_metrics["vram_total_mb"],
+            "vram_usage_percent": memory_metrics["vram_usage_percent"],
+        }
+
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania statusu systemu")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
 @router.get("/system/llm-servers")
 async def get_llm_servers():
     """

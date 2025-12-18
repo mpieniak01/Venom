@@ -22,6 +22,7 @@ import {
   controlLlmServer,
   emergencyStop,
   fetchHistoryDetail,
+  fetchModelConfig,
   fetchTaskDetail,
   gitSync,
   gitUndo,
@@ -54,8 +55,9 @@ import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { AnimatePresence, motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
-import { Bot, Pin, PinOff, Inbox, Package, Loader2 } from "lucide-react";
+import { Bot, Pin, PinOff, Inbox, Package, Loader2, Settings } from "lucide-react";
 import Link from "next/link";
+import { DynamicParameterForm, type GenerationSchema } from "@/components/ui/dynamic-parameter-form";
 import { HistoryList } from "@/components/history/history-list";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { RecentRequestList } from "@/components/tasks/recent-request-list";
@@ -148,6 +150,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [lastResponseDurationMs, setLastResponseDurationMs] = useState<number | null>(null);
   const [responseDurations, setResponseDurations] = useState<number[]>([]);
   const lastTelemetryRefreshRef = useRef<string | null>(null);
+  const [tuningOpen, setTuningOpen] = useState(false);
+  const [generationParams, setGenerationParams] = useState<Record<string, any> | null>(null);
+  const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
+  const [loadingSchema, setLoadingSchema] = useState(false);
   const streamCompletionRef = useRef<Set<string>>(new Set());
   const promptPresets = useMemo(
     () => [
@@ -283,6 +289,35 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const usageMetrics = modelsUsageResponse?.usage ?? null;
   const llmServers = liveLlmServers ?? [];
   const activeRuntime = models?.active;
+  const runtimeStatus = useMemo(() => {
+    if (!activeRuntime) return "unknown";
+    const statusValue = activeRuntime.status;
+    if (typeof statusValue === "string" && statusValue.length > 0) {
+      return statusValue.toLowerCase();
+    }
+    return "unknown";
+  }, [activeRuntime]);
+  const runtimeIsOnline = runtimeStatus === "online" || runtimeStatus === "ready";
+  const runtimeStatusLabel = useMemo(() => {
+    if (runtimeIsOnline) return "Online";
+    if (!runtimeStatus || runtimeStatus === "unknown") return "Unknown";
+    return runtimeStatus.charAt(0).toUpperCase() + runtimeStatus.slice(1);
+  }, [runtimeIsOnline, runtimeStatus]);
+  const runtimeAlert = useMemo(() => {
+    if (llmAlert) return llmAlert;
+    if (!runtimeIsOnline) {
+      return {
+        provider: activeRuntime?.provider,
+        model: activeRuntime?.model,
+        endpoint: activeRuntime?.endpoint,
+        error:
+          activeRuntime?.error ??
+          `Runtime (${runtimeStatusLabel.toLowerCase()}) jest niedostępny.`,
+      };
+    }
+    return null;
+  }, [llmAlert, runtimeIsOnline, activeRuntime, runtimeStatusLabel]);
+  const runtimeAlertDismissible = Boolean(llmAlert);
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -828,7 +863,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     setTaskContent("");
     const clientId = enqueueOptimisticRequest(payload);
     try {
-      const res = await sendTask(payload, !labMode);
+      const res = await sendTask(payload, !labMode, generationParams);
       const resolvedId = res.task_id ?? null;
       linkOptimisticRequest(clientId, resolvedId);
       setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
@@ -846,12 +881,29 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     taskContent,
     enqueueOptimisticRequest,
     labMode,
+    generationParams,
     linkOptimisticRequest,
     dropOptimisticRequest,
     refreshTasks,
     refreshQueue,
     refreshHistory,
   ]);
+
+  const handleOpenTuning = useCallback(async () => {
+    setTuningOpen(true);
+    setLoadingSchema(true);
+    try {
+      // Pobierz aktywny model z runtime info
+      const activeModelName = models?.active?.model || "llama3";
+      const config = await fetchModelConfig(activeModelName);
+      setModelSchema(config.generation_schema || null);
+    } catch (err) {
+      console.error("Nie udało się pobrać konfiguracji modelu:", err);
+      setModelSchema(null);
+    } finally {
+      setLoadingSchema(false);
+    }
+  }, [models, setTuningOpen, setLoadingSchema, setModelSchema]);
 
   const handleMacroRun = useCallback(
     async (macro: { id: string; content: string; label: string }) => {
@@ -1208,24 +1260,26 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
                   </p>
                 </div>
-                <Badge tone={llmAlert ? "danger" : "success"}>
-                  {llmAlert ? "Błąd" : "Online"}
+                <Badge tone={runtimeIsOnline ? "success" : runtimeAlert ? "danger" : "neutral"}>
+                  {runtimeStatusLabel}
                 </Badge>
               </div>
-              {llmAlert ? (
+              {runtimeAlert ? (
                 <div className="mt-4 space-y-2 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
-                  <p>{llmAlert.error}</p>
+                  <p>{runtimeAlert.error}</p>
                   <p className="text-xs text-rose-200/80">
-                    {llmAlert.model ?? "?"} • {llmAlert.provider ?? "LLM"}
-                    {llmAlert.endpoint ? ` @ ${llmAlert.endpoint}` : ""}
+                    {runtimeAlert.model ?? "?"} • {runtimeAlert.provider ?? "LLM"}
+                    {runtimeAlert.endpoint ? ` @ ${runtimeAlert.endpoint}` : ""}
                   </p>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => setLlmAlert(null)}
-                  >
-                    Ukryj alert
-                  </Button>
+                  {runtimeAlertDismissible ? (
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setLlmAlert(null)}
+                    >
+                      Ukryj alert
+                    </Button>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-4 text-xs text-zinc-400">
@@ -1576,6 +1630,16 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       Lab Mode (nie zapisuj lekcji)
                     </label>
                     <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleOpenTuning}
+                        className="text-zinc-300"
+                        title="Dostosuj parametry generacji"
+                      >
+                        <Settings className="h-4 w-4 mr-1" />
+                        Tuning
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -2367,6 +2431,38 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </div>
             </>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Tuning Drawer */}
+      <Sheet open={tuningOpen} onOpenChange={setTuningOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Parametry Generacji</SheetTitle>
+            <SheetDescription>
+              Dostosuj parametry modelu, takie jak temperatura, max_tokens, etc.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            {loadingSchema && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+              </div>
+            )}
+            {!loadingSchema && !modelSchema && (
+              <p className="text-sm text-zinc-400">
+                Brak schematu parametrów dla aktywnego modelu.
+              </p>
+            )}
+            {!loadingSchema && modelSchema && (
+              <DynamicParameterForm
+                schema={modelSchema}
+                values={generationParams || undefined}
+                onChange={(values) => setGenerationParams(values)}
+                onReset={() => setGenerationParams(null)}
+              />
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>

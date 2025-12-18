@@ -194,4 +194,107 @@ export const en = {
       cost: "Session cost",
     },
   },
+  config: {
+    title: "Configuration",
+    description: "Manage Venom system services and parameters",
+    tabs: {
+      services: "Services",
+      parameters: "Parameters",
+    },
+    services: {
+      title: "Service Management",
+      description: "Control system processes and service status",
+      profiles: {
+        title: "Quick Profiles",
+        full: "Full Stack",
+        light: "Light (no LLM)",
+        llmOff: "LLM OFF",
+        description: "Profiles quickly configure service sets",
+      },
+      status: {
+        running: "Running",
+        stopped: "Stopped",
+        unknown: "Unknown",
+        error: "Error",
+      },
+      actions: {
+        start: "Start",
+        stop: "Stop",
+        restart: "Restart",
+      },
+      info: {
+        pid: "PID",
+        port: "Port",
+        cpu: "CPU",
+        ram: "RAM",
+        uptime: "Uptime",
+        lastLog: "Last log",
+      },
+      history: {
+        title: "Action History",
+        empty: "No history",
+      },
+    },
+    parameters: {
+      title: "System Parameters",
+      description: "Edit Venom runtime configuration",
+      unsavedChanges: "You have unsaved changes ({{count}} parameters)",
+      buttons: {
+        save: "Save Configuration",
+        saving: "Saving...",
+        reset: "Reset",
+      },
+      messages: {
+        saveSuccess: "Configuration saved successfully",
+        saveError: "Error saving configuration",
+        noChanges: "No changes to save",
+      },
+      restartRequired: {
+        title: "Restart Required",
+        message: "The following services require restart: {{services}}",
+        hint: "Go to the 'Services' tab to restart the appropriate components.",
+      },
+      sections: {
+        aiMode: {
+          title: "AI Mode",
+          description: "AI model configuration: local, hybrid or cloud",
+        },
+        commands: {
+          title: "LLM Server Commands",
+          description: "Commands for starting/stopping Ollama and vLLM servers",
+        },
+        hive: {
+          title: "Hive - Distributed Processing",
+          description: "Distributed architecture configuration with Redis message broker",
+        },
+        nexus: {
+          title: "Nexus - Distributed Mesh",
+          description: "Master-Worker architecture for remote nodes",
+        },
+        tasks: {
+          title: "Background Tasks",
+          description: "Automatic tasks: documentation, refactoring, memory consolidation",
+        },
+        shadow: {
+          title: "Shadow - Desktop Awareness",
+          description: "Desktop awareness and proactive action agent",
+        },
+        ghost: {
+          title: "Ghost - Visual GUI Automation",
+          description: "GUI automation agent (RPA)",
+        },
+        avatar: {
+          title: "Avatar - Audio Interface",
+          description: "Audio interface: speech recognition and voice synthesis",
+        },
+      },
+      runtimeInfo: {
+        title: "LLM Runtime: Ollama vs vLLM",
+        ollama: "Ollama (Light): Priority on shortest question→answer time, low footprint (single user). Ideal for daily work.",
+        vllm: "vLLM (Full): Benchmark pipeline, longer startup, reserves all VRAM, but allows performance testing and higher throughput.",
+        hint: "💡 By default we run only one runtime at a time. The second option makes sense only when separating roles (e.g., UI vs. coding).",
+        benchmark: "go to benchmarks",
+      },
+    },
+  },
 };

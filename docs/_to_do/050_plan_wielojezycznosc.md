@@ -6,9 +6,9 @@
 - Przygotować strukturę plików tłumaczeń oraz zasady wdrażania, aby kolejne moduły mogły korzystać z tych samych kluczy.
 
 ## Stan na dziś
-- Większość widoków `web-next` została przetłumaczona na polski (Cockpit, TopBar, Sidebar, Quick Actions, Command Center, Alert/Notification drawers, Service status, Mobile nav).
-- Do top barów dodano `LanguageSwitcher`, który zapamiętuje wybór (`pl/en/de`) w `localStorage` i komunikuje docelowy kierunek zmian (flagi + skrót języka).
-- Tłumaczenia nadal są osadzone jako stringi w komponentach – potrzebny jest wspólny magazyn tekstów.
+- Warstwa layoutów (TopBar, Sidebar, Mobile Nav, overlaye) korzysta już z `LanguageProvider` i kluczy w `web-next/lib/i18n/locales/*.ts`. Przełącznik języka zapisuje wybór w `localStorage`.
+- Widoki produktowe (Cockpit, Brain, Strategy, Inspector) oraz kontrolki autonomii i kosztów nadal zawierają twardo zakodowane teksty PL (`AUTONOMY_LABELS`, komunikaty w `cockpit-home.tsx`, `brain-home.tsx` ~2.7k linii). Te moduły nie używają `t(...)`, więc brak spójności językowej.
+- Skrypt `npm --prefix web-next run lint:locales` jest dostępny i spinany w CI; brakuje natomiast smoke testu Playwright sprawdzającego zmianę języka.
 
 ## Standard tłumaczeń
 1. **Struktura katalogów**
@@ -27,18 +27,17 @@
    - Teksty techniczne (`/api/v1/...`, `AutonomyGate`) zostają w oryginalnej formie, ale otaczający opis polski.
 
 ## Plan wdrożenia
-1. **Warstwa kontekstowa**
-   - Utworzyć `LanguageProvider` w `web-next/app/layout.tsx`, czytający wybór z `localStorage` i obsługujący `LanguageSwitcher`.
-   - Udostępniać `setLanguage` do istniejącego przycisku (aktualnie tylko cyklicznie zmienia stan lokalny – docelowo ma ustawiać kontekst).
-2. **Słowniki**
-   - Wyekstrahować wszystkie teksty z layoutu (`top-bar`, `sidebar`, `mobile-nav`, `command-center`, `quick-actions`, `alert-center`, `history`, `brain`, `inspector`, `strategy`) do kluczy.
-   - Uzupełnić angielski i niemiecki plik, zachowując krótkie zdania, bez skrótów.
-3. **Fallback + walidacja**
-   - Dodać test typu `npm run lint:locales`, który sprawdza spójność kluczy (`Object.keys(pl) === Object.keys(en)`).
-   - W Playwright dodać smoke test, który klika flagę i oczekuje zmiany etykiety (np. `data-testid="topbar-alerts"`).
-4. **Wersjonowanie**
-   - Każdą zmianę tekstu opisujemy w PR w sekcji `i18n`, aby tłumacze EN/DE wiedzieli co aktualizować.
-   - Docelowo można spiąć to z Crowdin/Lokalise, ale na start wystarczy ręczna aktualizacja plików.
+1. **Warstwa kontekstowa** *(✅ zrealizowana)*
+   `LanguageProvider` i `useTranslation` działają globalnie (patrz `web-next/lib/i18n/index.tsx`). Wymaga jedynie utrzymania dokumentacji.
+2. **Słowniki** *(w toku)*
+   - Layout jest w słownikach, ale całe widoki (`components/cockpit/*`, `components/brain/*`, `components/inspector/*`, `components/strategy/*`) muszą zostać wyczyszczone z tekstów PL i przełączone na `t(...)`.
+   - Konfiguracje w sidebarze (AUTONOMY_LABELS/DETAILS, confirmy trybu kosztów) trzeba przenieść do sekcji `sidebar.controls.*`.
+3. **Fallback + walidacja** *(częściowo)*
+   - `scripts/check-locales.ts` + `npm run lint:locales` działa.
+   - Do zrobienia smoke test Playwright (np. `language-switcher.spec.ts`) weryfikujący zmianę języka i fallback przy braku klucza.
+4. **Wersjonowanie** *(niezrobione)*
+   - Potrzebna konwencja w PR (`## i18n`) i checklist tłumaczeń.
+   - Po ukończeniu migracji można rozważyć integrację (Crowdin/Lokalise), ale najpierw ustalić prosty changelog tłumaczeń.
 
 ## Otwarte tematy
 - Integracja z backendem (czy API zwraca opisy w jednym języku? jeśli tak, trzeba dodać mapowanie po stronie frontu).
@@ -46,7 +45,10 @@
 - Automatyczne pobieranie języka z przeglądarki – planowo po wdrożeniu contextu.
 
 ## Status realizacji
-- Całość wdrożenia i18n zostanie domknięta dopiero po zakończeniu porządkowania struktury serwisu/UI (zadanie 051). Do tego czasu utrzymujemy istniejący `LanguageProvider` i słowniki, ale nie rozszerzamy tłumaczeń na kolejne moduły.
+- [x] `LanguageProvider`, hook `useTranslation`, layouty i overlaye działają w oparciu o słowniki (`web-next/lib/i18n`).
+- [ ] Cockpit, Brain, Strategy, Inspector oraz kontrolki autonomii/kosztów korzystają z tekstów PL wpisanych w kodzie – wymagają migracji do słowników.
+- [ ] Brak testu Playwright potwierdzającego zmianę języka.
+- [ ] Brak procedury wersjonowania tłumaczeń w PR.
 
 ## Wykonane kroki
 - Dodano `LanguageProvider` (`web-next/lib/i18n`) z kontekstem, który przechowuje wybór języka w `localStorage`, posiada fallback na polski oraz udostępnia hook `useTranslation`. Warstwa jest podpięta globalnie w `app/providers.tsx`, więc każdy komponent może korzystać z `t(...)`.

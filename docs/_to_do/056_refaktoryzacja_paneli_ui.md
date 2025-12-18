@@ -27,3 +27,8 @@ Po stabilizacji funkcjonalności w PR optymalizacyjnym wydzielić duże komponen
 - [ ] SSR logging
 
 _Notatka: prace trzymamy na gałęzi `feature/web-next-optimization`, ale wejdą po obecnym PR z optymalizacjami funkcjonalnymi._
+
+## Stan aktualny (audyt 2025-12-18)
+- `web-next/components/cockpit/cockpit-home.tsx` liczy ok. 2760 linii i nadal łączy chat, makra, historię i telemetry w jednym komponencie klientowym. Brak wydzielonych hooków (`useCockpitChat`, `useCockpitTelemetry`) powoduje rozrost stanów lokalnych i trudną obsługę SSE.
+- `web-next/components/brain/brain-home.tsx` ma ~700 linii z połączoną logiką pobierania (`fetchBrainInitialData`) i renderowaniem kart. Nie wydzielono helperów ani typów do `lib/brain-formatters`.
+- W katalogu `web-next/hooks/` wciąż znajdują się jedynie `use-api.ts`, `use-task-stream.ts`, `use-telemetry.ts` – nie ma hooków zdefiniowanych w tym zadaniu. Refaktor pozostaje w 100% do zrealizowania mimo stabilizacji UI.

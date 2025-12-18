@@ -6,9 +6,10 @@
   - `uvicorn --reload` (~70% CPU w piku, ~110 MB RSS; dodatkowy worker spawn).
   - `next dev` (`next-server` + `npm run dev`) ~6-7% CPU, ~1.3 GB RAM.
   - `vllm serve gemma-2b-it` ~13% RAM (1.3-1.4 GB) + proces `VLLM::EngineCore`.
-  - VS Code Server + rozszerzenia (extension host, file watcher) ~0.6-2.5% CPU, ~700 MB RAM.
-  - Inne drobne procesy CLI (htop, shell, helpery).
+- VS Code Server + rozszerzenia (extension host, file watcher) ~0.6-2.5% CPU, ~700 MB RAM.
+- Inne drobne procesy CLI (htop, shell, helpery).
 - RAM: 15 GiB total, 5.7 GiB used, 8.8 GiB cache (9.8 GiB available). Load avg ~1.
+- Audyt 2025-12-18: host Windows 32 GB pokazuje 21+ GB zajęte przez `vmmem`, mimo że w `htop` Ubuntu alokuje ~3.5 GB (uvicorn, node, python/vLLM). WSL nie zwraca pamięci natychmiast, więc potrzebna kontrola limitów i restartów.
 - Scenariusz: tylko jeden użytkownik → chcemy minimalny footprint, brak równoległych sesji.
 
 ## Cele
@@ -43,6 +44,11 @@
 - **Zadanie:** przygotować prosty skrypt `scripts/monitor/resources.sh` (wyświetla top procesów, użycie RAM/Swap).
 - **Cel:** szybka diagnostyka w przyszłości.
 
+### 6. Konfiguracja WSL / odzysk pamięci
+- **Zadanie:** dopisać sekcję w README + skrypt helper (`scripts/wsl/reset_memory.sh`) pokazujący obecne zużycie (`/proc/meminfo`, `free -h`) i wykonujący `wsl.exe --shutdown` gdy potrzebne.
+- **Instrukcja:** w dokumentacji dołączyć przykładowy `%USERPROFILE%\\.wslconfig` (limit `memory=12GB`, `processors=4`) oraz opis jak monitorować proces `vmmem` w Task Managerze.
+- **Cel:** ograniczyć przypadki, gdy Windows rezerwuje 20+ GB mimo niewielkiego realnego użycia po stronie Linuxa.
+
 ## Plan PR
 1. **Dokumentacja** (README, docs/TREE): opis trybu lekkiego, tableka dostępnych komend (`make api`, `make web`, `make vllm-start`). Dodać sekcję „Profil Light (PC)”.
 2. **Makefile / scripts**:
@@ -54,6 +60,7 @@
 3. **UI hint** (opcjonalny commit, jeśli w tym PR): w panelu „Serwery LLM” dopisać tooltip, że start OLLAMA/vLLM tylko gdy potrzebne.
 4. **Resource monitor script**: `scripts/diagnostics/system_snapshot.sh` (zbiera `ps`, `free`, `uptime` i loguje do `logs/diag-*.txt`).
 5. **README check-list**: w sekcji „Uruchomienie lokalne” dodać tabelę z combos (Full stack vs Light vs Only API).
+6. **WSL memory guard**: przykładowy `%USERPROFILE%\\.wslconfig`, opis procesu `vmmem`, instrukcja `wsl --shutdown` + helper script.
 
 ## Kryteria akceptacji
 - Developer może uruchomić jedynie API bez autoreload (komenda w README).

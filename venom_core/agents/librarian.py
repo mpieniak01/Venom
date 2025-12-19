@@ -98,8 +98,11 @@ Akcja: Użyj read_file("config.json"), pokaż zawartość i rozważ zapisanie do
             )
 
             # Wywołaj model z możliwością auto-wywołania funkcji
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=True,
             )
 
             result = str(response).strip()

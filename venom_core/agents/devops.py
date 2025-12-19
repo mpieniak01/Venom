@@ -143,14 +143,15 @@ przed wdrożeniem produkcyjnym."""
                 temperature=0.3,  # Niska temperatura dla precyzji
             )
 
-            response = await chat_service.get_chat_message_contents(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=self.chat_history,
                 settings=settings,
-                kernel=self.kernel,
+                enable_functions=False,
             )
 
             # Pobierz odpowiedź
-            result = str(response[0])
+            result = str(response)
 
             # Dodaj odpowiedź do historii
             self.chat_history.add_assistant_message(result)

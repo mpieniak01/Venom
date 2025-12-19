@@ -20,6 +20,8 @@ class SystemStatusAgent(BaseAgent):
     a następnie formatuje zwięzły raport w języku polskim.
     """
 
+    disable_learning = True
+
     def __init__(
         self,
         kernel: Kernel,

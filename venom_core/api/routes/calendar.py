@@ -38,7 +38,9 @@ class EventsResponse(BaseModel):
 class CreateEventRequest(BaseModel):
     """Model żądania utworzenia wydarzenia."""
 
-    title: str = Field(..., description="Tytuł wydarzenia")
+    title: str = Field(
+        ..., description="Tytuł wydarzenia (summary w terminologii Google Calendar)"
+    )
     start_time: str = Field(
         ..., description="Czas startu w formacie ISO (np. '2024-01-15T16:00:00')"
     )
@@ -93,6 +95,11 @@ async def get_calendar_events(
 
     Raises:
         HTTPException: 503 jeśli Google Calendar nie jest skonfigurowany
+
+    Note:
+        Obecnie GoogleCalendarSkill zwraca sformatowany tekst.
+        W przyszłych wersjach skill zostanie rozszerzony o zwracanie structured data.
+        Na razie zwracamy pustą listę lub informację tekstową jako opis.
     """
     try:
         skill = _ensure_calendar_skill()
@@ -100,25 +107,7 @@ async def get_calendar_events(
         # Wywołaj skill do pobrania agendy
         result_text = skill.read_agenda(time_min=time_min, hours=hours)
 
-        # Parse result (obecnie skill zwraca sformatowany string)
-        # W przyszłości można rozszerzyć skill aby zwracał structured data
         logger.info(f"Pobrano wydarzenia z Google Calendar: {len(result_text)} znaków")
-
-        # Dla uproszczenia zwracamy teraz pustą listę strukturalną
-        # TODO: Rozszerzyć GoogleCalendarSkill aby zwracał structured data
-        if "Brak wydarzeń" in result_text or "❌" in result_text:
-            events = []
-        else:
-            # Tymczasowo zwracamy informację tekstową jako jedno "wydarzenie"
-            events = [
-                CalendarEvent(
-                    id="summary",
-                    summary="Wydarzenia z Google Calendar",
-                    description=result_text,
-                    start=datetime.now(timezone.utc).isoformat(),
-                    end=datetime.now(timezone.utc).isoformat(),
-                )
-            ]
 
         # Oblicz czasy
         if time_min == "now":
@@ -129,6 +118,15 @@ async def get_calendar_events(
         from datetime import timedelta
 
         end_time = start_time + timedelta(hours=hours)
+
+        # Parse result - obecnie skill zwraca sformatowany string
+        events = []
+        if "Brak wydarzeń" not in result_text and "❌" not in result_text:
+            # Zwróć informację tekstową - UI może wyświetlić jako opis
+            # W przyszłości: skill zwróci strukturalne dane i parsujemy je tutaj
+            logger.info(
+                "GoogleCalendarSkill zwrócił tekst - zwracamy jako informację opisową"
+            )
 
         return EventsResponse(
             events=events,

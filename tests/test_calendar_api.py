@@ -74,6 +74,8 @@ def test_get_events_success(client, mock_calendar_skill):
     assert "time_min" in data
     assert "time_max" in data
     assert isinstance(data["events"], list)
+    # Currently returns empty list as skill returns text format
+    assert data["total"] == 0
     mock_calendar_skill.read_agenda.assert_called_once_with(time_min="now", hours=24)
 
 

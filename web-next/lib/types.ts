@@ -364,3 +364,35 @@ export interface BenchmarkResponse {
   message?: string;
   result?: BenchmarkResult;
 }
+
+// Calendar types
+export interface CalendarEvent {
+  id?: string;
+  summary: string;
+  description?: string;
+  start: string;
+  end: string;
+  location?: string;
+  status?: string;
+}
+
+export interface EventsResponse {
+  events: CalendarEvent[];
+  total: number;
+  time_min: string;
+  time_max: string;
+}
+
+export interface CreateEventRequest {
+  title: string;
+  start_time: string;
+  duration_minutes: number;
+  description?: string;
+}
+
+export interface CreateEventResponse {
+  status: string;
+  message: string;
+  event_id?: string;
+  event_link?: string;
+}

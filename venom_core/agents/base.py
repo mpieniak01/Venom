@@ -190,7 +190,13 @@ class BaseAgent(ABC):
         system_fallback_used = False
         functions_enabled = enable_functions
 
-        for _ in range(3):
+        for attempt in range(1, 4):
+            logger.debug(
+                "LLM fallback attempt %s/3 (functions=%s, system_fallback_used=%s)",
+                attempt,
+                functions_enabled,
+                system_fallback_used,
+            )
             try:
                 kwargs = {
                     "chat_history": chat_history,

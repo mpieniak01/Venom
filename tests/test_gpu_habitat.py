@@ -54,7 +54,7 @@ class DummyContainer:
 
 
 def test_generate_training_script(monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
 
     script = habitat._generate_training_script(
@@ -74,7 +74,7 @@ def test_generate_training_script(monkeypatch):
 
 
 def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     missing = tmp_path / "missing.jsonl"
 
@@ -87,7 +87,7 @@ def test_run_training_job_rejects_missing_dataset(tmp_path, monkeypatch):
 
 
 def test_run_training_job_success(tmp_path, monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     dataset = tmp_path / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
@@ -106,7 +106,11 @@ def test_run_training_job_success(tmp_path, monkeypatch):
 
 def test_run_training_job_pulls_image_when_missing(tmp_path, monkeypatch):
     client = DummyDockerClient(raise_missing=True)
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: client)
+
+    def _make_client():
+        return client
+
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", _make_client)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     dataset = tmp_path / "data.jsonl"
     dataset.write_text('{"instruction": "hi"}\n', encoding="utf-8")
@@ -123,7 +127,7 @@ def test_run_training_job_pulls_image_when_missing(tmp_path, monkeypatch):
 
 
 def test_get_job_status_running(monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     container = DummyContainer(status="running")
     habitat.training_containers["job-1"] = {"container": container, "status": "running"}
@@ -135,7 +139,7 @@ def test_get_job_status_running(monkeypatch):
 
 
 def test_get_job_status_failed(monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     container = DummyContainer(status="exited", exit_code=1)
     habitat.training_containers["job-2"] = {"container": container, "status": "running"}
@@ -146,7 +150,7 @@ def test_get_job_status_failed(monkeypatch):
 
 
 def test_cleanup_job(monkeypatch):
-    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", lambda: DummyDockerClient())
+    monkeypatch.setattr(gpu_habitat_mod.docker, "from_env", DummyDockerClient)
     habitat = gpu_habitat_mod.GPUHabitat(enable_gpu=False)
     container = DummyContainer(status="running")
     habitat.training_containers["job-3"] = {"container": container, "status": "running"}

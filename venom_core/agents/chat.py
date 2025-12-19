@@ -12,8 +12,10 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.model_router import ServiceId
+from venom_core.execution.skills.google_calendar_skill import GoogleCalendarSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
 
@@ -42,6 +44,7 @@ ZASADY:
 - Jeśli pytanie dotyczy wiedzy, odpowiedz na podstawie swojej wiedzy i pamięci
 - Jeśli nie wiesz odpowiedzi, szczerze to przyznaj
 - Możesz zapisywać ważne informacje do pamięci używając funkcji 'memorize'
+- Jeśli masz dostęp do Google Calendar (funkcje read_agenda, schedule_task), używaj ich dla pytań o kalendarz i planowanie
 
 Przykłady:
 Pytanie: "Cześć Venom, jak się masz?"
@@ -52,6 +55,12 @@ Odpowiedź: "Stolicą Francji jest Paryż."
 
 Pytanie: "Opowiedz kawał"
 Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga błędy! 😄"
+
+Pytanie: "Co mam w planach dziś?"
+Odpowiedź: [użyj read_agenda aby sprawdzić kalendarz użytkownika]
+
+Pytanie: "Zaplanuj mi kodowanie na 16:00 przez godzinę"
+Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
 """
     # Fallback: modele, które nie wspierają roli system, używane gdy ModelRegistry
     # nie jest dostępny lub model nie jest opisany w manifeście.
@@ -72,6 +81,24 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         # Dodaj MemorySkill do kernela
         memory_skill = MemorySkill()
         self.kernel.add_plugin(memory_skill, plugin_name="MemorySkill")
+
+        # Warunkowo dodaj GoogleCalendarSkill (graceful degradation)
+        if SETTINGS.ENABLE_GOOGLE_CALENDAR:
+            try:
+                calendar_skill = GoogleCalendarSkill()
+                if calendar_skill.credentials_available:
+                    self.kernel.add_plugin(
+                        calendar_skill, plugin_name="GoogleCalendarSkill"
+                    )
+                    logger.info("ChatAgent zainicjalizowany z GoogleCalendarSkill")
+                else:
+                    logger.info("GoogleCalendarSkill pominięty - brak credentials")
+            except Exception as e:
+                logger.warning(
+                    f"Nie udało się zainicjalizować GoogleCalendarSkill: {e}"
+                )
+        else:
+            logger.info("GoogleCalendarSkill wyłączony w konfiguracji")
 
         logger.info("ChatAgent zainicjalizowany z MemorySkill")
 

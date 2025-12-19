@@ -248,7 +248,7 @@ POST /api/v1/tasks
 }
 
 # Frontend - użycie komponentu
-<DynamicParameterForm 
+<DynamicParameterForm
     schema={schema}
     onChange={handleParamsChange}
 />
@@ -256,13 +256,13 @@ POST /api/v1/tasks
 
 ## Troubleshooting
 
-**Problem:** Model nie ma zdefiniowanego schematu  
+**Problem:** Model nie ma zdefiniowanego schematu
 **Rozwiązanie:** Dodaj `generation_schema` w manifeście modelu lub użyj domyślnego
 
-**Problem:** Parametry nie wpływają na odpowiedź  
+**Problem:** Parametry nie wpływają na odpowiedź
 **Rozwiązanie:** Upewnij się że LLMServerController przekazuje parametry do silnika LLM
 
-**Problem:** UI nie renderuje niektórych typów parametrów  
+**Problem:** UI nie renderuje niektórych typów parametrów
 **Rozwiązanie:** Sprawdź czy typ parametru jest obsługiwany (float, int, bool, list, enum)
 
 ## Roadmap

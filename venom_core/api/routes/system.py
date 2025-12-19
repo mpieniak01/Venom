@@ -628,7 +628,11 @@ async def get_runtime_status():
             for s in services
         ]
 
-        return {"status": "success", "services": services_data, "count": len(services_data)}
+        return {
+            "status": "success",
+            "services": services_data,
+            "count": len(services_data),
+        }
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu runtime")
@@ -648,7 +652,10 @@ async def runtime_service_action(service: str, action: str):
         Rezultat akcji
     """
     try:
-        from venom_core.services.runtime_controller import runtime_controller, ServiceType
+        from venom_core.services.runtime_controller import (
+            ServiceType,
+            runtime_controller,
+        )
 
         # Walidacja service
         try:

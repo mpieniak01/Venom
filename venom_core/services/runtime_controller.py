@@ -261,13 +261,14 @@ class RuntimeController:
         """Sprawdza czy port jest nasłuchiwany."""
         try:
             # Optymalizacja: sprawdź tylko połączenia TCP nasłuchujące
-            for conn in psutil.net_connections(kind='tcp'):
+            for conn in psutil.net_connections(kind="tcp"):
                 if conn.status == "LISTEN" and conn.laddr.port == port:
                     return True
             return False
         except (psutil.AccessDenied, AttributeError):
             # Fallback: spróbuj otworzyć socket na porcie
             import socket
+
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 try:
                     sock.bind(("localhost", port))
@@ -277,9 +278,7 @@ class RuntimeController:
 
     def get_all_services_status(self) -> List[ServiceInfo]:
         """Pobiera status wszystkich usług."""
-        return [
-            self.get_service_status(service_type) for service_type in ServiceType
-        ]
+        return [self.get_service_status(service_type) for service_type in ServiceType]
 
     def _check_service_dependencies(self, service_type: ServiceType) -> Optional[str]:
         """
@@ -335,7 +334,9 @@ class RuntimeController:
         # Sprawdź zależności
         dependency_error = self._check_service_dependencies(service_type)
         if dependency_error:
-            logger.warning(f"Zależności niespełnione dla {service_name}: {dependency_error}")
+            logger.warning(
+                f"Zależności niespełnione dla {service_name}: {dependency_error}"
+            )
             self._add_to_history(service_name, "start", False, dependency_error)
             return {"success": False, "message": dependency_error}
 
@@ -349,9 +350,15 @@ class RuntimeController:
             elif service_type == ServiceType.LLM_VLLM:
                 result = self._start_vllm()
             elif service_type == ServiceType.HIVE:
-                result = {"success": False, "message": "Hive kontrolowany przez konfigurację"}
+                result = {
+                    "success": False,
+                    "message": "Hive kontrolowany przez konfigurację",
+                }
             elif service_type == ServiceType.NEXUS:
-                result = {"success": False, "message": "Nexus kontrolowany przez konfigurację"}
+                result = {
+                    "success": False,
+                    "message": "Nexus kontrolowany przez konfigurację",
+                }
             elif service_type == ServiceType.BACKGROUND_TASKS:
                 result = {
                     "success": False,
@@ -393,9 +400,15 @@ class RuntimeController:
             elif service_type == ServiceType.LLM_VLLM:
                 result = self._stop_vllm()
             elif service_type == ServiceType.HIVE:
-                result = {"success": False, "message": "Hive kontrolowany przez konfigurację"}
+                result = {
+                    "success": False,
+                    "message": "Hive kontrolowany przez konfigurację",
+                }
             elif service_type == ServiceType.NEXUS:
-                result = {"success": False, "message": "Nexus kontrolowany przez konfigurację"}
+                result = {
+                    "success": False,
+                    "message": "Nexus kontrolowany przez konfigurację",
+                }
             elif service_type == ServiceType.BACKGROUND_TASKS:
                 result = {
                     "success": False,
@@ -491,7 +504,10 @@ class RuntimeController:
                 }
 
         except Exception as e:
-            return {"success": False, "message": f"Błąd zatrzymywania backend: {str(e)}"}
+            return {
+                "success": False,
+                "message": f"Błąd zatrzymywania backend: {str(e)}",
+            }
 
     def _start_ui(self) -> Dict[str, Any]:
         """Uruchamia UI (Next.js) - już uruchomiony przez make start-dev."""
@@ -539,7 +555,10 @@ class RuntimeController:
                         "message": "Ollama nie uruchomił się w oczekiwanym czasie",
                     }
             except Exception as e:
-                return {"success": False, "message": f"Błąd uruchamiania Ollama: {str(e)}"}
+                return {
+                    "success": False,
+                    "message": f"Błąd uruchamiania Ollama: {str(e)}",
+                }
         else:
             return {
                 "success": False,
@@ -568,7 +587,10 @@ class RuntimeController:
                         "message": f"Błąd zatrzymywania Ollama: {result.stderr}",
                     }
             except Exception as e:
-                return {"success": False, "message": f"Błąd zatrzymywania Ollama: {str(e)}"}
+                return {
+                    "success": False,
+                    "message": f"Błąd zatrzymywania Ollama: {str(e)}",
+                }
         else:
             return {
                 "success": False,
@@ -599,7 +621,10 @@ class RuntimeController:
                         "message": "vLLM nie uruchomił się w oczekiwanym czasie",
                     }
             except Exception as e:
-                return {"success": False, "message": f"Błąd uruchamiania vLLM: {str(e)}"}
+                return {
+                    "success": False,
+                    "message": f"Błąd uruchamiania vLLM: {str(e)}",
+                }
         else:
             return {
                 "success": False,
@@ -628,7 +653,10 @@ class RuntimeController:
                         "message": f"Błąd zatrzymywania vLLM: {result.stderr}",
                     }
             except Exception as e:
-                return {"success": False, "message": f"Błąd zatrzymywania vLLM: {str(e)}"}
+                return {
+                    "success": False,
+                    "message": f"Błąd zatrzymywania vLLM: {str(e)}",
+                }
         else:
             return {
                 "success": False,

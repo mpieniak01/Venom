@@ -539,16 +539,18 @@ class BenchmarkService:
                 # Wysyłamy request do modelu
                 # UWAGA: Obecnie używamy SETTINGS.LLM_MODEL_NAME jako fallback
                 # Po zaimplementowaniu activate_model(), model_name będzie dynamiczny
-                async with client.stream(
-                    "POST",
-                    f"{endpoint}/chat/completions",
-                    json={
-                        "model": SETTINGS.LLM_MODEL_NAME,  # TODO: użyj model_name po pełnej implementacji activate_model
-                        "messages": [{"role": "user", "content": question}],
-                        "stream": True,
-                        "max_tokens": 200,
-                    },
-                ) as response:
+                async with (
+                    client.stream(
+                        "POST",
+                        f"{endpoint}/chat/completions",
+                        json={
+                            "model": SETTINGS.LLM_MODEL_NAME,  # TODO: użyj model_name po pełnej implementacji activate_model
+                            "messages": [{"role": "user", "content": question}],
+                            "stream": True,
+                            "max_tokens": 200,
+                        },
+                    ) as response
+                ):
                     response.raise_for_status()
 
                     tokens_generated = 0

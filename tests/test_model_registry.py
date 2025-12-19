@@ -191,7 +191,7 @@ async def test_huggingface_provider_list_models():
 async def test_huggingface_provider_install_model():
     """Test instalacji modelu z HuggingFace (mock)."""
     pytest.importorskip("huggingface_hub")
-    
+
     with patch("huggingface_hub.snapshot_download") as mock_download:
         mock_download.return_value = "/path/to/model"
 

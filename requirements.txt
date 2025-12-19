@@ -61,6 +61,12 @@ trafilatura             # Ekstrakcja tekstu z stron WWW (lepsze czyszczenie niż
 PyGithub                # GitHub API wrapper (External Discovery - GitHub Scanner)
 huggingface_hub         # Hugging Face Hub API (External Discovery - Model Explorer)
 
+# Google Calendar Integration (THE_CALENDAR)
+google-auth>=2.23.0     # Google OAuth2 authentication
+google-auth-oauthlib>=1.1.0  # OAuth2 flow helpers
+google-auth-httplib2>=0.1.1  # HTTP transport for Google API
+google-api-python-client>=2.100.0  # Google Calendar API client
+
 
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 

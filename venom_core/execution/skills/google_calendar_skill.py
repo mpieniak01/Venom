@@ -1,7 +1,7 @@
 """Moduł: google_calendar_skill - Skill do integracji z Google Calendar (Safe Layering)."""
 
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -175,7 +175,7 @@ class GoogleCalendarSkill:
         try:
             # Oblicz okno czasowe
             if time_min == "now":
-                start_time = datetime.utcnow()
+                start_time = datetime.now(timezone.utc)
             else:
                 start_time = datetime.fromisoformat(time_min.replace("Z", "+00:00"))
 
@@ -271,17 +271,23 @@ class GoogleCalendarSkill:
             start_dt = datetime.fromisoformat(start_time)
             end_dt = start_dt + timedelta(minutes=duration_minutes)
 
+            # Określ strefę czasową - użyj strefy z start_dt jeśli dostępna, inaczej UTC
+            if start_dt.tzinfo is not None:
+                tz_name = start_dt.tzinfo.tzname(start_dt) or "UTC"
+            else:
+                tz_name = "UTC"
+
             # Przygotuj wydarzenie
             event = {
                 "summary": title,
                 "description": description,
                 "start": {
                     "dateTime": start_dt.isoformat(),
-                    "timeZone": "UTC",
+                    "timeZone": tz_name,
                 },
                 "end": {
                     "dateTime": end_dt.isoformat(),
-                    "timeZone": "UTC",
+                    "timeZone": tz_name,
                 },
                 "reminders": {
                     "useDefault": False,
@@ -328,10 +334,13 @@ class GoogleCalendarSkill:
             return f"❌ Wystąpił błąd: {str(e)}"
 
     def close(self):
-        """Zamknięcie połączenia (cleanup)."""
-        if self.service:
-            self.service.close()
-            logger.info("GoogleCalendarSkill: zamknięto połączenie")
+        """Zamknięcie połączenia HTTP klienta Google Calendar (cleanup)."""
+        if self.service and hasattr(self.service, "_http"):
+            http = getattr(self.service, "_http", None)
+            close_func = getattr(http, "close", None)
+            if callable(close_func):
+                close_func()
+                logger.info("GoogleCalendarSkill: zamknięto połączenie HTTP klienta")
 
     def __enter__(self):
         return self

@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     # Tavily AI Search (opcjonalne, dla lepszej jakości wyszukiwania)
     TAVILY_API_KEY: SecretStr = SecretStr("")  # API Key dla Tavily AI Search
 
-    # Konfiguracja Google Calendar Integration (THE_CALENDAR)
+    # Konfiguracja Google Calendar Integration
     ENABLE_GOOGLE_CALENDAR: bool = False  # Włącz integrację z Google Calendar
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "./data/config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
     GOOGLE_CALENDAR_TOKEN_PATH: str = "./data/config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)

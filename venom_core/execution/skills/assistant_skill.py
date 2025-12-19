@@ -12,6 +12,17 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Słownik tłumaczeń nazw dni tygodnia (na poziomie modułu dla wydajności)
+DAY_NAMES_PL = {
+    "Monday": "Poniedziałek",
+    "Tuesday": "Wtorek",
+    "Wednesday": "Środa",
+    "Thursday": "Czwartek",
+    "Friday": "Piątek",
+    "Saturday": "Sobota",
+    "Sunday": "Niedziela",
+}
+
 
 class AssistantSkill:
     """
@@ -70,17 +81,8 @@ class AssistantSkill:
                 date_str = now.strftime("%Y-%m-%d")
                 time_str = now.strftime("%H:%M:%S")
                 day_name = now.strftime("%A")
-                # Tłumaczenie nazw dni na polski
-                day_names = {
-                    "Monday": "Poniedziałek",
-                    "Tuesday": "Wtorek",
-                    "Wednesday": "Środa",
-                    "Thursday": "Czwartek",
-                    "Friday": "Piątek",
-                    "Saturday": "Sobota",
-                    "Sunday": "Niedziela",
-                }
-                day_name_pl = day_names.get(day_name, day_name)
+                # Tłumaczenie nazwy dnia na polski
+                day_name_pl = DAY_NAMES_PL.get(day_name, day_name)
 
                 return (
                     f"📅 {day_name_pl}, {date_str}\n"

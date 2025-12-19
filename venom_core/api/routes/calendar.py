@@ -1,6 +1,6 @@
 """Moduł: routes/calendar - Endpointy API dla kalendarza i synchronizacji Google."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -115,8 +115,6 @@ async def get_calendar_events(
         else:
             start_time = datetime.fromisoformat(time_min.replace("Z", "+00:00"))
 
-        from datetime import timedelta
-
         end_time = start_time + timedelta(hours=hours)
 
         # Parse result - obecnie skill zwraca sformatowany string
@@ -137,10 +135,11 @@ async def get_calendar_events(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Błąd podczas pobierania wydarzeń: {e}")
+    except Exception:
+        logger.exception("Błąd podczas pobierania wydarzeń")
         raise HTTPException(
-            status_code=500, detail=f"Błąd podczas pobierania wydarzeń: {str(e)}"
+            status_code=500,
+            detail="Wystąpił błąd podczas pobierania wydarzeń z kalendarza.",
         )
 
 
@@ -200,8 +199,9 @@ async def create_calendar_event(request: CreateEventRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Błąd podczas tworzenia wydarzenia: {e}")
+    except Exception:
+        logger.exception("Błąd podczas tworzenia wydarzenia")
         raise HTTPException(
-            status_code=500, detail=f"Błąd podczas tworzenia wydarzenia: {str(e)}"
+            status_code=500,
+            detail="Wystąpił nieoczekiwany błąd podczas tworzenia wydarzenia.",
         )

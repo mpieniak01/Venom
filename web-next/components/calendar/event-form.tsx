@@ -54,10 +54,12 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
       setLoading(true);
       setError(null);
       
-      // Convert local datetime to ISO format without timezone
-      // Backend expects format like '2024-01-15T16:00:00'
-      const startDate = new Date(formData.start_time);
-      const isoStartTime = startDate.toISOString().slice(0, 19);
+      // Konwersja lokalnego czasu z <input type="datetime-local"> na format bez strefy czasowej
+      // Backend oczekuje 'YYYY-MM-DDTHH:mm:ss' traktowanego jako czas lokalny, więc nie używamy toISOString() (UTC)
+      const isoStartTime =
+        formData.start_time.length === 16
+          ? `${formData.start_time}:00`
+          : formData.start_time.slice(0, 19);
       
       await onSubmit({
         ...formData,

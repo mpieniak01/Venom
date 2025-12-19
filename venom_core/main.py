@@ -13,6 +13,7 @@ from venom_core.api.audio_stream import AudioStreamHandler
 # Import routers
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import benchmark as benchmark_routes
+from venom_core.api.routes import calendar as calendar_routes
 from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
@@ -97,6 +98,9 @@ model_manager = None
 # Inicjalizacja Benchmark Service
 benchmark_service = None
 
+# Inicjalizacja Google Calendar Skill (THE_CALENDAR)
+google_calendar_skill = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -107,7 +111,7 @@ async def lifespan(app: FastAPI):
     global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
     global service_registry, service_monitor, model_manager, llm_controller
-    global benchmark_service
+    global benchmark_service, google_calendar_skill
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -170,6 +174,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Nie udało się zainicjalizować BenchmarkService: {e}")
         benchmark_service = None
+
+    # Inicjalizuj Google Calendar Skill
+    if SETTINGS.ENABLE_GOOGLE_CALENDAR:
+        try:
+            from venom_core.execution.skills.google_calendar_skill import (
+                GoogleCalendarSkill,
+            )
+
+            google_calendar_skill = GoogleCalendarSkill()
+            if google_calendar_skill.credentials_available:
+                logger.info("GoogleCalendarSkill zainicjalizowany dla API")
+            else:
+                logger.info(
+                    "GoogleCalendarSkill zainicjalizowany bez credentials - graceful degradation"
+                )
+        except Exception as e:
+            logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {e}")
+            google_calendar_skill = None
+    else:
+        logger.info("GoogleCalendarSkill wyłączony w konfiguracji")
 
     # Inicjalizuj Node Manager (THE_NEXUS) - jako pierwszy, bo orchestrator go potrzebuje
     if SETTINGS.ENABLE_NEXUS:
@@ -595,6 +619,7 @@ def setup_router_dependencies():
     models_routes.set_dependencies(model_manager)
     flow_routes.set_dependencies(request_tracer)
     benchmark_routes.set_dependencies(benchmark_service)
+    calendar_routes.set_dependencies(google_calendar_skill)
 
 
 # Montowanie routerów
@@ -611,6 +636,7 @@ app.include_router(strategy_routes.router)
 app.include_router(models_routes.router)
 app.include_router(flow_routes.router)
 app.include_router(benchmark_routes.router)
+app.include_router(calendar_routes.router)
 
 # Montowanie plików statycznych
 if SETTINGS.SERVE_LEGACY_UI:

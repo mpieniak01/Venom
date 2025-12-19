@@ -12,6 +12,7 @@ workspace/*
 !workspace/.gitkeep
 
 data/memory/
+data/user_lexicon/
 
 # Chronos timelines and snapshots
 data/timelines/

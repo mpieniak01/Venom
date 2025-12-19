@@ -205,14 +205,15 @@ WAŻNE:
             )
 
             # Wywołaj LLM
-            response = await self.chat_service.get_chat_message_contents(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=self.chat_service,
                 chat_history=chat_history,
                 settings=self.execution_settings,
-                kernel=self.kernel,
+                enable_functions=False,
             )
 
             # Wyciągnij kod
-            generated_code = str(response[0])
+            generated_code = str(response)
 
             # Oczyść kod z markdown jeśli LLM dodało
             # Obsługa różnych formatów markdown code blocks

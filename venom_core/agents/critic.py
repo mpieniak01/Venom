@@ -141,8 +141,11 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
         chat_service = self.kernel.get_service()
         settings = OpenAIChatPromptExecutionSettings(temperature=CRITIC_TEMPERATURE)
 
-        response = await chat_service.get_chat_message_content(
-            chat_history=chat_history, settings=settings
+        response = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
+            chat_history=chat_history,
+            settings=settings,
+            enable_functions=False,
         )
 
         result = str(response).strip()

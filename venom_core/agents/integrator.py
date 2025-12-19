@@ -160,10 +160,11 @@ Akcja: get_current_branch()"""
             )
 
             # Wykonaj request do LLM z włączoną obsługą funkcji
-            response = await chat_service.get_chat_message_content(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=history,
                 settings=settings,
-                kernel=self.kernel,
+                enable_functions=True,
             )
 
             result = str(response)
@@ -216,8 +217,11 @@ Przykład: "feat(git): add GitSkill implementation"
             )
 
             # Wykonaj request
-            response = await chat_service.get_chat_message_content(
-                chat_history=history, settings=settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=history,
+                settings=settings,
+                enable_functions=False,
             )
 
             message = str(response).strip()

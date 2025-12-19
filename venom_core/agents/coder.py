@@ -163,8 +163,11 @@ def hello_world():
             )
 
             # Wywołaj model z możliwością auto-wywołania funkcji
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=True,
             )
 
             result = str(response).strip()
@@ -230,8 +233,11 @@ def hello_world():
                 )
 
                 # Wywołaj model
-                response = await chat_service.get_chat_message_content(
-                    chat_history=chat_history, settings=settings
+                response = await self._invoke_chat_with_fallbacks(
+                    chat_service=chat_service,
+                    chat_history=chat_history,
+                    settings=settings,
+                    enable_functions=True,
                 )
 
                 logger.info(f"Model wygenerował odpowiedź (próba {attempt})")

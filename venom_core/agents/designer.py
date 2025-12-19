@@ -151,8 +151,11 @@ i wygeneruj odpowiednią konfigurację."""
             )
 
             # Wywołanie modelu
-            response = await self.chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=self.chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=False,
             )
 
             result = str(response)

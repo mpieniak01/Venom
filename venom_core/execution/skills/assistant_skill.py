@@ -37,18 +37,15 @@ class AssistantSkill:
     def __init__(
         self,
         service_registry: Optional[ServiceRegistry] = None,
-        weather_api_key: Optional[str] = None,
     ):
         """
         Inicjalizacja AssistantSkill.
 
         Args:
             service_registry: Rejestr usług (utworzony automatycznie jeśli None)
-            weather_api_key: Klucz API dla serwisu pogody (opcjonalny)
         """
         self.service_registry = service_registry or ServiceRegistry()
         self.service_monitor = ServiceHealthMonitor(self.service_registry)
-        self.weather_api_key = weather_api_key
         logger.info("AssistantSkill zainicjalizowany")
 
     @kernel_function(
@@ -120,9 +117,21 @@ class AssistantSkill:
             Informacje o pogodzie
         """
         try:
+            # Walidacja jednostek
+            if units not in ("metric", "imperial"):
+                logger.warning(
+                    f"Nieprawidłowa wartość units: '{units}'. Używam 'metric'."
+                )
+                units = "metric"
+
+            # Podstawowa walidacja lokalizacji (usuń potencjalnie problematyczne znaki)
+            if not location or not location.strip():
+                return "✗ Nazwa lokalizacji nie może być pusta."
+
             # Używamy wttr.in - darmowe API bez wymagania klucza
-            # Format: ?format=3 daje zwięzły output
-            url = f"https://wttr.in/{location}?format=j1"
+            # Format: ?format=j1 zwraca pełne dane w formacie JSON
+            location_safe = location.strip()
+            url = f"https://wttr.in/{location_safe}?format=j1"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -133,29 +142,47 @@ class AssistantSkill:
 
                     data = await response.json()
 
-                    # Parsowanie odpowiedzi z wttr.in
-                    current = data.get("current_condition", [{}])[0]
-                    nearest_area = data.get("nearest_area", [{}])[0]
+                    # Parsowanie odpowiedzi z wttr.in - bezpieczna obsługa pustych list
+                    current_list = data.get("current_condition") or []
+                    if not current_list:
+                        return f"✗ Brak danych pogodowych dla '{location}'."
+                    current = current_list[0]
+
+                    nearest_area_list = data.get("nearest_area") or []
+                    nearest_area = nearest_area_list[0] if nearest_area_list else {}
 
                     temp_c = current.get("temp_C", "N/A")
                     temp_f = current.get("temp_F", "N/A")
                     feels_like_c = current.get("FeelsLikeC", "N/A")
+                    feels_like_f = current.get("FeelsLikeF", "N/A")
                     humidity = current.get("humidity", "N/A")
-                    weather_desc = current.get("weatherDesc", [{}])[0].get(
-                        "value", "N/A"
+
+                    # Bezpieczne wydobycie opisu pogody
+                    weather_desc_list = current.get("weatherDesc") or []
+                    weather_desc = (
+                        weather_desc_list[0].get("value", "N/A")
+                        if weather_desc_list
+                        else "N/A"
                     )
+
                     wind_speed = current.get("windspeedKmph", "N/A")
                     wind_dir = current.get("winddir16Point", "N/A")
 
-                    area_name = nearest_area.get("areaName", [{}])[0].get(
-                        "value", location
+                    # Bezpieczne wydobycie nazwy obszaru
+                    area_name_list = nearest_area.get("areaName") or []
+                    area_name = (
+                        area_name_list[0].get("value", location)
+                        if area_name_list
+                        else location
                     )
-                    country = nearest_area.get("country", [{}])[0].get("value", "")
+
+                    country_list = nearest_area.get("country") or []
+                    country = country_list[0].get("value", "") if country_list else ""
 
                     if units == "metric":
                         temp_display = f"{temp_c}°C (odczuwalna: {feels_like_c}°C)"
                     else:
-                        temp_display = f"{temp_f}°F"
+                        temp_display = f"{temp_f}°F (odczuwalna: {feels_like_f}°F)"
 
                     return (
                         f"🌤️  Pogoda dla: {area_name}, {country}\n\n"
@@ -168,6 +195,9 @@ class AssistantSkill:
         except asyncio.TimeoutError:
             logger.error("Timeout podczas pobierania danych pogodowych")
             return "✗ Przekroczono limit czasu podczas pobierania danych pogodowych."
+        except aiohttp.ClientError as e:
+            logger.error(f"Błąd połączenia podczas pobierania pogody: {e}")
+            return f"✗ Błąd połączenia z serwisem pogodowym: {e}"
         except Exception as e:
             logger.error(f"Błąd podczas pobierania pogody: {e}")
             return f"✗ Błąd podczas pobierania pogody: {e}"

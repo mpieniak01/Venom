@@ -20,9 +20,28 @@ const envApiBase =
 
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 
+const isLocalhost = (hostname: string): boolean =>
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname === "[::1]" ||
+  hostname === "wsl.localhost" ||
+  hostname.endsWith(".localhost");
+
 const resolveBrowserBase = (): string => {
-  if (envApiBase) return sanitizeBase(envApiBase);
-  return "";
+  if (!envApiBase) return "";
+  if (typeof window === "undefined") return sanitizeBase(envApiBase);
+  if (!envApiBase.startsWith("http")) return sanitizeBase(envApiBase);
+
+  try {
+    const parsed = new URL(envApiBase);
+    if (isLocalhost(parsed.hostname) && !isLocalhost(window.location.hostname)) {
+      return "";
+    }
+  } catch {
+    return sanitizeBase(envApiBase);
+  }
+
+  return sanitizeBase(envApiBase);
 };
 
 const resolveBrowserWsBase = (): string => {

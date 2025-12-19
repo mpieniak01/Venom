@@ -5,10 +5,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+try:
+    from google.auth.transport.requests import Request
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+
+    _GOOGLE_CALENDAR_AVAILABLE = True
+    _GOOGLE_CALENDAR_IMPORT_ERROR = None
+except ModuleNotFoundError as exc:
+    Request = None
+    InstalledAppFlow = None
+    build = None
+    HttpError = None
+    _GOOGLE_CALENDAR_AVAILABLE = False
+    _GOOGLE_CALENDAR_IMPORT_ERROR = exc
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
@@ -57,6 +68,16 @@ class GoogleCalendarSkill:
         )
         self.token_path = token_path or SETTINGS.GOOGLE_CALENDAR_TOKEN_PATH
         self.venom_calendar_id = venom_calendar_id or SETTINGS.VENOM_CALENDAR_ID
+        self.service = None
+        self.credentials_available = False
+
+        if not _GOOGLE_CALENDAR_AVAILABLE:
+            logger.warning(
+                "GoogleCalendarSkill: brak zależności Google API "
+                f"({_GOOGLE_CALENDAR_IMPORT_ERROR}). "
+                "Skill nie jest aktywny - graceful degradation."
+            )
+            return
 
         # Safety check: warn if venom_calendar_id is 'primary' (violates Safe Layering)
         if self.venom_calendar_id == "primary":
@@ -64,9 +85,6 @@ class GoogleCalendarSkill:
                 "⚠️  VENOM_CALENDAR_ID is set to 'primary' - this violates Safe Layering! "
                 "Create a separate calendar for Venom and update the configuration."
             )
-
-        self.service = None
-        self.credentials_available = False
 
         # Próba inicjalizacji - graceful degradation
         try:
@@ -92,6 +110,8 @@ class GoogleCalendarSkill:
             FileNotFoundError: Jeśli plik credentials nie istnieje
             Exception: Inne błędy inicjalizacji
         """
+        if not _GOOGLE_CALENDAR_AVAILABLE:
+            raise RuntimeError("Google Calendar dependencies are not installed.")
         # Sprawdź czy plik credentials istnieje
         if not Path(self.credentials_path).exists():
             raise FileNotFoundError(

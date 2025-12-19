@@ -23,6 +23,10 @@ class EmbeddingService:
             service_type: Typ serwisu ("local" lub "openai"). Domyślnie z SETTINGS.
         """
         self.service_type = service_type or SETTINGS.LLM_SERVICE_TYPE
+        if service_type is None and (
+            SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL"
+        ):
+            self.service_type = "local"
         self._model = None
         self._client = None
         logger.info(f"EmbeddingService inicjalizowany z typem: {self.service_type}")

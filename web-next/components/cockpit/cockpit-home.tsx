@@ -49,7 +49,7 @@ import { TaskStreamEvent, useTaskStream } from "@/hooks/use-task-stream";
 import type { Chart } from "chart.js/auto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { HistoryRequestDetail, ServiceStatus, Task } from "@/lib/types";
+import type { GenerationParams, HistoryRequestDetail, ServiceStatus, Task } from "@/lib/types";
 import type { CockpitInitialData } from "@/lib/server-data";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
@@ -151,7 +151,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [responseDurations, setResponseDurations] = useState<number[]>([]);
   const lastTelemetryRefreshRef = useRef<string | null>(null);
   const [tuningOpen, setTuningOpen] = useState(false);
-  const [generationParams, setGenerationParams] = useState<Record<string, any> | null>(null);
+  const [generationParams, setGenerationParams] = useState<GenerationParams | null>(null);
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const streamCompletionRef = useRef<Set<string>>(new Set());
@@ -896,7 +896,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       // Pobierz aktywny model z runtime info
       const activeModelName = models?.active?.model || "llama3";
       const config = await fetchModelConfig(activeModelName);
-      setModelSchema(config.generation_schema || null);
+      const schema = config?.generation_schema as GenerationSchema | undefined;
+      setModelSchema(schema ?? null);
     } catch (err) {
       console.error("Nie udało się pobrać konfiguracji modelu:", err);
       setModelSchema(null);
@@ -2436,7 +2437,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
 
       {/* Tuning Drawer */}
       <Sheet open={tuningOpen} onOpenChange={setTuningOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Parametry Generacji</SheetTitle>
             <SheetDescription>

@@ -5,17 +5,32 @@ Uwaga: Te testy wymagają działającego środowiska LLM (vLLM lub Ollama).
 Jeśli środowisko nie jest dostępne, testy będą pominięte (skip).
 """
 
+import httpx
 import pytest
 
 from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 
 
+def _local_llm_available() -> bool:
+    if SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT:
+        return False
+    endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+    try:
+        response = httpx.get(f"{endpoint}/models", timeout=1.0)
+        return response.status_code < 500
+    except httpx.HTTPError:
+        return False
+
+
+LOCAL_LLM_AVAILABLE = _local_llm_available()
+
+
 class TestGenerationParamsIntegration:
     """Testy integracyjne sprawdzające wpływ parametrów na odpowiedzi modelu."""
 
     @pytest.mark.skipif(
-        SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT,
+        not LOCAL_LLM_AVAILABLE,
         reason="Wymaga lokalnego środowiska LLM",
     )
     @pytest.mark.asyncio
@@ -73,7 +88,7 @@ class TestGenerationParamsIntegration:
         ), "Niska temperatura powinna dawać spójne odpowiedzi"
 
     @pytest.mark.skipif(
-        SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT,
+        not LOCAL_LLM_AVAILABLE,
         reason="Wymaga lokalnego środowiska LLM",
     )
     @pytest.mark.asyncio
@@ -135,7 +150,7 @@ class TestGenerationParamsIntegration:
         )
 
     @pytest.mark.skipif(
-        SETTINGS.AI_MODE != "LOCAL" or not SETTINGS.LLM_LOCAL_ENDPOINT,
+        not LOCAL_LLM_AVAILABLE,
         reason="Wymaga lokalnego środowiska LLM",
     )
     @pytest.mark.asyncio

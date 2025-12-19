@@ -103,6 +103,10 @@ class KernelBuilder:
 
                 service_type = service_mapping.get(recommended_service, service_type)
 
+            force_local = getattr(self.settings, "FORCE_LOCAL_MODEL", False)
+            ai_mode = getattr(self.settings, "AI_MODE", "")
+            if force_local or ai_mode == "LOCAL":
+                service_type = "local"
             logger.info(f"Inicjalizacja Kernel z typem serwisu: {service_type}")
             self._register_service(kernel, service_type)
 

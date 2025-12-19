@@ -15,7 +15,7 @@ def mock_kernel():
 
     # Mock chat service
     chat_service = MagicMock()
-    chat_service.get_chat_message_contents = AsyncMock()
+    chat_service.get_chat_message_content = AsyncMock()
     kernel.get_service = MagicMock(return_value=chat_service)
 
     return kernel
@@ -58,8 +58,8 @@ async def test_guardian_process(guardian_agent):
     mock_response = MagicMock()
     mock_response.__str__ = lambda _: "Analiza zakończona"
 
-    guardian_agent.chat_service.get_chat_message_contents = AsyncMock(
-        return_value=[mock_response]
+    guardian_agent.chat_service.get_chat_message_content = AsyncMock(
+        return_value=mock_response
     )
 
     result = await guardian_agent.process("Uruchom testy")
@@ -128,8 +128,8 @@ ACTION: Fix the code
 """
     )
 
-    guardian_agent.chat_service.get_chat_message_contents = AsyncMock(
-        return_value=[mock_response]
+    guardian_agent.chat_service.get_chat_message_content = AsyncMock(
+        return_value=mock_response
     )
 
     test_output = "FAILED test.py::test_example - AssertionError"
@@ -145,7 +145,7 @@ ACTION: Fix the code
 async def test_analyze_test_failure_with_error(guardian_agent):
     """Test analizy błędu gdy proces zawodzi."""
     # Mockuj błąd podczas analizy
-    guardian_agent.chat_service.get_chat_message_contents = AsyncMock(
+    guardian_agent.chat_service.get_chat_message_content = AsyncMock(
         side_effect=Exception("LLM error")
     )
 

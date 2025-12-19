@@ -24,6 +24,8 @@ data/timelines/
 test-results/
 **/test-results/
 **/.pytest_cache/
+.coverage
+htmlcov/
 **/.ruff_cache/
 **/playwright-report/
 **/.playwright-report/
@@ -55,6 +57,7 @@ web-next/.eslintcache
 web-next/.vercel/
 web-next/test-results/
 web-next/playwright-report/
+web-next/public/test/
 
 # runtime pid files
 .web-next.pid

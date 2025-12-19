@@ -610,11 +610,11 @@ mypy venom_core
 
 ## 📊 Statystyki projektu
 
-- **Linie kodu:** ~10,000+
-- **Liczba agentów:** 6 (Coder, Critic, Librarian, Chat, Researcher, Architect)
-- **Liczba skills:** 5 (File, Git, Shell, Memory, WebSearch)
-- **Liczba testów:** 100+
-- **Pokrycie testami:** ~80%
+- **Linie kodu:** 118,555 (linie niepuste; bez `docs/`, `node_modules/`, `logs/`, `data/`)
+- **Liczba agentów:** 33 (moduły `venom_core/agents/*`)
+- **Liczba skills:** 19 wykonawczych (`venom_core/execution/skills/*`) + 4 pomocnicze (Memory/Voice/Whisper/Core)
+- **Liczba testów:** 518 (pytest `def test_`) + 18 (Playwright `test(`)
+- **Pokrycie testami:** 62%
 
 ## 🎯 Roadmap
 

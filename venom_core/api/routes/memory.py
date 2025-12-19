@@ -49,6 +49,24 @@ def set_dependencies(vector_store):
     _vector_store = vector_store
 
 
+def _ensure_vector_store():
+    global _vector_store
+    if _vector_store is not None:
+        return _vector_store
+    try:
+        from venom_core.memory.vector_store import VectorStore
+
+        _vector_store = VectorStore()
+        logger.info("VectorStore zainicjalizowany leniwie w API")
+    except Exception as e:
+        logger.warning(f"Nie udało się zainicjalizować VectorStore: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+        ) from e
+    return _vector_store
+
+
 @router.post("/ingest", response_model=MemoryIngestResponse, status_code=201)
 async def ingest_to_memory(request: MemoryIngestRequest):
     """
@@ -67,15 +85,11 @@ async def ingest_to_memory(request: MemoryIngestRequest):
         if not request.text or not request.text.strip():
             raise HTTPException(status_code=400, detail="Tekst nie może być pusty")
 
-        if _vector_store is None:
-            raise HTTPException(
-                status_code=503,
-                detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-            )
+        vector_store = _ensure_vector_store()
 
         # Zapisz do pamięci
         metadata = {"category": request.category}
-        result = _vector_store.upsert(
+        result = vector_store.upsert(
             text=request.text,
             metadata=metadata,
             collection_name=request.collection,
@@ -122,13 +136,9 @@ async def search_memory(request: MemorySearchRequest):
                 detail="Zapytanie nie może być puste (pusty prompt niedozwolony)",
             )
 
-        if _vector_store is None:
-            raise HTTPException(
-                status_code=503,
-                detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-            )
+        vector_store = _ensure_vector_store()
 
-        results = _vector_store.search(
+        results = vector_store.search(
             query=request.query,
             limit=request.limit,
             collection_name=request.collection,

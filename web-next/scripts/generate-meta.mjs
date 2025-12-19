@@ -9,7 +9,7 @@ const projectRoot = path.join(__dirname, "..");
 function safeExec(cmd) {
   try {
     return execSync(cmd, { cwd: projectRoot, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
-  } catch (err) {
+  } catch {
     return "unknown";
   }
 }

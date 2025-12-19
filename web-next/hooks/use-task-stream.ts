@@ -83,10 +83,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
+    const sources = sourcesRef.current;
     if (!enabled) {
       // Zamknij wszystkie istniejące źródła jeśli streaming wyłączony
-      sourcesRef.current.forEach((source) => source.close());
-      sourcesRef.current.clear();
+      sources.forEach((source) => source.close());
+      sources.clear();
       setStreams({});
       return undefined;
     }
@@ -95,7 +96,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
     // Dodaj nowe strumienie
     for (const taskId of targetIds) {
-      if (sourcesRef.current.has(taskId)) continue;
+      if (sources.has(taskId)) continue;
       const source = new EventSource(`/api/v1/tasks/${taskId}/stream`);
 
       const updateState = (patch: Partial<TaskStreamState>) => {
@@ -185,9 +186,9 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
             eventName === "task_missing" ||
             (status && TERMINAL_STATUSES.includes(status)))
         ) {
-          const currentSource = sourcesRef.current.get(taskId);
+          const currentSource = sources.get(taskId);
           currentSource?.close();
-          sourcesRef.current.delete(taskId);
+          sources.delete(taskId);
           updateState({
             connected: false,
           });
@@ -228,7 +229,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         });
       };
 
-      sourcesRef.current.set(taskId, source);
+      sources.set(taskId, source);
       // zapewnij stan startowy
       setStreams((prev) => ({
         ...prev,
@@ -241,10 +242,10 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     }
 
     // Usuń strumienie dla ID, które nie są już śledzone
-    sourcesRef.current.forEach((source, sourceTaskId) => {
+    sources.forEach((source, sourceTaskId) => {
       if (!targetIds.has(sourceTaskId)) {
         source.close();
-        sourcesRef.current.delete(sourceTaskId);
+        sources.delete(sourceTaskId);
         setStreams((prev) => {
           const next = { ...prev };
           delete next[sourceTaskId];
@@ -254,8 +255,8 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     });
 
     return () => {
-      sourcesRef.current.forEach((source) => source.close());
-      sourcesRef.current.clear();
+      sources.forEach((source) => source.close());
+      sources.clear();
       setStreams({});
     };
   }, [dedupedTaskIds, enabled, autoCloseOnFinish, onEvent]);

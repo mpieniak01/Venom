@@ -1,5 +1,6 @@
 """Testy jednostkowe dla AssistantSkill."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -195,8 +196,6 @@ class TestAssistantSkill:
     @pytest.mark.asyncio
     async def test_get_weather_timeout(self, assistant_skill):
         """Test pobierania pogody - timeout."""
-        import asyncio
-
         mock_session = MagicMock()
         mock_session.get = MagicMock(side_effect=asyncio.TimeoutError())
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)

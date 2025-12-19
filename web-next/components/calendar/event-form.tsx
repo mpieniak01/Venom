@@ -25,21 +25,21 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
     now.setMinutes(0);
     now.setSeconds(0);
     now.setMilliseconds(0);
-    
+
     // Format to datetime-local input format (YYYY-MM-DDTHH:mm)
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
-    
+
     const defaultTime = `${year}-${month}-${day}T${hours}:${minutes}`;
     setFormData(prev => ({ ...prev, start_time: defaultTime }));
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.title.trim()) {
       setError("Tytuł jest wymagany");
       return;
@@ -53,14 +53,14 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Konwersja lokalnego czasu z <input type="datetime-local"> na format bez strefy czasowej
       // Backend oczekuje 'YYYY-MM-DDTHH:mm:ss' traktowanego jako czas lokalny, więc nie używamy toISOString() (UTC)
       const isoStartTime =
         formData.start_time.length === 16
           ? `${formData.start_time}:00`
           : formData.start_time.slice(0, 19);
-      
+
       await onSubmit({
         ...formData,
         start_time: isoStartTime,

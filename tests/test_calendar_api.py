@@ -104,7 +104,9 @@ def test_get_events_with_custom_params(client, mock_calendar_skill):
     """Test pobierania wydarzeń z niestandardowymi parametrami."""
     mock_calendar_skill.read_agenda.return_value = "📅 Agenda..."
 
-    response = client.get("/api/v1/calendar/events?time_min=2024-01-15T09:00:00Z&hours=48")
+    response = client.get(
+        "/api/v1/calendar/events?time_min=2024-01-15T09:00:00Z&hours=48"
+    )
 
     assert response.status_code == 200
     mock_calendar_skill.read_agenda.assert_called_once_with(

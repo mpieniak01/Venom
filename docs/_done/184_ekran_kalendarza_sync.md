@@ -1,6 +1,6 @@
 # Issue #184: Ekran Kalendarza i Google Sync - Implementation Summary
 
-**Data implementacji:** 2025-12-19  
+**Data implementacji:** 2025-12-19
 **Status:** ✅ COMPLETED
 
 ## 📋 Przegląd
@@ -300,6 +300,6 @@ Wszystkie wymagania z issue #184 zostały spełnione:
 
 Implementacja jest kompletna i gotowa do użycia. Wszystkie testy przechodzą, security scans czyste, code review addressed.
 
-**Ostatni commit:** fix: address code review feedback  
-**Branch:** copilot/add-calendar-screen-and-sync  
+**Ostatni commit:** fix: address code review feedback
+**Branch:** copilot/add-calendar-screen-and-sync
 **Ready for merge:** ✅ YES

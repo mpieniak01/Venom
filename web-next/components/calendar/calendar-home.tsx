@@ -19,7 +19,7 @@ export function CalendarHome() {
       const response = await fetch(
         `/api/v1/calendar/events?time_min=now&hours=${timeRangeHours}`
       );
-      
+
       if (!response.ok) {
         if (response.status === 503) {
           setError("Google Calendar nie jest skonfigurowany. Sprawdź konfigurację ENABLE_GOOGLE_CALENDAR.");
@@ -28,7 +28,7 @@ export function CalendarHome() {
         }
         return;
       }
-      
+
       const data: EventsResponse = await response.json();
       setEvents(data.events);
     } catch (err) {

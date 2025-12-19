@@ -70,7 +70,10 @@ def set_dependencies(google_calendar_skill):
 def _ensure_calendar_skill():
     """Sprawdź czy GoogleCalendarSkill jest dostępny."""
     global _google_calendar_skill
-    if _google_calendar_skill is None or not _google_calendar_skill.credentials_available:
+    if (
+        _google_calendar_skill is None
+        or not _google_calendar_skill.credentials_available
+    ):
         raise HTTPException(
             status_code=503,
             detail="Google Calendar nie jest skonfigurowany. Sprawdź konfigurację ENABLE_GOOGLE_CALENDAR.",

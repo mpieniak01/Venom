@@ -138,6 +138,7 @@ class TestAssistantSkill:
                     "temp_C": "20",
                     "temp_F": "68",
                     "FeelsLikeC": "19",
+                    "FeelsLikeF": "66",
                     "humidity": "70",
                     "weatherDesc": [{"value": "Clear"}],
                     "windspeedKmph": "5",
@@ -172,6 +173,7 @@ class TestAssistantSkill:
             )
 
             assert "68°F" in result
+            assert "66°F" in result  # feels-like temperature
             assert "London" in result
 
     @pytest.mark.asyncio
@@ -206,6 +208,115 @@ class TestAssistantSkill:
 
             assert "✗" in result
             assert "limit czasu" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_weather_invalid_units(self, assistant_skill):
+        """Test pobierania pogody - nieprawidłowe jednostki."""
+        mock_response_data = {
+            "current_condition": [
+                {
+                    "temp_C": "20",
+                    "temp_F": "68",
+                    "FeelsLikeC": "19",
+                    "FeelsLikeF": "66",
+                    "humidity": "70",
+                    "weatherDesc": [{"value": "Clear"}],
+                    "windspeedKmph": "5",
+                    "winddir16Point": "N",
+                }
+            ],
+            "nearest_area": [
+                {
+                    "areaName": [{"value": "London"}],
+                    "country": [{"value": "UK"}],
+                }
+            ],
+        }
+
+        async def mock_json():
+            return mock_response_data
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = mock_json
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            # Nieprawidłowa jednostka - powinno użyć metric
+            result = await assistant_skill.get_weather(
+                location="London", units="kelvin"
+            )
+
+            # Powinno użyć domyślnego metric
+            assert "20°C" in result
+            assert "London" in result
+
+    @pytest.mark.asyncio
+    async def test_get_weather_empty_location(self, assistant_skill):
+        """Test pobierania pogody - pusta lokalizacja."""
+        result = await assistant_skill.get_weather(location="")
+
+        assert "✗" in result
+        assert "pusta" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_weather_network_error(self, assistant_skill):
+        """Test pobierania pogody - błąd sieci."""
+        import aiohttp
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=aiohttp.ClientError("Network error"))
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await assistant_skill.get_weather(location="Warsaw")
+
+            assert "✗" in result
+            assert "połączenia" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_weather_empty_response(self, assistant_skill):
+        """Test pobierania pogody - pusta odpowiedź API."""
+        mock_response_data = {
+            "current_condition": [],  # Pusta lista
+            "nearest_area": [],
+        }
+
+        async def mock_json():
+            return mock_response_data
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = mock_json
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await assistant_skill.get_weather(location="Unknown")
+
+            assert "✗" in result
+            assert "Brak danych" in result
+
+    @pytest.mark.asyncio
+    async def test_get_current_time_invalid_format(self, assistant_skill):
+        """Test pobierania czasu - nieprawidłowy format."""
+        result = await assistant_skill.get_current_time(format_type="invalid")
+
+        # Powinno domyślnie użyć pełnego formatu
+        assert "📅" in result
+        assert "Godzina:" in result
 
     @pytest.mark.asyncio
     async def test_check_services_basic(self, assistant_skill):

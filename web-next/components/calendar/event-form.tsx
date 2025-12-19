@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { CreateEventRequest } from "@/lib/types";
 
 interface EventFormProps {
@@ -19,14 +19,14 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Set default start time to next hour
-  useState(() => {
+  useEffect(() => {
     const now = new Date();
     now.setHours(now.getHours() + 1);
     now.setMinutes(0);
     now.setSeconds(0);
     now.setMilliseconds(0);
     
-    // Format to ISO string without milliseconds and timezone
+    // Format to datetime-local input format (YYYY-MM-DDTHH:mm)
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -35,7 +35,7 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
     
     const defaultTime = `${year}-${month}-${day}T${hours}:${minutes}`;
     setFormData(prev => ({ ...prev, start_time: defaultTime }));
-  });
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -54,9 +54,10 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
       setLoading(true);
       setError(null);
       
-      // Convert local datetime to ISO format with timezone
+      // Convert local datetime to ISO format without timezone
+      // Backend expects format like '2024-01-15T16:00:00'
       const startDate = new Date(formData.start_time);
-      const isoStartTime = startDate.toISOString().slice(0, 19); // Remove milliseconds and Z
+      const isoStartTime = startDate.toISOString().slice(0, 19);
       
       await onSubmit({
         ...formData,

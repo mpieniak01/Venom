@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { CalendarEvent, EventsResponse, CreateEventRequest } from "@/lib/types";
 import { CalendarView } from "./calendar-view";
 import { EventForm } from "./event-form";
@@ -10,14 +10,14 @@ export function CalendarHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [timeRange, setTimeRange] = useState({ hours: 24 });
+  const [timeRangeHours, setTimeRangeHours] = useState(24);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const response = await fetch(
-        `/api/v1/calendar/events?time_min=now&hours=${timeRange.hours}`
+        `/api/v1/calendar/events?time_min=now&hours=${timeRangeHours}`
       );
       
       if (!response.ok) {
@@ -36,7 +36,7 @@ export function CalendarHome() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [timeRangeHours]);
 
   const handleCreateEvent = async (eventData: CreateEventRequest) => {
     try {
@@ -63,7 +63,7 @@ export function CalendarHome() {
 
   useEffect(() => {
     fetchEvents();
-  }, [timeRange.hours]);
+  }, [fetchEvents]);
 
   return (
     <div className="space-y-6">
@@ -88,9 +88,9 @@ export function CalendarHome() {
       {/* Time Range Filter */}
       <div className="flex gap-2">
         <button
-          onClick={() => setTimeRange({ hours: 8 })}
+          onClick={() => setTimeRangeHours(8)}
           className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-            timeRange.hours === 8
+            timeRangeHours === 8
               ? "bg-emerald-600 text-white"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           }`}
@@ -98,9 +98,9 @@ export function CalendarHome() {
           8h
         </button>
         <button
-          onClick={() => setTimeRange({ hours: 24 })}
+          onClick={() => setTimeRangeHours(24)}
           className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-            timeRange.hours === 24
+            timeRangeHours === 24
               ? "bg-emerald-600 text-white"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           }`}
@@ -108,9 +108,9 @@ export function CalendarHome() {
           Dziś
         </button>
         <button
-          onClick={() => setTimeRange({ hours: 168 })}
+          onClick={() => setTimeRangeHours(168)}
           className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-            timeRange.hours === 168
+            timeRangeHours === 168
               ? "bg-emerald-600 text-white"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           }`}

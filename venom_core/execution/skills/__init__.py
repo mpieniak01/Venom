@@ -2,6 +2,7 @@
 
 # Import only when needed to avoid circular dependencies
 __all__ = [
+    "AssistantSkill",
     "BrowserSkill",
     "CoreSkill",
     "DocsSkill",
@@ -18,7 +19,11 @@ __all__ = [
 
 def __getattr__(name):
     """Lazy import for skills to avoid import errors."""
-    if name == "BrowserSkill":
+    if name == "AssistantSkill":
+        from venom_core.execution.skills.assistant_skill import AssistantSkill
+
+        return AssistantSkill
+    elif name == "BrowserSkill":
         from venom_core.execution.skills.browser_skill import BrowserSkill
 
         return BrowserSkill

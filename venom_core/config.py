@@ -108,7 +108,9 @@ class Settings(BaseSettings):
     ENABLE_GOOGLE_CALENDAR: bool = False  # Włącz integrację z Google Calendar
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "./data/config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
     GOOGLE_CALENDAR_TOKEN_PATH: str = "./data/config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
-    VENOM_CALENDAR_ID: str = "primary"  # ID kalendarza Venoma (write-only)
+    VENOM_CALENDAR_ID: str = (
+        "venom_work_calendar"  # ID kalendarza Venoma (write-only, NOT 'primary')
+    )
     VENOM_CALENDAR_NAME: str = "Venom Work"  # Nazwa kalendarza Venoma
 
     # Konfiguracja Audio Interface (THE_AVATAR)

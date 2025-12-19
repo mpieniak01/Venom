@@ -49,12 +49,21 @@ class GoogleCalendarSkill:
             credentials_path: Ścieżka do pliku OAuth2 credentials (opcjonalnie)
             token_path: Ścieżka do pliku token (opcjonalnie)
             venom_calendar_id: ID kalendarza Venoma (opcjonalnie)
+                              IMPORTANT: Must be a separate calendar ID, NOT 'primary'
+                              to ensure Safe Layering (write-only to Venom calendar)
         """
         self.credentials_path = (
             credentials_path or SETTINGS.GOOGLE_CALENDAR_CREDENTIALS_PATH
         )
         self.token_path = token_path or SETTINGS.GOOGLE_CALENDAR_TOKEN_PATH
         self.venom_calendar_id = venom_calendar_id or SETTINGS.VENOM_CALENDAR_ID
+
+        # Safety check: warn if venom_calendar_id is 'primary' (violates Safe Layering)
+        if self.venom_calendar_id == "primary":
+            logger.warning(
+                "⚠️  VENOM_CALENDAR_ID is set to 'primary' - this violates Safe Layering! "
+                "Create a separate calendar for Venom and update the configuration."
+            )
 
         self.service = None
         self.credentials_available = False
@@ -283,6 +292,7 @@ class GoogleCalendarSkill:
             }
 
             # WRITE-ONLY do kalendarza Venoma (NIE do primary)
+            # Safe Layering: self.venom_calendar_id should NEVER be 'primary'
             created_event = (
                 self.service.events()
                 .insert(calendarId=self.venom_calendar_id, body=event)

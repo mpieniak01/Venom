@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Command, Brain, BugPlay, Target, Sparkles, Shield, Gauge, Settings } from "lucide-react";
+import { Command, Brain, BugPlay, Target, Sparkles, Shield, Gauge, Settings, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ export const navItems = [
   { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
   { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
   { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target },
+  { href: "/calendar", label: "Kalendarz", labelKey: "sidebar.nav.calendar", icon: Calendar },
   { href: "/benchmark", label: "Benchmark", labelKey: "sidebar.nav.benchmark", icon: Gauge },
   { href: "/config", label: "Konfiguracja", labelKey: "sidebar.nav.config", icon: Settings },
 ];

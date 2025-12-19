@@ -614,7 +614,7 @@ mypy venom_core
 - **Liczba agentów:** 33 (moduły `venom_core/agents/*`)
 - **Liczba skills:** 19 wykonawczych (`venom_core/execution/skills/*`) + 4 pomocnicze (Memory/Voice/Whisper/Core)
 - **Liczba testów:** 518 (pytest `def test_`) + 18 (Playwright `test(`)
-- **Pokrycie testami:** 62%
+- **Pokrycie testami:** 65%
 
 ## 🎯 Roadmap
 

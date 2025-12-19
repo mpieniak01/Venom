@@ -5,6 +5,9 @@ from typing import Any, Dict, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
+from semantic_kernel.contents import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 from venom_core.utils.llm_runtime import get_active_llm_runtime
@@ -125,3 +128,108 @@ class BaseAgent(ABC):
         all_params = {**kwargs, **adapted_params}
 
         return OpenAIChatPromptExecutionSettings(**all_params)
+
+    def _strip_system_messages(self, chat_history: ChatHistory) -> ChatHistory:
+        """
+        Zamienia wiadomości SYSTEM na prefiks w pierwszej wiadomości USER.
+
+        Dzięki temu można używać modeli bez wsparcia roli SYSTEM.
+        """
+        system_messages = []
+        non_system_messages = []
+
+        for message in chat_history.messages:
+            if message.role == AuthorRole.SYSTEM:
+                system_messages.append(message.content)
+            else:
+                non_system_messages.append(message)
+
+        combined_system = "\n\n".join([text for text in system_messages if text])
+
+        new_history = ChatHistory()
+        system_injected = False
+
+        for message in non_system_messages:
+            if (
+                not system_injected
+                and combined_system
+                and message.role == AuthorRole.USER
+            ):
+                combined = (
+                    f"{combined_system.strip()}\n\n[Pytanie użytkownika]\n"
+                    f"{message.content}"
+                )
+                new_history.add_message(
+                    ChatMessageContent(role=AuthorRole.USER, content=combined)
+                )
+                system_injected = True
+            else:
+                new_history.add_message(message)
+
+        if combined_system and not system_injected:
+            new_history.add_message(
+                ChatMessageContent(
+                    role=AuthorRole.USER, content=combined_system.strip()
+                )
+            )
+
+        return new_history
+
+    async def _invoke_chat_with_fallbacks(
+        self,
+        chat_service,
+        chat_history: ChatHistory,
+        settings: OpenAIChatPromptExecutionSettings,
+        enable_functions: bool = False,
+    ):
+        """
+        Wywołuje LLM z fallbackami:
+        - retry bez roli SYSTEM, jeśli model jej nie wspiera
+        - retry bez function calling, jeśli model nie wspiera narzędzi
+        """
+        system_fallback_used = False
+        functions_enabled = enable_functions
+
+        for attempt in range(1, 4):
+            logger.debug(
+                "LLM fallback attempt %s/3 (functions=%s, system_fallback_used=%s)",
+                attempt,
+                functions_enabled,
+                system_fallback_used,
+            )
+            try:
+                kwargs = {
+                    "chat_history": chat_history,
+                    "settings": settings,
+                }
+                if functions_enabled:
+                    kwargs["kernel"] = self.kernel
+
+                return await chat_service.get_chat_message_content(**kwargs)
+            except Exception as api_error:
+                error_text = str(api_error).lower()
+                inner = getattr(api_error, "inner_exception", None)
+                if inner:
+                    error_text += f" {str(inner).lower()}"
+
+                handled = False
+
+                if (
+                    "system role not supported" in error_text
+                    and not system_fallback_used
+                ):
+                    chat_history = self._strip_system_messages(chat_history)
+                    system_fallback_used = True
+                    handled = True
+
+                if functions_enabled and (
+                    "does not support tools" in error_text
+                    or "kernel is required for function calls" in error_text
+                ):
+                    functions_enabled = False
+                    handled = True
+
+                if not handled:
+                    raise
+
+        raise RuntimeError("Nie udało się uzyskać odpowiedzi z LLM po fallbackach.")

@@ -22,10 +22,13 @@ from venom_core.agents.release_manager import ReleaseManagerAgent
 from venom_core.agents.researcher import ResearcherAgent
 from venom_core.agents.system_status import SystemStatusAgent
 from venom_core.agents.tester import TesterAgent
+from venom_core.agents.time_assistant import TimeAssistantAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
+from venom_core.agents.unsupported import UnsupportedAgent
 from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
 from venom_core.execution.skill_manager import SkillManager
+from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -82,6 +85,13 @@ class TaskDispatcher:
         except Exception as e:
             logger.warning(f"Nie udało się załadować custom skills: {e}")
 
+        # Zarejestruj wbudowane podstawowe umiejętności asystenta
+        try:
+            self.kernel.add_plugin(AssistantSkill(), plugin_name="AssistantSkill")
+            logger.info("Zarejestrowano plugin: AssistantSkill")
+        except Exception as e:
+            logger.warning(f"Nie udało się zarejestrować AssistantSkill: {e}")
+
         # Inicjalizuj agentów
         self.coder_agent = CoderAgent(kernel)
         self.chat_agent = ChatAgent(kernel)
@@ -98,6 +108,8 @@ class TaskDispatcher:
         self.release_manager_agent = ReleaseManagerAgent(kernel)
         self.executive_agent = ExecutiveAgent(kernel, self.goal_store)
         self.system_status_agent = SystemStatusAgent(kernel)
+        self.time_assistant_agent = TimeAssistantAgent(kernel)
+        self.unsupported_agent = UnsupportedAgent(kernel)
 
         # Ustawienie referencji do dispatchera w Architect (circular dependency)
         self.architect_agent.set_dispatcher(self)
@@ -118,6 +130,8 @@ class TaskDispatcher:
             "RELEASE_PROJECT": self.release_manager_agent,
             "STATUS_REPORT": self.executive_agent,
             "INFRA_STATUS": self.system_status_agent,
+            "TIME_REQUEST": self.time_assistant_agent,
+            "UNSUPPORTED_TASK": self.unsupported_agent,
         }
 
         logger.info("TaskDispatcher zainicjalizowany z agentami (+ Executive layer)")

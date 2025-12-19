@@ -58,7 +58,7 @@ async def test_creative_director_process(creative_director):
     )
 
     mock_service = creative_director.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(return_value=[mock_response])
+    mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
 
     result = await creative_director.process("Stwórz branding dla aplikacji pogodowej")
 
@@ -71,7 +71,7 @@ async def test_creative_director_process(creative_director):
 async def test_creative_director_error_handling(creative_director):
     """Test obsługi błędów w Creative Director."""
     mock_service = creative_director.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(
+    mock_service.get_chat_message_content = AsyncMock(
         side_effect=Exception("LLM Error")
     )
 
@@ -94,7 +94,7 @@ async def test_devops_process(devops_agent):
     )
 
     mock_service = devops_agent.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(return_value=[mock_response])
+    mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
 
     result = await devops_agent.process("Deploy aplikację na serwer 1.2.3.4")
 
@@ -107,7 +107,7 @@ async def test_devops_process(devops_agent):
 async def test_devops_error_handling(devops_agent):
     """Test obsługi błędów w DevOps Agent."""
     mock_service = devops_agent.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(
+    mock_service.get_chat_message_content = AsyncMock(
         side_effect=Exception("Connection timeout")
     )
 
@@ -178,7 +178,7 @@ async def test_creative_director_with_media_context(creative_director):
     )
 
     mock_service = creative_director.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(return_value=[mock_response])
+    mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
 
     result = await creative_director.process(
         "Stwórz logo dla platformy SaaS i użyj generate_image"
@@ -199,7 +199,7 @@ async def test_devops_with_deployment_context(devops_agent):
     )
 
     mock_service = devops_agent.kernel.get_service()
-    mock_service.get_chat_message_contents = AsyncMock(return_value=[mock_response])
+    mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
 
     result = await devops_agent.process(
         "Przygotuj plan deploymentu aplikacji na nowy serwer"

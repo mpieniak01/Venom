@@ -120,8 +120,11 @@ Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie t
 
             # Użyj domyślnego serwisu czatu z kernela
             chat_service = self.kernel.get_service()
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=self.execution_settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=self.execution_settings,
+                enable_functions=False,
             )
 
             result = str(response)

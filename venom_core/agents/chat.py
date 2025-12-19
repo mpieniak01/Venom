@@ -293,8 +293,55 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         Args:
             chat_service: Instancja serwisu czatu
         """
-        service_id = getattr(chat_service, "service_id", "") or ""
-        return service_id not in self.LOCAL_SERVICE_IDS
+        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
+        model_id = raw_model_id.lower()
+
+        if self.model_registry:
+            manifest = self.model_registry.manifest or {}
+            model_base = model_id.split("/")[-1]
+
+            def _resolve_support(manifest_key: str):
+                entry = manifest.get(manifest_key)
+                if not entry:
+                    return None
+                try:
+                    capabilities = self.model_registry.get_model_capabilities(
+                        manifest_key
+                    )
+                    if capabilities:
+                        return capabilities.supports_function_calling
+                except Exception as exc:  # pragma: no cover - defensywne logowanie
+                    logger.debug(
+                        "Nie udało się pobrać capabilities z registry dla %s: %s",
+                        manifest_key,
+                        exc,
+                    )
+
+                candidate = getattr(entry, "capabilities", None)
+                if candidate:
+                    return candidate.supports_function_calling
+                return getattr(entry, "supports_function_calling", None)
+
+            supports = None
+            if raw_model_id and raw_model_id in manifest:
+                supports = _resolve_support(raw_model_id)
+            elif model_id and model_id in manifest:
+                supports = _resolve_support(model_id)
+
+            if supports is not None:
+                return supports
+
+            for manifest_name, entry in manifest.items():
+                if not entry:
+                    continue
+                manifest_base = manifest_name.lower().split("/")[-1]
+                if manifest_base == model_base:
+                    supports = _resolve_support(manifest_name)
+                    if supports is not None:
+                        return supports
+
+        # Domyślnie nie próbuj function calling bez potwierdzonego wsparcia.
+        return False
 
     async def _invoke_chat_service(
         self,

@@ -40,7 +40,8 @@ export default function InspectorPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const [mermaidReloadKey, setMermaidReloadKey] = useState(0);
-  const [mermaidApi, setMermaidApi] = useState<typeof import("mermaid") | null>(null);
+  type MermaidAPI = typeof import("mermaid").default;
+  const [mermaidApi, setMermaidApi] = useState<MermaidAPI | null>(null);
   const svgRef = useRef<HTMLDivElement | null>(null);
   const mermaidInitializedRef = useRef(false);
   const fitViewRef = useRef<(() => void) | null>(null);
@@ -111,7 +112,8 @@ export default function InspectorPage() {
     import("mermaid")
       .then((mod) => {
         if (cancelled) return;
-        setMermaidApi(mod.default ?? mod);
+        const mermaidModule = mod.default ?? (mod as unknown as MermaidAPI);
+        setMermaidApi(mermaidModule);
       })
       .catch((err) => {
         console.error("Mermaid import failed:", err);

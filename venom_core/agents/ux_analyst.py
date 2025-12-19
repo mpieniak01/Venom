@@ -269,10 +269,11 @@ Format odpowiedzi: Markdown z jasno wydzielonymi sekcjami."""
         )
 
         chat_service = self.kernel.get_service()
-        result = await chat_service.get_chat_message_content(
+        result = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
             chat_history=self.chat_history,
             settings=execution_settings,
-            kernel=self.kernel,
+            enable_functions=False,
         )
 
         recommendations = str(result)
@@ -332,10 +333,11 @@ Format odpowiedzi: Markdown z jasno wydzielonymi sekcjami."""
                 )
 
                 chat_service = self.kernel.get_service()
-                result = await chat_service.get_chat_message_content(
+                result = await self._invoke_chat_with_fallbacks(
+                    chat_service=chat_service,
                     chat_history=self.chat_history,
                     settings=execution_settings,
-                    kernel=self.kernel,
+                    enable_functions=False,
                 )
 
                 response = str(result)

@@ -459,41 +459,41 @@ Skrypt wyświetli:
    ```bash
    # Z poziomu WSL (zatrzyma wszystkie procesy Venom i wykona shutdown)
    bash scripts/wsl/reset_memory.sh
-   
+
    # LUB z poziomu Windows (PowerShell/CMD)
    wsl --shutdown
    ```
 
 2. **Trwałe:** Limituj zużycie przez `.wslconfig`
-   
+
    Utwórz plik `%USERPROFILE%\.wslconfig` (np. `C:\Users\TwojaNazwa\.wslconfig`):
    ```ini
    [wsl2]
    # Limit pamięci dla WSL
    memory=12GB
-   
+
    # Liczba procesorów
    processors=4
-   
+
    # Limit swap
    swap=8GB
    ```
-   
+
    Dostępny przykład z komentarzami:
    ```bash
    # Zobacz pełną konfigurację z przykładami
    cat scripts/wsl/wslconfig.example
-   
+
    # Skopiuj do Windows (z poziomu WSL)
    cp scripts/wsl/wslconfig.example /mnt/c/Users/TwojaNazwa/.wslconfig
    ```
-   
+
    Po zapisaniu `.wslconfig` wykonaj:
    ```powershell
    # Z poziomu Windows (PowerShell/CMD)
    wsl --shutdown
    ```
-   
+
    Następnie uruchom ponownie terminal WSL.
 
 #### Przykładowe konfiguracje .wslconfig
@@ -610,11 +610,11 @@ mypy venom_core
 
 ## 📊 Statystyki projektu
 
-- **Linie kodu:** ~10,000+
-- **Liczba agentów:** 6 (Coder, Critic, Librarian, Chat, Researcher, Architect)
-- **Liczba skills:** 5 (File, Git, Shell, Memory, WebSearch)
-- **Liczba testów:** 100+
-- **Pokrycie testami:** ~80%
+- **Linie kodu:** 118,555 (linie niepuste; bez `docs/`, `node_modules/`, `logs/`, `data/`)
+- **Liczba agentów:** 33 (moduły `venom_core/agents/*`)
+- **Liczba skills:** 19 wykonawczych (`venom_core/execution/skills/*`) + 4 pomocnicze (Memory/Voice/Whisper/Core)
+- **Liczba testów:** 518 (pytest `def test_`) + 18 (Playwright `test(`)
+- **Pokrycie testami:** 62%
 
 ## 🎯 Roadmap
 

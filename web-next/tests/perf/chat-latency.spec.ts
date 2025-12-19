@@ -11,10 +11,17 @@ type TargetConfig = {
   optional?: boolean;
 };
 
+const defaultBaseUrl = (() => {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  const host = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
+  const port = process.env.PLAYWRIGHT_PORT ?? "3001";
+  return `http://${host}:${port}`;
+})();
+
 const targets: TargetConfig[] = [
   {
     name: "Next Cockpit",
-    url: process.env.PERF_NEXT_BASE_URL ?? "http://localhost:3000",
+    url: process.env.PERF_NEXT_BASE_URL ?? defaultBaseUrl,
     promptSelector: '[data-testid="cockpit-prompt-input"]',
     sendSelector: '[data-testid="cockpit-send-button"]',
     responseSelector: '[data-testid="conversation-bubble-assistant"]',

@@ -361,7 +361,23 @@ class Orchestrator:
             "get_token_economist niezaimplementowane - dodać getter w KernelBuilder"
         )
 
-    def _should_store_lesson(self, request: TaskRequest) -> bool:
+    NON_LEARNING_INTENTS = {
+        "TIME_REQUEST",
+        "INFRA_STATUS",
+    }
+
+    NON_LLM_INTENTS = {
+        "TIME_REQUEST",
+        "INFRA_STATUS",
+        "UNSUPPORTED_TASK",
+    }
+
+    def _should_store_lesson(
+        self,
+        request: TaskRequest,
+        intent: str = "",
+        agent=None,
+    ) -> bool:
         """
         Sprawdza czy należy zapisać lekcję dla danego zadania.
 
@@ -371,7 +387,16 @@ class Orchestrator:
         Returns:
             True jeśli lekcja powinna być zapisana
         """
-        return request.store_knowledge and ENABLE_META_LEARNING
+        if not (request.store_knowledge and ENABLE_META_LEARNING):
+            return False
+
+        if intent in self.NON_LEARNING_INTENTS:
+            return False
+
+        if agent and getattr(agent, "disable_learning", False):
+            return False
+
+        return True
 
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
@@ -432,11 +457,50 @@ class Orchestrator:
                 await self._complete_perf_test_task(task_id)
                 return
 
-            # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości
-            context = await self._add_lessons_to_context(task_id, context)
-
-            # Klasyfikuj intencję użytkownika
+            # Klasyfikuj intencję użytkownika (bez domieszek z lekcji)
             intent = await self.intent_manager.classify_intent(context)
+            intent_debug = getattr(self.intent_manager, "last_intent_debug", {})
+            if intent_debug:
+                self.state_manager.update_context(
+                    task_id, {"intent_debug": intent_debug}
+                )
+                if self.request_tracer:
+                    try:
+                        import json
+
+                        details = json.dumps(intent_debug, ensure_ascii=False)
+                    except Exception:
+                        details = str(intent_debug)
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "intent_debug",
+                        status="ok",
+                        details=details,
+                    )
+
+            if (
+                self.request_tracer
+                and intent in self.NON_LLM_INTENTS
+                and intent_debug.get("source") != "llm"
+            ):
+                self.request_tracer.set_llm_metadata(
+                    task_id, provider=None, model=None, endpoint=None
+                )
+                self.state_manager.update_context(
+                    task_id,
+                    {
+                        "llm_runtime": {
+                            "status": "skipped",
+                            "error": None,
+                            "last_success_at": None,
+                        }
+                    },
+                )
+
+            # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości (tylko gdy ma to sens)
+            if intent not in self.NON_LEARNING_INTENTS:
+                context = await self._add_lessons_to_context(task_id, context)
 
             # Zaloguj sklasyfikowaną intencję
             self.state_manager.add_log(
@@ -650,7 +714,7 @@ class Orchestrator:
                 )
 
             # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone i store_knowledge=True)
-            if self._should_store_lesson(request):
+            if self._should_store_lesson(request, intent=intent, agent=agent):
                 await self._save_task_lesson(
                     task_id=task_id,
                     context=context,
@@ -703,7 +767,8 @@ class Orchestrator:
                 )
 
             # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone i store_knowledge=True)
-            if self._should_store_lesson(request):
+            agent = self.task_dispatcher.agent_map.get(intent)
+            if self._should_store_lesson(request, intent=intent, agent=agent):
                 await self._save_task_lesson(
                     task_id=task_id,
                     context=context,

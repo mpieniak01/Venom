@@ -1,0 +1,215 @@
+{
+  "intents": {
+    "TIME_REQUEST": {
+      "threshold": 0.85,
+      "phrases": [
+        "ktora godzina",
+        "która godzina",
+        "jaka godzina",
+        "podaj godzine",
+        "podaj godzinę",
+        "podaj czas",
+        "jaki jest czas",
+        "czas teraz",
+        "ile jest godzin",
+        "pokaz godzine",
+        "pokaż godzinę",
+        "aktualna godzina"
+      ],
+      "regex": [
+        ".*(godzina|czas).*"
+      ]
+    },
+    "INFRA_STATUS": {
+      "threshold": 0.86,
+      "phrases": [
+        "status usług",
+        "status systemu",
+        "monitoring systemu",
+        "stan usług",
+        "stan systemu",
+        "status serwerow",
+        "status serwerów",
+        "co dziala",
+        "co działa",
+        "status infrastruktury"
+      ],
+      "regex": [
+        ".*(monitoring).*",
+        ".*(status|stan).*(uslug|usług|systemu|serwer|infrastrukt).*"
+      ]
+    },
+    "HELP_REQUEST": {
+      "threshold": 0.86,
+      "phrases": [
+        "co potrafisz",
+        "co umiesz",
+        "jakie masz mozliwosci",
+        "jakie masz możliwości",
+        "jakie umiejetnosci",
+        "jakie umiejętności",
+        "pomoz",
+        "pomóż",
+        "potrzebuje pomocy",
+        "potrzebuję pomocy",
+        "pomoc",
+        "kim jestes",
+        "kim jesteś"
+      ],
+      "regex": [
+        ".*(pomoc).*"
+      ]
+    },
+    "STATUS_REPORT": {
+      "threshold": 0.87,
+      "phrases": [
+        "status projektu",
+        "postep prac",
+        "postęp prac",
+        "raport statusu",
+        "jak idzie projekt",
+        "jak stoimy",
+        "postep projektu",
+        "postęp projektu"
+      ],
+      "regex": [
+        ".*(raport|postep|postęp).*",
+        ".*status.*projekt.*"
+      ]
+    },
+    "VERSION_CONTROL": {
+      "threshold": 0.87,
+      "phrases": [
+        "git",
+        "commit",
+        "branch",
+        "push",
+        "merge",
+        "pull",
+        "rebase",
+        "checkout",
+        "status gita",
+        "status git",
+        "git status",
+        "git diff",
+        "utworz branch",
+        "stworz branch",
+        "stwórz branch",
+        "repozytorium"
+      ],
+      "regex": [
+        ".*(git|commit|branch|push|merge).*"
+      ]
+    },
+    "DOCUMENTATION": {
+      "threshold": 0.87,
+      "phrases": [
+        "dokumentacja",
+        "docs",
+        "mkdocs",
+        "strona dokumentacji",
+        "dokumentuj",
+        "udokumentuj"
+      ],
+      "regex": [
+        ".*(doc|dokument).*"
+      ]
+    },
+    "RELEASE_PROJECT": {
+      "threshold": 0.87,
+      "phrases": [
+        "release",
+        "wydaj wersje",
+        "wydaj wersję",
+        "changelog",
+        "tag release",
+        "przygotuj release",
+        "wydaj nowa wersje",
+        "wydaj nową wersję",
+        "tag wersji",
+        "taguj release"
+      ],
+      "regex": [
+        ".*(release|changelog|tag).*"
+      ]
+    },
+    "E2E_TESTING": {
+      "threshold": 0.87,
+      "phrases": [
+        "test e2e",
+        "przetestuj",
+        "sprawdz ui",
+        "sprawdź ui",
+        "e2e test",
+        "ui test",
+        "test ui",
+        "sprawdz aplikacje",
+        "sprawdź aplikację",
+        "przetestuj formularz"
+      ],
+      "regex": [
+        ".*(e2e|ui test|przetestuj).*"
+      ]
+    },
+    "RESEARCH": {
+      "threshold": 0.87,
+      "phrases": [
+        "znajdz w internecie",
+        "znajdź w internecie",
+        "szukaj w internecie",
+        "najnowsze informacje",
+        "sprawdz w internecie",
+        "sprawdź w internecie",
+        "poszukaj w sieci"
+      ],
+      "regex": [
+        ".*(internet|online|web|najnowsze).*"
+      ]
+    },
+    "CODE_GENERATION": {
+      "threshold": 0.87,
+      "phrases": [
+        "napisz kod",
+        "stworz funkcje",
+        "stwórz funkcję",
+        "zaimplementuj",
+        "dodaj funkcje",
+        "dodaj funkcję",
+        "napisz skrypt",
+        "napisz program"
+      ],
+      "regex": [
+        ".*(kod|implement|funkcj).*"
+      ]
+    },
+    "COMPLEX_PLANNING": {
+      "threshold": 0.87,
+      "phrases": [
+        "zbuduj aplikacje",
+        "zbuduj aplikację",
+        "zaprojektuj system",
+        "stworz projekt",
+        "stwórz projekt",
+        "architektura systemu",
+        "zaplanuj projekt",
+        "plan projektu"
+      ],
+      "regex": [
+        ".*(zbuduj|projekt|architektur|design).*"
+      ]
+    },
+    "GENERAL_CHAT": {
+      "threshold": 0.92,
+      "phrases": [
+        "czesc",
+        "cześć",
+        "hej",
+        "dzień dobry",
+        "dzien dobry",
+        "witaj",
+        "siema"
+      ],
+      "regex": []
+    }
+  }
+}

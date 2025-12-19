@@ -166,12 +166,12 @@ services_result = await assistant.check_services(detailed=True)
 
 ## Zgodność z zasadami Venom v2
 
-✅ **Komunikacja po polsku** - komentarze i komunikaty w języku polskim  
-✅ **Format/styl** - kod przeszedł przez Black, Ruff, isort  
-✅ **Testy** - pełne pokrycie testami jednostkowymi z pytest  
-✅ **Konfiguracja** - brak hardcoded secrets, fallbacki dla opcji  
-✅ **Dokumentacja** - pełna dokumentacja API i przykłady użycia  
-✅ **Brak ciężkich zależności** - wykorzystanie istniejących bibliotek  
+✅ **Komunikacja po polsku** - komentarze i komunikaty w języku polskim
+✅ **Format/styl** - kod przeszedł przez Black, Ruff, isort
+✅ **Testy** - pełne pokrycie testami jednostkowymi z pytest
+✅ **Konfiguracja** - brak hardcoded secrets, fallbacki dla opcji
+✅ **Dokumentacja** - pełna dokumentacja API i przykłady użycia
+✅ **Brak ciężkich zależności** - wykorzystanie istniejących bibliotek
 
 ## Różnice względem istniejących skills
 
@@ -198,8 +198,8 @@ Możliwe rozszerzenia w przyszłości:
 Wszystkie trzy podstawowe umiejętności zostały zaimplementowane zgodnie z wymaganiami:
 
 1. ✅ **"Podaj godzinę"** - `get_current_time()` - zwraca aktualny czas lokalny
-2. ✅ **"Podaj pogodę"** - `get_weather()` - zwraca pogodę dla lokalizacji  
+2. ✅ **"Podaj pogodę"** - `get_weather()` - zwraca pogodę dla lokalizacji
 3. ✅ **"Sprawdź usługi"** - `check_services()` - podsumowanie statusu usług
 
-**Działają bez dodatkowej konfiguracji po instalacji.**  
+**Działają bez dodatkowej konfiguracji po instalacji.**
 **Wyniki są krótkie i jednoznaczne, z opcją rozszerzenia szczegółów.**

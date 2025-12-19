@@ -69,7 +69,6 @@ def set_dependencies(google_calendar_skill):
 
 def _ensure_calendar_skill():
     """Sprawdź czy GoogleCalendarSkill jest dostępny."""
-    global _google_calendar_skill
     if (
         _google_calendar_skill is None
         or not _google_calendar_skill.credentials_available

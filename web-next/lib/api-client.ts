@@ -18,16 +18,33 @@ export async function apiFetch<T = unknown>(
   options: ApiOptions = {},
 ): Promise<T> {
   const { skipBaseUrl, headers, cache, ...rest } = options;
-  const target = skipBaseUrl ? path : `${getApiBaseUrl()}${path}`;
+  const baseUrl = skipBaseUrl ? "" : getApiBaseUrl();
+  const target = baseUrl ? `${baseUrl}${path}` : path;
 
-  const response = await fetch(target, {
-    ...rest,
-    cache: cache ?? "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(headers || {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(target, {
+      ...rest,
+      cache: cache ?? "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(headers || {}),
+      },
+    });
+  } catch (error) {
+    if (!skipBaseUrl && baseUrl && isLocalBase(baseUrl)) {
+      response = await fetch(path, {
+        ...rest,
+        cache: cache ?? "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          ...(headers || {}),
+        },
+      });
+    } else {
+      throw error;
+    }
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -51,5 +68,21 @@ const safeParseJson = (payload: string) => {
     return JSON.parse(payload);
   } catch {
     return payload;
+  }
+};
+
+const isLocalBase = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname;
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname === "wsl.localhost" ||
+      hostname.endsWith(".localhost")
+    );
+  } catch {
+    return false;
   }
 };

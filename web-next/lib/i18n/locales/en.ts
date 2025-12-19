@@ -28,6 +28,7 @@ export const en = {
       brain: "Knowledge Graph",
       inspector: "Inspector",
       strategy: "Strategy",
+      calendar: "Calendar",
       benchmark: "Benchmark",
       config: "Configuration",
     },

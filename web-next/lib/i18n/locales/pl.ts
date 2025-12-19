@@ -28,6 +28,7 @@ export const pl = {
       brain: "Graf wiedzy",
       inspector: "Inspektor",
       strategy: "Strategia",
+      calendar: "Kalendarz",
       benchmark: "Benchmark",
       config: "Konfiguracja",
     },

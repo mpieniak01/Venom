@@ -9,7 +9,7 @@
     "build": "next build",
     "postbuild": "node scripts/prepare-standalone.mjs",
     "start": "node scripts/start-server.mjs",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings 0 && printf \"\\033[32m✔ Lint OK\\033[0m\\n\"",
     "test:e2e": "npm run build && PLAYWRIGHT_MODE=prod playwright test",
     "test:perf": "playwright test --config playwright.perf.config.ts",
     "lint:locales": "tsx scripts/check-locales.ts"

@@ -84,6 +84,7 @@ Dodać prywatny (poza repozytorium) lexicon użytkownika, który umożliwia adap
 - Nowy plik user‑lexicon działa lokalnie bez udziału gita.
 - Nowe warianty pytań użytkownika są zapamiętywane i działają offline.
 - Brak zapisów lekcji dla narzędzi i bezpiecznych intencji.
+- Zwiekszenie pokrycia testami do 65%
 
 ## Stan końcowy
 - Zadanie 063 uznane za zakończone.

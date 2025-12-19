@@ -232,7 +232,7 @@ export function ServicesPanel() {
           <Button
             onClick={() => applyProfile("full")}
             disabled={loading}
-            variant="default"
+            variant="primary"
             className="w-full"
           >
             <Zap className="mr-2 h-4 w-4" />

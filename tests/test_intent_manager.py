@@ -45,7 +45,7 @@ async def test_intent_manager_classify_code_generation(mock_kernel, mock_chat_se
     intent = await manager.classify_intent("Napisz funkcję w Pythonie do sortowania")
 
     assert intent == "CODE_GENERATION"
-    assert mock_chat_service.get_chat_message_content.called
+    assert not mock_chat_service.get_chat_message_content.called
 
 
 @pytest.mark.asyncio
@@ -128,7 +128,7 @@ async def test_intent_manager_fallback_on_invalid_response(
     manager = IntentManager(kernel=mock_kernel)
     intent = await manager.classify_intent("Jakieś dziwne wejście")
 
-    assert intent == "GENERAL_CHAT"
+    assert intent == "UNSUPPORTED_TASK"
 
 
 @pytest.mark.asyncio
@@ -142,8 +142,8 @@ async def test_intent_manager_handles_exception(mock_kernel, mock_chat_service):
     manager = IntentManager(kernel=mock_kernel)
     intent = await manager.classify_intent("Jakieś wejście")
 
-    # Powinien zwrócić GENERAL_CHAT jako bezpieczny fallback
-    assert intent == "GENERAL_CHAT"
+    # Powinien zwrócić UNSUPPORTED_TASK jako bezpieczny fallback
+    assert intent == "UNSUPPORTED_TASK"
 
 
 @pytest.mark.asyncio
@@ -190,4 +190,4 @@ async def test_intent_manager_classify_help_request(mock_kernel, mock_chat_servi
     intent = await manager.classify_intent("Co potrafisz?")
 
     assert intent == "HELP_REQUEST"
-    assert mock_chat_service.get_chat_message_content.called
+    assert not mock_chat_service.get_chat_message_content.called

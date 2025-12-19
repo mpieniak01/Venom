@@ -51,7 +51,8 @@ class WebSearchSkill:
             tavily_key = extract_secret_value(SETTINGS.TAVILY_API_KEY)
 
         if tavily_key:
-            tavily_cls = TavilyClient or _get_tavily_client_class()
+            # Prefer dynamic import to respect test patching and runtime changes.
+            tavily_cls = _get_tavily_client_class() or TavilyClient
         else:
             tavily_cls = None
 

@@ -125,11 +125,13 @@ class GenerationParamsAdapter:
 
                 runtime = get_active_llm_runtime()
                 detected = runtime.provider.lower()
-                if detected in ["ollama", "vllm", "openai"]:
+                if detected in ["ollama", "vllm"]:
                     logger.debug(
                         f"Wykryto provider z runtime: {detected} (dla 'local')"
                     )
                     return detected
+                if detected in ["openai", "azure"]:
+                    logger.debug(f"Ignoruję runtime provider '{detected}' dla 'local'")
             except Exception as e:
                 logger.debug(f"Nie udało się wykryć providera z runtime: {e}")
 

@@ -318,12 +318,13 @@ export interface CampaignResponse {
 
 // Generation Parameters Types
 export interface GenerationParams {
-  temperature?: number;
-  max_tokens?: number;
-  top_p?: number;
-  top_k?: number;
-  repeat_penalty?: number;
-  [key: string]: number | string | boolean | undefined;
+  temperature?: number | null;
+  max_tokens?: number | null;
+  top_p?: number | null;
+  top_k?: number | null;
+  repeat_penalty?: number | null;
+  [key: string]: number | string | boolean | null | undefined;
+}
 // Benchmark types
 export type BenchmarkStatus = "idle" | "running" | "completed" | "failed";
 

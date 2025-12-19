@@ -7,6 +7,8 @@ import { fetchLayoutInitialData } from "@/lib/server-data";
 import "./globals.css";
 import { Providers } from "./providers";
 
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],

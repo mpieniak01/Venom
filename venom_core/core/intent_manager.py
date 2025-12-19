@@ -387,15 +387,23 @@ Przykłady:
         self._llm_disabled = False
 
         if kernel is None:
+            builder = KernelBuilder()
             if self._test_mode:
-                builder = KernelBuilder()
-                kernel = builder.build_kernel()
-                self.kernel = kernel
-                logger.info(
-                    "IntentManager działa w trybie testowym z mockowalnym kernel builderem"
-                )
+                try:
+                    kernel = builder.build_kernel()
+                    self.kernel = kernel
+                    logger.info(
+                        "IntentManager działa w trybie testowym z mockowalnym kernel builderem"
+                    )
+                except (
+                    Exception
+                ) as exc:  # pragma: no cover - ochrona środowisk testowych
+                    self.kernel = None
+                    self._llm_disabled = True
+                    logger.warning(
+                        "IntentManager bez kernela w trybie testowym: %s", exc
+                    )
             else:
-                builder = KernelBuilder()
                 kernel = builder.build_kernel()
                 self.kernel = kernel
         else:

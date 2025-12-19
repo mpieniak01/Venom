@@ -127,7 +127,7 @@ function ParameterControl({
         </div>
       );
     }
-    
+
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium text-zinc-200">{name}</label>
@@ -152,7 +152,7 @@ function ParameterControl({
 
 /**
  * DynamicParameterForm - Dynamiczny formularz parametrów modelu
- * 
+ *
  * Renderuje interfejs użytkownika na podstawie JSON Schema z backendu.
  * Obsługuje różne typy parametrów:
  * - float/int → Suwak + Input numeryczny
@@ -187,7 +187,7 @@ export function DynamicParameterForm({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
-  
+
   useEffect(() => {
     if (onChangeRef.current) {
       onChangeRef.current(values);

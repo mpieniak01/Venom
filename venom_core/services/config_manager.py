@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field, validator
 
-from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -137,7 +136,9 @@ RESTART_REQUIREMENTS = {
 class ConfigUpdateRequest(BaseModel):
     """Request do aktualizacji konfiguracji."""
 
-    updates: Dict[str, Any] = Field(..., description="Mapa klucz->wartość do aktualizacji")
+    updates: Dict[str, Any] = Field(
+        ..., description="Mapa klucz->wartość do aktualizacji"
+    )
 
     @validator("updates")
     def validate_whitelist(cls, v):
@@ -207,9 +208,7 @@ class ConfigUpdateRequest(BaseModel):
             if param in v:
                 val_str = str(v[param]).lower()
                 if val_str not in ["true", "false", "0", "1", "yes", "no"]:
-                    errors.append(
-                        f"{param} musi być wartością boolean (true/false)"
-                    )
+                    errors.append(f"{param} musi być wartością boolean (true/false)")
 
         # Walidacja liczb całkowitych nieujemnych
         non_negative_int_params = [
@@ -239,9 +238,7 @@ class ConfigUpdateRequest(BaseModel):
         if "AI_MODE" in v:
             valid_modes = ["LOCAL", "CLOUD", "HYBRID"]
             if str(v["AI_MODE"]).upper() not in valid_modes:
-                errors.append(
-                    f"AI_MODE musi być jednym z: {', '.join(valid_modes)}"
-                )
+                errors.append(f"AI_MODE musi być jednym z: {', '.join(valid_modes)}")
 
         # Walidacja LLM_SERVICE_TYPE
         if "LLM_SERVICE_TYPE" in v:
@@ -350,7 +347,9 @@ class ConfigManager:
         # Określ które usługi wymagają restartu
         restart_services = self._determine_restart_services(changed_keys)
 
-        message = f"Zaktualizowano {len(changed_keys)} parametrów. Backup: {backup_path.name}"
+        message = (
+            f"Zaktualizowano {len(changed_keys)} parametrów. Backup: {backup_path.name}"
+        )
         logger.info(message)
 
         return {
@@ -384,7 +383,7 @@ class ConfigManager:
                         value = value.strip().strip('"').strip("'")
                         env_values[key] = value
 
-        except Exception as e:
+        except Exception:
             logger.exception("Błąd wczytywania .env")
 
         return env_values
@@ -451,7 +450,7 @@ class ConfigManager:
 
             return backup_path
 
-        except Exception as e:
+        except Exception:
             logger.exception("Błąd tworzenia backupu .env")
             return None
 
@@ -524,12 +523,12 @@ class ConfigManager:
         """Przywraca .env z backupu."""
         # SECURITY: Validate backup_filename to prevent path traversal
         # Only allow filenames matching the expected pattern: .env-YYYYMMDD-HHMMSS
-        if not re.match(r'^\.env-\d{8}-\d{6}$', backup_filename):
+        if not re.match(r"^\.env-\d{8}-\d{6}$", backup_filename):
             return {
                 "success": False,
                 "message": "Nieprawidłowa nazwa pliku backupu",
             }
-        
+
         backup_path = self.env_history_dir / backup_filename
 
         if not backup_path.exists():

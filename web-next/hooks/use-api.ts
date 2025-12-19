@@ -407,11 +407,11 @@ export async function sendTask(
     content,
     store_knowledge: storeKnowledge,
   };
-  
+
   if (generationParams) {
     body.generation_params = generationParams;
   }
-  
+
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {
     method: "POST",
     body: JSON.stringify(body),

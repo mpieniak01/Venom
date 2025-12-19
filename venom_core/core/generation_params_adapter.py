@@ -1,7 +1,7 @@
 """
 Adapter parametrów generacji - mapowanie generycznych parametrów na specyfikę vLLM/Ollama.
 
-Umożliwia przekazywanie parametrów generacji (temperature, max_tokens, etc.) 
+Umożliwia przekazywanie parametrów generacji (temperature, max_tokens, etc.)
 do różnych backendów LLM z uwzględnieniem ich specyficznych wymagań.
 """
 

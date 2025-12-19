@@ -120,13 +120,13 @@ async def dispatch(
     generation_params: dict = None,
 ) -> str:
     agent = self.agent_map.get(intent)
-    
+
     # Sprawdź czy agent wspiera generation_params
     if generation_params and hasattr(agent, "process_with_params"):
         result = await agent.process_with_params(content, generation_params)
     else:
         result = await agent.process(content)
-    
+
     return result
 ```
 
@@ -145,7 +145,7 @@ class BaseAgent(ABC):
     ) -> str:
         """Domyślnie deleguje do process(), podklasy mogą nadpisać."""
         return await self.process(input_text)
-    
+
     def _create_execution_settings(
         self,
         generation_params: Optional[Dict[str, Any]] = None,
@@ -155,14 +155,14 @@ class BaseAgent(ABC):
         """Tworzy ustawienia z adaptacją parametrów."""
         runtime_info = get_active_llm_runtime()
         provider = runtime_info.provider
-        
+
         merged_params = GenerationParamsAdapter.merge_with_defaults(
             generation_params, default_settings
         )
         adapted_params = GenerationParamsAdapter.adapt_params(
             merged_params, provider
         )
-        
+
         return OpenAIChatPromptExecutionSettings(**adapted_params, **kwargs)
 ```
 
@@ -179,11 +179,11 @@ async def _process_internal(
     self, input_text: str, generation_params: dict = None
 ) -> str:
     # ... przygotowanie chat_history ...
-    
+
     settings = self._build_execution_settings(
         enable_functions, generation_params
     )
-    
+
     response = await chat_service.get_chat_message_content(
         chat_history=chat_history, settings=settings
     )
@@ -195,7 +195,7 @@ def _build_execution_settings(
     kwargs = {}
     if enable_functions:
         kwargs["function_choice_behavior"] = FunctionChoiceBehavior.Auto()
-    
+
     return self._create_execution_settings(
         generation_params=generation_params, **kwargs
     )
@@ -336,21 +336,21 @@ class MyCustomAgent(BaseAgent):
     ) -> str:
         # Przygotuj chat_history...
         chat_history = self._prepare_history(input_text)
-        
+
         # Użyj helpera z BaseAgent
         settings = self._create_execution_settings(
             generation_params=generation_params,
             # Dodaj własne domyślne parametry jeśli potrzeba
             default_settings={'temperature': 0.7},  # domyślna temperatura dla tego agenta
         )
-        
+
         # Wywołaj LLM
         chat_service = self.kernel.get_service()
         response = await chat_service.get_chat_message_content(
             chat_history=chat_history,
             settings=settings
         )
-        
+
         return str(response)
 ```
 

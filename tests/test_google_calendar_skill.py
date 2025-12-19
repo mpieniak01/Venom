@@ -1,6 +1,6 @@
 """Testy jednostkowe dla GoogleCalendarSkill."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -86,7 +86,7 @@ def test_read_agenda_without_credentials(calendar_skill_no_credentials):
 def test_read_agenda_success(calendar_skill_with_mock_service):
     """Test read_agenda - sukces z mockowanymi wydarzeniami."""
     # Mock wydarzeń
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     event1 = {
         "summary": "Spotkanie 1",
         "start": {"dateTime": now.isoformat() + "Z"},
@@ -252,3 +252,37 @@ def test_safe_layering_write_only_venom(calendar_skill_with_mock_service):
     assert (
         call_args[1]["calendarId"] == calendar_skill_with_mock_service.venom_calendar_id
     )
+
+
+def test_primary_calendar_warning(mock_google_service, mock_credentials):
+    """Test że ostrzeżenie jest emitowane gdy venom_calendar_id='primary'."""
+    with (
+        patch("venom_core.execution.skills.google_calendar_skill.Path") as mock_path,
+        patch("venom_core.execution.skills.google_calendar_skill.build") as mock_build,
+        patch(
+            "venom_core.execution.skills.google_calendar_skill.pickle"
+        ) as mock_pickle,
+        patch(
+            "venom_core.execution.skills.google_calendar_skill.logger"
+        ) as mock_logger,
+    ):
+        # Symuluj że credentials istnieją
+        mock_path.return_value.exists.return_value = True
+
+        # Mock pickle.load zwraca credentials
+        mock_pickle.load.return_value = mock_credentials
+
+        # Mock build zwraca mock service
+        mock_build.return_value = mock_google_service
+
+        # Utwórz skill z venom_calendar_id='primary' (naruszenie Safe Layering)
+        GoogleCalendarSkill(venom_calendar_id="primary")
+
+        # Sprawdź że ostrzeżenie zostało wywołane
+        mock_logger.warning.assert_called()
+        warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+        assert any(
+            "VENOM_CALENDAR_ID is set to 'primary'" in str(call)
+            and "violates Safe Layering" in str(call)
+            for call in warning_calls
+        )

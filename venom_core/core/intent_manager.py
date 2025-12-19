@@ -98,8 +98,8 @@ class IntentManager:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
-    @classmethod
-    def _detect_language(self, raw_text: str) -> str:
+    @staticmethod
+    def _detect_language(raw_text: str) -> str:
         if not raw_text:
             return ""
         raw = raw_text.lower()
@@ -215,9 +215,9 @@ class IntentManager:
         except Exception:
             logger.warning(f"Nie udało się zapisać user-lexicon: {path}")
 
-    @classmethod
+    @staticmethod
     def _match_intent_lexicon(
-        cls, normalized: str, lexicon: dict
+        normalized: str, lexicon: dict
     ) -> tuple[str, float, list[tuple[str, float]]]:
         if not normalized or not lexicon:
             return ("", 0.0, [])
@@ -236,7 +236,7 @@ class IntentManager:
                     return (intent, 1.0, [(intent, 1.0)])
 
             for phrase in phrases:
-                candidate = cls._normalize_text(phrase)
+                candidate = IntentManager._normalize_text(phrase)
                 if not candidate:
                     continue
                 score = SequenceMatcher(None, normalized, candidate).ratio()
@@ -442,6 +442,7 @@ Przykłady:
         lexicon_languages = [language] if language else list(self.LEXICON_FILES.keys())
         best_intent = ""
         best_score = 0.0
+        best_top2 = []
         for lang in lexicon_languages:
             lexicon = self._load_lexicon(lang)
             user_lexicon = self._load_user_lexicon(lang)

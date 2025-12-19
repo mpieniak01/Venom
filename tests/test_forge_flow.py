@@ -3,7 +3,6 @@ from uuid import uuid4
 import pytest
 
 import venom_core.core.flows.forge as forge_mod
-from venom_core.core.flows.forge import ForgeFlow
 
 
 class DummyStateManager:
@@ -55,7 +54,7 @@ class DummyGuardianAgent:
 async def test_forge_flow_success(monkeypatch):
     monkeypatch.setattr(forge_mod, "GuardianAgent", DummyGuardianAgent)
 
-    flow = ForgeFlow(
+    flow = forge_mod.ForgeFlow(
         state_manager=DummyStateManager(),
         task_dispatcher=DummyDispatcher(create_success=True, reload_success=True),
     )
@@ -70,7 +69,7 @@ async def test_forge_flow_success(monkeypatch):
 async def test_forge_flow_toolmaker_failure(monkeypatch):
     monkeypatch.setattr(forge_mod, "GuardianAgent", DummyGuardianAgent)
 
-    flow = ForgeFlow(
+    flow = forge_mod.ForgeFlow(
         state_manager=DummyStateManager(),
         task_dispatcher=DummyDispatcher(create_success=False, reload_success=True),
     )
@@ -85,7 +84,7 @@ async def test_forge_flow_toolmaker_failure(monkeypatch):
 async def test_forge_flow_reload_failure(monkeypatch):
     monkeypatch.setattr(forge_mod, "GuardianAgent", DummyGuardianAgent)
 
-    flow = ForgeFlow(
+    flow = forge_mod.ForgeFlow(
         state_manager=DummyStateManager(),
         task_dispatcher=DummyDispatcher(create_success=True, reload_success=False),
     )

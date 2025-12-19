@@ -293,7 +293,6 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
         Args:
             chat_service: Instancja serwisu czatu
         """
-        service_id = getattr(chat_service, "service_id", "") or ""
         raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
         model_id = raw_model_id.lower()
 
@@ -341,10 +340,8 @@ Odpowiedź: "Dlaczego programiści wolą ciemny motyw? Bo światło przyciąga b
                     if supports is not None:
                         return supports
 
-        # Domyślnie pozwól spróbować (fallback na brak wsparcia jest obsługiwany).
-        if service_id in self.LOCAL_SERVICE_IDS:
-            return True
-        return True
+        # Domyślnie nie próbuj function calling bez potwierdzonego wsparcia.
+        return False
 
     async def _invoke_chat_service(
         self,

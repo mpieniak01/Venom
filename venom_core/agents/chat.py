@@ -87,12 +87,16 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
             try:
                 calendar_skill = GoogleCalendarSkill()
                 if calendar_skill.credentials_available:
-                    self.kernel.add_plugin(calendar_skill, plugin_name="GoogleCalendarSkill")
+                    self.kernel.add_plugin(
+                        calendar_skill, plugin_name="GoogleCalendarSkill"
+                    )
                     logger.info("ChatAgent zainicjalizowany z GoogleCalendarSkill")
                 else:
                     logger.info("GoogleCalendarSkill pominięty - brak credentials")
             except Exception as e:
-                logger.warning(f"Nie udało się zainicjalizować GoogleCalendarSkill: {e}")
+                logger.warning(
+                    f"Nie udało się zainicjalizować GoogleCalendarSkill: {e}"
+                )
         else:
             logger.info("GoogleCalendarSkill wyłączony w konfiguracji")
 

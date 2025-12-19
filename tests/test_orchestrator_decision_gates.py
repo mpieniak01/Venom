@@ -74,8 +74,7 @@ async def test_orchestrator_logs_decision_gate_for_help_request(
     ]
 
     assert len(decision_gate_steps) >= 1
-    gate = decision_gate_steps[0]
-    assert gate.action == "route_help"
+    gate = next(step for step in decision_gate_steps if step.action == "route_help")
     assert "Help System" in gate.details
 
 
@@ -111,8 +110,9 @@ async def test_orchestrator_logs_decision_gate_for_code_generation(
     ]
 
     assert len(decision_gate_steps) >= 1
-    gate = decision_gate_steps[0]
-    assert gate.action == "select_code_review_loop"
+    gate = next(
+        step for step in decision_gate_steps if step.action == "select_code_review_loop"
+    )
     assert "Coder-Critic" in gate.details
 
 

@@ -4,11 +4,14 @@ VENV ?= .venv
 UVICORN ?= $(VENV)/bin/uvicorn
 API_APP ?= venom_core.main:app
 HOST ?= 0.0.0.0
+HOST_DISPLAY ?= 127.0.0.1
 PORT ?= 8000
 PID_FILE ?= .venom.pid
 NPM ?= npm
 WEB_DIR ?= web-next
 WEB_PORT ?= 3000
+WEB_HOST ?= 0.0.0.0
+WEB_DISPLAY ?= 127.0.0.1
 WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
@@ -89,16 +92,16 @@ _start:
 	@if [ "$(START_MODE)" = "prod" ]; then \
 		echo "🛠  Buduję Next.js (npm run build)"; \
 		$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
-		echo "▶️  Uruchamiam UI (Next.js start, port $(WEB_PORT))"; \
-		$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+		echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"; \
+		$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 		echo $$! > $(WEB_PID_FILE); \
 	else \
-		echo "▶️  Uruchamiam UI (Next.js dev, port $(WEB_PORT))"; \
-		$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+		echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
+		$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 		echo $$! > $(WEB_PID_FILE); \
 	fi
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🚀 Gotowe: backend http://$(HOST):$(PORT), dashboard http://127.0.0.1:$(WEB_PORT)"
+	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 stop:
 	@trap '' TERM INT
@@ -252,22 +255,22 @@ web:
 	: > $(WEB_LOG)
 	@echo "🛠  Buduję Next.js (npm run build)..."
 	$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1
-	@echo "▶️  Uruchamiam UI (Next.js start, port $(WEB_PORT))"
-	$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	@echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"
+	$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://127.0.0.1:$(WEB_PORT)"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 # Frontend Web (tylko) - developerski (next dev)
 web-dev:
 	@mkdir -p logs
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
-	@echo "▶️  Uruchamiam UI (Next.js dev, port $(WEB_PORT))"
-	$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname 0.0.0.0 --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+	@echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"
+	$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 	echo $$! > $(WEB_PID_FILE)
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
-	@echo "🎨 Dashboard: http://127.0.0.1:$(WEB_PORT)"
+	@echo "🎨 Dashboard: http://$(WEB_DISPLAY):$(WEB_PORT)"
 	@echo "🔄 Hot Reload: aktywny (zmiana plików → przeładowanie)"
 
 # Zatrzymaj tylko frontend

@@ -177,13 +177,14 @@ Ty:
             # Wywołaj LLM z auto-function-calling
             chat_service = self.kernel.get_service("default")
 
-            result = await chat_service.get_chat_message_contents(
+            result = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=history,
                 settings=execution_settings,
-                kernel=self.kernel,
+                enable_functions=True,
             )
 
-            response = result[0].content if result else "Brak odpowiedzi z LLM"
+            response = result.content if result else "Brak odpowiedzi z LLM"
 
             logger.info("SystemEngineer zakończył przetwarzanie")
             return response

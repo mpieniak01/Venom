@@ -284,8 +284,11 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
             )
 
             # Wywołaj model z reasoning loop
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, settings=settings
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=True,
             )
 
             result = str(response).strip()

@@ -220,10 +220,11 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             chat_service = self.kernel.get_service(type="chat")
 
             # Wygeneruj odpowiedź
-            response = await chat_service.get_chat_message_content(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=self.chat_history,
                 settings=settings,
-                kernel=self.kernel,
+                enable_functions=False,
             )
 
             assistant_message = str(response)
@@ -279,10 +280,11 @@ Streszczenie:"""
             )
 
             chat_service = self.kernel.get_service(type="chat")
-            response = await chat_service.get_chat_message_content(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=temp_history,
                 settings=settings,
-                kernel=self.kernel,
+                enable_functions=False,
             )
 
             summary = str(response)

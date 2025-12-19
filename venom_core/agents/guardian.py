@@ -124,14 +124,15 @@ Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
             logger.info("Guardian rozpoczyna analizę")
 
             # Wywołaj LLM z dostępem do funkcji
-            response = await self.chat_service.get_chat_message_contents(
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=self.chat_service,
                 chat_history=chat_history,
                 settings=self.execution_settings,
-                kernel=self.kernel,
+                enable_functions=True,
             )
 
             # Wyciągnij wynik
-            result = str(response[0])
+            result = str(response)
 
             logger.info(f"Guardian zakończył analizę: {len(result)} znaków")
 

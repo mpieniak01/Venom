@@ -18,7 +18,7 @@ def test_generation_parameter_creation():
         max=2.0,
         desc="Temperatura",
     )
-    
+
     assert param.type == "float"
     assert param.default == 0.7
     assert param.min == 0.0
@@ -35,9 +35,9 @@ def test_generation_parameter_to_dict():
         max=8192,
         desc="Max tokens",
     )
-    
+
     data = param.to_dict()
-    
+
     assert data["type"] == "int"
     assert data["default"] == 2048
     assert data["min"] == 128
@@ -48,20 +48,20 @@ def test_generation_parameter_to_dict():
 def test_default_generation_schema():
     """Test tworzenia domyślnego schematu generacji."""
     schema = _create_default_generation_schema()
-    
+
     assert "temperature" in schema
     assert "max_tokens" in schema
     assert "top_p" in schema
     assert "top_k" in schema
     assert "repeat_penalty" in schema
-    
+
     # Sprawdź temperature
     temp = schema["temperature"]
     assert temp.type == "float"
     assert temp.default == 0.7
     assert temp.min == 0.0
     assert temp.max == 2.0
-    
+
     # Sprawdź max_tokens
     max_tokens = schema["max_tokens"]
     assert max_tokens.type == "int"
@@ -73,12 +73,12 @@ def test_default_generation_schema():
 def test_model_capabilities_with_generation_schema():
     """Test ModelCapabilities z generation_schema."""
     schema = _create_default_generation_schema()
-    
+
     caps = ModelCapabilities(
         supports_system_role=True,
         generation_schema=schema,
     )
-    
+
     assert caps.generation_schema is not None
     assert "temperature" in caps.generation_schema
 
@@ -86,7 +86,7 @@ def test_model_capabilities_with_generation_schema():
 def test_model_metadata_to_dict_with_generation_schema():
     """Test konwersji ModelMetadata z generation_schema do słownika."""
     schema = _create_default_generation_schema()
-    
+
     metadata = ModelMetadata(
         name="test-model",
         provider=ModelProvider.OLLAMA,
@@ -95,13 +95,13 @@ def test_model_metadata_to_dict_with_generation_schema():
             generation_schema=schema,
         ),
     )
-    
+
     data = metadata.to_dict()
-    
+
     assert "capabilities" in data
     assert "generation_schema" in data["capabilities"]
     assert "temperature" in data["capabilities"]["generation_schema"]
-    
+
     temp_data = data["capabilities"]["generation_schema"]["temperature"]
     assert temp_data["type"] == "float"
     assert temp_data["default"] == 0.7
@@ -111,7 +111,7 @@ def test_llama3_temperature_range():
     """Test że Llama 3 automatycznie dostaje temperaturę w zakresie 0.0-1.0."""
     # Test weryfikuje że schemat dla Llama 3 ma właściwy zakres temperatury
     schema = _create_default_generation_schema()
-    
+
     # Modyfikuj schemat tak jak robi to OllamaModelProvider dla Llama 3
     schema["temperature"] = GenerationParameter(
         type="float",
@@ -120,7 +120,7 @@ def test_llama3_temperature_range():
         max=1.0,
         desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
     )
-    
+
     assert schema["temperature"].max == 1.0
     assert schema["temperature"].min == 0.0
 
@@ -128,16 +128,16 @@ def test_llama3_temperature_range():
 def test_ollama_provider_llama3_detection():
     """Test że OllamaModelProvider poprawnie wykrywa modele Llama 3."""
     import re
-    
+
     # Test pattern matching dla różnych nazw Llama 3
     llama3_pattern = re.compile(r"llama-?3(?:[:\-]|$)", re.IGNORECASE)
-    
+
     # Powinny pasować
     assert llama3_pattern.search("llama3")
     assert llama3_pattern.search("llama-3")
     assert llama3_pattern.search("llama3:latest")
     assert llama3_pattern.search("llama-3:8b")
-    
+
     # Nie powinny pasować (fałszywe pozytywy)
     assert not llama3_pattern.search("llama-30b")
     assert not llama3_pattern.search("llama-3b")

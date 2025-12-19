@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób instalacji, usuwania i przełączania modeli AI z różnych źródeł (HuggingFace, Ollama). 
+System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób instalacji, usuwania i przełączania modeli AI z różnych źródeł (HuggingFace, Ollama).
 
 ## Architektura
 

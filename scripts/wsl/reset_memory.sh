@@ -29,7 +29,7 @@ read -p "Czy chcesz zatrzymać wszystkie procesy Venom przed shutdown? (t=tak, n
 echo ""
 if [[ $REPLY =~ ^[TtYy]$ ]]; then
     echo "🛑 Zatrzymuję procesy Venom..."
-    
+
     # Zatrzymaj przez Makefile jeśli dostępny
     if [ -f "$(dirname "${BASH_SOURCE[0]}")/../../Makefile" ]; then
         cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -41,7 +41,7 @@ if [[ $REPLY =~ ^[TtYy]$ ]]; then
         pkill -f "vllm" 2>/dev/null || true
         pkill -f "ollama" 2>/dev/null || true
     fi
-    
+
     echo "✅ Procesy zatrzymane"
     sleep 2
 fi

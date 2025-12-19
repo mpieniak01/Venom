@@ -268,10 +268,11 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
             chat_service = self.kernel.get_service()
 
             # Wykonaj chat completion z function calling
-            result = await chat_service.get_chat_message_content(
+            result = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
                 chat_history=self.chat_history,
                 settings=execution_settings,
-                kernel=self.kernel,
+                enable_functions=True,
             )
 
             # Dodaj odpowiedź asystenta do historii

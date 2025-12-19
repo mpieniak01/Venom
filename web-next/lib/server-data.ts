@@ -50,6 +50,9 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 const logFetchError = (path: string, details: unknown) => {
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return;
+  }
   const message = `[server-data] Nie udało się pobrać ${path}`;
   if (process.env.NODE_ENV === "production") {
     console.error(message, normalizeDetail(details));

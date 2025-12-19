@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from PIL import ImageGrab
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -255,8 +256,12 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
             )
 
             chat_service = self.kernel.get_service()
-            response = await chat_service.get_chat_message_content(
-                chat_history=chat_history, kernel=self.kernel
+            settings = OpenAIChatPromptExecutionSettings()
+            response = await self._invoke_chat_with_fallbacks(
+                chat_service=chat_service,
+                chat_history=chat_history,
+                settings=settings,
+                enable_functions=False,
             )
 
             response_text = str(response).strip()

@@ -1,0 +1,174 @@
+{
+  "intents": {
+    "TIME_REQUEST": {
+      "threshold": 0.85,
+      "phrases": [
+        "what time is it",
+        "current time",
+        "tell me the time",
+        "current time please",
+        "time now",
+        "what's the time",
+        "what is the time",
+        "give me the time"
+      ],
+      "regex": [
+        ".*(time).*"
+      ]
+    },
+    "INFRA_STATUS": {
+      "threshold": 0.86,
+      "phrases": [
+        "service status",
+        "system status",
+        "infrastructure status",
+        "infra status",
+        "server status",
+        "services status",
+        "service health",
+        "health services",
+        "health status",
+        "system health"
+      ],
+      "regex": [
+        ".*(monitoring|health).*",
+        ".*(status).*(service|system|infra|server).*"
+      ]
+    },
+    "HELP_REQUEST": {
+      "threshold": 0.86,
+      "phrases": [
+        "help",
+        "help me",
+        "what can you do",
+        "who are you",
+        "can you help"
+      ],
+      "regex": [
+        ".*(help).*"
+      ]
+    },
+    "STATUS_REPORT": {
+      "threshold": 0.87,
+      "phrases": [
+        "project status",
+        "status report",
+        "progress report",
+        "project progress"
+      ],
+      "regex": [
+        ".*(report|progress).*",
+        ".*status.*(project|progress).*"
+      ]
+    },
+    "VERSION_CONTROL": {
+      "threshold": 0.87,
+      "phrases": [
+        "git",
+        "commit",
+        "branch",
+        "push",
+        "merge",
+        "pull",
+        "rebase",
+        "checkout",
+        "git status",
+        "git diff"
+      ],
+      "regex": [
+        ".*(git|commit|branch|push|merge).*"
+      ]
+    },
+    "DOCUMENTATION": {
+      "threshold": 0.87,
+      "phrases": [
+        "documentation",
+        "docs",
+        "mkdocs",
+        "generate documentation",
+        "build docs",
+        "documentation site",
+        "generate docs"
+      ],
+      "regex": [
+        ".*(doc|documentation).*"
+      ]
+    },
+    "RELEASE_PROJECT": {
+      "threshold": 0.87,
+      "phrases": [
+        "release",
+        "release notes",
+        "changelog",
+        "tag release"
+      ],
+      "regex": [
+        ".*(release|changelog|tag).*"
+      ]
+    },
+    "E2E_TESTING": {
+      "threshold": 0.87,
+      "phrases": [
+        "e2e test",
+        "e2e testing",
+        "ui test",
+        "test ui",
+        "run e2e",
+        "test end to end",
+        "end to end test"
+      ],
+      "regex": [
+        ".*(e2e|ui test|end to end).*"
+      ]
+    },
+    "RESEARCH": {
+      "threshold": 0.87,
+      "phrases": [
+        "find on the web",
+        "search online",
+        "search the web",
+        "find online",
+        "look it up"
+      ],
+      "regex": [
+        ".*(internet|online|web).*"
+      ]
+    },
+    "CODE_GENERATION": {
+      "threshold": 0.87,
+      "phrases": [
+        "write code",
+        "implement",
+        "generate code",
+        "write a script",
+        "generate function",
+        "implement function"
+      ],
+      "regex": [
+        ".*(code|implement|function|script).*"
+      ]
+    },
+    "COMPLEX_PLANNING": {
+      "threshold": 0.87,
+      "phrases": [
+        "build an app",
+        "design a system",
+        "build a system",
+        "create architecture"
+      ],
+      "regex": [
+        ".*(build|design|architecture|project).*"
+      ]
+    },
+    "GENERAL_CHAT": {
+      "threshold": 0.92,
+      "phrases": [
+        "hello",
+        "hi",
+        "hey",
+        "good morning"
+      ],
+      "regex": []
+    }
+  }
+}

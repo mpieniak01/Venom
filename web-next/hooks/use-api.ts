@@ -16,7 +16,6 @@ import {
   LlmActionResponse,
   LlmServerInfo,
   KnowledgeGraph,
-  Lesson,
   LessonsResponse,
   LessonsStats,
   Metrics,
@@ -62,6 +61,15 @@ type PollingEntry<T> = {
 const pollingRegistry = new Map<string, PollingEntry<unknown>>();
 const SERVICE_UNAVAILABLE_CODES = new Set([502, 503, 504]);
 const OFFLINE_BACKOFF_MS = 15000;
+type GenerationSchemaEntry = {
+  type: string;
+  default: unknown;
+  min?: number;
+  max?: number;
+  desc?: string;
+  options?: unknown[];
+};
+type GenerationSchema = Record<string, GenerationSchemaEntry>;
 
 function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number) {
   const existing = pollingRegistry.get(key) as PollingEntry<T> | undefined;
@@ -84,11 +92,11 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
     fetching: false,
   };
   pollingRegistry.set(key, entry as PollingEntry<unknown>);
-  triggerFetch(entry, key);
+  triggerFetch(entry);
   return entry;
 }
 
-async function triggerFetch<T>(entry: PollingEntry<T>, key: string) {
+async function triggerFetch<T>(entry: PollingEntry<T>) {
   if (entry.fetching) return;
   const now = Date.now();
   if (entry.suspendedUntil && entry.suspendedUntil > now) {
@@ -168,9 +176,9 @@ function usePolling<T>(
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         if (entry.interval > 0 && !entry.timer) {
-          entry.timer = setInterval(() => triggerFetch(entry, key), entry.interval);
+          entry.timer = setInterval(() => triggerFetch(entry), entry.interval);
         }
-        triggerFetch(entry, key);
+        triggerFetch(entry);
       }
       return () => {
         entry.listeners.delete(listener);
@@ -180,7 +188,7 @@ function usePolling<T>(
         }
       };
     },
-    [entry, key],
+    [entry],
   );
 
   const snapshot = useSyncExternalStore(
@@ -192,8 +200,8 @@ function usePolling<T>(
   const refresh = useCallback(async () => {
     if (entry === fallbackEntry) return;
     entry.suspendedUntil = undefined;
-    await triggerFetch(entry, key);
-  }, [entry, key, fallbackEntry]);
+    await triggerFetch(entry);
+  }, [entry, fallbackEntry]);
 
   return useMemo(
     () => ({
@@ -407,11 +415,11 @@ export async function sendTask(
     content,
     store_knowledge: storeKnowledge,
   };
-  
+
   if (generationParams) {
     body.generation_params = generationParams;
   }
-  
+
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {
     method: "POST",
     body: JSON.stringify(body),
@@ -516,13 +524,6 @@ export async function fetchModelConfig(modelName: string) {
   return apiFetch<{
     success: boolean;
     model_name: string;
-    generation_schema: Record<string, {
-      type: string;
-      default: any;
-      min?: number;
-      max?: number;
-      desc?: string;
-      options?: any[];
-    }>;
+    generation_schema: GenerationSchema;
   }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`);
 }

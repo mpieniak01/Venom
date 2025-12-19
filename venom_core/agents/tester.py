@@ -137,10 +137,11 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
 
         try:
             # Wykonaj interakcję z kernelem (auto-calling functions)
-            result = await self.chat_service.get_chat_message_content(
+            result = await self._invoke_chat_with_fallbacks(
+                chat_service=self.chat_service,
                 chat_history=chat_history,
                 settings=self.execution_settings,
-                kernel=self.kernel,
+                enable_functions=True,
             )
 
             response = str(result.content)

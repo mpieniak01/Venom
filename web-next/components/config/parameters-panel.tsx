@@ -250,7 +250,8 @@ export function ParametersPanel() {
                 <span className="font-mono">{restartRequired.join(", ")}</span>
               </p>
               <p className="mt-2 text-xs text-yellow-200/80">
-                Przejdź do zakładki "Usługi" aby zrestartować odpowiednie komponenty.
+                Przejdź do zakładki &quot;Usługi&quot; aby zrestartować odpowiednie
+                komponenty.
               </p>
             </div>
           </div>

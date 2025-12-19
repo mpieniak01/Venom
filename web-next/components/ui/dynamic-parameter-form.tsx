@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
  */
 export type GenerationParameterSchema = {
   type: "float" | "int" | "bool" | "list" | "enum";
-  default: any;
+  default: number | string | boolean | null;
   min?: number;
   max?: number;
   desc?: string;
-  options?: any[];
+  options?: Array<number | string>;
 };
 
 /**
@@ -25,8 +25,10 @@ export type GenerationSchema = Record<string, GenerationParameterSchema>;
  */
 type DynamicParameterFormProps = {
   schema: GenerationSchema;
-  values?: Record<string, any>;
-  onChange?: (values: Record<string, any>) => void;
+  values?: Record<string, number | string | boolean | null | undefined>;
+  onChange?: (
+    values: Record<string, number | string | boolean | null | undefined>,
+  ) => void;
   onReset?: () => void;
 };
 
@@ -41,8 +43,8 @@ function ParameterControl({
 }: {
   name: string;
   schema: GenerationParameterSchema;
-  value: any;
-  onChange: (value: any) => void;
+  value: number | string | boolean | null | undefined;
+  onChange: (value: number | string | boolean | null | undefined) => void;
 }) {
   const { type, min, max, desc, options } = schema;
 
@@ -90,6 +92,7 @@ function ParameterControl({
 
   // Bool - Przełącznik (Toggle/Switch)
   if (type === "bool") {
+    const checked = Boolean(value);
     return (
       <div className="flex items-center justify-between">
         <div>
@@ -99,15 +102,15 @@ function ParameterControl({
         <button
           type="button"
           role="switch"
-          aria-checked={value}
-          onClick={() => onChange(!value)}
+          aria-checked={checked}
+          onClick={() => onChange(!checked)}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
-            value ? "bg-violet-600" : "bg-white/20"
+            checked ? "bg-violet-600" : "bg-white/20"
           }`}
         >
           <span
             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              value ? "translate-x-6" : "translate-x-1"
+              checked ? "translate-x-6" : "translate-x-1"
             }`}
           />
         </button>
@@ -127,12 +130,14 @@ function ParameterControl({
         </div>
       );
     }
-    
+
+    const selectedValue =
+      typeof value === "string" || typeof value === "number" ? value : options[0] ?? "";
     return (
       <div className="space-y-2">
         <label className="text-sm font-medium text-zinc-200">{name}</label>
         <select
-          value={value}
+          value={selectedValue}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded border border-white/20 bg-white/5 px-3 py-2 text-sm text-white focus:border-violet-500 focus:outline-none"
         >
@@ -152,7 +157,7 @@ function ParameterControl({
 
 /**
  * DynamicParameterForm - Dynamiczny formularz parametrów modelu
- * 
+ *
  * Renderuje interfejs użytkownika na podstawie JSON Schema z backendu.
  * Obsługuje różne typy parametrów:
  * - float/int → Suwak + Input numeryczny
@@ -166,13 +171,17 @@ export function DynamicParameterForm({
   onReset,
 }: DynamicParameterFormProps) {
   // Stan lokalny z wartościami parametrów
-  const [values, setValues] = useState<Record<string, any>>(() => {
-    const defaults: Record<string, any> = {};
+  const [values, setValues] = useState<
+    Record<string, number | string | boolean | null | undefined>
+  >(
+    () => {
+      const defaults: Record<string, number | string | boolean | null | undefined> = {};
     Object.entries(schema).forEach(([key, paramSchema]) => {
       defaults[key] = paramSchema.default;
     });
     return initialValues || defaults;
-  });
+    },
+  );
 
   // Aktualizuj wartości gdy initialValues się zmieni
   useEffect(() => {
@@ -187,14 +196,17 @@ export function DynamicParameterForm({
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
-  
+
   useEffect(() => {
     if (onChangeRef.current) {
       onChangeRef.current(values);
     }
   }, [values]);
 
-  const handleValueChange = (name: string, value: any) => {
+  const handleValueChange = (
+    name: string,
+    value: number | string | boolean | null | undefined,
+  ) => {
     setValues((prev) => ({
       ...prev,
       [name]: value,
@@ -202,7 +214,7 @@ export function DynamicParameterForm({
   };
 
   const handleReset = () => {
-    const defaults: Record<string, any> = {};
+    const defaults: Record<string, number | string | boolean | null | undefined> = {};
     Object.entries(schema).forEach(([key, paramSchema]) => {
       defaults[key] = paramSchema.default;
     });

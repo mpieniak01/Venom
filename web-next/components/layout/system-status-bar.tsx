@@ -141,42 +141,9 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
 
   const versionText = appMeta?.commit ?? appMeta?.version ?? t("statusBar.versionUnknown");
   const versionDisplay = commitCopied ? t("statusBar.commitCopied") : versionText;
-  const hasChanges = gitStatus?.has_changes ?? gitStatus?.dirty ?? false;
-  const compareStatus = gitStatus?.compare_status;
-  const repoText = gitStatus
-    ? (() => {
-        if (gitStatus.is_git_repo === false) return t("statusBar.repoUnknown");
-        if (!compareStatus) {
-          return hasChanges ? t("statusBar.repoDirty") : t("statusBar.repoClean");
-        }
-        let baseText = t("statusBar.repoUnknown");
-        if (compareStatus === "ahead") baseText = t("statusBar.repoAhead");
-        if (compareStatus === "behind") baseText = t("statusBar.repoBehind");
-        if (compareStatus === "diverged") baseText = t("statusBar.repoDiverged");
-        if (compareStatus === "equal") baseText = t("statusBar.repoEqual");
-        if (compareStatus === "no_remote") baseText = t("statusBar.repoNoRemote");
-        if (compareStatus === "no_remote_main") baseText = t("statusBar.repoNoRemoteMain");
-        if (compareStatus === "no_local_main") baseText = t("statusBar.repoNoLocalMain");
-        return hasChanges
-          ? `${baseText} ${t("statusBar.repoDirtySuffix")}`
-          : baseText;
-      })()
-    : gitLoading
-      ? t("statusBar.versionLoading")
-      : t("statusBar.repoUnknown");
-  const repoTone = cn("font-semibold", {
-    "text-zinc-400": !gitStatus || gitStatus.is_git_repo === false,
-    "text-rose-300": compareStatus === "behind" || compareStatus === "diverged",
-    "text-amber-300":
-      hasChanges ||
-      compareStatus === "ahead" ||
-      compareStatus === "no_remote" ||
-      compareStatus === "no_remote_main" ||
-      compareStatus === "no_local_main",
-    "text-emerald-300":
-      (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges),
-  });
-  const repoTitle = gitStatus?.status_output || gitStatus?.changes || gitStatus?.status || undefined;
+  const repoState = resolveRepoStatus(gitStatus, gitLoading, t);
+  const repoTone = cn("font-semibold", repoState.tone);
+  const repoTitle = repoState.title;
 
   return (
     <div
@@ -223,7 +190,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
               {gitLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
               ) : (
-                repoText
+                repoState.text
               )}
             </span>
           </div>
@@ -231,4 +198,74 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       </div>
     </div>
   );
+}
+
+type RepoStatusTone = Record<string, boolean>;
+type RepoStatus = {
+  text: string;
+  tone: RepoStatusTone;
+  title?: string;
+};
+
+function resolveRepoStatus(
+  gitStatus: GitStatus | null,
+  gitLoading: boolean,
+  t: ReturnType<typeof useTranslation>,
+): RepoStatus {
+  if (!gitStatus) {
+    return {
+      text: gitLoading ? t("statusBar.versionLoading") : t("statusBar.repoUnknown"),
+      tone: { "text-zinc-400": true },
+      title: undefined,
+    };
+  }
+
+  if (gitStatus.is_git_repo === false) {
+    return {
+      text: t("statusBar.repoUnknown"),
+      tone: { "text-zinc-400": true },
+      title: gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined,
+    };
+  }
+
+  const hasChanges = gitStatus.has_changes ?? gitStatus.dirty ?? false;
+  const compareStatus = gitStatus.compare_status;
+  let baseText = t("statusBar.repoUnknown");
+  if (!compareStatus) {
+    baseText = hasChanges ? t("statusBar.repoDirty") : t("statusBar.repoClean");
+  } else if (compareStatus === "ahead") {
+    baseText = t("statusBar.repoAhead");
+  } else if (compareStatus === "behind") {
+    baseText = t("statusBar.repoBehind");
+  } else if (compareStatus === "diverged") {
+    baseText = t("statusBar.repoDiverged");
+  } else if (compareStatus === "equal") {
+    baseText = t("statusBar.repoEqual");
+  } else if (compareStatus === "no_remote") {
+    baseText = t("statusBar.repoNoRemote");
+  } else if (compareStatus === "no_remote_main") {
+    baseText = t("statusBar.repoNoRemoteMain");
+  } else if (compareStatus === "no_local_main") {
+    baseText = t("statusBar.repoNoLocalMain");
+  }
+
+  const text = hasChanges ? `${baseText} ${t("statusBar.repoDirtySuffix")}` : baseText;
+  const tone = {
+    "text-zinc-400": false,
+    "text-rose-300": compareStatus === "behind" || compareStatus === "diverged",
+    "text-amber-300":
+      hasChanges ||
+      compareStatus === "ahead" ||
+      compareStatus === "no_remote" ||
+      compareStatus === "no_remote_main" ||
+      compareStatus === "no_local_main",
+    "text-emerald-300":
+      (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges),
+  };
+
+  return {
+    text,
+    tone,
+    title: gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined,
+  };
 }

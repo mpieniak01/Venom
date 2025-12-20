@@ -1,5 +1,6 @@
 """Moduł: routes/flow - Endpointy API dla Flow Inspector (wizualizacja procesów decyzyjnych)."""
 
+import unicodedata
 from typing import Optional
 from uuid import UUID
 
@@ -124,18 +125,30 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
     Returns:
         String z kodem Mermaid.js
     """
+
+    def sanitize_mermaid_text(text: str) -> str:
+        cleaned = text.replace("\n", " ").replace("\r", " ")
+        cleaned = "".join(
+            char for char in cleaned if not unicodedata.category(char).startswith("So")
+        )
+        safe = []
+        for char in cleaned:
+            if char.isalnum() or char in " .,:/_-":
+                safe.append(char)
+            else:
+                safe.append(" ")
+        return "".join(safe)
+
     lines = ["sequenceDiagram"]
     lines.append("    autonumber")
 
     # Dodaj uczestników
-    participants = set()
-    participants.add("User")
+    participants = {"User"}
 
     for step in flow_steps:
         participants.add(step.component)
 
-    # Definicje uczestników (opcjonalne, Mermaid sam je wykryje)
-    participants.discard("User")  # Usuń "User" jeśli istnieje
+    # Definicje uczestników (jawne, żeby uniknąć błędów renderingu)
     for participant in sorted(participants):
         lines.append(f"    participant {participant}")
 
@@ -144,7 +157,7 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
     prompt_text = trace.prompt[:MAX_PROMPT_LENGTH]
     if len(trace.prompt) > MAX_PROMPT_LENGTH:
         prompt_text += "..."
-    lines.append(f"    User->>Orchestrator: {prompt_text}")
+    lines.append(f"    User->>Orchestrator: {sanitize_mermaid_text(prompt_text)}")
 
     last_component = "Orchestrator"
 
@@ -152,6 +165,8 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
         component = step.component
         action = step.action
         details = step.details or ""
+        if details:
+            details = sanitize_mermaid_text(details)
 
         # Formatuj wiadomość
         if step.is_decision_gate:
@@ -160,12 +175,12 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
                 detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
             else:
                 detail_text = details
-            message = f"🔀 {action}: {detail_text}"
+            message = sanitize_mermaid_text(f"Decision: {action}: {detail_text}")
             lines.append(f"    Note over {component}: {message}")
         else:
             # Standardowa interakcja
             arrow = "->>" if step.status == "ok" else "--x"
-            message = f"{action}"
+            message = f"{sanitize_mermaid_text(action)}"
             if details:
                 if len(details) > MAX_MESSAGE_LENGTH:
                     detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
@@ -175,6 +190,29 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
 
             # Rysuj strzałkę od ostatniego komponentu
             if component != last_component:
+                if action == "error" and trace.error_code:
+                    error_details = trace.error_details or {}
+                    if trace.error_code == "execution_contract_violation":
+                        missing = error_details.get("missing") or []
+                        missing_label = ""
+                        if isinstance(missing, list) and missing:
+                            missing_label = f" missing={missing[0]}"
+                        lines.append(
+                            f"    Note over {component}: {sanitize_mermaid_text('Decision: execution_ready=false')}"
+                        )
+                        message = sanitize_mermaid_text(
+                            f"execution.precheck.failed{missing_label}"
+                        )
+                    elif trace.error_code == "routing_mismatch":
+                        expected_hash = error_details.get("expected_hash") or ""
+                        actual_hash = error_details.get("actual_hash") or ""
+                        message = sanitize_mermaid_text(
+                            f"routing.mismatch expected={expected_hash} actual={actual_hash}"
+                        )
+                    else:
+                        message = sanitize_mermaid_text(
+                            f"execution.failed: {trace.error_code}"
+                        )
                 lines.append(f"    {last_component}{arrow}{component}: {message}")
                 last_component = component
             else:
@@ -183,10 +221,10 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
 
     # Dodaj zwrot do użytkownika
     if trace.status == "COMPLETED":
-        lines.append(f"    {last_component}->>User: ✅ Task completed")
+        lines.append(f"    {last_component}->>User: Task completed")
     elif trace.status == "FAILED":
-        lines.append(f"    {last_component}--xUser: ❌ Task failed")
+        lines.append(f"    {last_component}--xUser: Task failed")
     elif trace.status == "PROCESSING":
-        lines.append(f"    Note over {last_component}: ⏳ Processing...")
+        lines.append(f"    Note over {last_component}: Processing...")
 
     return "\n".join(lines)

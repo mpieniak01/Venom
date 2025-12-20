@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 export type ButtonVariant =
   | "primary"
+  | "macro"
   | "secondary"
   | "outline"
   | "ghost"
@@ -37,6 +38,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   const variantClass = {
     primary:
       "bg-gradient-to-r from-violet-600 to-indigo-500 text-white border border-white/10 shadow-neon hover:-translate-y-[1px]",
+    macro:
+      "border border-violet-300/50 bg-violet-500/30 text-white shadow-neon hover:border-violet-200/80 hover:-translate-y-[1px]",
     secondary: "bg-white/5 text-white border border-white/10 hover:bg-white/10",
     outline: "border border-white/10 text-white hover:bg-white/5",
     ghost: "text-white hover:bg-white/5",
@@ -61,7 +64,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={asChild ? undefined : type}
       className={cn(
-        "inline-flex items-center gap-2 rounded-full font-medium transition disabled:opacity-60 disabled:cursor-not-allowed",
+        "inline-flex items-center gap-2 rounded-full font-medium transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed",
         icon ? "justify-center" : "",
         variantClass,
         sizeClass,

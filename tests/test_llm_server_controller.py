@@ -11,6 +11,7 @@ def _dummy_settings(**kwargs):
     base = {
         "LLM_LOCAL_ENDPOINT": "http://localhost:8001/v1",
         "LLM_MODEL_NAME": "models/test",
+        "VLLM_ENDPOINT": "http://localhost:8001/v1",
         "VLLM_START_COMMAND": "echo start",
         "VLLM_STOP_COMMAND": "",
         "VLLM_RESTART_COMMAND": "",

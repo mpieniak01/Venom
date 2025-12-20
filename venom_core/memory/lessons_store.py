@@ -577,3 +577,62 @@ class LessonsStore:
                 (lesson.timestamp for lesson in self.lessons.values()), default=None
             ),
         }
+
+    def prune_by_ttl(self, days: int) -> int:
+        """Usuwa lekcje starsze niż TTL w dniach."""
+        if days <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
+        deleted = 0
+        for lesson_id in list(self.lessons.keys()):
+            lesson = self.lessons[lesson_id]
+            ts_value = _parse_timestamp(lesson.timestamp)
+            if ts_value is None:
+                continue
+            if ts_value < cutoff:
+                del self.lessons[lesson_id]
+                deleted += 1
+        if deleted and self.auto_save:
+            self.save_lessons()
+        return deleted
+
+    def dedupe_lessons(self) -> int:
+        """Deduplikuje lekcje na podstawie podpisu treści, zachowuje najnowszą."""
+        signatures: Dict[str, Lesson] = {}
+        removed = 0
+        for lesson in sorted(
+            self.lessons.values(), key=lambda item: item.timestamp, reverse=True
+        ):
+            signature = _build_signature(lesson)
+            if signature in signatures:
+                del self.lessons[lesson.lesson_id]
+                removed += 1
+                continue
+            signatures[signature] = lesson
+        if removed and self.auto_save:
+            self.save_lessons()
+        return removed
+
+
+def _normalize(text: str) -> str:
+    return " ".join((text or "").lower().strip().split())
+
+
+def _build_signature(lesson: Lesson) -> str:
+    return "|".join(
+        [
+            _normalize(lesson.situation),
+            _normalize(lesson.action),
+            _normalize(lesson.result),
+            _normalize(lesson.feedback),
+        ]
+    )
+
+
+def _parse_timestamp(value: Optional[str]) -> Optional[float]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None

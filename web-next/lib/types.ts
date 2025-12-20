@@ -20,6 +20,15 @@ export interface Metrics {
     created?: number;
     success_rate?: number;
   };
+  routing?: {
+    llm_only?: number;
+    tool_required?: number;
+    learning_logged?: number;
+  };
+  feedback?: {
+    up?: number;
+    down?: number;
+  };
   uptime_seconds?: number;
   network?: {
     total_bytes?: number;
@@ -58,6 +67,14 @@ export interface HistoryRequest {
   llm_provider?: string | null;
   llm_model?: string | null;
   llm_endpoint?: string | null;
+  llm_config_hash?: string | null;
+  llm_runtime_id?: string | null;
+  error_code?: string | null;
+  error_class?: string | null;
+  error_message?: string | null;
+  error_details?: Record<string, unknown> | null;
+  error_stage?: string | null;
+  error_retryable?: boolean | null;
   created_at: string;
   finished_at?: string | null;
   duration_seconds?: number | null;
@@ -119,6 +136,30 @@ export interface LlmServerInfo {
   };
 }
 
+export interface ActiveLlmServerResponse {
+  status: string;
+  active_server?: string | null;
+  active_endpoint?: string | null;
+  active_model?: string | null;
+  config_hash?: string | null;
+  runtime_id?: string | null;
+  last_models?: {
+    ollama?: string;
+    vllm?: string;
+    previous_ollama?: string;
+    previous_vllm?: string;
+  };
+  start_result?: {
+    ok?: boolean;
+    exit_code?: number | null;
+    error?: string;
+  } | null;
+  stop_results?: Record<
+    string,
+    { ok?: boolean; exit_code?: number | null; error?: string }
+  > | null;
+}
+
 export interface LlmActionResponse {
   status: string;
   action: string;
@@ -138,6 +179,15 @@ export interface TokenMetrics {
 
 export interface GitStatus {
   branch?: string;
+  compare_branch?: string;
+  compare_ref?: string;
+  compare_status?: string;
+  ahead_count?: number;
+  behind_count?: number;
+  has_changes?: boolean;
+  is_git_repo?: boolean;
+  modified_count?: number;
+  status_output?: string;
   changes?: string;
   dirty?: boolean;
   status?: string;
@@ -194,6 +244,10 @@ export interface ModelsUsage {
   disk_usage_gb?: number;
   disk_limit_gb?: number;
   disk_usage_percent?: number;
+  disk_system_total_gb?: number;
+  disk_system_used_gb?: number;
+  disk_system_usage_percent?: number;
+  disk_system_mount?: string;
   models_count?: number;
 }
 
@@ -254,6 +308,68 @@ export interface GraphScanResponse {
 export interface LessonsStats {
   status?: string;
   stats?: Record<string, unknown>;
+}
+
+export interface LearningLogEntry {
+  task_id?: string;
+  timestamp?: string;
+  intent?: string;
+  tool_required?: boolean;
+  success?: boolean;
+  need?: string;
+  outcome?: string;
+  error?: string;
+  fast_path_hint?: string;
+  tags?: string[];
+}
+
+export interface LearningLogsResponse {
+  count: number;
+  items: LearningLogEntry[];
+}
+
+export interface FeedbackResponse {
+  status: string;
+  feedback_saved: boolean;
+  follow_up_task_id?: string | null;
+}
+
+export interface FeedbackLogEntry {
+  task_id?: string;
+  timestamp?: string;
+  rating?: "up" | "down";
+  comment?: string | null;
+  prompt?: string;
+  result?: string;
+  intent?: string | null;
+  tool_required?: boolean | null;
+}
+
+export interface FeedbackLogsResponse {
+  count: number;
+  items: FeedbackLogEntry[];
+}
+
+export interface HiddenPromptEntry {
+  intent?: string;
+  prompt?: string;
+  approved_response?: string;
+  prompt_hash?: string;
+  score?: number;
+  last_timestamp?: string;
+  activated_by?: string;
+  activated_at?: string;
+  updated_at?: string;
+}
+
+export interface HiddenPromptsResponse {
+  count: number;
+  items: HiddenPromptEntry[];
+}
+
+export interface ActiveHiddenPromptsResponse {
+  count: number;
+  items: HiddenPromptEntry[];
 }
 
 export interface GraphFileInfoResponse {

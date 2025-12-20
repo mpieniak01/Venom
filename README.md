@@ -14,6 +14,9 @@ Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego i
 - 🤖 **Zarządzanie agentami** - Koordynacja wielu wyspecjalizowanych agentów
 - 💾 **Pamięć długoterminowa** - Zapisywanie i wykorzystywanie zdobytej wiedzy
 - 🎓 **Uczenie przez obserwację** - Nagrywanie demonstracji i automatyczne generowanie workflow (NOWOŚĆ!)
+- 👍👎 **Pętla jakości** - feedback użytkownika + logi i metryki jakości odpowiedzi
+- 🧠 **Hidden prompts** - zatwierdzone odpowiedzi jako skróty kontekstu
+- 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
 
 ### 🎯 Przykłady użycia
 

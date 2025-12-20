@@ -154,12 +154,11 @@ test.describe("Venom Next Cockpit Smoke", () => {
     }
   });
 
-  test("Models panel badge displays count", async ({ page }) => {
+  test("LLM panel shows server and model selectors", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /Modele/i })).toBeVisible();
-    const badge = page.getByTestId("models-count");
-    await expect(badge).toBeVisible();
-    await expect(badge).toHaveText(/\d+\s+modeli/i);
+    await expect(page.getByRole("heading", { name: /Serwery LLM/i })).toBeVisible();
+    await expect(page.getByLabel("Wybierz serwer LLM")).toBeVisible();
+    await expect(page.getByLabel("Wybierz model LLM")).toBeVisible();
   });
 
   test("Chat preset wstawia prompt i Ctrl+Enter wysyła zadanie", async ({ page }) => {
@@ -192,18 +191,30 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(textarea).toHaveValue("");
   });
 
-  test("PANIC: Zwolnij zasoby zwraca komunikat o sukcesie", async ({ page }) => {
-    await page.route("**/api/v1/models/unload-all", async (route) => {
+  test("Awaryjne zatrzymanie kolejki zwraca komunikat", async ({ page }) => {
+    await page.route("**/api/v1/queue/status", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ message: "PANIC executed" }),
+        body: JSON.stringify({
+          active: 1,
+          pending: 2,
+          limit: 5,
+          paused: false,
+        }),
+      });
+    });
+    await page.route("**/api/v1/queue/emergency-stop", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ cancelled: 2, purged: 1 }),
       });
     });
 
     await page.goto("/");
-    const panicButton = page.getByRole("button", { name: /PANIC: Zwolnij zasoby/i });
+    const panicButton = page.getByRole("button", { name: /Awaryjne zatrzymanie/i });
     await panicButton.click();
-    await expect(page.getByText(/PANIC executed/i)).toBeVisible();
+    await expect(page.getByText(/Zatrzymano zadania/i)).toBeVisible();
   });
 });

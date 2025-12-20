@@ -10,7 +10,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { ConversationBubble } from "@/components/cockpit/conversation-bubble";
 import { MacroCard, PinnedLogCard } from "@/components/cockpit/macro-card";
-import { ModelListItem, RepoActionCard } from "@/components/cockpit/model-card";
+import { RepoActionCard } from "@/components/cockpit/model-card";
 import {
   Sheet,
   SheetContent,
@@ -19,23 +19,28 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  controlLlmServer,
   emergencyStop,
   fetchHistoryDetail,
   fetchModelConfig,
   fetchTaskDetail,
   gitSync,
   gitUndo,
-  installModel,
   purgeQueue,
   sendTask,
+  sendFeedback,
+  setActiveHiddenPrompt,
+  setActiveLlmServer,
   switchModel,
   toggleQueue,
-  unloadAllModels,
   useGitStatus,
+  useFeedbackLogs,
+  useActiveHiddenPrompts,
+  useActiveLlmServer,
   useGraphSummary,
   useHistory,
+  useHiddenPrompts,
   useLlmServers,
+  useLearningLogs,
   useMetrics,
   useModels,
   useModelsUsage,
@@ -45,17 +50,36 @@ import {
   useTokenMetrics,
 } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
-import { TaskStreamEvent, useTaskStream } from "@/hooks/use-task-stream";
+import { useTaskStream } from "@/hooks/use-task-stream";
+import { useToast } from "@/components/ui/toast";
 import type { Chart } from "chart.js/auto";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import type { GenerationParams, HistoryRequestDetail, ServiceStatus, Task } from "@/lib/types";
+import type {
+  GenerationParams,
+  HistoryRequestDetail,
+  HiddenPromptEntry,
+  ServiceStatus,
+  Task,
+} from "@/lib/types";
 import type { CockpitInitialData } from "@/lib/server-data";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
+import { formatRelativeTime } from "@/lib/date";
 import { AnimatePresence, motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
-import { Bot, Pin, PinOff, Inbox, Package, Loader2, Settings } from "lucide-react";
+import {
+  Bot,
+  Pin,
+  PinOff,
+  Inbox,
+  Package,
+  Loader2,
+  Settings,
+  HelpCircle,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 import Link from "next/link";
 import { DynamicParameterForm, type GenerationSchema } from "@/components/ui/dynamic-parameter-form";
 import { HistoryList } from "@/components/history/history-list";
@@ -65,8 +89,9 @@ import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { QuickActions } from "@/components/layout/quick-actions";
 import { VoiceCommandCenter } from "@/components/voice/voice-command-center";
 import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
+import { SelectMenu } from "@/components/ui/select-menu";
 import {
-  formatDiskUsage,
+  formatDiskSnapshot,
   formatGbPair,
   formatPercentMetric,
   formatUsd,
@@ -85,15 +110,6 @@ const TELEMETRY_REFRESH_EVENTS = new Set([
   "QUEUE_PURGED",
   "EMERGENCY_STOP",
 ]);
-
-type LlmAlertState = {
-  provider?: string | null;
-  model?: string | null;
-  endpoint?: string | null;
-  error?: string | null;
-  taskId?: string;
-  timestamp?: string | null;
-};
 
 type TelemetryEventPayload = {
   type?: string;
@@ -117,8 +133,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [llmActionPending, setLlmActionPending] = useState<string | null>(null);
-  const [llmAlert, setLlmAlert] = useState<LlmAlertState | null>(null);
-  const [modelName, setModelName] = useState("");
+  const [selectedLlmServer, setSelectedLlmServer] = useState("");
+  const [selectedLlmModel, setSelectedLlmModel] = useState("");
   const [historyDetail, setHistoryDetail] = useState<HistoryRequestDetail | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -136,10 +152,16 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [copyStepsMessage, setCopyStepsMessage] = useState<string | null>(null);
+  const [feedbackByRequest, setFeedbackByRequest] = useState<
+    Record<
+      string,
+      { rating?: "up" | "down" | null; comment?: string; message?: string | null }
+    >
+  >({});
+  const [feedbackSubmittingId, setFeedbackSubmittingId] = useState<string | null>(null);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [exportingPinned, setExportingPinned] = useState(false);
   const [gitAction, setGitAction] = useState<"sync" | "undo" | null>(null);
-  const [unloadingModels, setUnloadingModels] = useState(false);
   const [queueAction, setQueueAction] = useState<
     null | "pause" | "resume" | "purge" | "emergency"
   >(null);
@@ -202,25 +224,6 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     ],
     [],
   );
-  const modelProviderMeta: Record<
-    string,
-    { title: string; description: string; installHint?: string }
-  > = useMemo(
-    () => ({
-      vllm: {
-        title: "Modele vLLM",
-        description: "Pakiety Hugging Face / safetensors w katalogu ./models lub ./data/models.",
-        installHint: "Dodaj model do katalogu i zrestartuj serwer vLLM.",
-      },
-      ollama: {
-        title: "Modele Ollama",
-        description: "Modele GGUF zarządzane przez daemon Ollama (port 11434).",
-        installHint: "Użyj formularza instalacji lub `ollama pull <model>`.",
-      },
-    }),
-    [],
-  );
-
   const { data: liveMetrics, loading: metricsLoading } = useMetrics();
   const metrics = liveMetrics ?? initialData.metrics ?? null;
   const { data: liveTasks, refresh: refreshTasks } = useTasks();
@@ -233,6 +236,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     loading: llmServersLoading,
     refresh: refreshLlmServers,
   } = useLlmServers();
+  const {
+    data: liveActiveServer,
+    refresh: refreshActiveServer,
+  } = useActiveLlmServer(15000);
   const services = liveServices ?? initialData.services ?? null;
   const { data: liveGraph } = useGraphSummary();
   const graph = liveGraph ?? initialData.graphSummary ?? null;
@@ -244,6 +251,64 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const tokenMetrics = liveTokenMetrics ?? initialData.tokenMetrics ?? null;
   const { data: liveHistory, loading: historyLoading, refresh: refreshHistory } = useHistory(6);
   const history = liveHistory ?? initialData.history ?? null;
+  const { data: learningLogs, loading: learningLoading, error: learningError } =
+    useLearningLogs(6);
+  const { data: feedbackLogs, loading: feedbackLoading, error: feedbackError } =
+    useFeedbackLogs(6);
+  const [hiddenIntentFilter, setHiddenIntentFilter] = useState("all");
+  const [hiddenScoreFilter, setHiddenScoreFilter] = useState(1);
+  const hiddenIntentParam = hiddenIntentFilter === "all" ? undefined : hiddenIntentFilter;
+  const {
+    data: hiddenPrompts,
+    loading: hiddenLoading,
+    error: hiddenError,
+  } = useHiddenPrompts(6, 20000, hiddenIntentParam, hiddenScoreFilter);
+  const {
+    data: activeHiddenPrompts,
+    loading: activeHiddenLoading,
+    error: activeHiddenError,
+  } = useActiveHiddenPrompts(hiddenIntentParam, 20000);
+  const feedbackUp = metrics?.feedback?.up ?? 0;
+  const feedbackDown = metrics?.feedback?.down ?? 0;
+  const feedbackTotal = feedbackUp + feedbackDown;
+  const feedbackScore =
+    feedbackTotal > 0 ? Math.round((feedbackUp / feedbackTotal) * 100) : null;
+  const activeHiddenKeys = useMemo(() => {
+    const keys = new Set<string>();
+    activeHiddenPrompts?.items?.forEach((entry) => {
+      const key = entry.prompt_hash ?? entry.prompt;
+      if (key) keys.add(key);
+    });
+    return keys;
+  }, [activeHiddenPrompts]);
+  const activeHiddenMap = useMemo(() => {
+    const map = new Map<string, HiddenPromptEntry>();
+    activeHiddenPrompts?.items?.forEach((entry) => {
+      const key = entry.prompt_hash ?? entry.prompt;
+      if (key) map.set(key, entry);
+    });
+    return map;
+  }, [activeHiddenPrompts]);
+
+  const hiddenIntentOptions = useMemo(() => {
+    const intents = new Set<string>();
+    hiddenPrompts?.items?.forEach((entry) => {
+      if (entry.intent) intents.add(entry.intent);
+    });
+    return ["all", ...Array.from(intents).sort()];
+  }, [hiddenPrompts]);
+  const selectableHiddenPrompts = useMemo(() => {
+    if (!hiddenPrompts?.items?.length || hiddenIntentFilter === "all") return [];
+    return hiddenPrompts.items.filter(
+      (entry) => entry.intent && entry.intent === hiddenIntentFilter,
+    );
+  }, [hiddenPrompts, hiddenIntentFilter]);
+  const activeForIntent = useMemo(() => {
+    if (!activeHiddenPrompts?.items?.length || hiddenIntentFilter === "all") return null;
+    return activeHiddenPrompts.items.find(
+      (entry) => entry.intent === hiddenIntentFilter,
+    );
+  }, [activeHiddenPrompts, hiddenIntentFilter]);
   const trackedRequestIds = useMemo(() => {
     const ids = new Set<string>();
     optimisticRequests.forEach((entry) => {
@@ -255,69 +320,88 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     if (selectedRequestId) ids.add(selectedRequestId);
     return Array.from(ids);
   }, [optimisticRequests, history, selectedRequestId]);
-  const handleTaskEvent = useCallback(
-    (event: TaskStreamEvent) => {
-      if (event.llmStatus === "error" || event.llmRuntimeError) {
-        setLlmAlert({
-          provider: event.llmProvider,
-          model: event.llmModel,
-          endpoint: event.llmEndpoint,
-          error:
-            event.llmRuntimeError ||
-            `Błąd podczas wykonywania zadania ${event.taskId}`,
-          taskId: event.taskId,
-          timestamp: event.timestamp ?? new Date().toISOString(),
-        });
-      } else if (event.llmStatus === "ready") {
-        setLlmAlert((current) =>
-          current && (!current.taskId || current.taskId === event.taskId)
-            ? null
-            : current,
-        );
-      }
-    },
-    [],
-  );
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
-    onEvent: handleTaskEvent,
   });
-  const { data: liveModelsUsageResponse, refresh: refreshModelsUsage } = useModelsUsage(10000);
+  const { data: liveModelsUsageResponse } = useModelsUsage(10000);
   const modelsUsageResponse =
     liveModelsUsageResponse ?? initialData.modelsUsage ?? null;
   const { connected, entries } = useTelemetryFeed();
   const usageMetrics = modelsUsageResponse?.usage ?? null;
-  const llmServers = liveLlmServers ?? [];
-  const activeRuntime = models?.active;
-  const runtimeStatus = useMemo(() => {
-    if (!activeRuntime) return "unknown";
-    const statusValue = activeRuntime.status;
-    if (typeof statusValue === "string" && statusValue.length > 0) {
-      return statusValue.toLowerCase();
+  const llmServers = useMemo(() => liveLlmServers ?? [], [liveLlmServers]);
+  const activeServerInfo = liveActiveServer ?? null;
+  const activeServerName = activeServerInfo?.active_server ?? "";
+  const { pushToast } = useToast();
+  const selectedServerEntry = useMemo(
+    () => llmServers.find((server) => server.name === selectedLlmServer) ?? null,
+    [llmServers, selectedLlmServer],
+  );
+  const availableModelsForServer = useMemo(() => {
+    if (!models || !selectedLlmServer) return [];
+    const normalProvider = (value?: string | null) => {
+      if (!value) return "";
+      return value.toLowerCase();
+    };
+    const inferProvider = (name?: string | null) => {
+      if (!name) return null;
+      return name.includes(":") ? "ollama" : "vllm";
+    };
+    let base =
+      models.providers && selectedLlmServer in models.providers
+        ? models.providers[selectedLlmServer] ?? []
+        : (models.models ?? []).filter(
+            (model) => normalProvider(model.provider) === selectedLlmServer,
+          );
+    base = base.filter((model) => normalProvider(model.provider) !== "onnx");
+    const names = new Set(base.map((model) => model.name));
+    const fallbackNames: string[] = [];
+    if (activeServerInfo?.active_model) {
+      const inferred = inferProvider(activeServerInfo.active_model);
+      if (inferred === selectedLlmServer) {
+        fallbackNames.push(activeServerInfo.active_model);
+      }
     }
-    return "unknown";
-  }, [activeRuntime]);
-  const runtimeIsOnline = runtimeStatus === "online" || runtimeStatus === "ready";
-  const runtimeStatusLabel = useMemo(() => {
-    if (runtimeIsOnline) return "Online";
-    if (!runtimeStatus || runtimeStatus === "unknown") return "Unknown";
-    return runtimeStatus.charAt(0).toUpperCase() + runtimeStatus.slice(1);
-  }, [runtimeIsOnline, runtimeStatus]);
-  const runtimeAlert = useMemo(() => {
-    if (llmAlert) return llmAlert;
-    if (!runtimeIsOnline) {
-      return {
-        provider: activeRuntime?.provider,
-        model: activeRuntime?.model,
-        endpoint: activeRuntime?.endpoint,
-        error:
-          activeRuntime?.error ??
-          `Runtime (${runtimeStatusLabel.toLowerCase()}) jest niedostępny.`,
-      };
+    const lastModels = activeServerInfo?.last_models ?? {};
+    const lastForServer =
+      selectedLlmServer === "ollama"
+        ? lastModels.ollama || lastModels.previous_ollama
+        : selectedLlmServer === "vllm"
+          ? lastModels.vllm || lastModels.previous_vllm
+          : "";
+    if (lastForServer && inferProvider(lastForServer) === selectedLlmServer) {
+      fallbackNames.push(lastForServer);
     }
-    return null;
-  }, [llmAlert, runtimeIsOnline, activeRuntime, runtimeStatusLabel]);
-  const runtimeAlertDismissible = Boolean(llmAlert);
+    fallbackNames.forEach((name) => {
+      if (!name || names.has(name)) return;
+      base = [{ name, provider: selectedLlmServer, source: "cached" }, ...base];
+      names.add(name);
+    });
+    return base;
+  }, [
+    models,
+    selectedLlmServer,
+    activeServerInfo?.active_model,
+    activeServerInfo?.last_models,
+  ]);
+  const llmServerOptions = useMemo(
+    () =>
+      llmServers.map((server) => ({
+        value: server.name,
+        label: server.display_name,
+      })),
+    [llmServers],
+  );
+  const llmModelOptions = useMemo(
+    () =>
+      availableModelsForServer.map((model) => ({
+        value: model.name,
+        label:
+          model.source === "cached"
+            ? `${model.name} (ostatni znany)`
+            : model.name,
+      })),
+    [availableModelsForServer],
+  );
   const tasksByPrompt = useMemo(() => {
     const bucket = new Map<string, Task>();
     (tasks || []).forEach((task) => {
@@ -354,11 +438,68 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       const errorValue = ctx["error"];
       return {
         status: typeof statusValue === "string" ? statusValue : null,
-        error: typeof errorValue === "string" ? errorValue : null,
+        error:
+          typeof errorValue === "string" || (typeof errorValue === "object" && errorValue)
+            ? errorValue
+            : null,
       };
     }
     return null;
   }, [selectedTask]);
+  const runtimeErrorMeta = useMemo(() => {
+    const error = selectedTaskRuntime?.error;
+    if (!error) return null;
+    if (typeof error === "string") {
+      const classes = [
+        "routing_mismatch",
+        "execution_contract_violation",
+        "provider_unreachable",
+        "timeout",
+        "rate_limited",
+        "runtime_error",
+        "agent_error",
+        "validation_error",
+        "cancelled",
+      ];
+      const errorClass = classes.find((entry) => error.includes(entry)) ?? null;
+      return { errorClass, details: [] };
+    }
+    const errorObj = error as Record<string, unknown>;
+    const errorClass =
+      (typeof errorObj.error_class === "string" && errorObj.error_class) ||
+      (typeof errorObj.error_code === "string" && errorObj.error_code) ||
+      null;
+    const details: string[] = [];
+    const errorDetails =
+      typeof errorObj.error_details === "object" && errorObj.error_details
+        ? (errorObj.error_details as Record<string, unknown>)
+        : {};
+    const missing = errorDetails["missing"];
+    if (Array.isArray(missing) && missing.length > 0) {
+      details.push(`missing: ${missing[0]}`);
+    }
+    const expectedHash = errorDetails["expected_hash"];
+    const actualHash = errorDetails["actual_hash"];
+    if (typeof expectedHash === "string") {
+      details.push(`expected_hash: ${expectedHash.slice(0, 8)}`);
+    }
+    if (typeof actualHash === "string") {
+      details.push(`active_hash: ${actualHash.slice(0, 8)}`);
+    }
+    const expectedRuntime = errorDetails["expected_runtime"];
+    const actualRuntime = errorDetails["actual_runtime"];
+    if (typeof expectedRuntime === "string") {
+      details.push(`expected_runtime: ${expectedRuntime}`);
+    }
+    if (typeof actualRuntime === "string") {
+      details.push(`active_runtime: ${actualRuntime}`);
+    }
+    const stage = errorObj.stage;
+    if (typeof stage === "string") {
+      details.push(`stage: ${stage}`);
+    }
+    return { errorClass, details };
+  }, [selectedTaskRuntime?.error]);
   const findTaskMatch = useCallback(
     (requestId?: string, prompt?: string | null) => {
       if (requestId) {
@@ -376,28 +517,58 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     [tasksById, tasksByPrompt],
   );
 
-  const handleLlmServerAction = useCallback(
-    async (server: string, action: "start" | "stop" | "restart") => {
-      try {
-        setLlmActionPending(`${server}:${action}`);
-        const response = await controlLlmServer(server, action);
-        setMessage(
-          response.message ||
-            `Akcja ${action.toUpperCase()} dla ${server} ${
-              response.status === "success" ? "zakończona pomyślnie" : "zwróciła błąd"
-            }.`,
-        );
-      } catch (err) {
-        const fallback =
-          err instanceof Error ? err.message : `Nie udało się wykonać akcji ${action}`;
-        setMessage(fallback);
-      } finally {
-        setLlmActionPending(null);
-        refreshLlmServers();
+  const handleLlmServerActivate = useCallback(async () => {
+    if (!selectedLlmServer) {
+      setMessage("Wybierz serwer LLM.");
+      pushToast("Wybierz serwer LLM.", "warning");
+      return;
+    }
+    try {
+      setLlmActionPending(`activate:${selectedLlmServer}`);
+      const response = await setActiveLlmServer(selectedLlmServer);
+      if (response.status === "success") {
+        setMessage(`Aktywowano serwer ${selectedLlmServer}.`);
+        pushToast(`Aktywny serwer: ${selectedLlmServer}.`, "success");
+        if (
+          selectedLlmModel &&
+          response.active_model &&
+          response.active_model !== selectedLlmModel
+        ) {
+          await switchModel(selectedLlmModel);
+          setMessage(
+            `Aktywowano serwer ${selectedLlmServer} i model ${selectedLlmModel}.`,
+          );
+          pushToast(
+            `Aktywny serwer: ${selectedLlmServer}, model: ${selectedLlmModel}.`,
+            "success",
+          );
+        }
+      } else {
+        setMessage("Nie udało się aktywować serwera.");
+        pushToast("Nie udało się aktywować serwera.", "error");
       }
-    },
-    [refreshLlmServers],
-  );
+    } catch (err) {
+      setMessage(
+        err instanceof Error ? err.message : "Nie udało się aktywować serwera.",
+      );
+      pushToast(
+        err instanceof Error ? err.message : "Nie udało się aktywować serwera.",
+        "error",
+      );
+    } finally {
+      setLlmActionPending(null);
+      refreshLlmServers();
+      refreshActiveServer();
+      refreshModels();
+    }
+  }, [
+    selectedLlmServer,
+    selectedLlmModel,
+    refreshLlmServers,
+    refreshActiveServer,
+    refreshModels,
+    pushToast,
+  ]);
 
   const resolveServerStatus = useCallback(
     (serverName: string, fallback?: string | null) => {
@@ -409,14 +580,6 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     },
     [serviceStatusMap],
   );
-
-  const statusToneFor = (status: string) => {
-    const normalized = status.toLowerCase();
-    if (["online", "healthy", "success"].includes(normalized)) return "success" as const;
-    if (["offline", "down", "error"].includes(normalized)) return "danger" as const;
-    if (["degraded", "warning"].includes(normalized)) return "warning" as const;
-    return "neutral" as const;
-  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -442,6 +605,71 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     }
   }, [customMacros]);
 
+  useEffect(() => {
+    if (!selectedLlmServer && activeServerInfo?.active_server) {
+      setSelectedLlmServer(activeServerInfo.active_server);
+    }
+  }, [activeServerInfo?.active_server, selectedLlmServer]);
+
+  useEffect(() => {
+    if (selectedLlmServer) return;
+    if (activeServerInfo?.active_server) {
+      setSelectedLlmServer(activeServerInfo.active_server);
+      return;
+    }
+    if (llmServers.length > 0) {
+      setSelectedLlmServer(llmServers[0].name);
+    }
+  }, [selectedLlmServer, activeServerInfo?.active_server, llmServers]);
+
+  useEffect(() => {
+    if (!selectedLlmServer) {
+      setSelectedLlmModel("");
+      return;
+    }
+    if (availableModelsForServer.length === 0) {
+      setSelectedLlmModel("");
+      return;
+    }
+    const currentActive =
+      activeServerInfo?.active_server === selectedLlmServer
+        ? activeServerInfo?.active_model ?? ""
+        : "";
+    const lastModels = activeServerInfo?.last_models ?? {};
+    const lastForServer =
+      selectedLlmServer === "ollama"
+        ? lastModels.ollama || lastModels.previous_ollama
+        : selectedLlmServer === "vllm"
+          ? lastModels.vllm || lastModels.previous_vllm
+          : "";
+    const availableNames = new Set(
+      availableModelsForServer.map((model) => model.name),
+    );
+    if (currentActive && availableNames.has(currentActive)) {
+      setSelectedLlmModel(currentActive);
+      return;
+    }
+    if (lastForServer && availableNames.has(lastForServer)) {
+      setSelectedLlmModel(lastForServer);
+      return;
+    }
+    if (selectedLlmModel && availableNames.has(selectedLlmModel)) {
+      return;
+    }
+    setSelectedLlmModel(availableModelsForServer[0].name);
+  }, [
+    selectedLlmServer,
+    availableModelsForServer,
+    activeServerInfo?.active_server,
+    activeServerInfo?.active_model,
+    activeServerInfo?.last_models,
+    selectedLlmModel,
+  ]);
+  useEffect(() => {
+    if (!selectedLlmServer) return;
+    refreshModels();
+    refreshActiveServer();
+  }, [selectedLlmServer, refreshModels, refreshActiveServer]);
   useEffect(() => {
     if (tokenMetrics?.total_tokens === undefined) return;
     setTokenHistory((prev) => {
@@ -562,11 +790,17 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         : "—";
   const ramValue = formatGbPair(usageMetrics?.memory_used_gb, usageMetrics?.memory_total_gb);
   const vramValue = formatVramMetric(usageMetrics?.vram_usage_mb, usageMetrics?.vram_total_mb);
-  const diskValue = formatDiskUsage(usageMetrics?.disk_usage_gb, usageMetrics?.disk_limit_gb);
+  const diskValue =
+    usageMetrics?.disk_system_used_gb !== undefined &&
+    usageMetrics?.disk_system_total_gb !== undefined
+      ? formatDiskSnapshot(usageMetrics.disk_system_used_gb, usageMetrics.disk_system_total_gb)
+      : formatDiskSnapshot(usageMetrics?.disk_usage_gb, usageMetrics?.disk_limit_gb);
   const diskPercent =
-    usageMetrics?.disk_usage_percent !== undefined
-      ? `${usageMetrics.disk_usage_percent.toFixed(1)}%`
-      : null;
+    usageMetrics?.disk_system_usage_percent !== undefined
+      ? `${usageMetrics.disk_system_usage_percent.toFixed(1)}%`
+      : usageMetrics?.disk_usage_percent !== undefined
+        ? `${usageMetrics.disk_usage_percent.toFixed(1)}%`
+        : null;
   const sessionCostValue = formatUsd(tokenMetrics?.session_cost_usd);
   const historyMessages = useMemo<ChatMessage[]>(() => {
     if (!history) return [];
@@ -652,6 +886,63 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const chatMessages = useMemo(
     () => [...historyMessages, ...optimisticMessages],
     [historyMessages, optimisticMessages],
+  );
+  const updateFeedbackState = useCallback(
+    (
+      requestId: string,
+      patch: Partial<{
+        rating?: "up" | "down" | null;
+        comment?: string;
+        message?: string | null;
+      }>,
+    ) => {
+      setFeedbackByRequest((prev) => ({
+        ...prev,
+        [requestId]: { ...prev[requestId], ...patch },
+      }));
+    },
+    [],
+  );
+  const handleFeedbackSubmit = useCallback(
+    async (
+      requestId: string,
+      override?: { rating: "up" | "down"; comment?: string },
+    ) => {
+      const state = feedbackByRequest[requestId] || {};
+      const rating = override?.rating ?? state.rating;
+      const comment = override?.comment ?? state.comment ?? "";
+      if (!rating) return;
+      setFeedbackSubmittingId(requestId);
+      updateFeedbackState(requestId, { message: null });
+      try {
+        const response = await sendFeedback(
+          requestId,
+          rating,
+          rating === "down" ? comment.trim() : undefined,
+        );
+        if (rating === "down") {
+          updateFeedbackState(requestId, {
+            message: response.follow_up_task_id
+              ? `Uruchomiono rundę doprecyzowania: ${response.follow_up_task_id}`
+              : "Feedback zapisany, runda doprecyzowania wystartuje po chwili.",
+          });
+        } else {
+          updateFeedbackState(requestId, { message: "Feedback zapisany. Dziękuję!" });
+        }
+        refreshHistory();
+        refreshTasks();
+      } catch (error) {
+        updateFeedbackState(requestId, {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Nie udało się zapisać feedbacku.",
+        });
+      } finally {
+        setFeedbackSubmittingId(null);
+      }
+    },
+    [feedbackByRequest, refreshHistory, refreshTasks, updateFeedbackState],
   );
   const averageResponseDurationMs =
     responseDurations.length > 0
@@ -779,41 +1070,6 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     ],
     [],
   );
-  const modelHistoryEntries = useMemo(() => {
-    return (models?.models ?? []).map((model) => {
-      const sizeLabel =
-        typeof model.size_gb === "number" ? `${model.size_gb.toFixed(2)} GB` : "—";
-      const sourceLabel =
-        model.source || model.type || model.path || "Lokalny model";
-      const badgeTone = model.active ? "success" : "neutral";
-      return {
-        name: model.name,
-        sizeLabel,
-        sourceLabel,
-        statusLabel: model.active ? "Aktywny" : "W gotowości",
-        quantizationLabel: model.quantization ?? "—",
-        badgeTone,
-      } as const;
-    });
-  }, [models]);
-  const baseModelCount = models?.count ?? models?.models?.length ?? 0;
-  const displayedModelCount = usageMetrics?.models_count ?? baseModelCount;
-  const groupedModels = useMemo(() => {
-    if (!models) return [];
-    if (models.providers && Object.keys(models.providers).length > 0) {
-      return Object.entries(models.providers).map(([provider, items]) => ({
-        provider,
-        items,
-      }));
-    }
-    return [
-      {
-        provider: activeRuntime?.provider ?? "local",
-        items: models.models ?? [],
-      },
-    ];
-  }, [models, activeRuntime]);
-
   const allMacros = useMemo(
     () => [...macroActions, ...customMacros],
     [macroActions, customMacros],
@@ -863,7 +1119,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     setTaskContent("");
     const clientId = enqueueOptimisticRequest(payload);
     try {
-      const res = await sendTask(payload, !labMode, generationParams);
+      const res = await sendTask(payload, !labMode, generationParams, {
+        configHash: activeServerInfo?.config_hash ?? null,
+        runtimeId: activeServerInfo?.runtime_id ?? null,
+      });
       const resolvedId = res.task_id ?? null;
       linkOptimisticRequest(clientId, resolvedId);
       setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
@@ -887,6 +1146,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     refreshTasks,
     refreshQueue,
     refreshHistory,
+    activeServerInfo?.config_hash,
+    activeServerInfo?.runtime_id,
   ]);
 
   const handleOpenTuning = useCallback(async () => {
@@ -913,7 +1174,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       setMessage(null);
       const clientId = enqueueOptimisticRequest(macro.content);
       try {
-        const res = await sendTask(macro.content, !labMode);
+        const res = await sendTask(macro.content, !labMode, null, {
+          configHash: activeServerInfo?.config_hash ?? null,
+          runtimeId: activeServerInfo?.runtime_id ?? null,
+        });
         linkOptimisticRequest(clientId, res.task_id ?? null);
         setMessage(`Makro ${macro.label} wysłane: ${res.task_id ?? "w toku…"}`);
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
@@ -933,29 +1197,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       refreshTasks,
       refreshQueue,
       refreshHistory,
+      activeServerInfo?.config_hash,
+      activeServerInfo?.runtime_id,
     ],
   );
-
-  const handleUnloadModels = async () => {
-    if (unloadingModels) return;
-    setUnloadingModels(true);
-    try {
-      const res = await unloadAllModels();
-      setMessage(res.message || "Zasoby zostały zwolnione.");
-      refreshModels();
-      refreshModelsUsage();
-      refreshTasks();
-      refreshQueue();
-    } catch (err) {
-      setMessage(
-        err instanceof Error
-          ? err.message
-          : "Nie udało się zwolnić zasobów modeli.",
-      );
-    } finally {
-      setUnloadingModels(false);
-    }
-  };
 
   const handleExportPinnedLogs = async () => {
     if (pinnedLogs.length === 0) return;
@@ -1160,7 +1405,14 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             title="Serwery LLM"
             description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
             action={
-              <Button variant="secondary" size="xs" onClick={refreshLlmServers}>
+              <Button
+                variant="secondary"
+                size="xs"
+                onClick={() => {
+                  refreshLlmServers();
+                  refreshActiveServer();
+                }}
+              >
                 Odśwież
               </Button>
             }
@@ -1175,258 +1427,88 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               />
             ) : (
               <div className="space-y-3">
-                {llmServers.map((server) => {
-                  const statusValue = resolveServerStatus(
-                    server.display_name,
-                    server.status,
-                  );
-                  const tone = statusToneFor(statusValue);
-                  const pendingPrefix = `${server.name}:`;
-                  return (
-                    <div
-                      key={server.name}
-                      className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card"
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card">
+                  <div className="grid gap-3">
+                    <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                      Serwer
+                    </label>
+                    <SelectMenu
+                      value={selectedLlmServer}
+                      options={llmServerOptions}
+                      onChange={setSelectedLlmServer}
+                      ariaLabel="Wybierz serwer LLM"
+                      placeholder="Wybierz serwer"
+                      buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                      menuClassName="w-full"
+                    />
+                    <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                      Model
+                    </label>
+                    <SelectMenu
+                      value={selectedLlmModel}
+                      options={llmModelOptions}
+                      onChange={setSelectedLlmModel}
+                      ariaLabel="Wybierz model LLM"
+                      placeholder="Brak modeli"
+                      disabled={availableModelsForServer.length === 0}
+                      buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                      menuClassName="w-full"
+                    />
+                    {selectedLlmServer && availableModelsForServer.length === 0 && (
+                      <div className="space-y-2">
+                        <EmptyState
+                          icon={<Package className="h-4 w-4" />}
+                          title="Brak modeli"
+                          description="Dodaj model dla wybranego serwera, aby go aktywować."
+                        />
+                      </div>
+                    )}
+                    <Link
+                      href="/docs/llm-models"
+                      className="group inline-flex cursor-pointer items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-lg font-semibold">{server.display_name}</p>
-                          <p className="text-xs text-zinc-400">
-                            {server.description || "Lokalny serwer LLM"}
-                          </p>
-                          {server.endpoint && (
-                            <p className="text-xs text-zinc-500">{server.endpoint}</p>
-                          )}
-                        </div>
-                        <Badge tone={tone}>{statusValue}</Badge>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(["start", "stop", "restart"] as const).map((action) => {
-                          const supported = server.supports?.[action];
-                          const actionKey = `${pendingPrefix}${action}`;
-                          return (
-                            <Button
-                              key={`${server.name}-${action}`}
-                              size="xs"
-                              variant="outline"
-                              disabled={!supported || llmActionPending === actionKey}
-                              onClick={() => handleLlmServerAction(server.name, action)}
-                            >
-                              {llmActionPending === actionKey ? "..." : action.toUpperCase()}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+                      <HelpCircle
+                        className="h-4 w-4 transition group-hover:opacity-90 !text-[color:var(--secondary)]"
+                        aria-hidden="true"
+                      />
+                      <span className="!text-[color:var(--secondary)]">
+                        Instrukcja dodawania modeli
+                      </span>
+                    </Link>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                    <span>
+                      Status:{" "}
+                      {selectedServerEntry
+                        ? resolveServerStatus(
+                            selectedServerEntry.display_name,
+                            selectedServerEntry.status,
+                          )
+                        : "unknown"}
+                    </span>
+                    <span>
+                      Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
+                      {activeServerName || "—"}
+                    </span>
+                  </div>
+                  <Button
+                    variant="macro"
+                    size="sm"
+                    className="mt-4 w-full justify-center text-center tracking-[0.2em]"
+                    onClick={handleLlmServerActivate}
+                    disabled={
+                      llmActionPending === `activate:${selectedLlmServer}` ||
+                      !selectedLlmServer ||
+                      !selectedLlmModel
+                    }
+                  >
+                    {llmActionPending === `activate:${selectedLlmServer}`
+                      ? "Aktywuję..."
+                      : "Aktywuj"}
+                  </Button>
+                </div>
               </div>
             )}
-          </Panel>
-          <Panel
-            title="Modele"
-            description="Lista modeli lokalnych i aktywacja (/api/v1/models)."
-            action={
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="neutral" data-testid="models-count">
-                  {displayedModelCount} modeli
-                </Badge>
-                <Button
-                  variant="danger"
-                  size="xs"
-                  className="rounded-full px-3"
-                  onClick={handleUnloadModels}
-                  disabled={unloadingModels}
-                >
-                  {unloadingModels ? "Zwalnianie..." : "PANIC: Zwolnij zasoby"}
-                </Button>
-              </div>
-            }
-          >
-            <div className="space-y-4">
-            <div className="rounded-3xl border border-emerald-400/15 bg-gradient-to-br from-emerald-500/10 via-black/40 to-transparent p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-200/70">
-                    Aktywny runtime
-                  </p>
-                  <p className="mt-2 text-lg font-semibold text-white">
-                    {activeRuntime?.label ?? "Brak aktywnego modelu"}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {activeRuntime?.provider
-                      ? `Serwer: ${activeRuntime.provider}`
-                      : "Ustaw LLM_MODEL_NAME i endpoint w .env"}
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    {activeRuntime?.endpoint ?? "Endpoint nieustawiony"}
-                  </p>
-                </div>
-                <Badge tone={runtimeIsOnline ? "success" : runtimeAlert ? "danger" : "neutral"}>
-                  {runtimeStatusLabel}
-                </Badge>
-              </div>
-              {runtimeAlert ? (
-                <div className="mt-4 space-y-2 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
-                  <p>{runtimeAlert.error}</p>
-                  <p className="text-xs text-rose-200/80">
-                    {runtimeAlert.model ?? "?"} • {runtimeAlert.provider ?? "LLM"}
-                    {runtimeAlert.endpoint ? ` @ ${runtimeAlert.endpoint}` : ""}
-                  </p>
-                  {runtimeAlertDismissible ? (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => setLlmAlert(null)}
-                    >
-                      Ukryj alert
-                    </Button>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-4 text-xs text-zinc-400">
-                  Monitoruję błędy SSE i raportuję źródło modelu przy każdej odpowiedzi.
-                </p>
-              )}
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                Instalacja
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                  <input
-                    className="w-full flex-1 min-w-[220px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-emerald-400/60"
-                    placeholder="Nazwa modelu do instalacji"
-                    value={modelName}
-                    onChange={(e) => setModelName(e.target.value)}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={async () => {
-                      if (!modelName.trim()) {
-                        setMessage("Podaj nazwę modelu.");
-                        return;
-                      }
-                      try {
-                        const res = await installModel(modelName.trim());
-                        setMessage(res.message || "Rozpoczęto instalację.");
-                        setModelName("");
-                        refreshModels();
-                      } catch (err) {
-                        setMessage(
-                          err instanceof Error ? err.message : "Błąd instalacji",
-                        );
-                      }
-                    }}
-                  >
-                    Zainstaluj
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      refreshModels();
-                      refreshTasks();
-                    }}
-                  >
-                    Odśwież
-                  </Button>
-              </div>
-              <p className="mt-2 text-xs text-zinc-500">
-                Obsługiwany format: `phi3:mini`, `mistral:7b` itd. (Ollama). Modele do vLLM skopiuj
-                do katalogu `./models` lub `./data/models` i ponownie wczytaj serwer.
-              </p>
-            </div>
-            {groupedModels.every((entry) => entry.items.length === 0) ? (
-              <EmptyState
-                icon={<Package className="h-4 w-4" />}
-                title="Brak modeli"
-                description="Zainstaluj model, aby rozpocząć pracę."
-              />
-            ) : (
-              <>
-                {groupedModels.map(({ provider, items }) => {
-                  const meta =
-                    modelProviderMeta[provider] ?? {
-                      title: `Modele ${provider}`,
-                      description: "Modele przypisane do tego runtime.",
-                    };
-                  return (
-                    <div
-                      key={`provider-${provider}`}
-                      className="rounded-3xl border border-white/10 bg-white/5 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                            {meta.title}
-                          </p>
-                          <p className="text-xs text-zinc-400">{meta.description}</p>
-                          {meta.installHint && (
-                            <p className="text-[11px] text-zinc-500">{meta.installHint}</p>
-                          )}
-                        </div>
-                        <Badge tone="neutral">{provider.toUpperCase()}</Badge>
-                      </div>
-                      {items.length === 0 ? (
-                        <div className="mt-4">
-                          <EmptyState
-                            icon={<Package className="h-4 w-4" />}
-                            title="Brak modeli"
-                            description="Dodaj model do tego runtime."
-                          />
-                        </div>
-                      ) : (
-                        <div className="mt-4 grid gap-3">
-                          {items.map((model) => (
-                            <ModelListItem
-                              key={`${provider}-${model.name}`}
-                              name={model.name}
-                              sizeGb={model.size_gb}
-                              source={model.source || model.type || model.path}
-                              active={model.active}
-                              onActivate={async () => {
-                                if (model.active) return;
-                                try {
-                                  await switchModel(model.name);
-                                  setMessage(`Aktywowano model ${model.name}`);
-                                  refreshModels();
-                                } catch (err) {
-                                  setMessage(
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Nie udało się przełączyć modelu",
-                                  );
-                                }
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {modelHistoryEntries.length > 0 && (
-                  <div className="mt-6 space-y-2">
-                    <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
-                      Historia modeli
-                      </p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {modelHistoryEntries.map((entry) => (
-                          <ListCard
-                            key={`history-${entry.name}`}
-                            title={entry.name}
-                            subtitle={entry.sourceLabel}
-                            badge={<Badge tone={entry.badgeTone}>{entry.statusLabel}</Badge>}
-                            meta={`Rozmiar: ${entry.sizeLabel} • Kwantyzacja: ${entry.quantizationLabel}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
           </Panel>
           <Panel
             title="Live Feed"
@@ -1583,6 +1665,81 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         canInspect && requestId
                           ? () => openRequestDetail(requestId, msg.prompt)
                           : undefined;
+                      const feedbackState = requestId
+                        ? feedbackByRequest[requestId] || {}
+                        : {};
+                      const feedbackActions =
+                        msg.role === "assistant" && requestId && !msg.pending ? (
+                          <>
+                            <IconButton
+                              label="Kciuk w górę"
+                              variant={feedbackState.rating === "up" ? "macro" : "outline"}
+                              size="xs"
+                              icon={<ThumbsUp className="h-3.5 w-3.5" />}
+                              disabled={feedbackSubmittingId === requestId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                updateFeedbackState(requestId, { rating: "up", comment: "" });
+                                handleFeedbackSubmit(requestId, { rating: "up" });
+                              }}
+                            />
+                            <IconButton
+                              label="Kciuk w dół"
+                              variant={feedbackState.rating === "down" ? "danger" : "outline"}
+                              size="xs"
+                              icon={<ThumbsDown className="h-3.5 w-3.5" />}
+                              disabled={feedbackSubmittingId === requestId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                updateFeedbackState(requestId, {
+                                  rating: "down",
+                                });
+                              }}
+                            />
+                            {feedbackState.rating === "down" && (
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                disabled={
+                                  feedbackSubmittingId === requestId ||
+                                  !(feedbackState.comment || "").trim()
+                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleFeedbackSubmit(requestId);
+                                }}
+                              >
+                                {feedbackSubmittingId === requestId ? "Wysyłam..." : "Zapisz"}
+                              </Button>
+                            )}
+                          </>
+                        ) : null;
+                      const feedbackExtra =
+                        msg.role === "assistant" &&
+                        requestId &&
+                        !msg.pending &&
+                        feedbackState.rating === "down" ? (
+                          <>
+                            <textarea
+                              className="min-h-[70px] w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
+                              placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
+                              value={feedbackState.comment || ""}
+                              onChange={(event) =>
+                                updateFeedbackState(requestId, {
+                                  comment: event.target.value,
+                                })
+                              }
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            />
+                            {feedbackState.message && (
+                              <p className="mt-2 text-xs text-zinc-400">
+                                {feedbackState.message}
+                              </p>
+                            )}
+                          </>
+                        ) : null;
+
                       return (
                         <motion.div
                           key={msg.bubbleId}
@@ -1596,10 +1753,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                             timestamp={msg.timestamp}
                             text={msg.text}
                             status={msg.status}
-                            requestId={msg.requestId ?? undefined}
+                            requestId={msg.role === "assistant" ? msg.requestId ?? undefined : undefined}
                             isSelected={isSelected}
                             pending={msg.pending}
                             onSelect={handleSelect}
+                            footerActions={feedbackActions}
+                            footerExtra={feedbackExtra}
                           />
                         </motion.div>
                       );
@@ -1653,6 +1812,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         onClick={handleSend}
                         disabled={sending}
                         size="sm"
+                        variant="macro"
                         className="px-6"
                         data-testid="cockpit-send-button"
                       >
@@ -1889,7 +2049,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         description="Najważniejsze liczby backendu."
         className="kpi-panel"
       >
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
           <StatCard
             label="Zadania"
             value={metrics?.tasks?.created ?? "—"}
@@ -1915,6 +2075,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
             hint="Aktywne / limit"
             accent="blue"
+          />
+          <StatCard
+            label="Jakość"
+            value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
+            hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
+            accent="violet"
           />
         </div>
       </Panel>
@@ -1985,7 +2151,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         )}
       </Panel>
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Panel
           title="Historia requestów"
           description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
@@ -2009,6 +2175,253 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           <p className="mt-2 text-[11px] uppercase tracking-[0.25em] text-zinc-500">
             Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
           </p>
+        </Panel>
+        <Panel
+          title="Logi nauki"
+          description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
+        >
+          {learningLogs?.items?.length ? (
+            <div className="space-y-3">
+              {learningLogs.items.map((entry, idx) => (
+                <div
+                  key={`learning-${entry.task_id ?? idx}`}
+                  className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                    <Badge tone={entry.success ? "success" : "danger"}>
+                      {entry.success ? "OK" : "Błąd"}
+                    </Badge>
+                    <span>{entry.intent ?? "—"}</span>
+                    <span>{formatRelativeTime(entry.timestamp)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-white">
+                    {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
+                  </p>
+                  {entry.error && (
+                    <p className="mt-2 text-[11px] text-rose-300">
+                      {entry.error.slice(0, 140)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Inbox className="h-4 w-4" />}
+              title="Brak logów nauki"
+              description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
+            />
+          )}
+          {learningLoading && (
+            <p className="mt-2 text-xs text-zinc-500">Ładowanie logów nauki...</p>
+          )}
+          {learningError && (
+            <p className="mt-2 text-xs text-rose-300">{learningError}</p>
+          )}
+        </Panel>
+        <Panel
+          title="Feedback"
+          description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
+        >
+          {feedbackLogs?.items?.length ? (
+            <div className="space-y-3">
+              {feedbackLogs.items.map((entry, idx) => (
+                <div
+                  key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
+                  className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                    <Badge tone={entry.rating === "up" ? "success" : "danger"}>
+                      {entry.rating === "up" ? "👍" : "👎"}
+                    </Badge>
+                    <span>{entry.intent ?? "—"}</span>
+                    <span>{formatRelativeTime(entry.timestamp)}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-white">
+                    {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
+                  </p>
+                  {entry.comment && (
+                    <p className="mt-2 text-[11px] text-zinc-400">
+                      {entry.comment.slice(0, 140)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Inbox className="h-4 w-4" />}
+              title="Brak feedbacku"
+              description="Oceny pojawią się po pierwszych rundach."
+            />
+          )}
+          {feedbackLoading && (
+            <p className="mt-2 text-xs text-zinc-500">Ładowanie feedbacku...</p>
+          )}
+          {feedbackError && (
+            <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
+          )}
+        </Panel>
+        <Panel
+          title="Hidden prompts"
+          description="Zagregowane pary prompt → odpowiedź z kciuka w górę."
+        >
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+              Filtry
+            </label>
+            <select
+              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+              value={hiddenIntentFilter}
+              onChange={(event) => setHiddenIntentFilter(event.target.value)}
+            >
+              {hiddenIntentOptions.map((intent) => (
+                <option key={`intent-${intent}`} value={intent}>
+                  {intent === "all" ? "Wszystkie intencje" : intent}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+              value={String(hiddenScoreFilter)}
+              onChange={(event) => setHiddenScoreFilter(Number(event.target.value))}
+            >
+              {[1, 2, 3].map((value) => (
+                <option key={`score-${value}`} value={String(value)}>
+                  Score ≥ {value}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+              value={activeForIntent?.prompt_hash ?? activeForIntent?.prompt ?? ""}
+              onChange={async (event) => {
+                if (hiddenIntentFilter === "all") return;
+                const nextValue = event.target.value;
+                if (!nextValue) {
+                  if (activeForIntent) {
+                    await setActiveHiddenPrompt({
+                      intent: activeForIntent.intent,
+                      prompt: activeForIntent.prompt,
+                      approved_response: activeForIntent.approved_response,
+                      prompt_hash: activeForIntent.prompt_hash,
+                      active: false,
+                      actor: "ui",
+                    });
+                  }
+                  return;
+                }
+                const candidate = selectableHiddenPrompts.find(
+                  (entry) => (entry.prompt_hash ?? entry.prompt) === nextValue,
+                );
+                if (candidate) {
+                  await setActiveHiddenPrompt({
+                    intent: candidate.intent,
+                    prompt: candidate.prompt,
+                    approved_response: candidate.approved_response,
+                    prompt_hash: candidate.prompt_hash,
+                    active: true,
+                    actor: "ui",
+                  });
+                }
+              }}
+              disabled={hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0}
+            >
+              <option value="">
+                {hiddenIntentFilter === "all"
+                  ? "Wybierz intencję"
+                  : "Brak aktywnego"}
+              </option>
+              {selectableHiddenPrompts.map((entry, idx) => {
+                const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+                return (
+                  <option key={`active-hidden-${key}`} value={key}>
+                    {(entry.prompt ?? "Brak promptu").slice(0, 40)}
+                  </option>
+                );
+              })}
+            </select>
+            {activeHiddenKeys.size > 0 && (
+              <span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100">
+                Aktywne: {activeHiddenKeys.size}
+              </span>
+            )}
+          </div>
+          {hiddenPrompts?.items?.length ? (
+            <div className="space-y-3">
+              {hiddenPrompts.items.map((entry, idx) => {
+                const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+                const isActive = activeHiddenKeys.has(key);
+                const activeMeta = isActive ? activeHiddenMap.get(key) : undefined;
+                return (
+                  <div
+                    key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
+                    className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
+                      <span>{entry.intent ?? "—"}</span>
+                      <span>{formatRelativeTime(entry.last_timestamp)}</span>
+                      {isActive && (
+                        <Badge tone="success">
+                          Aktywny{activeMeta?.activated_by ? ` • ${activeMeta.activated_by}` : ""}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-2 text-sm text-white">
+                      {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
+                    </p>
+                    {entry.approved_response && (
+                      <p className="mt-2 text-[11px] text-zinc-400">
+                        {entry.approved_response.slice(0, 160)}
+                      </p>
+                    )}
+                    {activeMeta?.activated_at && (
+                      <p className="mt-2 text-[11px] text-emerald-200">
+                        Aktywne od: {formatRelativeTime(activeMeta.activated_at)}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        size="xs"
+                        variant={isActive ? "danger" : "outline"}
+                        onClick={async () => {
+                          await setActiveHiddenPrompt({
+                            intent: entry.intent,
+                            prompt: entry.prompt,
+                            approved_response: entry.approved_response,
+                            prompt_hash: entry.prompt_hash,
+                            active: !isActive,
+                            actor: "ui",
+                          });
+                        }}
+                      >
+                        {isActive ? "Wyłącz" : "Aktywuj"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Inbox className="h-4 w-4" />}
+              title="Brak hidden prompts"
+              description="Pojawią się po ocenach z kciukiem w górę."
+            />
+          )}
+          {hiddenLoading && (
+            <p className="mt-2 text-xs text-zinc-500">Ładowanie hidden prompts...</p>
+          )}
+          {hiddenError && (
+            <p className="mt-2 text-xs text-rose-300">{hiddenError}</p>
+          )}
+          {activeHiddenLoading && (
+            <p className="mt-2 text-xs text-zinc-500">Ładowanie aktywnych wpisów...</p>
+          )}
+          {activeHiddenError && (
+            <p className="mt-2 text-xs text-rose-300">{activeHiddenError}</p>
+          )}
         </Panel>
       </div>
 
@@ -2314,9 +2727,23 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   </Badge>
                 </div>
                 {selectedTaskRuntime?.error && (
-                  <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-2 text-xs text-rose-100">
-                    {selectedTaskRuntime.error}
-                  </p>
+                  <div className="mt-3 space-y-2">
+                    {runtimeErrorMeta?.errorClass && (
+                      <Badge tone="danger">{runtimeErrorMeta.errorClass}</Badge>
+                    )}
+                    {runtimeErrorMeta?.details?.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {runtimeErrorMeta.details.map((detail) => (
+                          <Badge key={detail} tone="neutral">
+                            {detail}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-2 text-xs text-rose-100">
+                      {formatRuntimeError(selectedTaskRuntime.error)}
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -2344,6 +2771,76 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       }
                       emptyState="Brak danych wyjściowych."
                     />
+                  </div>
+                </div>
+              )}
+              {selectedRequestId && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                    Feedback użytkownika
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      size="xs"
+                      variant={
+                        feedbackByRequest[selectedRequestId]?.rating === "up"
+                          ? "primary"
+                          : "outline"
+                      }
+                      onClick={() => {
+                        updateFeedbackState(selectedRequestId, { rating: "up", comment: "" });
+                        handleFeedbackSubmit(selectedRequestId, { rating: "up" });
+                      }}
+                    >
+                      Kciuk w górę
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant={
+                        feedbackByRequest[selectedRequestId]?.rating === "down"
+                          ? "danger"
+                          : "outline"
+                      }
+                      onClick={() =>
+                        updateFeedbackState(selectedRequestId, { rating: "down" })
+                      }
+                    >
+                      Kciuk w dół
+                    </Button>
+                  </div>
+                  {feedbackByRequest[selectedRequestId]?.rating === "down" && (
+                    <textarea
+                      className="mt-3 min-h-[80px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
+                      placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
+                      value={feedbackByRequest[selectedRequestId]?.comment || ""}
+                      onChange={(event) =>
+                        updateFeedbackState(selectedRequestId, {
+                          comment: event.target.value,
+                        })
+                      }
+                    />
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {feedbackByRequest[selectedRequestId]?.rating === "down" && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={
+                          feedbackSubmittingId === selectedRequestId ||
+                          !(feedbackByRequest[selectedRequestId]?.comment || "").trim()
+                        }
+                        onClick={() => handleFeedbackSubmit(selectedRequestId)}
+                      >
+                        {feedbackSubmittingId === selectedRequestId
+                          ? "Wysyłam..."
+                          : "Wyślij feedback"}
+                      </Button>
+                    )}
+                    {feedbackByRequest[selectedRequestId]?.message && (
+                      <span className="text-xs text-zinc-400">
+                        {feedbackByRequest[selectedRequestId]?.message}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -2756,6 +3253,18 @@ function TokenChart({ history, height = 220 }: { history: TokenSample[]; height?
 
 function createOptimisticId() {
   return `opt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function formatRuntimeError(error?: unknown) {
+  if (!error) return "Błąd wykonania";
+  if (typeof error === "string") return error;
+  const message = (error as Record<string, unknown>)?.error_message;
+  if (typeof message === "string" && message.trim()) return message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Błąd wykonania";
+  }
 }
 
 export default CockpitHome;

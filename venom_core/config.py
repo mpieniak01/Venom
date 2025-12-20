@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     VLLM_SERVED_MODEL_NAME: str = ""
     VLLM_GPU_MEMORY_UTILIZATION: float = 0.95
     VLLM_MAX_BATCHED_TOKENS: int = 2048
+    VLLM_ENDPOINT: str = "http://localhost:8001/v1"
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""
@@ -61,6 +62,16 @@ class Settings(BaseSettings):
     )
     INTENT_CLASSIFIER_TIMEOUT_SECONDS: float = (
         5.0  # Timeout LLM przy klasyfikacji intencji
+    )
+    ENABLE_META_LEARNING: bool = True  # Globalny przełącznik zapisu lekcji
+    LESSONS_TTL_DAYS: int = 0  # Retencja lekcji (0 = wyłączona)
+    LAST_MODEL_OLLAMA: str = ""  # Ostatnio wybrany model Ollama
+    LAST_MODEL_VLLM: str = ""  # Ostatnio wybrany model vLLM
+    PREVIOUS_MODEL_OLLAMA: str = ""  # Poprzedni model Ollama (fallback)
+    PREVIOUS_MODEL_VLLM: str = ""  # Poprzedni model vLLM (fallback)
+    ACTIVE_LLM_SERVER: str = ""  # Ostatnio aktywowany serwer LLM
+    LLM_CONFIG_HASH: str = (
+        ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)
     )
 
     # Konfiguracja Prompt Manager

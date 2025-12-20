@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
+import aiofiles
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -80,8 +81,8 @@ async def submit_feedback(payload: FeedbackRequest):
 
     try:
         FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        async with aiofiles.open(FEEDBACK_LOG_PATH, "a", encoding="utf-8") as handle:
+            await handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as exc:
         logger.warning("Nie udało się zapisać feedbacku: %s", exc)
         raise HTTPException(status_code=500, detail="Nie udało się zapisać feedbacku")
@@ -125,8 +126,12 @@ async def submit_feedback(payload: FeedbackRequest):
         }
         try:
             HIDDEN_PROMPT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with HIDDEN_PROMPT_LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(hidden_prompt_entry, ensure_ascii=False) + "\n")
+            async with aiofiles.open(
+                HIDDEN_PROMPT_LOG_PATH, "a", encoding="utf-8"
+            ) as handle:
+                await handle.write(
+                    json.dumps(hidden_prompt_entry, ensure_ascii=False) + "\n"
+                )
         except Exception as exc:
             logger.warning("Nie udało się zapisać hidden prompt: %s", exc)
 
@@ -153,7 +158,8 @@ async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> di
 
     items = []
     try:
-        lines = FEEDBACK_LOG_PATH.read_text(encoding="utf-8").splitlines()
+        async with aiofiles.open(FEEDBACK_LOG_PATH, "r", encoding="utf-8") as handle:
+            lines = await handle.readlines()
         for line in reversed(lines):
             if not line.strip():
                 continue

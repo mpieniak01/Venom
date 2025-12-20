@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
+import aiofiles
 from fastapi import APIRouter
 
 from venom_core.core.hidden_prompts import (
@@ -35,7 +36,8 @@ async def get_learning_logs(
 
     items: List[dict] = []
     try:
-        lines = LEARNING_LOG_PATH.read_text(encoding="utf-8").splitlines()
+        async with aiofiles.open(LEARNING_LOG_PATH, "r", encoding="utf-8") as handle:
+            lines = await handle.readlines()
         for line in reversed(lines):
             if not line.strip():
                 continue

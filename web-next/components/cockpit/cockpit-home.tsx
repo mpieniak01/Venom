@@ -520,6 +520,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const handleLlmServerActivate = useCallback(async () => {
     if (!selectedLlmServer) {
       setMessage("Wybierz serwer LLM.");
+      pushToast("Wybierz serwer LLM.", "warning");
       return;
     }
     try {
@@ -544,10 +545,15 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         }
       } else {
         setMessage("Nie udało się aktywować serwera.");
+        pushToast("Nie udało się aktywować serwera.", "error");
       }
     } catch (err) {
       setMessage(
         err instanceof Error ? err.message : "Nie udało się aktywować serwera.",
+      );
+      pushToast(
+        err instanceof Error ? err.message : "Nie udało się aktywować serwera.",
+        "error",
       );
     } finally {
       setLlmActionPending(null);

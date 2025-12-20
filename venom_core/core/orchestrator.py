@@ -1,7 +1,9 @@
 """Moduł: orchestrator - orkiestracja zadań w tle."""
 
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
@@ -22,6 +24,7 @@ from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
+from venom_core.core.hidden_prompts import build_hidden_prompts_context
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.queue_manager import QueueManager
@@ -29,14 +32,16 @@ from venom_core.core.state_manager import StateManager
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # Ustawienia dla pętli meta-uczenia
-ENABLE_META_LEARNING = True  # Flaga do włączania/wyłączania meta-uczenia
 MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
+LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
+MAX_LEARNING_SNIPPET = 1200
+MAX_HIDDEN_PROMPTS_IN_CONTEXT = 2
 # Alias dla kompatybilności z testami i innymi modułami
 MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS
 COUNCIL_COLLABORATION_KEYWORDS = COUNCIL_KEYWORDS
@@ -85,6 +90,7 @@ class Orchestrator:
             )
 
         self.task_dispatcher = task_dispatcher
+        self._kernel_config_hash = get_active_llm_runtime().config_hash
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
@@ -105,6 +111,38 @@ class Orchestrator:
         self.queue_manager = QueueManager(
             state_manager=state_manager, event_broadcaster=event_broadcaster
         )
+
+    def _refresh_kernel(self, runtime_info=None) -> None:
+        """Odtwarza kernel i agentów po zmianie konfiguracji LLM."""
+        runtime_info = runtime_info or get_active_llm_runtime()
+        logger.info(
+            "Odświeżam kernel po zmianie LLM (hash=%s).",
+            runtime_info.config_hash,
+        )
+        kernel_builder = KernelBuilder()
+        kernel = kernel_builder.build_kernel()
+        goal_store = getattr(self.task_dispatcher, "goal_store", None)
+        self.task_dispatcher = TaskDispatcher(
+            kernel,
+            event_broadcaster=self.event_broadcaster,
+            node_manager=self.node_manager,
+            goal_store=goal_store,
+        )
+        self._kernel_config_hash = runtime_info.config_hash
+        # Resetuj flowy zależne od dispatcherów, aby użyły nowego kernela.
+        self._code_review_loop = None
+        self._council_flow = None
+        self._forge_flow = None
+        self._campaign_flow = None
+        self._healing_flow = None
+        self._issue_handler_flow = None
+
+    def _refresh_kernel_if_needed(self) -> None:
+        """Sprawdza drift konfiguracji i odświeża kernel przy zmianie."""
+        runtime_info = get_active_llm_runtime()
+        current_hash = runtime_info.config_hash
+        if self._kernel_config_hash != current_hash:
+            self._refresh_kernel(runtime_info)
 
     @property
     def is_paused(self) -> bool:
@@ -143,6 +181,7 @@ class Orchestrator:
         Returns:
             Odpowiedź z ID zadania i statusem
         """
+        self._refresh_kernel_if_needed()
         # Zaktualizuj czas ostatniej aktywności
         self.last_activity = datetime.now()
 
@@ -151,6 +190,10 @@ class Orchestrator:
 
         runtime_info = get_active_llm_runtime()
         runtime_context = runtime_info.to_payload()
+        if request.expected_config_hash:
+            runtime_context["expected_config_hash"] = request.expected_config_hash
+        if request.expected_runtime_id:
+            runtime_context["expected_runtime_id"] = request.expected_runtime_id
         runtime_context["status"] = "ready"
         self.state_manager.update_context(task.id, {"llm_runtime": runtime_context})
 
@@ -372,6 +415,51 @@ class Orchestrator:
         "UNSUPPORTED_TASK",
     }
 
+    KERNEL_FUNCTION_INTENTS = {
+        "CODE_GENERATION",
+        "KNOWLEDGE_SEARCH",
+        "FILE_OPERATION",
+        "RESEARCH",
+        "VERSION_CONTROL",
+        "TOOL_CREATION",
+        "E2E_TESTING",
+        "DOCUMENTATION",
+        "RELEASE_PROJECT",
+    }
+
+    def _build_error_envelope(
+        self,
+        *,
+        error_code: str,
+        error_message: str,
+        error_details: Optional[dict] = None,
+        stage: Optional[str] = None,
+        retryable: bool = False,
+        error_class: Optional[str] = None,
+    ) -> dict:
+        return {
+            "error_code": error_code,
+            "error_class": error_class or error_code,
+            "error_message": error_message,
+            "error_details": error_details or {},
+            "stage": stage,
+            "retryable": retryable,
+        }
+
+    def _set_runtime_error(self, task_id: UUID, envelope: dict) -> None:
+        self.state_manager.update_context(
+            task_id,
+            {
+                "llm_runtime": {
+                    "status": "error",
+                    "error": envelope,
+                    "last_error_at": datetime.now().isoformat(),
+                }
+            },
+        )
+        if self.request_tracer:
+            self.request_tracer.set_error_metadata(task_id, envelope)
+
     def _should_store_lesson(
         self,
         request: TaskRequest,
@@ -387,7 +475,7 @@ class Orchestrator:
         Returns:
             True jeśli lekcja powinna być zapisana
         """
-        if not (request.store_knowledge and ENABLE_META_LEARNING):
+        if not (request.store_knowledge and SETTINGS.ENABLE_META_LEARNING):
             return False
 
         if intent in self.NON_LEARNING_INTENTS:
@@ -410,6 +498,7 @@ class Orchestrator:
         context = request.content
         intent = "UNKNOWN"
         result = ""
+        tool_required = False
 
         try:
             # Pobierz zadanie
@@ -498,9 +587,158 @@ class Orchestrator:
                     },
                 )
 
-            # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości (tylko gdy ma to sens)
-            if intent not in self.NON_LEARNING_INTENTS:
+            tool_required = self.intent_manager.requires_tool(intent)
+            self.state_manager.update_context(
+                task_id,
+                {"tool_requirement": {"required": tool_required, "intent": intent}},
+            )
+            if self.request_tracer:
+                self.request_tracer.add_step(
+                    task_id,
+                    "DecisionGate",
+                    "tool_requirement",
+                    status="ok",
+                    details=f"Tool required: {tool_required}",
+                )
+            collector = metrics_module.metrics_collector
+            if collector:
+                if tool_required:
+                    collector.increment_tool_required_request()
+                else:
+                    collector.increment_llm_only_request()
+
+            if tool_required:
+                agent = self.task_dispatcher.agent_map.get(intent)
+                if agent is None or agent.__class__.__name__ == "UnsupportedAgent":
+                    self.state_manager.add_log(
+                        task_id,
+                        f"Brak narzędzia dla intencji {intent} - routing do UnsupportedAgent",
+                    )
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "route_unsupported",
+                            status="ok",
+                            details=f"Tool required but missing for intent={intent}",
+                        )
+                    intent = "UNSUPPORTED_TASK"
+
+            kernel_required = tool_required or intent in self.KERNEL_FUNCTION_INTENTS
+            if self.request_tracer:
+                self.request_tracer.add_step(
+                    task_id,
+                    "DecisionGate",
+                    "requirements_resolved",
+                    status="ok",
+                    details=f"tool_required={tool_required}, kernel_required={kernel_required}",
+                )
+            if kernel_required and not getattr(self.task_dispatcher, "kernel", None):
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "capability_required",
+                        status="ok",
+                        details="kernel",
+                    )
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "requirements_missing",
+                        status="error",
+                        details="missing=kernel",
+                    )
+                    self.request_tracer.add_step(
+                        task_id,
+                        "Execution",
+                        "execution_contract_violation",
+                        status="error",
+                        details="kernel_required",
+                    )
+                envelope = self._build_error_envelope(
+                    error_code="execution_contract_violation",
+                    error_message="Missing required capability: kernel",
+                    error_details={"missing": ["kernel"]},
+                    stage="agent_precheck",
+                    retryable=False,
+                )
+                self._set_runtime_error(task_id, envelope)
+                raise RuntimeError("execution_contract_violation")
+
+            runtime_info = get_active_llm_runtime()
+            expected_hash = request.expected_config_hash or SETTINGS.LLM_CONFIG_HASH
+            expected_runtime_id = request.expected_runtime_id
+            actual_hash = runtime_info.config_hash or compute_llm_config_hash(
+                runtime_info.provider, runtime_info.endpoint, runtime_info.model_name
+            )
+            if self.request_tracer:
+                self.request_tracer.add_step(
+                    task_id,
+                    "Orchestrator",
+                    "routing_resolved",
+                    status="ok",
+                    details=(
+                        f"provider={runtime_info.provider}, model={runtime_info.model_name}, "
+                        f"endpoint={runtime_info.endpoint}, hash={actual_hash}, runtime={runtime_info.runtime_id}"
+                    ),
+                )
+            mismatch = False
+            mismatch_details = []
+            if expected_hash and actual_hash != expected_hash:
+                mismatch = True
+                mismatch_details.append(
+                    f"expected_hash={expected_hash}, actual_hash={actual_hash}"
+                )
+            if expected_runtime_id and runtime_info.runtime_id != expected_runtime_id:
+                mismatch = True
+                mismatch_details.append(
+                    f"expected_runtime={expected_runtime_id}, actual_runtime={runtime_info.runtime_id}"
+                )
+            if mismatch:
+                if self.request_tracer:
+                    self.request_tracer.add_step(
+                        task_id,
+                        "Orchestrator",
+                        "routing_mismatch",
+                        status="error",
+                        details="; ".join(mismatch_details),
+                    )
+                envelope = self._build_error_envelope(
+                    error_code="routing_mismatch",
+                    error_message="Active runtime does not match expected configuration.",
+                    error_details={
+                        "expected_hash": expected_hash,
+                        "actual_hash": actual_hash,
+                        "expected_runtime": expected_runtime_id,
+                        "actual_runtime": runtime_info.runtime_id,
+                    },
+                    stage="routing",
+                    retryable=False,
+                )
+                self._set_runtime_error(task_id, envelope)
+                raise RuntimeError("routing_mismatch")
+
+            # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości (tylko dla LLM-only)
+            if intent not in self.NON_LEARNING_INTENTS and not tool_required:
                 context = await self._add_lessons_to_context(task_id, context)
+                hidden_context = build_hidden_prompts_context(
+                    intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
+                )
+                if hidden_context:
+                    context = hidden_context + "\n\n" + context
+                    self.state_manager.add_log(
+                        task_id,
+                        "Dołączono hidden prompts do kontekstu",
+                    )
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "hidden_prompts",
+                            status="ok",
+                            details=f"Hidden prompts: {MAX_HIDDEN_PROMPTS_IN_CONTEXT}",
+                        )
 
             # Zaloguj sklasyfikowaną intencję
             self.state_manager.add_log(
@@ -721,10 +959,23 @@ class Orchestrator:
                     intent=intent,
                     result=result,
                     success=True,
+                    agent=agent,
+                    request=request,
                 )
             else:
                 logger.info(
                     f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
+
+            if self._should_log_learning(
+                request, intent=intent, tool_required=tool_required, agent=agent
+            ):
+                self._append_learning_log(
+                    task_id=task_id,
+                    intent=intent,
+                    prompt=request.content,
+                    result=result,
+                    success=True,
                 )
 
             # Inkrementuj licznik ukończonych zadań
@@ -744,16 +995,23 @@ class Orchestrator:
         except Exception as e:
             # Obsługa błędów - ustaw status FAILED
             logger.error(f"Błąd podczas przetwarzania zadania {task_id}: {e}")
-            self.state_manager.update_context(
-                task_id,
-                {
-                    "llm_runtime": {
-                        "status": "error",
-                        "error": str(e),
-                        "last_error_at": datetime.now().isoformat(),
-                    }
-                },
-            )
+            task = self.state_manager.get_task(task_id)
+            existing_error = None
+            if task:
+                runtime_ctx = task.context_history.get("llm_runtime", {}) or {}
+                if isinstance(runtime_ctx, dict):
+                    existing_error = runtime_ctx.get("error")
+            if not (
+                isinstance(existing_error, dict) and existing_error.get("error_code")
+            ):
+                envelope = self._build_error_envelope(
+                    error_code="agent_error",
+                    error_message=str(e) or "Unhandled agent error",
+                    error_details={"exception": e.__class__.__name__},
+                    stage="agent_runtime",
+                    retryable=False,
+                )
+                self._set_runtime_error(task_id, envelope)
 
             # Aktualizuj tracer
             if self.request_tracer:
@@ -776,10 +1034,24 @@ class Orchestrator:
                     result=f"Błąd: {str(e)}",
                     success=False,
                     error=str(e),
+                    agent=agent,
+                    request=request,
                 )
             else:
                 logger.info(
                     f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
+                )
+
+            if self._should_log_learning(
+                request, intent=intent, tool_required=tool_required, agent=agent
+            ):
+                self._append_learning_log(
+                    task_id=task_id,
+                    intent=intent,
+                    prompt=request.content,
+                    result=f"Błąd: {str(e)}",
+                    success=False,
+                    error=str(e),
                 )
 
             # Inkrementuj licznik nieudanych zadań
@@ -930,7 +1202,7 @@ class Orchestrator:
         Returns:
             Kontekst wzbogacony o lekcje
         """
-        if not ENABLE_META_LEARNING or not self.lessons_store:
+        if not SETTINGS.ENABLE_META_LEARNING or not self.lessons_store:
             return context
 
         try:
@@ -978,6 +1250,8 @@ class Orchestrator:
         result: str,
         success: bool,
         error: str = None,
+        agent: Optional[object] = None,
+        request: Optional[TaskRequest] = None,
     ) -> None:
         """
         Zapisuje lekcję z wykonanego zadania (refleksja).
@@ -990,7 +1264,7 @@ class Orchestrator:
             success: Czy zadanie zakończyło się sukcesem
             error: Opcjonalny opis błędu
         """
-        if not ENABLE_META_LEARNING or not self.lessons_store:
+        if not SETTINGS.ENABLE_META_LEARNING or not self.lessons_store:
             return
 
         try:
@@ -1001,18 +1275,16 @@ class Orchestrator:
                 # Lekcja o sukcesie - zapisuj tylko jeśli coś ciekawego
                 # (np. jeśli było więcej niż 1 próba w Coder-Critic)
                 task_logs = self.state_manager.get_task(task_id)
-                if task_logs and len(task_logs.logs) > 5:
-                    # Było dużo iteracji, warto zapisać
-                    action = (
-                        f"Zadanie wykonane pomyślnie po {len(task_logs.logs)} krokach"
-                    )
-                    lesson_result = "SUKCES"
-                    feedback = f"Zadanie typu {intent} wymaga dokładnego planowania. Wynik: {result[:100]}..."
-                    tags = [intent, "sukces", "nauka"]
-                else:
+                if not task_logs or len(task_logs.logs) <= 5:
                     # Proste zadanie, nie ma co zapisywać
                     logger.debug("Proste zadanie, pomijam zapis lekcji")
                     return
+                # Było dużo iteracji, warto zapisać
+                action = f"Zadanie wykonane pomyślnie po {len(task_logs.logs)} krokach"
+                lesson_result = "SUKCES"
+                feedback = f"Zadanie typu {intent} wymaga dokładnego planowania. Wynik: {result[:100]}..."
+                tags = [intent, "sukces", "nauka"]
+                reason = "success_multi_step"
             else:
                 # Lekcja o błędzie - zawsze zapisuj
                 action = f"Próba wykonania zadania typu {intent}"
@@ -1020,6 +1292,7 @@ class Orchestrator:
                 lesson_result = f"BŁĄD: {error_msg[:200]}"
                 feedback = f"Unikaj powtórzenia tego błędu. Błąd: {error_msg[:300]}"
                 tags = [intent, "błąd", "ostrzeżenie"]
+                reason = "error"
 
             # Zapisz lekcję
             lesson = self.lessons_store.add_lesson(
@@ -1031,6 +1304,13 @@ class Orchestrator:
                 metadata={
                     "task_id": str(task_id),
                     "timestamp": datetime.now().isoformat(),
+                    "intent": intent,
+                    "agent": agent.__class__.__name__ if agent else None,
+                    "success": success,
+                    "reason": reason,
+                    "source": "orchestrator",
+                    "store_knowledge": request.store_knowledge if request else None,
+                    "learning_enabled": SETTINGS.ENABLE_META_LEARNING,
                 },
             )
 
@@ -1053,6 +1333,60 @@ class Orchestrator:
 
         except Exception as e:
             logger.error(f"Błąd podczas zapisywania lekcji: {e}")
+
+    def _should_log_learning(
+        self,
+        request: TaskRequest,
+        intent: str,
+        tool_required: bool,
+        agent=None,
+    ) -> bool:
+        """Zwraca True jeśli należy zapisać wpis procesu nauki dla LLM-only."""
+        if not request.store_knowledge:
+            return False
+        if tool_required:
+            return False
+        if intent in self.NON_LEARNING_INTENTS:
+            return False
+        if agent and getattr(agent, "disable_learning", False):
+            return False
+        return True
+
+    def _append_learning_log(
+        self,
+        task_id: UUID,
+        intent: str,
+        prompt: str,
+        result: str,
+        success: bool,
+        error: Optional[str] = None,
+    ) -> None:
+        """Zapisuje wpis procesu nauki dla LLM-only do lokalnego JSONL."""
+        entry = {
+            "task_id": str(task_id),
+            "timestamp": datetime.now().isoformat(),
+            "intent": intent,
+            "tool_required": False,
+            "success": success,
+            "need": (prompt or "")[:MAX_LEARNING_SNIPPET],
+            "outcome": (result or "")[:MAX_LEARNING_SNIPPET],
+            "error": (error or "")[:MAX_LEARNING_SNIPPET],
+            "fast_path_hint": "",
+            "tags": [intent, "llm_only", "success" if success else "failure"],
+        }
+
+        try:
+            LEARNING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with LEARNING_LOG_PATH.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            self.state_manager.add_log(
+                task_id, f"🧠 Zapisano wpis nauki do {LEARNING_LOG_PATH}"
+            )
+            collector = metrics_module.metrics_collector
+            if collector:
+                collector.increment_learning_logged()
+        except Exception as exc:
+            logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
 
     def _should_use_council(self, context: str, intent: str) -> bool:
         """

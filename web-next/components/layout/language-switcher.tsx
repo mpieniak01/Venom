@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Globe } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useMemo } from "react";
+import { Globe } from "lucide-react";
 import { useLanguage, useTranslation, type LanguageCode } from "@/lib/i18n";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 
 const LANGUAGE_OPTIONS = [
   { code: "pl", flag: "🇵🇱", label: "PL", name: "Polski" },
@@ -47,70 +47,46 @@ function FlagIcon({ code }: { code: LanguageCode }) {
 export function LanguageSwitcher({ className }: { className?: string }) {
   const { language, setLanguage } = useLanguage();
   const t = useTranslation();
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const options = useMemo<SelectMenuOption[]>(
+    () =>
+      LANGUAGE_OPTIONS.map((option) => ({
+        value: option.code,
+        label: option.label,
+        description: option.name,
+        icon: <FlagIcon code={option.code} />,
+      })),
+    [],
+  );
   const currentLanguage = useMemo(
-    () => LANGUAGE_OPTIONS.find((option) => option.code === language) ?? LANGUAGE_OPTIONS[0],
-    [language],
+    () => options.find((option) => option.value === language) ?? options[0],
+    [language, options],
   );
 
-  useEffect(() => {
-    const handleOutside = (event: MouseEvent) => {
-      if (!triggerRef.current) return;
-      if (!triggerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("mousedown", handleOutside);
-    window.addEventListener("keydown", handleEsc);
-    return () => {
-      window.removeEventListener("mousedown", handleOutside);
-      window.removeEventListener("keydown", handleEsc);
-    };
-  }, []);
-
   return (
-    <div className={cn("relative z-40", className)} ref={triggerRef}>
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={t("common.switchLanguage")}
-      >
-        <Globe className="h-4 w-4 text-emerald-200" aria-hidden />
-        <FlagIcon code={language} />
-        <span>{currentLanguage.label}</span>
-        <ChevronDown className="h-3 w-3 text-zinc-400" aria-hidden />
-      </button>
-      {open && (
-        <div className="absolute right-0 z-50 mt-2 w-44 rounded-2xl border border-white/10 bg-zinc-950/95 p-1 text-left shadow-xl">
-          {LANGUAGE_OPTIONS.map((option) => (
-            <button
-              key={option.code}
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-emerald-500/10",
-                option.code === language ? "bg-white/10" : "",
-              )}
-              onClick={() => {
-                setLanguage(option.code);
-                setOpen(false);
-              }}
-            >
-              <FlagIcon code={option.code} />
-              <div className="flex flex-col text-left">
-                <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">{option.label}</span>
-                <span className="text-sm">{option.name}</span>
-              </div>
-            </button>
-          ))}
-        </div>
+    <SelectMenu
+      value={language}
+      options={options}
+      onChange={(value) => setLanguage(value as LanguageCode)}
+      ariaLabel={t("common.switchLanguage")}
+      className={className}
+      renderButton={() => (
+        <>
+          <Globe className="h-4 w-4 text-emerald-200" aria-hidden />
+          {currentLanguage?.icon}
+          <span>{currentLanguage?.label}</span>
+        </>
       )}
-    </div>
+      renderOption={(option) => (
+        <>
+          {option.icon}
+          <div className="flex flex-col text-left">
+            <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+              {option.label}
+            </span>
+            <span className="text-sm">{option.description}</span>
+          </div>
+        </>
+      )}
+    />
   );
 }

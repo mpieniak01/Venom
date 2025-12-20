@@ -27,12 +27,14 @@ def orchestrator(state_manager, request_tracer):
     # Mock intent manager
     intent_manager = MagicMock()
     intent_manager.classify_intent = AsyncMock()
+    intent_manager.requires_tool = MagicMock(return_value=False)
 
     # Mock task dispatcher
     task_dispatcher = MagicMock()
     task_dispatcher.agent_map = {}
     task_dispatcher.goal_store = None
     task_dispatcher.dispatch = AsyncMock(return_value="Mocked result")
+    task_dispatcher.kernel = object()
 
     orch = Orchestrator(
         state_manager=state_manager,

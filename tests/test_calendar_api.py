@@ -241,7 +241,10 @@ def test_create_event_exception_handling(client, mock_calendar_skill):
     response = client.post("/api/v1/calendar/event", json=event_data)
 
     assert response.status_code == 500
-    assert "Błąd podczas tworzenia wydarzenia" in response.json()["detail"]
+    assert (
+        "Wystąpił nieoczekiwany błąd podczas tworzenia wydarzenia"
+        in response.json()["detail"]
+    )
 
 
 def test_get_events_exception_handling(client, mock_calendar_skill):
@@ -251,4 +254,7 @@ def test_get_events_exception_handling(client, mock_calendar_skill):
     response = client.get("/api/v1/calendar/events")
 
     assert response.status_code == 500
-    assert "Błąd podczas pobierania wydarzeń" in response.json()["detail"]
+    assert (
+        "Wystąpił błąd podczas pobierania wydarzeń z kalendarza"
+        in response.json()["detail"]
+    )

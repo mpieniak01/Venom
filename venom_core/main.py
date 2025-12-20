@@ -14,9 +14,11 @@ from venom_core.api.audio_stream import AudioStreamHandler
 from venom_core.api.routes import agents as agents_routes
 from venom_core.api.routes import benchmark as benchmark_routes
 from venom_core.api.routes import calendar as calendar_routes
+from venom_core.api.routes import feedback as feedback_routes
 from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
+from venom_core.api.routes import learning as learning_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import metrics as metrics_routes
 from venom_core.api.routes import models as models_routes
@@ -600,6 +602,7 @@ app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
+    feedback_routes.set_dependencies(orchestrator, state_manager)
     queue_routes.set_dependencies(orchestrator)
     # TokenEconomist nie jest jeszcze zainicjalizowany — przekazujemy None.
     # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
@@ -612,7 +615,12 @@ def setup_router_dependencies():
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
     )
     system_routes.set_dependencies(
-        background_scheduler, service_monitor, state_manager, llm_controller
+        background_scheduler,
+        service_monitor,
+        state_manager,
+        llm_controller,
+        model_manager,
+        request_tracer,
     )
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
@@ -628,6 +636,8 @@ app.include_router(queue_routes.router)
 app.include_router(metrics_routes.router)
 app.include_router(memory_routes.router)
 app.include_router(git_routes.router)
+app.include_router(feedback_routes.router)
+app.include_router(learning_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)
 app.include_router(system_routes.router)

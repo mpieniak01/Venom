@@ -13,11 +13,14 @@ workspace/*
 
 data/memory/
 data/user_lexicon/
+data/feedback/
+data/learning/
 
 # Chronos timelines and snapshots
 data/timelines/
 
 .env
+config/env-history/
 
 # Google Calendar OAuth credentials and tokens
 data/config/google_calendar_credentials.json

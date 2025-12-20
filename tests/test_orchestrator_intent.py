@@ -28,6 +28,7 @@ def mock_intent_manager():
     """Fixture dla mockowego IntentManager."""
     manager = MagicMock(spec=IntentManager)
     manager.classify_intent = AsyncMock()
+    manager.requires_tool = MagicMock(return_value=False)
     return manager
 
 
@@ -38,6 +39,7 @@ def mock_task_dispatcher():
 
     dispatcher = MagicMock(spec=TaskDispatcher)
     dispatcher.dispatch = AsyncMock()
+    dispatcher.kernel = object()
     # Mock agent_map dla logging
     dispatcher.agent_map = {
         "CODE_GENERATION": MagicMock(__class__=MagicMock(__name__="CoderAgent")),

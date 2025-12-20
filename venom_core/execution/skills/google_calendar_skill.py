@@ -17,7 +17,12 @@ except ModuleNotFoundError as exc:
     Request = None
     InstalledAppFlow = None
     build = None
-    HttpError = None
+
+    class HttpError(Exception):
+        """Fallback HttpError when Google API dependencies are missing."""
+
+        pass
+
     _GOOGLE_CALENDAR_AVAILABLE = False
     _GOOGLE_CALENDAR_IMPORT_ERROR = exc
 from semantic_kernel.functions import kernel_function
@@ -71,6 +76,13 @@ class GoogleCalendarSkill:
         self.service = None
         self.credentials_available = False
 
+        # Safety check: warn if venom_calendar_id is 'primary' (violates Safe Layering)
+        if self.venom_calendar_id == "primary":
+            logger.warning(
+                "⚠️  VENOM_CALENDAR_ID is set to 'primary' - this violates Safe Layering! "
+                "Create a separate calendar for Venom and update the configuration."
+            )
+
         if not _GOOGLE_CALENDAR_AVAILABLE:
             logger.warning(
                 "GoogleCalendarSkill: brak zależności Google API "
@@ -78,13 +90,6 @@ class GoogleCalendarSkill:
                 "Skill nie jest aktywny - graceful degradation."
             )
             return
-
-        # Safety check: warn if venom_calendar_id is 'primary' (violates Safe Layering)
-        if self.venom_calendar_id == "primary":
-            logger.warning(
-                "⚠️  VENOM_CALENDAR_ID is set to 'primary' - this violates Safe Layering! "
-                "Create a separate calendar for Venom and update the configuration."
-            )
 
         # Próba inicjalizacji - graceful degradation
         try:

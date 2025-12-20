@@ -9,7 +9,12 @@ from pydantic import BaseModel, field_validator
 
 from venom_core.config import SETTINGS
 from venom_core.core.model_manager import DEFAULT_MODEL_SIZE_GB
-from venom_core.utils.llm_runtime import get_active_llm_runtime, probe_runtime_status
+from venom_core.services.config_manager import config_manager
+from venom_core.utils.llm_runtime import (
+    compute_llm_config_hash,
+    get_active_llm_runtime,
+    probe_runtime_status,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -122,6 +127,27 @@ def set_dependencies(model_manager, model_registry=None):
     global _model_manager, _model_registry
     _model_manager = model_manager
     _model_registry = model_registry
+
+
+def _resolve_model_provider(models: List[dict], model_name: str) -> Optional[str]:
+    for model in models:
+        if model.get("name") == model_name:
+            return model.get("provider") or model.get("source")
+    return None
+
+
+def _update_last_model(provider: str, new_model: str):
+    if provider == "ollama":
+        last_key = "LAST_MODEL_OLLAMA"
+        prev_key = "PREVIOUS_MODEL_OLLAMA"
+    else:
+        last_key = "LAST_MODEL_VLLM"
+        prev_key = "PREVIOUS_MODEL_VLLM"
+    config = config_manager.get_config(mask_secrets=False)
+    current_last = config.get(last_key, "")
+    if current_last and current_last != new_model:
+        config_manager.update_config({prev_key: current_last})
+    config_manager.update_config({last_key: new_model})
 
 
 @router.get("/models")
@@ -273,6 +299,20 @@ async def switch_model(request: ModelSwitchRequest):
                 detail=f"Model {request.name} nie znaleziony",
             )
 
+        # Blokuj zmianę jeśli model nie pasuje do aktywnego runtime
+        runtime_info = get_active_llm_runtime()
+        active_provider = runtime_info.provider
+        model_provider = _resolve_model_provider(models, request.name)
+        if active_provider in {"ollama", "vllm"} and model_provider:
+            if model_provider != active_provider:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Model {request.name} należy do {model_provider}, "
+                        f"ale aktywny runtime to {active_provider}"
+                    ),
+                )
+
         # Aktywuj model (używając istniejącej metody activate_version)
         # Jeśli model nie jest zarejestrowany jako wersja, zarejestruj go
         if request.name not in _model_manager.versions:
@@ -284,6 +324,32 @@ async def switch_model(request: ModelSwitchRequest):
         success = _model_manager.activate_version(request.name)
 
         if success:
+            # Zaktualizuj runtime config in-memory i w .env
+            try:
+                SETTINGS.LLM_MODEL_NAME = request.name
+                SETTINGS.HYBRID_LOCAL_MODEL = request.name
+                SETTINGS.LLM_SERVICE_TYPE = "local"
+            except Exception:
+                logger.warning("Nie udało się zaktualizować SETTINGS w pamięci.")
+            config_manager.update_config(
+                {
+                    "LLM_MODEL_NAME": request.name,
+                    "HYBRID_LOCAL_MODEL": request.name,
+                    "LLM_SERVICE_TYPE": "local",
+                }
+            )
+            config_hash = compute_llm_config_hash(
+                active_provider, SETTINGS.LLM_LOCAL_ENDPOINT, request.name
+            )
+            config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+            try:
+                SETTINGS.LLM_CONFIG_HASH = config_hash
+            except Exception:
+                logger.warning(
+                    "Nie udało się zaktualizować LLM_CONFIG_HASH w SETTINGS."
+                )
+            if model_provider:
+                _update_last_model(model_provider, request.name)
             return {
                 "success": True,
                 "message": f"Model {request.name} został aktywowany",

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 import { Button, type ButtonSize, type ButtonVariant } from "./button";
 
 type IconButtonProps = {
@@ -8,7 +8,7 @@ type IconButtonProps = {
   variant?: ButtonVariant;
   size?: ButtonSize;
   className?: string;
-  onClick?: () => void;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
   type?: "button" | "submit" | "reset";
   disabled?: boolean;
   asChild?: boolean;

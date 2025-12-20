@@ -18,6 +18,11 @@ class MetricsCollector:
             "tasks_created": 0,
             "tasks_completed": 0,
             "tasks_failed": 0,
+            "llm_only_requests": 0,
+            "tool_required_requests": 0,
+            "learning_logged": 0,
+            "feedback_up": 0,
+            "feedback_down": 0,
             "tokens_used_session": 0,
             "network_bytes_sent": 0,
             "network_bytes_received": 0,
@@ -52,6 +57,31 @@ class MetricsCollector:
         """
         with self._lock:
             self.metrics["tokens_used_session"] += count
+
+    def increment_llm_only_request(self):
+        """Inkrementuje licznik requestów obsłużonych bez tooli."""
+        with self._lock:
+            self.metrics["llm_only_requests"] += 1
+
+    def increment_tool_required_request(self):
+        """Inkrementuje licznik requestów wymagających toola."""
+        with self._lock:
+            self.metrics["tool_required_requests"] += 1
+
+    def increment_learning_logged(self):
+        """Inkrementuje licznik zapisów procesu nauki."""
+        with self._lock:
+            self.metrics["learning_logged"] += 1
+
+    def increment_feedback_up(self):
+        """Inkrementuje licznik pozytywnego feedbacku."""
+        with self._lock:
+            self.metrics["feedback_up"] += 1
+
+    def increment_feedback_down(self):
+        """Inkrementuje licznik negatywnego feedbacku."""
+        with self._lock:
+            self.metrics["feedback_down"] += 1
 
     def increment_tool_usage(self, tool_name: str):
         """
@@ -153,6 +183,15 @@ class MetricsCollector:
                     "completed": self.metrics["tasks_completed"],
                     "failed": self.metrics["tasks_failed"],
                     "success_rate": self._calculate_success_rate(),
+                },
+                "routing": {
+                    "llm_only": self.metrics["llm_only_requests"],
+                    "tool_required": self.metrics["tool_required_requests"],
+                    "learning_logged": self.metrics["learning_logged"],
+                },
+                "feedback": {
+                    "up": self.metrics["feedback_up"],
+                    "down": self.metrics["feedback_down"],
                 },
                 "tokens_used_session": self.metrics["tokens_used_session"],
                 "network": {

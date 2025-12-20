@@ -208,6 +208,29 @@ Informacja o kwantyzacji modelu (Q4_K_M, Q8_0, etc.):
 
 ## Runtime Management
 
+### Aktywny runtime i model
+
+System utrzymuje jeden aktywny runtime LLM na raz (Ollama lub vLLM) i pamięta
+ostatni model per runtime. Aktualny stan pobierzesz z:
+
+```bash
+GET /api/v1/system/llm-servers/active
+```
+
+Przełączenie runtime + aktywacja modelu:
+
+```bash
+POST /api/v1/system/llm-servers/active
+Content-Type: application/json
+
+{
+  "server_name": "ollama",
+  "model_name": "phi3:mini"
+}
+```
+
+Backend zatrzymuje inne runtime i waliduje, czy model istnieje na wybranym serwerze.
+
 ### Systemd Integration
 
 Skrypty automatycznie wykrywają i używają systemd jeśli jest skonfigurowany:

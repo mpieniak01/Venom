@@ -1,0 +1,103 @@
+"""Moduł: routes/learning - Endpointy API dla logów nauki."""
+
+import json
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import APIRouter
+
+from venom_core.core.hidden_prompts import (
+    aggregate_hidden_prompts,
+    get_active_hidden_prompts,
+    set_active_hidden_prompt,
+)
+
+router = APIRouter(prefix="/api/v1/learning", tags=["learning"])
+
+LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
+
+
+@router.get("/logs")
+async def get_learning_logs(
+    limit: int = 50,
+    intent: Optional[str] = None,
+    success: Optional[bool] = None,
+    tag: Optional[str] = None,
+) -> dict:
+    """Zwraca ostatnie wpisy procesu nauki (JSONL) z opcjonalnym filtrowaniem."""
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+
+    if not LEARNING_LOG_PATH.exists():
+        return {"count": 0, "items": []}
+
+    items: List[dict] = []
+    try:
+        lines = LEARNING_LOG_PATH.read_text(encoding="utf-8").splitlines()
+        for line in reversed(lines):
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if intent and str(entry.get("intent") or "").upper() != intent.upper():
+                continue
+            if success is not None and entry.get("success") is not success:
+                continue
+            if tag:
+                tags = entry.get("tags") or []
+                if isinstance(tags, list):
+                    if tag not in tags:
+                        continue
+                else:
+                    continue
+            items.append(entry)
+            if len(items) >= limit:
+                break
+    except Exception:
+        return {"count": 0, "items": []}
+
+    return {"count": len(items), "items": list(reversed(items))}
+
+
+@router.get("/hidden-prompts")
+async def get_hidden_prompts(
+    limit: int = 50,
+    intent: Optional[str] = None,
+    min_score: int = 1,
+) -> dict:
+    """Zwraca zagregowane hidden prompts (deduplikacja + score)."""
+    if limit < 1:
+        limit = 1
+    if limit > 500:
+        limit = 500
+    if min_score < 1:
+        min_score = 1
+
+    items = aggregate_hidden_prompts(limit=limit, intent=intent, min_score=min_score)
+    return {"count": len(items), "items": items}
+
+
+@router.get("/hidden-prompts/active")
+async def get_active_hidden_prompts_endpoint(intent: Optional[str] = None) -> dict:
+    """Zwraca aktywne hidden prompts."""
+    items = get_active_hidden_prompts(intent=intent)
+    return {"count": len(items), "items": items}
+
+
+@router.post("/hidden-prompts/active")
+async def set_active_hidden_prompt_endpoint(payload: dict) -> dict:
+    """Aktywuje lub wyłącza hidden prompt."""
+    active = bool(payload.get("active", True))
+    actor = payload.get("actor")
+    entry = {
+        "intent": payload.get("intent"),
+        "prompt": payload.get("prompt"),
+        "approved_response": payload.get("approved_response"),
+        "prompt_hash": payload.get("prompt_hash"),
+    }
+    items = set_active_hidden_prompt(entry, active=active, actor=actor)
+    return {"count": len(items), "items": items}

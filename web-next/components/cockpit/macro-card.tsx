@@ -46,8 +46,9 @@ export function MacroCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
-          variant="secondary"
-          className="rounded-full border border-violet-400/40 bg-violet-500/20 px-4 text-sm font-semibold text-white hover:border-violet-300/80"
+          variant="macro"
+          size="md"
+          className="rounded-full px-4 text-sm font-semibold"
           disabled={pending}
           onClick={onRun}
         >

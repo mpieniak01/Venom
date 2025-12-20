@@ -98,13 +98,23 @@ export function HistoryList({
                       {formatHistoryModel(item)}
                     </p>
                   </div>
-                  <Badge tone={historyStatusTone(item.status)}>
-                    {item.status ?? "UNKNOWN"}
-                  </Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={historyStatusTone(item.status)}>
+                      {item.status ?? "UNKNOWN"}
+                    </Badge>
+                    {item.error_code && (
+                      <Badge tone="danger">{item.error_code}</Badge>
+                    )}
+                  </div>
                 </div>
               <p className="mt-2 line-clamp-2 text-sm text-zinc-300">
                 {item.prompt?.trim() ? item.prompt : "Brak promptu."}
               </p>
+              {item.error_code && (
+                <p className="mt-2 text-[11px] uppercase tracking-[0.2em] text-rose-300">
+                  {formatErrorDetail(item)}
+                </p>
+              )}
             </button>
           );
         })}
@@ -138,4 +148,23 @@ function formatHistoryModel(entry: HistoryRequest): string {
     return `${model} • ${provider} @ ${entry.llm_endpoint}`;
   }
   return `${model} • ${provider}`;
+}
+
+function formatErrorDetail(entry: HistoryRequest): string {
+  const details = entry.error_details;
+  if (!details || typeof details !== "object") return "error";
+  const missing = details["missing"];
+  if (Array.isArray(missing) && missing.length > 0) {
+    return `missing: ${missing[0]}`;
+  }
+  const expectedHash = details["expected_hash"];
+  const actualHash = details["actual_hash"];
+  if (typeof expectedHash === "string" && typeof actualHash === "string") {
+    return `expected_hash: ${expectedHash.slice(0, 8)}`;
+  }
+  const stage = details["stage"];
+  if (typeof stage === "string") {
+    return `stage: ${stage}`;
+  }
+  return "error";
 }

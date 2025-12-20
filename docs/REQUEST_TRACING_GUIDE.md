@@ -179,6 +179,127 @@ Aby dodać nowy status, rozszerz enum `TraceStatus` w `tracer.py` i zaktualizuj 
    - Unikaj zbyt dużej granularności (nie każda linia kodu)
    - Dodawaj szczegóły (`details`) dla błędów i ważnych decyzji
 
+2. **Spójność runtime:**
+   - W trace pojawia się krok `Orchestrator.routing_resolved` z `provider/model/endpoint/hash`.
+   - Gdy wykryty jest drift konfiguracji, pojawia się `Orchestrator.routing_mismatch` i zadanie kończy się błędem `routing_mismatch`.
+   - Wstępne wymagania środowiska są logowane jako `DecisionGate.requirements_resolved`, a brakujące zależności jako `DecisionGate.requirements_missing`.
+   - `kernel_required` oznacza intencje wymagające function calling (np. CODE_GENERATION, RESEARCH, KNOWLEDGE_SEARCH).
+   - Brak kernela logowany jest jako `DecisionGate.capability_required` → `DecisionGate.requirements_missing` → `Execution.execution_contract_violation`.
+
+3. **Standard błędu (ErrorEnvelope):**
+   - `error_code` to stabilna klasa błędu (np. `routing_mismatch`, `execution_contract_violation`).
+   - `error_details` zawiera szczegóły (np. `missing`, `expected_hash`, `actual_hash`, `stage`).
+   - UI renderuje badge na podstawie `error_code` i detale z `error_details` – bez parsowania treści wyjątku.
+
+## Scenariusz: intencja rozpoznana, brak narzędzi
+
+Jeśli intencja została rozpoznana, ale nie ma pasujących narzędzi/akcji, system **nie uruchamia LLM**.
+Taki request trafia do `UnsupportedAgent` i to on zwraca odpowiedź szablonową.
+
+**Konsekwencje w logach i dalszym procesie:**
+- W trace pojawia się `DecisionGate.route_to_agent` → `UnsupportedAgent.process_task`.
+- Brak realnego wywołania LLM (meta może zostać wyczyszczona do `None/None`).
+- To jest właściwy sygnał do analizy braków w narzędziach i planowania nowych umiejętności.
+
+**Cel:** zapewnić, że system nie "udaje" odpowiedzi modelem, gdy brakuje narzędzi, tylko jasno raportuje brak obsługi i kieruje na ścieżkę rozbudowy toolingu.
+
+## Definicja: narzędzia jako wiedza specjalistyczna
+
+W tej strategii **toolsy** są traktowane jako wiedza specjalistyczna, do której LLM **nie ma dostępu**:
+- **Toolsy** dostarczają aktualnej, zewnętrznej lub systemowej wiedzy (np. internet, aktualny czas, stan systemu).
+- **LLM** odpowiada tylko z własnej wiedzy; jeśli nie ma pewności, powinien przyznać brak wiedzy.
+- Gdy zadanie wymaga narzędzia, a brak dopasowania — request trafia do `UnsupportedAgent`.
+
+**Skutek dla logowania:** logi o `UnsupportedAgent` są sygnałem brakującej wiedzy specjalistycznej (narzędzi), nie braku „inteligencji” modelu.
+
+### Rozpiska decyzji: LLM vs tool
+
+**Prosta reguła:** wszystko, co nie wymaga toola, trafia do LLM.
+
+**LLM (bez tooli):**
+- Pytania o wiedzę ogólną, statyczną lub definicje.
+- Wyjaśnienia, streszczenia, wnioski, parafrazy.
+- Tworzenie treści, kodu, opisów, planów.
+- Gdy brak danych zewnętrznych i użytkownik akceptuje odpowiedź z wiedzy modelu.
+
+**Tool wymagany:**
+- Dane „tu i teraz” (aktualny czas, pogoda, newsy, wyniki w sieci).
+- Stan systemu (pliki, procesy, zasoby, logi, konfiguracja).
+- Interakcja ze światem zewnętrznym (API, web, integracje).
+- Każde zadanie, gdzie wynik zależy od świeżych lub lokalnych danych.
+
+**Reguła spójności:**
+- Jeśli zadanie wymaga toola, a tool nie istnieje lub nie pasuje do intencji,
+  request kończy jako `UnsupportedAgent` i jest kandydatem do rozbudowy toolingu.
+
+**Reguła rozwoju:** jeśli zadanie nie wymaga toola i trafia do LLM, uruchamiany jest proces uczenia:
+- zapisujemy potrzebę użytkownika (co chciał uzyskać),
+- identyfikujemy skróty ścieżki (jak dojść do tego szybciej następnym razem),
+- sygnały z tych requestów budują backlog usprawnień lub przyszłych tooli.
+
+W trace pojawia się krok `DecisionGate.tool_requirement`, a wpisy uczenia są zapisywane lokalnie
+w `data/learning/requests.jsonl`. Do podglądu logów służy `GET /api/v1/learning/logs`
+z opcjonalnym filtrowaniem (`intent`, `success`, `tag`).
+
+Feedback użytkownika jest zapisywany do `data/feedback/feedback.jsonl` i udostępniany
+przez `GET /api/v1/feedback/logs`. Metryki jakości są dostępne w `/api/v1/metrics`
+(pola `feedback.up` i `feedback.down`).
+
+Hidden prompts (zatwierdzone pary prompt → odpowiedź) są agregowane z
+`data/learning/hidden_prompts.jsonl` i udostępniane przez
+`GET /api/v1/learning/hidden-prompts`.
+
+### Checklista: kiedy dodać narzędzie
+
+- Czy odpowiedź wymaga aktualnych danych (czas/stan/system/internet)?
+- Czy wynik musi być weryfikowalny na podstawie zewnętrznego źródła?
+- Czy bez toola LLM musiałby zgadywać lub halucynować?
+- Czy pojawiają się powtarzalne requesty kończące w `UnsupportedAgent`?
+
+### Przykłady
+
+- „Podaj aktualny czas” → tool (czas systemowy).
+- „Sprawdź stan kolejki zadań” → tool (status systemu).
+- „Wyjaśnij czym jest OAuth” → LLM (wiedza statyczna).
+- „Zrób streszczenie tego opisu” → LLM (analiza tekstu użytkownika).
+
+### Tabela: mapowanie intencji na narzędzia
+
+| Intencja / potrzeba | Dane potrzebne | Tool wymagany | Jeśli brak toola | Przykład |
+| --- | --- | --- | --- | --- |
+| Aktualny czas | Systemowe „tu i teraz” | `time.now` | `UnsupportedAgent` | „Podaj aktualny czas” |
+| Stan systemu | Lokalne zasoby, procesy, logi | `system.status` | `UnsupportedAgent` | „Sprawdź stan kolejki” |
+| Dane z internetu | Źródła zewnętrzne, aktualności | `web.search` | `UnsupportedAgent` | „Jakie są najnowsze newsy?” |
+| Operacje na plikach | Pliki w workspace | `fs.read` / `fs.list` | `UnsupportedAgent` | „Pokaż plik config” |
+| Wyjaśnienie pojęcia | Wiedza ogólna LLM | brak | LLM odpowiada lub przyznaje brak wiedzy | „Co to jest OAuth?” |
+| Streszczenie tekstu | Tekst użytkownika | brak | LLM odpowiada | „Streszcz ten opis” |
+
+### Aktualne narzędzia (skills)
+
+| Skill (moduł) | Zakres | Funkcje (przykłady) |
+| --- | --- | --- |
+| `AssistantSkill` (`assistant_skill.py`) | Czas, pogoda, status usług | `get_current_time`, `get_weather`, `check_services` |
+| `BrowserSkill` (`browser_skill.py`) | Playwright E2E / przeglądarka | `visit_page`, `take_screenshot`, `get_html_content`, `click_element`, `fill_form`, `wait_for_element`, `close_browser` |
+| `ChronoSkill` (`chrono_skill.py`) | Checkpointy i linie czasu | `create_checkpoint`, `restore_checkpoint`, `list_checkpoints`, `branch_timeline`, `merge_timeline` |
+| `ComplexitySkill` (`complexity_skill.py`) | Szacowanie złożoności zadań | `estimate_time`, `estimate_complexity`, `suggest_subtasks`, `flag_risks` |
+| `ComposeSkill` (`compose_skill.py`) | Docker Compose / stacki | `create_environment`, `destroy_environment`, `check_service_health`, `list_environments` |
+| `CoreSkill` (`core_skill.py`) | Operacje na kodzie Venom | `hot_patch`, `rollback`, `list_backups`, `restart_service`, `verify_syntax` |
+| `DocsSkill` (`docs_skill.py`) | Budowa dokumentacji | `generate_mkdocs_config`, `build_docs_site`, `serve_docs`, `check_docs_structure` |
+| `FileSkill` (`file_skill.py`) | Pliki workspace | `write_file`, `read_file`, `list_files`, `file_exists` |
+| `GitSkill` (`git_skill.py`) | Git / repozytorium | `init_repo`, `checkout`, `get_status`, `get_diff`, `add_files`, `commit`, `push`, `pull`, `merge`, `reset` |
+| `GithubSkill` (`github_skill.py`) | GitHub (public API) | `search_repos`, `get_readme`, `get_trending` |
+| `GoogleCalendarSkill` (`google_calendar_skill.py`) | Kalendarz | `read_agenda`, `schedule_task` |
+| `HuggingfaceSkill` (`huggingface_skill.py`) | Hugging Face | `search_models`, `get_model_card`, `search_datasets` |
+| `InputSkill` (`input_skill.py`) | Wejście systemowe (mysz/klawiatura) | `mouse_click`, `keyboard_type`, `keyboard_hotkey`, `get_mouse_position`, `take_screenshot` |
+| `MediaSkill` (`media_skill.py`) | Grafika / assety | `generate_image`, `resize_image`, `list_assets` |
+| `ParallelSkill` (`parallel_skill.py`) | Map-Reduce / równoległość | `map_reduce`, `parallel_execute`, `get_task_status` |
+| `PlatformSkill` (`platform_skill.py`) | GitHub/Slack/Discord | `get_assigned_issues`, `create_pull_request`, `comment_on_issue`, `send_notification`, `get_configuration_status` |
+| `RenderSkill` (`render_skill.py`) | UI / widgety / wykresy | `render_chart`, `render_table`, `render_dashboard_widget`, `render_markdown`, `render_mermaid_diagram`, `update_widget` |
+| `ResearchSkill` (`research_skill.py`) | Ingestia do grafu wiedzy | `digest_url`, `digest_file`, `digest_directory`, `get_knowledge_stats` |
+| `ShellSkill` (`shell_skill.py`) | Komendy shell | `run_shell` |
+| `TestSkill` (`test_skill.py`) | Testy i linter | `run_pytest`, `run_linter` |
+| `WebSearchSkill` (`web_skill.py`) | Search i scraping WWW | `search`, `scrape_text`, `search_and_scrape` |
+
 2. **Performance:**
    - RequestTracer używa Lock - operacje są synchroniczne
    - Unikaj wywołań w pętlach o wysokiej częstotliwości

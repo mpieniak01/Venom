@@ -83,6 +83,17 @@ class IntentManager:
         "CODE_GENERATION",
         "COMPLEX_PLANNING",
     }
+    TOOL_REQUIRED_INTENTS = {
+        "TIME_REQUEST",
+        "INFRA_STATUS",
+        "VERSION_CONTROL",
+        "DOCUMENTATION",
+        "E2E_TESTING",
+        "RELEASE_PROJECT",
+        "RESEARCH",
+        "FILE_OPERATION",
+        "STATUS_REPORT",
+    }
     LEXICON_FALLBACK_SCORE = 0.9
     TIE_BREAK_DELTA = 0.02
     _lexicon_cache = {}
@@ -627,11 +638,11 @@ Przykłady:
                         intent = valid_intent
                         break
                 else:
-                    # Fallback - użyj UNSUPPORTED_TASK jako domyślnego
+                    # Fallback - użyj GENERAL_CHAT jako domyślnego
                     logger.warning(
-                        f"Nierozpoznana intencja: {intent}, używam UNSUPPORTED_TASK jako fallback"
+                        f"Nierozpoznana intencja: {intent}, używam GENERAL_CHAT jako fallback"
                     )
-                    intent = "UNSUPPORTED_TASK"
+                    intent = "GENERAL_CHAT"
 
             logger.info(f"Sklasyfikowana intencja: {intent}")
             self.last_intent_debug["source"] = "llm"
@@ -657,4 +668,8 @@ Przykłady:
                     self.last_intent_debug["source"] = "fallback"
                     return "GENERAL_CHAT"
             self.last_intent_debug["source"] = "fallback"
-            return "UNSUPPORTED_TASK"
+            return "GENERAL_CHAT"
+
+    def requires_tool(self, intent: str) -> bool:
+        """Zwraca True jeśli intencja wymaga narzędzia/systemowej wiedzy."""
+        return intent in self.TOOL_REQUIRED_INTENTS

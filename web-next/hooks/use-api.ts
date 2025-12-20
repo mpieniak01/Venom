@@ -16,6 +16,7 @@ import {
   LlmActionResponse,
   LlmServerInfo,
   KnowledgeGraph,
+  LearningLogsResponse,
   LessonsResponse,
   LessonsStats,
   Metrics,
@@ -28,6 +29,11 @@ import {
   ServiceStatus,
   Task,
   TokenMetrics,
+  FeedbackResponse,
+  FeedbackLogsResponse,
+  ActiveHiddenPromptsResponse,
+  HiddenPromptsResponse,
+  ActiveLlmServerResponse,
 } from "@/lib/types";
 
 type PollingState<T> = {
@@ -290,7 +296,7 @@ export function useModels(intervalMs = 15000) {
   );
 }
 
-export function useGitStatus(intervalMs = 10000) {
+export function useGitStatus(intervalMs = 0) {
   return usePolling<GitStatus>(
     "git-status",
     () => apiFetch("/api/v1/git/status"),
@@ -339,6 +345,21 @@ export function useLlmServers(intervalMs = 0) {
     },
     intervalMs,
   );
+}
+
+export function useActiveLlmServer(intervalMs = 0) {
+  return usePolling<ActiveLlmServerResponse>(
+    "llm-servers-active",
+    () => apiFetch("/api/v1/system/llm-servers/active"),
+    intervalMs,
+  );
+}
+
+export async function setActiveLlmServer(serverName: string) {
+  return apiFetch<ActiveLlmServerResponse>("/api/v1/system/llm-servers/active", {
+    method: "POST",
+    body: JSON.stringify({ server_name: serverName }),
+  });
 }
 
 export async function controlLlmServer(
@@ -390,6 +411,14 @@ export function useLessons(limit = 5, intervalMs = 20000) {
   );
 }
 
+export function useLearningLogs(limit = 20, intervalMs = 20000) {
+  return usePolling<LearningLogsResponse>(
+    `learning-logs-${limit}`,
+    () => apiFetch(`/api/v1/learning/logs?limit=${limit}`),
+    intervalMs,
+  );
+}
+
 export function useRoadmap(intervalMs = 30000) {
   return usePolling<RoadmapResponse>("roadmap", () => apiFetch("/api/roadmap"), intervalMs);
 }
@@ -405,12 +434,15 @@ export function useLessonsStats(intervalMs = 30000) {
 export async function sendTask(
   content: string,
   storeKnowledge = true,
-  generationParams?: GenerationParams | null
+  generationParams?: GenerationParams | null,
+  runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null
 ) {
   const body: {
     content: string;
     store_knowledge: boolean;
     generation_params?: GenerationParams;
+    expected_config_hash?: string;
+    expected_runtime_id?: string;
   } = {
     content,
     store_knowledge: storeKnowledge,
@@ -419,11 +451,84 @@ export async function sendTask(
   if (generationParams) {
     body.generation_params = generationParams;
   }
+  if (runtimeMeta?.configHash) {
+    body.expected_config_hash = runtimeMeta.configHash;
+  }
+  if (runtimeMeta?.runtimeId) {
+    body.expected_runtime_id = runtimeMeta.runtimeId;
+  }
 
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export async function sendFeedback(
+  taskId: string,
+  rating: "up" | "down",
+  comment?: string,
+) {
+  return apiFetch<FeedbackResponse>("/api/v1/feedback", {
+    method: "POST",
+    body: JSON.stringify({
+      task_id: taskId,
+      rating,
+      comment,
+    }),
+  });
+}
+
+export function useFeedbackLogs(limit = 10, intervalMs = 20000, rating?: "up" | "down") {
+  const suffix = rating ? `&rating=${rating}` : "";
+  return usePolling<FeedbackLogsResponse>(
+    `feedback-logs-${limit}-${rating ?? "all"}`,
+    () => apiFetch(`/api/v1/feedback/logs?limit=${limit}${suffix}`),
+    intervalMs,
+  );
+}
+
+export function useHiddenPrompts(
+  limit = 10,
+  intervalMs = 20000,
+  intent?: string,
+  minScore = 1,
+) {
+  const intentParam = intent ? `&intent=${encodeURIComponent(intent)}` : "";
+  return usePolling<HiddenPromptsResponse>(
+    `hidden-prompts-${limit}-${intent ?? "all"}-${minScore}`,
+    () =>
+      apiFetch(
+        `/api/v1/learning/hidden-prompts?limit=${limit}${intentParam}&min_score=${minScore}`,
+      ),
+    intervalMs,
+  );
+}
+
+export function useActiveHiddenPrompts(intent?: string, intervalMs = 20000) {
+  const intentParam = intent ? `?intent=${encodeURIComponent(intent)}` : "";
+  return usePolling<ActiveHiddenPromptsResponse>(
+    `hidden-prompts-active-${intent ?? "all"}`,
+    () => apiFetch(`/api/v1/learning/hidden-prompts/active${intentParam}`),
+    intervalMs,
+  );
+}
+
+export async function setActiveHiddenPrompt(payload: {
+  intent?: string;
+  prompt?: string;
+  approved_response?: string;
+  prompt_hash?: string;
+  active?: boolean;
+  actor?: string;
+}) {
+  return apiFetch<ActiveHiddenPromptsResponse>(
+    "/api/v1/learning/hidden-prompts/active",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function toggleQueue(paused: boolean) {

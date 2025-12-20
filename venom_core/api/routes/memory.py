@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from venom_core.api.dependencies import get_lessons_store
+from venom_core.config import SETTINGS
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.config_manager import config_manager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -346,4 +348,71 @@ async def purge_all_lessons(
         logger.exception("Błąd podczas czyszczenia bazy lekcji")
         raise HTTPException(
             status_code=500, detail=f"Błąd podczas czyszczenia bazy: {str(e)}"
+        ) from e
+
+
+@router.delete("/lessons/prune/ttl")
+async def prune_lessons_by_ttl(
+    days: int = Query(..., ge=1, description="Liczba dni retencji (TTL)"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Usuwa lekcje starsze niż TTL w dniach."""
+    try:
+        deleted = lessons_store.prune_by_ttl(days)
+        return {
+            "status": "success",
+            "message": f"Usunięto {deleted} lekcji starszych niż {days} dni",
+            "deleted": deleted,
+            "days": days,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas usuwania lekcji po TTL")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas usuwania lekcji: {str(e)}"
+        ) from e
+
+
+@router.post("/lessons/dedupe")
+async def dedupe_lessons(
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Deduplikuje lekcje na podstawie podpisu treści."""
+    try:
+        removed = lessons_store.dedupe_lessons()
+        return {
+            "status": "success",
+            "message": f"Usunięto {removed} zduplikowanych lekcji",
+            "removed": removed,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas deduplikacji lekcji")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas deduplikacji lekcji: {str(e)}"
+        ) from e
+
+
+@router.get("/lessons/learning/status")
+async def get_learning_status():
+    """Zwraca status globalnego zapisu lekcji."""
+    return {"status": "success", "enabled": SETTINGS.ENABLE_META_LEARNING}
+
+
+class LearningToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/lessons/learning/toggle")
+async def toggle_learning(request: LearningToggleRequest):
+    """Włącza/wyłącza globalny zapis lekcji."""
+    try:
+        SETTINGS.ENABLE_META_LEARNING = request.enabled
+        config_manager.update_config({"ENABLE_META_LEARNING": request.enabled})
+        return {
+            "status": "success",
+            "enabled": SETTINGS.ENABLE_META_LEARNING,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas zmiany stanu uczenia")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas zmiany stanu: {str(e)}"
         ) from e

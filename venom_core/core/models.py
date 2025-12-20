@@ -44,6 +44,12 @@ class TaskRequest(BaseModel):
     generation_params: Optional[Dict[str, Any]] = Field(
         default=None, description="Parametry generacji (temperature, max_tokens, etc.)"
     )
+    expected_config_hash: Optional[str] = Field(
+        default=None, description="Oczekiwany hash konfiguracji LLM z UI"
+    )
+    expected_runtime_id: Optional[str] = Field(
+        default=None, description="Oczekiwany runtime_id LLM z UI"
+    )
 
 
 class Intent(BaseModel):

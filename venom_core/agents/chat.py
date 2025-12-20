@@ -386,6 +386,11 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
             enable_functions: Czy pozwolić na wywołania funkcji
             generation_params: Opcjonalne parametry generacji
         """
+        if enable_functions and not self.kernel:
+            logger.warning(
+                "Kernel missing for function calling, disabling functions for this request."
+            )
+            enable_functions = False
         settings = self._build_execution_settings(enable_functions, generation_params)
         kwargs = {}
         if enable_functions:

@@ -49,6 +49,14 @@ class RequestTrace(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
+    llm_config_hash: Optional[str] = None
+    llm_runtime_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_class: Optional[str] = None
+    error_message: Optional[str] = None
+    error_details: Optional[dict] = None
+    error_stage: Optional[str] = None
+    error_retryable: Optional[bool] = None
 
 
 class RequestTracer:
@@ -233,6 +241,8 @@ class RequestTracer:
         provider = provider or metadata.get("provider")
         model = model or metadata.get("model")
         endpoint = endpoint or metadata.get("endpoint")
+        config_hash = metadata.get("config_hash")
+        runtime_id = metadata.get("runtime_id")
 
         with self._traces_lock:
             trace = self._traces.get(request_id)
@@ -245,9 +255,34 @@ class RequestTracer:
             trace.llm_provider = provider
             trace.llm_model = model
             trace.llm_endpoint = endpoint
+            trace.llm_config_hash = config_hash
+            trace.llm_runtime_id = runtime_id
 
         logger.debug(
             f"Zaktualizowano informacje o LLM dla trace {request_id}: {provider}/{model}"
+        )
+
+    def set_error_metadata(self, request_id: UUID, error: dict):
+        """Ustawia ustandaryzowane informacje o błędzie dla trace."""
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba ustawienia błędu dla nieistniejącego trace {request_id}"
+                )
+                return
+
+            trace.error_code = error.get("error_code")
+            trace.error_class = error.get("error_class")
+            trace.error_message = error.get("error_message")
+            trace.error_details = error.get("error_details")
+            trace.error_stage = error.get("stage")
+            trace.error_retryable = error.get("retryable")
+
+        logger.debug(
+            "Zaktualizowano informacje o błędzie dla trace %s: %s",
+            request_id,
+            error.get("error_code"),
         )
 
     def get_trace(self, request_id: UUID) -> Optional[RequestTrace]:

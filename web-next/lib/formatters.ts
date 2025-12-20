@@ -28,6 +28,26 @@ export function formatDiskUsage(usedGb?: number, limitGb?: number) {
   return "—";
 }
 
+function formatDiskUnit(valueGb: number, preferTb = false) {
+  if (valueGb >= 1024 || preferTb) {
+    return `${(valueGb / 1024).toFixed(1)}T`;
+  }
+  const digits = valueGb >= 100 ? 0 : 1;
+  return `${valueGb.toFixed(digits)}G`;
+}
+
+export function formatDiskSnapshot(usedGb?: number, totalGb?: number) {
+  if (typeof usedGb !== "number" || typeof totalGb !== "number") {
+    return "—";
+  }
+  const freeGb = Math.max(totalGb - usedGb, 0);
+  const useTb = totalGb >= 1024;
+  const totalLabel = formatDiskUnit(totalGb, useTb);
+  const usedLabel = formatDiskUnit(usedGb, useTb);
+  const freeLabel = formatDiskUnit(freeGb, false);
+  return `${totalLabel}/${usedLabel} - ${freeLabel}`;
+}
+
 export function formatUsd(value?: number, fractionDigits = 4) {
   return typeof value === "number" ? `$${value.toFixed(fractionDigits)}` : "—";
 }

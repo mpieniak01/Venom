@@ -64,8 +64,8 @@ class LlmServerController:
             display_name="vLLM",
             provider="vllm",
             description="Runtime OpenAI-compatible (port 8001).",
-            endpoint=cfg.LLM_LOCAL_ENDPOINT,
-            health_url=f"{cfg.LLM_LOCAL_ENDPOINT.rstrip('/')}/models",
+            endpoint=cfg.VLLM_ENDPOINT,
+            health_url=f"{cfg.VLLM_ENDPOINT.rstrip('/')}/models",
             commands={
                 "start": vllm_start_cmd,
                 "stop": vllm_stop_cmd,

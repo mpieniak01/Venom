@@ -134,6 +134,57 @@ curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/purge?force=true"
 }
 ```
 
+#### 5. TTL - usuń lekcje starsze niż N dni
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/memory/lessons/prune/ttl?days=30"
+```
+
+**Parametry:**
+- `days` (wymagany): Liczba dni retencji
+
+**Przykładowa odpowiedź:**
+```json
+{
+  "status": "success",
+  "message": "Usunięto 12 lekcji starszych niż 30 dni",
+  "deleted": 12,
+  "days": 30
+}
+```
+
+#### 6. Deduplikacja lekcji
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/memory/lessons/dedupe"
+```
+
+**Przykładowa odpowiedź:**
+```json
+{
+  "status": "success",
+  "message": "Usunięto 4 zduplikowanych lekcji",
+  "removed": 4
+}
+```
+
+#### 7. Globalny przełącznik uczenia
+
+```bash
+curl "http://localhost:8000/api/v1/memory/lessons/learning/status"
+curl -X POST "http://localhost:8000/api/v1/memory/lessons/learning/toggle" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+**Przykładowa odpowiedź:**
+```json
+{
+  "status": "success",
+  "enabled": false
+}
+```
+
 ## Przykłady użycia
 
 ### Scenario 1: Czyszczenie po sesji testowej

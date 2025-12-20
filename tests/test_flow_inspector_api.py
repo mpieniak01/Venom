@@ -122,7 +122,7 @@ def test_get_flow_trace_mermaid_diagram_structure(client, sample_task_with_flow)
     assert "autonumber" in diagram
     assert "User->>Orchestrator" in diagram
     assert "Note over DecisionGate" in diagram  # Decision Gates jako notatki
-    assert "✅ Task completed" in diagram  # Status completion
+    assert "Task completed" in diagram  # Status completion
 
 
 def test_get_flow_trace_nonexistent_task(client, tracer):
@@ -151,7 +151,7 @@ def test_get_flow_trace_processing_task(client, tracer):
     assert data["status"] == "PROCESSING"
     assert data["finished_at"] is None
     assert data["duration_seconds"] is None
-    assert "⏳ Processing..." in data["mermaid_diagram"]
+    assert "Processing..." in data["mermaid_diagram"]
 
 
 def test_get_flow_trace_failed_task(client, tracer):
@@ -173,7 +173,7 @@ def test_get_flow_trace_failed_task(client, tracer):
 
     assert data["status"] == "FAILED"
     assert data["finished_at"] is not None
-    assert "❌ Task failed" in data["mermaid_diagram"]
+    assert "Task failed" in data["mermaid_diagram"]
 
     # Sprawdź czy krok błędu jest oznaczony
     error_steps = [step for step in data["steps"] if step["status"] == "error"]

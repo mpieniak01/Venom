@@ -33,6 +33,14 @@ class HistoryRequestSummary(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
+    llm_config_hash: Optional[str] = None
+    llm_runtime_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_class: Optional[str] = None
+    error_message: Optional[str] = None
+    error_details: Optional[dict] = None
+    error_stage: Optional[str] = None
+    error_retryable: Optional[bool] = None
 
 
 class HistoryRequestDetail(BaseModel):
@@ -48,6 +56,14 @@ class HistoryRequestDetail(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
+    llm_config_hash: Optional[str] = None
+    llm_runtime_id: Optional[str] = None
+    error_code: Optional[str] = None
+    error_class: Optional[str] = None
+    error_message: Optional[str] = None
+    error_details: Optional[dict] = None
+    error_stage: Optional[str] = None
+    error_retryable: Optional[bool] = None
 
 
 # Dependency - będzie ustawione w main.py
@@ -307,6 +323,14 @@ async def get_request_history(
                 llm_provider=trace.llm_provider,
                 llm_model=trace.llm_model,
                 llm_endpoint=trace.llm_endpoint,
+                llm_config_hash=trace.llm_config_hash,
+                llm_runtime_id=trace.llm_runtime_id,
+                error_code=trace.error_code,
+                error_class=trace.error_class,
+                error_message=trace.error_message,
+                error_details=trace.error_details,
+                error_stage=trace.error_stage,
+                error_retryable=trace.error_retryable,
             )
         )
 
@@ -364,4 +388,12 @@ async def get_request_detail(request_id: UUID):
         llm_provider=trace.llm_provider,
         llm_model=trace.llm_model,
         llm_endpoint=trace.llm_endpoint,
+        llm_config_hash=trace.llm_config_hash,
+        llm_runtime_id=trace.llm_runtime_id,
+        error_code=trace.error_code,
+        error_class=trace.error_class,
+        error_message=trace.error_message,
+        error_details=trace.error_details,
+        error_stage=trace.error_stage,
+        error_retryable=trace.error_retryable,
     )

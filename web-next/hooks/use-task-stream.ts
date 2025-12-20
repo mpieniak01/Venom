@@ -319,10 +319,21 @@ function extractRuntime(payload: Record<string, unknown>) {
     context && isRecord(context.llm_runtime)
       ? (context.llm_runtime as Record<string, unknown>)
       : null;
-  const error =
-    runtimeContext && typeof runtimeContext.error === "string"
-      ? runtimeContext.error
-      : null;
+  let error: string | null = null;
+  if (runtimeContext) {
+    const rawError = runtimeContext.error;
+    if (typeof rawError === "string") {
+      error = rawError;
+    } else if (isRecord(rawError)) {
+      const message = rawError.error_message;
+      const code = rawError.error_code;
+      if (typeof message === "string") {
+        error = message;
+      } else if (typeof code === "string") {
+        error = code;
+      }
+    }
+  }
 
   return {
     provider,

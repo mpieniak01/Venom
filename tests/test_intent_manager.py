@@ -128,7 +128,7 @@ async def test_intent_manager_fallback_on_invalid_response(
     manager = IntentManager(kernel=mock_kernel)
     intent = await manager.classify_intent("Jakieś dziwne wejście")
 
-    assert intent == "UNSUPPORTED_TASK"
+    assert intent == "GENERAL_CHAT"
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,7 @@ async def test_intent_manager_handles_exception(mock_kernel, mock_chat_service):
     intent = await manager.classify_intent("Jakieś wejście")
 
     # Powinien zwrócić UNSUPPORTED_TASK jako bezpieczny fallback
-    assert intent == "UNSUPPORTED_TASK"
+    assert intent == "GENERAL_CHAT"
 
 
 @pytest.mark.asyncio

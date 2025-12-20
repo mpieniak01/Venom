@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Optional, Tuple
 from urllib.parse import urlparse, urlunparse
@@ -20,6 +21,8 @@ class LLMRuntimeInfo:
     endpoint: Optional[str]
     service_type: str
     mode: str
+    config_hash: Optional[str] = None
+    runtime_id: Optional[str] = None
 
     def to_payload(self) -> dict:
         """Wygodny format do serializacji JSON."""
@@ -36,6 +39,8 @@ class LLMRuntimeInfo:
             "service_type": self.service_type,
             "mode": self.mode,
             "label": label,
+            "config_hash": self.config_hash,
+            "runtime_id": self.runtime_id,
         }
 
 
@@ -54,6 +59,19 @@ def infer_local_provider(endpoint: Optional[str]) -> str:
         # Najczęstsze porty nowych instancji vLLM w tym projekcie
         return "vllm"
     return "local"
+
+
+def compute_llm_config_hash(
+    provider: Optional[str], endpoint: Optional[str], model: Optional[str]
+) -> str:
+    """Stabilny hash konfiguracji LLM do wykrywania driftu."""
+    source = f"{provider or ''}|{endpoint or ''}|{model or ''}".lower()
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
+
+
+def compute_runtime_id(provider: Optional[str], endpoint: Optional[str]) -> str:
+    """Identyfikator runtime oparty o providera i endpoint."""
+    return f"{provider or 'local'}@{endpoint or 'local'}"
 
 
 def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
@@ -81,12 +99,17 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     else:
         provider = service_type
 
+    config_hash = compute_llm_config_hash(provider, endpoint, model_name)
+    runtime_id = compute_runtime_id(provider, endpoint)
+
     return LLMRuntimeInfo(
         provider=provider,
         model_name=model_name,
         endpoint=endpoint,
         service_type=service_type,
         mode=mode,
+        config_hash=config_hash,
+        runtime_id=runtime_id,
     )
 
 

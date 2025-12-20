@@ -227,6 +227,13 @@ class BaseAgent(ABC):
                     or "kernel is required for function calls" in error_text
                 ):
                     functions_enabled = False
+                    if hasattr(settings, "function_choice_behavior"):
+                        try:
+                            settings.function_choice_behavior = None
+                        except Exception:
+                            logger.debug(
+                                "Nie udało się wyłączyć function_choice_behavior w settings."
+                            )
                     handled = True
 
                 if not handled:

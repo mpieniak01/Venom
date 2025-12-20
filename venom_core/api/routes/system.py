@@ -2,15 +2,23 @@
 
 import asyncio
 import time
+from typing import Optional
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.permission_guard import permission_guard
 from venom_core.services.config_manager import config_manager
 from venom_core.services.runtime_controller import ServiceType, runtime_controller
+from venom_core.utils.llm_runtime import (
+    compute_llm_config_hash,
+    get_active_llm_runtime,
+    infer_local_provider,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,6 +30,8 @@ _background_scheduler = None
 _service_monitor = None
 _state_manager = None  # Nowa zależność dla Cost Guard
 _llm_controller = None
+_model_manager = None
+_request_tracer = None
 
 
 class CostModeRequest(BaseModel):
@@ -37,15 +47,33 @@ class CostModeResponse(BaseModel):
     provider: str
 
 
+class ActiveLlmServerRequest(BaseModel):
+    server_name: str
+    trace_id: Optional[UUID] = None
+
+
 def set_dependencies(
-    background_scheduler, service_monitor, state_manager=None, llm_controller=None
+    background_scheduler,
+    service_monitor,
+    state_manager=None,
+    llm_controller=None,
+    model_manager=None,
+    request_tracer=None,
 ):
     """Ustaw zależności dla routera."""
-    global _background_scheduler, _service_monitor, _state_manager, _llm_controller
+    global \
+        _background_scheduler, \
+        _service_monitor, \
+        _state_manager, \
+        _llm_controller, \
+        _model_manager, \
+        _request_tracer
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
     _state_manager = state_manager
     _llm_controller = llm_controller
+    _model_manager = model_manager
+    _request_tracer = request_tracer
 
 
 @router.get("/metrics")
@@ -377,6 +405,179 @@ async def control_llm_server(server_name: str, action: str):
         raise HTTPException(
             status_code=500, detail="Błąd podczas wykonywania komendy"
         ) from exc
+
+
+@router.get("/system/llm-servers/active")
+async def get_active_llm_server():
+    """Zwraca aktywny runtime LLM oraz zapamiętane modele."""
+    runtime = get_active_llm_runtime()
+    active_provider = runtime.provider
+    active_endpoint = runtime.endpoint
+    config = config_manager.get_config(mask_secrets=False)
+    return {
+        "status": "success",
+        "active_server": active_provider,
+        "active_endpoint": active_endpoint,
+        "active_model": runtime.model_name,
+        "config_hash": runtime.config_hash,
+        "runtime_id": runtime.runtime_id,
+        "last_models": {
+            "ollama": config.get("LAST_MODEL_OLLAMA", ""),
+            "vllm": config.get("LAST_MODEL_VLLM", ""),
+            "previous_ollama": config.get("PREVIOUS_MODEL_OLLAMA", ""),
+            "previous_vllm": config.get("PREVIOUS_MODEL_VLLM", ""),
+        },
+    }
+
+
+@router.get("/system/llm-runtime/active")
+async def get_active_llm_runtime_info():
+    """Alias z pełnym payloadem aktywnego runtime LLM."""
+    runtime = get_active_llm_runtime()
+    return {"status": "success", "runtime": runtime.to_payload()}
+
+
+@router.post("/system/llm-servers/active")
+async def set_active_llm_server(request: ActiveLlmServerRequest):
+    """
+    Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.
+    """
+    if _llm_controller is None:
+        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+    if _model_manager is None:
+        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+
+    server_name = request.server_name
+    if not _llm_controller.has_server(server_name):
+        raise HTTPException(status_code=404, detail="Nieznany serwer LLM")
+
+    if _request_tracer and request.trace_id:
+        _request_tracer.add_step(
+            request.trace_id,
+            "System",
+            "llm_switch_requested",
+            status="ok",
+            details=f"server={server_name}",
+        )
+
+    servers = _llm_controller.list_servers()
+    target = next((s for s in servers if s["name"] == server_name), None)
+    if not target:
+        raise HTTPException(
+            status_code=404, detail="Nie znaleziono konfiguracji serwera"
+        )
+
+    stop_results = {}
+    for server in servers:
+        if server["name"] == server_name:
+            continue
+        if server.get("supports", {}).get("stop"):
+            try:
+                result = await _llm_controller.run_action(server["name"], "stop")
+                stop_results[server["name"]] = {
+                    "ok": result.ok,
+                    "exit_code": result.exit_code,
+                }
+            except Exception as exc:
+                stop_results[server["name"]] = {"ok": False, "error": str(exc)}
+
+    start_result = None
+    if target.get("supports", {}).get("start"):
+        try:
+            result = await _llm_controller.run_action(server_name, "start")
+            start_result = {"ok": result.ok, "exit_code": result.exit_code}
+        except Exception as exc:
+            start_result = {"ok": False, "error": str(exc)}
+
+    # Aktualizuj endpoint i tryb lokalny
+    endpoint = target.get("endpoint")
+    if server_name == "ollama":
+        endpoint = "http://localhost:11434/v1"
+    elif server_name == "vllm":
+        endpoint = SETTINGS.VLLM_ENDPOINT
+    if endpoint:
+        try:
+            SETTINGS.LLM_SERVICE_TYPE = "local"
+            SETTINGS.LLM_LOCAL_ENDPOINT = endpoint
+        except Exception:
+            logger.warning("Nie udało się zaktualizować SETTINGS dla endpointu LLM.")
+        config_manager.update_config(
+            {
+                "LLM_SERVICE_TYPE": "local",
+                "LLM_LOCAL_ENDPOINT": endpoint,
+                "ACTIVE_LLM_SERVER": server_name,
+            }
+        )
+
+    # Wybierz model dla runtime
+    config = config_manager.get_config(mask_secrets=False)
+    last_model_key = (
+        "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
+    )
+    prev_model_key = (
+        "PREVIOUS_MODEL_OLLAMA" if server_name == "ollama" else "PREVIOUS_MODEL_VLLM"
+    )
+    desired_model = config.get(last_model_key) or config.get("LLM_MODEL_NAME", "")
+    previous_model = config.get(prev_model_key) or ""
+
+    models = await _model_manager.list_local_models()
+    available = {
+        m["name"] for m in models if m.get("provider") == server_name and m.get("name")
+    }
+
+    selected_model = None
+    if desired_model in available:
+        selected_model = desired_model
+    elif previous_model and previous_model in available:
+        selected_model = previous_model
+        config_manager.update_config({last_model_key: selected_model})
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Brak modelu na wybranym serwerze (brak fallbacku).",
+        )
+
+    old_last_model = config.get(last_model_key) or ""
+    updates = {
+        "LLM_MODEL_NAME": selected_model,
+        "HYBRID_LOCAL_MODEL": selected_model,
+        last_model_key: selected_model,
+    }
+    if old_last_model and old_last_model != selected_model:
+        updates[prev_model_key] = old_last_model
+    config_manager.update_config(updates)
+    try:
+        SETTINGS.LLM_MODEL_NAME = selected_model
+        SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla modelu LLM.")
+
+    config_hash = compute_llm_config_hash(server_name, endpoint, selected_model)
+    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+    try:
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+        SETTINGS.ACTIVE_LLM_SERVER = server_name
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla hash LLM.")
+
+    runtime = get_active_llm_runtime()
+    if _request_tracer and request.trace_id:
+        _request_tracer.add_step(
+            request.trace_id,
+            "System",
+            "llm_switch_applied",
+            status="ok",
+            details=f"server={server_name}, model={selected_model}, hash={config_hash}",
+        )
+    return {
+        "status": "success",
+        "active_server": infer_local_provider(runtime.endpoint),
+        "active_model": selected_model,
+        "config_hash": runtime.config_hash,
+        "runtime_id": runtime.runtime_id,
+        "start_result": start_result,
+        "stop_results": stop_results,
+    }
 
 
 # ========================================

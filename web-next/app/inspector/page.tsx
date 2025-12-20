@@ -17,6 +17,42 @@ import { formatRelativeTime } from "@/lib/date";
 import { statusTone } from "@/lib/status";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 
+function sanitizeMermaidDiagram(value: string) {
+  const cleaned = value.replace(/\r?\n/g, "\n");
+  const safeChars = new Set(
+    Array.from(
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:/_-[]()>",
+    ),
+  );
+  let output = "";
+  for (const char of cleaned) {
+    if (char === "\n") {
+      output += "\n";
+      continue;
+    }
+    output += safeChars.has(char) ? char : " ";
+  }
+  return output;
+}
+
+function decorateExecutionFailed(container: HTMLDivElement) {
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  const textNodes = svg.querySelectorAll("text");
+  textNodes.forEach((node) => {
+    if (!node.textContent?.includes("execution.failed")) return;
+    if (node.querySelector(".execution-failed-marker")) return;
+    const marker = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "tspan",
+    );
+    marker.setAttribute("class", "execution-failed-marker");
+    marker.setAttribute("dx", "6");
+    marker.textContent = "✖";
+    node.appendChild(marker);
+  });
+}
+
 export default function InspectorPage() {
   const {
     data: history,
@@ -34,6 +70,7 @@ export default function InspectorPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [steps, setSteps] = useState<HistoryStep[]>([]);
   const [stepFilter, setStepFilter] = useState("");
+  const [contractOnly, setContractOnly] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const [historyRefreshPending, setHistoryRefreshPending] = useState(false);
@@ -48,7 +85,10 @@ export default function InspectorPage() {
   const streamRefreshRef = useRef<Record<string, string | null>>({});
   const lastHistoryAutoRefreshRef = useRef<number>(0);
   const HISTORY_AUTO_REFRESH_MS = 5000;
-  const filteredSteps = useMemo(() => filterSteps(steps, stepFilter), [steps, stepFilter]);
+  const filteredSteps = useMemo(
+    () => filterSteps(steps, stepFilter, contractOnly),
+    [steps, stepFilter, contractOnly],
+  );
   const stepsCount = steps.length;
   const selectedRequest = useMemo(
     () => (history || []).find((req) => req.request_id === selectedId) ?? null,
@@ -159,6 +199,10 @@ export default function InspectorPage() {
           fill: #1c1917 !important;
           stroke: #fbbf24 !important;
         }
+        .execution-failed-marker {
+          fill: #f87171 !important;
+          font-weight: 700;
+        }
       `,
     });
     mermaidInitializedRef.current = true;
@@ -169,15 +213,44 @@ export default function InspectorPage() {
 
     const render = async () => {
       if (!svgRef.current) return;
+      const fallbackDiagram = [
+        "sequenceDiagram",
+        "    autonumber",
+        "    participant User",
+        "    participant System",
+        "    User->>System: diagram_error",
+      ].join("\n");
       try {
         const container = svgRef.current;
-        container.innerHTML = `<div class="mermaid">${diagram}</div>`;
+        const safeDiagram = sanitizeMermaidDiagram(diagram);
+        container.innerHTML = `<div class="mermaid"></div>`;
+        const node = container.querySelector(".mermaid");
+        if (node) {
+          node.textContent = safeDiagram;
+        }
         if (!mermaidApi) {
           throw new Error("Mermaid API not ready.");
         }
-        await mermaidApi.run({
-          nodes: container.querySelectorAll(".mermaid"),
-        });
+        try {
+          await mermaidApi.run({
+            nodes: container.querySelectorAll(".mermaid"),
+          });
+        } catch {
+          const fallback = sanitizeMermaidDiagram(fallbackDiagram);
+          if (node) {
+            node.textContent = fallback;
+          }
+          await mermaidApi.run({
+            nodes: container.querySelectorAll(".mermaid"),
+          });
+          if (!cancelled) {
+            setMermaidError(
+              "Diagram uproszczony – oryginał zawierał niedozwolone znaki.",
+            );
+          }
+          return;
+        }
+        decorateExecutionFailed(container);
         adjustMermaidSizing(container);
         if (!cancelled) {
           setMermaidError(null);
@@ -487,6 +560,14 @@ export default function InspectorPage() {
                     onChange={(e) => setStepFilter(e.target.value)}
                     className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-1 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/40"
                   />
+                  <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={contractOnly}
+                      onChange={(e) => setContractOnly(e.target.checked)}
+                    />
+                    Tylko kontrakty
+                  </label>
                   <Button
                     variant="outline"
                     size="sm"
@@ -572,6 +653,36 @@ export default function InspectorPage() {
                   accent="purple"
                 />
               </div>
+              {selectedRequest?.error_code && (
+                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="danger">{selectedRequest.error_code}</Badge>
+                    {selectedRequest.error_stage && (
+                      <Badge tone="neutral">{selectedRequest.error_stage}</Badge>
+                    )}
+                    {selectedRequest.error_retryable !== null &&
+                      selectedRequest.error_retryable !== undefined && (
+                        <Badge tone="neutral">
+                          retryable: {selectedRequest.error_retryable ? "yes" : "no"}
+                        </Badge>
+                      )}
+                  </div>
+                  {selectedRequest.error_message && (
+                    <p className="mt-2 text-xs text-rose-100">
+                      {selectedRequest.error_message}
+                    </p>
+                  )}
+                  {selectedRequest.error_details && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {formatErrorDetails(selectedRequest.error_details).map((detail) => (
+                        <Badge key={detail} tone="neutral">
+                          {detail}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">
                   Wybrany krok
@@ -672,12 +783,44 @@ function autoFitDiagram(
 
 type HistoryStep = HistoryStepType;
 
-const filterSteps = (steps: HistoryStep[], query: string) => {
-  if (!query.trim()) return steps;
-  const lower = query.toLowerCase();
-  return steps.filter((step) =>
-    `${step.component ?? ""} ${step.action ?? ""}`.toLowerCase().includes(lower),
-  );
+const CONTRACT_ERROR_TERMS = [
+  "execution_contract_violation",
+  "kernel_required",
+  "kernel is required",
+  "requirements_missing",
+  "capability_required",
+  "execution_precheck",
+  "execution.precheck.failed",
+  "missing=kernel",
+];
+
+const isExecutionContractStep = (step: HistoryStep) => {
+  const content = `${step.action ?? ""} ${step.details ?? ""}`.toLowerCase();
+  if (content.includes("execution_contract_violation")) return true;
+  return CONTRACT_ERROR_TERMS.some((term) => content.includes(term));
+};
+
+const filterSteps = (steps: HistoryStep[], query: string, contractOnly: boolean) => {
+  const normalizedQuery = query.trim().toLowerCase();
+  const textMatch = (step: HistoryStep) =>
+    `${step.component ?? ""} ${step.action ?? ""} ${step.details ?? ""}`
+      .toLowerCase()
+      .includes(normalizedQuery);
+  const contractMatch = (step: HistoryStep) =>
+    `${step.action ?? ""} ${step.details ?? ""}`
+      .toLowerCase()
+      .includes("execution_contract_violation") ||
+    CONTRACT_ERROR_TERMS.some((term) =>
+      `${step.action ?? ""} ${step.details ?? ""}`
+        .toLowerCase()
+        .includes(term),
+    );
+
+  return steps.filter((step) => {
+    if (contractOnly && !contractMatch(step)) return false;
+    if (!normalizedQuery) return true;
+    return textMatch(step);
+  });
 };
 
 function buildSequenceDiagram(flow?: FlowTrace | null) {
@@ -816,13 +959,16 @@ function buildFlowchartDiagram(steps: HistoryStep[]) {
     "classDef default fill:#111827,stroke:#475569,color:#f8fafc",
     "classDef decision fill:#1f2937,stroke:#facc15,color:#fde68a,stroke-dasharray:5 5",
     "classDef note fill:#1c1917,stroke:#fbbf24,color:#fef3c7",
+    "classDef contract fill:#2a1116,stroke:#fb7185,color:#ffe4e6",
   ];
   steps.forEach((step, idx) => {
     const nodeId = `S${idx}`;
     const safeComponent = sanitizeMermaidText(step.component || `Step ${idx + 1}`);
     const safeAction = sanitizeMermaidText(step.action || step.details || "");
     const label = safeAction ? `${safeComponent}\\n${safeAction}` : safeComponent;
-    const statusClass = statusToMermaidClass(step.status);
+    const statusClass = isExecutionContractStep(step)
+      ? "contract"
+      : statusToMermaidClass(step.status);
     const isDecision = (step.details || step.action || "")
       .toLowerCase()
       .includes("decision");
@@ -851,6 +997,28 @@ function statusToMermaidClass(status?: string) {
   if (normalized.includes("fail") || normalized.includes("error")) return "failed";
   if (normalized.includes("process") || normalized.includes("run")) return "running";
   return "default";
+}
+
+function formatErrorDetails(details: Record<string, unknown>): string[] {
+  const entries: string[] = [];
+  Object.entries(details).forEach(([key, value]) => {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      if (value.length === 0) return;
+      entries.push(`${key}: ${value.join(", ")}`);
+      return;
+    }
+    if (typeof value === "object") {
+      try {
+        entries.push(`${key}: ${JSON.stringify(value)}`);
+      } catch {
+        entries.push(`${key}: [object]`);
+      }
+      return;
+    }
+    entries.push(`${key}: ${String(value)}`);
+  });
+  return entries.slice(0, 6);
 }
 
 function buildInspectorStats(history: HistoryRequest[] | null | undefined, tasks?: Task[] | null) {

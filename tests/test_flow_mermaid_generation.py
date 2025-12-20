@@ -44,7 +44,7 @@ def test_generate_mermaid_diagram_basic_flow(tracer):
     assert "sequenceDiagram" in diagram
     assert "autonumber" in diagram
     assert "User->>Orchestrator" in diagram
-    assert "✅ Task completed" in diagram
+    assert "Task completed" in diagram
 
 
 def test_generate_mermaid_diagram_with_decision_gate(tracer):
@@ -89,7 +89,7 @@ def test_generate_mermaid_diagram_with_decision_gate(tracer):
 
     # Sprawdź czy Decision Gate jest jako notatka
     assert "Note over DecisionGate" in diagram
-    assert "🔀" in diagram
+    assert "Decision:" in diagram
 
 
 def test_generate_mermaid_diagram_failed_task(tracer):
@@ -119,7 +119,7 @@ def test_generate_mermaid_diagram_failed_task(tracer):
     diagram = _generate_mermaid_diagram(trace, flow_steps)
 
     # Sprawdź czy jest oznaczenie błędu
-    assert "❌ Task failed" in diagram
+    assert "Task failed" in diagram
     assert "--x" in diagram  # Linia przerywana dla błędu
 
 
@@ -147,7 +147,7 @@ def test_generate_mermaid_diagram_processing_task(tracer):
     diagram = _generate_mermaid_diagram(trace, flow_steps)
 
     # Sprawdź czy jest oznaczenie przetwarzania
-    assert "⏳ Processing..." in diagram
+    assert "Processing..." in diagram
 
 
 def test_generate_mermaid_diagram_multiple_decision_gates(tracer):
@@ -190,8 +190,7 @@ def test_generate_mermaid_diagram_multiple_decision_gates(tracer):
 
     # Sprawdź czy wszystkie Decision Gates są w diagramie
     assert diagram.count("Note over DecisionGate") == 2
-    assert "🔐" in diagram
-    assert "🏛️" in diagram
+    assert "Decision:" in diagram
 
 
 def test_generate_mermaid_diagram_truncates_long_details(tracer):

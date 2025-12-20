@@ -6,12 +6,12 @@ Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom
 
 ### Dostępne wersje:
 
-1. **Flow Inspector** (`/flow-inspector`) - podstawowa wersja z automatycznym odświeżaniem
-2. **Interactive Inspector** (`/inspector`) - zaawansowana wersja z pełną interaktywnością:
-   - Alpine.js do zarządzania stanem
-   - svg-pan-zoom do nawigacji po diagramach
-   - Klikalne elementy z panelem szczegółów JSON
-   - Interaktywne kontrolki zoom (przyciski + kółko myszy)
+1. **Flow Inspector (legacy)** (`/flow-inspector`) - podstawowa wersja w legacy UI (FastAPI).
+2. **Inspector (web-next)** (`/inspector`) - docelowa wersja w Next.js:
+   - React + Mermaid
+   - zoom/pan na diagramie (`react-zoom-pan-pinch`)
+   - panel telemetryczny i filtr kroków
+   - pełne dane błędu (`error_code`, `error_details`)
 
 ## ✨ Główne Funkcje
 
@@ -26,27 +26,25 @@ Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom
 
 Przejdź do Flow Inspector klikając na link w nawigacji:
 
-- **🔀 Flow Inspector** - podstawowa wersja: `http://localhost:8000/flow-inspector`
-- **🔍 Inspector** - interaktywna wersja: `http://localhost:8000/inspector`
+- **🔀 Flow Inspector (legacy)**: `http://localhost:8000/flow-inspector`
+- **🔍 Inspector (web-next)**: `http://localhost:3000/inspector`
 
 ### 2. Interactive Inspector - Zaawansowane funkcje
 
 #### Układ interfejsu:
 
-1. **Sidebar (lewy panel)** - Lista śladów zadań
-   - Wyświetla ostatnie 50 zadań
-   - Kolorowe ramki wg statusu (zielona/czerwona/pomarańczowa/niebieska)
-   - Przycisk "🔄" do odświeżania listy
+1. **Sidebar (lewy panel)** - Lista śladów (ostatnie 50 requestów)
+   - Filtry statusów przez badge i listę historii
+   - Przyciski odświeżania
 
-2. **Diagram Panel (górny panel główny)** - Interaktywny diagram sekwencji
-   - Kontrolki zoom: 🔍+ (Zoom In), 🔍- (Zoom Out), ↺ (Reset)
-   - Zoom kółkiem myszy
-   - Przeciąganie myszą (pan) do nawigacji
-   - Klikalne elementy
+2. **Diagram Panel (górny panel główny)** - Mermaid + zoom/pan
+   - Kontrolki: zoom in/out, reset
+   - Sanitizacja treści przed renderem
 
-3. **Details Panel (dolny panel główny)** - Szczegóły kroku
-   - Surowy JSON wybranego kroku
-   - Aktualizowany po kliknięciu elementu na diagramie
+3. **Telemetry Panel (dolny panel główny)** - Kontekst i błędy
+   - `error_code`, `error_details`, etap i retryable
+   - Lista kroków z filtrem tekstowym
+   - Checkbox „Tylko kontrakty” (execution_contract_violation)
 
 #### Interaktywność:
 
@@ -55,10 +53,9 @@ Przejdź do Flow Inspector klikając na link w nawigacji:
 - Przeciąganie myszą - przesuwanie diagramu
 - Przyciski 🔍+/🔍-/↺ - kontrolki zoom
 
-✅ **Klikalne elementy:**
-- Kliknij na strzałkę (message) - pokaż szczegóły kroku
-- Kliknij na notatkę (note) - pokaż szczegóły Decision Gate
-- Kliknij na aktora - pokaż informacje o komponencie
+✅ **Lista kroków + panel telemetryczny:**
+- Kliknij krok w liście, by zobaczyć szczegóły i JSON
+- Filtruj kroki po treści lub tylko kontrakty wykonania
 
 ✅ **Decision Gates:**
 - Wyróżnione żółtym tłem na diagramie
@@ -110,12 +107,10 @@ Decision Gates są wyróżnione **pomarańczowym tłem** i mają badge **🔀 De
 
 ## 🔒 Bezpieczeństwo
 
-Interactive Inspector implementuje następujące mechanizmy bezpieczeństwa:
-
-- **Input sanitization** - wszystkie dane użytkownika (nazwy komponentów, akcje, szczegóły) są sanityzowane przed renderowaniem
-- **Mermaid securityLevel: 'strict'** - zapobiega atakom XSS
-- **Library validation** - sprawdzanie dostępności bibliotek CDN (Mermaid.js, svg-pan-zoom, Alpine.js)
-- **Error handling** - graceful degradation gdy biblioteki nie są dostępne
+Inspector w web-next:
+- Sanityzuje treści (komponenty, akcje, szczegóły) przed renderem Mermaid.
+- Renderuje diagramy w kontrolowanym komponencie (bez zewnętrznych CDN).
+- Obsługuje fallback diagramu przy błędach renderu.
 
 ## 🎯 Przykłady użycia
 

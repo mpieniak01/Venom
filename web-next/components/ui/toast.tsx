@@ -1,0 +1,86 @@
+"use client";
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+
+type ToastTone = "success" | "error" | "warning" | "info";
+
+type ToastEntry = {
+  id: string;
+  message: string;
+  tone: ToastTone;
+};
+
+type ToastContextValue = {
+  pushToast: (message: string, tone?: ToastTone) => void;
+};
+
+const ToastContext = createContext<ToastContextValue | null>(null);
+
+const toneStyles: Record<ToastTone, string> = {
+  success: "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+  error: "border-rose-400/40 bg-rose-500/10 text-rose-100",
+  warning: "border-amber-400/40 bg-amber-500/10 text-amber-100",
+  info: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+};
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  const timersRef = useRef<Map<string, number>>(new Map());
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      window.clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+  }, []);
+
+  const pushToast = useCallback(
+    (message: string, tone: ToastTone = "success") => {
+      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      setToasts((prev) => [...prev, { id, message, tone }]);
+      const timer = window.setTimeout(() => removeToast(id), 2500);
+      timersRef.current.set(id, timer);
+    },
+    [removeToast],
+  );
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
+    };
+  }, []);
+
+  const value = useMemo(() => ({ pushToast }), [pushToast]);
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      <div className="pointer-events-none fixed right-6 top-20 z-50 flex w-[320px] flex-col gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={cn(
+              "pointer-events-auto rounded-2xl border px-3 py-2 text-xs shadow-card backdrop-blur",
+              toneStyles[toast.tone],
+            )}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
+  );
+}
+
+export function useToast() {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error("useToast must be used within ToastProvider");
+  }
+  return context;
+}

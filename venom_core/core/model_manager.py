@@ -1,8 +1,10 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
+import json
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -84,6 +86,8 @@ class ModelManager:
         """
         self.models_dir = Path(models_dir or "./data/models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.ollama_cache_path = self.models_dir / "ollama_models_cache.json"
+        self._last_ollama_warning = 0.0
 
         # Rejestr wersji modeli
         self.versions: Dict[str, ModelVersion] = {}
@@ -505,10 +509,15 @@ PARAMETER top_k 40
                         size_bytes += file_path.stat().st_size
 
             lower_path = str(model_path).lower()
-            if ".onnx" in lower_path:
-                model_type = "onnx"
-            elif ".gguf" in lower_path:
+            if ".gguf" in lower_path:
                 model_type = "gguf"
+            elif model_path.suffix == ".onnx" or model_path.suffix == ".bin":
+                model_type = "onnx"
+                provider = "onnx"
+            elif model_path.is_dir():
+                model_type = "folder"
+                if "onnx" in model_path.name.lower():
+                    provider = "onnx"
             else:
                 model_type = "folder"
 
@@ -557,11 +566,12 @@ PARAMETER top_k 40
                 response = await client.get("http://localhost:11434/api/tags")
                 if response.status_code == 200:
                     ollama_data = response.json()
+                    cached_entries: List[Dict[str, Any]] = []
                     for model in ollama_data.get("models", []):
                         # Ollama zwraca rozmiar w bajtach
                         size_bytes = model.get("size", 0)
                         entry_name = model.get("name", "unknown")
-                        models[f"ollama::{entry_name}"] = {
+                        entry = {
                             "name": entry_name,
                             "size_gb": size_bytes / (1024**3),
                             "type": "ollama",
@@ -571,12 +581,41 @@ PARAMETER top_k 40
                             "provider": "ollama",
                             "active": False,
                         }
+                        models[f"ollama::{entry_name}"] = entry
+                        cached_entries.append(entry)
+                    if cached_entries:
+                        try:
+                            self.ollama_cache_path.write_text(
+                                json.dumps(cached_entries, indent=2),
+                                encoding="utf-8",
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Nie udało się zapisać cache modeli Ollama: {e}"
+                            )
                 else:
                     logger.warning(
                         f"Nie udało się pobrać listy modeli z Ollama: {response.status_code}"
                     )
         except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning(f"Ollama nie jest dostępne: {e}")
+            now = time.time()
+            if now - self._last_ollama_warning > 60:
+                logger.warning(f"Ollama nie jest dostępne: {e}")
+                self._last_ollama_warning = now
+            try:
+                if self.ollama_cache_path.exists():
+                    cached_entries = json.loads(
+                        self.ollama_cache_path.read_text("utf-8")
+                    )
+                    for entry in cached_entries:
+                        entry_name = entry.get("name")
+                        if not entry_name:
+                            continue
+                        models.setdefault(f"ollama::{entry_name}", entry)
+            except Exception as cache_error:
+                logger.warning(
+                    f"Nie udało się wczytać cache modeli Ollama: {cache_error}"
+                )
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
 
@@ -767,6 +806,10 @@ PARAMETER top_k 40
         disk_usage_gb = self.get_models_size_gb()
         memory = psutil.virtual_memory()
         cpu_usage = psutil.cpu_percent(interval=0.1)
+        disk_mount = Path("/usr/lib/wsl/drivers")
+        if not disk_mount.exists():
+            disk_mount = Path("/")
+        disk_system = psutil.disk_usage(str(disk_mount))
 
         metrics = {
             "disk_usage_gb": disk_usage_gb,
@@ -774,6 +817,10 @@ PARAMETER top_k 40
             "disk_usage_percent": (
                 (disk_usage_gb / MAX_STORAGE_GB) * 100 if MAX_STORAGE_GB > 0 else 0
             ),
+            "disk_system_total_gb": round(disk_system.total / BYTES_IN_GB, 2),
+            "disk_system_used_gb": round(disk_system.used / BYTES_IN_GB, 2),
+            "disk_system_usage_percent": round(disk_system.percent, 2),
+            "disk_system_mount": str(disk_mount),
             "cpu_usage_percent": round(cpu_usage, 2),
             "memory_total_gb": round(memory.total / BYTES_IN_GB, 2),
             "memory_used_gb": round(memory.used / BYTES_IN_GB, 2),

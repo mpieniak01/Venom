@@ -76,6 +76,8 @@ import {
   PinOff,
   Inbox,
   Package,
+  Maximize2,
+  Minimize2,
   Settings,
   HelpCircle,
   ThumbsDown,
@@ -178,6 +180,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [tuningSaving, setTuningSaving] = useState(false);
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const [chatAtBottom, setChatAtBottom] = useState(true);
   const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
   const promptPresets = useMemo(
@@ -905,6 +910,19 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     () => [...historyMessages, ...optimisticMessages],
     [historyMessages, optimisticMessages],
   );
+  useEffect(() => {
+    if (!chatAtBottom) return;
+    const container = chatScrollRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [chatMessages, chatAtBottom]);
+  const handleChatScroll = useCallback(() => {
+    const container = chatScrollRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    setChatAtBottom(distanceFromBottom < 64);
+  }, []);
   const updateFeedbackState = useCallback(
     (
       requestId: string,
@@ -1447,8 +1465,13 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         as="h1"
         size="lg"
       />
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-        <div className="space-y-6">
+      <section
+        className={`grid gap-6 ${
+          chatFullscreen ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,420px)_1fr]"
+        }`}
+      >
+        {!chatFullscreen && (
+          <div className="space-y-6">
           <Panel
             title="Serwery LLM"
             description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
@@ -1675,9 +1698,37 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               ))}
             </div>
           </Panel>
-        </div>
+          </div>
+        )}
         <div className="space-y-6">
-          <div className="glass-panel command-console-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6">
+          <motion.div
+            className="glass-panel command-console-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6"
+            key={chatFullscreen ? "chat-fullscreen" : "chat-default"}
+            initial={{ opacity: 0, y: 24, scale: 0.98, rotateX: 6, rotateY: -6 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: chatFullscreen ? 1.01 : 1,
+              rotateX: 0,
+              rotateY: 0,
+            }}
+            transition={{ duration: 1.05, ease: [0.22, 1, 0.36, 1] }}
+            style={{ transformStyle: "preserve-3d", perspective: 1200 }}
+          >
+            <IconButton
+              label={chatFullscreen ? "Wyłącz pełny ekran" : "Włącz pełny ekran"}
+              size="xs"
+              variant="outline"
+              className="absolute right-6 top-6 border-white/10 text-white"
+              icon={
+                chatFullscreen ? (
+                  <Minimize2 className="h-3.5 w-3.5" />
+                ) : (
+                  <Maximize2 className="h-3.5 w-3.5" />
+                )
+              }
+              onClick={() => setChatFullscreen((prev) => !prev)}
+            />
             <SectionHeading
               eyebrow="Command Console"
               title="Cockpit AI"
@@ -1686,7 +1737,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               size="lg"
               className="items-center"
               rightSlot={
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 pr-10">
                   <Badge tone={labMode ? "warning" : "success"}>
                     {labMode ? "Lab Mode" : "Prod"}
                   </Badge>
@@ -1698,7 +1749,11 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             />
             <div className="grid-overlay relative mt-5 flex-1 rounded-3xl border border-white/5 bg-black/30 p-6">
               <div className="flex h-full flex-col">
-                <div className="flex-1 space-y-4 overflow-y-auto pr-4">
+                <div
+                  className="flex-1 space-y-4 overflow-y-auto pr-4"
+                  ref={chatScrollRef}
+                  onScroll={handleChatScroll}
+                >
                   <AnimatePresence initial={false}>
                     {chatMessages.length === 0 && (
                       <p className="text-sm text-zinc-500">
@@ -1825,6 +1880,37 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     onKeyDown={handleTextareaKeyDown}
                     data-testid="cockpit-prompt-input"
                   />
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                        Serwer
+                      </label>
+                      <SelectMenu
+                        value={selectedLlmServer}
+                        options={llmServerOptions}
+                        onChange={setSelectedLlmServer}
+                        ariaLabel="Wybierz serwer LLM"
+                        placeholder="Wybierz serwer"
+                        buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                        menuClassName="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                        Model
+                      </label>
+                      <SelectMenu
+                        value={selectedLlmModel}
+                        options={llmModelOptions}
+                        onChange={setSelectedLlmModel}
+                        ariaLabel="Wybierz model LLM"
+                        placeholder="Brak modeli"
+                        disabled={availableModelsForServer.length === 0}
+                        buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                        menuClassName="w-full"
+                      />
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-xs text-zinc-400">
                       <input
@@ -1873,554 +1959,571 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 )}
               </div>
             </div>
-          </div>
-          <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-zinc-300">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
-                Sugestie szybkich promptów
-              </p>
-              <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-600">
-                Kliknij, aby wypełnić chat
-              </span>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {promptPresets.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => handleSuggestionClick(preset.prompt)}
-                  title={preset.description}
-                  className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
-                >
-                  <span className="rounded-2xl bg-white/10 px-3 py-2 text-lg">
-                    {preset.icon}
+          </motion.div>
+          {!chatFullscreen && (
+            <>
+              <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-zinc-300">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+                    Sugestie szybkich promptów
+                  </p>
+                  <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-600">
+                    Kliknij, aby wypełnić chat
                   </span>
-                  <div className="flex-1">
-                    <p className="font-semibold text-white">{preset.category}</p>
-                    <p className="text-xs text-zinc-400">{preset.description}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-6">
-            <Panel
-              eyebrow="KPI kolejki"
-              title="Skuteczność operacji"
-              description="Monitoruj SLA tasków i uptime backendu."
-              className="kpi-panel"
-            >
-              {metricsLoading && !metrics ? (
-                <PanelLoadingState label="Ładuję metryki zadań…" />
-              ) : successRate === null ? (
-                <EmptyState
-                  icon={<Bot className="h-4 w-4" />}
-                  title="Brak danych SLA"
-                  description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
-                />
-              ) : (
-                <CockpitMetricCard
-                  primaryValue={`${successRate}%`}
-                  secondaryLabel={
-                    tasksCreated > 0
-                      ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
-                      : "Brak zadań"
-                  }
-                  progress={successRate}
-                  footer={`Uptime: ${
-                    metrics?.uptime_seconds !== undefined
-                      ? formatUptime(metrics.uptime_seconds)
-                      : "—"
-                  }`}
-                />
-              )}
-            </Panel>
-            <Panel
-              eyebrow="KPI kolejki"
-              title="Zużycie tokenów"
-              description="Trend prompt/completion/cached."
-              className="kpi-panel"
-            >
-              {tokenMetricsLoading && !tokenMetrics ? (
-                <PanelLoadingState label="Ładuję statystyki tokenów…" />
-              ) : (
-                <CockpitTokenCard
-                  totalValue={totalTokens}
-                  splits={
-                    tokenSplits.length > 0
-                      ? tokenSplits
-                      : [{ label: "Brak danych", value: 0 }]
-                  }
-                  chartSlot={
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                          Trend próbek
-                        </p>
-                        <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
-                          {tokenTrendLabel}
-                        </Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {promptPresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSuggestionClick(preset.prompt)}
+                      title={preset.description}
+                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
+                    >
+                      <span className="rounded-2xl bg-white/10 px-3 py-2 text-lg">
+                        {preset.icon}
+                      </span>
+                      <div className="flex-1">
+                        <p className="font-semibold text-white">{preset.category}</p>
+                        <p className="text-xs text-zinc-400">{preset.description}</p>
                       </div>
-                      {tokenHistory.length < 2 ? (
-                        <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
-                          Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
-                        </p>
-                      ) : (
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                            Przebieg ostatnich próbek
-                          </p>
-                          <div className="mt-3 h-32">
-                            <TokenChart history={tokenHistory} height={128} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-6">
+                <Panel
+                  eyebrow="KPI kolejki"
+                  title="Skuteczność operacji"
+                  description="Monitoruj SLA tasków i uptime backendu."
+                  className="kpi-panel"
+                >
+                  {metricsLoading && !metrics ? (
+                    <PanelLoadingState label="Ładuję metryki zadań…" />
+                  ) : successRate === null ? (
+                    <EmptyState
+                      icon={<Bot className="h-4 w-4" />}
+                      title="Brak danych SLA"
+                      description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
+                    />
+                  ) : (
+                    <CockpitMetricCard
+                      primaryValue={`${successRate}%`}
+                      secondaryLabel={
+                        tasksCreated > 0
+                          ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
+                          : "Brak zadań"
+                      }
+                      progress={successRate}
+                      footer={`Uptime: ${
+                        metrics?.uptime_seconds !== undefined
+                          ? formatUptime(metrics.uptime_seconds)
+                          : "—"
+                      }`}
+                    />
+                  )}
+                </Panel>
+                <Panel
+                  eyebrow="KPI kolejki"
+                  title="Zużycie tokenów"
+                  description="Trend prompt/completion/cached."
+                  className="kpi-panel"
+                >
+                  {tokenMetricsLoading && !tokenMetrics ? (
+                    <PanelLoadingState label="Ładuję statystyki tokenów…" />
+                  ) : (
+                    <CockpitTokenCard
+                      totalValue={totalTokens}
+                      splits={
+                        tokenSplits.length > 0
+                          ? tokenSplits
+                          : [{ label: "Brak danych", value: 0 }]
+                      }
+                      chartSlot={
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                              Trend próbek
+                            </p>
+                            <Badge
+                              tone={
+                                tokenTrendDelta !== null && tokenTrendDelta < 0
+                                  ? "success"
+                                  : "warning"
+                              }
+                            >
+                              {tokenTrendLabel}
+                            </Badge>
                           </div>
+                          {tokenHistory.length < 2 ? (
+                            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
+                              Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
+                            </p>
+                          ) : (
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                                Przebieg ostatnich próbek
+                              </p>
+                              <div className="mt-3 h-32">
+                                <TokenChart history={tokenHistory} height={128} />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      }
+                    />
+                  )}
+                </Panel>
+              </div>
+              <Panel
+                eyebrow="Live telemetry"
+                title="Zdarzenia /ws/events"
+                description="Najświeższe sygnały TASK_* i QUEUE_* – pozwalają śledzić napływające wyniki bez przeładowania."
+              >
+                {telemetryFeed.length === 0 ? (
+                  <p className="text-sm text-zinc-500">
+                    Brak zdarzeń – czekam na telemetrię.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {telemetryFeed.map((event) => (
+                      <div
+                        key={event.id}
+                        className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                      >
+                        <div>
+                          <p className="font-semibold">{event.type}</p>
+                          <p className="text-xs text-zinc-400">{event.message}</p>
+                        </div>
+                        <div className="text-right text-xs text-zinc-500">
+                          <Badge tone={event.tone}>{event.timestamp}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </>
+          )}
+        </div>
+      </section>
+      {!chatFullscreen && (
+        <>
+          <section className="grid gap-6">
+            <Panel
+              title="Zasoby"
+              description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <ResourceMetricCard
+                  label="CPU"
+                  value={cpuUsageValue}
+                  hint="Średnie obciążenie modeli"
+                />
+                <ResourceMetricCard
+                  label="GPU"
+                  value={gpuUsageValue}
+                  hint="Wskaźnik wykorzystania akceleratora"
+                />
+                <ResourceMetricCard
+                  label="RAM"
+                  value={ramValue}
+                  hint={
+                    usageMetrics?.memory_usage_percent
+                      ? `${usageMetrics.memory_usage_percent.toFixed(0)}%`
+                      : ""
                   }
                 />
-              )}
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <ResourceMetricCard
+                  label="VRAM"
+                  value={vramValue}
+                  hint="Aktywny model/GPU"
+                />
+                <ResourceMetricCard label="Dysk" value={diskValue} hint={diskPercent ?? ""} />
+              </div>
+              <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-zinc-400">
+                <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
+                <span className="text-base font-semibold text-white">{sessionCostValue}</span>
+              </div>
             </Panel>
-          </div>
-          <Panel
-            eyebrow="Live telemetry"
-            title="Zdarzenia /ws/events"
-            description="Najświeższe sygnały TASK_* i QUEUE_* – pozwalają śledzić napływające wyniki bez przeładowania."
-          >
-            {telemetryFeed.length === 0 ? (
-              <p className="text-sm text-zinc-500">Brak zdarzeń – czekam na telemetrię.</p>
-            ) : (
-              <div className="space-y-2">
-                {telemetryFeed.map((event) => (
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
+            <div className="glass-panel flex flex-col gap-4">
+              <header className="flex items-center gap-3">
+                <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    Agenci
+                  </p>
+                  <h2 className="text-lg font-semibold text-white">Aktywność systemowa</h2>
+                </div>
+              </header>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge tone="neutral">Węzły: {graphNodes}</Badge>
+                <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
+              </div>
+              <div className="space-y-3">
+                {agentDeck.map((svc) => (
                   <div
-                    key={event.id}
-                    className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                    key={svc.name}
+                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
                   >
                     <div>
-                      <p className="font-semibold">{event.type}</p>
-                      <p className="text-xs text-zinc-400">{event.message}</p>
+                      <p className="font-semibold text-white">{svc.name}</p>
+                      <p className="text-xs text-zinc-500">
+                        {svc.detail ?? "Brak opisu"}
+                      </p>
                     </div>
-                    <div className="text-right text-xs text-zinc-500">
-                      <Badge tone={event.tone}>{event.timestamp}</Badge>
-                    </div>
+                    <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
                   </div>
                 ))}
               </div>
-            )}
-          </Panel>
-        </div>
-      </section>
-      <section className="grid gap-6">
-        <Panel
-          title="Zasoby"
-          description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
-        >
-          <div className="grid gap-3 sm:grid-cols-3">
-            <ResourceMetricCard
-              label="CPU"
-              value={cpuUsageValue}
-              hint="Średnie obciążenie modeli"
-            />
-            <ResourceMetricCard
-              label="GPU"
-              value={gpuUsageValue}
-              hint="Wskaźnik wykorzystania akceleratora"
-            />
-            <ResourceMetricCard
-              label="RAM"
-              value={ramValue}
-              hint={usageMetrics?.memory_usage_percent ? `${usageMetrics.memory_usage_percent.toFixed(0)}%` : ""}
-            />
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <ResourceMetricCard
-              label="VRAM"
-              value={vramValue}
-              hint="Aktywny model/GPU"
-            />
-            <ResourceMetricCard
-              label="Dysk"
-              value={diskValue}
-              hint={diskPercent ?? ""}
-            />
-          </div>
-          <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-zinc-400">
-            <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
-            <span className="text-base font-semibold text-white">{sessionCostValue}</span>
-          </div>
-        </Panel>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
-        <div className="glass-panel flex flex-col gap-4">
-          <header className="flex items-center gap-3">
-            <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
-              <Bot className="h-5 w-5" />
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                Agenci
-              </p>
-              <h2 className="text-lg font-semibold text-white">
-                Aktywność systemowa
-              </h2>
-            </div>
-          </header>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">Węzły: {graphNodes}</Badge>
-            <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
-          </div>
-          <div className="space-y-3">
-            {agentDeck.map((svc) => (
-              <div
-                key={svc.name}
-                className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
-              >
-                <div>
-                  <p className="font-semibold text-white">{svc.name}</p>
-                  <p className="text-xs text-zinc-500">
-                    {svc.detail ?? "Brak opisu"}
-                  </p>
-                </div>
-                <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+          </section>
 
-      <Panel
-        eyebrow="System KPIs"
-        title="Status operacyjny"
-        description="Najważniejsze liczby backendu."
-        className="kpi-panel"
-      >
-        <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
-          <StatCard
-            label="Zadania"
-            value={metrics?.tasks?.created ?? "—"}
-            hint="Łącznie utworzonych"
-          />
-          <StatCard
-            label="Skuteczność"
-            value={successRate !== null ? `${successRate}%` : "—"}
-            hint="Aktualna skuteczność"
-            accent="green"
-          />
-          <StatCard
-            label="Uptime"
-            value={
-              metrics?.uptime_seconds !== undefined
-                ? formatUptime(metrics.uptime_seconds)
-                : "—"
-            }
-            hint="Od startu backendu"
-          />
-          <StatCard
-            label="Kolejka"
-            value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
-            hint="Aktywne / limit"
-            accent="blue"
-          />
-          <StatCard
-            label="Jakość"
-            value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
-            hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
-            accent="violet"
-          />
-        </div>
-      </Panel>
-
-      <Panel
-        title="Zarządzanie kolejką"
-        description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
-        className="queue-panel"
-      >
-        {queue ? (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <Panel
+            eyebrow="System KPIs"
+            title="Status operacyjny"
+            description="Najważniejsze liczby backendu."
+            className="kpi-panel"
+          >
+            <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
               <StatCard
-                label="Aktywne"
-                value={queue.active ?? "—"}
-                hint="Zadania w toku"
-                accent="violet"
+                label="Zadania"
+                value={metrics?.tasks?.created ?? "—"}
+                hint="Łącznie utworzonych"
               />
               <StatCard
-                label="Oczekujące"
-                value={queue.pending ?? "—"}
-                hint="Czekają na wykonanie"
-                accent="indigo"
+                label="Skuteczność"
+                value={successRate !== null ? `${successRate}%` : "—"}
+                hint="Aktualna skuteczność"
+                accent="green"
               />
               <StatCard
-                label="Limit"
-                value={queue.limit ?? "∞"}
-                hint="Maksymalna pojemność"
+                label="Uptime"
+                value={
+                  metrics?.uptime_seconds !== undefined
+                    ? formatUptime(metrics.uptime_seconds)
+                    : "—"
+                }
+                hint="Od startu backendu"
+              />
+              <StatCard
+                label="Kolejka"
+                value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
+                hint="Aktywne / limit"
                 accent="blue"
               />
+              <StatCard
+                label="Jakość"
+                value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
+                hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
+                accent="violet"
+              />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={handleToggleQueue}
-                disabled={queueAction === "pause" || queueAction === "resume"}
-              >
-                {queue.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
-              </Button>
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => executeQueueMutation("purge")}
-                disabled={queueAction === "purge"}
-              >
-                Wyczyść kolejkę
-              </Button>
-              <Button
-                variant="danger"
-                size="xs"
-                onClick={() => executeQueueMutation("emergency")}
-                disabled={queueAction === "emergency"}
-              >
-                Awaryjne zatrzymanie
-              </Button>
-            </div>
-            {queueActionMessage && (
-              <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
-            )}
-          </>
-        ) : (
-          <EmptyState
-            icon={<Package className="h-4 w-4" />}
-            title="Kolejka offline"
-            description="Brak danych `/api/v1/queue/status` – sprawdź backend lub użyj Quick Actions."
-          />
-        )}
-      </Panel>
+          </Panel>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Historia requestów"
-          description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
-        >
-          <HistoryList
-            entries={history}
-            limit={5}
-            selectedId={selectedRequestId}
-            onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
-            variant="preview"
-            viewAllHref="/inspector"
-            emptyTitle="Brak historii"
-            emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
-          />
-          {loadingHistory && (
-            <p className="mt-2 text-xs text-zinc-500">Ładowanie szczegółów...</p>
-          )}
-          {historyError && (
-            <p className="mt-2 text-xs text-rose-300">{historyError}</p>
-          )}
-          <p className="mt-2 text-[11px] uppercase tracking-[0.25em] text-zinc-500">
-            Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
-          </p>
-        </Panel>
-        <Panel
-          title="Logi nauki"
-          description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
-        >
-          {learningLogs?.items?.length ? (
-            <div className="space-y-3">
-              {learningLogs.items.map((entry, idx) => (
-                <div
-                  key={`learning-${entry.task_id ?? idx}`}
-                  className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
-                >
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    <Badge tone={entry.success ? "success" : "danger"}>
-                      {entry.success ? "OK" : "Błąd"}
-                    </Badge>
-                    <span>{entry.intent ?? "—"}</span>
-                    <span>{formatRelativeTime(entry.timestamp)}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-white">
-                    {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
-                  </p>
-                  {entry.error && (
-                    <p className="mt-2 text-[11px] text-rose-300">
-                      {entry.error.slice(0, 140)}
-                    </p>
-                  )}
+          <Panel
+            title="Zarządzanie kolejką"
+            description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
+            className="queue-panel"
+          >
+            {queue ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <StatCard
+                    label="Aktywne"
+                    value={queue.active ?? "—"}
+                    hint="Zadania w toku"
+                    accent="violet"
+                  />
+                  <StatCard
+                    label="Oczekujące"
+                    value={queue.pending ?? "—"}
+                    hint="Czekają na wykonanie"
+                    accent="indigo"
+                  />
+                  <StatCard
+                    label="Limit"
+                    value={queue.limit ?? "∞"}
+                    hint="Maksymalna pojemność"
+                    accent="blue"
+                  />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Inbox className="h-4 w-4" />}
-              title="Brak logów nauki"
-              description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
-            />
-          )}
-          {learningLoading && (
-            <p className="mt-2 text-xs text-zinc-500">Ładowanie logów nauki...</p>
-          )}
-          {learningError && (
-            <p className="mt-2 text-xs text-rose-300">{learningError}</p>
-          )}
-        </Panel>
-        <Panel
-          title="Feedback"
-          description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
-        >
-          {feedbackLogs?.items?.length ? (
-            <div className="space-y-3">
-              {feedbackLogs.items.map((entry, idx) => (
-                <div
-                  key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
-                  className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
-                >
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    <Badge tone={entry.rating === "up" ? "success" : "danger"}>
-                      {entry.rating === "up" ? "👍" : "👎"}
-                    </Badge>
-                    <span>{entry.intent ?? "—"}</span>
-                    <span>{formatRelativeTime(entry.timestamp)}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-white">
-                    {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
-                  </p>
-                  {entry.comment && (
-                    <p className="mt-2 text-[11px] text-zinc-400">
-                      {entry.comment.slice(0, 140)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Inbox className="h-4 w-4" />}
-              title="Brak feedbacku"
-              description="Oceny pojawią się po pierwszych rundach."
-            />
-          )}
-          {feedbackLoading && (
-            <p className="mt-2 text-xs text-zinc-500">Ładowanie feedbacku...</p>
-          )}
-          {feedbackError && (
-            <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
-          )}
-        </Panel>
-        <Panel
-          title="Hidden prompts"
-          description="Zagregowane pary prompt → odpowiedź z kciuka w górę."
-        >
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-            <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-              Filtry
-            </label>
-            <select
-              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-              value={hiddenIntentFilter}
-              onChange={(event) => setHiddenIntentFilter(event.target.value)}
-            >
-              {hiddenIntentOptions.map((intent) => (
-                <option key={`intent-${intent}`} value={intent}>
-                  {intent === "all" ? "Wszystkie intencje" : intent}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-              value={String(hiddenScoreFilter)}
-              onChange={(event) => setHiddenScoreFilter(Number(event.target.value))}
-            >
-              {[1, 2, 3].map((value) => (
-                <option key={`score-${value}`} value={String(value)}>
-                  Score ≥ {value}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-              value={activeForIntent?.prompt_hash ?? activeForIntent?.prompt ?? ""}
-              onChange={async (event) => {
-                if (hiddenIntentFilter === "all") return;
-                const nextValue = event.target.value;
-                if (!nextValue) {
-                  if (activeForIntent) {
-                    await setActiveHiddenPrompt({
-                      intent: activeForIntent.intent,
-                      prompt: activeForIntent.prompt,
-                      approved_response: activeForIntent.approved_response,
-                      prompt_hash: activeForIntent.prompt_hash,
-                      active: false,
-                      actor: "ui",
-                    });
-                  }
-                  return;
-                }
-                const candidate = selectableHiddenPrompts.find(
-                  (entry) => (entry.prompt_hash ?? entry.prompt) === nextValue,
-                );
-                if (candidate) {
-                  await setActiveHiddenPrompt({
-                    intent: candidate.intent,
-                    prompt: candidate.prompt,
-                    approved_response: candidate.approved_response,
-                    prompt_hash: candidate.prompt_hash,
-                    active: true,
-                    actor: "ui",
-                  });
-                }
-              }}
-              disabled={hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0}
-            >
-              <option value="">
-                {hiddenIntentFilter === "all"
-                  ? "Wybierz intencję"
-                  : "Brak aktywnego"}
-              </option>
-              {selectableHiddenPrompts.map((entry, idx) => {
-                const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
-                return (
-                  <option key={`active-hidden-${key}`} value={key}>
-                    {(entry.prompt ?? "Brak promptu").slice(0, 40)}
-                  </option>
-                );
-              })}
-            </select>
-            {activeHiddenKeys.size > 0 && (
-              <span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100">
-                Aktywne: {activeHiddenKeys.size}
-              </span>
-            )}
-          </div>
-          {hiddenPrompts?.items?.length ? (
-            <div className="space-y-3">
-              {hiddenPrompts.items.map((entry, idx) => {
-                const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
-                const isActive = activeHiddenKeys.has(key);
-                const activeMeta = isActive ? activeHiddenMap.get(key) : undefined;
-                return (
-                  <div
-                    key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
-                    className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={handleToggleQueue}
+                    disabled={queueAction === "pause" || queueAction === "resume"}
                   >
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                      <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
-                      <span>{entry.intent ?? "—"}</span>
-                      <span>{formatRelativeTime(entry.last_timestamp)}</span>
-                      {isActive && (
-                        <Badge tone="success">
-                          Aktywny{activeMeta?.activated_by ? ` • ${activeMeta.activated_by}` : ""}
+                    {queue.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => executeQueueMutation("purge")}
+                    disabled={queueAction === "purge"}
+                  >
+                    Wyczyść kolejkę
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="xs"
+                    onClick={() => executeQueueMutation("emergency")}
+                    disabled={queueAction === "emergency"}
+                  >
+                    Awaryjne zatrzymanie
+                  </Button>
+                </div>
+                {queueActionMessage && (
+                  <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
+                )}
+              </>
+            ) : (
+              <EmptyState
+                icon={<Package className="h-4 w-4" />}
+                title="Kolejka offline"
+                description="Brak danych `/api/v1/queue/status` – sprawdź backend lub użyj Quick Actions."
+              />
+            )}
+          </Panel>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Panel
+              title="Historia requestów"
+              description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
+            >
+              <HistoryList
+                entries={history}
+                limit={5}
+                selectedId={selectedRequestId}
+                onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
+                variant="preview"
+                viewAllHref="/inspector"
+                emptyTitle="Brak historii"
+                emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
+              />
+              {loadingHistory && (
+                <p className="mt-2 text-xs text-zinc-500">Ładowanie szczegółów...</p>
+              )}
+              {historyError && (
+                <p className="mt-2 text-xs text-rose-300">{historyError}</p>
+              )}
+              <p className="mt-2 text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+                Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
+              </p>
+            </Panel>
+            <Panel
+              title="Logi nauki"
+              description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
+            >
+              {learningLogs?.items?.length ? (
+                <div className="space-y-3">
+                  {learningLogs.items.map((entry, idx) => (
+                    <div
+                      key={`learning-${entry.task_id ?? idx}`}
+                      className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        <Badge tone={entry.success ? "success" : "danger"}>
+                          {entry.success ? "OK" : "Błąd"}
                         </Badge>
+                        <span>{entry.intent ?? "—"}</span>
+                        <span>{formatRelativeTime(entry.timestamp)}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-white">
+                        {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
+                      </p>
+                      {entry.error && (
+                        <p className="mt-2 text-[11px] text-rose-300">
+                          {entry.error.slice(0, 140)}
+                        </p>
                       )}
                     </div>
-                    <p className="mt-2 text-sm text-white">
-                      {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
-                    </p>
-                    {entry.approved_response && (
-                      <p className="mt-2 text-[11px] text-zinc-400">
-                        {entry.approved_response.slice(0, 160)}
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Inbox className="h-4 w-4" />}
+                  title="Brak logów nauki"
+                  description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
+                />
+              )}
+              {learningLoading && (
+                <p className="mt-2 text-xs text-zinc-500">Ładowanie logów nauki...</p>
+              )}
+              {learningError && (
+                <p className="mt-2 text-xs text-rose-300">{learningError}</p>
+              )}
+            </Panel>
+            <Panel
+              title="Feedback"
+              description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
+            >
+              {feedbackLogs?.items?.length ? (
+                <div className="space-y-3">
+                  {feedbackLogs.items.map((entry, idx) => (
+                    <div
+                      key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
+                      className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        <Badge tone={entry.rating === "up" ? "success" : "danger"}>
+                          {entry.rating === "up" ? "👍" : "👎"}
+                        </Badge>
+                        <span>{entry.intent ?? "—"}</span>
+                        <span>{formatRelativeTime(entry.timestamp)}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-white">
+                        {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
                       </p>
-                    )}
+                      {entry.comment && (
+                        <p className="mt-2 text-[11px] text-zinc-400">
+                          {entry.comment.slice(0, 140)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Inbox className="h-4 w-4" />}
+                  title="Brak feedbacku"
+                  description="Oceny pojawią się po pierwszych rundach."
+                />
+              )}
+              {feedbackLoading && (
+                <p className="mt-2 text-xs text-zinc-500">Ładowanie feedbacku...</p>
+              )}
+              {feedbackError && (
+                <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
+              )}
+            </Panel>
+            <Panel
+              title="Hidden prompts"
+              description="Zagregowane pary prompt → odpowiedź z kciuka w górę."
+            >
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                  Filtry
+                </label>
+                <select
+                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+                  value={hiddenIntentFilter}
+                  onChange={(event) => setHiddenIntentFilter(event.target.value)}
+                >
+                  {hiddenIntentOptions.map((intent) => (
+                    <option key={`intent-${intent}`} value={intent}>
+                      {intent === "all" ? "Wszystkie intencje" : intent}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+                  value={String(hiddenScoreFilter)}
+                  onChange={(event) => setHiddenScoreFilter(Number(event.target.value))}
+                >
+                  {[1, 2, 3].map((value) => (
+                    <option key={`score-${value}`} value={String(value)}>
+                      Score ≥ {value}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+                  value={activeForIntent?.prompt_hash ?? activeForIntent?.prompt ?? ""}
+                  onChange={async (event) => {
+                    if (hiddenIntentFilter === "all") return;
+                    const nextValue = event.target.value;
+                    if (!nextValue) {
+                      if (activeForIntent) {
+                        await setActiveHiddenPrompt({
+                          intent: activeForIntent.intent,
+                          prompt: activeForIntent.prompt,
+                          approved_response: activeForIntent.approved_response,
+                          prompt_hash: activeForIntent.prompt_hash,
+                          active: false,
+                          actor: "ui",
+                        });
+                      }
+                      return;
+                    }
+                    const candidate = selectableHiddenPrompts.find(
+                      (entry) => (entry.prompt_hash ?? entry.prompt) === nextValue,
+                    );
+                    if (candidate) {
+                      await setActiveHiddenPrompt({
+                        intent: candidate.intent,
+                        prompt: candidate.prompt,
+                        approved_response: candidate.approved_response,
+                        prompt_hash: candidate.prompt_hash,
+                        active: true,
+                        actor: "ui",
+                      });
+                    }
+                  }}
+                  disabled={
+                    hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0
+                  }
+                >
+                  <option value="">
+                    {hiddenIntentFilter === "all"
+                      ? "Wybierz intencję"
+                      : "Brak aktywnego"}
+                  </option>
+                  {selectableHiddenPrompts.map((entry, idx) => {
+                    const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+                    return (
+                      <option key={`active-hidden-${key}`} value={key}>
+                        {(entry.prompt ?? "Brak promptu").slice(0, 40)}
+                      </option>
+                    );
+                  })}
+                </select>
+                {activeHiddenKeys.size > 0 && (
+                  <span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100">
+                    Aktywne: {activeHiddenKeys.size}
+                  </span>
+                )}
+              </div>
+              {hiddenPrompts?.items?.length ? (
+                <div className="space-y-3">
+                  {hiddenPrompts.items.map((entry, idx) => {
+                    const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+                    const isActive = activeHiddenKeys.has(key);
+                    const activeMeta = isActive ? activeHiddenMap.get(key) : undefined;
+                    return (
+                      <div
+                        key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
+                        className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                          <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
+                          <span>{entry.intent ?? "—"}</span>
+                          <span>{formatRelativeTime(entry.last_timestamp)}</span>
+                          {isActive && (
+                            <Badge tone="success">
+                              Aktywny
+                              {activeMeta?.activated_by
+                                ? ` • ${activeMeta.activated_by}`
+                                : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm text-white">
+                          {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
+                        </p>
+                        {entry.approved_response && (
+                          <p className="mt-2 text-[11px] text-zinc-400">
+                            {entry.approved_response.slice(0, 160)}
+                          </p>
+                        )}
                     {activeMeta?.activated_at && (
                       <p className="mt-2 text-[11px] text-emerald-200">
                         Aktywne od: {formatRelativeTime(activeMeta.activated_at)}
@@ -2712,6 +2815,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           </div>
         </Panel>
       </div>
+        </>
+      )}
       <Sheet
         open={detailOpen}
         onOpenChange={(open) => {

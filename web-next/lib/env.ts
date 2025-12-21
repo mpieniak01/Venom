@@ -48,8 +48,22 @@ const resolveBrowserWsBase = (): string => {
   if (typeof window === "undefined") {
     return `ws://127.0.0.1:${DEFAULT_API_PORT}`;
   }
-  const origin = window.location.origin.replace(/^http/, "ws");
-  return sanitizeBase(origin);
+  const origin = window.location.origin;
+  try {
+    const parsed = new URL(origin);
+    if (
+      isLocalhost(parsed.hostname) &&
+      parsed.port &&
+      Number(parsed.port) !== DEFAULT_API_PORT
+    ) {
+      parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      parsed.port = String(DEFAULT_API_PORT);
+      return sanitizeBase(parsed.toString());
+    }
+  } catch {
+    return sanitizeBase(origin.replace(/^http/, "ws"));
+  }
+  return sanitizeBase(origin.replace(/^http/, "ws"));
 };
 
 export const getApiBaseUrl = (): string => sanitizeBase(resolveBrowserBase());

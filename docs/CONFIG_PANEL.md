@@ -43,6 +43,7 @@ Zarządza plikiem `.env`:
 **Whitelista parametrów:**
 - AI Configuration: `AI_MODE`, `LLM_SERVICE_TYPE`, `LLM_LOCAL_ENDPOINT`, klucze API
 - LLM Commands: `VLLM_START_COMMAND`, `OLLAMA_START_COMMAND`
+- Parametry generacji (per runtime/model): `MODEL_GENERATION_OVERRIDES` (JSON)
 - Hive: `ENABLE_HIVE`, `REDIS_HOST`, `REDIS_PORT`
 - Nexus: `ENABLE_NEXUS`, `NEXUS_PORT`, `NEXUS_SHARED_TOKEN`
 - Background Tasks: `ENABLE_AUTO_DOCUMENTATION`, `ENABLE_AUTO_GARDENING`

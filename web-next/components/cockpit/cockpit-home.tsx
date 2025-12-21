@@ -30,6 +30,7 @@ import {
   sendFeedback,
   setActiveHiddenPrompt,
   setActiveLlmServer,
+  updateModelConfig,
   switchModel,
   toggleQueue,
   useGitStatus,
@@ -66,6 +67,7 @@ import type { CockpitInitialData } from "@/lib/server-data";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { formatRelativeTime } from "@/lib/date";
+import { useTranslation } from "@/lib/i18n";
 import { AnimatePresence, motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
 import {
@@ -74,7 +76,6 @@ import {
   PinOff,
   Inbox,
   Package,
-  Loader2,
   Settings,
   HelpCircle,
   ThumbsDown,
@@ -176,6 +177,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [generationParams, setGenerationParams] = useState<GenerationParams | null>(null);
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
+  const [tuningSaving, setTuningSaving] = useState(false);
+  const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
   const promptPresets = useMemo(
     () => [
@@ -578,6 +581,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   }, [
     selectedLlmServer,
     selectedLlmModel,
+    activeServerInfo?.active_server,
     refreshLlmServers,
     refreshActiveServer,
     refreshModels,
@@ -1167,12 +1171,16 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const handleOpenTuning = useCallback(async () => {
     setTuningOpen(true);
     setLoadingSchema(true);
+    setGenerationParams(null);
     try {
       // Pobierz aktywny model z runtime info
       const activeModelName = models?.active?.model || "llama3";
       const config = await fetchModelConfig(activeModelName);
       const schema = config?.generation_schema as GenerationSchema | undefined;
       setModelSchema(schema ?? null);
+      if (config?.current_values) {
+        setGenerationParams(config.current_values as GenerationParams);
+      }
     } catch (err) {
       console.error("Nie udało się pobrać konfiguracji modelu:", err);
       setModelSchema(null);
@@ -1180,6 +1188,32 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       setLoadingSchema(false);
     }
   }, [models, setTuningOpen, setLoadingSchema, setModelSchema]);
+
+  const handleApplyTuning = useCallback(async () => {
+    const activeModelName = models?.active?.model;
+    if (!activeModelName) {
+      pushToast("Brak aktywnego modelu do strojenia.", "warning");
+      return;
+    }
+    setTuningSaving(true);
+    try {
+      await updateModelConfig(activeModelName, {
+        runtime: models?.active?.provider,
+        params: (generationParams ?? {}) as Record<
+          string,
+          number | string | boolean | null | undefined
+        >,
+      });
+      pushToast("Zapisano parametry generacji.", "success");
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : "Nie udało się zapisać parametrów.",
+        "error",
+      );
+    } finally {
+      setTuningSaving(false);
+    }
+  }, [generationParams, models, pushToast]);
 
   const handleMacroRun = useCallback(
     async (macro: { id: string; content: string; label: string }) => {
@@ -1779,10 +1813,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     })}
                   </AnimatePresence>
                   {historyLoading && (
-                    <p className="flex items-center gap-2 text-xs text-zinc-500">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
-                      Odświeżam historię…
-                    </p>
+                    <p className="text-xs text-zinc-500">Odświeżam historię…</p>
                   )}
                 </div>
                 <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
@@ -1808,11 +1839,11 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         variant="outline"
                         size="sm"
                         onClick={handleOpenTuning}
-                        className="text-zinc-300"
+                        className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
                         title="Dostosuj parametry generacji"
                       >
                         <Settings className="h-4 w-4 mr-1" />
-                        Tuning
+                        {t("common.tuning")}
                       </Button>
                       <Button
                         variant="outline"
@@ -2958,7 +2989,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           <div className="mt-6">
             {loadingSchema && (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+                <span className="text-sm text-zinc-400">Ładuję parametry…</span>
               </div>
             )}
             {!loadingSchema && !modelSchema && (
@@ -2967,12 +2998,25 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </p>
             )}
             {!loadingSchema && modelSchema && (
-              <DynamicParameterForm
-                schema={modelSchema}
-                values={generationParams || undefined}
-                onChange={(values) => setGenerationParams(values)}
-                onReset={() => setGenerationParams(null)}
-              />
+              <>
+                <DynamicParameterForm
+                  schema={modelSchema}
+                  values={generationParams || undefined}
+                  onChange={(values) => setGenerationParams(values)}
+                  onReset={() => setGenerationParams(null)}
+                />
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-white/20 bg-white/5 text-white hover:bg-white/10"
+                    disabled={tuningSaving}
+                    onClick={handleApplyTuning}
+                  >
+                    {tuningSaving ? "Zapisuję..." : "Zastosuj"}
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </SheetContent>
@@ -2984,7 +3028,6 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
 function PanelLoadingState({ label }: { label: string }) {
   return (
     <div className="flex h-32 items-center justify-center text-sm text-zinc-400">
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       {label}
     </div>
   );

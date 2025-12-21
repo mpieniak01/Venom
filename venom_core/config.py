@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     LLM_CONFIG_HASH: str = (
         ""  # Hash aktywnej konfiguracji LLM (endpoint+model+provider)
     )
+    MODEL_GENERATION_OVERRIDES: str = (
+        ""  # Override parametrów generacji per runtime/model
+    )
 
     # Konfiguracja Prompt Manager
     PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów
@@ -103,6 +106,8 @@ class Settings(BaseSettings):
 
     # Konfiguracja External Integrations (THE_TEAMMATE)
     # UWAGA: Sekrety używają SecretStr aby zapobiec przypadkowemu logowaniu
+    ENABLE_HF_INTEGRATION: bool = True  # Włącz integrację z Hugging Face
+    HF_TOKEN: SecretStr = SecretStr("")  # Token Hugging Face API (opcjonalny)
     GITHUB_TOKEN: SecretStr = SecretStr("")  # Personal Access Token do GitHub API
     GITHUB_REPO_NAME: str = ""  # Nazwa repozytorium np. "mpieniak01/Venom"
     DISCORD_WEBHOOK_URL: SecretStr = SecretStr(
@@ -343,6 +348,11 @@ class Settings(BaseSettings):
     OLLAMA_CHECK_TIMEOUT: float = 2.0
     # Timeout dla HTTP requests (ogólny)
     HTTP_REQUEST_TIMEOUT: float = 30.0
+    # Maksymalna długość podsumowania news/papers
+    NEWS_SUMMARY_MAX_CHARS: int = 240
+    # Timeouty tłumaczeń (sekundy)
+    TRANSLATION_TIMEOUT_NEWS: float = 6.0
+    TRANSLATION_TIMEOUT_PAPERS: float = 8.0
 
     # ===== TOKEN ECONOMIST CONFIGURATION =====
     # Rezerwa tokenów dla podsumowania przy kompresji

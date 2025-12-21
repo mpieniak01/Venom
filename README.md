@@ -552,11 +552,17 @@ make run
 - [Kompletna dokumentacja zadania 007](docs/_done/007_THE_HIVE_MIND_COMPLETED.md)
 - [Architektura systemu](docs/VENOM_MASTER_VISION_V2.md)
 - [System rozpoznawania intencji](docs/INTENT_RECOGNITION.md)
+- [Strojenie modelu LLM (Cockpit)](docs/_to_do/072_strojenie_modelu_llm_ui.md)
+- [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
+- [Panel konfiguracji](docs/CONFIG_PANEL.md)
 - [Contributing Guide](docs/CONTRIBUTING.md)
 
 ## 🧪 Testy
 
 ```bash
+cd /path/to/venom
+source .venv/bin/activate || true
+
 # Uruchom wszystkie testy
 pytest
 
@@ -600,6 +606,9 @@ pre-commit run --all-files
 ### Linting i formatowanie
 
 ```bash
+cd /path/to/venom
+source .venv/bin/activate || true
+
 # Ruff (linter + formatter)
 ruff check . --fix
 ruff format .

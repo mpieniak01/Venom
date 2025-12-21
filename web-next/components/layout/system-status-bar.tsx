@@ -12,7 +12,6 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { useAppMeta } from "@/lib/app-meta";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
 import type { GitStatus, ModelsUsageResponse, TokenMetrics } from "@/lib/types";
 
 type SystemStatusInitialData = {
@@ -188,7 +187,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
             <span>{t("statusBar.repoLabel")}:</span>
             <span data-testid="status-bar-repo" className={repoTone} title={repoTitle}>
               {gitLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />
+                <span className="text-emerald-300">…</span>
               ) : (
                 repoState.text
               )}

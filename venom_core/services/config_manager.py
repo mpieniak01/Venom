@@ -46,6 +46,7 @@ CONFIG_WHITELIST = {
     "PREVIOUS_MODEL_VLLM",
     "ACTIVE_LLM_SERVER",
     "LLM_CONFIG_HASH",
+    "MODEL_GENERATION_OVERRIDES",
     # LLM Server Commands
     "VLLM_START_COMMAND",
     "VLLM_STOP_COMMAND",
@@ -136,6 +137,7 @@ RESTART_REQUIREMENTS = {
     "PREVIOUS_MODEL_VLLM": [],
     "ACTIVE_LLM_SERVER": [],
     "LLM_CONFIG_HASH": [],
+    "MODEL_GENERATION_OVERRIDES": [],
     "ENABLE_HIVE": ["backend"],
     "HIVE_URL": ["backend"],
     "REDIS_HOST": ["backend"],

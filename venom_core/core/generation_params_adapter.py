@@ -5,8 +5,10 @@ Umożliwia przekazywanie parametrów generacji (temperature, max_tokens, etc.)
 do różnych backendów LLM z uwzględnieniem ich specyficznych wymagań.
 """
 
+import json
 from typing import Any, Dict, Optional
 
+from venom_core.services.config_manager import config_manager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -144,6 +146,33 @@ class GenerationParamsAdapter:
                 f"Nieznany provider '{provider}', używam mapowania domyślnego"
             )
             return provider_lower
+
+    @classmethod
+    def normalize_provider(cls, provider: str) -> str:
+        """Publiczny wrapper do normalizacji nazwy providera."""
+        return cls._detect_provider(provider)
+
+    @classmethod
+    def get_overrides(cls, provider: str, model_name: Optional[str]) -> Dict[str, Any]:
+        """Pobiera override parametrów generacji per runtime/model."""
+        if not model_name:
+            return {}
+        raw = config_manager.get_config(mask_secrets=False).get(
+            "MODEL_GENERATION_OVERRIDES", ""
+        )
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw)
+        except Exception as exc:  # pragma: no cover - defensywnie
+            logger.warning(f"Nie udało się sparsować MODEL_GENERATION_OVERRIDES: {exc}")
+            return {}
+        runtime_key = cls._detect_provider(provider)
+        return (
+            payload.get(runtime_key, {}).get(model_name, {})
+            if isinstance(payload, dict)
+            else {}
+        )
 
     @classmethod
     def merge_with_defaults(

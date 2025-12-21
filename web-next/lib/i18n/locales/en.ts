@@ -5,6 +5,7 @@ export const en = {
     openNavigation: "Open navigation",
     provider: "Provider",
     noDescription: "No description",
+    tuning: "Tuning",
   },
   topBar: {
     wsLabel: "WS",
@@ -28,6 +29,7 @@ export const en = {
       brain: "Knowledge Graph",
       inspector: "Inspector",
       strategy: "Strategy",
+      models: "Models",
       calendar: "Calendar",
       benchmark: "Benchmark",
       config: "Configuration",

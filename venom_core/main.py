@@ -100,6 +100,9 @@ model_manager = None
 # Inicjalizacja Benchmark Service
 benchmark_service = None
 
+# Inicjalizacja Model Registry (dla endpointów models)
+model_registry = None
+
 # Inicjalizacja Google Calendar Skill (THE_CALENDAR)
 google_calendar_skill = None
 
@@ -113,7 +116,7 @@ async def lifespan(app: FastAPI):
     global node_manager, orchestrator, request_tracer
     global shadow_agent, desktop_sensor, notifier
     global service_registry, service_monitor, model_manager, llm_controller
-    global benchmark_service, google_calendar_skill
+    global benchmark_service, google_calendar_skill, model_registry
 
     # Startup
     # Inicjalizuj MetricsCollector
@@ -624,7 +627,7 @@ def setup_router_dependencies():
     )
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)
-    models_routes.set_dependencies(model_manager)
+    models_routes.set_dependencies(model_manager, model_registry=model_registry)
     flow_routes.set_dependencies(request_tracer)
     benchmark_routes.set_dependencies(benchmark_service)
     calendar_routes.set_dependencies(google_calendar_skill)

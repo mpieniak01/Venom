@@ -167,6 +167,7 @@ async def stream_task(task_id: UUID):
         heartbeat_every_ticks = 10
         previous_status: Optional[TaskStatus] = None
         previous_log_index = 0
+        previous_result: Optional[str] = None
         ticks_since_emit = 0
 
         while True:
@@ -183,9 +184,11 @@ async def stream_task(task_id: UUID):
 
             logs_delta = task.logs[previous_log_index:]
             status_changed = task.status != previous_status
+            result_changed = task.result != previous_result
             should_emit = (
                 status_changed
                 or logs_delta
+                or result_changed
                 or ticks_since_emit >= heartbeat_every_ticks
             )
 
@@ -216,6 +219,7 @@ async def stream_task(task_id: UUID):
 
                 previous_status = task.status
                 previous_log_index = len(task.logs)
+                previous_result = task.result
                 ticks_since_emit = 0
             else:
                 ticks_since_emit += 1

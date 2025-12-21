@@ -24,9 +24,12 @@ class MetricsCollector:
             "feedback_up": 0,
             "feedback_down": 0,
             "tokens_used_session": 0,
+            "model_params_updates": 0,
             "network_bytes_sent": 0,
             "network_bytes_received": 0,
             "network_connections_active": 0,
+            "llm_first_token_ms_total": 0,
+            "llm_first_token_samples": 0,
         }
         self.tool_usage: Dict[str, int] = {}
         self.agent_usage: Dict[str, int] = {}
@@ -82,6 +85,17 @@ class MetricsCollector:
         """Inkrementuje licznik negatywnego feedbacku."""
         with self._lock:
             self.metrics["feedback_down"] += 1
+
+    def increment_model_params_update(self):
+        """Inkrementuje licznik zmian parametrów generacji."""
+        with self._lock:
+            self.metrics["model_params_updates"] += 1
+
+    def add_llm_first_token_sample(self, elapsed_ms: int):
+        """Dodaje próbkę time-to-first-token (ms)."""
+        with self._lock:
+            self.metrics["llm_first_token_ms_total"] += max(elapsed_ms, 0)
+            self.metrics["llm_first_token_samples"] += 1
 
     def increment_tool_usage(self, tool_name: str):
         """
@@ -173,6 +187,12 @@ class MetricsCollector:
         """
         with self._lock:
             uptime_seconds = (datetime.now() - self.start_time).total_seconds()
+            samples = self.metrics["llm_first_token_samples"]
+            avg_first_token = (
+                round(self.metrics["llm_first_token_ms_total"] / samples, 2)
+                if samples
+                else None
+            )
 
             return {
                 "status": "ok",
@@ -192,6 +212,13 @@ class MetricsCollector:
                 "feedback": {
                     "up": self.metrics["feedback_up"],
                     "down": self.metrics["feedback_down"],
+                },
+                "models": {
+                    "generation_params_updates": self.metrics["model_params_updates"],
+                },
+                "llm": {
+                    "first_token_samples": samples,
+                    "first_token_avg_ms": avg_first_token,
                 },
                 "tokens_used_session": self.metrics["tokens_used_session"],
                 "network": {

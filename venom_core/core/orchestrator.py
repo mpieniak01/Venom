@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
+from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.dispatcher import TaskDispatcher
@@ -763,117 +765,172 @@ class Orchestrator:
                 data={"task_id": str(task_id), "intent": intent},
             )
 
+            stream_start = time.perf_counter()
+            first_chunk_sent = False
+            collector = metrics_module.metrics_collector
+            stream_buffer: list[str] = []
+            last_partial_emit = stream_start
+            partial_emit_interval = 0.3
+
+            def _handle_stream_chunk(text: str) -> None:
+                nonlocal first_chunk_sent, last_partial_emit
+                if not text:
+                    return
+                stream_buffer.append(text)
+                now = time.perf_counter()
+                should_emit_partial = (
+                    not first_chunk_sent
+                    or (now - last_partial_emit) >= partial_emit_interval
+                )
+                if should_emit_partial:
+                    self.state_manager.update_partial_result(
+                        task_id, "".join(stream_buffer)
+                    )
+                    last_partial_emit = now
+                if first_chunk_sent:
+                    return
+                preview = (text or "").strip()
+                if not preview:
+                    return
+                first_chunk_sent = True
+                elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
+                preview_trimmed = (
+                    preview[:200] + "..." if len(preview) > 200 else preview
+                )
+                self.state_manager.add_log(
+                    task_id, f"Pierwszy fragment odpowiedzi: {preview_trimmed}"
+                )
+                self.state_manager.update_context(
+                    task_id,
+                    {
+                        "first_token": {
+                            "at": datetime.now().isoformat(),
+                            "elapsed_ms": elapsed_ms,
+                            "preview": preview_trimmed,
+                        }
+                    },
+                )
+                if collector:
+                    collector.add_llm_first_token_sample(elapsed_ms)
+
+            stream_token = set_llm_stream_callback(_handle_stream_chunk)
+
             # SPECJALNE PRZYPADKI: START_CAMPAIGN
-            if intent == "START_CAMPAIGN":
-                # Uruchom tryb kampanii
-                self.state_manager.add_log(
-                    task_id, "🚀 Uruchamiam Tryb Kampanii (Campaign Mode)"
-                )
-                # Decision Gate: START_CAMPAIGN
-                if self.request_tracer:
-                    self.request_tracer.add_step(
-                        task_id,
-                        "DecisionGate",
-                        "route_campaign",
-                        status="ok",
-                        details="🚀 Routing to Campaign Mode",
+            try:
+                if intent == "START_CAMPAIGN":
+                    # Uruchom tryb kampanii
+                    self.state_manager.add_log(
+                        task_id, "🚀 Uruchamiam Tryb Kampanii (Campaign Mode)"
                     )
-                # Lazy init CampaignFlow
-                if self._campaign_flow is None:
-                    self._campaign_flow = CampaignFlow(
-                        state_manager=self.state_manager,
-                        orchestrator_submit_task=self.submit_task,
-                        event_broadcaster=self.event_broadcaster,
+                    # Decision Gate: START_CAMPAIGN
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "route_campaign",
+                            status="ok",
+                            details="🚀 Routing to Campaign Mode",
+                        )
+                    # Lazy init CampaignFlow
+                    if self._campaign_flow is None:
+                        self._campaign_flow = CampaignFlow(
+                            state_manager=self.state_manager,
+                            orchestrator_submit_task=self.submit_task,
+                            event_broadcaster=self.event_broadcaster,
+                        )
+                    campaign_result = await self._campaign_flow.execute(
+                        goal_store=self.task_dispatcher.goal_store
                     )
-                campaign_result = await self._campaign_flow.execute(
-                    goal_store=self.task_dispatcher.goal_store
-                )
-                result = campaign_result.get("summary", str(campaign_result))
+                    result = campaign_result.get("summary", str(campaign_result))
 
-            # SPECJALNE PRZYPADKI: HELP_REQUEST
-            elif intent == "HELP_REQUEST":
-                # Wygeneruj dynamiczną odpowiedź pomocy
-                self.state_manager.add_log(task_id, "❓ Generuję informacje pomocy")
-                # Decision Gate: HELP_REQUEST
-                if self.request_tracer:
-                    self.request_tracer.add_step(
-                        task_id,
-                        "DecisionGate",
-                        "route_help",
-                        status="ok",
-                        details="❓ Routing to Help System",
-                    )
-                result = await self._generate_help_response(task_id)
+                # SPECJALNE PRZYPADKI: HELP_REQUEST
+                elif intent == "HELP_REQUEST":
+                    # Wygeneruj dynamiczną odpowiedź pomocy
+                    self.state_manager.add_log(task_id, "❓ Generuję informacje pomocy")
+                    # Decision Gate: HELP_REQUEST
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "route_help",
+                            status="ok",
+                            details="❓ Routing to Help System",
+                        )
+                    result = await self._generate_help_response(task_id)
 
-            # DECYZJA: Council mode vs Standard mode
-            elif self._should_use_council(context, intent):
-                # Tryb Council - autonomiczna dyskusja agentów
-                self.state_manager.add_log(
-                    task_id,
-                    "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
-                )
-                # Decision Gate: Council mode
-                if self.request_tracer:
-                    self.request_tracer.add_step(
+                # DECYZJA: Council mode vs Standard mode
+                elif self._should_use_council(context, intent):
+                    # Tryb Council - autonomiczna dyskusja agentów
+                    self.state_manager.add_log(
                         task_id,
-                        "DecisionGate",
-                        "select_council_mode",
-                        status="ok",
-                        details=f"🏛️ Complex task detected (intent={intent}) -> Council Mode",
+                        "🏛️ Zadanie wymaga współpracy - aktywuję The Council",
                     )
-                result = await self.run_council(task_id, context)
-            elif intent == "CODE_GENERATION":
-                # Standardowy tryb - pętla Coder-Critic
-                # Decision Gate: Code Generation with Review Loop
-                if self.request_tracer:
-                    self.request_tracer.add_step(
+                    # Decision Gate: Council mode
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "select_council_mode",
+                            status="ok",
+                            details=f"🏛️ Complex task detected (intent={intent}) -> Council Mode",
+                        )
+                    result = await self.run_council(task_id, context)
+                elif intent == "CODE_GENERATION":
+                    # Standardowy tryb - pętla Coder-Critic
+                    # Decision Gate: Code Generation with Review Loop
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "select_code_review_loop",
+                            status="ok",
+                            details="💻 Routing to Coder-Critic Review Loop",
+                        )
+                    result = await self._code_generation_with_review(task_id, context)
+                elif intent == "COMPLEX_PLANNING":
+                    # Standardowy tryb - delegacja do Architekta
+                    self.state_manager.add_log(
                         task_id,
-                        "DecisionGate",
-                        "select_code_review_loop",
-                        status="ok",
-                        details="💻 Routing to Coder-Critic Review Loop",
+                        "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
                     )
-                result = await self._code_generation_with_review(task_id, context)
-            elif intent == "COMPLEX_PLANNING":
-                # Standardowy tryb - delegacja do Architekta
-                self.state_manager.add_log(
-                    task_id,
-                    "Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta",
-                )
-                # Decision Gate: Complex Planning -> Architect
-                if self.request_tracer:
-                    self.request_tracer.add_step(
-                        task_id,
-                        "DecisionGate",
-                        "route_to_architect",
-                        status="ok",
-                        details="🏗️ Routing to Architect for Complex Planning",
+                    # Decision Gate: Complex Planning -> Architect
+                    if self.request_tracer:
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "route_to_architect",
+                            status="ok",
+                            details="🏗️ Routing to Architect for Complex Planning",
+                        )
+                    await self._broadcast_event(
+                        event_type="AGENT_ACTION",
+                        message="Przekazuję zadanie do Architekta (Complex Planning)",
+                        agent="Architect",
+                        data={"task_id": str(task_id)},
                     )
-                await self._broadcast_event(
-                    event_type="AGENT_ACTION",
-                    message="Przekazuję zadanie do Architekta (Complex Planning)",
-                    agent="Architect",
-                    data={"task_id": str(task_id)},
-                )
-                result = await self.task_dispatcher.dispatch(
-                    intent, context, generation_params=request.generation_params
-                )
-            else:
-                # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
-                # Decision Gate: Standard dispatch
-                if self.request_tracer:
-                    agent = self.task_dispatcher.agent_map.get(intent)
-                    agent_name = agent.__class__.__name__ if agent else "UnknownAgent"
-                    self.request_tracer.add_step(
-                        task_id,
-                        "DecisionGate",
-                        "route_to_agent",
-                        status="ok",
-                        details=f"📤 Routing to {agent_name} (intent={intent})",
+                    result = await self.task_dispatcher.dispatch(
+                        intent, context, generation_params=request.generation_params
                     )
-                result = await self.task_dispatcher.dispatch(
-                    intent, context, generation_params=request.generation_params
-                )
+                else:
+                    # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
+                    # Decision Gate: Standard dispatch
+                    if self.request_tracer:
+                        agent = self.task_dispatcher.agent_map.get(intent)
+                        agent_name = (
+                            agent.__class__.__name__ if agent else "UnknownAgent"
+                        )
+                        self.request_tracer.add_step(
+                            task_id,
+                            "DecisionGate",
+                            "route_to_agent",
+                            status="ok",
+                            details=f"📤 Routing to {agent_name} (intent={intent})",
+                        )
+                    result = await self.task_dispatcher.dispatch(
+                        intent, context, generation_params=request.generation_params
+                    )
+            finally:
+                reset_llm_stream_callback(stream_token)
 
             # Zaloguj które agent przejął zadanie
             agent = self.task_dispatcher.agent_map.get(intent)

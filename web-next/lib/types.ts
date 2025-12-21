@@ -205,6 +205,44 @@ export interface ModelInfo {
   provider?: string | null;
 }
 
+export interface ModelCatalogEntry {
+  provider: string;
+  model_name: string;
+  display_name: string;
+  size_gb?: number | null;
+  runtime: string;
+  tags?: string[];
+  downloads?: number | null;
+  likes?: number | null;
+}
+
+export interface ModelCatalogResponse {
+  success?: boolean;
+  provider?: string;
+  models: ModelCatalogEntry[];
+  count: number;
+  stale?: boolean;
+  error?: string | null;
+}
+
+export interface ModelOperation {
+  operation_id: string;
+  model_name: string;
+  operation_type: string;
+  status: string;
+  progress?: number;
+  message?: string;
+  started_at?: string;
+  completed_at?: string | null;
+  error?: string | null;
+}
+
+export interface ModelOperationsResponse {
+  success?: boolean;
+  operations: ModelOperation[];
+  count: number;
+}
+
 export interface ModelsResponse {
   success?: boolean;
   models: ModelInfo[];

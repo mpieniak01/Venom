@@ -20,6 +20,8 @@ import {
   LessonsResponse,
   LessonsStats,
   Metrics,
+  ModelCatalogResponse,
+  ModelOperationsResponse,
   ModelsResponse,
   ModelsUsage,
   ModelsUsageResponse,
@@ -114,7 +116,9 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     return;
   }
   entry.fetching = true;
-  entry.state = { ...entry.state, loading: true };
+  if (entry.state.data === null) {
+    entry.state = { ...entry.state, loading: true };
+  }
   notifyEntry(entry);
   try {
     const result = await entry.fetcher();
@@ -292,6 +296,30 @@ export function useModels(intervalMs = 15000) {
   return usePolling<ModelsResponse>(
     "models",
     () => apiFetch("/api/v1/models"),
+    intervalMs,
+  );
+}
+
+export function useModelTrending(provider: string, intervalMs = 60000) {
+  return usePolling<ModelCatalogResponse>(
+    `models-trending-${provider}`,
+    () => apiFetch(`/api/v1/models/trending?provider=${encodeURIComponent(provider)}`),
+    intervalMs,
+  );
+}
+
+export function useModelCatalog(provider: string, intervalMs = 60000) {
+  return usePolling<ModelCatalogResponse>(
+    `models-catalog-${provider}`,
+    () => apiFetch(`/api/v1/models/providers?provider=${encodeURIComponent(provider)}`),
+    intervalMs,
+  );
+}
+
+export function useModelOperations(limit = 10, intervalMs = 5000) {
+  return usePolling<ModelOperationsResponse>(
+    `models-operations-${limit}`,
+    () => apiFetch(`/api/v1/models/operations?limit=${limit}`),
     intervalMs,
   );
 }
@@ -559,6 +587,37 @@ export async function installModel(name: string) {
   );
 }
 
+export async function installRegistryModel(payload: {
+  name: string;
+  provider: string;
+  runtime: string;
+}) {
+  return apiFetch<{ success: boolean; message: string; operation_id: string }>(
+    "/api/v1/models/registry/install",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function removeRegistryModel(modelName: string) {
+  return apiFetch<{ success: boolean; message: string; operation_id: string }>(
+    `/api/v1/models/registry/${encodeURIComponent(modelName)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function activateRegistryModel(payload: { name: string; runtime: string }) {
+  return apiFetch<{ success: boolean; message: string }>(
+    "/api/v1/models/activate",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function switchModel(name: string) {
   return apiFetch<{ success: boolean; message: string; active_model: string }>(
     "/api/v1/models/switch",
@@ -630,5 +689,25 @@ export async function fetchModelConfig(modelName: string) {
     success: boolean;
     model_name: string;
     generation_schema: GenerationSchema;
+    current_values?: Record<string, number | string | boolean | null | undefined>;
+    runtime?: string;
   }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`);
+}
+
+export async function updateModelConfig(
+  modelName: string,
+  payload: {
+    runtime?: string;
+    params: Record<string, number | string | boolean | null | undefined>;
+  },
+) {
+  return apiFetch<{
+    success: boolean;
+    model_name: string;
+    runtime?: string;
+    params?: Record<string, number | string | boolean | null | undefined>;
+  }>(`/api/v1/models/${encodeURIComponent(modelName)}/config`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

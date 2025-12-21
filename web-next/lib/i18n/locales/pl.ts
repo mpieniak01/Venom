@@ -5,6 +5,7 @@ export const pl = {
     openNavigation: "Otwórz nawigację",
     provider: "Dostawca",
     noDescription: "Brak opisu",
+    tuning: "Strojenie",
   },
   topBar: {
     wsLabel: "WS",
@@ -28,6 +29,7 @@ export const pl = {
       brain: "Graf wiedzy",
       inspector: "Inspektor",
       strategy: "Strategia",
+      models: "Modele",
       calendar: "Kalendarz",
       benchmark: "Benchmark",
       config: "Konfiguracja",

@@ -1,4 +1,4 @@
-# Predykcja: szybkie odpowiedzi “sztampowe” (strategia do przemyślenia)
+# 74: Predykcja: szybkie odpowiedzi “sztampowe” (strategia do przemyślenia)
 
 
 ## Zalegle do zrobienia

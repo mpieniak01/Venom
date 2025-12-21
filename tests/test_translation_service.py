@@ -42,9 +42,7 @@ def _configure_settings(monkeypatch):
 @pytest.mark.asyncio
 async def test_translate_text_uses_cache(monkeypatch):
     _configure_settings(monkeypatch)
-    monkeypatch.setattr(
-        translation_module, "get_active_llm_runtime", lambda: DummyRuntime()
-    )
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
 
     call_count = {"value": 0}
     payload = {"choices": [{"message": {"content": "Czesc"}}]}
@@ -77,9 +75,7 @@ async def test_translate_text_uses_cache(monkeypatch):
 @pytest.mark.asyncio
 async def test_translate_text_falls_back_on_error(monkeypatch):
     _configure_settings(monkeypatch)
-    monkeypatch.setattr(
-        translation_module, "get_active_llm_runtime", lambda: DummyRuntime()
-    )
+    monkeypatch.setattr(translation_module, "get_active_llm_runtime", DummyRuntime)
 
     class DummyClient:
         def __init__(self, *args, **kwargs):

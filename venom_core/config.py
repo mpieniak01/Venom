@@ -348,6 +348,11 @@ class Settings(BaseSettings):
     OLLAMA_CHECK_TIMEOUT: float = 2.0
     # Timeout dla HTTP requests (ogólny)
     HTTP_REQUEST_TIMEOUT: float = 30.0
+    # Maksymalna długość podsumowania news/papers
+    NEWS_SUMMARY_MAX_CHARS: int = 240
+    # Timeouty tłumaczeń (sekundy)
+    TRANSLATION_TIMEOUT_NEWS: float = 6.0
+    TRANSLATION_TIMEOUT_PAPERS: float = 8.0
 
     # ===== TOKEN ECONOMIST CONFIGURATION =====
     # Rezerwa tokenów dla podsumowania przy kompresji

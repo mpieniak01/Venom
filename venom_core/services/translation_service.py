@@ -50,7 +50,9 @@ class TranslationService:
             return f"{endpoint}/chat/completions"
         return f"{endpoint}/v1/chat/completions"
 
-    def _resolve_headers(self, service_type: str) -> Dict[str, str]:
+    def _resolve_headers(self, runtime=None) -> Dict[str, str]:
+        runtime = runtime or get_active_llm_runtime()
+        service_type = runtime.service_type
         if service_type == "openai" and SETTINGS.OPENAI_API_KEY:
             return {"Authorization": f"Bearer {SETTINGS.OPENAI_API_KEY}"}
         if service_type == "local" and SETTINGS.LLM_LOCAL_API_KEY:
@@ -90,7 +92,7 @@ class TranslationService:
 
             runtime = get_active_llm_runtime()
             chat_endpoint = self._resolve_chat_endpoint()
-            headers = self._resolve_headers(runtime.service_type)
+            headers = self._resolve_headers(runtime)
 
             system_prompt = (
                 "You are a precise translation assistant. "

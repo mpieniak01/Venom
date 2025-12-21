@@ -63,6 +63,29 @@ Response:
 GET /api/v1/models/trending?provider=ollama&limit=12
 ```
 
+Response:
+```json
+{
+  "success": true,
+  "provider": "ollama",
+  "models": [
+    {
+      "provider": "ollama",
+      "model_name": "llama3:latest",
+      "display_name": "llama3:latest",
+      "size_gb": 4.1,
+      "runtime": "ollama",
+      "tags": ["llama", "8B"],
+      "downloads": null,
+      "likes": null
+    }
+  ],
+  "count": 1,
+  "stale": false,
+  "error": null
+}
+```
+
 #### News (HuggingFace Blog RSS)
 
 ```bash
@@ -82,29 +105,6 @@ Response:
       "published_at": "2025-12-20",
       "authors": ["Autor 1", "Autor 2"],
       "source": "huggingface"
-    }
-  ],
-  "count": 1,
-  "stale": false,
-  "error": null
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "provider": "ollama",
-  "models": [
-    {
-      "provider": "ollama",
-      "model_name": "llama3:latest",
-      "display_name": "llama3:latest",
-      "size_gb": 4.1,
-      "runtime": "ollama",
-      "tags": ["llama", "8B"],
-      "downloads": null,
-      "likes": null
     }
   ],
   "count": 1,

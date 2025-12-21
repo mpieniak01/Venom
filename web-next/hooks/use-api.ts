@@ -41,6 +41,7 @@ import {
 type PollingState<T> = {
   data: T | null;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 };
@@ -53,6 +54,7 @@ const defaultHandleError = (error: unknown): string => {
 type PollingSnapshot<T> = {
   data: T | null;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
 };
 
@@ -93,7 +95,7 @@ function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number
     return existing;
   }
   const entry: PollingEntry<T> = {
-    state: { data: null, loading: true, error: null },
+    state: { data: null, loading: true, refreshing: false, error: null },
     fetcher,
     interval,
     listeners: new Set(),
@@ -111,13 +113,16 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     entry.state = {
       ...entry.state,
       loading: false,
+      refreshing: false,
     };
     notifyEntry(entry);
     return;
   }
   entry.fetching = true;
   if (entry.state.data === null) {
-    entry.state = { ...entry.state, loading: true };
+    entry.state = { ...entry.state, loading: true, refreshing: false };
+  } else {
+    entry.state = { ...entry.state, refreshing: true };
   }
   notifyEntry(entry);
   try {
@@ -125,6 +130,7 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     entry.state = {
       data: result,
       loading: false,
+      refreshing: false,
       error: null,
     };
     entry.suspendedUntil = undefined;
@@ -139,6 +145,7 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
     entry.state = {
       ...entry.state,
       loading: false,
+      refreshing: false,
       error: message,
     };
   } finally {
@@ -159,7 +166,7 @@ function usePolling<T>(
   const isBrowser = typeof window !== "undefined";
   const fallbackEntry = useMemo<PollingEntry<T>>(
     () => ({
-      state: { data: null, loading: true, error: null },
+      state: { data: null, loading: true, refreshing: false, error: null },
       fetcher: async () => {
         throw new Error("Polling entry not initialized.");
       },
@@ -217,6 +224,7 @@ function usePolling<T>(
     () => ({
       data: snapshot.data,
       loading: snapshot.loading,
+      refreshing: snapshot.refreshing,
       error: snapshot.error,
       refresh,
     }),

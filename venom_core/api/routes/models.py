@@ -801,7 +801,7 @@ async def list_model_news(
             )
 
         if type == "papers" and items:
-            max_summary_chars = 240
+            max_summary_chars = SETTINGS.NEWS_SUMMARY_MAX_CHARS
             for item in items:
                 summary = item.get("summary")
                 if summary and len(summary) > max_summary_chars:
@@ -824,7 +824,7 @@ async def list_model_news(
                                     source_lang="en",
                                     allow_fallback=True,
                                 ),
-                                timeout=6.0,
+                                timeout=SETTINGS.TRANSLATION_TIMEOUT_NEWS,
                             )
                         except asyncio.TimeoutError:
                             translated_title = title
@@ -840,7 +840,7 @@ async def list_model_news(
                                     source_lang="en",
                                     allow_fallback=True,
                                 ),
-                                timeout=8.0,
+                                timeout=SETTINGS.TRANSLATION_TIMEOUT_PAPERS,
                             )
                         except asyncio.TimeoutError:
                             translated_summary = summary
@@ -888,7 +888,7 @@ async def list_model_news(
 
 
 @router.post("/translate")
-async def translate_text(request: TranslationRequest):
+async def translate_text_endpoint(request: TranslationRequest):
     """
     Uniwersalny endpoint do tłumaczenia treści z użyciem aktywnego modelu.
     """

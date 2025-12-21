@@ -833,18 +833,49 @@ class ModelRegistry:
             response.raise_for_status()
             payload = response.text
 
+        # UWAGA: Parsowanie poniżej opiera się na aktualnej strukturze HTML strony
+        # HuggingFace (atrybut data-target="DailyPapers" z JSON-em w data-props).
+        # Zmiana struktury strony może spowodować, że ten kod przestanie działać
+        # i będzie wymagał aktualizacji selektora / formatu danych.
         marker = 'data-target="DailyPapers" data-props="'
         start_index = payload.find(marker)
         if start_index == -1:
+            logger.warning(
+                "Nie znaleziono sekcji DailyPapers na stronie HuggingFace: %s", url
+            )
             return []
         start_index += len(marker)
         end_index = payload.find('"', start_index)
         if end_index == -1:
+            logger.warning(
+                "Nieprawidłowy format atrybutu data-props w sekcji DailyPapers na stronie HuggingFace: %s",
+                url,
+            )
             return []
 
         raw_props = html.unescape(payload[start_index:end_index])
-        data = json.loads(raw_props)
-        daily_papers = data.get("dailyPapers", [])
+        try:
+            data = json.loads(raw_props)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Nie udało się sparsować JSON z atrybutu data-props w sekcji DailyPapers na stronie HuggingFace (%s): %s",
+                url,
+                exc,
+            )
+            return []
+        if not isinstance(data, dict):
+            logger.warning(
+                "Nieoczekiwany format danych DailyPapers z HuggingFace (oczekiwano dict) dla URL: %s",
+                url,
+            )
+            return []
+        daily_papers = data.get("dailyPapers")
+        if not isinstance(daily_papers, list):
+            logger.warning(
+                "Brak lub nieprawidłowy klucz 'dailyPapers' w danych z HuggingFace dla URL: %s",
+                url,
+            )
+            return []
         items: List[Dict[str, Any]] = []
 
         for entry in daily_papers[:limit]:

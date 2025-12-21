@@ -560,7 +560,7 @@ make run
 ## 🧪 Testy
 
 ```bash
-cd /home/ubuntu/venom
+cd /path/to/venom
 source .venv/bin/activate || true
 
 # Uruchom wszystkie testy
@@ -606,7 +606,7 @@ pre-commit run --all-files
 ### Linting i formatowanie
 
 ```bash
-cd /home/ubuntu/venom
+cd /path/to/venom
 source .venv/bin/activate || true
 
 # Ruff (linter + formatter)

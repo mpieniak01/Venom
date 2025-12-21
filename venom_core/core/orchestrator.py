@@ -788,6 +788,7 @@ class Orchestrator:
                     )
                     last_partial_emit = now
                 if first_chunk_sent:
+                    # Po zarejestrowaniu pierwszego fragmentu pomijamy logikę "first chunk".
                     return
                 preview = (text or "").strip()
                 if not preview:

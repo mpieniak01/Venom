@@ -279,6 +279,7 @@ class BaseAgent(ABC):
         stream_callback jest wywoływany dla każdego fragmentu tekstu.
         """
         collected = []
+        stream_callback_enabled = True
         async for chunk_list in chat_service.get_streaming_chat_message_contents(
             **kwargs
         ):
@@ -287,14 +288,13 @@ class BaseAgent(ABC):
                 if not text:
                     continue
                 collected.append(text)
-                try:
-                    stream_callback(text)
-                except Exception:
-                    logger.debug(
-                        "stream_callback zakończył się błędem, pomijam dalsze wywołania."
-                    )
-
-                    def stream_callback(_text: str) -> None:
-                        return None
+                if stream_callback_enabled:
+                    try:
+                        stream_callback(text)
+                    except Exception:
+                        logger.debug(
+                            "stream_callback zakończył się błędem, pomijam dalsze wywołania."
+                        )
+                        stream_callback_enabled = False
 
         return ChatMessageContent(role=AuthorRole.ASSISTANT, content="".join(collected))

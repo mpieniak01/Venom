@@ -538,7 +538,7 @@ PARAMETER top_k 40
         if default_models_dir.exists() and default_models_dir not in search_dirs:
             search_dirs.append(default_models_dir)
 
-        skip_dirs = {"hf_cache", "__pycache__", ".cache"}
+        skip_dirs = {"hf_cache", "__pycache__", ".cache", "manifests", "blobs"}
 
         for base_dir in search_dirs:
             if not base_dir.exists():

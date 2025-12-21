@@ -525,6 +525,20 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     }
     try {
       setLlmActionPending(`activate:${selectedLlmServer}`);
+      if (
+        selectedLlmModel &&
+        activeServerInfo?.active_server === selectedLlmServer
+      ) {
+        await switchModel(selectedLlmModel);
+        setMessage(
+          `Aktywowano model ${selectedLlmModel} na serwerze ${selectedLlmServer}.`,
+        );
+        pushToast(
+          `Aktywny serwer: ${selectedLlmServer}, model: ${selectedLlmModel}.`,
+          "success",
+        );
+        return;
+      }
       const response = await setActiveLlmServer(selectedLlmServer);
       if (response.status === "success") {
         setMessage(`Aktywowano serwer ${selectedLlmServer}.`);
@@ -645,15 +659,15 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     const availableNames = new Set(
       availableModelsForServer.map((model) => model.name),
     );
+    if (selectedLlmModel && availableNames.has(selectedLlmModel)) {
+      return;
+    }
     if (currentActive && availableNames.has(currentActive)) {
       setSelectedLlmModel(currentActive);
       return;
     }
     if (lastForServer && availableNames.has(lastForServer)) {
       setSelectedLlmModel(lastForServer);
-      return;
-    }
-    if (selectedLlmModel && availableNames.has(selectedLlmModel)) {
       return;
     }
     setSelectedLlmModel(availableModelsForServer[0].name);

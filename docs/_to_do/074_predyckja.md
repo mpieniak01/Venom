@@ -1,12 +1,20 @@
 # 74: Predykcja: szybkie odpowiedzi “sztampowe” (strategia do przemyślenia)
 
 
-## Zalegle do zrobienia
+## Zalegle do zrobienia (zrealizowane)
 - Tryb pełnoekranowego czatu: zostaje tylko lewy sidebar i górny pasek, a cała
   powierzchnia treści to chatbox; przełącznik względem obecnego widoku czatu.
 - Podpięcie wyboru serwera i modelu na dole okna czatu jako selekty dopasowane
   do szerokości okna.
 - Przewijana historia czatu (scroll z zachowaniem kontekstu).
+
+## Wykonanie
+- Dodano przełącznik trybu pełnoekranowego w nagłówku Cockpit AI; w tym trybie
+  ukrywane są pozostałe panele, zostaje wyłącznie chat.
+- Ustawiono selekty serwera i modelu w dolnej części okna czatu (dopasowane do szerokości).
+- Historia czatu przewija się płynnie; autoscroll działa tylko gdy użytkownik
+  pozostaje na dole listy.
+- Implementacja: `web-next/components/cockpit/cockpit-home.tsx`.
 
 ## Cel
 Zaprojektować strategię “predykcji” (szybkich, sztampowych odpowiedzi) tak, aby:

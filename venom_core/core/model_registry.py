@@ -9,11 +9,14 @@ Odpowiedzialny za:
 """
 
 import asyncio
+import html
 import json
 import re
 import shutil
 import subprocess
+import time
 import uuid
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -26,6 +29,17 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _resolve_hf_token() -> Optional[str]:
+    token = getattr(SETTINGS, "HF_TOKEN", None)
+    if token is None:
+        return None
+    if hasattr(token, "get_secret_value"):
+        token_value = token.get_secret_value()
+    else:
+        token_value = token
+    return token_value or None
 
 
 class ModelProvider(str, Enum):
@@ -512,7 +526,7 @@ class ModelRegistry:
             ModelProvider.OLLAMA: OllamaModelProvider(),
             ModelProvider.HUGGINGFACE: HuggingFaceModelProvider(
                 cache_dir=str(self.models_dir / "hf_cache"),
-                token=getattr(SETTINGS, "HF_TOKEN", None),
+                token=_resolve_hf_token(),
             ),
         }
 
@@ -524,6 +538,8 @@ class ModelRegistry:
             "vllm": asyncio.Lock(),
             "ollama": asyncio.Lock(),
         }
+        self._external_cache: Dict[str, Dict[str, Any]] = {}
+        self._external_cache_ttl_seconds = 1800
 
         logger.info(f"ModelRegistry zainicjalizowany (models_dir={self.models_dir})")
 
@@ -618,6 +634,298 @@ class ModelRegistry:
 
         return all_models
 
+    async def list_trending_models(
+        self, provider: ModelProvider, limit: int = 12
+    ) -> Dict[str, Any]:
+        """Lista trendujących modeli z zewnętrznych źródeł."""
+        return await self._list_external_models(provider, limit, mode="trending")
+
+    async def list_catalog_models(
+        self, provider: ModelProvider, limit: int = 20
+    ) -> Dict[str, Any]:
+        """Lista dostępnych modeli z zewnętrznych źródeł."""
+        return await self._list_external_models(provider, limit, mode="catalog")
+
+    async def list_news(
+        self,
+        provider: ModelProvider,
+        limit: int = 5,
+        kind: str = "blog",
+        month: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Lista newsow dla danego providera."""
+        if provider != ModelProvider.HUGGINGFACE:
+            return {"items": [], "stale": False, "error": None}
+        try:
+            if kind == "papers":
+                items = await self._fetch_hf_papers_month(limit=limit, month=month)
+            else:
+                items = await self._fetch_hf_blog_feed(limit=limit)
+            return {"items": items, "stale": False, "error": None}
+        except Exception as e:
+            logger.warning(f"Nie udało się pobrać newsów HF: {e}")
+            return {"items": [], "stale": True, "error": str(e)}
+
+    async def _list_external_models(
+        self, provider: ModelProvider, limit: int, mode: str
+    ) -> Dict[str, Any]:
+        cache_key = f"{provider.value}:{mode}:{limit}"
+        cached = self._external_cache.get(cache_key)
+        now = time.time()
+        if cached and now - cached["timestamp"] < self._external_cache_ttl_seconds:
+            return {"models": cached["data"], "stale": False, "error": None}
+
+        try:
+            if provider == ModelProvider.HUGGINGFACE:
+                sort = "trendingScore" if mode == "trending" else "downloads"
+                models = await self._fetch_huggingface_models(sort=sort, limit=limit)
+            elif provider == ModelProvider.OLLAMA:
+                models = await self._fetch_ollama_models(limit=limit)
+            else:
+                models = []
+            self._external_cache[cache_key] = {
+                "timestamp": now,
+                "data": models,
+            }
+            return {"models": models, "stale": False, "error": None}
+        except Exception as e:
+            logger.warning(f"Nie udało się pobrać listy {mode} dla {provider}: {e}")
+            if cached:
+                return {"models": cached["data"], "stale": True, "error": str(e)}
+            return {"models": [], "stale": True, "error": str(e)}
+
+    async def _fetch_huggingface_models(
+        self, sort: str, limit: int
+    ) -> List[Dict[str, Any]]:
+        url = "https://huggingface.co/api/models"
+        headers = {}
+        token = _resolve_hf_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params={"limit": limit, "sort": sort},
+                    headers=headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except httpx.HTTPStatusError:
+                if sort != "trendingScore":
+                    raise
+                response = await client.get(
+                    url,
+                    params={"limit": limit, "sort": "downloads"},
+                    headers=headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+
+        if not isinstance(payload, list):
+            return []
+
+        models: List[Dict[str, Any]] = []
+        for item in payload:
+            model_id = item.get("modelId") or item.get("id")
+            if not model_id:
+                continue
+            display = model_id.split("/")[-1]
+            models.append(
+                self._format_catalog_entry(
+                    provider=ModelProvider.HUGGINGFACE,
+                    model_name=model_id,
+                    display_name=display,
+                    runtime="vllm",
+                    size_gb=None,
+                    tags=item.get("tags") or [],
+                    downloads=item.get("downloads"),
+                    likes=item.get("likes"),
+                )
+            )
+        return models
+
+    async def _fetch_ollama_models(self, limit: int) -> List[Dict[str, Any]]:
+        url = "https://ollama.com/api/tags"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            payload = response.json()
+
+        models: List[Dict[str, Any]] = []
+        for item in payload.get("models", [])[:limit]:
+            name = item.get("name")
+            if not name:
+                continue
+            details = item.get("details") or {}
+            tags = [
+                value
+                for value in [
+                    details.get("family"),
+                    details.get("parameter_size"),
+                    details.get("quantization_level"),
+                    details.get("format"),
+                ]
+                if value
+            ]
+            size_bytes = item.get("size")
+            if isinstance(size_bytes, (int, float)):
+                size_gb = round(size_bytes / (1024**3), 2)
+            else:
+                size_gb = None
+            models.append(
+                self._format_catalog_entry(
+                    provider=ModelProvider.OLLAMA,
+                    model_name=name,
+                    display_name=name,
+                    runtime="ollama",
+                    size_gb=size_gb,
+                    tags=tags,
+                    downloads=None,
+                    likes=None,
+                )
+            )
+        return models
+
+    async def _fetch_hf_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
+        url = "https://huggingface.co/blog/feed.xml"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            payload = response.text
+
+        root = ET.fromstring(payload)
+        channel = root.find("channel")
+        if channel is None:
+            return []
+
+        items: List[Dict[str, Any]] = []
+        for entry in channel.findall("item")[:limit]:
+            title = entry.findtext("title")
+            url_value = entry.findtext("link")
+            summary = entry.findtext("description")
+            published_at = entry.findtext("pubDate")
+            if summary:
+                summary = re.sub(r"<[^>]+>", "", summary).strip()
+            items.append(
+                {
+                    "title": title,
+                    "url": url_value,
+                    "summary": summary,
+                    "published_at": published_at,
+                    "authors": None,
+                    "source": "huggingface",
+                }
+            )
+        return items
+
+    async def _fetch_hf_papers_month(
+        self, limit: int, month: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        if month:
+            target_month = month
+        else:
+            target_month = datetime.now().strftime("%Y-%m")
+        url = f"https://huggingface.co/papers/month/{target_month}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            payload = response.text
+
+        # UWAGA: Parsowanie poniżej opiera się na aktualnej strukturze HTML strony
+        # HuggingFace (atrybut data-target="DailyPapers" z JSON-em w data-props).
+        # Zmiana struktury strony może spowodować, że ten kod przestanie działać
+        # i będzie wymagał aktualizacji selektora / formatu danych.
+        marker = 'data-target="DailyPapers" data-props="'
+        start_index = payload.find(marker)
+        if start_index == -1:
+            logger.warning(
+                "Nie znaleziono sekcji DailyPapers na stronie HuggingFace: %s", url
+            )
+            return []
+        start_index += len(marker)
+        end_index = payload.find('"', start_index)
+        if end_index == -1:
+            logger.warning(
+                "Nieprawidłowy format atrybutu data-props w sekcji DailyPapers na stronie HuggingFace: %s",
+                url,
+            )
+            return []
+
+        raw_props = html.unescape(payload[start_index:end_index])
+        try:
+            data = json.loads(raw_props)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Nie udało się sparsować JSON z atrybutu data-props w sekcji DailyPapers na stronie HuggingFace (%s): %s",
+                url,
+                exc,
+            )
+            return []
+        if not isinstance(data, dict):
+            logger.warning(
+                "Nieoczekiwany format danych DailyPapers z HuggingFace (oczekiwano dict) dla URL: %s",
+                url,
+            )
+            return []
+        daily_papers = data.get("dailyPapers")
+        if not isinstance(daily_papers, list):
+            logger.warning(
+                "Brak lub nieprawidłowy klucz 'dailyPapers' w danych z HuggingFace dla URL: %s",
+                url,
+            )
+            return []
+        items: List[Dict[str, Any]] = []
+
+        for entry in daily_papers[:limit]:
+            paper = entry.get("paper", {})
+            paper_id = paper.get("id")
+            title = entry.get("title") or paper.get("title")
+            summary = entry.get("summary") or paper.get("summary")
+            published_at = entry.get("publishedAt") or paper.get("publishedAt")
+            authors = [
+                author.get("name")
+                for author in (paper.get("authors") or [])
+                if isinstance(author, dict) and author.get("name")
+            ]
+            url_value = (
+                f"https://huggingface.co/papers/{paper_id}" if paper_id else None
+            )
+            items.append(
+                {
+                    "title": title,
+                    "url": url_value,
+                    "summary": summary,
+                    "published_at": published_at,
+                    "authors": authors or None,
+                    "source": "huggingface",
+                }
+            )
+        return items
+
+    def _format_catalog_entry(
+        self,
+        provider: ModelProvider,
+        model_name: str,
+        display_name: str,
+        runtime: str,
+        size_gb: Optional[float] = None,
+        tags: Optional[List[str]] = None,
+        downloads: Optional[int] = None,
+        likes: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        return {
+            "provider": provider.value,
+            "model_name": model_name,
+            "display_name": display_name,
+            "size_gb": size_gb,
+            "runtime": runtime,
+            "tags": tags or [],
+            "downloads": downloads,
+            "likes": likes,
+        }
+
     async def install_model(
         self,
         model_name: str,
@@ -635,6 +943,10 @@ class ModelRegistry:
         # Sprawdź czy provider istnieje
         if provider not in self.providers:
             raise ValueError(f"Nieznany provider: {provider}")
+        if provider == ModelProvider.OLLAMA and runtime != "ollama":
+            raise ValueError("Ollama wspiera tylko runtime 'ollama'")
+        if provider == ModelProvider.HUGGINGFACE and runtime != "vllm":
+            raise ValueError("HuggingFace wspiera tylko runtime 'vllm'")
 
         # Utwórz operację
         operation = ModelOperation(

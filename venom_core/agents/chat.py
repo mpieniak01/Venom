@@ -392,14 +392,11 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
             )
             enable_functions = False
         settings = self._build_execution_settings(enable_functions, generation_params)
-        kwargs = {}
-        if enable_functions:
-            kwargs["kernel"] = self.kernel
-
-        return await chat_service.get_chat_message_content(
+        return await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
             chat_history=chat_history,
             settings=settings,
-            **kwargs,
+            enable_functions=enable_functions,
         )
 
     def _build_execution_settings(

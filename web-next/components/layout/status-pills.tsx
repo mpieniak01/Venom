@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { useQueueStatus, useMetrics, useTasks } from "@/hooks/use-api";
 import type { Metrics, QueueStatus, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
 
 export type StatusPillsInitialData = {
   queue?: QueueStatus | null;
@@ -97,10 +96,7 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
           <span className="text-[11px] uppercase tracking-[0.3em]">{pill.label}</span>
           <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`}>
             {pill.loading ? (
-              <span className="flex items-center gap-1 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin text-white/90" />
-                Ładuje…
-              </span>
+              <span className="text-sm">Ładuje…</span>
             ) : (
               pill.value
             )}

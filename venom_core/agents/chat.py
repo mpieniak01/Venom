@@ -189,13 +189,16 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
         try:
             # Pobierz serwis chat completion
             supports_functions = self._supports_function_calling(chat_service)
+            allow_functions = supports_functions and self._should_use_functions(
+                input_text
+            )
 
             try:
                 # Wywołaj model,
                 response = await self._invoke_chat_service(
                     chat_service=chat_service,
                     chat_history=chat_history,
-                    enable_functions=supports_functions,
+                    enable_functions=allow_functions,
                     generation_params=generation_params,
                 )
             except Exception as api_error:
@@ -230,6 +233,36 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
             logger.error(f"Błąd podczas generowania odpowiedzi: {e}")
 
             raise
+
+    def _should_use_functions(self, user_input: str) -> bool:
+        """
+        Włącz funkcje tylko gdy pytanie wyraźnie dotyczy plików/repo/struktury.
+        """
+        if not user_input:
+            return False
+        lowered = user_input.lower()
+        keywords = [
+            "plik",
+            "pliki",
+            "folder",
+            "katalog",
+            "repo",
+            "repozytorium",
+            "git",
+            "branch",
+            "commit",
+            "diff",
+            "path",
+            "directory",
+            "file",
+            "files",
+            "tree",
+            "list files",
+            "lista plik",
+            "struktura",
+            "zawartosc",
+        ]
+        return any(keyword in lowered for keyword in keywords)
 
     def _supports_system_prompt(self, chat_service) -> bool:
         """

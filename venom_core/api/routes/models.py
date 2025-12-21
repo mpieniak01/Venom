@@ -1267,18 +1267,17 @@ async def update_model_config_endpoint(
 
     try:
         capabilities = _model_registry.get_model_capabilities(model_name)
+        generation_schema = None
+        if capabilities and capabilities.generation_schema is not None:
+            generation_schema = capabilities.generation_schema
+        else:
+            from venom_core.core.model_registry import _create_default_generation_schema
 
-        if capabilities is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Model {model_name} nie znaleziony w manifeście",
+            logger.warning(
+                "Brak schematu w manifestcie podczas zapisu, używam domyślnego: model=%s",
+                model_name,
             )
-
-        if capabilities.generation_schema is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Model {model_name} nie ma zdefiniowanego schematu parametrów",
-            )
+            generation_schema = _create_default_generation_schema()
 
         runtime_info = get_active_llm_runtime()
         runtime_key = (
@@ -1287,10 +1286,7 @@ async def update_model_config_endpoint(
             else GenerationParamsAdapter.normalize_provider(runtime_info.provider)
         )
 
-        schema = {
-            key: param.to_dict()
-            for key, param in capabilities.generation_schema.items()
-        }
+        schema = {key: param.to_dict() for key, param in generation_schema.items()}
 
         if request.params:
             validated = _validate_generation_params(request.params, schema)

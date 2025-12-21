@@ -65,6 +65,10 @@ Oczekiwane wyjście:
 - Dla list i słowników wynik jest czytelniejszy niż surowy `repr`.
 - Brak regresji w standardowych odpowiedziach tekstowych.
 
+## Dodatkowe zapisy (PR 075)
+- W ramach tego PR należy dodać funkcje zasilające model w dodatkowe dane.
+- Przykłady: pliki, linki, wskazywanie ścieżek do plików.
+
 ## Proponowane miejsca zmian
 - Warstwa odpowiedzi LLM (formatter/post‑processor).
 - UI chat (render wyników obliczeń).

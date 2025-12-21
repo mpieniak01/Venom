@@ -1475,18 +1475,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           <Panel
             title="Serwery LLM"
             description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
-            action={
-              <Button
-                variant="secondary"
-                size="xs"
-                onClick={() => {
-                  refreshLlmServers();
-                  refreshActiveServer();
-                }}
-              >
-                Odśwież
-              </Button>
-            }
+            className="allow-overflow overflow-visible"
           >
             {llmServersLoading ? (
               <p className="text-sm text-zinc-500">Ładuję status serwerów…</p>
@@ -1510,7 +1499,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       ariaLabel="Wybierz serwer LLM"
                       placeholder="Wybierz serwer"
                       buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                      menuClassName="w-full"
+                      menuClassName="w-full max-h-72 overflow-y-auto"
                     />
                     <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
                       Model
@@ -1523,7 +1512,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       placeholder="Brak modeli"
                       disabled={availableModelsForServer.length === 0}
                       buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                      menuClassName="w-full"
+                      menuClassName="w-full max-h-72 overflow-y-auto"
                     />
                     {selectedLlmServer && availableModelsForServer.length === 0 && (
                       <div className="space-y-2">
@@ -1702,7 +1691,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         )}
         <div className="space-y-6">
           <motion.div
-            className="glass-panel command-console-panel relative flex min-h-[520px] flex-col overflow-hidden px-6 py-6"
+            className="glass-panel command-console-panel allow-overflow relative flex min-h-[520px] flex-col overflow-visible px-6 py-6"
             key={chatFullscreen ? "chat-fullscreen" : "chat-default"}
             initial={{ opacity: 0, y: 24, scale: 0.98, rotateX: 6, rotateY: -6 }}
             animate={{
@@ -1892,7 +1881,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         ariaLabel="Wybierz serwer LLM"
                         placeholder="Wybierz serwer"
                         buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                        menuClassName="w-full"
+                        menuClassName="w-full max-h-72 overflow-y-auto"
                       />
                     </div>
                     <div className="space-y-2">
@@ -1907,7 +1896,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         placeholder="Brak modeli"
                         disabled={availableModelsForServer.length === 0}
                         buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                        menuClassName="w-full"
+                        menuClassName="w-full max-h-72 overflow-y-auto"
                       />
                     </div>
                   </div>

@@ -163,7 +163,7 @@ async def stream_task(task_id: UUID):
     async def event_generator():
         """Asynchroniczny generator zdarzeń SSE."""
 
-        poll_interval_seconds = 1.0
+        poll_interval_seconds = 0.25
         heartbeat_every_ticks = 10
         previous_status: Optional[TaskStatus] = None
         previous_log_index = 0

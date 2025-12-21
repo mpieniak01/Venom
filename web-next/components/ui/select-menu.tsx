@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,8 @@ export function SelectMenu({
 }: SelectMenuProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const currentOption = useMemo(
     () => options.find((option) => option.value === value) ?? null,
     [options, value],
@@ -51,8 +54,11 @@ export function SelectMenu({
 
   useEffect(() => {
     const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
       if (!triggerRef.current) return;
-      if (!triggerRef.current.contains(event.target as Node)) {
+      if (triggerRef.current.contains(target)) return;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      {
         setOpen(false);
       }
     };
@@ -66,6 +72,28 @@ export function SelectMenu({
       window.removeEventListener("keydown", handleEsc);
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      if (!triggerRef.current) return;
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuStyle({
+        position: "fixed",
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 80,
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   return (
     <div className={cn("relative", className)} ref={triggerRef}>
@@ -90,55 +118,60 @@ export function SelectMenu({
         )}
         <ChevronDown className="h-3 w-3 text-zinc-400" aria-hidden />
       </button>
-      {open && (
-        <div
-          className={cn(
-            "absolute right-0 z-50 mt-2 w-44 rounded-2xl border border-white/10 bg-zinc-950/95 p-1 text-left shadow-xl",
-            menuClassName,
-          )}
-        >
-          {options.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-zinc-500">Brak opcji</div>
-          ) : (
-            options.map((option) => {
-              const active = option.value === value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60",
-                    active ? "bg-white/10" : "",
-                    optionClassName,
-                  )}
-                  onClick={() => {
-                    if (option.disabled) return;
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  disabled={option.disabled}
-                >
-                  {renderOption ? (
-                    renderOption(option, active)
-                  ) : (
-                    <>
-                      {option.icon}
-                      <div className="flex flex-col text-left">
-                        <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                          {option.label}
-                        </span>
-                        {option.description && (
-                          <span className="text-sm">{option.description}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </button>
-              );
-            })
-          )}
-        </div>
-      )}
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={menuStyle}
+            className={cn(
+              "mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 p-1 text-left shadow-xl",
+              menuClassName,
+            )}
+          >
+            {options.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-zinc-500">Brak opcji</div>
+            ) : (
+              options.map((option) => {
+                const active = option.value === value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60",
+                      active ? "bg-white/10" : "",
+                      optionClassName,
+                    )}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                    disabled={option.disabled}
+                  >
+                    {renderOption ? (
+                      renderOption(option, active)
+                    ) : (
+                      <>
+                        {option.icon}
+                        <div className="flex flex-col text-left">
+                          <span className="text-xs uppercase tracking-[0.3em] text-zinc-400">
+                            {option.label}
+                          </span>
+                          {option.description && (
+                            <span className="text-sm">{option.description}</span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

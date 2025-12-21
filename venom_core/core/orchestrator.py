@@ -770,7 +770,7 @@ class Orchestrator:
             collector = metrics_module.metrics_collector
             stream_buffer: list[str] = []
             last_partial_emit = stream_start
-            partial_emit_interval = 0.3
+            partial_emit_interval = 0.25
 
             def _handle_stream_chunk(text: str) -> None:
                 nonlocal first_chunk_sent, last_partial_emit

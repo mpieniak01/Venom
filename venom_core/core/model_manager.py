@@ -560,6 +560,57 @@ PARAMETER top_k 40
                             f"Nie udało się odczytać modelu {model_path}: {e}"
                         )
 
+        def _load_ollama_manifest_entries(manifests_dir: Path) -> List[Dict[str, Any]]:
+            entries: List[Dict[str, Any]] = []
+            if not manifests_dir.exists():
+                return entries
+            for manifest_path in manifests_dir.rglob("*"):
+                if not manifest_path.is_file():
+                    continue
+                try:
+                    relative_parts = manifest_path.relative_to(manifests_dir).parts
+                except ValueError:
+                    continue
+                if len(relative_parts) < 2:
+                    continue
+                registry = relative_parts[0]
+                tag = relative_parts[-1]
+                model = relative_parts[-2]
+                namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
+                if namespace and namespace != "library":
+                    entry_name = f"{namespace}/{model}:{tag}"
+                else:
+                    entry_name = f"{model}:{tag}"
+                size_bytes = 0
+                try:
+                    manifest_payload = json.loads(manifest_path.read_text("utf-8"))
+                    layers = manifest_payload.get("layers") or []
+                    size_bytes = sum(
+                        layer.get("size", 0)
+                        for layer in layers
+                        if isinstance(layer, dict)
+                    )
+                    config = manifest_payload.get("config") or {}
+                    if isinstance(config, dict):
+                        size_bytes += config.get("size", 0) or 0
+                except Exception as e:
+                    logger.warning(
+                        f"Nie udało się odczytać manifestu {manifest_path}: {e}"
+                    )
+                entries.append(
+                    {
+                        "name": entry_name,
+                        "size_gb": size_bytes / (1024**3) if size_bytes else None,
+                        "type": "ollama",
+                        "quantization": "unknown",
+                        "path": f"ollama://{registry}",
+                        "source": "ollama",
+                        "provider": "ollama",
+                        "active": False,
+                    }
+                )
+            return entries
+
         # 2. Pobieranie modeli z Ollama API
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -618,6 +669,13 @@ PARAMETER top_k 40
                 )
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
+
+        for base_dir in search_dirs:
+            manifest_root = base_dir / "manifests"
+            for entry in _load_ollama_manifest_entries(manifest_root):
+                entry_name = entry.get("name")
+                if entry_name:
+                    models.setdefault(f"ollama::{entry_name}", entry)
 
         return list(models.values())
 

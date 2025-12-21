@@ -1,7 +1,8 @@
 """Moduł: base - abstrakcyjna klasa bazowa dla agentów Venom."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from contextvars import ContextVar, Token
+from typing import Any, Callable, Dict, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -14,6 +15,18 @@ from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_llm_stream_callback: ContextVar[Optional[Callable[[str], None]]] = ContextVar(
+    "llm_stream_callback", default=None
+)
+
+
+def set_llm_stream_callback(callback: Optional[Callable[[str], None]]) -> Token:
+    return _llm_stream_callback.set(callback)
+
+
+def reset_llm_stream_callback(token: Token) -> None:
+    _llm_stream_callback.reset(token)
 
 
 class BaseAgent(ABC):
@@ -110,9 +123,17 @@ class BaseAgent(ABC):
         runtime_info = get_active_llm_runtime()
         provider = runtime_info.provider
 
-        # Połącz parametry użytkownika z domyślnymi
+        # Uwzględnij override parametrów per runtime/model
+        overrides = GenerationParamsAdapter.get_overrides(
+            runtime_info.provider, runtime_info.model_name
+        )
+        defaults_with_overrides = GenerationParamsAdapter.merge_with_defaults(
+            overrides, default_settings
+        )
+
+        # Połącz parametry użytkownika z domyślnymi + override
         merged_params = GenerationParamsAdapter.merge_with_defaults(
-            generation_params, default_settings
+            generation_params, defaults_with_overrides
         )
 
         # Adaptuj parametry do formatu providera
@@ -205,6 +226,16 @@ class BaseAgent(ABC):
                 if functions_enabled:
                     kwargs["kernel"] = self.kernel
 
+                stream_callback = _llm_stream_callback.get()
+                if (
+                    stream_callback
+                    and not functions_enabled
+                    and hasattr(chat_service, "get_streaming_chat_message_contents")
+                ):
+                    return await self._invoke_chat_streaming(
+                        chat_service, stream_callback, **kwargs
+                    )
+
                 return await chat_service.get_chat_message_content(**kwargs)
             except Exception as api_error:
                 error_text = str(api_error).lower()
@@ -240,3 +271,30 @@ class BaseAgent(ABC):
                     raise
 
         raise RuntimeError("Nie udało się uzyskać odpowiedzi z LLM po fallbackach.")
+
+    async def _invoke_chat_streaming(self, chat_service, stream_callback, **kwargs):
+        """
+        Wywołuje LLM w trybie streaming i zwraca złożoną odpowiedź.
+
+        stream_callback jest wywoływany dla każdego fragmentu tekstu.
+        """
+        collected = []
+        async for chunk_list in chat_service.get_streaming_chat_message_contents(
+            **kwargs
+        ):
+            for chunk in chunk_list:
+                text = getattr(chunk, "content", None) or ""
+                if not text:
+                    continue
+                collected.append(text)
+                try:
+                    stream_callback(text)
+                except Exception:
+                    logger.debug(
+                        "stream_callback zakończył się błędem, pomijam dalsze wywołania."
+                    )
+
+                    def stream_callback(_text: str) -> None:
+                        return None
+
+        return ChatMessageContent(role=AuthorRole.ASSISTANT, content="".join(collected))

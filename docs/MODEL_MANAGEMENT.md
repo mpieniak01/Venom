@@ -34,7 +34,7 @@ System zarządzania modelami w Venom zapewnia centralny, zautomatyzowany sposób
 #### Lista dostępnych modeli
 
 ```bash
-GET /api/v1/models/providers?provider=huggingface
+GET /api/v1/models/providers?provider=huggingface&limit=20
 ```
 
 Response:
@@ -43,19 +43,73 @@ Response:
   "success": true,
   "models": [
     {
-      "name": "google/gemma-2b-it",
       "provider": "huggingface",
-      "display_name": "Gemma 2B IT",
-      "size_gb": 4.0,
-      "status": "available",
+      "model_name": "google/gemma-2b-it",
+      "display_name": "gemma-2b-it",
+      "size_gb": null,
       "runtime": "vllm",
-      "capabilities": {
-        "supports_system_role": false,
-        "allowed_roles": ["user", "assistant"]
-      }
+      "tags": ["text-generation"],
+      "downloads": 123456,
+      "likes": 420
     }
   ],
   "count": 1
+}
+```
+
+#### Trendy modeli
+
+```bash
+GET /api/v1/models/trending?provider=ollama&limit=12
+```
+
+#### News (HuggingFace Blog RSS)
+
+```bash
+GET /api/v1/models/news?provider=huggingface&limit=5&type=blog
+```
+
+Response:
+```json
+{
+  "success": true,
+  "provider": "huggingface",
+  "items": [
+    {
+      "title": "Nowa publikacja",
+      "url": "https://huggingface.co/papers/...",
+      "summary": "Opis publikacji...",
+      "published_at": "2025-12-20",
+      "authors": ["Autor 1", "Autor 2"],
+      "source": "huggingface"
+    }
+  ],
+  "count": 1,
+  "stale": false,
+  "error": null
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "provider": "ollama",
+  "models": [
+    {
+      "provider": "ollama",
+      "model_name": "llama3:latest",
+      "display_name": "llama3:latest",
+      "size_gb": 4.1,
+      "runtime": "ollama",
+      "tags": ["llama", "8B"],
+      "downloads": null,
+      "likes": null
+    }
+  ],
+  "count": 1,
+  "stale": false,
+  "error": null
 }
 ```
 
@@ -215,6 +269,104 @@ ostatni model per runtime. Aktualny stan pobierzesz z:
 
 ```bash
 GET /api/v1/system/llm-servers/active
+```
+
+## Cache i tryb offline
+
+Backend cache’uje listy trendów i katalogi modeli na 30 minut. W przypadku braku
+Internetu endpointy zwracają ostatni wynik z cache z flagą `stale: true` oraz
+opcjonalnym polem `error`.
+
+UI dodatkowo cache’uje trendy i katalog modeli w `localStorage` i nie odświeża
+ich automatycznie po restarcie serwera Next.js. Odświeżenie następuje tylko po
+kliknięciu przycisków „Odśwież trendy” i „Odśwież katalog”.
+
+Endpoint `models/news` korzysta z publicznego RSS HuggingFace
+`https://huggingface.co/blog/feed.xml` i nie wymaga tokena.
+Tryb `type=papers` parsuje dane z HTML `https://huggingface.co/papers/month/YYYY-MM`
+(brak oficjalnego RSS), dlatego zależy od struktury strony.
+Tłumaczenie treści news/papers używa aktywnego modelu, ale dla długich tekstów
+aktualnie tłumaczony jest tylko początkowy fragment (skrócony opis), aby
+utrzymać stabilność i limity czasu. Do zaplanowania: podział długich treści na
+krótsze fragmenty i pełne tłumaczenie całego tekstu.
+
+### Scenariusze testowe (Nowości / Gazeta)
+1. **Nowości (News) - cache per język**
+   - Ustaw język panelu (PL/EN/DE), odśwież Nowości.
+   - Oczekiwane: poprawne tłumaczenie + cache `localStorage` z kluczem języka.
+2. **Gazeta (Papers) - tłumaczenie fragmentu**
+   - Odśwież Papers, sprawdź że opis jest skrócony i przetłumaczony.
+   - Oczekiwane: brak 500, stabilne czasy odpowiedzi.
+3. **UI**
+   - Sprawdź przyciski „Zobacz” w Nowościach i Papers (ramka, spójny styl).
+   - Sprawdź akordeony i ręczne odświeżanie tylko danej sekcji.
+
+## Narzędzie tłumaczeń (Translation Tool)
+
+Backend udostępnia uniwersalny endpoint tłumaczeń oparty o aktywny runtime/model:
+
+```bash
+POST /api/v1/translate
+Content-Type: application/json
+
+{
+  "text": "Hello world",
+  "source_lang": "en",
+  "target_lang": "pl",
+  "use_cache": true
+}
+```
+
+Odpowiedź:
+```json
+{
+  "success": true,
+  "translated_text": "Witaj świecie",
+  "target_lang": "pl"
+}
+```
+
+Uwagi:
+- Obsługiwane języki: `pl`, `en`, `de`.
+- Tłumaczenia news/papers korzystają z tego mechanizmu.
+- Długie treści są obecnie tłumaczone fragmentami (skrócony opis) dla stabilności.
+
+### Scenariusze testowe (Translation Tool)
+1. **Tłumaczenie podstawowe**
+   - Wyślij `/api/v1/translate` z krótkim tekstem.
+   - Oczekiwane: poprawne tłumaczenie w odpowiedzi.
+2. **Język docelowy**
+   - Testuj `pl`, `en`, `de`.
+   - Oczekiwane: format odpowiedzi spójny, brak błędów 400/500.
+3. **Błędne dane**
+   - Wyślij nieobsługiwany `target_lang` (np. `fr`).
+   - Oczekiwane: HTTP 400 z komunikatem walidacyjnym.
+
+#### Papers (HuggingFace Papers Month)
+
+```bash
+GET /api/v1/models/news?provider=huggingface&limit=5&type=papers&month=2025-12
+```
+
+Response:
+```json
+{
+  "success": true,
+  "provider": "huggingface",
+  "items": [
+    {
+      "title": "Nowa publikacja",
+      "url": "https://huggingface.co/papers/2512.00001",
+      "summary": "Opis publikacji...",
+      "published_at": "2025-12-01T12:00:00.000Z",
+      "authors": ["Autor 1", "Autor 2"],
+      "source": "huggingface"
+    }
+  ],
+  "count": 1,
+  "stale": false,
+  "error": null
+}
 ```
 
 Przełączenie runtime + aktywacja modelu:

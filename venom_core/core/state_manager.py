@@ -215,6 +215,28 @@ class StateManager:
         task.logs.append(log_message)
         self._schedule_save()
 
+    def update_partial_result(
+        self, task_id: UUID, partial_result: str, persist: bool = False
+    ) -> None:
+        """
+        Aktualizuje częściowy wynik zadania (np. stream chunk).
+
+        Args:
+            task_id: ID zadania
+            partial_result: Złożony fragment odpowiedzi
+            persist: Czy zapisać do pliku stanu (domyślnie False, aby nie spamować dysku)
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            logger.warning(
+                f"Próba aktualizacji wyniku dla nieistniejącego zadania: {task_id}"
+            )
+            return
+
+        task.result = partial_result
+        if persist:
+            self._schedule_save()
+
     def update_context(self, task_id: UUID, updates: Dict[str, Any]) -> None:
         """
         Aktualizuje słownik context_history zadania (shallow merge).

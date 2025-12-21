@@ -3,7 +3,6 @@
 import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { statusTone } from "@/lib/status";
-import { Loader2 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 type ConversationBubbleProps = {
@@ -67,10 +66,7 @@ export function ConversationBubble({
             <span className="flex items-center gap-2">{footerActions}</span>
           )}
           {pending && role === "assistant" && (
-            <span className="flex items-center gap-1 text-amber-300">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              W toku
-            </span>
+            <span className="text-amber-300">W toku</span>
           )}
           {status && <Badge tone={statusTone(status)}>{status}</Badge>}
           {requestId && <span>#{requestId.slice(0, 6)}…</span>}

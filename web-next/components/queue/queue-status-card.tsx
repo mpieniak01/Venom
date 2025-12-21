@@ -4,7 +4,6 @@ import type { QueueStatus } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/i18n";
-import { Loader2 } from "lucide-react";
 
 type QueueStatusCardProps = {
   queue?: QueueStatus | null;
@@ -33,7 +32,6 @@ export function QueueStatusCard({
       <div data-testid={testId}>
         {loading ? (
           <div className="flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Ładuję status kolejki…
           </div>
         ) : (
@@ -84,7 +82,6 @@ export function QueueStatusCard({
       </div>
       {loading && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-3xl bg-black/60 text-xs text-zinc-300">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Ładuję status kolejki…
         </div>
       )}

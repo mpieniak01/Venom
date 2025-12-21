@@ -529,12 +529,6 @@ Przykłady:
             self._append_user_phrase("INFRA_STATUS", user_input, language)
             return "INFRA_STATUS"
 
-        if self._llm_disabled and self.kernel is None:
-            logger.warning(
-                "IntentManager działa bez kernela i bez wsparcia LLM - zwracam GENERAL_CHAT"
-            )
-            return "GENERAL_CHAT"
-
         def _build_chat_history(system_as_user: bool) -> ChatHistory:
             chat_history = ChatHistory()
             if system_as_user:
@@ -559,6 +553,11 @@ Przykłady:
                     )
                 )
             return chat_history
+
+        if not self.kernel or self._llm_disabled:
+            logger.info("Brak dopasowania intencji i brak LLM - zwracam GENERAL_CHAT")
+            self.last_intent_debug["source"] = "fallback"
+            return "GENERAL_CHAT"
 
         # Przygotuj historię rozmowy
         chat_history = _build_chat_history(system_as_user=False)

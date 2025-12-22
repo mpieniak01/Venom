@@ -1,4 +1,5 @@
 // Logika grafu wiedzy z Cytoscape.js
+const { apiFetchJson } = window.VenomApi;
 
 let cy = null; // Instancja Cytoscape
 let graphData = null; // Dane grafu
@@ -60,8 +61,9 @@ async function initGraph() {
 
     try {
         // Pobierz dane grafu z API
-        const response = await fetch('/api/v1/knowledge/graph');
-        const data = await response.json();
+        const data = await apiFetchJson('/api/v1/knowledge/graph', {}, {
+            errorMessage: 'Błąd podczas ładowania danych grafu'
+        });
 
         if (data.status !== 'success') {
             throw new Error('Błąd podczas ładowania danych grafu');

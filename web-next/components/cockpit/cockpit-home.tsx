@@ -1477,98 +1477,100 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
             className="allow-overflow overflow-visible"
           >
-            {llmServersLoading ? (
-              <p className="text-sm text-zinc-500">Ładuję status serwerów…</p>
-            ) : llmServers.length === 0 ? (
-              <EmptyState
-                icon={<Package className="h-4 w-4" />}
-                title="Brak danych"
-                description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
-              />
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card">
-                  <div className="grid gap-3">
-                    <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                      Serwer
-                    </label>
-                    <SelectMenu
-                      value={selectedLlmServer}
-                      options={llmServerOptions}
-                      onChange={setSelectedLlmServer}
-                      ariaLabel="Wybierz serwer LLM"
-                      placeholder="Wybierz serwer"
-                      buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                      menuClassName="w-full max-h-72 overflow-y-auto"
-                    />
-                    <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                      Model
-                    </label>
-                    <SelectMenu
-                      value={selectedLlmModel}
-                      options={llmModelOptions}
-                      onChange={setSelectedLlmModel}
-                      ariaLabel="Wybierz model LLM"
-                      placeholder="Brak modeli"
-                      disabled={availableModelsForServer.length === 0}
-                      buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                      menuClassName="w-full max-h-72 overflow-y-auto"
-                    />
-                    {selectedLlmServer && availableModelsForServer.length === 0 && (
-                      <div className="space-y-2">
-                        <EmptyState
-                          icon={<Package className="h-4 w-4" />}
-                          title="Brak modeli"
-                          description="Dodaj model dla wybranego serwera, aby go aktywować."
-                        />
-                      </div>
-                    )}
-                    <Link
-                      href="/docs/llm-models"
-                      className="group inline-flex cursor-pointer items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]"
-                    >
-                      <HelpCircle
-                        className="h-4 w-4 transition group-hover:opacity-90 !text-[color:var(--secondary)]"
-                        aria-hidden="true"
-                      />
-                      <span className="!text-[color:var(--secondary)]">
-                        Instrukcja dodawania modeli
-                      </span>
-                    </Link>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-                    <span>
-                      Status:{" "}
-                      {selectedServerEntry
-                        ? resolveServerStatus(
-                            selectedServerEntry.display_name,
-                            selectedServerEntry.status,
-                          )
-                        : "unknown"}
-                    </span>
-                    <span>
-                      Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
-                      {activeServerName || "—"}
-                    </span>
-                  </div>
-                  <Button
-                    variant="macro"
-                    size="sm"
-                    className="mt-4 w-full justify-center text-center tracking-[0.2em]"
-                    onClick={handleLlmServerActivate}
+            <div className="space-y-3">
+              {llmServersLoading ? (
+                <p className="text-sm text-zinc-500">Ładuję status serwerów…</p>
+              ) : llmServers.length === 0 ? (
+                <EmptyState
+                  icon={<Package className="h-4 w-4" />}
+                  title="Brak danych"
+                  description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
+                />
+              ) : null}
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card">
+                <div className="grid gap-3">
+                  <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                    Serwer
+                  </label>
+                  <SelectMenu
+                    value={selectedLlmServer}
+                    options={llmServerOptions}
+                    onChange={setSelectedLlmServer}
+                    ariaLabel="Wybierz serwer LLM"
+                    placeholder="Wybierz serwer"
+                    disabled={llmServers.length === 0}
+                    buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                    menuClassName="w-full max-h-72 overflow-y-auto"
+                  />
+                  <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                    Model
+                  </label>
+                  <SelectMenu
+                    value={selectedLlmModel}
+                    options={llmModelOptions}
+                    onChange={setSelectedLlmModel}
+                    ariaLabel="Wybierz model LLM"
+                    placeholder="Brak modeli"
                     disabled={
-                      llmActionPending === `activate:${selectedLlmServer}` ||
-                      !selectedLlmServer ||
-                      !selectedLlmModel
+                      llmServers.length === 0 || availableModelsForServer.length === 0
                     }
+                    buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                    menuClassName="w-full max-h-72 overflow-y-auto"
+                  />
+                  {selectedLlmServer && availableModelsForServer.length === 0 && (
+                    <div className="space-y-2">
+                      <EmptyState
+                        icon={<Package className="h-4 w-4" />}
+                        title="Brak modeli"
+                        description="Dodaj model dla wybranego serwera, aby go aktywować."
+                      />
+                    </div>
+                  )}
+                  <Link
+                    href="/docs/llm-models"
+                    className="group inline-flex cursor-pointer items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]"
                   >
+                    <HelpCircle
+                      className="h-4 w-4 transition group-hover:opacity-90 !text-[color:var(--secondary)]"
+                      aria-hidden="true"
+                    />
+                    <span className="!text-[color:var(--secondary)]">
+                      Instrukcja dodawania modeli
+                    </span>
+                  </Link>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                  <span>
+                    Status:{" "}
+                    {selectedServerEntry
+                      ? resolveServerStatus(
+                          selectedServerEntry.display_name,
+                          selectedServerEntry.status,
+                        )
+                      : "unknown"}
+                  </span>
+                  <span>
+                    Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
+                    {activeServerName || "—"}
+                  </span>
+                </div>
+                <Button
+                  variant="macro"
+                  size="sm"
+                  className="mt-4 w-full justify-center text-center tracking-[0.2em]"
+                  onClick={handleLlmServerActivate}
+                  disabled={
+                    llmActionPending === `activate:${selectedLlmServer}` ||
+                    !selectedLlmServer ||
+                    !selectedLlmModel
+                  }
+                >
                     {llmActionPending === `activate:${selectedLlmServer}`
                       ? "Aktywuję..."
                       : "Aktywuj"}
                   </Button>
                 </div>
               </div>
-            )}
           </Panel>
           <Panel
             title="Live Feed"

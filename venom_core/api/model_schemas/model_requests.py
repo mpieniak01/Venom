@@ -28,7 +28,9 @@ class ModelSwitchRequest(BaseModel):
     """Request do zmiany aktywnego modelu."""
 
     name: str
-    role: Optional[str] = None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
+    role: Optional[str] = (
+        None  # Opcjonalnie: dla jakiej roli (np. "reasoning", "creative")
+    )
 
     @field_validator("name")
     def validate_name(cls, v):

@@ -20,6 +20,10 @@ export class VenomWebSocket {
 
   connect() {
     if (this.ws) return;
+    if (process.env.NEXT_PUBLIC_DISABLE_WS_EVENTS === "true") {
+      this.onStatus?.(false);
+      return;
+    }
 
     this.ws = new WebSocket(this.path);
     this.ws.onopen = () => {

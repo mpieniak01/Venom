@@ -135,10 +135,10 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4">
           <header className="mb-3 flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("commandCenter.shortcuts.eyebrow")}
               </p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="heading-h3">
                 {t("commandCenter.shortcuts.title")}
               </h3>
             </div>
@@ -164,10 +164,10 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4">
           <header className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("commandCenter.tasks.eyebrow")}
               </p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="heading-h3">
                 {t("commandCenter.tasks.title")}
               </h3>
             </div>
@@ -196,10 +196,10 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         <section className="surface-card p-4" data-testid="command-center-services-section">
           <header className="flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("commandCenter.services.eyebrow")}
               </p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 className="heading-h3">
                 {t("commandCenter.services.title")}
               </h3>
             </div>

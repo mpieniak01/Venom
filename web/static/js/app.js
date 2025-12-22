@@ -1,4 +1,5 @@
 // Venom Cockpit - Main Application
+const { apiFetchJson } = window.VenomApi;
 
 class VenomDashboard {
     constructor() {
@@ -843,13 +844,9 @@ class VenomDashboard {
 
     async fetchMetrics() {
         try {
-            const response = await fetch('/api/v1/metrics');
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const metrics = await response.json();
+            const metrics = await apiFetchJson('/api/v1/metrics', {}, {
+                errorMessage: 'Nie udało się pobrać metryk'
+            });
             this.updateMetrics(metrics);
 
         } catch (error) {
@@ -2980,13 +2977,9 @@ class VenomDashboard {
         this.historyLoading = true;
 
         try {
-            const response = await fetch('/api/v1/history/requests?limit=50');
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const requests = await response.json();
+            const requests = await apiFetchJson('/api/v1/history/requests?limit=50', {}, {
+                errorMessage: 'Nie udało się pobrać historii'
+            });
 
             if (requests.length === 0) {
                 this.elements.historyTableBody.innerHTML = `
@@ -3078,13 +3071,9 @@ class VenomDashboard {
         this.elements.historyModalBody.innerHTML = '<div class="loading-state">Ładowanie szczegółów...</div>';
 
         try {
-            const response = await fetch(`/api/v1/history/requests/${requestId}`);
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const detail = await response.json();
+            const detail = await apiFetchJson(`/api/v1/history/requests/${requestId}`, {}, {
+                errorMessage: 'Nie udało się pobrać szczegółów'
+            });
 
             // Render request info
             const createdDate = new Date(detail.created_at);

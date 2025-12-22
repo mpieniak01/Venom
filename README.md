@@ -606,7 +606,7 @@ pre-commit run --all-files
 ### Linting i formatowanie
 
 ```bash
-cd /path/to/venom
+cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
 # Ruff (linter + formatter)

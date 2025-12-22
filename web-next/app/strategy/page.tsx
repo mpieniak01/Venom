@@ -17,6 +17,7 @@ import {
 import { useTaskStream } from "@/hooks/use-task-stream";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Target } from "lucide-react";
 import { statusTone } from "@/lib/status";
 import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
@@ -293,10 +294,13 @@ export default function StrategyPage() {
         as="h1"
         size="lg"
         rightSlot={
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">/api/roadmap</Badge>
-            <Badge tone="neutral">/api/roadmap/status</Badge>
-            <Badge tone="neutral">/api/campaign/start</Badge>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge tone="neutral">/api/roadmap</Badge>
+              <Badge tone="neutral">/api/roadmap/status</Badge>
+              <Badge tone="neutral">/api/campaign/start</Badge>
+            </div>
+            <Target className="page-heading-icon" />
           </div>
         }
       />
@@ -331,16 +335,14 @@ export default function StrategyPage() {
         >
           📊 {reportLoading ? "Ładuję..." : "Raport Statusu"}
         </Button>
-        {actionMessage && (
-          <p className="text-xs text-zinc-400">{actionMessage}</p>
-        )}
+        {actionMessage && <p className="text-hint">{actionMessage}</p>}
       </div>
 
       {showVisionForm && (
         <Panel title="Nowa wizja" description="Utwórz roadmapę na bazie swojej wizji (/api/roadmap/create).">
           <div className="space-y-3">
             <textarea
-              className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none focus:border-violet-500/40"
+              className="min-h-[120px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none focus:border-violet-500/40"
               placeholder="Opisz wizję produktową..."
               value={visionInput}
               onChange={(e) => setVisionInput(e.target.value)}
@@ -373,14 +375,14 @@ export default function StrategyPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Wizja" description="Migawka magazynu celów">
           {roadmapData?.vision ? (
-            <div className="space-y-3 text-sm text-zinc-400">
+            <div className="space-y-3 text-sm text-muted">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">{roadmapData.vision.title}</h3>
+                <h3 className="heading-h3">{roadmapData.vision.title}</h3>
                 <Badge tone="neutral">{roadmapData.vision.status ?? "n/a"}</Badge>
               </div>
               <MarkdownPreview content={roadmapData.vision.description} />
               <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Postęp wizji</p>
+                <p className="text-caption">Postęp wizji</p>
                 <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
               </div>
             </div>
@@ -418,7 +420,7 @@ export default function StrategyPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Live KPIs" description="/api/v1/tasks – bieżące operacje agentów.">
           {liveTasksLoading ? (
-            <p className="text-sm text-zinc-400">Ładuję metryki zadań…</p>
+            <p className="text-hint">Ładuję metryki zadań…</p>
           ) : liveTaskStats.length ? (
             <div className="grid gap-3 sm:grid-cols-3">
               {liveTaskStats.map((stat) => (
@@ -435,7 +437,7 @@ export default function StrategyPage() {
         </Panel>
 
         <Panel title="Timeline KPI" description="/api/v1/history – ostatnie przepływy.">
-          {timelineLoading && <p className="text-sm text-zinc-400">Ładuję historię requestów…</p>}
+          {timelineLoading && <p className="text-hint">Ładuję historię requestów…</p>}
           {!timelineLoading && timelineEntries.length === 0 ? (
             <EmptyState
               icon={<span className="text-lg">🕒</span>}
@@ -447,13 +449,13 @@ export default function StrategyPage() {
               {timelineEntries.map((entry) => (
                 <div
                   key={entry.request_id}
-                  className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                  className="flex items-start justify-between rounded-2xl box-base px-4 py-3"
                 >
                   <div>
                     <p className="text-sm font-semibold text-white">
                       #{entry.request_id.slice(0, 8)} • {entry.prompt?.slice(0, 32) ?? "Request"}
                     </p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-hint">
                       {formatRelativeTime(entry.created_at)} • {entry.model ?? "model n/d"}
                     </p>
                   </div>
@@ -498,14 +500,14 @@ export default function StrategyPage() {
                         </span>
                         <div>
                           <p className="text-sm font-semibold">{milestone.title}</p>
-                          <p className="text-xs text-zinc-400">
+                          <p className="text-hint">
                             Postęp {progressValue.toFixed(1)}% • Priorytet {milestone.priority ?? "-"}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <Badge tone={statusTone(milestone.status)}>{milestone.status ?? "n/a"}</Badge>
-                        <p className="text-[11px] text-zinc-500">
+                        <p className="text-hint">
                           {completedTasks}/{totalTasks} zadań
                         </p>
                       </div>
@@ -513,16 +515,16 @@ export default function StrategyPage() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <GradientProgress value={progressValue} tone="indigo" className="mb-3" />
-                    <p className="text-sm text-zinc-400">{milestone.description}</p>
+                    <p className="text-hint">{milestone.description}</p>
                     <div className="mt-3 space-y-2 text-xs text-zinc-300">
-                      {(milestone.tasks || []).length === 0 && <p className="text-zinc-500">Brak zadań.</p>}
+                      {(milestone.tasks || []).length === 0 && <p className="text-hint">Brak zadań.</p>}
                       {(milestone.tasks || []).map((task, idx) => (
                         <div
                           key={`${milestone.title}-${idx}`}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
                         >
                           <p className="font-semibold text-white">{task.title}</p>
-                          <p className="text-zinc-400">
+                          <p className="text-hint">
                             {task.description || "Brak opisu."} • {task.status || "TODO"}
                           </p>
                         </div>

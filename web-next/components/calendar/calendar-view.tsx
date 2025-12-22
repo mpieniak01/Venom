@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarEvent } from "@/lib/types";
+import { Button } from "@/components/ui/button";
 
 interface CalendarViewProps {
   events: CalendarEvent[];
@@ -36,15 +37,17 @@ export function CalendarView({ events, onRefresh }: CalendarViewProps) {
 
   if (events.length === 0) {
     return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-12 text-center">
+      <div className="rounded-lg box-muted p-12 text-center">
         <div className="text-6xl mb-4">📭</div>
-        <p className="text-zinc-400 text-lg mb-4">Brak wydarzeń w wybranym zakresie</p>
-        <button
+        <p className="text-muted text-lg mb-4">Brak wydarzeń w wybranym zakresie</p>
+        <Button
           onClick={onRefresh}
-          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"
+          variant="outline"
+          size="sm"
+          className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
         >
           Odśwież
-        </button>
+        </Button>
       </div>
     );
   }
@@ -63,15 +66,17 @@ export function CalendarView({ events, onRefresh }: CalendarViewProps) {
     <div className="space-y-6">
       {/* Refresh Button */}
       <div className="flex justify-between items-center">
-        <p className="text-sm text-zinc-400">
+        <p className="text-sm text-muted">
           Znaleziono {events.length} {events.length === 1 ? "wydarzenie" : "wydarzeń"}
         </p>
-        <button
+        <Button
           onClick={onRefresh}
-          className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm transition-colors"
+          variant="outline"
+          size="xs"
+          className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
         >
           🔄 Odśwież
-        </button>
+        </Button>
       </div>
 
       {/* Events List */}
@@ -79,7 +84,7 @@ export function CalendarView({ events, onRefresh }: CalendarViewProps) {
         {Object.entries(eventsByDate).map(([date, dateEvents]) => (
           <div key={date} className="space-y-3">
             {/* Date Header */}
-            <h2 className="text-xl font-semibold text-white border-b border-zinc-800 pb-2">
+            <h2 className="heading-h2 border-b border-zinc-800 pb-2">
               {date}
             </h2>
 
@@ -88,7 +93,7 @@ export function CalendarView({ events, onRefresh }: CalendarViewProps) {
               {dateEvents.map((event, idx) => (
                 <div
                   key={event.id || idx}
-                  className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors"
+                  className="rounded-lg box-muted p-4 transition-colors hover:border-zinc-700"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -97,24 +102,22 @@ export function CalendarView({ events, onRefresh }: CalendarViewProps) {
                           🕒 {formatTime(event.start)} - {formatTime(event.end)}
                         </span>
                       </div>
-                      <h3 className="text-white font-semibold mt-1">
+                      <h3 className="heading-h3 mt-1">
                         {event.summary}
                       </h3>
                       {event.description && (
-                        <p className="text-zinc-400 text-sm mt-2 whitespace-pre-wrap">
+                        <p className="text-sm text-muted mt-2 whitespace-pre-wrap">
                           {event.description}
                         </p>
                       )}
                       {event.location && (
-                        <p className="text-zinc-500 text-sm mt-2">
+                        <p className="text-hint mt-2">
                           📍 {event.location}
                         </p>
                       )}
                     </div>
                     {event.status && (
-                      <span className="px-2 py-1 bg-zinc-800 text-zinc-400 text-xs rounded">
-                        {event.status}
-                      </span>
+                      <span className="pill-badge text-zinc-400">{event.status}</span>
                     )}
                   </div>
                 </div>

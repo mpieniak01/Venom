@@ -624,6 +624,7 @@ def setup_router_dependencies():
         llm_controller,
         model_manager,
         request_tracer,
+        hardware_bridge,
     )
     nodes_routes.set_dependencies(node_manager)
     strategy_routes.set_dependencies(orchestrator)

@@ -30,7 +30,7 @@ export function LessonActions({ tags, activeTag, onSelect }: LessonActionsProps)
           onClick={() => onSelect(tag.name)}
         >
           #{tag.name}
-          <span className="ml-2 text-[10px] uppercase text-zinc-500">{tag.count}</span>
+          <span className="ml-2 pill-badge text-zinc-500">{tag.count}</span>
         </Button>
       ))}
     </div>

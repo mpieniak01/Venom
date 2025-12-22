@@ -1,6 +1,6 @@
 """Moduł: flow_router - decyzje o routingu zadań do odpowiednich flow."""
 
-from typing import Optional, Tuple
+from typing import Tuple
 
 from venom_core.utils.logger import get_logger
 
@@ -38,6 +38,15 @@ class FlowRouter:
 
         # Deleguj decyzję do CouncilFlow
         return self._council_flow.should_use_council(context, intent)
+
+    def set_council_flow(self, council_flow) -> None:
+        """
+        Ustawia instancję CouncilFlow.
+
+        Args:
+            council_flow: Instancja CouncilFlow do użycia w routingu
+        """
+        self._council_flow = council_flow
 
     def determine_flow(
         self, context: str, intent: str

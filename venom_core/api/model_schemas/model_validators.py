@@ -1,7 +1,6 @@
 """Wspólne walidatory dla modeli AI."""
 
 import re
-from typing import Any
 
 
 def validate_model_name_basic(name: str, max_length: int = 100) -> str:

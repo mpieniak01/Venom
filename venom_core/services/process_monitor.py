@@ -56,11 +56,9 @@ class ProcessMonitor:
             uptime_seconds = int(time.time() - create_time)
 
             return {
-                "pid": pid,
                 "cpu_percent": cpu_percent,
                 "memory_mb": memory_mb,
                 "uptime_seconds": uptime_seconds,
-                "is_running": True,
             }
         except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
             return None
@@ -109,9 +107,12 @@ class ProcessMonitor:
                 lines = f.readlines()
                 if not lines:
                     return None
-                # Weź ostatnie N linii i połącz je
-                relevant_lines = lines[-max_lines:]
-                return " | ".join(line.strip() for line in relevant_lines if line.strip())
+                # Najpierw odfiltruj puste linie, potem weź ostatnie N
+                non_empty_lines = [line.strip() for line in lines if line.strip()]
+                if not non_empty_lines:
+                    return None
+                relevant_lines = non_empty_lines[-max_lines:]
+                return " | ".join(relevant_lines)
         except Exception as e:
             logger.warning(f"Błąd podczas odczytu logu z {log_file}: {e}")
             return None
@@ -127,13 +128,21 @@ class ProcessMonitor:
             True jeśli port jest otwarty i nasłuchiwany
         """
         try:
-            for conn in psutil.net_connections(kind="inet"):
+            # Sprawdzamy wyłącznie połączenia TCP (kind="tcp")
+            for conn in psutil.net_connections(kind="tcp"):
                 if conn.status == "LISTEN" and conn.laddr.port == port:
                     return True
             return False
         except (PermissionError, psutil.AccessDenied):
-            logger.warning(f"Brak uprawnień do sprawdzenia portu {port}")
-            return False
+            # Fallback: spróbuj otworzyć socket na porcie
+            logger.warning(f"Brak uprawnień do sprawdzenia portu {port}, używam fallback")
+            import socket
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.bind(("localhost", port))
+                    return False  # Port jest wolny
+            except OSError:
+                return True  # Port jest zajęty
         except Exception as e:
             logger.warning(f"Błąd podczas sprawdzania portu {port}: {e}")
             return False

@@ -95,15 +95,7 @@ class RuntimeController:
 
     def _get_process_info(self, pid: int) -> Optional[Dict]:
         """Pobiera informacje o procesie. Deleguje do ProcessMonitor."""
-        info = self.process_monitor.get_process_info(pid)
-        if info is None:
-            return None
-        # Zachowaj stary format (bez pid w zwróce)
-        return {
-            "cpu_percent": info["cpu_percent"],
-            "memory_mb": info["memory_mb"],
-            "uptime_seconds": info["uptime_seconds"],
-        }
+        return self.process_monitor.get_process_info(pid)
 
     def _read_last_log_line(self, log_file: Path, max_lines: int = 5) -> Optional[str]:
         """Czyta ostatnie linie z logu. Deleguje do ProcessMonitor."""

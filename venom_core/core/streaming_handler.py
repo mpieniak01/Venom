@@ -2,7 +2,7 @@
 
 import time
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable
 from uuid import UUID
 
 from venom_core.core import metrics as metrics_module
@@ -104,15 +104,3 @@ class StreamingHandler:
                 collector.add_llm_first_token_sample(elapsed_ms)
 
         return _handle_stream_chunk
-
-    def get_final_result(self, stream_buffer: list[str]) -> str:
-        """
-        Zwraca finalny wynik z bufora streamingu.
-
-        Args:
-            stream_buffer: Lista fragmentów tekstu
-
-        Returns:
-            Połączony tekst
-        """
-        return "".join(stream_buffer)

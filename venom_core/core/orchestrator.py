@@ -1227,7 +1227,7 @@ class Orchestrator:
                 event_broadcaster=self.event_broadcaster,
             )
             # Zaktualizuj flow_router z council_flow
-            self.flow_router._council_flow = self._council_flow
+            self.flow_router.set_council_flow(self._council_flow)
 
         # Deleguj decyzję do FlowRouter
         return self.flow_router.should_use_council(context, intent)

@@ -99,7 +99,7 @@ export function CommandPalette({ open, onOpenChange, onOpenQuickActions }: Comma
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in data-[state=closed]:fade-out" />
-        <Dialog.Content className="fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 rounded-3xl border border-white/10 bg-zinc-950/95 p-6 shadow-2xl focus:outline-none">
+      <Dialog.Content className="card-shell fixed left-1/2 top-24 z-50 w-full max-w-3xl -translate-x-1/2 bg-zinc-950/95 p-6 shadow-2xl focus:outline-none">
           <div className="mb-4 flex items-center gap-3">
             <div className="rounded-2xl bg-white/5 p-2 text-violet-200">
               <Command className="h-5 w-5" />

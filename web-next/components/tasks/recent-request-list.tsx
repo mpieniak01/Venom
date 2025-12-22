@@ -18,7 +18,7 @@ export function RecentRequestList({
   const items = (requests || []).slice(0, limit);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+    <div className="card-shell card-base p-4 text-sm">
       <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Ostatnie requesty</p>
       {items.length === 0 ? (
         <p className="mt-3 rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-400">

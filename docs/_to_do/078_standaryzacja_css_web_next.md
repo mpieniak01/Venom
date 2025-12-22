@@ -50,6 +50,79 @@
   - `web-next/components/brain/brain-home.tsx`
   - `web-next/components/cockpit/cockpit-home.tsx` (lokalne sekcje)
 
+## Dodatkowe obserwacje (spojnosc HTML/CSS na podstronach)
+- Standaryzacja jest czesciowa: `SectionHeading` jest uzywany tylko w czesci widokow, reszta ma reczne naglowki z innym `tracking` i rozmiarami.
+- W wielu miejscach nadal uzywane sa surowe `<button>` zamiast `Button`/`IconButton`.
+- Karty/panele wystepuja w kilku wariantach (`glass-panel`, `surface-card`, `card-shell`/`card-base`) bez jednego wzorca.
+- To oznacza brak jednolitej logiki HTML i mapowania do CSS dla tych samych elementow UI.
+
+## Wymaganie
+- Nalezy wystandaryzowac logike HTML i mapowanie do CSS dla podstawowych elementow UI (karty/panele, przyciski, naglowki) na wszystkich podstronach `web-next`.
+- Boxy (karty/panele) oraz sekcje tytulu/naglowka maja byc budowane podobnie w calym systemie.
+- Dopuszczalne sa 2-3 warianty (np. primary/secondary/compact), ale z zachowaniem jednego standardu klas i struktury HTML.
+
+## Gleboka analiza (co jest niespojnie)
+### Karty/panele (boxy)
+- Obecnie rownolegle istnieja 3 style: `glass-panel`, `surface-card`, `card-shell/card-base`.
+- W `components/ui/Panel` obowiazuje `glass-panel`, ale wiele kart nie korzysta z tego wzorca.
+- Skutek: te same typy boxow maja inna ramke, tlo, promienie i cien.
+
+### Naglowki sekcji
+- `SectionHeading` wystepuje tylko w wybranych widokach.
+- Reszta sekcji ma recznie skladane naglowki z innym `tracking`, rozmiarami i spacingiem.
+- Skutek: brak jednolitej hierarchii typografii.
+
+### Przyciski
+- `Button`/`IconButton` sa standardem w UI, ale liczne widoki uzywaja `<button>` z recznymi klasami.
+- Skutek: niespojne stany hover/focus/disabled i rozne warianty CTA.
+
+### Tokeny z README vs CSS
+- `surface-card` deklarowane w README, ale do niedawna brak definicji w CSS.
+- Skutek: rozjazd dokumentacji i implementacji.
+
+## Lista zmian do wykonania (propozycja)
+### 1) Standaryzacja boxow
+- Ustal jeden bazowy komponent/klase dla kart (np. `card-shell` + warianty `card-base` / `card-accent`).
+- Zmapuj `surface-card` jako jeden z wariantow (np. overlay/compact).
+- Zaktualizuj wszystkie karty w widokach do wspolnego wzorca.
+
+### 2) Standaryzacja naglowkow
+- Ustal standard `SectionHeading` jako domyslny dla sekcji.
+- Dopusc 2-3 warianty (np. `lg`, `md`, `sm`) i stosuj je konsekwentnie.
+- Usun reczne naglowki tam, gdzie to mozliwe.
+
+### 3) Standaryzacja przyciskow
+- Zastap reczne `<button>` w kluczowych widokach `Button`/`IconButton`.
+- Dopusc reczne `<button>` tylko w miejscach, gdzie wymaga tego layout (np. customowe dropdowny).
+
+### 4) Porzadek w tokenach CSS
+- Zweryfikuj `globals.css` vs `web-next/README.md`.
+- Dopisz brakujace tokeny albo zaktualizuj README.
+
+## Priorytety
+1) Karty/panele (najwiekszy rozjazd wizualny).
+2) Naglowki sekcji.
+3) Przyciski.
+4) Tokeny/dokumentacja.
+
+## Standard docelowy (web-next)
+### Karty/panele (boxy)
+- Dozwolone warianty (max 3):
+  1) `card-shell card-base` (domyslny box)
+  2) `card-shell card-accent` (wariant z gradientem/akcentem)
+  3) `surface-card` (overlay/utility w panelach bocznych i drawerach)
+- Zakaz: tworzenia nowych kombinacji boxow bez uzasadnienia w raporcie.
+
+### Naglowki sekcji
+- Dozwolone warianty: `SectionHeading` z `size=lg|md|sm`.
+- Ręczne naglowki tylko w wyjatkowych layoutach (uzasadnienie w raporcie).
+
+### Przyciski
+- Dozwolone warianty: `Button`/`IconButton` z ustalonymi `variant` i `size`.
+- Ręczne `<button>` tylko dla elementow sterowanych przez biblioteki zewnetrzne.
+
+### Tokeny i README
+- `web-next/README.md` musi odzwierciedlac realne tokeny i klasy w `globals.css`.
 ## Plan prac
 1) Inwentaryzacja elementow UI: karty/panele, przyciski, naglowki, listy/empty states.
 2) Mapa rozjazdow: gdzie jest manualne stylowanie vs gdzie sa komponenty UI.

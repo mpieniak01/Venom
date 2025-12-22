@@ -11,7 +11,7 @@ type CockpitMetricCardProps = {
 
 export function CockpitMetricCard({ primaryValue, secondaryLabel, progress, footer }: CockpitMetricCardProps) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white shadow-card">
+    <div className="card-shell card-base p-5 text-sm">
       <div className="flex items-center justify-between">
         <p className="text-4xl font-semibold">{primaryValue}</p>
         {secondaryLabel && <p className="text-xs text-zinc-400">{secondaryLabel}</p>}
@@ -42,7 +42,7 @@ type CockpitTokenCardProps = {
 
 export function CockpitTokenCard({ totalValue, splits, chartSlot }: CockpitTokenCardProps) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white shadow-card">
+    <div className="card-shell card-base p-5 text-sm">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Zużycie tokenów</p>

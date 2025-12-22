@@ -10,7 +10,20 @@ import { useTaskStream } from "@/hooks/use-task-stream";
 import type { FlowTrace, HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { Activity, Layers, Radar, TimerReset, ListFilter, ZoomIn, ZoomOut, RotateCcw, RefreshCw, Loader2 } from "lucide-react";
+import {
+  Activity,
+  Layers,
+  Radar,
+  TimerReset,
+  ListFilter,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  RefreshCw,
+  Loader2,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import { LatencyCard } from "@/components/inspector/lag-card";
 import { HistoryList } from "@/components/history/history-list";
 import { formatRelativeTime } from "@/lib/date";
@@ -77,6 +90,7 @@ export default function InspectorPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const [mermaidReloadKey, setMermaidReloadKey] = useState(0);
+  const [flowFullscreen, setFlowFullscreen] = useState(false);
   type MermaidAPI = typeof import("mermaid").default;
   const [mermaidApi, setMermaidApi] = useState<MermaidAPI | null>(null);
   const svgRef = useRef<HTMLDivElement | null>(null);
@@ -417,63 +431,78 @@ export default function InspectorPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <Panel
-            title="Kolejka requestów"
-            description="Ostatnie 50 historii RequestTracer."
-            action={
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={handleHistoryRefresh}
-                disabled={historyRefreshPending}
-              >
-                <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                {historyRefreshPending ? "Odświeżam…" : "Odśwież"}
-              </Button>
-            }
-          >
-            <div className="relative min-h-[280px]">
-              <HistoryList
-                entries={history}
-                selectedId={selectedId}
-                onSelect={(entry) => handleHistorySelect(entry.request_id)}
-                emptyTitle="Brak historii do wyświetlenia"
-                emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
-              />
-            </div>
-          </Panel>
+      <div
+        className={`grid gap-6 ${
+          flowFullscreen ? "grid-cols-1" : "xl:grid-cols-[360px_minmax(0,1fr)]"
+        }`}
+      >
+        {!flowFullscreen && (
+          <aside className="space-y-4">
+            <Panel
+              title="Kolejka requestów"
+              description="Ostatnie 50 historii RequestTracer."
+              action={
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={handleHistoryRefresh}
+                  disabled={historyRefreshPending}
+                >
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  {historyRefreshPending ? "Odświeżam…" : "Odśwież"}
+                </Button>
+              }
+            >
+              <div className="relative min-h-[280px]">
+                <HistoryList
+                  entries={history}
+                  selectedId={selectedId}
+                  onSelect={(entry) => handleHistorySelect(entry.request_id)}
+                  emptyTitle="Brak historii do wyświetlenia"
+                  emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
+                />
+              </div>
+            </Panel>
 
-          <Panel
-            title="Task telemetry"
-            description="Status agentów oczekujących na wykonanie."
-          >
-            <TaskStatusBreakdown
+            <Panel
               title="Task telemetry"
-              datasetLabel="Zadania w obserwacji"
-              totalLabel="Aktywne"
-              totalValue={inspectorStats.activeTasks}
-              entries={taskBreakdown.map((entry) => ({
-                label: entry.status,
-                value: entry.count,
-              }))}
-              emptyMessage="Taski pojawią się, gdy kolejka uruchomi nowe zadania."
-            />
-          </Panel>
-        </aside>
+              description="Status agentów oczekujących na wykonanie."
+            >
+              <TaskStatusBreakdown
+                title="Task telemetry"
+                datasetLabel="Zadania w obserwacji"
+                totalLabel="Aktywne"
+                totalValue={inspectorStats.activeTasks}
+                entries={taskBreakdown.map((entry) => ({
+                  label: entry.status,
+                  value: entry.count,
+                }))}
+                emptyMessage="Taski pojawią się, gdy kolejka uruchomi nowe zadania."
+              />
+            </Panel>
+          </aside>
+        )}
 
         <section className="space-y-6">
           <Panel
             title="Diagnoza przepływu"
-            description="Mermaid flow graph + zoom/drag (react-zoom-pan-pinch)."
             action={
-              <div className="flex flex-col items-start gap-1 text-sm text-zinc-400 sm:flex-row sm:items-center sm:gap-3">
-                <span>
-                  Wybrany request:{" "}
-                  <span className="font-semibold text-white">{selectedId ?? "—"}</span>
-                </span>
-                {detailError && <span className="text-rose-300">{detailError}</span>}
+              <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
+                <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
+                  <span>
+                    Wybrany request:{" "}
+                    <span className="font-semibold text-white">{selectedId ?? "—"}</span>
+                  </span>
+                  {detailError && <span className="text-rose-300">{detailError}</span>}
+                </div>
+                <IconButton
+                  label={flowFullscreen ? "Wyłącz pełny ekran" : "Pełny ekran"}
+                  size="xs"
+                  variant="outline"
+                  className="border-white/10 text-white"
+                  icon={flowFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                  onClick={() => setFlowFullscreen((prev) => !prev)}
+                />
               </div>
             }
           >

@@ -35,7 +35,7 @@ export function TaskStatusBreakdown({
   }));
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+    <div className="card-shell card-base p-4 text-sm">
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{title}</p>

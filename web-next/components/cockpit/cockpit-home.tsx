@@ -1487,7 +1487,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               />
             ) : (
               <div className="space-y-3">
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card">
+                <div className="card-shell card-base p-4 text-sm">
                   <div className="grid gap-3">
                     <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
                       Serwer
@@ -2699,7 +2699,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
       >
           <div className="space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+            <div className="card-shell bg-black/30 p-4">
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
               <p className="mt-2 text-sm text-white">
                 {git?.changes ?? git?.status ?? "Brak danych z API."}

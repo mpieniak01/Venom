@@ -159,17 +159,19 @@ function TopBarIconAction({
         : "flex";
 
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
       data-testid={testId}
+      variant="outline"
+      size="sm"
       className={cn(
-        "flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs uppercase tracking-wider text-white transition hover:border-white/40 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-400",
+        "gap-2 px-3 py-2 text-xs uppercase tracking-wider hover:border-white/40 focus:ring-2 focus:ring-emerald-400",
         visibilityClass,
       )}
     >
       {icon}
       <span className="hidden md:inline-flex">{label}</span>
-    </button>
+    </Button>
   );
 }

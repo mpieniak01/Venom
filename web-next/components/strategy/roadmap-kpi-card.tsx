@@ -24,7 +24,7 @@ export function RoadmapKpiCard({
   const safePercent = Math.min(Math.max(percent, 0), 100);
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white shadow-card">
+    <div className="card-shell card-base p-4 text-sm">
       <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{label}</p>
       <div className="mt-2 flex items-center justify-between">
         <p className="text-2xl font-semibold">{value}</p>

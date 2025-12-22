@@ -1,4 +1,5 @@
 // Venom Strategy Dashboard - War Room
+const { apiFetchJson, apiFetch } = window.VenomApi;
 
 class StrategyDashboard {
     constructor() {
@@ -46,11 +47,9 @@ class StrategyDashboard {
 
     async loadRoadmap() {
         try {
-            const response = await fetch(`${this.API_BASE}/roadmap`);
-            if (!response.ok) {
-                throw new Error('Failed to load roadmap');
-            }
-            const data = await response.json();
+            const data = await apiFetchJson(`${this.API_BASE}/roadmap`, {}, {
+                errorMessage: 'Failed to load roadmap'
+            });
             this.renderRoadmap(data);
         } catch (error) {
             console.error('Error loading roadmap:', error);
@@ -147,15 +146,13 @@ class StrategyDashboard {
 
     async defineVision(visionText) {
         try {
-            const response = await fetch(`${this.API_BASE}/roadmap/create`, {
+            await apiFetchJson(`${this.API_BASE}/roadmap/create`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({vision: visionText})
+            }, {
+                errorMessage: 'Failed to create roadmap'
             });
-            if (!response.ok) {
-                throw new Error('Failed to create roadmap');
-            }
-            await response.json();
             this.showNotification('Roadmapa utworzona! Milestones i Tasks zostały wygenerowane.', 'success');
             this.loadRoadmap();
         } catch (error) {
@@ -169,12 +166,11 @@ class StrategyDashboard {
             return;
         }
         try {
-            const response = await fetch(`${this.API_BASE}/campaign/start`, {
+            await apiFetch(`${this.API_BASE}/campaign/start`, {
                 method: 'POST'
+            }, {
+                errorMessage: 'Failed to start campaign'
             });
-            if (!response.ok) {
-                throw new Error('Failed to start campaign');
-            }
             this.showNotification('Kampania rozpoczęta! Monitoruj postępy w Task Monitor.', 'success');
         } catch (error) {
             console.error('Error starting campaign:', error);
@@ -184,11 +180,9 @@ class StrategyDashboard {
 
     async requestStatusReport() {
         try {
-            const response = await fetch(`${this.API_BASE}/roadmap/status`);
-            if (!response.ok) {
-                throw new Error('Failed to get status report');
-            }
-            const data = await response.json();
+            const data = await apiFetchJson(`${this.API_BASE}/roadmap/status`, {}, {
+                errorMessage: 'Failed to get status report'
+            });
             this.showNotification(data.report || 'Brak raportu', 'info');
         } catch (error) {
             console.error('Error getting status:', error);

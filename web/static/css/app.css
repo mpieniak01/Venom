@@ -589,6 +589,79 @@ body {
     color: var(--text-secondary);
 }
 
+.panel-header--spaced {
+    margin-top: 20px;
+}
+
+.section-top-20 {
+    margin-top: 20px;
+}
+
+.section-top-15 {
+    margin-top: 15px;
+}
+
+.section-bottom-15 {
+    margin-bottom: 15px;
+}
+
+.chat-input-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.model-installer-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.model-install-input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #374151;
+    background: #1f2937;
+    color: #e5e7eb;
+    border-radius: 4px;
+}
+
+.model-install-button {
+    padding: 8px 16px;
+}
+
+.download-progress {
+    margin-top: 8px;
+}
+
+.download-progress-track {
+    background: #1f2937;
+    border-radius: 4px;
+    overflow: hidden;
+    height: 20px;
+}
+
+.download-progress-bar {
+    background: #3b82f6;
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.download-progress-text {
+    font-size: 12px;
+    margin-top: 4px;
+    color: #9ca3af;
+}
+
+.btn-full {
+    width: 100%;
+}
+
+.is-hidden {
+    display: none;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
     width: 8px;
@@ -1670,6 +1743,11 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 1000;
+}
+
+.modal.is-hidden {
+    display: none;
+    pointer-events: none;
 }
 
 .modal-content {

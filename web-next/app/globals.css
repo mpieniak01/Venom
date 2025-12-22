@@ -172,40 +172,40 @@ aside.glass-panel::after, nav.glass-panel::after { display: none !important; }
 
 /* 1. Mały napis "// DASHBOARD CONTROL" -> NEON ZIELONY */
 main .space-y-10 > .flex > div:first-child > p.uppercase {
-    color: var(--primary) !important;
-    text-shadow: 0 0 15px var(--primary-glow) !important; /* Glow */
-    letter-spacing: 3px !important;
-    font-weight: 700 !important;
-    font-family: var(--font-tech) !important;
+    color: var(--primary);
+    text-shadow: 0 0 15px var(--primary-glow); /* Glow */
+    letter-spacing: 3px;
+    font-weight: 700;
+    font-family: var(--font-tech);
 }
 
 /* 2. Główny Tytuł "Centrum Dowodzenia AI" -> CZYSTA BIEL (bez neonu) */
 main .space-y-10 > .flex > div:first-child > h1 {
-     color: #ffffff !important; /* Biały */
-     text-shadow: none !important; /* Brak poświaty */
-     font-family: var(--font-tech) !important;
-     font-weight: 600 !important;
-     letter-spacing: -1px !important;
+     color: #ffffff; /* Biały */
+     text-shadow: none; /* Brak poświaty */
+     font-family: var(--font-tech);
+     font-weight: 600;
+     letter-spacing: -1px;
 }
 
 /* Opis pod spodem -> Szary */
 main .space-y-10 > .flex > div:first-child > p.text-zinc-400 {
-    color: #888 !important;
+    color: #888;
 }
 
 /* Reszta nagłówków w panelach -> Biała */
 .glass-panel h1, .glass-panel h2, .glass-panel h3,
 .rounded-panel h1, .rounded-panel h2, .rounded-panel h3,
 section h3 {
-    color: #ffffff !important;
-    text-shadow: none !important;
+    color: #ffffff;
+    text-shadow: none;
 }
 
 /* =========================================
    6. DETALE UI
    ========================================= */
 .font-tech, code, pre, .text-xs {
-  font-family: var(--font-tech) !important;
+  font-family: var(--font-tech);
 }
 
 input, textarea {

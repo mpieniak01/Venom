@@ -1508,7 +1508,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       value={selectedLlmModel}
                       options={llmModelOptions}
                       onChange={setSelectedLlmModel}
-                      ariaLabel="Wybierz model LLM"
+                      ariaLabel="Wybierz model LLM (panel)"
                       placeholder="Brak modeli"
                       disabled={availableModelsForServer.length === 0}
                       buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
@@ -1892,7 +1892,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         value={selectedLlmModel}
                         options={llmModelOptions}
                         onChange={setSelectedLlmModel}
-                        ariaLabel="Wybierz model LLM"
+                        ariaLabel="Wybierz model LLM (czat)"
                         placeholder="Brak modeli"
                         disabled={availableModelsForServer.length === 0}
                         buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"

@@ -17,25 +17,25 @@
             <a href="#" class="cyber-nav-link active">Cockpit</a>
             <a href="#" class="cyber-nav-link">Neural Network</a>
             <a href="#" class="cyber-nav-link">Memory Bank</a>
-            <div class="cyber-nav-label" style="margin-top: 20px;">Tools</div>
+            <div class="cyber-nav-label cyber-nav-label--spaced">Tools</div>
             <a href="#" class="cyber-nav-link">Code Inspector</a>
             <a href="#" class="cyber-nav-link">Terminal</a>
             <a href="#" class="cyber-nav-link">Ustawienia</a>
         </nav>
-        <div class="cost-mode-switch" id="costModeSwitch" style="margin-top: 30px;">
+        <div class="cost-mode-switch cost-mode-switch--spaced" id="costModeSwitch">
             <span class="cost-mode-label" id="costModeLabel">🌿 Tryb Eco</span>
             <label class="toggle-switch">
                 <input type="checkbox" id="costModeToggle" />
                 <span class="toggle-slider"></span>
             </label>
         </div>
-        <div class="repo-status" id="repoStatus" style="margin-top: 20px;">
+        <div class="repo-status repo-status--spaced" id="repoStatus">
             <span class="repo-branch" id="repoBranch">🌿 <span id="branchName">-</span></span>
             <span class="repo-changes" id="repoChanges">🟢 <span id="changesText">Brak zmian</span></span>
             <div class="repo-actions">
                 <button id="syncRepoBtn" class="btn-repo-action" title="Synchronizuj repozytorium">🔄</button>
                 <button id="undoChangesBtn" class="btn-repo-action" title="Cofnij wszystkie zmiany">↩️</button>
-                <button id="initRepoBtn" class="btn-repo-action" title="Zainicjalizuj lokalne repozytorium" style="display: none;">✨</button>
+                <button id="initRepoBtn" class="btn-repo-action is-hidden" title="Zainicjalizuj lokalne repozytorium">✨</button>
             </div>
         </div>
         <div class="sidebar-status">
@@ -43,14 +43,14 @@
                 <span class="status-dot" id="connectionStatus"></span>
                 <span id="statusText">Łączenie...</span>
             </div>
-            <div style="font-size: 0.7rem; color: #555; margin-top: 5px; font-family: var(--font-tech);">Latency: 12ms | Stable</div>
+            <div class="sidebar-latency">Latency: 12ms | Stable</div>
         </div>
     </aside>
 
     <div class="main-console">
         <div class="dashboard-header">
             <div>
-                <div style="color: var(--primary); font-family: var(--font-tech); font-size: 0.9rem; margin-bottom: 5px;">// WELCOME BACK, OPERATOR</div>
+                <div class="dashboard-greeting">// WELCOME BACK, OPERATOR</div>
                 <h1>🕷️ Venom Cockpit</h1>
             </div>
             <div class="header-actions">
@@ -61,7 +61,7 @@
 
         <div class="module-grid">
             <section class="module-card queue-card">
-                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="card-header">
                     <h3>🎛️ Zarządzanie kolejką</h3>
                     <button id="emergencyStopBtn" class="btn-emergency" title="Awaryjne zatrzymanie - anuluj wszystkie zadania">
                         🚨 Awaryjne zatrzymanie
@@ -94,7 +94,7 @@
             </section>
 
             <section class="module-card chat-card">
-                <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="panel-header">
                     <h3>💬 Konsola czatu</h3>
                     <button id="clearWidgetsBtn" class="btn-small" title="Wyczyść widgety">🗑️ Wyczyść widgety</button>
                 </div>
@@ -132,14 +132,14 @@
                             </div>
                         </div>
                     </div>
-                    <div class="widgets-grid" id="widgetsGrid" style="display: none;"></div>
+                    <div class="widgets-grid is-hidden" id="widgetsGrid"></div>
                     <div class="chat-input-container">
                         <textarea
                             id="taskInput"
                             placeholder="Wpisz polecenie dla Venoma... (np. 'Zrób research o Python 3.12')"
                             rows="3"
                         ></textarea>
-                        <div style="display: flex; gap: 10px; align-items: center; margin-top: 12px;">
+                        <div class="chat-input-actions">
                             <label class="lab-mode-toggle" title="Lab Mode - zadania nie zapisują lekcji do pamięci">
                                 <input type="checkbox" id="labModeCheckbox" />
                                 <span class="lab-mode-icon">🧪</span>
@@ -155,7 +155,7 @@
             </section>
 
             <section class="module-card telemetry-card">
-                <div class="panel-header" style="margin-bottom: 10px;">
+                <div class="panel-header panel-header--compact">
                     <h3>📡 Telemetria i operacje</h3>
                 </div>
                 <div class="panel-tabs">
@@ -175,7 +175,7 @@
                         </div>
                     </div>
 
-                    <div class="panel-header" style="margin-top: 20px;">
+                    <div class="panel-header panel-header--spaced">
                         <h2>📊 Metryki</h2>
                     </div>
                     <div class="metrics-container" id="metricsContainer">
@@ -197,21 +197,21 @@
                         </div>
                     </div>
 
-                    <div class="panel-header" style="margin-top: 20px;">
+                    <div class="panel-header panel-header--spaced">
                         <h2>🔗 Integracje</h2>
                     </div>
                     <div class="integrations-matrix" id="integrationsMatrix">
                         <div class="loading-state">Ładowanie...</div>
                     </div>
 
-                    <div class="panel-header" style="margin-top: 20px;">
+                    <div class="panel-header panel-header--spaced">
                         <h2>⚡ Aktywne operacje</h2>
                     </div>
                     <div class="active-operations" id="activeOperations">
                         <div class="empty-state">Brak aktywnych operacji</div>
                     </div>
 
-                    <div class="panel-header" style="margin-top: 20px;">
+                    <div class="panel-header panel-header--spaced">
                         <h2>💻 Terminal na żywo</h2>
                         <button id="clearTerminalBtn" class="btn-small" title="Wyczyść terminal">🗑️</button>
                     </div>
@@ -256,7 +256,7 @@
                             -
                         </div>
                     </div>
-                    <div class="iot-panel" style="margin-top: 20px;">
+                    <div class="iot-panel section-top-20">
                         <div class="panel-header">
                             <h2>🔌 Status Rider-Pi</h2>
                             <button id="refreshIoTBtn" class="btn-small">🔄</button>
@@ -264,7 +264,7 @@
                         <div id="iotStatus" class="iot-status">
                             <p class="empty-state">Połączenie nieaktywne</p>
                         </div>
-                        <div id="iotMetrics" class="iot-metrics" style="display: none;">
+                        <div id="iotMetrics" class="iot-metrics is-hidden">
                             <div class="metric">
                                 <span class="metric-label">Temperatura CPU</span>
                                 <span class="metric-value" id="iotCpuTemp">--°C</span>
@@ -296,25 +296,25 @@
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
                     </div>
-                    <div class="jobs-section" style="margin-top: 15px;">
+                    <div class="jobs-section section-top-15">
                         <h3>Aktywne zadania</h3>
                         <div id="jobsList" class="jobs-list">
                             <p class="empty-state">Ładowanie zadań...</p>
                         </div>
                     </div>
-                    <div class="status-section" style="margin-top: 15px;">
+                    <div class="status-section section-top-15">
                         <h3>Monitor plików</h3>
                         <div id="watcherStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
                     </div>
-                    <div class="status-section" style="margin-top: 15px;">
+                    <div class="status-section section-top-15">
                         <h3>Auto-dokumentacja</h3>
                         <div id="documenterStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
                         </div>
                     </div>
-                    <div class="status-section" style="margin-top: 15px;">
+                    <div class="status-section section-top-15">
                         <h3>Auto-porządkowanie</h3>
                         <div id="gardenerStatus" class="status-info">
                             <p class="empty-state">Ładowanie statusu...</p>
@@ -330,7 +330,7 @@
                     <div class="lessons-list" id="lessonsList">
                         <p class="empty-state">Ładowanie lekcji...</p>
                     </div>
-                    <div class="panel-header" style="margin-top: 20px;">
+                    <div class="panel-header panel-header--spaced">
                         <h2>🕸️ Graf Wiedzy</h2>
                         <button id="scanGraph" class="btn-small">🔍 Skanuj</button>
                     </div>
@@ -344,7 +344,7 @@
                         <h2>🔫 Zbrojownia AI</h2>
                         <button id="refreshModels" class="btn-small" title="Odśwież listę modeli">🔄</button>
                     </div>
-                    <div class="usage-metrics" style="margin-bottom: 15px;">
+                    <div class="usage-metrics section-bottom-15">
                         <div class="metric">
                             <span class="metric-label">CPU</span>
                             <span class="metric-value" id="modelsCpuUsage">--%</span>
@@ -373,29 +373,29 @@
                             <span class="metric-value" id="modelsCount">0</span>
                         </div>
                     </div>
-                    <div class="model-installer" style="margin-bottom: 15px;">
+                    <div class="model-installer section-bottom-15">
                         <h3>📥 Instalator</h3>
-                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <div class="model-installer-row">
                             <input
                                 type="text"
                                 id="modelNameInput"
                                 aria-label="Nazwa modelu do pobrania"
                                 placeholder="Nazwa modelu (np. llama3)"
-                                style="flex: 1; padding: 8px; border: 1px solid #374151; background: #1f2937; color: #e5e7eb; border-radius: 4px;"
+                                class="model-install-input"
                             />
-                            <button id="installModelBtn" class="btn-primary" style="padding: 8px 16px;">
+                            <button id="installModelBtn" class="btn-primary model-install-button">
                                 📥 Pobierz
                             </button>
                         </div>
-                        <div id="downloadProgress" style="display: none; margin-top: 8px;" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
-                            <div style="background: #1f2937; border-radius: 4px; overflow: hidden; height: 20px;">
-                                <div id="downloadProgressBar" style="background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                        <div id="downloadProgress" class="download-progress is-hidden" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Postęp pobierania modelu">
+                            <div class="download-progress-track">
+                                <div id="downloadProgressBar" class="download-progress-bar"></div>
                             </div>
-                            <p id="downloadProgressText" style="font-size: 12px; margin-top: 4px; color: #9ca3af;">Pobieranie...</p>
+                            <p id="downloadProgressText" class="download-progress-text">Pobieranie...</p>
                         </div>
                     </div>
-                    <div style="margin-bottom: 15px;">
-                        <button id="unloadAllBtn" class="btn-emergency" style="width: 100%;" title="Zwolnij wszystkie zasoby VRAM/RAM">
+                    <div class="section-bottom-15">
+                        <button id="unloadAllBtn" class="btn-emergency btn-full" title="Zwolnij wszystkie zasoby VRAM/RAM">
                             🚨 PANIC: Zwolnij zasoby
                         </button>
                     </div>
@@ -433,7 +433,7 @@
     </div>
 </div>
 
-<div id="historyModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+<div id="historyModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
     <div class="modal-content">
         <div class="modal-header">
             <h2 id="historyModalTitle">🔍 Szczegóły Zadania</h2>
@@ -445,7 +445,7 @@
     </div>
 </div>
 
-<div id="costModeModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="costModeModalTitle">
+<div id="costModeModal" class="modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="costModeModalTitle">
     <div class="modal-content">
         <div class="modal-header">
             <h2 id="costModeModalTitle">💸 Włączenie Trybu Pro (tryb płatny)</h2>

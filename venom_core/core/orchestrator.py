@@ -31,6 +31,7 @@ from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.queue_manager import QueueManager
 from venom_core.core.state_manager import StateManager
+from venom_core.core.streaming import StreamingHandler
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
@@ -765,56 +766,13 @@ class Orchestrator:
                 data={"task_id": str(task_id), "intent": intent},
             )
 
-            stream_start = time.perf_counter()
-            first_chunk_sent = False
-            collector = metrics_module.metrics_collector
-            stream_buffer: list[str] = []
-            last_partial_emit = stream_start
-            partial_emit_interval = 0.25
-
-            def _handle_stream_chunk(text: str) -> None:
-                nonlocal first_chunk_sent, last_partial_emit
-                if not text:
-                    return
-                stream_buffer.append(text)
-                now = time.perf_counter()
-                should_emit_partial = (
-                    not first_chunk_sent
-                    or (now - last_partial_emit) >= partial_emit_interval
-                )
-                if should_emit_partial:
-                    self.state_manager.update_partial_result(
-                        task_id, "".join(stream_buffer)
-                    )
-                    last_partial_emit = now
-                if first_chunk_sent:
-                    # Po zarejestrowaniu pierwszego fragmentu pomijamy logikę "first chunk".
-                    return
-                preview = (text or "").strip()
-                if not preview:
-                    return
-                first_chunk_sent = True
-                elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
-                preview_trimmed = (
-                    preview[:200] + "..." if len(preview) > 200 else preview
-                )
-                self.state_manager.add_log(
-                    task_id, f"Pierwszy fragment odpowiedzi: {preview_trimmed}"
-                )
-                self.state_manager.update_context(
-                    task_id,
-                    {
-                        "first_token": {
-                            "at": datetime.now().isoformat(),
-                            "elapsed_ms": elapsed_ms,
-                            "preview": preview_trimmed,
-                        }
-                    },
-                )
-                if collector:
-                    collector.add_llm_first_token_sample(elapsed_ms)
-
-            stream_token = set_llm_stream_callback(_handle_stream_chunk)
+            # Inicjalizuj streaming handler
+            streaming_handler = StreamingHandler(
+                state_manager=self.state_manager,
+                task_id=task_id,
+                metrics_collector=metrics_module.metrics_collector,
+            )
+            stream_token = set_llm_stream_callback(streaming_handler.get_callback())
 
             # SPECJALNE PRZYPADKI: START_CAMPAIGN
             try:

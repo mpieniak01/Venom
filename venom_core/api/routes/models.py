@@ -9,6 +9,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+from venom_core.api.validators import (
+    validate_model_name,
+    validate_provider,
+    validate_runtime,
+)
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
@@ -38,11 +43,7 @@ class ModelInstallRequest(BaseModel):
 
     @field_validator("name")
     def validate_name(cls, v):
-        if not v or len(v) > 100:
-            raise ValueError("Nazwa modelu musi mieć 1-100 znaków")
-        if not re.match(r"^[\w\-.:]+$", v):
-            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
-        return v
+        return validate_model_name(v, max_length=100, allow_slash=False)
 
 
 class ModelSwitchRequest(BaseModel):
@@ -55,11 +56,7 @@ class ModelSwitchRequest(BaseModel):
 
     @field_validator("name")
     def validate_name(cls, v):
-        if not v or len(v) > 100:
-            raise ValueError("Nazwa modelu musi mieć 1-100 znaków")
-        if not re.match(r"^[\w\-.:]+$", v):
-            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
-        return v
+        return validate_model_name(v, max_length=100, allow_slash=False)
 
 
 class ModelRegistryInstallRequest(BaseModel):
@@ -71,43 +68,31 @@ class ModelRegistryInstallRequest(BaseModel):
 
     @field_validator("name")
     def validate_name(cls, v):
-        if not v or len(v) > 200:
-            raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
-        # Generic validation - specific validation happens per provider
-        if not re.match(r"^[\w\-.:\/]+$", v):
-            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
-        return v
+        return validate_model_name(v, max_length=200, allow_slash=True)
 
     @field_validator("provider")
-    def validate_provider(cls, v):
-        if v not in ["huggingface", "ollama"]:
-            raise ValueError("Provider musi być 'huggingface' lub 'ollama'")
-        return v
+    def validate_provider_field(cls, v):
+        return validate_provider(v)
 
     def model_post_init(self, __context):
         """Validate model name format based on provider."""
+        from venom_core.api.validators import (
+            validate_huggingface_model_name,
+            validate_ollama_model_name,
+        )
+
         if self.provider == "huggingface":
-            # HF models should have org/model format
-            if "/" not in self.name:
-                raise ValueError("HuggingFace model must be in 'org/model' format")
-            if not re.match(r"^[\w\-]+\/[\w\-.:]+$", self.name):
-                raise ValueError("Invalid HuggingFace model name format")
+            validate_huggingface_model_name(self.name)
+            if self.runtime != "vllm":
+                raise ValueError("Runtime dla HuggingFace musi być 'vllm'")
         elif self.provider == "ollama":
-            # Ollama models don't support forward slashes
-            if "/" in self.name:
-                raise ValueError("Ollama model names cannot contain forward slashes")
-            if not re.match(r"^[\w\-.:]+$", self.name):
-                raise ValueError("Invalid Ollama model name format")
+            validate_ollama_model_name(self.name)
             if self.runtime != "ollama":
                 raise ValueError("Runtime dla Ollama musi być 'ollama'")
-        if self.provider == "huggingface" and self.runtime != "vllm":
-            raise ValueError("Runtime dla HuggingFace musi być 'vllm'")
 
     @field_validator("runtime")
-    def validate_runtime(cls, v):
-        if v not in ["vllm", "ollama"]:
-            raise ValueError("Runtime musi być 'vllm' lub 'ollama'")
-        return v
+    def validate_runtime_field(cls, v):
+        return validate_runtime(v)
 
 
 class ModelActivateRequest(BaseModel):
@@ -118,17 +103,11 @@ class ModelActivateRequest(BaseModel):
 
     @field_validator("name")
     def validate_name(cls, v):
-        if not v or len(v) > 200:
-            raise ValueError("Nazwa modelu musi mieć 1-200 znaków")
-        if not re.match(r"^[\w\-.:\/]+$", v):
-            raise ValueError("Nazwa modelu zawiera niedozwolone znaki")
-        return v
+        return validate_model_name(v, max_length=200, allow_slash=True)
 
     @field_validator("runtime")
-    def validate_runtime(cls, v):
-        if v not in ["vllm", "ollama"]:
-            raise ValueError("Runtime musi być 'vllm' lub 'ollama'")
-        return v
+    def validate_runtime_field(cls, v):
+        return validate_runtime(v)
 
 
 class TranslationRequest(BaseModel):

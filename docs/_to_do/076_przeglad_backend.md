@@ -1,4 +1,4 @@
-# 77: Przeglad techniczny backendu
+# 76: Przeglad techniczny backendu
 
 ## Cel
 - Znalezc nieoptymalny, nadmiernie skomplikowany lub niewydajny kod.

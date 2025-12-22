@@ -10,7 +10,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from venom_core.api.validators import (
+    validate_huggingface_model_name,
     validate_model_name,
+    validate_ollama_model_name,
     validate_provider,
     validate_runtime,
 )
@@ -76,11 +78,6 @@ class ModelRegistryInstallRequest(BaseModel):
 
     def model_post_init(self, __context):
         """Validate model name format based on provider."""
-        from venom_core.api.validators import (
-            validate_huggingface_model_name,
-            validate_ollama_model_name,
-        )
-
         if self.provider == "huggingface":
             validate_huggingface_model_name(self.name)
             if self.runtime != "vllm":

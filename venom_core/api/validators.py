@@ -5,7 +5,7 @@ Wydzielony z routes/models.py dla redukcji duplikacji.
 """
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 def validate_model_name(
@@ -53,10 +53,10 @@ def validate_huggingface_model_name(name: str) -> str:
         ValueError: Jeśli format jest nieprawidłowy
     """
     if "/" not in name:
-        raise ValueError("HuggingFace model must be in 'org/model' format")
+        raise ValueError("Model HuggingFace musi być w formacie 'org/model'")
 
     if not re.match(r"^[\w\-]+\/[\w\-.:]+$", name):
-        raise ValueError("Invalid HuggingFace model name format")
+        raise ValueError("Nieprawidłowy format nazwy modelu HuggingFace")
 
     return name
 
@@ -75,10 +75,10 @@ def validate_ollama_model_name(name: str) -> str:
         ValueError: Jeśli format jest nieprawidłowy
     """
     if "/" in name:
-        raise ValueError("Ollama model names cannot contain forward slashes")
+        raise ValueError("Nazwy modeli Ollama nie mogą zawierać ukośników")
 
     if not re.match(r"^[\w\-.:]+$", name):
-        raise ValueError("Invalid Ollama model name format")
+        raise ValueError("Nieprawidłowy format nazwy modelu Ollama")
 
     return name
 

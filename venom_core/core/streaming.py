@@ -6,7 +6,7 @@ Wydzielony z orchestrator.py dla lepszej organizacji kodu i testowalności.
 
 import time
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, List
 from uuid import UUID
 
 from venom_core.core.state_manager import StateManager

@@ -293,8 +293,8 @@ pytest tests/test_api_dependencies.py -v
 ```
 
 ### Nowe testy utworzone
-- ⚠️ **TODO:** `tests/test_streaming.py` - unit testy dla StreamingHandler
-- ⚠️ **TODO:** `tests/test_validators.py` - unit testy dla validators
+- ✅ **CREATED:** `tests/test_streaming.py` - 11 unit testów dla StreamingHandler
+- ✅ **CREATED:** `tests/test_validators.py` - 30+ unit testów dla validators
 
 ## Zmiany w dokumentacji
 

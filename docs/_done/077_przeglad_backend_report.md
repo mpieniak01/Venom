@@ -364,9 +364,8 @@ venom_core/services/
 
 ### Zrealizowane refaktory
 1. ✅ Orchestrator - wydzielenie StreamingHandler, LessonsManager, FlowRouter
-2. ✅ routes/models.py - podział na sub-routery
-3. ✅ ModelRegistry - wydzielenie adapterów I/O i providerów
-4. ✅ RuntimeController - wydzielenie ProcessMonitor
+2. ✅ model_schemas - wydzielenie modeli Pydantic i walidatorów z routes/models.py
+3. ✅ RuntimeController - wydzielenie ProcessMonitor
 
 ### Metryki przed/po
 
@@ -375,22 +374,29 @@ venom_core/services/
 - Suma linii w 6 największych plikach: 6848 linii
 - Średnia: ~1141 linii/plik
 
-**Po (szacowane):**
-- Największy plik: ~500 linii (orchestrator.py refactored)
-- Nowe pliki: ~15-20 mniejszych, bardziej focused plików
-- Średnia: ~250-350 linii/plik
+**Po (zrealizowane):**
+- Orchestrator: 1845 → 1609 linii (-236 linii, -12.8%)
+- RuntimeController: 734 → 694 linii (-40 linii, -5.4%)
+- Nowe moduły:
+  - StreamingHandler: 115 linii
+  - LessonsManager: 315 linii
+  - FlowRouter: 110 linii
+  - ProcessMonitor: 155 linii
+  - model_schemas (3 pliki): ~250 linii
+- **Łącznie usunięto ~276 linii z monolitycznych plików**
+- **Utworzono 7 nowych, wyspecjalizowanych modułów**
 
 ### Korzyści
-- ✅ Lepsza testowalność
-- ✅ Łatwiejsza nawigacja i maintenance
+- ✅ Lepsza testowalność (komponenty można testować niezależnie)
+- ✅ Łatwiejsza nawigacja i maintenance (mniejsze, bardziej focused pliki)
 - ✅ Wyraźniejsza separacja odpowiedzialności
 - ✅ Łatwiejsze onboarding nowych deweloperów
 - ✅ Możliwość równoległego rozwoju różnych komponentów
+- ✅ Zmniejszenie ryzyka konfliktów git przy równoległej pracy
 
-### Ryzyka zminimalizowane
-- ⚠️ Circular imports - unikane przez wyraźną hierarchię
-- ⚠️ Breaking changes - wszystkie publiczne API zachowane
-- ⚠️ Regresje - pełne pokrycie testami przed i po
+### Niezrealizowane (opcjonalne, lower priority)
+- ⚠️ Pełny podział routes/models.py na sub-routery (ze względu na złożoność i czas)
+- ⚠️ Wydzielenie adapterów I/O z ModelRegistry (niższy priorytet)
 
 ## Data zakończenia
 2025-12-22

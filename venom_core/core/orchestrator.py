@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -494,6 +493,68 @@ class Orchestrator:
         # Deleguj do LessonsManager
         return self.lessons_manager.should_store_lesson(request, intent, agent)
 
+    def _should_log_learning(
+        self,
+        request: TaskRequest,
+        intent: str,
+        tool_required: bool,
+        agent=None,
+    ) -> bool:
+        """
+        Sprawdza czy należy zapisać wpis procesu nauki (LLM-only).
+
+        Zachowane dla kompatybilności z testami.
+        """
+        if not request.store_knowledge:
+            return False
+        if tool_required:
+            return False
+        if intent in self.NON_LEARNING_INTENTS:
+            return False
+        if agent and getattr(agent, "disable_learning", False):
+            return False
+        return True
+
+    def _append_learning_log(
+        self,
+        task_id: UUID,
+        intent: str,
+        prompt: str,
+        result: str,
+        success: bool,
+        error: str = "",
+    ) -> None:
+        """
+        Zapisuje wpis procesu nauki do JSONL.
+
+        Zachowane dla kompatybilności z testami.
+        """
+        entry = {
+            "task_id": str(task_id),
+            "timestamp": datetime.now().isoformat(),
+            "intent": intent,
+            "tool_required": False,
+            "success": success,
+            "need": (prompt or "")[:MAX_LEARNING_SNIPPET],
+            "outcome": (result or "")[:MAX_LEARNING_SNIPPET],
+            "error": (error or "")[:MAX_LEARNING_SNIPPET],
+            "fast_path_hint": "",
+            "tags": [intent, "llm_only", "success" if success else "failure"],
+        }
+
+        try:
+            LEARNING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with LEARNING_LOG_PATH.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            self.state_manager.add_log(
+                task_id, f"🧠 Zapisano wpis nauki do {LEARNING_LOG_PATH}"
+            )
+            collector = metrics_module.metrics_collector
+            if collector:
+                collector.increment_learning_logged()
+        except Exception as exc:
+            logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
+
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
         Wykonuje zadanie w tle.
@@ -539,6 +600,7 @@ class Orchestrator:
 
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
+            dispatch_context = context
 
             # Zapisz generation_params w kontekście zadania jeśli zostały przekazane
             if request.generation_params:
@@ -729,24 +791,26 @@ class Orchestrator:
 
             # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości (tylko dla LLM-only)
             if intent not in self.NON_LEARNING_INTENTS and not tool_required:
-                context = await self.lessons_manager.add_lessons_to_context(task_id, context)
+                context = await self.lessons_manager.add_lessons_to_context(
+                    task_id, context
+                )
                 hidden_context = build_hidden_prompts_context(
                     intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
                 )
                 if hidden_context:
                     context = hidden_context + "\n\n" + context
-                    self.state_manager.add_log(
+                self.state_manager.add_log(
+                    task_id,
+                    "Dołączono hidden prompts do kontekstu",
+                )
+                if self.request_tracer:
+                    self.request_tracer.add_step(
                         task_id,
-                        "Dołączono hidden prompts do kontekstu",
+                        "DecisionGate",
+                        "hidden_prompts",
+                        status="ok",
+                        details=f"Hidden prompts: {MAX_HIDDEN_PROMPTS_IN_CONTEXT}",
                     )
-                    if self.request_tracer:
-                        self.request_tracer.add_step(
-                            task_id,
-                            "DecisionGate",
-                            "hidden_prompts",
-                            status="ok",
-                            details=f"Hidden prompts: {MAX_HIDDEN_PROMPTS_IN_CONTEXT}",
-                        )
 
             # Zaloguj sklasyfikowaną intencję
             self.state_manager.add_log(
@@ -846,7 +910,9 @@ class Orchestrator:
                             status="ok",
                             details="💻 Routing to Coder-Critic Review Loop",
                         )
-                    result = await self._code_generation_with_review(task_id, context)
+                    result = await self._code_generation_with_review(
+                        task_id, dispatch_context
+                    )
                 elif intent == "COMPLEX_PLANNING":
                     # Standardowy tryb - delegacja do Architekta
                     self.state_manager.add_log(
@@ -868,9 +934,14 @@ class Orchestrator:
                         agent="Architect",
                         data={"task_id": str(task_id)},
                     )
-                    result = await self.task_dispatcher.dispatch(
-                        intent, context, generation_params=request.generation_params
-                    )
+                    if request.generation_params:
+                        result = await self.task_dispatcher.dispatch(
+                            intent,
+                            context,
+                            generation_params=request.generation_params,
+                        )
+                    else:
+                        result = await self.task_dispatcher.dispatch(intent, context)
                 else:
                     # Dla pozostałych intencji (RESEARCH, GENERAL_CHAT, KNOWLEDGE_SEARCH, itp.) - standardowy przepływ
                     # Decision Gate: Standard dispatch
@@ -886,9 +957,14 @@ class Orchestrator:
                             status="ok",
                             details=f"📤 Routing to {agent_name} (intent={intent})",
                         )
-                    result = await self.task_dispatcher.dispatch(
-                        intent, context, generation_params=request.generation_params
-                    )
+                    if request.generation_params:
+                        result = await self.task_dispatcher.dispatch(
+                            intent,
+                            context,
+                            generation_params=request.generation_params,
+                        )
+                    else:
+                        result = await self.task_dispatcher.dispatch(intent, context)
             finally:
                 reset_llm_stream_callback(stream_token)
 

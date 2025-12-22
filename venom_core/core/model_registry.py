@@ -9,23 +9,18 @@ Odpowiedzialny za:
 """
 
 import asyncio
-import html
 import json
 import re
-import shutil
-import subprocess
 import time
 import uuid
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import httpx
-
 from venom_core.config import SETTINGS
+from venom_core.core.model_registry_clients import HuggingFaceClient, OllamaClient
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -219,47 +214,45 @@ class OllamaModelProvider(BaseModelProvider):
 
     def __init__(self, endpoint: str = "http://localhost:11434"):
         self.endpoint = endpoint.rstrip("/")
+        self.client = OllamaClient(endpoint=self.endpoint)
 
     async def list_available_models(self) -> List[ModelMetadata]:
         """Lista modeli z Ollama."""
         models = []
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{self.endpoint}/api/tags")
-                if response.status_code == 200:
-                    data = response.json()
-                    for model in data.get("models", []):
-                        name = model.get("name", "unknown")
-                        size_bytes = model.get("size", 0)
+            data = await self.client.list_tags()
+            for model in data.get("models", []):
+                name = model.get("name", "unknown")
+                size_bytes = model.get("size", 0)
 
-                        # Określ generation_schema na podstawie nazwy modelu
-                        generation_schema = _create_default_generation_schema()
-                        # Używamy regex do precyzyjnego wykrycia modeli Llama 3
-                        # Pasuje do: llama3, llama-3, llama3:latest, llama-3:8b
-                        # Nie pasuje do: llama-30b, llama-3b, my-llama-v3
-                        if re.search(r"llama-?3(?:[:\-]|$)", name, re.IGNORECASE):
-                            # Llama 3 ma temperaturę 0.0-1.0
-                            generation_schema["temperature"] = GenerationParameter(
-                                type="float",
-                                default=0.7,
-                                min=0.0,
-                                max=1.0,
-                                desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
-                            )
+                # Określ generation_schema na podstawie nazwy modelu
+                generation_schema = _create_default_generation_schema()
+                # Używamy regex do precyzyjnego wykrycia modeli Llama 3
+                # Pasuje do: llama3, llama-3, llama3:latest, llama-3:8b
+                # Nie pasuje do: llama-30b, llama-3b, my-llama-v3
+                if re.search(r"llama-?3(?:[:\-]|$)", name, re.IGNORECASE):
+                    # Llama 3 ma temperaturę 0.0-1.0
+                    generation_schema["temperature"] = GenerationParameter(
+                        type="float",
+                        default=0.7,
+                        min=0.0,
+                        max=1.0,
+                        desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
+                    )
 
-                        models.append(
-                            ModelMetadata(
-                                name=name,
-                                provider=ModelProvider.OLLAMA,
-                                display_name=name,
-                                size_gb=size_bytes / (1024**3) if size_bytes else None,
-                                status=ModelStatus.INSTALLED,
-                                runtime="ollama",
-                                capabilities=ModelCapabilities(
-                                    generation_schema=generation_schema,
-                                ),
-                            )
-                        )
+                models.append(
+                    ModelMetadata(
+                        name=name,
+                        provider=ModelProvider.OLLAMA,
+                        display_name=name,
+                        size_gb=size_bytes / (1024**3) if size_bytes else None,
+                        status=ModelStatus.INSTALLED,
+                        runtime="ollama",
+                        capabilities=ModelCapabilities(
+                            generation_schema=generation_schema,
+                        ),
+                    )
+                )
         except Exception as e:
             logger.warning(f"Nie udało się pobrać listy modeli z Ollama: {e}")
         return models
@@ -275,46 +268,10 @@ class OllamaModelProvider(BaseModelProvider):
 
         try:
             logger.info(f"Rozpoczynam pobieranie modelu Ollama: {model_name}")
-
-            # Use asyncio subprocess for proper async handling
-            process = await asyncio.create_subprocess_exec(
-                "ollama",
-                "pull",
-                model_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            try:
-                # Read stdout line by line asynchronously
-                while True:
-                    line = await process.stdout.readline()
-                    if not line:
-                        break
-                    line_str = line.decode().strip()
-                    logger.info(f"Ollama: {line_str}")
-                    if progress_callback:
-                        await progress_callback(line_str)
-
-                await process.wait()
-
-                if process.returncode == 0:
-                    logger.info(f"✅ Model {model_name} pobrany pomyślnie")
-                    return True
-                else:
-                    stderr = await process.stderr.read()
-                    logger.error(
-                        f"❌ Błąd podczas pobierania modelu: {stderr.decode()}"
-                    )
-                    return False
-            finally:
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
-
-        except FileNotFoundError:
-            logger.error("Ollama nie jest zainstalowane lub niedostępne w PATH")
-            return False
+            success = await self.client.pull_model(model_name, progress_callback)
+            if success:
+                logger.info(f"✅ Model {model_name} pobrany pomyślnie")
+            return success
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modelu: {e}")
             return False
@@ -326,24 +283,10 @@ class OllamaModelProvider(BaseModelProvider):
             return False
 
         try:
-            result = subprocess.run(
-                ["ollama", "rm", model_name],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
+            success = await self.client.remove_model(model_name)
+            if success:
                 logger.info(f"✅ Model {model_name} usunięty z Ollama")
-                return True
-            else:
-                logger.error(f"❌ Błąd podczas usuwania modelu: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            logger.error("Timeout podczas usuwania modelu z Ollama")
-            return False
-        except FileNotFoundError:
-            logger.error("Ollama nie jest zainstalowane")
-            return False
+            return success
         except Exception as e:
             logger.error(f"Błąd podczas usuwania modelu: {e}")
             return False
@@ -405,6 +348,7 @@ class HuggingFaceModelProvider(BaseModelProvider):
         self.cache_dir = Path(cache_dir or "./models_cache/hf")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.token = token
+        self.client = HuggingFaceClient(token=self.token)
 
     async def list_available_models(self) -> List[ModelMetadata]:
         """Lista popularnych modeli HF (stub - do rozszerzenia)."""
@@ -442,59 +386,32 @@ class HuggingFaceModelProvider(BaseModelProvider):
     ) -> bool:
         """Pobiera model z HuggingFace."""
         try:
-            from huggingface_hub import snapshot_download as hf_snapshot_download
-        except ImportError:
-            logger.error(
-                "Biblioteka huggingface_hub nie jest zainstalowana. "
-                "Zainstaluj: pip install huggingface_hub"
-            )
-            return False
-
-        try:
             logger.info(f"Rozpoczynam pobieranie modelu HF: {model_name}")
 
-            if progress_callback:
-                await progress_callback(f"Pobieranie {model_name} z HuggingFace...")
-
-            # Pobierz model do cache (wrap in thread to avoid blocking)
-            local_path = await asyncio.to_thread(
-                hf_snapshot_download,
-                repo_id=model_name,
+            local_path = await self.client.download_snapshot(
+                model_name=model_name,
                 cache_dir=str(self.cache_dir),
-                token=self.token,
-                resume_download=True,
+                progress_callback=progress_callback,
             )
-
+            if not local_path:
+                return False
             logger.info(f"✅ Model {model_name} pobrany do {local_path}")
             if progress_callback:
                 await progress_callback(f"Model {model_name} zainstalowany pomyślnie")
-
             return True
-
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modelu z HF: {e}")
             return False
 
     async def remove_model(self, model_name: str) -> bool:
         """Usuwa model z cache HF."""
-        # Szukaj katalogu modelu w cache z walidacją ścieżki
-        model_cache_dir = (self.cache_dir / model_name.replace("/", "--")).resolve()
-        cache_root = self.cache_dir.resolve()
-
-        if not model_cache_dir.is_relative_to(cache_root):
-            logger.error(f"Nieprawidłowa ścieżka modelu: {model_name}")
-            return False
-
-        if model_cache_dir.exists():
-            try:
-                shutil.rmtree(model_cache_dir)
+        try:
+            success = self.client.remove_cached_model(self.cache_dir, model_name)
+            if success:
                 logger.info(f"✅ Model {model_name} usunięty z cache HF")
-                return True
-            except Exception as e:
-                logger.error(f"Błąd podczas usuwania modelu: {e}")
-                return False
-        else:
-            logger.warning(f"Model {model_name} nie znaleziony w cache")
+            return success
+        except Exception as e:
+            logger.error(f"Błąd podczas usuwania modelu: {e}")
             return False
 
     async def get_model_info(self, model_name: str) -> Optional[ModelMetadata]:
@@ -529,6 +446,8 @@ class ModelRegistry:
                 token=_resolve_hf_token(),
             ),
         }
+        self.hf_client = HuggingFaceClient(token=_resolve_hf_token())
+        self.ollama_catalog_client = OllamaClient(endpoint="https://ollama.com")
 
         # Operacje w toku
         self.operations: Dict[str, ModelOperation] = {}
@@ -697,32 +616,7 @@ class ModelRegistry:
     async def _fetch_huggingface_models(
         self, sort: str, limit: int
     ) -> List[Dict[str, Any]]:
-        url = "https://huggingface.co/api/models"
-        headers = {}
-        token = _resolve_hf_token()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                response = await client.get(
-                    url,
-                    params={"limit": limit, "sort": sort},
-                    headers=headers,
-                )
-                response.raise_for_status()
-                payload = response.json()
-            except httpx.HTTPStatusError:
-                if sort != "trendingScore":
-                    raise
-                response = await client.get(
-                    url,
-                    params={"limit": limit, "sort": "downloads"},
-                    headers=headers,
-                )
-                response.raise_for_status()
-                payload = response.json()
-
+        payload = await self.hf_client.list_models(sort=sort, limit=limit)
         if not isinstance(payload, list):
             return []
 
@@ -747,12 +641,7 @@ class ModelRegistry:
         return models
 
     async def _fetch_ollama_models(self, limit: int) -> List[Dict[str, Any]]:
-        url = "https://ollama.com/api/tags"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.json()
-
+        payload = await self.ollama_catalog_client.list_tags()
         models: List[Dict[str, Any]] = []
         for item in payload.get("models", [])[:limit]:
             name = item.get("name")
@@ -789,120 +678,12 @@ class ModelRegistry:
         return models
 
     async def _fetch_hf_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
-        url = "https://huggingface.co/blog/feed.xml"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.text
-
-        root = ET.fromstring(payload)
-        channel = root.find("channel")
-        if channel is None:
-            return []
-
-        items: List[Dict[str, Any]] = []
-        for entry in channel.findall("item")[:limit]:
-            title = entry.findtext("title")
-            url_value = entry.findtext("link")
-            summary = entry.findtext("description")
-            published_at = entry.findtext("pubDate")
-            if summary:
-                summary = re.sub(r"<[^>]+>", "", summary).strip()
-            items.append(
-                {
-                    "title": title,
-                    "url": url_value,
-                    "summary": summary,
-                    "published_at": published_at,
-                    "authors": None,
-                    "source": "huggingface",
-                }
-            )
-        return items
+        return await self.hf_client.fetch_blog_feed(limit=limit)
 
     async def _fetch_hf_papers_month(
         self, limit: int, month: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        if month:
-            target_month = month
-        else:
-            target_month = datetime.now().strftime("%Y-%m")
-        url = f"https://huggingface.co/papers/month/{target_month}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            payload = response.text
-
-        # UWAGA: Parsowanie poniżej opiera się na aktualnej strukturze HTML strony
-        # HuggingFace (atrybut data-target="DailyPapers" z JSON-em w data-props).
-        # Zmiana struktury strony może spowodować, że ten kod przestanie działać
-        # i będzie wymagał aktualizacji selektora / formatu danych.
-        marker = 'data-target="DailyPapers" data-props="'
-        start_index = payload.find(marker)
-        if start_index == -1:
-            logger.warning(
-                "Nie znaleziono sekcji DailyPapers na stronie HuggingFace: %s", url
-            )
-            return []
-        start_index += len(marker)
-        end_index = payload.find('"', start_index)
-        if end_index == -1:
-            logger.warning(
-                "Nieprawidłowy format atrybutu data-props w sekcji DailyPapers na stronie HuggingFace: %s",
-                url,
-            )
-            return []
-
-        raw_props = html.unescape(payload[start_index:end_index])
-        try:
-            data = json.loads(raw_props)
-        except json.JSONDecodeError as exc:
-            logger.warning(
-                "Nie udało się sparsować JSON z atrybutu data-props w sekcji DailyPapers na stronie HuggingFace (%s): %s",
-                url,
-                exc,
-            )
-            return []
-        if not isinstance(data, dict):
-            logger.warning(
-                "Nieoczekiwany format danych DailyPapers z HuggingFace (oczekiwano dict) dla URL: %s",
-                url,
-            )
-            return []
-        daily_papers = data.get("dailyPapers")
-        if not isinstance(daily_papers, list):
-            logger.warning(
-                "Brak lub nieprawidłowy klucz 'dailyPapers' w danych z HuggingFace dla URL: %s",
-                url,
-            )
-            return []
-        items: List[Dict[str, Any]] = []
-
-        for entry in daily_papers[:limit]:
-            paper = entry.get("paper", {})
-            paper_id = paper.get("id")
-            title = entry.get("title") or paper.get("title")
-            summary = entry.get("summary") or paper.get("summary")
-            published_at = entry.get("publishedAt") or paper.get("publishedAt")
-            authors = [
-                author.get("name")
-                for author in (paper.get("authors") or [])
-                if isinstance(author, dict) and author.get("name")
-            ]
-            url_value = (
-                f"https://huggingface.co/papers/{paper_id}" if paper_id else None
-            )
-            items.append(
-                {
-                    "title": title,
-                    "url": url_value,
-                    "summary": summary,
-                    "published_at": published_at,
-                    "authors": authors or None,
-                    "source": "huggingface",
-                }
-            )
-        return items
+        return await self.hf_client.fetch_papers_month(limit=limit, month=month)
 
     def _format_catalog_entry(
         self,

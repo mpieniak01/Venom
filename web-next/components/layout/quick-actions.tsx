@@ -142,7 +142,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
                 subtitle={action.description}
                 badge={<Badge tone={action.tone}>{badgeLabel(action)}</Badge>}
                 meta={
-                  <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                  <div className="flex items-center gap-2 text-caption">
                     <span>{action.endpoint}</span>
                     {isRunning && <span className="text-emerald-300">{t("quickActions.sending")}</span>}
                   </div>
@@ -155,7 +155,7 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
           })}
         </div>
         {message && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
+          <div className="rounded-2xl box-base p-3 text-xs text-muted">
             {message}
           </div>
         )}

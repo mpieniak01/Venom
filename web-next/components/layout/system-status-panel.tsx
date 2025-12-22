@@ -71,7 +71,7 @@ export function SystemStatusPanel() {
 
   return (
     <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
-      <p className="text-xs uppercase tracking-[0.25em] text-zinc-500">STATUS SYSTEMU</p>
+      <p className="eyebrow">STATUS SYSTEMU</p>
       <div className="mt-3 space-y-3">
         {statuses.map((status) => (
           <div
@@ -81,7 +81,7 @@ export function SystemStatusPanel() {
           >
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide">{status.label}</p>
-              <p className="text-[11px] text-zinc-500">{status.hint}</p>
+              <p className="text-hint">{status.hint}</p>
             </div>
             <Badge tone={status.tone}>{status.value}</Badge>
           </div>

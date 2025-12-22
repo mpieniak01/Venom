@@ -52,7 +52,7 @@ function sortBenchmarkResults(results: BenchmarkModelResult[]): BenchmarkModelRe
 export function BenchmarkResults({ results }: BenchmarkResultsProps) {
   if (results.length === 0) {
     return (
-      <div className="rounded-xl border border-white/10 bg-black/30 p-8 text-center">
+      <div className="rounded-xl box-muted p-8 text-center">
         <p className="text-sm text-zinc-500">
           Wyniki pojawią się po zakończeniu testu
         </p>
@@ -64,11 +64,11 @@ export function BenchmarkResults({ results }: BenchmarkResultsProps) {
 
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-semibold text-zinc-300">
+      <h4 className="heading-h4 text-zinc-300">
         Wyniki porównawcze
       </h4>
 
-      <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/30">
+      <div className="overflow-x-auto rounded-xl box-muted">
         <table className="w-full text-sm" aria-label="Wyniki benchmarku modeli">
           <caption className="sr-only">Wyniki benchmarku modeli</caption>
           <thead>

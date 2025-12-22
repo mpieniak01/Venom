@@ -38,11 +38,11 @@ export function ListCard({
         {icon && <div className="text-white">{icon}</div>}
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white">{title}</p>
-          {subtitle && <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>}
+          {subtitle && <p className="mt-1 text-xs text-muted">{subtitle}</p>}
         </div>
         {badge}
       </div>
-      {meta && <div className="mt-2 text-[11px] text-zinc-500">{meta}</div>}
+      {meta && <div className="mt-2 text-[11px] text-muted">{meta}</div>}
       {children}
     </Component>
   );

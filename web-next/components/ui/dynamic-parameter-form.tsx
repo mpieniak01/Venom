@@ -85,7 +85,7 @@ function ParameterControl({
           max={max}
           className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-white/10 accent-violet-500"
         />
-        {desc && <p className="text-xs text-zinc-400">{desc}</p>}
+        {desc && <p className="text-hint">{desc}</p>}
       </div>
     );
   }
@@ -97,14 +97,16 @@ function ParameterControl({
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium text-zinc-200">{name}</label>
-          {desc && <p className="text-xs text-zinc-400">{desc}</p>}
+          {desc && <p className="text-hint">{desc}</p>}
         </div>
-        <button
+        <Button
           type="button"
           role="switch"
           aria-checked={checked}
           onClick={() => onChange(!checked)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
+          variant="ghost"
+          size="xs"
+          className={`relative inline-flex h-6 w-11 items-center rounded-full p-0 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
             checked ? "bg-violet-600" : "bg-white/20"
           }`}
         >
@@ -113,7 +115,7 @@ function ParameterControl({
               checked ? "translate-x-6" : "translate-x-1"
             }`}
           />
-        </button>
+        </Button>
       </div>
     );
   }
@@ -126,7 +128,7 @@ function ParameterControl({
         <div className="space-y-2">
           <label className="text-sm font-medium text-zinc-200">{name}</label>
           <p className="text-sm text-amber-400">Brak dostępnych opcji dla tego parametru</p>
-          {desc && <p className="text-xs text-zinc-400">{desc}</p>}
+          {desc && <p className="text-hint">{desc}</p>}
         </div>
       );
     }
@@ -147,7 +149,7 @@ function ParameterControl({
             </option>
           ))}
         </select>
-        {desc && <p className="text-xs text-zinc-400">{desc}</p>}
+        {desc && <p className="text-hint">{desc}</p>}
       </div>
     );
   }

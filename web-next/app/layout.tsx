@@ -45,7 +45,7 @@ export default async function RootLayout({
   };
 
   return (
-    <html lang="pl">
+    <html lang="pl" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${jetBrains.variable} antialiased`}>
         <Providers>
           <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">

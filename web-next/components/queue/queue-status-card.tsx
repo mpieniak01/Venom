@@ -58,7 +58,7 @@ export function QueueStatusCard({
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+          <p className="text-caption">
             {t("queueCard.heading")}
           </p>
           <p className="text-base font-semibold">{t("queueCard.endpoint")}</p>
@@ -71,9 +71,9 @@ export function QueueStatusCard({
         {metrics.map((metric) => (
           <div
             key={metric.label}
-            className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-center"
+            className="rounded-2xl box-muted px-3 py-2 text-center"
           >
-            <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+            <p className="text-caption">
               {metric.label}
             </p>
             <p className="text-xl font-semibold text-white">{metric.value}</p>

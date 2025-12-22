@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { CalendarEvent, EventsResponse, CreateEventRequest } from "@/lib/types";
 import { CalendarView } from "./calendar-view";
 import { EventForm } from "./event-form";
+import { Button } from "@/components/ui/button";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { cn } from "@/lib/utils";
+import { Calendar } from "lucide-react";
 
 export function CalendarHome() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -67,68 +71,80 @@ export function CalendarHome() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
-            📅 Kalendarz
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Synchronizacja z Google Calendar i planowanie zadań
-          </p>
-        </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-        >
-          {showForm ? "Anuluj" : "+ Nowy termin"}
-        </button>
-      </div>
+      <SectionHeading
+        eyebrow="Kalendarz"
+        title="📅 Kalendarz"
+        description="Synchronizacja z Google Calendar i planowanie zadań"
+        as="h1"
+        size="lg"
+        rightSlot={
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => setShowForm(!showForm)}
+              variant="secondary"
+              size="sm"
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {showForm ? "Anuluj" : "+ Nowy termin"}
+            </Button>
+            <Calendar className="page-heading-icon" />
+          </div>
+        }
+      />
 
       {/* Time Range Filter */}
       <div className="flex gap-2">
-        <button
+        <Button
           onClick={() => setTimeRangeHours(8)}
-          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+          size="xs"
+          variant="ghost"
+          className={cn(
+            "rounded-lg px-3 py-1.5 text-sm",
             timeRangeHours === 8
-              ? "bg-emerald-600 text-white"
+              ? "bg-emerald-600 text-white hover:bg-emerald-600"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          }`}
+          )}
         >
           8h
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setTimeRangeHours(24)}
-          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+          size="xs"
+          variant="ghost"
+          className={cn(
+            "rounded-lg px-3 py-1.5 text-sm",
             timeRangeHours === 24
-              ? "bg-emerald-600 text-white"
+              ? "bg-emerald-600 text-white hover:bg-emerald-600"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          }`}
+          )}
         >
           Dziś
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setTimeRangeHours(168)}
-          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+          size="xs"
+          variant="ghost"
+          className={cn(
+            "rounded-lg px-3 py-1.5 text-sm",
             timeRangeHours === 168
-              ? "bg-emerald-600 text-white"
+              ? "bg-emerald-600 text-white hover:bg-emerald-600"
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
-          }`}
+          )}
         >
           Tydzień
-        </button>
+        </Button>
       </div>
 
       {/* Event Form */}
       {showForm && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+        <div className="rounded-lg box-muted p-6">
           <EventForm onSubmit={handleCreateEvent} onCancel={() => setShowForm(false)} />
         </div>
       )}
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-950/50 border border-red-900 rounded-lg p-4">
+        <div className="rounded-lg border border-red-900 bg-red-950/50 p-4">
           <p className="text-red-400">❌ {error}</p>
         </div>
       )}

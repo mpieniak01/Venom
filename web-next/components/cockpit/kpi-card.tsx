@@ -58,7 +58,7 @@ export function CockpitTokenCard({ totalValue, splits, chartSlot }: CockpitToken
           </p>
         ) : (
           splits.map((split) => (
-            <div key={split.label} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+            <div key={split.label} className="flex items-center justify-between rounded-2xl box-subtle px-3 py-2">
               <span className="text-xs uppercase tracking-[0.35em] text-zinc-500">{split.label}</span>
               <span className="text-base font-semibold text-white">{split.value.toLocaleString("pl-PL")}</span>
             </div>

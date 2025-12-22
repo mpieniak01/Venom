@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Gauge } from "lucide-react";
 import { Panel } from "@/components/ui/panel";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { BenchmarkConfigurator } from "@/components/benchmark/benchmark-configurator";
 import { BenchmarkConsole } from "@/components/benchmark/benchmark-console";
 import { BenchmarkResults } from "@/components/benchmark/benchmark-results";
@@ -141,14 +143,14 @@ export default function BenchmarkPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">
-          Panel Benchmarkingu
-        </h1>
-        <p className="mt-2 text-sm text-zinc-400">
-          Testuj wydajność modeli i porównaj ich parametry (czas odpowiedzi, tokens/sec, użycie VRAM)
-        </p>
-      </div>
+      <SectionHeading
+        as="h1"
+        size="lg"
+        eyebrow="Benchmark Control"
+        title="Panel Benchmarkingu"
+        description="Testuj wydajność modeli i porównaj ich parametry (czas odpowiedzi, tokens/sec, użycie VRAM)"
+        rightSlot={<Gauge className="page-heading-icon" />}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Konfigurator */}

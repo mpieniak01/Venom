@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { Settings, Server, FileCode } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { cn } from "@/lib/utils";
 import { ServicesPanel } from "./services-panel";
 import { ParametersPanel } from "./parameters-panel";
 
@@ -10,44 +13,45 @@ export function ConfigHome() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
-            Konfiguracja
-          </h1>
-          <p className="mt-2 text-sm text-zinc-400">
-            Panel sterowania stosem Venom: uruchamianie/zatrzymywanie usług i
-            konfiguracja parametrów
-          </p>
-        </div>
-        <Settings className="h-8 w-8 text-emerald-400" />
-      </div>
+      <SectionHeading
+        eyebrow="Konfiguracja"
+        title="Konfiguracja"
+        description="Panel sterowania stosem Venom: uruchamianie/zatrzymywanie usług i konfiguracja parametrów."
+        as="h1"
+        size="lg"
+        rightSlot={<Settings className="page-heading-icon" />}
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-white/10">
-        <button
+        <Button
           onClick={() => setActiveTab("services")}
-          className={`flex items-center gap-2 rounded-t-xl px-4 py-3 text-sm font-medium transition ${
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
             activeTab === "services"
               ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
               : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          }`}
+          )}
         >
           <Server className="h-4 w-4" />
           Usługi
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setActiveTab("parameters")}
-          className={`flex items-center gap-2 rounded-t-xl px-4 py-3 text-sm font-medium transition ${
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "gap-2 rounded-t-xl rounded-b-none px-4 py-3 text-sm font-medium",
             activeTab === "parameters"
               ? "border-b-2 border-emerald-400 bg-emerald-500/10 text-emerald-300"
               : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-          }`}
+          )}
         >
           <FileCode className="h-4 w-4" />
           Parametry
-        </button>
+        </Button>
       </div>
 
       {/* Content */}

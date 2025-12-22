@@ -30,7 +30,7 @@ export function MacroCard({
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-violet-200">
             Makro
           </p>
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
+          <h3 className="heading-h3">{title}</h3>
           <p className="text-xs text-zinc-400">{description || "Brak opisu."}</p>
         </div>
         {isCustom && onRemove && (
@@ -55,7 +55,7 @@ export function MacroCard({
           {pending ? "Wysyłam..." : "Uruchom"}
         </Button>
         {isCustom && (
-          <Badge tone="neutral" className="border border-white/10 bg-black/20 text-[11px]">
+          <Badge tone="neutral" className="pill-badge">
             Custom
           </Badge>
         )}
@@ -82,7 +82,7 @@ export function PinnedLogCard({ log, onUnpin }: PinnedLogCardProps) {
 
   return (
     <div className="rounded-3xl border border-emerald-400/20 bg-black/30 p-4 text-sm text-white shadow-inner shadow-emerald-500/10">
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-emerald-200">
+      <div className="flex items-center justify-between text-caption text-emerald-200">
         <span>{new Date(log.ts).toLocaleTimeString()}</span>
         <div className="flex items-center gap-2">
           <Badge tone={tone}>

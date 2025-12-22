@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -25,7 +26,7 @@ import type { BrainInitialData } from "@/lib/server-data";
 import type { TagEntry } from "@/components/brain/types";
 import type cytoscapeType from "cytoscape";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Radar, AlertTriangle } from "lucide-react";
+import { Brain, Loader2, Radar, AlertTriangle } from "lucide-react";
 import { LessonList } from "@/components/tasks/lesson-list";
 import { LessonActions } from "@/components/brain/lesson-actions";
 import { LessonStats } from "@/components/brain/lesson-stats";
@@ -115,7 +116,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
 
   const applyFiltersToGraph = useCallback((nextFilters: GraphFilterType[]) => {
     const cy = cyInstanceRef.current;
-    if (!cy) return;
+    if (!cy || cy.destroyed() || !cy.container()) return;
     const activeFilters = nextFilters.filter(
       (item): item is SpecificFilter => item !== "all",
     );
@@ -128,7 +129,11 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         }
       });
     }
-    cy.layout({ name: "cose", padding: 30, animate: false }).run();
+    try {
+      cy.layout({ name: "cose", padding: 30, animate: false }).run();
+    } catch {
+      // Layout can fail if the container unmounts between renders.
+    }
   }, []);
 
   const handleFilterToggle = (value: GraphFilterType) => {
@@ -375,10 +380,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         as="h1"
         size="lg"
         rightSlot={
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
-            <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
-            <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
+              <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+              <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
+            </div>
+            <Brain className="page-heading-icon" />
           </div>
         }
       />
@@ -414,13 +422,15 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 : "Brak danych z /api/v1/knowledge/graph."}
             </p>
             {graphError && (
-              <button
+              <Button
                 type="button"
-                className="pointer-events-auto rounded-full border border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
+                variant="outline"
+                size="xs"
+                className="pointer-events-auto border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
                 onClick={() => refreshGraph()}
               >
                 Odśwież
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -437,8 +447,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         </div>
         <div className="pointer-events-auto absolute left-6 bottom-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
           {lessonTags.slice(0, 6).map((tag) => (
-            <button
+            <Button
               key={tag.name}
+              variant="ghost"
+              size="xs"
               className={`rounded-full border px-3 py-1 ${
                 highlightTag === tag.name
                   ? "border-amber-400/50 bg-amber-500/20"
@@ -447,14 +459,14 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
               onClick={() => handleTagToggle(tag.name)}
             >
               #{tag.name}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card-shell card-base p-4 text-sm">
-          <h4 className="text-sm font-semibold text-white">Podsumowanie zaznaczenia</h4>
+          <h4 className="heading-h4">Podsumowanie zaznaczenia</h4>
           {selected ? (
             <div className="mt-3 space-y-2 text-xs text-zinc-300">
               <p>
@@ -473,31 +485,33 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 <span className="text-zinc-400">Relacje:</span>{" "}
                 <span className="font-semibold">{relations.length}</span>
               </p>
-              <p className="text-zinc-400">
+              <p className="text-hint">
                 Kliknij „Szczegóły”, by zobaczyć pełne dane JSON oraz kierunki relacji.
               </p>
-              <button
-                className="rounded-full border border-white/20 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-white hover:border-white/50"
+              <Button
+                size="xs"
+                variant="outline"
+                className="text-caption"
                 onClick={() => {
                   if (!selected) return;
                   setDetailsSheetOpen(true);
                 }}
               >
                 Szczegóły
-              </button>
+              </Button>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-3 text-hint">
               Wybierz węzeł w grafie, aby zobaczyć jego podstawowe dane.
             </p>
           )}
         </div>
         <div className="card-shell card-base p-4 text-sm">
-          <h4 className="text-sm font-semibold text-white">Relacje (podgląd)</h4>
+          <h4 className="heading-h4">Relacje (podgląd)</h4>
           {selected && relations.length > 0 ? (
             <ul className="mt-3 space-y-2 text-xs">
               {relations.slice(0, 5).map((rel) => (
-                <li key={`${selected.id}-${rel.id}-${rel.direction}`} className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
+                <li key={`${selected.id}-${rel.id}-${rel.direction}`} className="rounded-2xl box-muted px-3 py-2">
                   <span className="font-semibold text-white">{rel.label}</span>{" "}
                   <span className="text-zinc-400">
                     ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
@@ -505,21 +519,21 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 </li>
               ))}
               {relations.length > 5 && (
-                <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                <p className="text-caption">
                   +{relations.length - 5} kolejnych relacji w panelu szczegółów.
                 </p>
               )}
             </ul>
           ) : (
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-3 text-hint">
               Brak relacji (lub nie wybrano węzła).
             </p>
           )}
         </div>
         <div className="card-shell card-base p-4 text-sm">
-          <h4 className="text-sm font-semibold text-white">Ostatnie operacje grafu</h4>
+          <h4 className="heading-h4">Ostatnie operacje grafu</h4>
           {recentOperations.length === 0 ? (
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-3 text-hint">
               Brak zarejestrowanych operacji. Uruchom skan lub odśwież lekcje.
             </p>
           ) : (
@@ -527,19 +541,19 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
               {recentOperations.map((op) => (
                 <li
                   key={op.id}
-                  className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 shadow-inner"
+                  className="rounded-2xl box-subtle px-3 py-2 shadow-inner"
                 >
                   <p className="font-semibold text-white">{op.title}</p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="text-caption">
                     {formatOperationTimestamp(op.timestamp)}
                   </p>
-                  <p className="text-xs text-zinc-400">{op.summary}</p>
+                  <p className="text-hint">{op.summary}</p>
                   {op.tags.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {op.tags.slice(0, 3).map((tag) => (
                         <span
                           key={`${op.id}-${tag}`}
-                          className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.3em] text-emerald-200"
+                          className="pill-badge text-emerald-200"
                         >
                           #{tag}
                         </span>
@@ -557,17 +571,14 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         title="Lekcje i operacje grafu"
         description="LessonsStore + akcje skanowania grafu."
         action={
-          <button
-            className="rounded-lg border border-[--color-border] bg-white/5 px-3 py-2 text-xs text-white hover:bg-white/10"
-            onClick={() => refreshLessons()}
-          >
+          <Button size="sm" variant="secondary" onClick={() => refreshLessons()}>
             Odśwież lekcje
-          </button>
+          </Button>
         }
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
-            <h4 className="text-sm font-semibold text-white">Statystyki Lessons</h4>
+          <div className="rounded-2xl box-base p-4 text-sm text-white">
+            <h4 className="heading-h4">Statystyki Lessons</h4>
             {lessonStatsEntries.length > 0 ? (
               <div className="mt-3">
                 <LessonStats entries={lessonStatsEntries} />
@@ -582,7 +593,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             )}
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-white">Ostatnie lekcje</h4>
+            <h4 className="heading-h4">Ostatnie lekcje</h4>
             <LessonActions tags={lessonTags} activeTag={activeTag} onSelect={setActiveTag} />
             <div className="mt-3">
               <LessonList lessons={filteredLessons} emptyMessage="Lekcje pojawią się po zapisaniu nowych wpisów w LessonsStore." />
@@ -628,20 +639,20 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             <div className="space-y-4 text-sm text-zinc-300">
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Właściwości</p>
-                <pre className="mt-2 max-h-60 overflow-auto rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-zinc-100">
+                <pre className="mt-2 max-h-60 overflow-auto rounded-xl box-muted p-3 text-xs text-zinc-100">
                   {JSON.stringify(selected, null, 2)}
                 </pre>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
                 {relations.length === 0 ? (
-                  <p className="text-xs text-zinc-500">Brak relacji.</p>
+                <p className="text-hint">Brak relacji.</p>
                 ) : (
                   <ul className="mt-2 space-y-2 text-xs">
                     {relations.map((rel) => (
                       <li
                         key={`${selected.id}-${rel.id}-${rel.direction}`}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                        className="rounded-xl box-base px-3 py-2"
                       >
                         <span className="font-semibold text-white">{rel.label}</span>
                         <span className="text-zinc-400">
@@ -655,7 +666,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-zinc-500">Kliknij węzeł, by zobaczyć szczegóły.</p>
+            <p className="text-hint">Kliknij węzeł, by zobaczyć szczegóły.</p>
           )}
         </SheetContent>
       </Sheet>

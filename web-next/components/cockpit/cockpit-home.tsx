@@ -54,7 +54,16 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { useTaskStream } from "@/hooks/use-task-stream";
 import { useToast } from "@/components/ui/toast";
 import type { Chart } from "chart.js/auto";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { KeyboardEvent } from "react";
 import type {
   GenerationParams,
@@ -68,10 +77,11 @@ import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { formatRelativeTime } from "@/lib/date";
 import { useTranslation } from "@/lib/i18n";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
 import {
   Bot,
+  Command,
   Pin,
   PinOff,
   Inbox,
@@ -92,7 +102,7 @@ import { QueueStatusCard } from "@/components/queue/queue-status-card";
 import { QuickActions } from "@/components/layout/quick-actions";
 import { VoiceCommandCenter } from "@/components/voice/voice-command-center";
 import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
-import { SelectMenu } from "@/components/ui/select-menu";
+import { SelectMenu, type SelectMenuOption } from "@/components/ui/select-menu";
 import {
   formatDiskSnapshot,
   formatGbPair,
@@ -126,12 +136,175 @@ const isTelemetryEventPayload = (payload: unknown): payload is TelemetryEventPay
   return typeof candidate.type === "string";
 };
 
+type ChatComposerHandle = {
+  setDraft: (value: string) => void;
+};
+
+type ChatComposerProps = {
+  onSend: (payload: string) => Promise<boolean>;
+  sending: boolean;
+  labMode: boolean;
+  setLabMode: (value: boolean) => void;
+  selectedLlmServer: string;
+  llmServerOptions: SelectMenuOption[];
+  setSelectedLlmServer: (value: string) => void;
+  selectedLlmModel: string;
+  llmModelOptions: SelectMenuOption[];
+  setSelectedLlmModel: (value: string) => void;
+  hasModels: boolean;
+  onOpenTuning: () => void;
+  tuningLabel: string;
+  compactControls?: boolean;
+};
+
+const ChatComposer = memo(
+  forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
+    {
+      onSend,
+      sending,
+      labMode,
+      setLabMode,
+      selectedLlmServer,
+      llmServerOptions,
+      setSelectedLlmServer,
+      selectedLlmModel,
+      llmModelOptions,
+      setSelectedLlmModel,
+      hasModels,
+      onOpenTuning,
+      tuningLabel,
+      compactControls = false,
+    },
+    ref,
+  ) {
+    const [draft, setDraft] = useState("");
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    useImperativeHandle(ref, () => ({
+      setDraft: (value: string) => {
+        setDraft(value);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      },
+    }));
+
+    const handleSendClick = useCallback(async () => {
+      const ok = await onSend(draft);
+      if (ok) {
+        setDraft("");
+      }
+    }, [draft, onSend]);
+
+    const handleTextareaKeyDown = useCallback(
+      (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        const isEnter = event.key === "Enter";
+        const isModifier = event.ctrlKey || event.metaKey;
+        if (isEnter && isModifier) {
+          event.preventDefault();
+          handleSendClick();
+        }
+      },
+      [handleSendClick],
+    );
+
+    const labelClassName = compactControls ? "sr-only" : "text-caption";
+    const controlsWrapperClassName = compactControls
+      ? "mt-3 flex flex-wrap items-end gap-3"
+      : "mt-3 grid gap-3 md:grid-cols-2";
+    const controlStackClassName = compactControls
+      ? "flex min-w-[180px] flex-1 flex-col gap-2"
+      : "space-y-2";
+
+    return (
+      <div className="mt-4 shrink-0 border-t border-white/5 pt-4">
+        <textarea
+          ref={textareaRef}
+          rows={2}
+          className="min-h-[72px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
+          placeholder="Opisz zadanie dla Venoma..."
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleTextareaKeyDown}
+          data-testid="cockpit-prompt-input"
+        />
+        <div className={controlsWrapperClassName}>
+          <div className={controlStackClassName}>
+            <label className={labelClassName}>
+              Serwer
+            </label>
+            <SelectMenu
+              value={selectedLlmServer}
+              options={llmServerOptions}
+              onChange={setSelectedLlmServer}
+              ariaLabel="Wybierz serwer LLM"
+              placeholder="Wybierz serwer"
+              buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+              menuClassName="w-full max-h-72 overflow-y-auto"
+            />
+          </div>
+          <div className={controlStackClassName}>
+            <label className={labelClassName}>
+              Model
+            </label>
+            <SelectMenu
+              value={selectedLlmModel}
+              options={llmModelOptions}
+              onChange={setSelectedLlmModel}
+              ariaLabel="Wybierz model LLM (czat)"
+              placeholder="Brak modeli"
+              disabled={!hasModels}
+              buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+              menuClassName="w-full max-h-72 overflow-y-auto"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              checked={labMode}
+              onChange={(event) => setLabMode(event.target.checked)}
+            />
+            Lab Mode (nie zapisuj lekcji)
+          </label>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenTuning}
+              className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
+              title="Dostosuj parametry generacji"
+            >
+              <Settings className="h-4 w-4 mr-1" />
+              {tuningLabel}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDraft("")}
+              className="text-zinc-300"
+            >
+              Wyczyść
+            </Button>
+            <Button
+              onClick={handleSendClick}
+              disabled={sending}
+              size="sm"
+              variant="macro"
+              className="px-6"
+              data-testid="cockpit-send-button"
+            >
+              {sending ? "Wysyłanie..." : "Wyślij"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }),
+);
+
 export function CockpitHome({ initialData }: { initialData: CockpitInitialData }) {
   const [isClientReady, setIsClientReady] = useState(false);
   useEffect(() => {
     setIsClientReady(true);
   }, []);
-  const [taskContent, setTaskContent] = useState("");
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -182,7 +355,6 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const [tuningSaving, setTuningSaving] = useState(false);
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
-  const [chatAtBottom, setChatAtBottom] = useState(true);
   const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
   const promptPresets = useMemo(
@@ -827,7 +999,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
   const sessionCostValue = formatUsd(tokenMetrics?.session_cost_usd);
   const historyMessages = useMemo<ChatMessage[]>(() => {
     if (!history) return [];
-    return history.flatMap((item) => {
+    const sortedHistory = [...history].sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return aTime - bTime;
+    });
+    return sortedHistory.flatMap((item) => {
       const prompt = item.prompt?.trim() ?? "";
       const matchedTask = findTaskMatch(item.request_id, prompt);
       const assistantText =
@@ -910,18 +1087,48 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     () => [...historyMessages, ...optimisticMessages],
     [historyMessages, optimisticMessages],
   );
-  useEffect(() => {
-    if (!chatAtBottom) return;
+  const lastChatScrollTop = useRef(0);
+  const didInitialChatScroll = useRef(false);
+  const programmaticChatScroll = useRef(false);
+  const autoScrollEnabled = useRef(true);
+  const scrollChatToBottom = useCallback(() => {
     const container = chatScrollRef.current;
     if (!container) return;
+    programmaticChatScroll.current = true;
     container.scrollTop = container.scrollHeight;
-  }, [chatMessages, chatAtBottom]);
+    requestAnimationFrame(() => {
+      programmaticChatScroll.current = false;
+      lastChatScrollTop.current = container.scrollTop;
+      autoScrollEnabled.current = true;
+    });
+  }, []);
+  useEffect(() => {
+    if (didInitialChatScroll.current) return;
+    if (chatMessages.length === 0) return;
+    scrollChatToBottom();
+    didInitialChatScroll.current = true;
+  }, [chatMessages.length, scrollChatToBottom]);
+  useEffect(() => {
+    if (!autoScrollEnabled.current) return;
+    scrollChatToBottom();
+  }, [chatMessages, scrollChatToBottom]);
   const handleChatScroll = useCallback(() => {
     const container = chatScrollRef.current;
     if (!container) return;
+    if (programmaticChatScroll.current) {
+      lastChatScrollTop.current = container.scrollTop;
+      return;
+    }
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
-    setChatAtBottom(distanceFromBottom < 64);
+    const isAtBottom = distanceFromBottom <= 12;
+    const scrolledUp = container.scrollTop < lastChatScrollTop.current - 2;
+    if (scrolledUp) {
+      autoScrollEnabled.current = false;
+    } else if (isAtBottom) {
+      autoScrollEnabled.current = true;
+    }
+    lastChatScrollTop.current = container.scrollTop;
   }, []);
   const updateFeedbackState = useCallback(
     (
@@ -979,6 +1186,17 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       }
     },
     [feedbackByRequest, refreshHistory, refreshTasks, updateFeedbackState],
+  );
+  const handleFeedbackClick = useCallback(
+    (requestId: string, rating: "up" | "down") => {
+      if (rating === "up") {
+        updateFeedbackState(requestId, { rating: "up", comment: "" });
+        handleFeedbackSubmit(requestId, { rating: "up" });
+        return;
+      }
+      updateFeedbackState(requestId, { rating: "down" });
+    },
+    [handleFeedbackSubmit, updateFeedbackState],
   );
   const averageResponseDurationMs =
     responseDurations.length > 0
@@ -1144,18 +1362,19 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     setOptimisticRequests((prev) => prev.filter((entry) => entry.clientId !== clientId));
   }, []);
 
-  const handleSend = useCallback(async () => {
-    const payload = taskContent.trim();
-    if (!payload) {
+  const handleSend = useCallback(async (payload: string) => {
+    const trimmed = payload.trim();
+    if (!trimmed) {
       setMessage("Podaj treść zadania.");
-      return;
+      return false;
     }
+    autoScrollEnabled.current = true;
+    scrollChatToBottom();
     setSending(true);
     setMessage(null);
-    setTaskContent("");
-    const clientId = enqueueOptimisticRequest(payload);
+    const clientId = enqueueOptimisticRequest(trimmed);
     try {
-      const res = await sendTask(payload, !labMode, generationParams, {
+      const res = await sendTask(trimmed, !labMode, generationParams, {
         configHash: activeServerInfo?.config_hash ?? null,
         runtimeId: activeServerInfo?.runtime_id ?? null,
       });
@@ -1163,17 +1382,17 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       linkOptimisticRequest(clientId, resolvedId);
       setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
       await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
+      return true;
     } catch (err) {
-      setTaskContent(payload);
       dropOptimisticRequest(clientId);
       setMessage(
         err instanceof Error ? err.message : "Nie udało się wysłać zadania",
       );
+      return false;
     } finally {
       setSending(false);
     }
   }, [
-    taskContent,
     enqueueOptimisticRequest,
     labMode,
     generationParams,
@@ -1184,6 +1403,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     refreshHistory,
     activeServerInfo?.config_hash,
     activeServerInfo?.runtime_id,
+    scrollChatToBottom,
   ]);
 
   const handleOpenTuning = useCallback(async () => {
@@ -1344,7 +1564,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     }
   };
 
-  const openRequestDetail = async (requestId: string, prompt?: string) => {
+  const openRequestDetail = useCallback(async (requestId: string, prompt?: string) => {
     setSelectedRequestId(requestId);
     setDetailOpen(true);
     setHistoryDetail(null);
@@ -1384,7 +1604,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [findTaskMatch]);
 
   const handleCopyDetailSteps = async () => {
     if (!historyDetail?.steps || historyDetail.steps.length === 0) {
@@ -1403,21 +1623,159 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     }
   };
 
+  const composerRef = useRef<ChatComposerHandle | null>(null);
+
   const handleSuggestionClick = (prompt: string) => {
-    setTaskContent(prompt);
+    composerRef.current?.setDraft(prompt);
   };
 
-  const handleTextareaKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      const isEnter = event.key === "Enter";
-      const isModifier = event.ctrlKey || event.metaKey;
-      if (isEnter && isModifier) {
-        event.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
+  const chatList = useMemo(() => (
+    <>
+      {chatMessages.length === 0 && (
+        <p className="text-sm text-zinc-500">
+          Brak historii – wyślij pierwsze zadanie.
+        </p>
+      )}
+      {chatMessages.map((msg) => {
+        const requestId = msg.requestId;
+        const isSelected = selectedRequestId === requestId;
+        const canInspect = Boolean(requestId) && !msg.pending;
+        const handleSelect =
+          canInspect && requestId
+            ? () => openRequestDetail(requestId, msg.prompt)
+            : undefined;
+        const feedbackState =
+          msg.role === "assistant" && requestId ? feedbackByRequest[requestId] : undefined;
+        const feedbackLocked = Boolean(feedbackState?.rating);
+        const feedbackActions =
+          msg.role === "assistant" && requestId ? (
+            <div className="flex items-center gap-2">
+              <IconButton
+                label="Kciuk w górę"
+                variant="outline"
+                size="xs"
+                className={
+                  feedbackState?.rating === "up"
+                    ? "border-emerald-400/60 bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-0"
+                    : "focus-visible:outline-none focus-visible:ring-0"
+                }
+                icon={
+                  <ThumbsUp
+                    strokeWidth={2.5}
+                    className={
+                      feedbackState?.rating === "up"
+                        ? "h-3.5 w-3.5 text-emerald-300"
+                        : "h-3.5 w-3.5"
+                    }
+                  />
+                }
+                disabled={feedbackSubmittingId === requestId || feedbackLocked}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleFeedbackClick(requestId, "up");
+                }}
+              />
+              <IconButton
+                label="Kciuk w dół"
+                variant="outline"
+                size="xs"
+                className={
+                  feedbackState?.rating === "down"
+                    ? "border-rose-400/60 bg-rose-500/10 focus-visible:outline-none focus-visible:ring-0"
+                    : "focus-visible:outline-none focus-visible:ring-0"
+                }
+                icon={
+                  <ThumbsDown
+                    strokeWidth={2.5}
+                    className={
+                      feedbackState?.rating === "down"
+                        ? "h-3.5 w-3.5 text-rose-300"
+                        : "h-3.5 w-3.5"
+                    }
+                  />
+                }
+                disabled={feedbackSubmittingId === requestId || feedbackLocked}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleFeedbackClick(requestId, "down");
+                }}
+              />
+              {feedbackState?.rating === "down" && feedbackState.comment !== undefined ? (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  disabled={
+                    feedbackSubmittingId === requestId ||
+                    !(feedbackState.comment || "").trim()
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleFeedbackSubmit(requestId);
+                  }}
+                >
+                  {feedbackSubmittingId === requestId ? "Wysyłam..." : "Zapisz"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null;
+        const feedbackExtra =
+          msg.role === "assistant" &&
+          requestId &&
+          !msg.pending &&
+          feedbackState?.rating === "down" ? (
+            <>
+              <textarea
+                className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
+                placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
+                value={feedbackState.comment || ""}
+                onChange={(event) =>
+                  updateFeedbackState(requestId, {
+                    comment: event.target.value,
+                  })
+                }
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              />
+              {feedbackState.message && (
+                <p className="mt-2 text-xs text-zinc-400">
+                  {feedbackState.message}
+                </p>
+              )}
+            </>
+          ) : null;
+
+        return (
+          <div key={msg.bubbleId}>
+            <ConversationBubble
+              role={msg.role}
+              timestamp={msg.timestamp}
+              text={msg.text}
+              status={msg.status}
+              requestId={msg.role === "assistant" ? msg.requestId ?? undefined : undefined}
+              isSelected={isSelected}
+              pending={msg.pending}
+              onSelect={handleSelect}
+              footerActions={feedbackActions}
+              footerExtra={feedbackExtra}
+            />
+          </div>
+        );
+      })}
+      {historyLoading && (
+        <p className="text-hint">Odświeżam historię…</p>
+      )}
+    </>
+  ), [
+    chatMessages,
+    selectedRequestId,
+    openRequestDetail,
+    feedbackByRequest,
+    feedbackSubmittingId,
+    handleFeedbackClick,
+    handleFeedbackSubmit,
+    updateFeedbackState,
+    historyLoading,
+  ]);
 
   const handleGitSync = async () => {
     if (gitAction) return;
@@ -1461,9 +1819,14 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       <SectionHeading
         eyebrow="Dashboard Control"
         title="Centrum Dowodzenia AI"
-        description="Monitoruj telemetrię, kolejkę i logi w czasie rzeczywistym – reaguj tak szybko, jak Venom OS."
+        description={
+          <span className="text-zinc-200">
+            Monitoruj telemetrię, kolejkę i logi w czasie rzeczywistym – reaguj tak szybko, jak Venom OS.
+          </span>
+        }
         as="h1"
         size="lg"
+        rightSlot={<Command className="page-heading-icon" />}
       />
       <section
         className={`grid gap-6 ${
@@ -1479,7 +1842,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
           >
             <div className="space-y-3">
               {llmServersLoading ? (
-                <p className="text-sm text-zinc-500">Ładuję status serwerów…</p>
+                <p className="text-hint">Ładuję status serwerów…</p>
               ) : llmServers.length === 0 ? (
                 <EmptyState
                   icon={<Package className="h-4 w-4" />}
@@ -1586,7 +1949,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 value={logFilter}
                 onChange={(e) => setLogFilter(e.target.value)}
               />
-              <div className="terminal h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
+              <div className="terminal internal-scroll h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
                 {logEntries.length === 0 && (
                   <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
                 )}
@@ -1616,10 +1979,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   ))}
               </div>
               {pinnedLogs.length > 0 && (
-                <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs text-white shadow-card">
+                <div className="rounded-3xl card-shell border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs">
                   <div className="flex flex-wrap items-center gap-3">
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.35em] text-emerald-200/80">
+                      <p className="text-caption text-emerald-200/80">
                         Przypięte logi
                       </p>
                       <p className="text-sm text-emerald-100/80">
@@ -1691,7 +2054,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         )}
         <div className="space-y-6">
           <motion.div
-            className="glass-panel command-console-panel allow-overflow relative flex min-h-[520px] flex-col overflow-visible px-6 py-6"
+            className="glass-panel command-console-panel relative flex min-h-[520px] min-h-0 h-[calc(100vh-220px)] max-h-[calc(100vh-220px)] flex-col overflow-hidden px-6 py-6"
             key={chatFullscreen ? "chat-fullscreen" : "chat-default"}
             initial={{ opacity: 0, y: 24, scale: 0.98, rotateX: 6, rotateY: -6 }}
             animate={{
@@ -1708,7 +2071,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               label={chatFullscreen ? "Wyłącz pełny ekran" : "Włącz pełny ekran"}
               size="xs"
               variant="outline"
-              className="absolute right-6 top-6 border-white/10 text-white"
+              className="absolute right-6 top-6 z-20 border-white/10 text-white pointer-events-auto"
               icon={
                 chatFullscreen ? (
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -1722,8 +2085,8 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               eyebrow="Command Console"
               title="Cockpit AI"
               description="Chat operacyjny z Orchestratora i logami runtime."
-              as="h1"
-              size="lg"
+              as="h2"
+              size="md"
               className="items-center"
               rightSlot={
                 <div className="flex flex-wrap items-center gap-2 pr-10">
@@ -1736,247 +2099,71 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 </div>
               }
             />
-            <div className="grid-overlay relative mt-5 flex-1 rounded-3xl border border-white/5 bg-black/30 p-6">
-              <div className="flex h-full flex-col">
+            <div className="grid-overlay relative mt-5 flex-1 min-h-0 rounded-3xl box-muted p-6 overflow-hidden">
+              <div className="flex h-full min-h-0 flex-col">
                 <div
-                  className="flex-1 space-y-4 overflow-y-auto pr-4"
+                  className="chat-history-scroll flex-1 min-h-0 space-y-4 overflow-y-auto pr-4 overscroll-contain"
                   ref={chatScrollRef}
                   onScroll={handleChatScroll}
                 >
-                  <AnimatePresence initial={false}>
-                    {chatMessages.length === 0 && (
-                      <p className="text-sm text-zinc-500">
-                        Brak historii – wyślij pierwsze zadanie.
-                      </p>
-                    )}
-                    {chatMessages.map((msg) => {
-                      const requestId = msg.requestId;
-                      const isSelected = selectedRequestId === requestId;
-                      const canInspect = Boolean(requestId) && !msg.pending;
-                      const handleSelect =
-                        canInspect && requestId
-                          ? () => openRequestDetail(requestId, msg.prompt)
-                          : undefined;
-                      const feedbackState = requestId
-                        ? feedbackByRequest[requestId] || {}
-                        : {};
-                      const feedbackActions =
-                        msg.role === "assistant" && requestId && !msg.pending ? (
-                          <>
-                            <IconButton
-                              label="Kciuk w górę"
-                              variant={feedbackState.rating === "up" ? "macro" : "outline"}
-                              size="xs"
-                              icon={<ThumbsUp className="h-3.5 w-3.5" />}
-                              disabled={feedbackSubmittingId === requestId}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                updateFeedbackState(requestId, { rating: "up", comment: "" });
-                                handleFeedbackSubmit(requestId, { rating: "up" });
-                              }}
-                            />
-                            <IconButton
-                              label="Kciuk w dół"
-                              variant={feedbackState.rating === "down" ? "danger" : "outline"}
-                              size="xs"
-                              icon={<ThumbsDown className="h-3.5 w-3.5" />}
-                              disabled={feedbackSubmittingId === requestId}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                updateFeedbackState(requestId, {
-                                  rating: "down",
-                                });
-                              }}
-                            />
-                            {feedbackState.rating === "down" && (
-                              <Button
-                                size="xs"
-                                variant="outline"
-                                disabled={
-                                  feedbackSubmittingId === requestId ||
-                                  !(feedbackState.comment || "").trim()
-                                }
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleFeedbackSubmit(requestId);
-                                }}
-                              >
-                                {feedbackSubmittingId === requestId ? "Wysyłam..." : "Zapisz"}
-                              </Button>
-                            )}
-                          </>
-                        ) : null;
-                      const feedbackExtra =
-                        msg.role === "assistant" &&
-                        requestId &&
-                        !msg.pending &&
-                        feedbackState.rating === "down" ? (
-                          <>
-                            <textarea
-                              className="min-h-[70px] w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
-                              placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
-                              value={feedbackState.comment || ""}
-                              onChange={(event) =>
-                                updateFeedbackState(requestId, {
-                                  comment: event.target.value,
-                                })
-                              }
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => event.stopPropagation()}
-                            />
-                            {feedbackState.message && (
-                              <p className="mt-2 text-xs text-zinc-400">
-                                {feedbackState.message}
-                              </p>
-                            )}
-                          </>
-                        ) : null;
-
-                      return (
-                        <motion.div
-                          key={msg.bubbleId}
-                          layout
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -12 }}
-                        >
-                          <ConversationBubble
-                            role={msg.role}
-                            timestamp={msg.timestamp}
-                            text={msg.text}
-                            status={msg.status}
-                            requestId={msg.role === "assistant" ? msg.requestId ?? undefined : undefined}
-                            isSelected={isSelected}
-                            pending={msg.pending}
-                            onSelect={handleSelect}
-                            footerActions={feedbackActions}
-                            footerExtra={feedbackExtra}
-                          />
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                  {historyLoading && (
-                    <p className="text-xs text-zinc-500">Odświeżam historię…</p>
+                  {chatList}
+                </div>
+                <div className="shrink-0">
+                  <ChatComposer
+                    ref={composerRef}
+                    onSend={handleSend}
+                    sending={sending}
+                    labMode={labMode}
+                    setLabMode={setLabMode}
+                    selectedLlmServer={selectedLlmServer}
+                    llmServerOptions={llmServerOptions}
+                    setSelectedLlmServer={setSelectedLlmServer}
+                    selectedLlmModel={selectedLlmModel}
+                    llmModelOptions={llmModelOptions}
+                    setSelectedLlmModel={setSelectedLlmModel}
+                    hasModels={availableModelsForServer.length > 0}
+                    onOpenTuning={handleOpenTuning}
+                    tuningLabel={t("common.tuning")}
+                    compactControls={chatFullscreen}
+                  />
+                  <QuickActions open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
+                  {message && (
+                    <p className="mt-2 text-xs text-amber-300">{message}</p>
                   )}
                 </div>
-                <div className="sticky bottom-0 mt-4 border-t border-white/5 pt-4">
-                  <textarea
-                    className="min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
-                    placeholder="Opisz zadanie dla Venoma..."
-                    value={taskContent}
-                    onChange={(e) => setTaskContent(e.target.value)}
-                    onKeyDown={handleTextareaKeyDown}
-                    data-testid="cockpit-prompt-input"
-                  />
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                        Serwer
-                      </label>
-                      <SelectMenu
-                        value={selectedLlmServer}
-                        options={llmServerOptions}
-                        onChange={setSelectedLlmServer}
-                        ariaLabel="Wybierz serwer LLM"
-                        placeholder="Wybierz serwer"
-                        buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                        menuClassName="w-full max-h-72 overflow-y-auto"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-                        Model
-                      </label>
-                      <SelectMenu
-                        value={selectedLlmModel}
-                        options={llmModelOptions}
-                        onChange={setSelectedLlmModel}
-                        ariaLabel="Wybierz model LLM (czat)"
-                        placeholder="Brak modeli"
-                        disabled={availableModelsForServer.length === 0}
-                        buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-                        menuClassName="w-full max-h-72 overflow-y-auto"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <label className="flex items-center gap-2 text-xs text-zinc-400">
-                      <input
-                        type="checkbox"
-                        checked={labMode}
-                        onChange={(e) => setLabMode(e.target.checked)}
-                      />
-                      Lab Mode (nie zapisuj lekcji)
-                    </label>
-                    <div className="ml-auto flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleOpenTuning}
-                        className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
-                        title="Dostosuj parametry generacji"
-                      >
-                        <Settings className="h-4 w-4 mr-1" />
-                        {t("common.tuning")}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTaskContent("")}
-                        className="text-zinc-300"
-                      >
-                        Wyczyść
-                      </Button>
-                      <Button
-                        onClick={handleSend}
-                        disabled={sending}
-                        size="sm"
-                        variant="macro"
-                        className="px-6"
-                        data-testid="cockpit-send-button"
-                      >
-                        {sending ? "Wysyłanie..." : "Wyślij"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <QuickActions open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
-                {message && (
-                  <p className="mt-2 text-xs text-amber-300">{message}</p>
-                )}
               </div>
             </div>
           </motion.div>
           {!chatFullscreen && (
             <>
-              <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-zinc-300">
+              <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-zinc-300">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">
+                  <p className="text-caption">
                     Sugestie szybkich promptów
                   </p>
-                  <span className="text-[11px] uppercase tracking-[0.3em] text-zinc-600">
+                  <span className="text-caption text-zinc-600">
                     Kliknij, aby wypełnić chat
                   </span>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {promptPresets.map((preset) => (
-                    <button
+                    <Button
                       key={preset.id}
                       type="button"
                       onClick={() => handleSuggestionClick(preset.prompt)}
                       title={preset.description}
-                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full items-center gap-3 rounded-2xl box-muted px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"
                     >
                       <span className="rounded-2xl bg-white/10 px-3 py-2 text-lg">
                         {preset.icon}
                       </span>
                       <div className="flex-1">
                         <p className="font-semibold text-white">{preset.category}</p>
-                        <p className="text-xs text-zinc-400">{preset.description}</p>
+                        <p className="text-hint">{preset.description}</p>
                       </div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -2031,9 +2218,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                       chartSlot={
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                              Trend próbek
-                            </p>
+                            <p className="text-caption">Trend próbek</p>
                             <Badge
                               tone={
                                 tokenTrendDelta !== null && tokenTrendDelta < 0
@@ -2045,14 +2230,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                             </Badge>
                           </div>
                           {tokenHistory.length < 2 ? (
-                            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
+                            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
                               Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
                             </p>
                           ) : (
-                            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
-                                Przebieg ostatnich próbek
-                              </p>
+                            <div className="rounded-2xl box-subtle p-4">
+                              <p className="text-caption">Przebieg ostatnich próbek</p>
                               <div className="mt-3 h-32">
                                 <TokenChart history={tokenHistory} height={128} />
                               </div>
@@ -2070,7 +2253,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 description="Najświeższe sygnały TASK_* i QUEUE_* – pozwalają śledzić napływające wyniki bez przeładowania."
               >
                 {telemetryFeed.length === 0 ? (
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-hint">
                     Brak zdarzeń – czekam na telemetrię.
                   </p>
                 ) : (
@@ -2078,11 +2261,11 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     {telemetryFeed.map((event) => (
                       <div
                         key={event.id}
-                        className="flex items-start justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                        className="list-row items-start gap-3 text-sm text-white"
                       >
                         <div>
                           <p className="font-semibold">{event.type}</p>
-                          <p className="text-xs text-zinc-400">{event.message}</p>
+                          <p className="text-hint">{event.message}</p>
                         </div>
                         <div className="text-right text-xs text-zinc-500">
                           <Badge tone={event.tone}>{event.timestamp}</Badge>
@@ -2132,7 +2315,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 />
                 <ResourceMetricCard label="Dysk" value={diskValue} hint={diskPercent ?? ""} />
               </div>
-              <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-zinc-400">
+              <div className="mt-4 flex items-center justify-between rounded-2xl box-muted px-4 py-3 text-xs text-zinc-400">
                 <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
                 <span className="text-base font-semibold text-white">{sessionCostValue}</span>
               </div>
@@ -2149,7 +2332,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
                     Agenci
                   </p>
-                  <h2 className="text-lg font-semibold text-white">Aktywność systemowa</h2>
+                  <h2 className="heading-h2">Aktywność systemowa</h2>
                 </div>
               </header>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -2299,12 +2482,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
               />
               {loadingHistory && (
-                <p className="mt-2 text-xs text-zinc-500">Ładowanie szczegółów...</p>
+                <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
               )}
               {historyError && (
                 <p className="mt-2 text-xs text-rose-300">{historyError}</p>
               )}
-              <p className="mt-2 text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+              <p className="mt-2 text-caption">
                 Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
               </p>
             </Panel>
@@ -2317,9 +2500,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   {learningLogs.items.map((entry, idx) => (
                     <div
                       key={`learning-${entry.task_id ?? idx}`}
-                      className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                      className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <div className="flex flex-wrap items-center gap-2 text-caption">
                         <Badge tone={entry.success ? "success" : "danger"}>
                           {entry.success ? "OK" : "Błąd"}
                         </Badge>
@@ -2330,7 +2513,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
                       </p>
                       {entry.error && (
-                        <p className="mt-2 text-[11px] text-rose-300">
+                        <p className="mt-2 text-hint text-rose-300">
                           {entry.error.slice(0, 140)}
                         </p>
                       )}
@@ -2345,7 +2528,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 />
               )}
               {learningLoading && (
-                <p className="mt-2 text-xs text-zinc-500">Ładowanie logów nauki...</p>
+                <p className="mt-2 text-hint">Ładowanie logów nauki...</p>
               )}
               {learningError && (
                 <p className="mt-2 text-xs text-rose-300">{learningError}</p>
@@ -2360,9 +2543,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   {feedbackLogs.items.map((entry, idx) => (
                     <div
                       key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
-                      className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                      className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <div className="flex flex-wrap items-center gap-2 text-caption">
                         <Badge tone={entry.rating === "up" ? "success" : "danger"}>
                           {entry.rating === "up" ? "👍" : "👎"}
                         </Badge>
@@ -2373,7 +2556,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
                       </p>
                       {entry.comment && (
-                        <p className="mt-2 text-[11px] text-zinc-400">
+                        <p className="mt-2 text-hint">
                           {entry.comment.slice(0, 140)}
                         </p>
                       )}
@@ -2388,7 +2571,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 />
               )}
               {feedbackLoading && (
-                <p className="mt-2 text-xs text-zinc-500">Ładowanie feedbacku...</p>
+                <p className="mt-2 text-hint">Ładowanie feedbacku...</p>
               )}
               {feedbackError && (
                 <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
@@ -2399,7 +2582,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               description="Zagregowane pary prompt → odpowiedź z kciuka w górę."
             >
               <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                <label className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+                <label className="text-caption">
                   Filtry
                 </label>
                 <select
@@ -2476,7 +2659,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   })}
                 </select>
                 {activeHiddenKeys.size > 0 && (
-                  <span className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100">
+                  <span className="pill-badge text-emerald-100">
                     Aktywne: {activeHiddenKeys.size}
                   </span>
                 )}
@@ -2490,9 +2673,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     return (
                       <div
                         key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
-                        className="rounded-2xl border border-white/10 bg-black/30 p-3 text-xs text-zinc-300"
+                        className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
                       >
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        <div className="flex flex-wrap items-center gap-2 text-caption">
                           <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
                           <span>{entry.intent ?? "—"}</span>
                           <span>{formatRelativeTime(entry.last_timestamp)}</span>
@@ -2509,12 +2692,12 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                           {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
                         </p>
                         {entry.approved_response && (
-                          <p className="mt-2 text-[11px] text-zinc-400">
+                          <p className="mt-2 text-hint">
                             {entry.approved_response.slice(0, 160)}
                           </p>
                         )}
                     {activeMeta?.activated_at && (
-                      <p className="mt-2 text-[11px] text-emerald-200">
+                      <p className="mt-2 text-hint text-emerald-200">
                         Aktywne od: {formatRelativeTime(activeMeta.activated_at)}
                       </p>
                     )}
@@ -2548,13 +2731,13 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             />
           )}
           {hiddenLoading && (
-            <p className="mt-2 text-xs text-zinc-500">Ładowanie hidden prompts...</p>
+            <p className="mt-2 text-hint">Ładowanie hidden prompts...</p>
           )}
           {hiddenError && (
             <p className="mt-2 text-xs text-rose-300">{hiddenError}</p>
           )}
           {activeHiddenLoading && (
-            <p className="mt-2 text-xs text-zinc-500">Ładowanie aktywnych wpisów...</p>
+            <p className="mt-2 text-hint">Ładowanie aktywnych wpisów...</p>
           )}
           {activeHiddenError && (
             <p className="mt-2 text-xs text-rose-300">{activeHiddenError}</p>
@@ -2571,7 +2754,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
         title="Makra Cockpitu"
         description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
         action={
-          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-white">
+          <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
             <form
               className="flex flex-col gap-2"
               onSubmit={(e) => {
@@ -2590,7 +2773,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 setNewMacro({ label: "", description: "", content: "" });
               }}
             >
-              <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+              <p className="text-caption text-zinc-400">
                 Dodaj makro
               </p>
               <input
@@ -2847,7 +3030,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 <span>Stop: {formatDateTime(historyDetail.finished_at)}</span>
                 <span>Czas: {formatDurationSeconds(historyDetail.duration_seconds)}</span>
               </div>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+              <div className="mt-4 rounded-2xl box-muted p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
@@ -2885,7 +3068,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   </div>
                 )}
               </div>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mt-4 rounded-2xl box-base p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
                   Prompt
                 </p>
@@ -2914,7 +3097,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 </div>
               )}
               {selectedRequestId && (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mt-4 rounded-2xl box-base p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">
                     Feedback użytkownika
                   </p>
@@ -2984,9 +3167,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 </div>
               )}
               {selectedTask?.logs && selectedTask.logs.length > 0 && (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                <div className="mt-4 rounded-2xl box-muted p-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-white">
+                    <h4 className="heading-h4">
                       Logi zadania ({selectedTask.logs.length})
                     </h4>
                   </div>
@@ -3002,9 +3185,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   </div>
                 </div>
               )}
-              <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-black/40 p-4">
+              <div className="mt-4 space-y-2 rounded-2xl box-muted p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className="text-sm font-semibold text-white">
+                    <h4 className="heading-h4">
                       Kroki RequestTracer ({historyDetail.steps?.length ?? 0})
                     </h4>
                     <div className="flex flex-wrap gap-2 text-xs">
@@ -3022,7 +3205,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   </div>
                 <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-2">
                   {(historyDetail.steps || []).length === 0 && (
-                    <p className="text-sm text-zinc-500">Brak kroków do wyświetlenia.</p>
+                    <p className="text-hint">Brak kroków do wyświetlenia.</p>
                   )}
                   {(historyDetail.steps || []).map((step, idx) => (
                     <div
@@ -3039,9 +3222,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                         {step.action || step.details || "Brak opisu kroku."}
                       </p>
                       {step.timestamp && (
-                        <p className="text-[10px] uppercase tracking-wide text-zinc-500">
-                          {formatDateTime(step.timestamp)}
-                        </p>
+                      <p className="text-caption">
+                        {formatDateTime(step.timestamp)}
+                      </p>
                       )}
                     </div>
                   ))}
@@ -3186,7 +3369,7 @@ function LogEntry({
 
   return (
     <div className="mb-2 rounded border border-emerald-500/20 bg-black/10 p-2 font-mono text-xs text-emerald-200 shadow-inner">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-emerald-300/70">
+      <div className="flex items-center justify-between text-caption text-emerald-300/70">
         <span>{new Date(entry.ts).toLocaleTimeString()}</span>
         <div className="flex items-center gap-2">
           <span>
@@ -3269,10 +3452,10 @@ type TokenEfficiencyStatProps = {
 
 function TokenEfficiencyStat({ label, value, hint }: TokenEfficiencyStatProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-3">
-      <p className="text-[11px] uppercase tracking-[0.35em] text-zinc-500">{label}</p>
+    <div className="rounded-2xl box-muted p-3">
+      <p className="text-caption">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-white">{value ?? "—"}</p>
-      <p className="text-[11px] text-zinc-400">{hint}</p>
+      <p className="text-hint">{hint}</p>
     </div>
   );
 }
@@ -3285,7 +3468,7 @@ type TokenShareBarProps = {
 
 function TokenShareBar({ label, percent, accent }: TokenShareBarProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+    <div className="rounded-2xl box-base p-3">
       <div className="flex items-center justify-between text-sm text-white">
         <span>{label}</span>
         <span>{percent !== null ? `${percent}%` : "—"}</span>
@@ -3308,10 +3491,10 @@ type ResourceMetricCardProps = {
 
 function ResourceMetricCard({ label, value, hint }: ResourceMetricCardProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-white">
-      <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{label}</p>
+    <div className="rounded-2xl box-muted p-3 text-sm text-white">
+      <p className="text-caption">{label}</p>
       <p className="mt-2 text-2xl font-semibold">{value}</p>
-      {hint ? <p className="text-[11px] text-zinc-400">{hint}</p> : null}
+      {hint ? <p className="text-hint">{hint}</p> : null}
     </div>
   );
 }

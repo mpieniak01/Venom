@@ -48,9 +48,7 @@ class FlowRouter:
         """
         self._council_flow = council_flow
 
-    def determine_flow(
-        self, context: str, intent: str
-    ) -> Tuple[str, dict]:
+    def determine_flow(self, context: str, intent: str) -> Tuple[str, dict]:
         """
         Określa jaki flow powinien obsłużyć zadanie.
 

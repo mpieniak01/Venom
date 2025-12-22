@@ -39,11 +39,11 @@ export function TaskStatusBreakdown({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{title}</p>
-          {datasetLabel && <p className="text-[11px] text-zinc-400">{datasetLabel}</p>}
+          {datasetLabel && <p className="text-hint">{datasetLabel}</p>}
         </div>
         {totalValue !== undefined && (
           <div className="text-right">
-            <p className="text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+            <p className="text-caption">
               {totalLabel}
             </p>
             <p className="text-xl font-semibold text-white">{totalValue}</p>
@@ -53,7 +53,7 @@ export function TaskStatusBreakdown({
 
       <div className="mt-4 space-y-3">
         {safeEntries.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-400">
+          <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
             {emptyMessage}
           </p>
         ) : (
@@ -67,7 +67,7 @@ export function TaskStatusBreakdown({
                     <span className="uppercase tracking-[0.25em]">{entry.label}</span>
                   </div>
                   <span className="font-semibold text-white">
-                    {entry.value} <span className="text-[11px] text-zinc-500">{percent}%</span>
+                    {entry.value} <span className="text-hint">{percent}%</span>
                   </span>
                 </div>
                 <div className="h-2 rounded-full bg-black/40">
@@ -76,9 +76,7 @@ export function TaskStatusBreakdown({
                     style={{ width: `${percent}%` }}
                   />
                 </div>
-                {entry.hint && (
-                  <p className="text-[11px] text-zinc-500">{entry.hint}</p>
-                )}
+                {entry.hint && <p className="text-hint">{entry.hint}</p>}
               </div>
             );
           })

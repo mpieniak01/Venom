@@ -12,6 +12,7 @@ from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_cal
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flow_router import FlowRouter
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import (
     MAX_REPAIR_ATTEMPTS as CODE_REVIEW_MAX_REPAIR_ATTEMPTS,
@@ -28,9 +29,11 @@ from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
 from venom_core.core.hidden_prompts import build_hidden_prompts_context
 from venom_core.core.intent_manager import IntentManager
+from venom_core.core.lessons_manager import LessonsManager
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.queue_manager import QueueManager
 from venom_core.core.state_manager import StateManager
+from venom_core.core.streaming_handler import StreamingHandler
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
@@ -96,6 +99,15 @@ class Orchestrator:
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
+
+        # Inicjalizuj nowe komponenty (refactored)
+        self.streaming_handler = StreamingHandler(state_manager=state_manager)
+        self.lessons_manager = LessonsManager(
+            state_manager=state_manager,
+            lessons_store=lessons_store,
+            event_broadcaster=event_broadcaster,
+        )
+        self.flow_router = FlowRouter()  # Lazy initialized z council_flow
 
         # Inicjalizuj flows (delegowane logiki biznesowe)
         self._code_review_loop = None
@@ -473,20 +485,14 @@ class Orchestrator:
 
         Args:
             request: Oryginalne żądanie zadania
+            intent: Sklasyfikowana intencja
+            agent: Opcjonalny agent
 
         Returns:
             True jeśli lekcja powinna być zapisana
         """
-        if not (request.store_knowledge and SETTINGS.ENABLE_META_LEARNING):
-            return False
-
-        if intent in self.NON_LEARNING_INTENTS:
-            return False
-
-        if agent and getattr(agent, "disable_learning", False):
-            return False
-
-        return True
+        # Deleguj do LessonsManager
+        return self.lessons_manager.should_store_lesson(request, intent, agent)
 
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
@@ -723,7 +729,7 @@ class Orchestrator:
 
             # PRE-FLIGHT CHECK: Sprawdź czy są lekcje z przeszłości (tylko dla LLM-only)
             if intent not in self.NON_LEARNING_INTENTS and not tool_required:
-                context = await self._add_lessons_to_context(task_id, context)
+                context = await self.lessons_manager.add_lessons_to_context(task_id, context)
                 hidden_context = build_hidden_prompts_context(
                     intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
                 )
@@ -765,56 +771,9 @@ class Orchestrator:
                 data={"task_id": str(task_id), "intent": intent},
             )
 
-            stream_start = time.perf_counter()
-            first_chunk_sent = False
-            collector = metrics_module.metrics_collector
-            stream_buffer: list[str] = []
-            last_partial_emit = stream_start
-            partial_emit_interval = 0.25
-
-            def _handle_stream_chunk(text: str) -> None:
-                nonlocal first_chunk_sent, last_partial_emit
-                if not text:
-                    return
-                stream_buffer.append(text)
-                now = time.perf_counter()
-                should_emit_partial = (
-                    not first_chunk_sent
-                    or (now - last_partial_emit) >= partial_emit_interval
-                )
-                if should_emit_partial:
-                    self.state_manager.update_partial_result(
-                        task_id, "".join(stream_buffer)
-                    )
-                    last_partial_emit = now
-                if first_chunk_sent:
-                    # Po zarejestrowaniu pierwszego fragmentu pomijamy logikę "first chunk".
-                    return
-                preview = (text or "").strip()
-                if not preview:
-                    return
-                first_chunk_sent = True
-                elapsed_ms = int((time.perf_counter() - stream_start) * 1000)
-                preview_trimmed = (
-                    preview[:200] + "..." if len(preview) > 200 else preview
-                )
-                self.state_manager.add_log(
-                    task_id, f"Pierwszy fragment odpowiedzi: {preview_trimmed}"
-                )
-                self.state_manager.update_context(
-                    task_id,
-                    {
-                        "first_token": {
-                            "at": datetime.now().isoformat(),
-                            "elapsed_ms": elapsed_ms,
-                            "preview": preview_trimmed,
-                        }
-                    },
-                )
-                if collector:
-                    collector.add_llm_first_token_sample(elapsed_ms)
-
-            stream_token = set_llm_stream_callback(_handle_stream_chunk)
+            # Utwórz callback streamingu używając StreamingHandler
+            stream_callback = self.streaming_handler.create_stream_callback(task_id)
+            stream_token = set_llm_stream_callback(stream_callback)
 
             # SPECJALNE PRZYPADKI: START_CAMPAIGN
             try:
@@ -1011,7 +970,7 @@ class Orchestrator:
 
             # REFLEKSJA: Zapisz lekcję o sukcesie (jeśli meta-uczenie włączone i store_knowledge=True)
             if self._should_store_lesson(request, intent=intent, agent=agent):
-                await self._save_task_lesson(
+                await self.lessons_manager.save_task_lesson(
                     task_id=task_id,
                     context=context,
                     intent=intent,
@@ -1025,10 +984,10 @@ class Orchestrator:
                     f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
                 )
 
-            if self._should_log_learning(
+            if self.lessons_manager.should_log_learning(
                 request, intent=intent, tool_required=tool_required, agent=agent
             ):
-                self._append_learning_log(
+                self.lessons_manager.append_learning_log(
                     task_id=task_id,
                     intent=intent,
                     prompt=request.content,
@@ -1085,7 +1044,7 @@ class Orchestrator:
             # REFLEKSJA: Zapisz lekcję o błędzie (jeśli meta-uczenie włączone i store_knowledge=True)
             agent = self.task_dispatcher.agent_map.get(intent)
             if self._should_store_lesson(request, intent=intent, agent=agent):
-                await self._save_task_lesson(
+                await self.lessons_manager.save_task_lesson(
                     task_id=task_id,
                     context=context,
                     intent=intent,
@@ -1100,10 +1059,10 @@ class Orchestrator:
                     f"Skipping lesson save for task {task_id} (Knowledge Storage Disabled)"
                 )
 
-            if self._should_log_learning(
+            if self.lessons_manager.should_log_learning(
                 request, intent=intent, tool_required=tool_required, agent=agent
             ):
-                self._append_learning_log(
+                self.lessons_manager.append_learning_log(
                     task_id=task_id,
                     intent=intent,
                     prompt=request.content,
@@ -1249,203 +1208,6 @@ class Orchestrator:
         # Deleguj do CodeReviewLoop
         return await self._code_review_loop.execute(task_id, user_request)
 
-    async def _add_lessons_to_context(self, task_id: UUID, context: str) -> str:
-        """
-        Pre-flight check: Dodaje relevantne lekcje z przeszłości do kontekstu.
-
-        Args:
-            task_id: ID zadania
-            context: Oryginalny kontekst
-
-        Returns:
-            Kontekst wzbogacony o lekcje
-        """
-        if not SETTINGS.ENABLE_META_LEARNING or not self.lessons_store:
-            return context
-
-        try:
-            # Wyszukaj relevantne lekcje
-            lessons = self.lessons_store.search_lessons(
-                query=context[:500],  # Użyj fragmentu kontekstu do wyszukania
-                limit=MAX_LESSONS_IN_CONTEXT,
-            )
-
-            if not lessons:
-                logger.debug("Brak relevantnych lekcji dla tego zadania")
-                return context
-
-            # Sformatuj lekcje do dołączenia
-            lessons_text = "\n\n📚 LEKCJE Z PRZESZŁOŚCI (Nauczyłem się wcześniej):\n"
-            for i, lesson in enumerate(lessons, 1):
-                lessons_text += f"\n[Lekcja {i}]\n"
-                lessons_text += f"Sytuacja: {lesson.situation}\n"
-                lessons_text += f"Co poszło nie tak: {lesson.result}\n"
-                lessons_text += f"Wniosek: {lesson.feedback}\n"
-
-            self.state_manager.add_log(
-                task_id, f"Dołączono {len(lessons)} lekcji z przeszłości do kontekstu"
-            )
-
-            # Broadcast informacji o lekcjach
-            await self._broadcast_event(
-                event_type="AGENT_THOUGHT",
-                message=f"Znalazłem {len(lessons)} relevantnych lekcji z przeszłości",
-                data={"task_id": str(task_id), "lessons_count": len(lessons)},
-            )
-
-            # Dołącz lekcje na początku kontekstu
-            return lessons_text + "\n\n" + context
-
-        except Exception as e:
-            logger.warning(f"Błąd podczas dodawania lekcji do kontekstu: {e}")
-            return context
-
-    async def _save_task_lesson(
-        self,
-        task_id: UUID,
-        context: str,
-        intent: str,
-        result: str,
-        success: bool,
-        error: str = None,
-        agent: Optional[object] = None,
-        request: Optional[TaskRequest] = None,
-    ) -> None:
-        """
-        Zapisuje lekcję z wykonanego zadania (refleksja).
-
-        Args:
-            task_id: ID zadania
-            context: Kontekst zadania
-            intent: Sklasyfikowana intencja
-            result: Rezultat zadania
-            success: Czy zadanie zakończyło się sukcesem
-            error: Opcjonalny opis błędu
-        """
-        if not SETTINGS.ENABLE_META_LEARNING or not self.lessons_store:
-            return
-
-        try:
-            # Przygotuj dane lekcji
-            situation = f"[{intent}] {context[:200]}..."  # Skrócony opis sytuacji
-
-            if success:
-                # Lekcja o sukcesie - zapisuj tylko jeśli coś ciekawego
-                # (np. jeśli było więcej niż 1 próba w Coder-Critic)
-                task_logs = self.state_manager.get_task(task_id)
-                if not task_logs or len(task_logs.logs) <= 5:
-                    # Proste zadanie, nie ma co zapisywać
-                    logger.debug("Proste zadanie, pomijam zapis lekcji")
-                    return
-                # Było dużo iteracji, warto zapisać
-                action = f"Zadanie wykonane pomyślnie po {len(task_logs.logs)} krokach"
-                lesson_result = "SUKCES"
-                feedback = f"Zadanie typu {intent} wymaga dokładnego planowania. Wynik: {result[:100]}..."
-                tags = [intent, "sukces", "nauka"]
-                reason = "success_multi_step"
-            else:
-                # Lekcja o błędzie - zawsze zapisuj
-                action = f"Próba wykonania zadania typu {intent}"
-                error_msg = error if error else "Unknown error"
-                lesson_result = f"BŁĄD: {error_msg[:200]}"
-                feedback = f"Unikaj powtórzenia tego błędu. Błąd: {error_msg[:300]}"
-                tags = [intent, "błąd", "ostrzeżenie"]
-                reason = "error"
-
-            # Zapisz lekcję
-            lesson = self.lessons_store.add_lesson(
-                situation=situation,
-                action=action,
-                result=lesson_result,
-                feedback=feedback,
-                tags=tags,
-                metadata={
-                    "task_id": str(task_id),
-                    "timestamp": datetime.now().isoformat(),
-                    "intent": intent,
-                    "agent": agent.__class__.__name__ if agent else None,
-                    "success": success,
-                    "reason": reason,
-                    "source": "orchestrator",
-                    "store_knowledge": request.store_knowledge if request else None,
-                    "learning_enabled": SETTINGS.ENABLE_META_LEARNING,
-                },
-            )
-
-            self.state_manager.add_log(
-                task_id, f"💡 Zapisano lekcję: {lesson.lesson_id}"
-            )
-
-            # Broadcast informacji o nowej lekcji
-            await self._broadcast_event(
-                event_type="LESSON_LEARNED",
-                message=f"Nauczyłem się czegoś nowego: {feedback[:100]}",
-                data={
-                    "task_id": str(task_id),
-                    "lesson_id": lesson.lesson_id,
-                    "success": success,
-                },
-            )
-
-            logger.info(f"Zapisano lekcję z zadania {task_id}: {lesson.lesson_id}")
-
-        except Exception as e:
-            logger.error(f"Błąd podczas zapisywania lekcji: {e}")
-
-    def _should_log_learning(
-        self,
-        request: TaskRequest,
-        intent: str,
-        tool_required: bool,
-        agent=None,
-    ) -> bool:
-        """Zwraca True jeśli należy zapisać wpis procesu nauki dla LLM-only."""
-        if not request.store_knowledge:
-            return False
-        if tool_required:
-            return False
-        if intent in self.NON_LEARNING_INTENTS:
-            return False
-        if agent and getattr(agent, "disable_learning", False):
-            return False
-        return True
-
-    def _append_learning_log(
-        self,
-        task_id: UUID,
-        intent: str,
-        prompt: str,
-        result: str,
-        success: bool,
-        error: Optional[str] = None,
-    ) -> None:
-        """Zapisuje wpis procesu nauki dla LLM-only do lokalnego JSONL."""
-        entry = {
-            "task_id": str(task_id),
-            "timestamp": datetime.now().isoformat(),
-            "intent": intent,
-            "tool_required": False,
-            "success": success,
-            "need": (prompt or "")[:MAX_LEARNING_SNIPPET],
-            "outcome": (result or "")[:MAX_LEARNING_SNIPPET],
-            "error": (error or "")[:MAX_LEARNING_SNIPPET],
-            "fast_path_hint": "",
-            "tags": [intent, "llm_only", "success" if success else "failure"],
-        }
-
-        try:
-            LEARNING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with LEARNING_LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            self.state_manager.add_log(
-                task_id, f"🧠 Zapisano wpis nauki do {LEARNING_LOG_PATH}"
-            )
-            collector = metrics_module.metrics_collector
-            if collector:
-                collector.increment_learning_logged()
-        except Exception as exc:
-            logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
-
     def _should_use_council(self, context: str, intent: str) -> bool:
         """
         Decyduje czy użyć trybu Council dla danego zadania.
@@ -1464,9 +1226,11 @@ class Orchestrator:
                 task_dispatcher=self.task_dispatcher,
                 event_broadcaster=self.event_broadcaster,
             )
+            # Zaktualizuj flow_router z council_flow
+            self.flow_router._council_flow = self._council_flow
 
-        # Deleguj decyzję do CouncilFlow
-        return self._council_flow.should_use_council(context, intent)
+        # Deleguj decyzję do FlowRouter
+        return self.flow_router.should_use_council(context, intent)
 
     async def run_council(self, task_id: UUID, context: str) -> str:
         """

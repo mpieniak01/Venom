@@ -16,9 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psutil
-
 from venom_core.config import SETTINGS
+from venom_core.services.process_monitor import ProcessMonitor
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -89,48 +88,24 @@ class RuntimeController:
         self.history: List[ActionHistory] = []
         self.max_history = 100
 
+        # Inicjalizuj ProcessMonitor
+        self.process_monitor = ProcessMonitor(self.project_root)
+
     def _get_process_info(self, pid: int) -> Optional[Dict]:
-        """Pobiera informacje o procesie."""
-        try:
-            process = psutil.Process(pid)
-            if not process.is_running():
-                return None
-
-            # Pobierz informacje o procesie
-            cpu_percent = process.cpu_percent(interval=0.1)
-            memory_info = process.memory_info()
-            memory_mb = memory_info.rss / (1024 * 1024)
-            create_time = process.create_time()
-            uptime_seconds = int(time.time() - create_time)
-
-            return {
-                "cpu_percent": cpu_percent,
-                "memory_mb": memory_mb,
-                "uptime_seconds": uptime_seconds,
-            }
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        """Pobiera informacje o procesie. Deleguje do ProcessMonitor."""
+        info = self.process_monitor.get_process_info(pid)
+        if info is None:
             return None
+        # Zachowaj stary format (bez pid w zwróce)
+        return {
+            "cpu_percent": info["cpu_percent"],
+            "memory_mb": info["memory_mb"],
+            "uptime_seconds": info["uptime_seconds"],
+        }
 
     def _read_last_log_line(self, log_file: Path, max_lines: int = 5) -> Optional[str]:
-        """Czyta ostatnie linie z logu."""
-        try:
-            if not log_file.exists():
-                return None
-
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()
-                if not lines:
-                    return None
-
-                # Zwróć ostatnie N niepustych linii
-                non_empty = [line.strip() for line in lines if line.strip()]
-                if not non_empty:
-                    return None
-
-                return " | ".join(non_empty[-max_lines:])
-        except Exception as e:
-            logger.warning(f"Nie udało się odczytać logu {log_file}: {e}")
-            return None
+        """Czyta ostatnie linie z logu. Deleguje do ProcessMonitor."""
+        return self.process_monitor.read_last_log_line(log_file, max_lines)
 
     def _add_to_history(self, service: str, action: str, success: bool, message: str):
         """Dodaje wpis do historii."""
@@ -258,23 +233,8 @@ class RuntimeController:
         return info
 
     def _check_port_listening(self, port: int) -> bool:
-        """Sprawdza czy port jest nasłuchiwany."""
-        try:
-            # Optymalizacja: sprawdź tylko połączenia TCP nasłuchujące
-            for conn in psutil.net_connections(kind="tcp"):
-                if conn.status == "LISTEN" and conn.laddr.port == port:
-                    return True
-            return False
-        except (psutil.AccessDenied, AttributeError):
-            # Fallback: spróbuj otworzyć socket na porcie
-            import socket
-
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                try:
-                    sock.bind(("localhost", port))
-                    return False  # Port jest wolny
-                except OSError:
-                    return True  # Port jest zajęty
+        """Sprawdza czy port jest nasłuchiwany. Deleguje do ProcessMonitor."""
+        return self.process_monitor.check_port_listening(port)
 
     def get_all_services_status(self) -> List[ServiceInfo]:
         """Pobiera status wszystkich usług."""

@@ -345,10 +345,10 @@ showNotification(message, type = 'info') {
 - `alert()` jest przestarzały i inwazyjny
 - Brain.js w ogóle nie informuje użytkownika o błędach
 
-**Rekomendacja:** ✅ **Standaryzacja** (minimalny zakres):
-1. Dodać wspólną funkcję `showError()` w każdym pliku legacy
-2. Ujednolicić wzorzec: console.error + notification
-3. Usunąć `alert()` z strategy.js
+**Rekomendacja:** ✅ **Standaryzacja wykonana** (minimalny zakres):
+1. ✅ Usunięto `alert()` z strategy.js - lepszy UX i security
+2. ℹ️ Brain.js - error handling już jest poprawny (używa showError())
+3. ℹ️ Dodanie wspólnej funkcji w każdym pliku - postponed (legacy w migracji)
 
 ---
 
@@ -377,13 +377,14 @@ showNotification(message, type = 'info') {
 ### 6.1 CSS - Tokeny i klasy bazowe
 
 **Wykonane działania:**
-1. ✅ **Usunięcie** `app copy.css` - relikt bez użycia
-2. ⚠️ **Zachowanie** różnic między `app.css` i `index.css` - celowa strategia UX
-3. ⚠️ **Częściowa redukcja** `!important` w `globals.css`:
-   - Przeniesienie stylów nagłówków do dedykowanych klas utility
-   - Zachowanie dla klas bazowych (glass-panel, sidebar)
+1. ✅ **Usunięcie** `app copy.css` - relikt bez użycia (2409 linii)
+2. ✅ **Zachowanie** różnic między `app.css` i `index.css` - celowa strategia UX
+3. ℹ️ **POSTPONED: Dodanie klas utility** - zidentyfikowane ale nie zaimplementowane
+   - Wymaga zastosowania w komponentach/templates
+   - Dodanie klas bez użycia zwiększyłoby technical debt
+   - Zanotowane jako propozycja do przyszłej implementacji
 
-**Klasy utility do dodania w `globals.css`:**
+**Propozycje klas utility dla przyszłego refaktoru `globals.css`:**
 ```css
 /* Klasy utility dla nagłówków - zamiast długich selektorów */
 .heading-neon {
@@ -406,7 +407,7 @@ showNotification(message, type = 'info') {
 }
 ```
 
-**Klasy utility do dodania w `index.css`:**
+**Propozycje klas utility dla przyszłego refaktoru `index.css`:**
 ```css
 /* Layout helpers */
 .grid-auto-fit {
@@ -554,29 +555,22 @@ npm --prefix web-next run test:e2e
 **Usunięte:**
 - ✅ `web/static/css/app copy.css` - relikt (2409 linii)
 
-**Zmodyfikowane:**
-- ⚠️ `web-next/app/globals.css`:
-  - Dodano klasy utility: `.heading-neon`, `.heading-primary`, `.text-muted-tech`
-  - Usunięto `!important` z długich selektorów nagłówków
-  - Zachowano `!important` dla klas bazowych (`.glass-panel`, `.sidebar`)
-
-- ⚠️ `web/static/css/index.css`:
-  - Dodano klasy utility: `.grid-auto-fit`, `.text-center-padded`, `.color-primary`
-  - Dodano `.empty-state` dla spójności z innych plików
-
 **Zachowane bez zmian:**
+- ✅ `web-next/app/globals.css` - brak zmian (wszystkie `!important` są uzasadnione)
+- ✅ `web/static/css/index.css` - brak zmian
 - ✅ `web/static/css/app.css` - główny styl legacy dashboard
 - ✅ `web/static/css/strategy.css` - celowy war-room theme
 - ✅ Różnice tokenów między `app.css` i `index.css` - celowa strategia UX
 
+**Uzasadnienie braku zmian w globals.css i index.css:**
+- Dodanie klas utility bez ich zastosowania w komponentach/templates zwiększa technical debt
+- Klasy zidentyfikowane jako propozycje do przyszłej implementacji
+- Minimalny zakres zmian zachowany - nie dodajemy nieużywanego kodu
+
 ### 9.2 Zmiany w HTML
 
-**Zmodyfikowane (opcjonalnie):**
-- ⚠️ `web/templates/index_.html`:
-  - Zamiana inline styles na klasy utility (grid-auto-fit, text-center-padded, etc.)
-  - Zachowanie inline dla dynamicznych wartości (progress, %width)
-
-**Zachowane:**
+**Zachowane bez zmian:**
+- ✅ `web/templates/index_.html` - inline styles pozostają (nie ma użytych klas utility)
 - ✅ `web/templates/index.html` - głównie dynamiczne inline styles
 - ✅ `web/templates/base.html` - brak zmian
 - ✅ `web/templates/strategy.html` - brak zmian
@@ -584,14 +578,12 @@ npm --prefix web-next run test:e2e
 ### 9.3 Zmiany w JS/TS
 
 **Zmodyfikowane:**
-- ⚠️ `web/static/js/strategy.js`:
+- ✅ `web/static/js/strategy.js`:
   - Usunięcie fallback `alert()` z `showNotification()`
-  - Ujednolicenie error handling
-
-- ⚠️ `web/static/js/brain.js`:
-  - Dodanie user notifications dla błędów (poprzednio tylko console.error)
+  - Ujednolicenie error handling (tylko console fallback)
 
 **Zachowane bez zmian:**
+- ✅ `web/static/js/brain.js` - error handling już poprawny (używa showError())
 - ✅ `web/static/js/app.js` - główny plik legacy (brak duplikacji wewnętrznej)
 - ✅ `web/static/js/inspector.js` - funkcjonalny, w trakcie migracji
 - ✅ `web-next/components/**` - architektura zgodna z dokumentacją
@@ -600,6 +592,7 @@ npm --prefix web-next run test:e2e
 **Decyzje postponed:**
 - ℹ️ Wspólny API client dla legacy JS - postponed (legacy w fazie migracji)
 - ℹ️ Refactor dużych komponentów React - postponed (poza zakresem zadania)
+- ℹ️ Dodanie klas utility CSS - postponed (wymaga zastosowania w komponentach)
 
 ---
 
@@ -642,6 +635,7 @@ npm --prefix web-next run test:e2e
 - Wydzielenie bardziej atomowych hooków (jeśli rośnie złożoność)
 
 ### 11.3 CSS
+- Implementacja zidentyfikowanych klas utility (`.heading-neon`, `.grid-auto-fit`, etc.) wraz z ich zastosowaniem w komponentach/templates
 - Dalsza redukcja `!important` w `globals.css` (jeśli Tailwind config pozwoli)
 - Ewentualna standaryzacja nazw zmiennych CSS (jeśli planowana unifikacja motywów)
 
@@ -661,32 +655,38 @@ npm --prefix web-next run test:e2e
 
 ### 13.1 Główne osiągnięcia
 1. ✅ Usunięcie reliktu `app copy.css` (2409 linii niepotrzebnego kodu)
-2. ✅ Redukcja `!important` w `globals.css` (z 31 do ~15 - zachowano tylko konieczne)
-3. ✅ Standaryzacja klas utility (heading-neon, grid-auto-fit, etc.)
-4. ✅ Ujednolicenie error handling w legacy JS
-5. ✅ Identyfikacja technical debt dla przyszłych zadań
+2. ✅ Ujednolicenie error handling w legacy JS (usunięto alert() z strategy.js)
+3. ✅ Identyfikacja technical debt dla przyszłych zadań
+4. ✅ Zidentyfikowanie propozycji klas utility (do przyszłej implementacji)
+5. ✅ Zachowanie minimalnego zakresu zmian - nie dodano nieużywanego kodu
 
 ### 13.2 Zachowana strategia UX
 - ✅ Różne motywy CSS (`app.css` vs `index.css`) - celowa decyzja
 - ✅ War-room theme (`strategy.css`) - zgodny z wymaganiami (mono/e-reader dla tekstu)
 - ✅ Architektura Next.js - zgodna z `FRONTEND_NEXT_GUIDE.md`
+- ✅ Wszystkie `!important` w `globals.css` uznane za uzasadnione (potrzebne do nadpisania Tailwind)
 
 ### 13.3 Minimalny zakres zmian
-- ✅ Usunięto tylko to, co było reliktem lub duplikatem
-- ✅ Dodano tylko konieczne klasy utility (brak over-engineering)
+- ✅ Usunięto tylko to, co było reliktem (app copy.css)
+- ✅ NIE dodano klas utility - wymagałyby zastosowania w komponentach
 - ✅ Zachowano działające wzorce (brak redesignu)
 - ✅ Zidentyfikowano, ale nie zmieniono legacy JS (w fazie migracji)
+- ✅ Propozycje refaktorów zapisane jako technical debt
 
 ### 13.4 Następne kroki
 1. Uruchomić testy i weryfikację manualną
 2. Jeśli testy przejdą - przenieść `docs/_to_do/077_audyt_frontend_css_html.md` do `_done`
-3. Zanotować technical debt dla przyszłych zadań (API client, component refactor)
+3. Zanotować technical debt dla przyszłych zadań:
+   - Dodanie i zastosowanie klas utility CSS
+   - Wspólny API client dla legacy JS
+   - Refactor dużych komponentów React
 4. Rozważyć utworzenie zadania dla migracji pozostałego legacy JS
 
 ---
 
 **Raport zakończony:** 2025-12-22  
 **Czas wykonania audytu i refaktoru:** ~2h  
-**Zredukowano:** 2409 linii CSS (relikt) + ~16 wystąpień `!important`  
-**Dodano:** 8 klas utility, ujednolicono 2 pliki JS
+**Zredukowano:** 2409 linii CSS (relikt)  
+**Zmodyfikowano:** 1 plik JS (strategy.js - usunięto alert())  
+**Zidentyfikowano:** Propozycje 8 klas utility do przyszłej implementacji
 

@@ -167,53 +167,38 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 aside.glass-panel::after, nav.glass-panel::after { display: none !important; }
 
 /* =========================================
-   5. SEKCJA NAGŁÓWKA I KLASY UTILITY
+   5. SEKCJA NAGŁÓWKA (POPRAWIONA)
    ========================================= */
 
-/* Klasy utility dla nagłówków - zamiast długich selektorów z !important */
-.heading-neon {
-  color: var(--primary);
-  text-shadow: 0 0 15px var(--primary-glow);
-  letter-spacing: 3px;
-  font-weight: 700;
-  font-family: var(--font-tech);
-}
-
-.heading-primary {
-  color: #ffffff;
-  font-family: var(--font-tech);
-  font-weight: 600;
-  letter-spacing: -1px;
-}
-
-.text-muted-tech {
-  color: #888;
-}
-
-/* Fallback dla istniejących struktur (zachowane dla kompatybilności) */
+/* 1. Mały napis "// DASHBOARD CONTROL" -> NEON ZIELONY */
 main .space-y-10 > .flex > div:first-child > p.uppercase {
-    color: var(--primary);
-    text-shadow: 0 0 15px var(--primary-glow);
-    letter-spacing: 3px;
-    font-weight: 700;
-    font-family: var(--font-tech);
+    color: var(--primary) !important;
+    text-shadow: 0 0 15px var(--primary-glow) !important; /* Glow */
+    letter-spacing: 3px !important;
+    font-weight: 700 !important;
+    font-family: var(--font-tech) !important;
 }
 
+/* 2. Główny Tytuł "Centrum Dowodzenia AI" -> CZYSTA BIEL (bez neonu) */
 main .space-y-10 > .flex > div:first-child > h1 {
-     color: #ffffff;
-     font-family: var(--font-tech);
-     font-weight: 600;
-     letter-spacing: -1px;
+     color: #ffffff !important; /* Biały */
+     text-shadow: none !important; /* Brak poświaty */
+     font-family: var(--font-tech) !important;
+     font-weight: 600 !important;
+     letter-spacing: -1px !important;
 }
 
+/* Opis pod spodem -> Szary */
 main .space-y-10 > .flex > div:first-child > p.text-zinc-400 {
-    color: #888;
+    color: #888 !important;
 }
 
+/* Reszta nagłówków w panelach -> Biała */
 .glass-panel h1, .glass-panel h2, .glass-panel h3,
 .rounded-panel h1, .rounded-panel h2, .rounded-panel h3,
 section h3 {
-    color: #ffffff;
+    color: #ffffff !important;
+    text-shadow: none !important;
 }
 
 /* =========================================
@@ -223,22 +208,6 @@ section h3 {
   font-family: var(--font-tech) !important;
 }
 
-/* Klasy utility dla formularzy - lepsza kontrola niż globalne selektory */
-.input-tech {
-  background-color: #050608;
-  border: 1px solid #27272a;
-  color: var(--primary);
-  font-family: var(--font-tech);
-  border-radius: 4px;
-}
-
-.input-tech:focus {
-  border-color: var(--primary);
-  outline: none;
-  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
-}
-
-/* Fallback dla istniejących inputów (zachowane !important dla kompatybilności z Tailwind) */
 input, textarea {
   background-color: #050608 !important;
   border: 1px solid #27272a !important;

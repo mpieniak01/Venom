@@ -16,6 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import psutil
+
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
 from venom_core.utils.logger import get_logger

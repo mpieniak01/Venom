@@ -91,7 +91,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-black/40 p-4 space-y-3">
+        <div className="flex-1 overflow-auto rounded-2xl box-muted p-4 space-y-3">
           {!connected ? (
             <OverlayFallback
               icon={<AlertTriangle className="h-5 w-5" />}
@@ -115,7 +115,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
                   key={entry.id}
                   title={entry.message}
                   badge={<Badge tone={toneFromLevel(entry.level)}>{entry.levelLabel}</Badge>}
-                  meta={<span className="text-xs text-zinc-400">{formatTimestamp(entry.ts)}</span>}
+                  meta={<span className="text-hint">{formatTimestamp(entry.ts)}</span>}
                 >
                   {entry.details && (
                     <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-zinc-300">

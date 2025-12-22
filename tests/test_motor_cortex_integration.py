@@ -79,9 +79,11 @@ async def test_orchestrator_executes_code_generation_task(
     assert "Hello World" in task.result
 
     # Sprawdź czy dispatcher został wywołany
-    mock_dispatcher.dispatch.assert_called_once_with(
-        "CODE_GENERATION", "Napisz funkcję Hello World w Python"
-    )
+    mock_dispatcher.dispatch.assert_called_once()
+    args, kwargs = mock_dispatcher.dispatch.call_args
+    assert args[0] == "CODE_GENERATION"
+    assert "Napisz funkcję Hello World w Python" in args[1]
+    assert kwargs.get("generation_params") is None
 
 
 @pytest.mark.asyncio

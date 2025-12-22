@@ -34,18 +34,11 @@ export function SectionHeading({
         : `// ${eyebrow.trim()}`
       : null;
   return (
-    <div className={cn("flex flex-wrap items-start justify-between gap-4", className)}>
+    <div className={cn("page-heading flex flex-wrap items-start justify-between gap-4", className)}>
       <div>
-        {normalizedEyebrow && (
-          <p
-            className="text-[0.65rem] uppercase tracking-[0.65em] text-[var(--color-accent)] drop-shadow-[0_0_12px_rgba(0,255,157,0.45)]"
-            style={{ fontFamily: "var(--font-jetbrains)" }}
-          >
-            {normalizedEyebrow}
-          </p>
-        )}
-        <HeadingTag className={cn("font-semibold text-white", sizeMap[size])}>{title}</HeadingTag>
-        {description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
+        {normalizedEyebrow && <p className="page-heading-eyebrow">{normalizedEyebrow}</p>}
+        <HeadingTag className={cn("page-heading-title", sizeMap[size])}>{title}</HeadingTag>
+        {description && <p className="page-heading-desc">{description}</p>}
       </div>
       {rightSlot}
     </div>

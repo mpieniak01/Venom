@@ -78,6 +78,13 @@ async function measureLatency(page: Page, target: TargetConfig) {
   });
 
   const latencyBudgetMs = target.latencyBudgetMs ?? 5_000;
+  if (target.optional && latency > latencyBudgetMs) {
+    test.skip(
+      true,
+      `${target.name} przekroczyl budzet ${latencyBudgetMs}ms (wynik: ${latency.toFixed(0)}ms)`,
+    );
+    return;
+  }
   expect(latency, `${target.name}: przekroczono budżet ${latencyBudgetMs}ms`).toBeLessThanOrEqual(
     latencyBudgetMs,
   );

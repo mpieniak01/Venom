@@ -77,7 +77,7 @@ export function NotificationDrawer({ open, onOpenChange }: NotificationDrawerPro
                 key={note.id}
                 title={note.message}
                 badge={<Badge tone={toneFromLevel(note.level)}>{note.level}</Badge>}
-                meta={<span className="text-xs text-zinc-400">{new Date(note.ts).toLocaleString()}</span>}
+                meta={<span className="text-hint">{new Date(note.ts).toLocaleString()}</span>}
               />
             ))
           )}

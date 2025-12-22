@@ -114,21 +114,23 @@ export function MobileNav() {
 
   return (
     <>
-      <button
-        className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-sm text-white transition hover:bg-white/5 lg:hidden"
+      <Button
+        className="gap-2 text-sm lg:hidden"
+        variant="outline"
+        size="sm"
         onClick={() => setOpen(true)}
         aria-label={t("common.openNavigation")}
       >
         <Menu className="h-4 w-4" />
         {t("common.menu")}
-      </button>
+      </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="glass-panel flex h-full max-w-md flex-col border-r border-white/10 bg-black/90 text-white">
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center justify-between text-lg font-semibold text-white">
               <span className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/50 to-cyan-500/50 text-xl">
-                  🕷️
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
+                  🐍
                 </span>
                 {t("mobileNav.navTitle")}
               </span>
@@ -154,7 +156,7 @@ export function MobileNav() {
                   <item.icon className="h-4 w-4 text-emerald-200" />
                   <div>
                     <p className="font-semibold tracking-wide">{label}</p>
-                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    <p className="eyebrow">
                       /{item.href === "/" ? "cockpit" : item.href.replace("/", "")}
                     </p>
                   </div>
@@ -163,39 +165,41 @@ export function MobileNav() {
             })}
           </nav>
 
-          <section className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4">
+          <section className="mt-6 card-shell card-base p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-zinc-500">Telemetria</p>
+                <p className="eyebrow">Telemetria</p>
                 <p className="text-base font-semibold">{telemetryContent.title}</p>
               </div>
               <Badge tone={telemetryContent.badge.tone}>{telemetryContent.badge.text}</Badge>
             </div>
             <div className="mt-3 flex rounded-full border border-white/10 bg-black/40 text-xs">
               {(["queue", "tasks", "ws"] as TelemetryTab[]).map((tab) => (
-                <button
+                <Button
                   key={tab}
+                  variant="ghost"
+                  size="xs"
                   className={`flex-1 rounded-full px-3 py-1.5 uppercase tracking-[0.3em] ${
                     telemetryTab === tab ? "bg-emerald-500/20 text-white" : "text-zinc-400"
                   }`}
                   onClick={() => setTelemetryTab(tab)}
                 >
                   {tab === "queue" ? "Kolejka" : tab === "tasks" ? "Zadania" : "WS"}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="mt-4 space-y-2 text-sm text-zinc-200">
               {telemetryContent.rows.map((row) => (
-                <div key={row.label} className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/30 px-3 py-2">
-                  <span className="text-xs uppercase tracking-[0.3em] text-zinc-500">{row.label}</span>
+                <div key={row.label} className="list-row">
+                  <span className="text-caption">{row.label}</span>
                   <span className="font-semibold text-white">{row.value}</span>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="mt-4 rounded-3xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-zinc-500">
+          <section className="mt-4 card-shell bg-black/40 p-4">
+            <div className="eyebrow flex items-center gap-2">
               <Terminal className="h-4 w-4 text-emerald-200" />
               Mini terminal
             </div>
@@ -219,7 +223,7 @@ export function MobileNav() {
           </section>
 
           <section className="mt-4 space-y-3">
-            <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4">
+            <div className="card-shell bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Tryb kosztów</p>
@@ -241,7 +245,7 @@ export function MobileNav() {
               </Button>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4">
+            <div className="card-shell bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Autonomia</p>
@@ -255,7 +259,7 @@ export function MobileNav() {
                 <Shield className="h-5 w-5 text-violet-200" />
               </div>
               <select
-                className="mt-3 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400"
+                className="mt-3 w-full rounded-2xl box-muted px-3 py-2 text-sm text-white outline-none focus:border-violet-400"
                 value={autonomy?.current_level ?? ""}
                 onChange={(event) => {
                   const nextValue = Number(event.target.value);
@@ -279,7 +283,7 @@ export function MobileNav() {
               )}
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-black/40 p-3 text-center">
+            <div className="card-shell bg-black/40 p-3 text-center">
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Język</p>
               <div className="mt-2 flex justify-center">
                 <LanguageSwitcher className="justify-center" />
@@ -287,7 +291,7 @@ export function MobileNav() {
             </div>
           </section>
 
-          <div className="mt-6 rounded-3xl border border-white/10 bg-black/20 p-4 text-xs text-zinc-500">
+          <div className="mt-6 card-shell bg-black/20 p-4 text-xs text-zinc-500">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4" />
               Next.js + FastAPI

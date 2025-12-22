@@ -15,15 +15,11 @@ export function Panel({ eyebrow, title, description, action, children, className
       {(title || description || action) && (
         <header className="mb-4 flex items-start justify-between gap-3">
           <div>
-            {eyebrow && (
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{eyebrow}</p>
-            )}
+            {eyebrow && <p className="eyebrow">{eyebrow}</p>}
             {title && (
-              <h3 className="text-lg font-semibold leading-tight">{title}</h3>
+              <h3 className="heading-h3 leading-tight">{title}</h3>
             )}
-            {description && (
-              <p className="mt-1 text-sm text-[--color-muted]">{description}</p>
-            )}
+            {description && <p className="mt-1 text-sm text-muted">{description}</p>}
           </div>
           {action}
         </header>
@@ -61,7 +57,7 @@ export function StatCard({ label, value, hint, accent = "purple" }: StatCardProp
         {label}
       </p>
       <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-      {hint && <p className="mt-1 text-xs text-zinc-400">{hint}</p>}
+      {hint && <p className="mt-1 text-hint">{hint}</p>}
     </div>
   );
 }

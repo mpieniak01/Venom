@@ -2,6 +2,7 @@
  * inspector.js - Interaktywny Inspektor Przepływu
  * Alpine.js + Mermaid.js + svg-pan-zoom
  */
+const { apiFetchJson } = window.VenomApi;
 
 // Sprawdź dostępność wymaganych bibliotek
 if (typeof mermaid === 'undefined') {
@@ -73,11 +74,9 @@ function inspectorApp() {
         async loadTraces() {
             this.loading = true;
             try {
-                const response = await fetch('/api/v1/history/requests?limit=50');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                this.traces = await response.json();
+                this.traces = await apiFetchJson('/api/v1/history/requests?limit=50', {}, {
+                    errorMessage: 'Nie udało się pobrać historii'
+                });
                 console.log(`✅ Loaded ${this.traces.length} traces`);
             } catch (error) {
                 console.error('❌ Error loading traces:', error);
@@ -96,11 +95,9 @@ function inspectorApp() {
             this.selectedStep = null;
 
             try {
-                const response = await fetch(`/api/v1/flow/${traceId}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                this.currentFlowData = await response.json();
+                this.currentFlowData = await apiFetchJson(`/api/v1/flow/${traceId}`, {}, {
+                    errorMessage: 'Nie udało się pobrać danych przepływu'
+                });
                 console.log('✅ Flow data loaded:', this.currentFlowData);
 
                 // Renderuj diagram

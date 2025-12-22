@@ -32,6 +32,7 @@ _state_manager = None  # Nowa zależność dla Cost Guard
 _llm_controller = None
 _model_manager = None
 _request_tracer = None
+_hardware_bridge = None
 
 
 class CostModeRequest(BaseModel):
@@ -52,6 +53,14 @@ class ActiveLlmServerRequest(BaseModel):
     trace_id: Optional[UUID] = None
 
 
+class IoTStatusResponse(BaseModel):
+    connected: bool
+    cpu_temp: Optional[str] = None
+    memory: Optional[str] = None
+    disk: Optional[str] = None
+    message: Optional[str] = None
+
+
 def set_dependencies(
     background_scheduler,
     service_monitor,
@@ -59,6 +68,7 @@ def set_dependencies(
     llm_controller=None,
     model_manager=None,
     request_tracer=None,
+    hardware_bridge=None,
 ):
     """Ustaw zależności dla routera."""
     global \
@@ -67,13 +77,15 @@ def set_dependencies(
         _state_manager, \
         _llm_controller, \
         _model_manager, \
-        _request_tracer
+        _request_tracer, \
+        _hardware_bridge
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
     _state_manager = state_manager
     _llm_controller = llm_controller
     _model_manager = model_manager
     _request_tracer = request_tracer
+    _hardware_bridge = hardware_bridge
 
 
 @router.get("/metrics")
@@ -266,12 +278,76 @@ async def get_service_status(service_name: str):
                 "description": service.description,
             },
         }
-
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"Błąd podczas sprawdzania statusu usługi {service_name}")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+@router.get("/iot/status", response_model=IoTStatusResponse)
+async def get_iot_status():
+    """
+    Zwraca podstawowy status Rider-Pi (IoT bridge).
+    """
+    if not SETTINGS.ENABLE_IOT_BRIDGE:
+        return IoTStatusResponse(
+            connected=False,
+            message="IoT bridge jest wyłączony w konfiguracji.",
+        )
+
+    if _hardware_bridge is None or not getattr(_hardware_bridge, "connected", False):
+        return IoTStatusResponse(
+            connected=False,
+            message="Brak połączenia z Rider-Pi.",
+        )
+
+    if getattr(_hardware_bridge, "protocol", None) != "ssh":
+        return IoTStatusResponse(
+            connected=True,
+            message="Połączono z Rider-Pi, telemetria tylko w trybie SSH.",
+        )
+
+    cpu_temp = None
+    memory = None
+    disk = None
+
+    try:
+        temp_value = await _hardware_bridge.read_sensor("cpu_temp")
+        if temp_value is not None:
+            cpu_temp = f"{temp_value:.1f}°C"
+    except Exception as exc:
+        logger.warning("Nie udało się pobrać temperatury CPU Rider-Pi: %s", exc)
+
+    try:
+        mem_result = await _hardware_bridge.execute_command(
+            "free -m | awk 'NR==2{printf \"%s/%sMB\", $3, $2}'"
+        )
+        if mem_result.get("return_code") == 0:
+            memory = mem_result.get("stdout", "").strip() or None
+    except Exception as exc:
+        logger.warning("Nie udało się pobrać pamięci Rider-Pi: %s", exc)
+
+    try:
+        disk_result = await _hardware_bridge.execute_command(
+            "df -h / | awk 'NR==2{print $3\"/\"$2}'"
+        )
+        if disk_result.get("return_code") == 0:
+            disk = disk_result.get("stdout", "").strip() or None
+    except Exception as exc:
+        logger.warning("Nie udało się pobrać dysku Rider-Pi: %s", exc)
+
+    message = None
+    if not any([cpu_temp, memory, disk]):
+        message = "Brak danych telemetrycznych z Rider-Pi."
+
+    return IoTStatusResponse(
+        connected=True,
+        cpu_temp=cpu_temp,
+        memory=memory,
+        disk=disk,
+        message=message,
+    )
 
 
 @router.get("/system/status")

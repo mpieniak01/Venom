@@ -19,7 +19,7 @@ export function IntegrationMatrix({ services, events }: IntegrationMatrixProps) 
     >
       <div className="grid gap-4 md:grid-cols-3">
         {grouped.map((group) => (
-          <div key={group.name} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div key={group.name} className="rounded-2xl box-base p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">{group.name}</p>
               <Badge tone={group.statusTone}>{group.statusLabel}</Badge>
@@ -29,7 +29,7 @@ export function IntegrationMatrix({ services, events }: IntegrationMatrixProps) 
                 <p className="text-xs text-zinc-500">Brak danych usług.</p>
               ) : (
                 group.services.map((svc) => (
-                  <div key={svc.name} className="rounded-xl border border-white/10 bg-black/40 px-3 py-2">
+                  <div key={svc.name} className="rounded-xl box-muted px-3 py-2">
                     <p className="font-semibold text-white">{svc.name}</p>
                     <p className="text-xs text-zinc-500">{svc.detail ?? "Brak opisu."}</p>
                     <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
@@ -40,7 +40,7 @@ export function IntegrationMatrix({ services, events }: IntegrationMatrixProps) 
           </div>
         ))}
       </div>
-      <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+      <div className="mt-4 rounded-2xl box-muted p-4">
         <div className="flex items-center justify-between">
           <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Aktywne operacje</p>
           <span className="text-xs text-zinc-400">/ws/events</span>

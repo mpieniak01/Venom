@@ -135,8 +135,11 @@ class ProcessMonitor:
             return False
         except (PermissionError, psutil.AccessDenied):
             # Fallback: spróbuj otworzyć socket na porcie
-            logger.warning(f"Brak uprawnień do sprawdzenia portu {port}, używam fallback")
+            logger.warning(
+                f"Brak uprawnień do sprawdzenia portu {port}, używam fallback"
+            )
             import socket
+
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                     sock.bind(("localhost", port))

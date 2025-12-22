@@ -64,7 +64,7 @@ const SheetTitle = ({
   className?: string;
 }) => (
   <SheetPrimitive.Title asChild>
-    <h3 className={cn("text-lg font-semibold text-white", className)}>{children}</h3>
+    <h3 className={cn("heading-h3", className)}>{children}</h3>
   </SheetPrimitive.Title>
 );
 
@@ -76,7 +76,7 @@ const SheetDescription = ({
   className?: string;
 }) => (
   <SheetPrimitive.Description asChild>
-    <p className={cn("text-sm text-zinc-400", className)}>{children}</p>
+    <p className={cn("text-sm text-muted", className)}>{children}</p>
   </SheetPrimitive.Description>
 );
 

@@ -29,9 +29,7 @@ class StreamingHandler:
         self.state_manager = state_manager
         self.partial_emit_interval = partial_emit_interval
 
-    def create_stream_callback(
-        self, task_id: UUID
-    ) -> Callable[[str], None]:
+    def create_stream_callback(self, task_id: UUID) -> Callable[[str], None]:
         """
         Tworzy callback do obsługi streamingu dla danego zadania.
 
@@ -78,9 +76,7 @@ class StreamingHandler:
 
             first_chunk_sent = True
             elapsed_ms = int((now - stream_start) * 1000)
-            preview_trimmed = (
-                preview[:200] + "..." if len(preview) > 200 else preview
-            )
+            preview_trimmed = preview[:200] + "..." if len(preview) > 200 else preview
 
             # Zaloguj pierwszy fragment
             self.state_manager.add_log(

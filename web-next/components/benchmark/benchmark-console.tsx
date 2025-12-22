@@ -45,7 +45,7 @@ export function BenchmarkConsole({ logs, isRunning = false }: BenchmarkConsolePr
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-zinc-300">
+        <h4 className="heading-h4 text-zinc-300">
           Logi wykonania
         </h4>
         {isRunning && (

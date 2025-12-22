@@ -214,20 +214,14 @@ export function ServicesPanel() {
     <div className="space-y-6">
       {/* Message */}
       {message && (
-        <div
-          className={`rounded-xl border p-4 ${
-            message.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
-          }`}
-        >
+        <div className={`alert ${message.type === "success" ? "alert--success" : "alert--error"}`}>
           {message.text}
         </div>
       )}
 
       {/* Profiles */}
-      <div className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6">
-        <h2 className="mb-4 text-lg font-semibold text-white">Profile szybkie</h2>
+      <div className="glass-panel rounded-2xl box-subtle p-6">
+        <h2 className="mb-4 heading-h2">Profile szybkie</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Button
             onClick={() => applyProfile("full")}
@@ -272,7 +266,7 @@ export function ServicesPanel() {
           return (
             <div
               key={service.service_type}
-              className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-4"
+              className="glass-panel rounded-2xl box-subtle p-4"
             >
               {/* Header */}
               <div className="mb-3 flex items-start justify-between">
@@ -280,13 +274,9 @@ export function ServicesPanel() {
                   <div className={`${getStatusColor(service.status)}`}>
                     {getServiceIcon(service.service_type)}
                   </div>
-                  <h3 className="text-sm font-semibold text-white">{service.name}</h3>
+                  <h4 className="heading-h4">{service.name}</h4>
                 </div>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${getStatusBadge(
-                    service.status
-                  )}`}
-                >
+                <span className={`pill-badge ${getStatusBadge(service.status)}`}>
                   {service.status}
                 </span>
               </div>
@@ -375,8 +365,8 @@ export function ServicesPanel() {
       </div>
 
       {/* History */}
-      <div className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6">
-        <h2 className="mb-4 text-lg font-semibold text-white">Historia akcji</h2>
+      <div className="glass-panel rounded-2xl box-subtle p-6">
+        <h2 className="mb-4 heading-h2">Historia akcji</h2>
         <div className="space-y-2">
           {history.length === 0 ? (
             <p className="text-sm text-zinc-500">Brak historii</p>

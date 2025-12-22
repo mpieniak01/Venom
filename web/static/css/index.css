@@ -478,3 +478,41 @@
         flex-direction: column;
     }
 }
+
+/* =========================================
+   UTILITY CLASSES (Refactor 077)
+   Klasy pomocnicze do zastąpienia inline styles
+   ========================================= */
+
+/* Layout helpers */
+.grid-auto-fit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.text-center-padded {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-style: italic;
+}
+
+/* Color utilities */
+.color-primary {
+  color: var(--primary);
+}
+
+.color-secondary {
+  color: var(--secondary);
+}
+
+.color-muted {
+  color: var(--text-muted);
+}
+

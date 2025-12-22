@@ -215,7 +215,7 @@ export function VoiceCommandCenter() {
       }
     >
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+        <div className="card-shell card-base space-y-3 p-4">
           <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Sterowanie</p>
           <button
             type="button"

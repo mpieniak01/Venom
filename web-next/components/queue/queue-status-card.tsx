@@ -31,14 +31,14 @@ export function QueueStatusCard({
     return (
       <div data-testid={testId}>
         {loading ? (
-          <div className="flex items-center justify-center rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-300">
+          <div className="card-shell card-base flex items-center justify-center p-4 text-sm text-zinc-300">
             Ładuję status kolejki…
           </div>
         ) : (
           <EmptyState
             title={t("queueCard.offlineTitle")}
             description={offlineDescription}
-            className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm"
+            className="card-shell card-base p-4 text-sm"
           />
         )}
       </div>
@@ -51,9 +51,9 @@ export function QueueStatusCard({
     { label: t("queueCard.metricLimit"), value: queue.limit ?? "∞" },
   ];
 
-  return (
+    return (
     <div
-      className="relative rounded-3xl border border-white/10 bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm text-white shadow-card"
+      className="relative card-shell bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm"
       data-testid={testId ? `${testId}-online` : undefined}
     >
       <div className="flex items-center justify-between gap-3">
@@ -81,7 +81,7 @@ export function QueueStatusCard({
         ))}
       </div>
       {loading && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-3xl bg-black/60 text-xs text-zinc-300">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[24px] bg-black/60 text-xs text-zinc-300">
           Ładuję status kolejki…
         </div>
       )}

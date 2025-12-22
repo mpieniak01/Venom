@@ -24,7 +24,7 @@ export function MacroCard({
   onRemove,
 }: MacroCardProps) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4 text-white shadow-card">
+    <div className="card-shell bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-violet-200">

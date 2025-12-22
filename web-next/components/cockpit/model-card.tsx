@@ -13,7 +13,7 @@ type ModelListItemProps = {
 
 export function ModelListItem({ name, sizeGb, source, active, onActivate }: ModelListItemProps) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-card">
+    <div className="card-shell card-base p-4 text-sm">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-lg font-semibold">{name}</p>
@@ -63,7 +63,7 @@ export function RepoActionCard({
 
   return (
     <div
-      className={`rounded-3xl border border-white/10 bg-gradient-to-br ${gradient} p-4 text-white shadow-card`}
+      className={`card-shell bg-gradient-to-br ${gradient} p-4`}
     >
       <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">{title}</p>
       <p className="mt-2 text-sm text-zinc-200">{description}</p>

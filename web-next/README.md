@@ -49,6 +49,7 @@ npm run start
   - `--radius-panel`, `--radius-card` – ustandaryzowane promienie dla paneli i kart
   - `--shadow-card` – cień stosowany w `glass-panel` i klasie pomocniczej `shadow-card`
   - `--surface-muted` + `surface-card` – półprzezroczyste tło z ramką, używane w overlayach i kartach list
+  - `card-shell` + `card-base` – bazowy wzorzec kart (ramka/cień + neutralne tło)
 - **Komponenty UI** (`components/ui`):
   - `Button` – warianty `primary/secondary/outline/ghost/subtle/warning/danger`, rozmiary `xs/sm/md`, domyślne `type="button"`
   - `IconButton` – opakowanie na ikonowe CTA (TopBar/Sidebar) z tymi samymi wariantami co `Button`

@@ -453,7 +453,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+        <div className="card-shell card-base p-4 text-sm">
           <h4 className="text-sm font-semibold text-white">Podsumowanie zaznaczenia</h4>
           {selected ? (
             <div className="mt-3 space-y-2 text-xs text-zinc-300">
@@ -492,7 +492,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             </p>
           )}
         </div>
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+        <div className="card-shell card-base p-4 text-sm">
           <h4 className="text-sm font-semibold text-white">Relacje (podgląd)</h4>
           {selected && relations.length > 0 ? (
             <ul className="mt-3 space-y-2 text-xs">
@@ -516,7 +516,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             </p>
           )}
         </div>
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+        <div className="card-shell card-base p-4 text-sm">
           <h4 className="text-sm font-semibold text-white">Ostatnie operacje grafu</h4>
           {recentOperations.length === 0 ? (
             <p className="mt-3 text-xs text-zinc-500">

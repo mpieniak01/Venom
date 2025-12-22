@@ -35,15 +35,12 @@ class StrategyDashboard {
     }
 
     showNotification(message, type = 'info') {
-        // Sprawdź czy VenomDashboard jest dostępny (z app.js)
+        // Używamy VenomDashboard notification system jeśli dostępny
         if (window.venomDashboard && typeof window.venomDashboard.showNotification === 'function') {
             window.venomDashboard.showNotification(message, type);
         } else {
-            // Fallback do alert
+            // Fallback do konsoli (bez alert - lepsze UX)
             console.log(`[${type.toUpperCase()}] ${message}`);
-            if (type === 'error') {
-                alert(message);
-            }
         }
     }
 

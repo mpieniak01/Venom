@@ -18,6 +18,8 @@ declare global {
 }
 
 export function VoiceCommandCenter() {
+  const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
+  const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
   const [connected, setConnected] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcription, setTranscription] = useState("Oczekiwanie na komendę głosową...");
@@ -26,6 +28,8 @@ export function VoiceCommandCenter() {
   const [iotStatus, setIotStatus] = useState<IoTStatus | null>(null);
   const [loadingIoT, setLoadingIoT] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -51,6 +55,11 @@ export function VoiceCommandCenter() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!audioEnabled) {
+      setConnected(false);
+      setStatusMessage("Kanał audio wyłączony w konfiguracji.");
+      return;
+    }
     let destroyed = false;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const connect = () => {
@@ -60,53 +69,78 @@ export function VoiceCommandCenter() {
       setStatusMessage("Łączenie z kanałem audio…");
       ws.onopen = () => {
         setConnected(true);
+        reconnectAttemptsRef.current = 0;
         setStatusMessage("Kanał audio połączony.");
       };
       ws.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
           handleAudioMessage(payload);
-        } catch (error) {
-          console.error("Audio WS parse error", error);
+        } catch {
+          // Ignore malformed payloads to avoid console noise.
         }
       };
       ws.onerror = () => {
-        setStatusMessage("Błąd kanału audio.");
+        setStatusMessage("Kanał audio offline.");
       };
       ws.onclose = () => {
         setConnected(false);
         if (!destroyed) {
-          setStatusMessage("Kanał audio rozłączony – ponawiam połączenie…");
-          setTimeout(connect, 3000);
+          const attempt = reconnectAttemptsRef.current;
+          const baseDelay = Math.min(30000, 1000 * 2 ** attempt);
+          const jitter = Math.floor(Math.random() * 500);
+          const delay = baseDelay + jitter;
+          reconnectAttemptsRef.current = Math.min(attempt + 1, 6);
+          setStatusMessage(`Kanał audio offline – ponawiam za ${Math.ceil(delay / 1000)}s…`);
+          if (reconnectTimeoutRef.current) {
+            window.clearTimeout(reconnectTimeoutRef.current);
+          }
+          reconnectTimeoutRef.current = window.setTimeout(connect, delay);
         }
       };
     };
     connect();
     return () => {
       destroyed = true;
+      if (reconnectTimeoutRef.current) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+      }
       wsRef.current?.close();
     };
-  }, [handleAudioMessage]);
+  }, [audioEnabled, handleAudioMessage]);
 
   const refreshIoTStatus = useCallback(async () => {
+    if (!iotStatusEnabled) {
+      setIotStatus({
+        connected: false,
+        message: "Status IoT wyłączony w konfiguracji.",
+      });
+      return;
+    }
     setLoadingIoT(true);
     try {
       const res = await fetch("/api/v1/iot/status");
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setIotStatus({
+            connected: false,
+            message: "Offline – endpoint /api/v1/iot/status nie jest dostępny.",
+          });
+          return;
+        }
+        throw new Error("HTTP " + res.status);
+      }
       const data = (await res.json()) as IoTStatus;
       setIotStatus(data);
     } catch {
       setIotStatus({
-        connected: true,
-        cpu_temp: "45°C",
-        memory: "42%",
-        disk: "65%",
-        message: "Połączenie mock – brak API /iot/status.",
+        connected: false,
+        message: "Offline – brak danych IoT.",
       });
     } finally {
       setLoadingIoT(false);
     }
-  }, []);
+  }, [iotStatusEnabled]);
 
   useEffect(() => {
     refreshIoTStatus();
@@ -216,8 +250,8 @@ export function VoiceCommandCenter() {
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card-shell card-base space-y-3 p-4">
-          <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Sterowanie</p>
-          <button
+          <p className="eyebrow">Sterowanie</p>
+          <Button
             type="button"
             onMouseDown={startRecording}
             onMouseUp={stopRecording}
@@ -230,7 +264,9 @@ export function VoiceCommandCenter() {
               e.preventDefault();
               stopRecording();
             }}
-            className={`flex w-full items-center justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${
+            variant="outline"
+            size="md"
+            className={`w-full justify-center rounded-2xl border px-4 py-6 text-lg font-semibold transition ${
               recording
                 ? "border-rose-400/60 bg-rose-500/10 text-rose-100"
                 : connected
@@ -240,22 +276,22 @@ export function VoiceCommandCenter() {
             disabled={!connected}
           >
             🎙 {recording ? "Nagrywanie..." : "Przytrzymaj i mów"}
-          </button>
-          <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl border border-white/10 bg-black/40" />
-          <p className="text-xs text-zinc-400">{statusMessage ?? "Kanał gotowy."}</p>
+          </Button>
+          <canvas ref={canvasRef} width={320} height={80} className="w-full rounded-2xl box-muted" />
+          <p className="text-hint">{statusMessage ?? "Kanał gotowy."}</p>
         </div>
         <div className="space-y-3">
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Transkrypcja</p>
+          <div className="rounded-2xl box-muted p-4">
+            <p className="eyebrow">Transkrypcja</p>
             <p className="mt-2 text-sm text-white">{transcription}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Odpowiedź</p>
+          <div className="rounded-2xl box-muted p-4">
+            <p className="eyebrow">Odpowiedź</p>
             <p className="mt-2 text-sm text-white">{response}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
+          <div className="rounded-2xl box-muted p-4 text-sm">
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Rider-Pi</p>
+              <p className="eyebrow">Rider-Pi</p>
               <Button
                 size="xs"
                 variant="outline"
@@ -268,29 +304,29 @@ export function VoiceCommandCenter() {
             {iotStatus ? (
               <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-widest text-zinc-500">Połączenie</p>
+                  <p className="text-caption">Połączenie</p>
                   <p className="text-white">{iotStatus.connected ? "Online" : "Offline"}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] uppercase tracking-widest text-zinc-500">CPU</p>
+                  <p className="text-caption">CPU</p>
                   <p className="text-white">{iotStatus.cpu_temp ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] uppercase tracking-widest text-zinc-500">Pamięć</p>
+                  <p className="text-caption">Pamięć</p>
                   <p className="text-white">{iotStatus.memory ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] uppercase tracking-widest text-zinc-500">Dysk</p>
+                  <p className="text-caption">Dysk</p>
                   <p className="text-white">{iotStatus.disk ?? "—"}</p>
                 </div>
                 {iotStatus.message && (
-                  <div className="sm:col-span-3 text-[11px] text-zinc-500">
+                  <div className="sm:col-span-3 text-hint">
                     {iotStatus.message}
                   </div>
                 )}
               </div>
             ) : (
-              <p className="mt-2 text-xs text-zinc-500">Brak danych IoT.</p>
+              <p className="mt-2 text-hint">Brak danych IoT.</p>
             )}
           </div>
         </div>

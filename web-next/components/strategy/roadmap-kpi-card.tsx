@@ -28,7 +28,7 @@ export function RoadmapKpiCard({
       <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{label}</p>
       <div className="mt-2 flex items-center justify-between">
         <p className="text-2xl font-semibold">{value}</p>
-        <p className="text-xs text-zinc-400">{description}</p>
+        <p className="text-hint">{description}</p>
       </div>
       <div className="mt-4 h-2 rounded-full bg-black/30">
         <div
@@ -36,7 +36,7 @@ export function RoadmapKpiCard({
           style={{ width: `${safePercent}%` }}
         />
       </div>
-      <p className="mt-2 text-xs text-zinc-500">{safePercent.toFixed(1)}% completion</p>
+      <p className="mt-2 text-hint">{safePercent.toFixed(1)}% completion</p>
     </div>
   );
 }

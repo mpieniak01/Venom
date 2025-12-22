@@ -10,6 +10,7 @@ import {
   formatVramMetric,
 } from "@/lib/formatters";
 import { useTranslation } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
 import { cn } from "@/lib/utils";
 import type { GitStatus, ModelsUsageResponse, TokenMetrics } from "@/lib/types";
@@ -152,7 +153,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       <div className="pointer-events-auto mr-auto w-full max-w-[1320px] 2xl:max-w-[68vw] border border-white/15 bg-black/75 px-5 py-4 text-xs text-left shadow-2xl shadow-emerald-900/40 backdrop-blur-2xl">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div
-            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-300"
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 text-hint"
             data-testid="status-bar-resources"
           >
             <span className="font-semibold text-white">{t("statusBar.resourcesLabel")}:</span>
@@ -169,15 +170,17 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
           >
             <span>{t("statusBar.versionLabel")}:</span>
             {commitValue ? (
-              <button
+              <Button
                 type="button"
                 data-testid="status-bar-version"
-                className="font-semibold text-white transition"
+                variant="ghost"
+                size="xs"
+                className="px-0 py-0 text-xs font-semibold text-white"
                 title={commitCopied ? t("statusBar.commitCopied") : t("statusBar.commitCopy")}
                 onClick={handleCommitCopy}
               >
                 {versionDisplay}
-              </button>
+              </Button>
             ) : (
               <span data-testid="status-bar-version" className="font-semibold text-white">
                 {versionDisplay}

@@ -53,14 +53,15 @@ export function ConversationBubble({
           : "border-white/10 bg-white/5 text-zinc-100"
       } ${isSelected ? "ring-2 ring-violet-400/60" : ""} ${pending ? "cursor-wait opacity-95" : ""}`}
     >
-      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+      <div className="flex items-center justify-between text-caption">
         <span>{isUser ? "Operacja" : "Venom"}</span>
         <span>{new Date(timestamp).toLocaleTimeString()}</span>
       </div>
       <div className="mt-3 text-[15px] leading-relaxed text-white">
         <MarkdownPreview content={text} emptyState="Brak treści." />
       </div>
-      <div className="mt-4 border-t border-white/10 pt-3">
+      {(footerActions || footerExtra || (!isUser && (pending || status || requestId))) && (
+        <div className="mt-4 border-t border-white/10 pt-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
           {footerActions && (
             <span className="flex items-center gap-2">{footerActions}</span>
@@ -68,16 +69,17 @@ export function ConversationBubble({
           {pending && role === "assistant" && (
             <span className="text-amber-300">W toku</span>
           )}
-          {status && <Badge tone={statusTone(status)}>{status}</Badge>}
+          {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
           {requestId && <span>#{requestId.slice(0, 6)}…</span>}
-          {!pending && (
-            <span className="ml-auto text-[10px] uppercase tracking-[0.35em] text-zinc-500">
+          {!pending && !isUser && (
+            <span className="ml-auto text-caption">
               Szczegóły ↗
             </span>
           )}
         </div>
-        {footerExtra && <div className="mt-2">{footerExtra}</div>}
-      </div>
+          {footerExtra && <div className="mt-2">{footerExtra}</div>}
+        </div>
+      )}
     </div>
   );
 }

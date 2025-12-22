@@ -184,11 +184,11 @@ export function Sidebar() {
     <aside className="glass-panel fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-white/5 bg-black/25 px-6 py-6 text-zinc-100 shadow-card lg:flex">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/60 to-cyan-400/60 text-xl shadow-neon">
-            🕷️
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
+            🐍
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <p className="eyebrow">
               {t("sidebar.brand.caption")}
             </p>
             <p className="text-lg font-semibold tracking-[0.1em] text-white">
@@ -196,13 +196,11 @@ export function Sidebar() {
             </p>
           </div>
         </div>
-        <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-zinc-400">
-          v2.4.1
-        </span>
+        <span className="pill-badge">v2.4.1</span>
       </div>
       <nav className="mt-8 space-y-5">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+          <p className="eyebrow">
             {t("sidebar.modulesTitle")}
           </p>
           <div className="mt-3 space-y-2">
@@ -235,12 +233,12 @@ export function Sidebar() {
         <SystemStatusPanel />
 
         <section
-          className="rounded-2xl border border-white/10 bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm text-zinc-100"
+          className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm"
           data-testid="sidebar-cost-mode"
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("sidebar.cost.title")}
               </p>
               <p className="text-lg font-semibold text-white">
@@ -268,12 +266,12 @@ export function Sidebar() {
         </section>
 
         <section
-          className="rounded-2xl border border-white/10 bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm text-zinc-100"
+          className="rounded-2xl card-shell bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm"
           data-testid="sidebar-autonomy"
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("sidebar.autonomy.title")}
               </p>
               <p className="text-lg font-semibold text-white">{autonomyInfo.name}</p>

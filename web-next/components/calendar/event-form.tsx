@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, useEffect } from "react";
 import { CreateEventRequest } from "@/lib/types";
+import { Button } from "@/components/ui/button";
 
 interface EventFormProps {
   onSubmit: (data: CreateEventRequest) => Promise<void>;
@@ -74,9 +75,7 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h3 className="text-xl font-semibold text-white mb-4">
-        Nowe wydarzenie
-      </h3>
+      <h3 className="heading-h3 mb-4">Nowe wydarzenie</h3>
 
       {/* Title */}
       <div>
@@ -155,21 +154,23 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
 
       {/* Action Buttons */}
       <div className="flex gap-3 pt-2">
-        <button
+        <Button
           type="submit"
           disabled={loading}
-          className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          variant="secondary"
+          className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-800"
         >
           {loading ? "Tworzenie..." : "Utwórz wydarzenie"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={onCancel}
           disabled={loading}
-          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-900 disabled:cursor-not-allowed text-zinc-300 rounded-lg transition-colors"
+          variant="outline"
+          className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:bg-zinc-900"
         >
           Anuluj
-        </button>
+        </Button>
       </div>
     </form>
   );

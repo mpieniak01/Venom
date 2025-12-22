@@ -14,6 +14,7 @@ import {
   Activity,
   Layers,
   Radar,
+  BugPlay,
   TimerReset,
   ListFilter,
   ZoomIn,
@@ -391,10 +392,13 @@ export default function InspectorPage() {
         as="h1"
         size="lg"
         rightSlot={
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge tone="neutral">/api/v1/history/requests</Badge>
-            <Badge tone="neutral">/api/v1/tasks</Badge>
-            <Badge tone="neutral">/history/requests/:id</Badge>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge tone="neutral">/api/v1/history/requests</Badge>
+              <Badge tone="neutral">/api/v1/tasks</Badge>
+              <Badge tone="neutral">/history/requests/:id</Badge>
+            </div>
+            <BugPlay className="page-heading-icon" />
           </div>
         }
       />
@@ -519,7 +523,7 @@ export default function InspectorPage() {
                     <IconButton label="Oddal" icon={<ZoomOut className="h-4 w-4" />} onClick={() => zoomOut()} />
                     <IconButton label="Resetuj" icon={<RotateCcw className="h-4 w-4" />} onClick={() => resetTransform()} />
                   </div>
-                    <div className="relative rounded-[28px] border border-white/10 bg-black/30 p-4">
+                    <div className="relative rounded-[28px] box-muted p-4">
                       {diagramLoading && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-black/70 text-sm text-white">
                           <Loader2 className="h-5 w-5 animate-spin text-emerald-300" />
@@ -589,7 +593,7 @@ export default function InspectorPage() {
                     onChange={(e) => setStepFilter(e.target.value)}
                     className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-1 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/40"
                   />
-                  <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.3em] text-zinc-400">
+                  <label className="pill-badge flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={contractOnly}
@@ -620,10 +624,12 @@ export default function InspectorPage() {
                   />
                 )}
                 {filteredSteps.map((step, idx) => (
-                  <button
+                  <Button
                     key={`${selectedId}-${idx}`}
                     onClick={() => setFocusedIndex(idx)}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                    variant="ghost"
+                    size="sm"
+                    className={`list-row w-full text-left text-sm transition ${
                       focusedIndex === idx
                         ? "border-violet-400/60 bg-violet-500/10"
                         : "border-white/10 bg-white/5"
@@ -632,16 +638,16 @@ export default function InspectorPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-semibold text-white">{step.component || "Nieznany komponent"}</p>
-                        <p className="text-xs text-zinc-400">{step.action || step.details || "—"}</p>
+                        <p className="text-hint">{step.action || step.details || "—"}</p>
                       </div>
                       {step.status && <Badge tone={statusTone(step.status)}>{step.status}</Badge>}
                     </div>
                     {step.timestamp && (
-                      <p className="mt-1 text-[11px] uppercase tracking-wide text-zinc-500">
+                      <p className="mt-1 text-caption">
                         {formatTimestamp(step.timestamp)}
                       </p>
                     )}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </Panel>
@@ -683,7 +689,7 @@ export default function InspectorPage() {
                 />
               </div>
               {selectedRequest?.error_code && (
-                <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                <div className="alert alert--error mt-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="danger">{selectedRequest.error_code}</Badge>
                     {selectedRequest.error_stage && (
@@ -712,19 +718,19 @@ export default function InspectorPage() {
                   )}
                 </div>
               )}
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mt-4 rounded-2xl box-base p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">
                   Wybrany krok
                 </p>
-                <h4 className="mt-2 text-lg font-semibold text-white">
+                <h3 className="heading-h3 mt-2">
                   {focusedStep?.component ?? "—"}
-                </h4>
+                </h3>
                 <p className="text-sm text-zinc-300">
                   {focusedStep?.action || focusedStep?.details || "Kliknij krok, aby zobaczyć treść."}
                 </p>
                 <dl className="mt-3 grid gap-3 text-xs text-zinc-400 sm:grid-cols-2">
                   <div>
-                    <dt className="uppercase tracking-wide text-[11px] text-zinc-500">
+                    <dt className="text-caption">
                       Status
                     </dt>
                     <dd className="text-white">
@@ -732,13 +738,13 @@ export default function InspectorPage() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="uppercase tracking-wide text-[11px] text-zinc-500">
+                    <dt className="text-caption">
                       Timestamp
                     </dt>
                     <dd>{focusedStep?.timestamp ? formatTimestamp(focusedStep.timestamp) : "—"}</dd>
                   </div>
                   <div className="sm:col-span-2">
-                    <dt className="uppercase tracking-wide text-[11px] text-zinc-500">
+                    <dt className="text-caption">
                       Detale
                     </dt>
                     <dd className="text-zinc-300">
@@ -747,14 +753,14 @@ export default function InspectorPage() {
                   </div>
                 </dl>
                 <div className="mt-3">
-                  <p className="text-xs uppercase tracking-wide text-zinc-500">JSON kroku</p>
-                  <div className="mt-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs text-emerald-50">
+                  <p className="text-caption">JSON kroku</p>
+                  <div className="mt-2 rounded-2xl box-muted p-3 text-xs text-emerald-50">
                     {focusedStep ? (
                       <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
                         {JSON.stringify(focusedStep, null, 2)}
                       </pre>
                     ) : (
-                      <p className="text-zinc-500">Kliknij krok, aby zobaczyć surowe dane.</p>
+                      <p className="text-hint">Kliknij krok, aby zobaczyć surowe dane.</p>
                     )}
                   </div>
                 </div>
@@ -1110,14 +1116,14 @@ type HeroStatProps = {
 
 function HeroStat({ icon, label, primary, hint }: HeroStatProps) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="flex items-center gap-3 rounded-2xl box-base px-4 py-3">
       <span className="rounded-full border border-white/10 bg-black/40 p-2">
         {icon}
       </span>
       <div>
         <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
         <p className="text-xl font-semibold text-white">{primary}</p>
-        <p className="text-xs text-zinc-400">{hint}</p>
+        <p className="text-hint">{hint}</p>
       </div>
     </div>
   );

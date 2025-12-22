@@ -60,7 +60,7 @@ export function ServiceStatusDrawer({ open, onOpenChange }: ServiceStatusDrawerP
           <div className="flex items-center gap-3">
             <ServerCog className="h-5 w-5 text-violet-300" />
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+              <p className="eyebrow">
                 {t("serviceStatus.summary")}
               </p>
               <p className="text-base font-semibold text-white">

@@ -80,6 +80,52 @@
 - `surface-card` deklarowane w README, ale do niedawna brak definicji w CSS.
 - Skutek: rozjazd dokumentacji i implementacji.
 
+## Mapa hierarchii naglowkow (H1-H4)
+### H1 (tytul strony + eyebrow + opis)
+Uzycie `SectionHeading` z `as="h1"`, `size="lg"`:
+- Cockpit: `web-next/components/cockpit/cockpit-home.tsx` (Dashboard Control / Centrum Dowodzenia AI)
+- Strategy: `web-next/app/strategy/page.tsx`
+- Benchmark: `web-next/app/benchmark/page.tsx`
+- Brain: `web-next/components/brain/brain-home.tsx`
+- Calendar: `web-next/components/calendar/calendar-home.tsx`
+- Config: `web-next/components/config/config-home.tsx`
+- Inspector: `web-next/app/inspector/page.tsx`
+- Docs LLM Models: `web-next/app/docs/llm-models/page.tsx`
+
+### H2 (naglowki boxow/sekcji na stronie)
+Obecne H2:
+- `web-next/components/cockpit/cockpit-home.tsx` — "Aktywnosc systemowa" (text-lg).
+- `web-next/components/config/services-panel.tsx` — "Profile szybkie", "Historia akcji" (text-lg).
+- `web-next/components/calendar/calendar-view.tsx` — naglowek sekcji (text-xl + border-bottom).
+
+Docelowo H2 powinno obejmowac rowniez:
+- "Command Console / Cockpit AI / Chat operacyjny..." (obecnie `SectionHeading` z `as="h1"` w `web-next/components/cockpit/cockpit-home.tsx`) — do korekty na H2.
+
+### H3 (podsekcje w ramach boxow/sekcji)
+Obecne H3:
+- `web-next/components/layout/command-center.tsx` (powtarzalne naglowki kart).
+- `web-next/components/cockpit/macro-card.tsx`
+- `web-next/app/strategy/page.tsx` (Vision)
+- `web-next/components/ui/panel.tsx` i `web-next/components/ui/sheet.tsx` (komponenty bazowe)
+- `web-next/components/config/parameters-panel.tsx` (sekcje)
+- `web-next/components/config/services-panel.tsx` (tytuly serwisow)
+- `web-next/components/calendar/event-form.tsx`
+- `web-next/components/calendar/calendar-view.tsx` (naglowki eventow)
+
+### H4 (subsekcje w ramach boxow)
+Obecne H4:
+- `web-next/components/brain/brain-home.tsx` (podsumowania/statystyki/lekcje)
+- `web-next/components/benchmark/benchmark-results.tsx`
+- `web-next/components/benchmark/benchmark-console.tsx`
+- `web-next/components/cockpit/cockpit-home.tsx` (sekcje w kartach)
+- `web-next/app/inspector/page.tsx` (szczegoly sekcji)
+
+### Rozjazdy wizualne (duze odchylenia)
+- `web-next/components/calendar/event-form.tsx` ma `h3` w rozmiarze `text-xl`, gdy reszta H3 jest zwykle `text-lg`.
+- `web-next/components/calendar/calendar-view.tsx` ma H2 w `text-xl` + border-bottom (bardziej "page-header" niz box).
+- `web-next/components/config/services-panel.tsx` uzywa H3 w `text-sm` dla nazw serwisow, co odbiega od standardu `text-lg`.
+- `web-next/components/cockpit/cockpit-home.tsx` ma dodatkowy `SectionHeading` dla "Command Console" ustawiony jako H1 (powinno byc H2).
+
 ## Lista zmian do wykonania (propozycja)
 ### 1) Standaryzacja boxow
 - Ustal jeden bazowy komponent/klase dla kart (np. `card-shell` + warianty `card-base` / `card-accent`).

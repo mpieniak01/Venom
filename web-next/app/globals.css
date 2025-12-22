@@ -95,9 +95,9 @@ body::after {
 a { color: inherit; text-decoration: none; cursor: pointer; }
 
 /* Scrollbary */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
 
 /* =========================================
@@ -138,6 +138,27 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   background: rgba(255, 255, 255, 0.04);
 }
 
+.box-base {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
+.box-muted {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
+.box-subtle {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
 .kpi-panel {
   padding: 1.5rem !important;
   border: 1px solid rgba(0, 255, 157, 0.15) !important;
@@ -151,6 +172,221 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 
 .command-console-panel {
   padding: 1.25rem 1.5rem !important;
+}
+
+/* =========================================
+   3b. TYPOGRAFIA NAGLOWKOW
+   ========================================= */
+.heading-h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.heading-h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.heading-h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.page-heading-eyebrow {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.65em;
+  color: var(--accent);
+  font-family: var(--font-jetbrains);
+  text-shadow: 0 0 12px rgba(0, 255, 157, 0.45);
+}
+
+.page-heading {
+  position: relative;
+  isolation: isolate;
+}
+
+.page-heading-title {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.page-heading-desc {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: #e4e4e7;
+}
+
+.page-heading-icon {
+  position: absolute;
+  right: -0.1em;
+  top: -1rem;
+  width: 8rem;
+  height: 8rem;
+  color: rgba(16, 185, 129, 0.7);
+  opacity: 0.050;
+  filter: blur(3px);
+  pointer-events: none;
+  z-index: -1;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 35%, #000 75%, transparent),
+    linear-gradient(to bottom, transparent, #000 35%, #000 75%, transparent);
+  mask-image:
+    linear-gradient(to right, transparent, #000 35%, #000 75%, transparent),
+    linear-gradient(to bottom, transparent, #000 35%, #000 75%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  text-shadow:
+    0 0 6px rgba(0, 255, 157, 0.18),
+    0 0 20px rgba(0, 255, 157, 0.32),
+    0 0 44px rgba(0, 255, 157, 0.22);
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  color: #71717a;
+}
+
+.text-muted {
+  color: #d4d4d8;
+}
+
+.status-pill {
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.status-pill--success {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.12);
+  color: #d1fae5;
+}
+
+.status-pill--warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+
+.status-pill--danger {
+  border-color: rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.12);
+  color: #fecdd3;
+}
+
+.status-pill--neutral {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e4e4e7;
+}
+
+.pill-badge {
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: #a1a1aa;
+}
+
+.text-hint {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.text-caption {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: #71717a;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem 0.75rem;
+}
+
+.alert {
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  padding: 1rem;
+  font-size: 0.875rem;
+}
+
+.alert--success {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.12);
+  color: #bbf7d0;
+}
+
+.alert--error {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
+.alert--warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fde68a;
+}
+
+.alert--info {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.12);
+  color: #bfdbfe;
+}
+
+.chat-history-scroll,
+.internal-scroll {
+  scrollbar-gutter: stable both-edges;
+}
+
+.chat-history-scroll::-webkit-scrollbar,
+.internal-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-history-scroll::-webkit-scrollbar-track,
+.internal-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.chat-history-scroll::-webkit-scrollbar-thumb,
+.internal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 157, 0.35);
+  border-radius: 6px;
+}
+
+.chat-history-scroll::-webkit-scrollbar-thumb:hover,
+.internal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 157, 0.55);
+}
+
+.chat-history-scroll,
+.internal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 157, 0.55) rgba(15, 23, 42, 0.45);
 }
 
 /* Obrys */

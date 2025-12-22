@@ -56,7 +56,7 @@ export function BenchmarkConfigurator({
           Runtime
         </label>
         <div className="flex gap-2" role="group" aria-label="Wybór runtime">
-          <button
+          <Button
             type="button"
             role="radio"
             aria-checked={runtime === "vllm"}
@@ -65,8 +65,10 @@ export function BenchmarkConfigurator({
               setSelectedModels([]);
             }}
             disabled={disabled}
+            variant="outline"
+            size="sm"
             className={cn(
-              "flex-1 rounded-xl border px-4 py-2 text-sm font-medium transition",
+              "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
               runtime === "vllm"
                 ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
                 : "border-white/10 bg-black/30 text-zinc-400 hover:bg-white/5",
@@ -74,8 +76,8 @@ export function BenchmarkConfigurator({
             )}
           >
             vLLM
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             role="radio"
             aria-checked={runtime === "ollama"}
@@ -84,8 +86,10 @@ export function BenchmarkConfigurator({
               setSelectedModels([]);
             }}
             disabled={disabled}
+            variant="outline"
+            size="sm"
             className={cn(
-              "flex-1 rounded-xl border px-4 py-2 text-sm font-medium transition",
+              "flex-1 justify-center rounded-xl border px-4 py-2 text-sm font-medium transition",
               runtime === "ollama"
                 ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
                 : "border-white/10 bg-black/30 text-zinc-400 hover:bg-white/5",
@@ -93,7 +97,7 @@ export function BenchmarkConfigurator({
             )}
           >
             Ollama
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -105,7 +109,7 @@ export function BenchmarkConfigurator({
             ({selectedModels.length} wybrano)
           </span>
         </label>
-        <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-3">
+        <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl box-muted p-3">
           {filteredModels.length === 0 ? (
             <p className="text-sm text-zinc-500">
               Brak dostępnych modeli dla {runtime}

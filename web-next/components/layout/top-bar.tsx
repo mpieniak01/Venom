@@ -57,7 +57,7 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
           </span>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+          <p className="eyebrow">
             {t("topBar.wsLabel")}
           </p>
           <p className="flex items-center gap-2 text-sm font-semibold text-white">

@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 
 interface Config {
   [key: string]: string;
@@ -21,24 +22,26 @@ function ConfigSection({
   const contentId = useId();
 
   return (
-    <div className="glass-panel rounded-2xl border border-white/10 bg-black/20 p-6">
-      <button
+    <div className="glass-panel rounded-2xl box-subtle p-6">
+      <Button
         type="button"
         aria-expanded={open}
         aria-controls={contentId}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-start justify-between gap-4 text-left"
+        variant="ghost"
+        size="sm"
+        className="w-full items-start justify-between gap-4 text-left"
       >
         <div>
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
-          <p className="mt-1 text-sm text-zinc-400">{description}</p>
+          <h3 className="heading-h3">{title}</h3>
+          <p className="mt-1 text-hint">{description}</p>
         </div>
         <ChevronDown
           className={`mt-1 h-5 w-5 text-zinc-500 transition-transform duration-300 ${
             open ? "rotate-180" : ""
           }`}
         />
-      </button>
+      </Button>
       <div
         id={contentId}
         className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
@@ -182,16 +185,14 @@ export function ParametersPanel() {
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-zinc-300">{key}</label>
           {secret && (
-            <button
+            <IconButton
+              label={showValue ? "Ukryj wartość" : "Pokaż wartość"}
+              icon={showValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              variant="ghost"
+              size="xs"
+              className="text-zinc-500 hover:text-zinc-300"
               onClick={() => toggleSecret(key)}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
-            >
-              {showValue ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-            </button>
+            />
           )}
         </div>
         <input
@@ -218,7 +219,7 @@ export function ParametersPanel() {
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-zinc-400">Ładowanie konfiguracji...</div>
+        <div className="text-hint">Ładowanie konfiguracji...</div>
       </div>
     );
   }
@@ -263,7 +264,7 @@ export function ParametersPanel() {
         <div className="flex items-start gap-3">
           <Info className="mt-0.5 h-5 w-5 text-cyan-400" />
           <div>
-            <h3 className="font-semibold text-white">Runtime LLM: Ollama vs vLLM</h3>
+            <h3 className="heading-h3">Runtime LLM: Ollama vs vLLM</h3>
             <p className="mt-2 text-sm text-zinc-300">
               <strong className="text-emerald-300">Ollama (Light):</strong> Priorytet na
               najkrótszy czas pytanie→odpowiedź, niski footprint (single user). Idealny do
@@ -274,7 +275,7 @@ export function ParametersPanel() {
               dłuższy start, rezerwuje cały VRAM, ale pozwala na testy wydajności i większą
               przepustowość.
             </p>
-            <p className="mt-3 text-xs text-zinc-400">
+            <p className="mt-3 text-hint">
               💡 Domyślnie uruchamiamy tylko jeden runtime naraz. Druga opcja ma sens jedynie,
               gdy rozdzielamy role (np. UI vs. kodowanie). Pełna strategia wyboru runtime
               będzie oparta na wynikach testów —{" "}
@@ -411,7 +412,7 @@ export function ParametersPanel() {
       )}
 
       {/* Action Buttons */}
-      <div className="glass-panel sticky bottom-6 rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl">
+      <div className="glass-panel sticky bottom-6 rounded-2xl box-muted p-6 backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
             {hasChanges() && (

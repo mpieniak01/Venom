@@ -83,17 +83,17 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
           key={pill.id}
           data-testid={`status-pill-${pill.id}`}
           className={cn(
-            "flex min-w-[120px] flex-col rounded-2xl border px-3 py-2 text-xs",
+            "status-pill",
             pill.tone === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+              ? "status-pill--success"
               : pill.tone === "warning"
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+                ? "status-pill--warning"
                 : pill.tone === "danger"
-                  ? "border-rose-500/30 bg-rose-500/10 text-rose-100"
-                  : "border-white/10 bg-white/5 text-zinc-200",
+                  ? "status-pill--danger"
+                  : "status-pill--neutral",
           )}
         >
-          <span className="text-[11px] uppercase tracking-[0.3em]">{pill.label}</span>
+          <span className="text-caption">{pill.label}</span>
           <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`}>
             {pill.loading ? (
               <span className="text-sm">Ładuje…</span>
@@ -101,7 +101,7 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
               pill.value
             )}
           </span>
-          <span className="text-[11px] text-white/70">{pill.hint}</span>
+          <span className="text-hint text-white/70">{pill.hint}</span>
         </div>
       ))}
     </div>

@@ -129,8 +129,8 @@ export function MobileNav() {
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center justify-between text-lg font-semibold text-white">
               <span className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/50 to-cyan-500/50 text-xl">
-                  🕷️
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
+                  🐍
                 </span>
                 {t("mobileNav.navTitle")}
               </span>
@@ -156,7 +156,7 @@ export function MobileNav() {
                   <item.icon className="h-4 w-4 text-emerald-200" />
                   <div>
                     <p className="font-semibold tracking-wide">{label}</p>
-                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    <p className="eyebrow">
                       /{item.href === "/" ? "cockpit" : item.href.replace("/", "")}
                     </p>
                   </div>
@@ -168,7 +168,7 @@ export function MobileNav() {
           <section className="mt-6 card-shell card-base p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-zinc-500">Telemetria</p>
+                <p className="eyebrow">Telemetria</p>
                 <p className="text-base font-semibold">{telemetryContent.title}</p>
               </div>
               <Badge tone={telemetryContent.badge.tone}>{telemetryContent.badge.text}</Badge>
@@ -190,8 +190,8 @@ export function MobileNav() {
             </div>
             <div className="mt-4 space-y-2 text-sm text-zinc-200">
               {telemetryContent.rows.map((row) => (
-                <div key={row.label} className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/30 px-3 py-2">
-                  <span className="text-xs uppercase tracking-[0.3em] text-zinc-500">{row.label}</span>
+                <div key={row.label} className="list-row">
+                  <span className="text-caption">{row.label}</span>
                   <span className="font-semibold text-white">{row.value}</span>
                 </div>
               ))}
@@ -199,7 +199,7 @@ export function MobileNav() {
           </section>
 
           <section className="mt-4 card-shell bg-black/40 p-4">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-zinc-500">
+            <div className="eyebrow flex items-center gap-2">
               <Terminal className="h-4 w-4 text-emerald-200" />
               Mini terminal
             </div>
@@ -259,7 +259,7 @@ export function MobileNav() {
                 <Shield className="h-5 w-5 text-violet-200" />
               </div>
               <select
-                className="mt-3 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400"
+                className="mt-3 w-full rounded-2xl box-muted px-3 py-2 text-sm text-white outline-none focus:border-violet-400"
                 value={autonomy?.current_level ?? ""}
                 onChange={(event) => {
                   const nextValue = Number(event.target.value);

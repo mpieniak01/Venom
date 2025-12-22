@@ -164,6 +164,17 @@ function usePolling<T>(
   intervalMs = 5000,
 ): PollingState<T> {
   const isBrowser = typeof window !== "undefined";
+  const pollingDisabled = process.env.NEXT_PUBLIC_DISABLE_API_POLLING === "true";
+  const disabledState = useMemo(
+    () => ({
+      data: null,
+      loading: false,
+      refreshing: false,
+      error: null,
+      refresh: async () => {},
+    }),
+    [],
+  );
   const fallbackEntry = useMemo<PollingEntry<T>>(
     () => ({
       state: { data: null, loading: true, refreshing: false, error: null },
@@ -180,16 +191,21 @@ function usePolling<T>(
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!isBrowser) return;
+    if (!isBrowser || pollingDisabled) return;
     const actualEntry = ensureEntry(key, fetcher, intervalMs);
     entryRef.current = actualEntry;
     setReady(true);
-  }, [isBrowser, key, fetcher, intervalMs]);
+  }, [isBrowser, pollingDisabled, key, fetcher, intervalMs]);
 
-  const entry = ready ? entryRef.current : fallbackEntry;
+  const entry = pollingDisabled
+    ? fallbackEntry
+    : ready
+      ? entryRef.current
+      : fallbackEntry;
 
   const subscribe = useCallback(
     (listener: () => void) => {
+      if (pollingDisabled) return () => {};
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         if (entry.interval > 0 && !entry.timer) {
@@ -205,30 +221,41 @@ function usePolling<T>(
         }
       };
     },
-    [entry],
+    [entry, pollingDisabled],
   );
 
   const snapshot = useSyncExternalStore(
     subscribe,
-    () => entry.state,
-    () => entry.state,
+    () => (pollingDisabled ? disabledState : entry.state),
+    () => (pollingDisabled ? disabledState : entry.state),
   );
 
   const refresh = useCallback(async () => {
-    if (entry === fallbackEntry) return;
+    if (pollingDisabled || entry === fallbackEntry) return;
     entry.suspendedUntil = undefined;
     await triggerFetch(entry);
-  }, [entry, fallbackEntry]);
+  }, [entry, fallbackEntry, pollingDisabled]);
 
   return useMemo(
-    () => ({
-      data: snapshot.data,
-      loading: snapshot.loading,
-      refreshing: snapshot.refreshing,
-      error: snapshot.error,
+    () =>
+      pollingDisabled
+        ? disabledState
+        : {
+            data: snapshot.data,
+            loading: snapshot.loading,
+            refreshing: snapshot.refreshing,
+            error: snapshot.error,
+            refresh,
+          },
+    [
+      pollingDisabled,
+      disabledState,
+      snapshot.data,
+      snapshot.loading,
+      snapshot.refreshing,
+      snapshot.error,
       refresh,
-    }),
-    [snapshot.data, snapshot.loading, snapshot.error, refresh],
+    ],
   );
 }
 

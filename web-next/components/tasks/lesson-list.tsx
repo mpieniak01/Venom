@@ -10,7 +10,7 @@ type LessonListProps = {
 export function LessonList({ lessons, emptyMessage = "Brak lekcji" }: LessonListProps) {
   if (!lessons.length) {
     return (
-      <p className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-500">
+      <p className="rounded-2xl box-subtle px-3 py-2 text-sm text-hint">
         {emptyMessage}
       </p>
     );
@@ -21,16 +21,16 @@ export function LessonList({ lessons, emptyMessage = "Brak lekcji" }: LessonList
       {lessons.map((lesson, index) => (
         <li
           key={`${lesson.id ?? lesson.title ?? "lesson"}-${index}`}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2"
+          className="rounded-2xl box-base px-3 py-2"
         >
           <span className="font-semibold text-white">{lesson.title}</span>
-          <p className="text-xs text-zinc-400">{lesson.summary || "Brak opisu."}</p>
+          <p className="text-hint">{lesson.summary || "Brak opisu."}</p>
           {lesson.tags && lesson.tags.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
               {lesson.tags.map((tag, tagIndex) => (
                 <span
                   key={`${tag}-${tagIndex}`}
-                  className="rounded-full bg-white/10 px-2 py-[2px] text-[10px] uppercase tracking-wide text-zinc-400"
+                  className="pill-badge text-zinc-400"
                 >
                   {tag}
                 </span>

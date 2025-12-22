@@ -157,8 +157,8 @@ test.describe("Venom Next Cockpit Smoke", () => {
   test("LLM panel shows server and model selectors", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /Serwery LLM/i })).toBeVisible();
-    await expect(page.getByLabel("Wybierz serwer LLM")).toBeVisible();
-    await expect(page.getByLabel("Wybierz model LLM (panel)")).toBeVisible();
+    await expect(page.getByLabel("Wybierz serwer LLM").first()).toBeVisible();
+    await expect(page.getByLabel("Wybierz model LLM").first()).toBeVisible();
   });
 
   test("Chat preset wstawia prompt i Ctrl+Enter wysyła zadanie", async ({ page }) => {

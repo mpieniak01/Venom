@@ -27,8 +27,8 @@ import { useTranslation } from "@/lib/i18n";
 
 export const navItems = [
   { href: "/", label: "Kokpit", labelKey: "sidebar.nav.cockpit", icon: Command },
-  { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
   { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
+  { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
   { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target },
   { href: "/models", label: "Przeglad modeli", labelKey: "sidebar.nav.models", icon: Layers },
   { href: "/calendar", label: "Kalendarz", labelKey: "sidebar.nav.calendar", icon: Calendar },

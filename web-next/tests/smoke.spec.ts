@@ -4,9 +4,10 @@ test.describe("Venom Next Cockpit Smoke", () => {
   test("renders cockpits key panels", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: /Cockpit AI/i })).toBeVisible();
-    await expect(page.getByText(/Live Feed/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Historia requestów/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Hidden prompts/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Status operacyjny/i })).toBeVisible();
     await expect(page.getByText("Zadania").first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Skuteczność operacji/i })).toBeVisible();
   });
 
   test("Inspector list displays placeholders", async ({ page }) => {
@@ -155,7 +156,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
   });
 
   test("LLM panel shows server and model selectors", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/chat");
     await expect(page.getByRole("heading", { name: /Serwery LLM/i })).toBeVisible();
     await expect(page.getByLabel("Wybierz serwer LLM").first()).toBeVisible();
     await expect(page.getByLabel("Wybierz model LLM").first()).toBeVisible();
@@ -212,7 +213,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
       });
     });
 
-    await page.goto("/");
+    await page.goto("/chat");
     const panicButton = page.getByRole("button", { name: /Awaryjne zatrzymanie/i });
     await panicButton.click();
     await expect(page.getByText(/Zatrzymano zadania/i)).toBeVisible();

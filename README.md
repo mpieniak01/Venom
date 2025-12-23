@@ -2,9 +2,7 @@
 
 **Venom Meta-Intelligence System** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
-## 🌟 Nowe w wersji 2.0: The Hive Mind
-
-Venom został przekształcony z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
+Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
 
 ### ✨ Kluczowe funkcjonalności
 - 🎨 Tworzenie nowych narzędzi i autonaprawa

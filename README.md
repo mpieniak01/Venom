@@ -160,6 +160,8 @@ API_PROXY_TARGET=http://localhost:8000
 
 > Szczegóły (architektura katalogów, guidelines dla SCC, źródła danych widoków) opisuje `docs/FRONTEND_NEXT_GUIDE.md`.
 
+Uwaga: Cockpit ma teraz dwa widoki — `/` (produkcyjny układ z wybranymi boxami) oraz `/chat` (referencyjna, pełna kopia wcześniejszego układu).
+
 ### Instalacja
 
 ```bash

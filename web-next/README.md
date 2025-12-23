@@ -30,7 +30,7 @@ npm run start
 ```
 
 ## Struktura
-- `app/` – strony: Cockpit `/`, Inspector `/inspector`, Brain `/brain`, Strategy `/strategy`
+- `app/` – strony: Cockpit `/` (widok produkcyjny), Cockpit reference `/chat` (pełna kopia), Inspector `/inspector`, Brain `/brain`, Strategy `/strategy`
 - `components/ui` – panele, karty, badge
 - `lib/env.ts` – źródło adresów API/WS (env + fallback)
 - `lib/api-client.ts` – fetch z obsługą błędów

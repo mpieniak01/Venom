@@ -80,7 +80,7 @@ export function HistoryList({
               variant="ghost"
               size="sm"
               className={cn(
-                "w-full rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/60",
+                "flex w-full flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/60",
                 variant === "preview"
                   ? "bg-black/30 hover:bg-black/50"
                   : "bg-zinc-950/40 hover:bg-zinc-900/60",
@@ -89,29 +89,25 @@ export function HistoryList({
                   : "border-white/5",
               )}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/70">
-                    {formatRelativeTime(item.created_at)}
-                  </p>
-                  <p className="mt-1 font-mono text-sm text-white">
-                    #{item.request_id.slice(0, 10)}
-                  </p>
-                  <p className="mt-1 text-caption break-words">
-                    {formatHistoryModel(item)}
-                  </p>
-                </div>
-                {item.error_code && (
-                  <div className="flex max-w-[50%] min-w-0 flex-shrink-0 items-center justify-end text-right">
-                    <Badge tone="danger" className="max-w-full truncate">
-                      {item.error_code}
-                    </Badge>
-                  </div>
-                )}
-                </div>
-              <p className="mt-2 line-clamp-2 text-sm text-zinc-300">
+              <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.3em] text-emerald-200/70">
+                <span>{formatRelativeTime(item.created_at)}</span>
+                <span className="font-mono tracking-normal text-white">
+                  #{item.request_id.slice(0, 10)}
+                </span>
+              </div>
+              <p className="text-sm text-zinc-300">
                 {item.prompt?.trim() ? item.prompt : "Brak promptu."}
               </p>
+              <p className="text-caption text-zinc-400">
+                {formatHistoryModel(item)}
+              </p>
+              {item.error_code && (
+                <div className="flex w-full justify-end">
+                  <Badge tone="danger" className="max-w-full truncate">
+                    {item.error_code}
+                  </Badge>
+                </div>
+              )}
               {item.error_code && (
                 <p className="mt-2 text-caption text-rose-300">
                   {formatErrorDetail(item)}
@@ -137,9 +133,6 @@ export function HistoryList({
 function formatHistoryModel(entry: HistoryRequest): string {
   const model = entry.llm_model ?? entry.model ?? "LLM";
   const provider = entry.llm_provider ?? "local";
-  if (entry.llm_endpoint) {
-    return `${model} • ${provider} @ ${entry.llm_endpoint}`;
-  }
   return `${model} • ${provider}`;
 }
 

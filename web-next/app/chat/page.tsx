@@ -3,7 +3,7 @@ import { fetchCockpitInitialData } from "@/lib/server-data";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function ChatPage() {
   const initialData = await fetchCockpitInitialData();
-  return <CockpitHome initialData={initialData} variant="home" />;
+  return <CockpitHome initialData={initialData} variant="reference" />;
 }

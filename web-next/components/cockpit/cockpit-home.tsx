@@ -2138,7 +2138,7 @@ export function CockpitHome({
                   variant="macro"
                   size="sm"
                   className="mt-4 w-full justify-center text-center tracking-[0.2em]"
-                  onClick={handleLlmServerActivate}
+                  onClick={() => handleLlmServerActivate()}
                   disabled={
                     llmActionPending === `activate:${selectedLlmServer}` ||
                     !selectedLlmServer ||

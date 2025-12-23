@@ -1,5 +1,6 @@
 @config "../tailwind.config.ts";
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 /* =========================================
    1. KONFIGURACJA (VENOM TECH)

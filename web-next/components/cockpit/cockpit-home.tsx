@@ -520,6 +520,7 @@ export function CockpitHome({
   }, [optimisticRequests, history, selectedRequestId]);
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
+    throttleMs: 150,
   });
   const { data: liveModelsUsageResponse } = useModelsUsage(10000);
   const modelsUsageResponse =

@@ -50,20 +50,20 @@ Oczekiwane wyjście:
 - Ewentualne formatowanie nagłówków (1..N).
 
 ## Zakres
-1. **Detekcja typu wyniku**
-   - Lista list (tabela), lista obiektów, słownik, liczby, tekst.
-2. **Formatowanie wyników**
-   - Tabela tekstowa (monospace, wyrównane kolumny).
-   - Listy punktowane dla struktur 1‑wymiarowych.
-3. **UI**
-   - Sekcja “Wynik obliczeń” w czacie (jeśli rozpoznany format).
-4. **Płynne dostarczanie odpowiedzi**
-   - Strumieniowe wyświetlanie fragmentów odpowiedzi (efekt „pisania”).
-   - Ograniczenie częstotliwości renderu, aby nie destabilizować pola input.
-   - Buforowanie i batchowanie aktualizacji (np. co 100–200 ms).
-   - Po zakończeniu strumienia wykryj pełne formuły i prze-renderuj wynik zgodnie z zasadami obsługi formuł.
-4. **Fallback**
-   - Jeśli nie da się zinterpretować, pokaż surowe dane.
+- [x] **Detekcja typu wyniku**
+  - Lista list (tabela), lista obiektów, słownik, liczby, tekst.
+- [x] **Formatowanie wyników**
+  - Tabela tekstowa (monospace, wyrównane kolumny).
+  - Listy punktowane dla struktur 1‑wymiarowych.
+- [x] **UI**
+  - Sekcja “Wynik obliczeń” w czacie (jeśli rozpoznany format).
+- [x] **Płynne dostarczanie odpowiedzi**
+  - Strumieniowe wyświetlanie fragmentów odpowiedzi (efekt „pisania”).
+  - Ograniczenie częstotliwości renderu, aby nie destabilizować pola input.
+  - Buforowanie i batchowanie aktualizacji (np. co 100–200 ms).
+  - Po zakończeniu strumienia wykryj pełne formuły i prze-renderuj wynik zgodnie z zasadami obsługi formuł.
+- [x] **Fallback**
+  - Jeśli nie da się zinterpretować, pokaż surowe dane.
 
 ## Kryteria akceptacji
 - Dla tablic 2D wynik jest czytelny i wyrównany.

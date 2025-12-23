@@ -58,7 +58,11 @@ export function ConversationBubble({
         <span>{new Date(timestamp).toLocaleTimeString()}</span>
       </div>
       <div className="mt-3 text-[15px] leading-relaxed text-white">
-        <MarkdownPreview content={text} emptyState="Brak treści." />
+        {pending ? (
+          <p className="whitespace-pre-wrap text-sm text-white/90">{text}</p>
+        ) : (
+          <MarkdownPreview content={text} emptyState="Brak treści." mode="final" />
+        )}
       </div>
       {(footerActions || footerExtra || (!isUser && (pending || status || requestId))) && (
         <div className="mt-4 border-t border-white/10 pt-3">

@@ -151,6 +151,7 @@ type ChatComposerProps = {
   selectedLlmModel: string;
   llmModelOptions: SelectMenuOption[];
   setSelectedLlmModel: (value: string) => void;
+  onActivateModel?: (value: string) => void;
   hasModels: boolean;
   onOpenTuning: () => void;
   tuningLabel: string;
@@ -170,6 +171,7 @@ const ChatComposer = memo(
       selectedLlmModel,
       llmModelOptions,
       setSelectedLlmModel,
+      onActivateModel,
       hasModels,
       onOpenTuning,
       tuningLabel,
@@ -213,6 +215,9 @@ const ChatComposer = memo(
     const controlStackClassName = compactControls
       ? "flex min-w-[180px] flex-1 flex-col gap-2"
       : "space-y-2";
+    const actionsClassName = compactControls
+      ? "ml-auto flex flex-wrap items-center gap-2"
+      : "ml-auto flex flex-wrap items-center justify-end gap-2 md:col-span-2";
 
     return (
       <div className="mt-4 shrink-0 border-t border-white/5 pt-4">
@@ -248,7 +253,12 @@ const ChatComposer = memo(
             <SelectMenu
               value={selectedLlmModel}
               options={llmModelOptions}
-              onChange={setSelectedLlmModel}
+              onChange={(value) => {
+                setSelectedLlmModel(value);
+                if (value && value !== selectedLlmModel) {
+                  onActivateModel?.(value);
+                }
+              }}
               ariaLabel="Wybierz model LLM (czat)"
               placeholder="Brak modeli"
               disabled={!hasModels}
@@ -264,7 +274,7 @@ const ChatComposer = memo(
             />
             Lab Mode (nie zapisuj lekcji)
           </label>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className={actionsClassName}>
             <Button
               variant="outline"
               size="sm"
@@ -300,11 +310,19 @@ const ChatComposer = memo(
   }),
 );
 
-export function CockpitHome({ initialData }: { initialData: CockpitInitialData }) {
+export function CockpitHome({
+  initialData,
+  variant = "reference",
+}: {
+  initialData: CockpitInitialData;
+  variant?: "reference" | "home";
+}) {
   const [isClientReady, setIsClientReady] = useState(false);
   useEffect(() => {
     setIsClientReady(true);
   }, []);
+  const showReferenceSections = variant === "reference";
+  const showSharedSections = variant === "reference" || variant === "home";
   const [labMode, setLabMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -697,43 +715,45 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     [tasksById, tasksByPrompt],
   );
 
-  const handleLlmServerActivate = useCallback(async () => {
-    if (!selectedLlmServer) {
+  const handleLlmServerActivate = useCallback(async (override?: { server?: string; model?: string }) => {
+    const targetServer = override?.server ?? selectedLlmServer;
+    const targetModel = override?.model ?? selectedLlmModel;
+    if (!targetServer) {
       setMessage("Wybierz serwer LLM.");
       pushToast("Wybierz serwer LLM.", "warning");
       return;
     }
     try {
-      setLlmActionPending(`activate:${selectedLlmServer}`);
+      setLlmActionPending(`activate:${targetServer}`);
       if (
-        selectedLlmModel &&
-        activeServerInfo?.active_server === selectedLlmServer
+        targetModel &&
+        activeServerInfo?.active_server === targetServer
       ) {
-        await switchModel(selectedLlmModel);
+        await switchModel(targetModel);
         setMessage(
-          `Aktywowano model ${selectedLlmModel} na serwerze ${selectedLlmServer}.`,
+          `Aktywowano model ${targetModel} na serwerze ${targetServer}.`,
         );
         pushToast(
-          `Aktywny serwer: ${selectedLlmServer}, model: ${selectedLlmModel}.`,
+          `Aktywny serwer: ${targetServer}, model: ${targetModel}.`,
           "success",
         );
         return;
       }
-      const response = await setActiveLlmServer(selectedLlmServer);
+      const response = await setActiveLlmServer(targetServer);
       if (response.status === "success") {
-        setMessage(`Aktywowano serwer ${selectedLlmServer}.`);
-        pushToast(`Aktywny serwer: ${selectedLlmServer}.`, "success");
+        setMessage(`Aktywowano serwer ${targetServer}.`);
+        pushToast(`Aktywny serwer: ${targetServer}.`, "success");
         if (
-          selectedLlmModel &&
+          targetModel &&
           response.active_model &&
-          response.active_model !== selectedLlmModel
+          response.active_model !== targetModel
         ) {
-          await switchModel(selectedLlmModel);
+          await switchModel(targetModel);
           setMessage(
-            `Aktywowano serwer ${selectedLlmServer} i model ${selectedLlmModel}.`,
+            `Aktywowano serwer ${targetServer} i model ${targetModel}.`,
           );
           pushToast(
-            `Aktywny serwer: ${selectedLlmServer}, model: ${selectedLlmModel}.`,
+            `Aktywny serwer: ${targetServer}, model: ${targetModel}.`,
             "success",
           );
         }
@@ -764,6 +784,11 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     refreshModels,
     pushToast,
   ]);
+
+  const handleChatModelSelect = useCallback((value: string) => {
+    if (!value) return;
+    handleLlmServerActivate({ model: value });
+  }, [handleLlmServerActivate]);
 
   const resolveServerStatus = useCallback(
     (serverName: string, fallback?: string | null) => {
@@ -1814,6 +1839,198 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
     );
   }
 
+  const hiddenPromptsPanel = (
+    <Panel
+      title="Hidden prompts"
+      description={`Agregaty prompt → odpowiedź z /learning/hidden-prompts (score ≥ ${hiddenScoreFilter}).`}
+    >
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+        <label className="text-caption">
+          Filtry
+        </label>
+        <select
+          className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+          value={hiddenIntentFilter}
+          onChange={(event) => setHiddenIntentFilter(event.target.value)}
+        >
+          {hiddenIntentOptions.map((intent) => (
+            <option key={`intent-${intent}`} value={intent}>
+              {intent === "all" ? "Wszystkie intencje" : intent}
+            </option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+          value={String(hiddenScoreFilter)}
+          onChange={(event) => setHiddenScoreFilter(Number(event.target.value))}
+        >
+          {[1, 2, 3].map((value) => (
+            <option key={`score-${value}`} value={String(value)}>
+              Score ≥ {value}
+            </option>
+          ))}
+        </select>
+        <select
+          className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
+          value={activeForIntent?.prompt_hash ?? activeForIntent?.prompt ?? ""}
+          onChange={async (event) => {
+            if (hiddenIntentFilter === "all") return;
+            const nextValue = event.target.value;
+            if (!nextValue) {
+              if (activeForIntent) {
+                await setActiveHiddenPrompt({
+                  intent: activeForIntent.intent,
+                  prompt: activeForIntent.prompt,
+                  approved_response: activeForIntent.approved_response,
+                  prompt_hash: activeForIntent.prompt_hash,
+                  active: false,
+                  actor: "ui",
+                });
+              }
+              return;
+            }
+            const candidate = selectableHiddenPrompts.find(
+              (entry) => (entry.prompt_hash ?? entry.prompt) === nextValue,
+            );
+            if (candidate) {
+              await setActiveHiddenPrompt({
+                intent: candidate.intent,
+                prompt: candidate.prompt,
+                approved_response: candidate.approved_response,
+                prompt_hash: candidate.prompt_hash,
+                active: true,
+                actor: "ui",
+              });
+            }
+          }}
+          disabled={
+            hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0
+          }
+        >
+          <option value="">
+            {hiddenIntentFilter === "all"
+              ? "Wybierz intencję"
+              : "Brak aktywnego"}
+          </option>
+          {selectableHiddenPrompts.map((entry, idx) => {
+            const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+            return (
+              <option key={`active-hidden-${key}`} value={key}>
+                {(entry.prompt ?? "Brak promptu").slice(0, 40)}
+              </option>
+            );
+          })}
+        </select>
+        {activeHiddenKeys.size > 0 && (
+          <span className="pill-badge text-emerald-100">
+            Aktywne: {activeHiddenKeys.size}
+          </span>
+        )}
+      </div>
+      {hiddenPrompts?.items?.length ? (
+        <div className="space-y-3">
+          {hiddenPrompts.items.map((entry, idx) => {
+            const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
+            const isActive = activeHiddenKeys.has(key);
+            const activeMeta = isActive ? activeHiddenMap.get(key) : undefined;
+            return (
+              <div
+                key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
+                className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-caption">
+                  <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
+                  <span>{entry.intent ?? "—"}</span>
+                  <span>{formatRelativeTime(entry.last_timestamp)}</span>
+                  {isActive && (
+                    <Badge tone="success">
+                      Aktywny
+                      {activeMeta?.activated_by
+                        ? ` • ${activeMeta.activated_by}`
+                        : ""}
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-white">
+                  {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
+                </p>
+                {entry.approved_response && (
+                  <p className="mt-2 text-hint">
+                    {entry.approved_response.slice(0, 160)}
+                  </p>
+                )}
+                {activeMeta?.activated_at && (
+                  <p className="mt-2 text-hint text-emerald-200">
+                    Aktywne od: {formatRelativeTime(activeMeta.activated_at)}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="xs"
+                    variant={isActive ? "danger" : "outline"}
+                    onClick={async () => {
+                      await setActiveHiddenPrompt({
+                        intent: entry.intent,
+                        prompt: entry.prompt,
+                        approved_response: entry.approved_response,
+                        prompt_hash: entry.prompt_hash,
+                        active: !isActive,
+                        actor: "ui",
+                      });
+                    }}
+                  >
+                    {isActive ? "Wyłącz" : "Aktywuj"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<Inbox className="h-4 w-4" />}
+          title="Brak hidden prompts"
+          description="Pojawią się po ocenach z kciukiem w górę."
+        />
+      )}
+      {hiddenLoading && (
+        <p className="mt-2 text-hint">Ładowanie hidden prompts...</p>
+      )}
+      {hiddenError && (
+        <p className="mt-2 text-xs text-rose-300">{hiddenError}</p>
+      )}
+      {activeHiddenLoading && (
+        <p className="mt-2 text-hint">Ładowanie aktywnych wpisów...</p>
+      )}
+      {activeHiddenError && (
+        <p className="mt-2 text-xs text-rose-300">{activeHiddenError}</p>
+      )}
+    </Panel>
+  );
+  const historyRequestsPanel = (
+    <Panel
+      title="Historia requestów"
+      description="Najnowsze zadania użytkownika z /api/v1/history/requests."
+    >
+      <HistoryList
+        entries={history}
+        limit={6}
+        selectedId={selectedRequestId}
+        onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
+        variant="preview"
+        viewAllHref="/inspector"
+        emptyTitle="Brak historii"
+        emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
+      />
+      {loadingHistory && (
+        <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
+      )}
+      {historyError && (
+        <p className="mt-2 text-xs text-rose-300">{historyError}</p>
+      )}
+    </Panel>
+  );
+
   return (
     <div className="space-y-10 pb-14">
       <SectionHeading
@@ -1835,7 +2052,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
       >
         {!chatFullscreen && (
           <div className="space-y-6">
-          <Panel
+          {showReferenceSections && (
+            <>
+              <Panel
             title="Serwery LLM"
             description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
             className="allow-overflow overflow-visible"
@@ -2050,6 +2269,14 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               ))}
             </div>
           </Panel>
+            </>
+          )}
+          {!showReferenceSections && (
+            <>
+              {historyRequestsPanel}
+              {hiddenPromptsPanel}
+            </>
+          )}
           </div>
         )}
         <div className="space-y-6">
@@ -2121,6 +2348,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                     selectedLlmModel={selectedLlmModel}
                     llmModelOptions={llmModelOptions}
                     setSelectedLlmModel={setSelectedLlmModel}
+                    onActivateModel={handleChatModelSelect}
                     hasModels={availableModelsForServer.length > 0}
                     onOpenTuning={handleOpenTuning}
                     tuningLabel={t("common.tuning")}
@@ -2134,7 +2362,7 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </div>
             </div>
           </motion.div>
-          {!chatFullscreen && (
+          {!chatFullscreen && showSharedSections && (
             <>
               <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-zinc-300">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2167,121 +2395,126 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                   ))}
                 </div>
               </div>
-              <div className="grid gap-6">
-                <Panel
-                  eyebrow="KPI kolejki"
-                  title="Skuteczność operacji"
-                  description="Monitoruj SLA tasków i uptime backendu."
-                  className="kpi-panel"
-                >
-                  {metricsLoading && !metrics ? (
-                    <PanelLoadingState label="Ładuję metryki zadań…" />
-                  ) : successRate === null ? (
-                    <EmptyState
-                      icon={<Bot className="h-4 w-4" />}
-                      title="Brak danych SLA"
-                      description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
-                    />
-                  ) : (
-                    <CockpitMetricCard
-                      primaryValue={`${successRate}%`}
-                      secondaryLabel={
-                        tasksCreated > 0
-                          ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
-                          : "Brak zadań"
-                      }
-                      progress={successRate}
-                      footer={`Uptime: ${
-                        metrics?.uptime_seconds !== undefined
-                          ? formatUptime(metrics.uptime_seconds)
-                          : "—"
-                      }`}
-                    />
-                  )}
-                </Panel>
-                <Panel
-                  eyebrow="KPI kolejki"
-                  title="Zużycie tokenów"
-                  description="Trend prompt/completion/cached."
-                  className="kpi-panel"
-                >
-                  {tokenMetricsLoading && !tokenMetrics ? (
-                    <PanelLoadingState label="Ładuję statystyki tokenów…" />
-                  ) : (
-                    <CockpitTokenCard
-                      totalValue={totalTokens}
-                      splits={
-                        tokenSplits.length > 0
-                          ? tokenSplits
-                          : [{ label: "Brak danych", value: 0 }]
-                      }
-                      chartSlot={
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-caption">Trend próbek</p>
-                            <Badge
-                              tone={
-                                tokenTrendDelta !== null && tokenTrendDelta < 0
-                                  ? "success"
-                                  : "warning"
-                              }
-                            >
-                              {tokenTrendLabel}
-                            </Badge>
-                          </div>
-                          {tokenHistory.length < 2 ? (
-                            <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
-                              Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
-                            </p>
-                          ) : (
-                            <div className="rounded-2xl box-subtle p-4">
-                              <p className="text-caption">Przebieg ostatnich próbek</p>
-                              <div className="mt-3 h-32">
-                                <TokenChart history={tokenHistory} height={128} />
+              {showReferenceSections && (
+                <>
+                  <div className="grid gap-6">
+                    <Panel
+                      eyebrow="KPI kolejki"
+                      title="Skuteczność operacji"
+                      description="Monitoruj SLA tasków i uptime backendu."
+                      className="kpi-panel"
+                    >
+                      {metricsLoading && !metrics ? (
+                        <PanelLoadingState label="Ładuję metryki zadań…" />
+                      ) : successRate === null ? (
+                        <EmptyState
+                          icon={<Bot className="h-4 w-4" />}
+                          title="Brak danych SLA"
+                          description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
+                        />
+                      ) : (
+                        <CockpitMetricCard
+                          primaryValue={`${successRate}%`}
+                          secondaryLabel={
+                            tasksCreated > 0
+                              ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
+                              : "Brak zadań"
+                          }
+                          progress={successRate}
+                          footer={`Uptime: ${
+                            metrics?.uptime_seconds !== undefined
+                              ? formatUptime(metrics.uptime_seconds)
+                              : "—"
+                          }`}
+                        />
+                      )}
+                    </Panel>
+                    <Panel
+                      eyebrow="KPI kolejki"
+                      title="Zużycie tokenów"
+                      description="Trend prompt/completion/cached."
+                      className="kpi-panel"
+                    >
+                      {tokenMetricsLoading && !tokenMetrics ? (
+                        <PanelLoadingState label="Ładuję statystyki tokenów…" />
+                      ) : (
+                        <CockpitTokenCard
+                          totalValue={totalTokens}
+                          splits={
+                            tokenSplits.length > 0
+                              ? tokenSplits
+                              : [{ label: "Brak danych", value: 0 }]
+                          }
+                          chartSlot={
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-caption">Trend próbek</p>
+                                <Badge
+                                  tone={
+                                    tokenTrendDelta !== null && tokenTrendDelta < 0
+                                      ? "success"
+                                      : "warning"
+                                  }
+                                >
+                                  {tokenTrendLabel}
+                                </Badge>
                               </div>
+                              {tokenHistory.length < 2 ? (
+                                <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
+                                  Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
+                                </p>
+                              ) : (
+                                <div className="rounded-2xl box-subtle p-4">
+                                  <p className="text-caption">Przebieg ostatnich próbek</p>
+                                  <div className="mt-3 h-32">
+                                    <TokenChart history={tokenHistory} height={128} />
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      }
-                    />
-                  )}
-                </Panel>
-              </div>
-              <Panel
-                eyebrow="Live telemetry"
-                title="Zdarzenia /ws/events"
-                description="Najświeższe sygnały TASK_* i QUEUE_* – pozwalają śledzić napływające wyniki bez przeładowania."
-              >
-                {telemetryFeed.length === 0 ? (
-                  <p className="text-hint">
-                    Brak zdarzeń – czekam na telemetrię.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {telemetryFeed.map((event) => (
-                      <div
-                        key={event.id}
-                        className="list-row items-start gap-3 text-sm text-white"
-                      >
-                        <div>
-                          <p className="font-semibold">{event.type}</p>
-                          <p className="text-hint">{event.message}</p>
-                        </div>
-                        <div className="text-right text-xs text-zinc-500">
-                          <Badge tone={event.tone}>{event.timestamp}</Badge>
-                        </div>
-                      </div>
-                    ))}
+                          }
+                        />
+                      )}
+                    </Panel>
                   </div>
-                )}
-              </Panel>
+                  <Panel
+                    eyebrow="Live telemetry"
+                    title="Zdarzenia /ws/events"
+                    description="Najświeższe sygnały TASK_* i QUEUE_* – pozwalają śledzić napływające wyniki bez przeładowania."
+                  >
+                    {telemetryFeed.length === 0 ? (
+                      <p className="text-hint">
+                        Brak zdarzeń – czekam na telemetrię.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {telemetryFeed.map((event) => (
+                          <div
+                            key={event.id}
+                            className="list-row items-start gap-3 text-sm text-white"
+                          >
+                            <div>
+                              <p className="font-semibold">{event.type}</p>
+                              <p className="text-hint">{event.message}</p>
+                            </div>
+                            <div className="text-right text-xs text-zinc-500">
+                              <Badge tone={event.tone}>{event.timestamp}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Panel>
+                </>
+              )}
             </>
           )}
         </div>
       </section>
       {!chatFullscreen && (
         <>
-          <section className="grid gap-6">
+          {showReferenceSections && (
+            <section className="grid gap-6">
             <Panel
               title="Zasoby"
               description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
@@ -2321,8 +2554,10 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </div>
             </Panel>
           </section>
+          )}
 
-          <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
+          {showReferenceSections && (
+            <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
             <div className="glass-panel flex flex-col gap-4">
               <header className="flex items-center gap-3">
                 <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
@@ -2357,404 +2592,253 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
               </div>
             </div>
           </section>
+          )}
 
-          <Panel
-            eyebrow="System KPIs"
-            title="Status operacyjny"
-            description="Najważniejsze liczby backendu."
-            className="kpi-panel"
-          >
-            <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
-              <StatCard
-                label="Zadania"
-                value={metrics?.tasks?.created ?? "—"}
-                hint="Łącznie utworzonych"
-              />
-              <StatCard
-                label="Skuteczność"
-                value={successRate !== null ? `${successRate}%` : "—"}
-                hint="Aktualna skuteczność"
-                accent="green"
-              />
-              <StatCard
-                label="Uptime"
-                value={
-                  metrics?.uptime_seconds !== undefined
-                    ? formatUptime(metrics.uptime_seconds)
-                    : "—"
-                }
-                hint="Od startu backendu"
-              />
-              <StatCard
-                label="Kolejka"
-                value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
-                hint="Aktywne / limit"
-                accent="blue"
-              />
-              <StatCard
-                label="Jakość"
-                value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
-                hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
-                accent="violet"
-              />
-            </div>
-          </Panel>
+          {showSharedSections && (
+            <Panel
+              eyebrow="System KPIs"
+              title="Status operacyjny"
+              description="Najważniejsze liczby backendu."
+              className="kpi-panel"
+            >
+              <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
+                <StatCard
+                  label="Zadania"
+                  value={metrics?.tasks?.created ?? "—"}
+                  hint="Łącznie utworzonych"
+                />
+                <StatCard
+                  label="Skuteczność"
+                  value={successRate !== null ? `${successRate}%` : "—"}
+                  hint="Aktualna skuteczność"
+                  accent="green"
+                />
+                <StatCard
+                  label="Uptime"
+                  value={
+                    metrics?.uptime_seconds !== undefined
+                      ? formatUptime(metrics.uptime_seconds)
+                      : "—"
+                  }
+                  hint="Od startu backendu"
+                />
+                <StatCard
+                  label="Kolejka"
+                  value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
+                  hint="Aktywne / limit"
+                  accent="blue"
+                />
+                <StatCard
+                  label="Jakość"
+                  value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
+                  hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
+                  accent="violet"
+                />
+              </div>
+            </Panel>
+          )}
 
-          <Panel
-            title="Zarządzanie kolejką"
-            description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
-            className="queue-panel"
-          >
-            {queue ? (
-              <>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <StatCard
-                    label="Aktywne"
-                    value={queue.active ?? "—"}
-                    hint="Zadania w toku"
-                    accent="violet"
-                  />
-                  <StatCard
-                    label="Oczekujące"
-                    value={queue.pending ?? "—"}
-                    hint="Czekają na wykonanie"
-                    accent="indigo"
-                  />
-                  <StatCard
-                    label="Limit"
-                    value={queue.limit ?? "∞"}
-                    hint="Maksymalna pojemność"
-                    accent="blue"
-                  />
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={handleToggleQueue}
-                    disabled={queueAction === "pause" || queueAction === "resume"}
-                  >
-                    {queue.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    onClick={() => executeQueueMutation("purge")}
-                    disabled={queueAction === "purge"}
-                  >
-                    Wyczyść kolejkę
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="xs"
-                    onClick={() => executeQueueMutation("emergency")}
-                    disabled={queueAction === "emergency"}
-                  >
-                    Awaryjne zatrzymanie
-                  </Button>
-                </div>
-                {queueActionMessage && (
-                  <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
-                )}
-              </>
-            ) : (
-              <EmptyState
-                icon={<Package className="h-4 w-4" />}
-                title="Kolejka offline"
-                description="Brak danych `/api/v1/queue/status` – sprawdź backend lub użyj Quick Actions."
-              />
-            )}
-          </Panel>
+          {showReferenceSections && (
+            <Panel
+              title="Zarządzanie kolejką"
+              description="Stan kolejki `/api/v1/queue/status`, koszty sesji i akcje awaryjne."
+              className="queue-panel"
+            >
+              {queue ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <StatCard
+                      label="Aktywne"
+                      value={queue.active ?? "—"}
+                      hint="Zadania w toku"
+                      accent="violet"
+                    />
+                    <StatCard
+                      label="Oczekujące"
+                      value={queue.pending ?? "—"}
+                      hint="Czekają na wykonanie"
+                      accent="indigo"
+                    />
+                    <StatCard
+                      label="Limit"
+                      value={queue.limit ?? "∞"}
+                      hint="Maksymalna pojemność"
+                      accent="blue"
+                    />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={handleToggleQueue}
+                      disabled={queueAction === "pause" || queueAction === "resume"}
+                    >
+                      {queue.paused ? "Wznów kolejkę" : "Wstrzymaj kolejkę"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => executeQueueMutation("purge")}
+                      disabled={queueAction === "purge"}
+                    >
+                      Wyczyść kolejkę
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="xs"
+                      onClick={() => executeQueueMutation("emergency")}
+                      disabled={queueAction === "emergency"}
+                    >
+                      Awaryjne zatrzymanie
+                    </Button>
+                  </div>
+                  {queueActionMessage && (
+                    <p className="mt-2 text-xs text-zinc-400">{queueActionMessage}</p>
+                  )}
+                </>
+              ) : (
+                <EmptyState
+                  icon={<Package className="h-4 w-4" />}
+                  title="Kolejka offline"
+                  description="Brak danych `/api/v1/queue/status` – sprawdź backend lub użyj Quick Actions."
+                />
+              )}
+            </Panel>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <Panel
-              title="Historia requestów"
-              description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
-            >
-              <HistoryList
-                entries={history}
-                limit={5}
-                selectedId={selectedRequestId}
-                onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
-                variant="preview"
-                viewAllHref="/inspector"
-                emptyTitle="Brak historii"
-                emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
-              />
-              {loadingHistory && (
-                <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
-              )}
-              {historyError && (
-                <p className="mt-2 text-xs text-rose-300">{historyError}</p>
-              )}
-              <p className="mt-2 text-caption">
-                Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
-              </p>
-            </Panel>
-            <Panel
-              title="Logi nauki"
-              description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
-            >
-              {learningLogs?.items?.length ? (
-                <div className="space-y-3">
-                  {learningLogs.items.map((entry, idx) => (
-                    <div
-                      key={`learning-${entry.task_id ?? idx}`}
-                      className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-caption">
-                        <Badge tone={entry.success ? "success" : "danger"}>
-                          {entry.success ? "OK" : "Błąd"}
-                        </Badge>
-                        <span>{entry.intent ?? "—"}</span>
-                        <span>{formatRelativeTime(entry.timestamp)}</span>
-                      </div>
-                      <p className="mt-2 text-sm text-white">
-                        {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
-                      </p>
-                      {entry.error && (
-                        <p className="mt-2 text-hint text-rose-300">
-                          {entry.error.slice(0, 140)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<Inbox className="h-4 w-4" />}
-                  title="Brak logów nauki"
-                  description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
+            {showReferenceSections && (
+              <Panel
+                title="Historia requestów"
+                description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
+              >
+                <HistoryList
+                  entries={history}
+                  limit={5}
+                  selectedId={selectedRequestId}
+                  onSelect={(entry) => openRequestDetail(entry.request_id, entry.prompt)}
+                  variant="preview"
+                  viewAllHref="/inspector"
+                  emptyTitle="Brak historii"
+                  emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
                 />
-              )}
-              {learningLoading && (
-                <p className="mt-2 text-hint">Ładowanie logów nauki...</p>
-              )}
-              {learningError && (
-                <p className="mt-2 text-xs text-rose-300">{learningError}</p>
-              )}
-            </Panel>
-            <Panel
-              title="Feedback"
-              description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
-            >
-              {feedbackLogs?.items?.length ? (
-                <div className="space-y-3">
-                  {feedbackLogs.items.map((entry, idx) => (
-                    <div
-                      key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
-                      className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
-                    >
-                      <div className="flex flex-wrap items-center gap-2 text-caption">
-                        <Badge tone={entry.rating === "up" ? "success" : "danger"}>
-                          {entry.rating === "up" ? "👍" : "👎"}
-                        </Badge>
-                        <span>{entry.intent ?? "—"}</span>
-                        <span>{formatRelativeTime(entry.timestamp)}</span>
-                      </div>
-                      <p className="mt-2 text-sm text-white">
-                        {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
-                      </p>
-                      {entry.comment && (
-                        <p className="mt-2 text-hint">
-                          {entry.comment.slice(0, 140)}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<Inbox className="h-4 w-4" />}
-                  title="Brak feedbacku"
-                  description="Oceny pojawią się po pierwszych rundach."
-                />
-              )}
-              {feedbackLoading && (
-                <p className="mt-2 text-hint">Ładowanie feedbacku...</p>
-              )}
-              {feedbackError && (
-                <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
-              )}
-            </Panel>
-            <Panel
-              title="Hidden prompts"
-              description="Zagregowane pary prompt → odpowiedź z kciuka w górę."
-            >
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                <label className="text-caption">
-                  Filtry
-                </label>
-                <select
-                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-                  value={hiddenIntentFilter}
-                  onChange={(event) => setHiddenIntentFilter(event.target.value)}
-                >
-                  {hiddenIntentOptions.map((intent) => (
-                    <option key={`intent-${intent}`} value={intent}>
-                      {intent === "all" ? "Wszystkie intencje" : intent}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-                  value={String(hiddenScoreFilter)}
-                  onChange={(event) => setHiddenScoreFilter(Number(event.target.value))}
-                >
-                  {[1, 2, 3].map((value) => (
-                    <option key={`score-${value}`} value={String(value)}>
-                      Score ≥ {value}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
-                  value={activeForIntent?.prompt_hash ?? activeForIntent?.prompt ?? ""}
-                  onChange={async (event) => {
-                    if (hiddenIntentFilter === "all") return;
-                    const nextValue = event.target.value;
-                    if (!nextValue) {
-                      if (activeForIntent) {
-                        await setActiveHiddenPrompt({
-                          intent: activeForIntent.intent,
-                          prompt: activeForIntent.prompt,
-                          approved_response: activeForIntent.approved_response,
-                          prompt_hash: activeForIntent.prompt_hash,
-                          active: false,
-                          actor: "ui",
-                        });
-                      }
-                      return;
-                    }
-                    const candidate = selectableHiddenPrompts.find(
-                      (entry) => (entry.prompt_hash ?? entry.prompt) === nextValue,
-                    );
-                    if (candidate) {
-                      await setActiveHiddenPrompt({
-                        intent: candidate.intent,
-                        prompt: candidate.prompt,
-                        approved_response: candidate.approved_response,
-                        prompt_hash: candidate.prompt_hash,
-                        active: true,
-                        actor: "ui",
-                      });
-                    }
-                  }}
-                  disabled={
-                    hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0
-                  }
-                >
-                  <option value="">
-                    {hiddenIntentFilter === "all"
-                      ? "Wybierz intencję"
-                      : "Brak aktywnego"}
-                  </option>
-                  {selectableHiddenPrompts.map((entry, idx) => {
-                    const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
-                    return (
-                      <option key={`active-hidden-${key}`} value={key}>
-                        {(entry.prompt ?? "Brak promptu").slice(0, 40)}
-                      </option>
-                    );
-                  })}
-                </select>
-                {activeHiddenKeys.size > 0 && (
-                  <span className="pill-badge text-emerald-100">
-                    Aktywne: {activeHiddenKeys.size}
-                  </span>
+                {loadingHistory && (
+                  <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
                 )}
-              </div>
-              {hiddenPrompts?.items?.length ? (
-                <div className="space-y-3">
-                  {hiddenPrompts.items.map((entry, idx) => {
-                    const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
-                    const isActive = activeHiddenKeys.has(key);
-                    const activeMeta = isActive ? activeHiddenMap.get(key) : undefined;
-                    return (
+                {historyError && (
+                  <p className="mt-2 text-xs text-rose-300">{historyError}</p>
+                )}
+                <p className="mt-2 text-caption">
+                  Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
+                </p>
+              </Panel>
+            )}
+            {showSharedSections && (
+              <Panel
+                title="Logi nauki"
+                description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
+              >
+                {learningLogs?.items?.length ? (
+                  <div className="space-y-3">
+                    {learningLogs.items.map((entry, idx) => (
                       <div
-                        key={`hidden-${entry.intent ?? "unknown"}-${idx}`}
+                        key={`learning-${entry.task_id ?? idx}`}
                         className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
                       >
                         <div className="flex flex-wrap items-center gap-2 text-caption">
-                          <Badge tone="neutral">Score: {entry.score ?? 1}</Badge>
+                          <Badge tone={entry.success ? "success" : "danger"}>
+                            {entry.success ? "OK" : "Błąd"}
+                          </Badge>
                           <span>{entry.intent ?? "—"}</span>
-                          <span>{formatRelativeTime(entry.last_timestamp)}</span>
-                          {isActive && (
-                            <Badge tone="success">
-                              Aktywny
-                              {activeMeta?.activated_by
-                                ? ` • ${activeMeta.activated_by}`
-                                : ""}
-                            </Badge>
-                          )}
+                          <span>{formatRelativeTime(entry.timestamp)}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-white">
+                          {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
+                        </p>
+                        {entry.error && (
+                          <p className="mt-2 text-hint text-rose-300">
+                            {entry.error.slice(0, 140)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={<Inbox className="h-4 w-4" />}
+                    title="Brak logów nauki"
+                    description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
+                  />
+                )}
+                {learningLoading && (
+                  <p className="mt-2 text-hint">Ładowanie logów nauki...</p>
+                )}
+                {learningError && (
+                  <p className="mt-2 text-xs text-rose-300">{learningError}</p>
+                )}
+              </Panel>
+            )}
+            {showSharedSections && (
+              <Panel
+                title="Feedback"
+                description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
+              >
+                {feedbackLogs?.items?.length ? (
+                  <div className="space-y-3">
+                    {feedbackLogs.items.map((entry, idx) => (
+                      <div
+                        key={`feedback-${entry.task_id ?? "unknown"}-${entry.timestamp ?? idx}-${idx}`}
+                        className="rounded-2xl box-muted p-3 text-xs text-zinc-300"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-caption">
+                          <Badge tone={entry.rating === "up" ? "success" : "danger"}>
+                            {entry.rating === "up" ? "👍" : "👎"}
+                          </Badge>
+                          <span>{entry.intent ?? "—"}</span>
+                          <span>{formatRelativeTime(entry.timestamp)}</span>
                         </div>
                         <p className="mt-2 text-sm text-white">
                           {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
                         </p>
-                        {entry.approved_response && (
+                        {entry.comment && (
                           <p className="mt-2 text-hint">
-                            {entry.approved_response.slice(0, 160)}
+                            {entry.comment.slice(0, 140)}
                           </p>
                         )}
-                    {activeMeta?.activated_at && (
-                      <p className="mt-2 text-hint text-emerald-200">
-                        Aktywne od: {formatRelativeTime(activeMeta.activated_at)}
-                      </p>
-                    )}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        size="xs"
-                        variant={isActive ? "danger" : "outline"}
-                        onClick={async () => {
-                          await setActiveHiddenPrompt({
-                            intent: entry.intent,
-                            prompt: entry.prompt,
-                            approved_response: entry.approved_response,
-                            prompt_hash: entry.prompt_hash,
-                            active: !isActive,
-                            actor: "ui",
-                          });
-                        }}
-                      >
-                        {isActive ? "Wyłącz" : "Aktywuj"}
-                      </Button>
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={<Inbox className="h-4 w-4" />}
-              title="Brak hidden prompts"
-              description="Pojawią się po ocenach z kciukiem w górę."
-            />
-          )}
-          {hiddenLoading && (
-            <p className="mt-2 text-hint">Ładowanie hidden prompts...</p>
-          )}
-          {hiddenError && (
-            <p className="mt-2 text-xs text-rose-300">{hiddenError}</p>
-          )}
-          {activeHiddenLoading && (
-            <p className="mt-2 text-hint">Ładowanie aktywnych wpisów...</p>
-          )}
-          {activeHiddenError && (
-            <p className="mt-2 text-xs text-rose-300">{activeHiddenError}</p>
-          )}
-        </Panel>
-      </div>
+                ) : (
+                  <EmptyState
+                    icon={<Inbox className="h-4 w-4" />}
+                    title="Brak feedbacku"
+                    description="Oceny pojawią się po pierwszych rundach."
+                  />
+                )}
+                {feedbackLoading && (
+                  <p className="mt-2 text-hint">Ładowanie feedbacku...</p>
+                )}
+                {feedbackError && (
+                  <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
+                )}
+              </Panel>
+            )}
+            {showReferenceSections && hiddenPromptsPanel}
+          </div>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <VoiceCommandCenter />
-        <IntegrationMatrix services={services} events={entries} />
-      </section>
+      {showReferenceSections && (
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <VoiceCommandCenter />
+          <IntegrationMatrix services={services} events={entries} />
+        </section>
+      )}
 
-      <Panel
-        title="Makra Cockpitu"
-        description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
-        action={
-          <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
+      {showSharedSections && (
+        <Panel
+          title="Makra Cockpitu"
+          description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
+          action={
+            <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
             <form
               className="flex flex-col gap-2"
               onSubmit={(e) => {
@@ -2809,9 +2893,9 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
                 Resetuj makra użytkownika
               </Button>
             )}
-          </div>
-        }
-      >
+            </div>
+          }
+        >
         <div className="grid gap-4 lg:grid-cols-2">
           {allMacros.map((macro) => (
             <MacroCard
@@ -2830,163 +2914,168 @@ export function CockpitHome({ initialData }: { initialData: CockpitInitialData }
             />
           ))}
         </div>
-      </Panel>
-
-      <Panel
-        title="Task Insights"
-        description="Podsumowanie statusów i ostatnich requestów /history/requests."
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <TaskStatusBreakdown
-            title="Statusy"
-            datasetLabel="Ostatnie 50 historii"
-            totalLabel="Historia"
-            totalValue={(history || []).length}
-            entries={historyStatusEntries}
-            emptyMessage="Brak historii do analizy."
-          />
-          <RecentRequestList requests={history} />
-        </div>
-      </Panel>
-
-        <Panel
-          title="Zarządzanie kolejką"
-        description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
-        action={
-          <Badge tone={queue?.paused ? "warning" : "success"}>
-            {queue?.paused ? "Wstrzymana" : "Aktywna"}
-          </Badge>
-        }
-      >
-        <div className="space-y-4">
-          <QueueStatusCard queue={queue} loading={queueLoading && !queue} />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-              Akcje dostępne w panelu Quick Actions.
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
-              onClick={() => setQuickActionsOpen(true)}
-            >
-              ⚡ Otwórz Quick Actions
-            </Button>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel
-        title="Repozytorium"
-        description="Status i szybkie akcje git (/api/v1/git/*)."
-        action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
-      >
-          <div className="space-y-4">
-            <div className="card-shell bg-black/30 p-4">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
-              <p className="mt-2 text-sm text-white">
-                {git?.changes ?? git?.status ?? "Brak danych z API."}
-              </p>
-              <p className="text-xs text-zinc-500">
-                Aktualna gałąź: <span className="font-semibold text-white">{git?.branch ?? "—"}</span>
-              </p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <RepoActionCard
-                title="Synchronizacja"
-                description="Pobierz/publikuj zmiany i odśwież status pipeline’u."
-                pending={gitAction === "sync"}
-                onClick={handleGitSync}
-              />
-              <RepoActionCard
-                title="Cofnij zmiany"
-                description="Przywróć HEAD do stanu origin – operacja nieodwracalna."
-                variant="danger"
-                pending={gitAction === "undo"}
-                onClick={handleGitUndo}
-              />
-            </div>
-          </div>
         </Panel>
+      )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Panel
-          title="Efektywność tokenów"
-          description="Średnie zużycie i tempo – KPI na bazie /metrics i /metrics/tokens."
-        >
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <TokenEfficiencyStat
-                label="Śr./zadanie"
-                value={
-                  avgTokensPerTask !== null
-                    ? `${avgTokensPerTask.toLocaleString("pl-PL")} tok`
-                    : "—"
-                }
-                hint="Total tokens ÷ tasks.created"
+      {showReferenceSections && (
+        <>
+          <Panel
+            title="Task Insights"
+            description="Podsumowanie statusów i ostatnich requestów /history/requests."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <TaskStatusBreakdown
+                title="Statusy"
+                datasetLabel="Ostatnie 50 historii"
+                totalLabel="Historia"
+                totalValue={(history || []).length}
+                entries={historyStatusEntries}
+                emptyMessage="Brak historii do analizy."
               />
-              <TokenEfficiencyStat
-                label="Delta próbki"
-                value={tokenTrendMagnitude ? `${tokenTrendMagnitude} tok` : "—"}
-                hint="Różnica między dwoma ostatnimi odczytami"
-              />
-              <TokenEfficiencyStat
-                label="Prompt / completion"
-                value={promptCompletionRatio ? `${promptCompletionRatio}x` : "—"}
-                hint="Większa wartość = dłuższe prompty"
-              />
+              <RecentRequestList requests={history} />
             </div>
-            <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-sky-500/10 to-emerald-500/5 p-4 text-sm text-emerald-50">
-              <p className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
-                Live próbka
-              </p>
-              <div className="mt-2 flex flex-wrap items-end gap-3">
-                <p className="text-3xl font-semibold text-white">
-                  {lastTokenSample !== null
-                    ? lastTokenSample.toLocaleString("pl-PL")
-                    : "—"}
+          </Panel>
+
+          <Panel
+            title="Zarządzanie kolejką"
+            description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
+            action={
+              <Badge tone={queue?.paused ? "warning" : "success"}>
+                {queue?.paused ? "Wstrzymana" : "Aktywna"}
+              </Badge>
+            }
+          >
+            <div className="space-y-4">
+              <QueueStatusCard queue={queue} loading={queueLoading && !queue} />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                  Akcje dostępne w panelu Quick Actions.
                 </p>
-                <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
-                  {tokenTrendLabel}
-                </Badge>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
+                  onClick={() => setQuickActionsOpen(true)}
+                >
+                  ⚡ Otwórz Quick Actions
+                </Button>
               </div>
-              <p className="mt-1 text-xs text-emerald-100/70">
-                {tokenTrendDelta === null
-                  ? "Oczekuję kolejnych danych z /metrics/tokens."
-                  : tokenTrendDelta >= 0
-                    ? "Zużycie rośnie względem poprzedniej próbki – rozważ throttle."
-                    : "Zużycie spadło – cache i makra działają."}
-              </p>
             </div>
+          </Panel>
+
+          <Panel
+            title="Repozytorium"
+            description="Status i szybkie akcje git (/api/v1/git/*)."
+            action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
+          >
+            <div className="space-y-4">
+              <div className="card-shell bg-black/30 p-4">
+                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
+                <p className="mt-2 text-sm text-white">
+                  {git?.changes ?? git?.status ?? "Brak danych z API."}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  Aktualna gałąź: <span className="font-semibold text-white">{git?.branch ?? "—"}</span>
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <RepoActionCard
+                  title="Synchronizacja"
+                  description="Pobierz/publikuj zmiany i odśwież status pipeline’u."
+                  pending={gitAction === "sync"}
+                  onClick={handleGitSync}
+                />
+                <RepoActionCard
+                  title="Cofnij zmiany"
+                  description="Przywróć HEAD do stanu origin – operacja nieodwracalna."
+                  variant="danger"
+                  pending={gitAction === "undo"}
+                  onClick={handleGitUndo}
+                />
+              </div>
+            </div>
+          </Panel>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Panel
+              title="Efektywność tokenów"
+              description="Średnie zużycie i tempo – KPI na bazie /metrics i /metrics/tokens."
+            >
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <TokenEfficiencyStat
+                    label="Śr./zadanie"
+                    value={
+                      avgTokensPerTask !== null
+                        ? `${avgTokensPerTask.toLocaleString("pl-PL")} tok`
+                        : "—"
+                    }
+                    hint="Total tokens ÷ tasks.created"
+                  />
+                  <TokenEfficiencyStat
+                    label="Delta próbki"
+                    value={tokenTrendMagnitude ? `${tokenTrendMagnitude} tok` : "—"}
+                    hint="Różnica między dwoma ostatnimi odczytami"
+                  />
+                  <TokenEfficiencyStat
+                    label="Prompt / completion"
+                    value={promptCompletionRatio ? `${promptCompletionRatio}x` : "—"}
+                    hint="Większa wartość = dłuższe prompty"
+                  />
+                </div>
+                <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-sky-500/10 to-emerald-500/5 p-4 text-sm text-emerald-50">
+                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
+                    Live próbka
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-end gap-3">
+                    <p className="text-3xl font-semibold text-white">
+                      {lastTokenSample !== null
+                        ? lastTokenSample.toLocaleString("pl-PL")
+                        : "—"}
+                    </p>
+                    <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
+                      {tokenTrendLabel}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-emerald-100/70">
+                    {tokenTrendDelta === null
+                      ? "Oczekuję kolejnych danych z /metrics/tokens."
+                      : tokenTrendDelta >= 0
+                        ? "Zużycie rośnie względem poprzedniej próbki – rozważ throttle."
+                        : "Zużycie spadło – cache i makra działają."}
+                  </p>
+                </div>
+              </div>
+            </Panel>
+            <Panel
+              title="Cache boost"
+              description="Udziały prompt/completion/cached – pozwala ocenić optymalizację."
+            >
+              <div className="space-y-3">
+                <TokenShareBar
+                  label="Prompt"
+                  percent={promptShare}
+                  accent="from-emerald-400/70 via-emerald-500/40 to-emerald-500/10"
+                />
+                <TokenShareBar
+                  label="Completion"
+                  percent={completionShare}
+                  accent="from-sky-400/70 via-blue-500/40 to-violet-500/10"
+                />
+                <TokenShareBar
+                  label="Cached"
+                  percent={cachedShare}
+                  accent="from-amber-300/70 via-amber-400/40 to-rose-400/10"
+                />
+                <p className="text-xs text-[--color-muted]">
+                  Dane z `/api/v1/metrics/tokens`. Dążymy do wysokiego udziału cache przy zachowaniu
+                  równowagi prompt/completion.
+                </p>
+              </div>
+            </Panel>
           </div>
-        </Panel>
-        <Panel
-          title="Cache boost"
-          description="Udziały prompt/completion/cached – pozwala ocenić optymalizację."
-        >
-          <div className="space-y-3">
-            <TokenShareBar
-              label="Prompt"
-              percent={promptShare}
-              accent="from-emerald-400/70 via-emerald-500/40 to-emerald-500/10"
-            />
-            <TokenShareBar
-              label="Completion"
-              percent={completionShare}
-              accent="from-sky-400/70 via-blue-500/40 to-violet-500/10"
-            />
-            <TokenShareBar
-              label="Cached"
-              percent={cachedShare}
-              accent="from-amber-300/70 via-amber-400/40 to-rose-400/10"
-            />
-            <p className="text-xs text-[--color-muted]">
-              Dane z `/api/v1/metrics/tokens`. Dążymy do wysokiego udziału cache przy zachowaniu
-              równowagi prompt/completion.
-            </p>
-          </div>
-        </Panel>
-      </div>
+        </>
+      )}
         </>
       )}
       <Sheet

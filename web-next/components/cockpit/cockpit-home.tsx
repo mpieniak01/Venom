@@ -2395,6 +2395,47 @@ export function CockpitHome({
                   ))}
                 </div>
               </div>
+              <Panel
+                eyebrow="System KPIs"
+                title="Status operacyjny"
+                description="Najważniejsze liczby backendu."
+                className="kpi-panel"
+              >
+                <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
+                  <StatCard
+                    label="Zadania"
+                    value={metrics?.tasks?.created ?? "—"}
+                    hint="Łącznie utworzonych"
+                  />
+                  <StatCard
+                    label="Skuteczność"
+                    value={successRate !== null ? `${successRate}%` : "—"}
+                    hint="Aktualna skuteczność"
+                    accent="green"
+                  />
+                  <StatCard
+                    label="Uptime"
+                    value={
+                      metrics?.uptime_seconds !== undefined
+                        ? formatUptime(metrics.uptime_seconds)
+                        : "—"
+                    }
+                    hint="Od startu backendu"
+                  />
+                  <StatCard
+                    label="Kolejka"
+                    value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
+                    hint="Aktywne / limit"
+                    accent="blue"
+                  />
+                  <StatCard
+                    label="Jakość"
+                    value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
+                    hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
+                    accent="violet"
+                  />
+                </div>
+              </Panel>
               {showReferenceSections && (
                 <>
                   <div className="grid gap-6">
@@ -2592,50 +2633,6 @@ export function CockpitHome({
               </div>
             </div>
           </section>
-          )}
-
-          {showSharedSections && (
-            <Panel
-              eyebrow="System KPIs"
-              title="Status operacyjny"
-              description="Najważniejsze liczby backendu."
-              className="kpi-panel"
-            >
-              <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
-                <StatCard
-                  label="Zadania"
-                  value={metrics?.tasks?.created ?? "—"}
-                  hint="Łącznie utworzonych"
-                />
-                <StatCard
-                  label="Skuteczność"
-                  value={successRate !== null ? `${successRate}%` : "—"}
-                  hint="Aktualna skuteczność"
-                  accent="green"
-                />
-                <StatCard
-                  label="Uptime"
-                  value={
-                    metrics?.uptime_seconds !== undefined
-                      ? formatUptime(metrics.uptime_seconds)
-                      : "—"
-                  }
-                  hint="Od startu backendu"
-                />
-                <StatCard
-                  label="Kolejka"
-                  value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
-                  hint="Aktywne / limit"
-                  accent="blue"
-                />
-                <StatCard
-                  label="Jakość"
-                  value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
-                  hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
-                  accent="violet"
-                />
-              </div>
-            </Panel>
           )}
 
           {showReferenceSections && (
@@ -3089,7 +3086,7 @@ export function CockpitHome({
           }
         }}
       >
-        <SheetContent>
+        <SheetContent className="max-h-[90vh] overflow-y-auto pr-2">
           <SheetHeader>
             <SheetTitle>
               Szczegóły requestu {historyDetail?.request_id ?? selectedRequestId ?? ""}

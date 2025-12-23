@@ -57,6 +57,11 @@ Oczekiwane wyjście:
    - Listy punktowane dla struktur 1‑wymiarowych.
 3. **UI**
    - Sekcja “Wynik obliczeń” w czacie (jeśli rozpoznany format).
+4. **Płynne dostarczanie odpowiedzi**
+   - Strumieniowe wyświetlanie fragmentów odpowiedzi (efekt „pisania”).
+   - Ograniczenie częstotliwości renderu, aby nie destabilizować pola input.
+   - Buforowanie i batchowanie aktualizacji (np. co 100–200 ms).
+   - Po zakończeniu strumienia wykryj pełne formuły i prze-renderuj wynik zgodnie z zasadami obsługi formuł.
 4. **Fallback**
    - Jeśli nie da się zinterpretować, pokaż surowe dane.
 

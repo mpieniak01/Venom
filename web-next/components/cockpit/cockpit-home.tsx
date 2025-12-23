@@ -2291,7 +2291,7 @@ export function CockpitHome({
               rotateX: 0,
               rotateY: 0,
             }}
-            transition={{ duration: 1.05, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 1.05, ease: [0.4, 0, 1, 1] }}
             style={{ transformStyle: "preserve-3d", perspective: 1200 }}
           >
             <IconButton
@@ -2326,7 +2326,7 @@ export function CockpitHome({
                 </div>
               }
             />
-            <div className="grid-overlay relative mt-5 flex-1 min-h-0 rounded-3xl box-muted p-6 overflow-hidden">
+            <div className="grid-overlay relative mt-5 flex-1 min-h-0 rounded-3xl box-muted p-6 overflow-hidden pb-10">
               <div className="flex h-full min-h-0 flex-col">
                 <div
                   className="chat-history-scroll flex-1 min-h-0 space-y-4 overflow-y-auto pr-4 overscroll-contain"

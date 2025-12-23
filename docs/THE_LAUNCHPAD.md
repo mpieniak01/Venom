@@ -249,7 +249,7 @@ Szablon: `workspace/MARKETING_KIT_TEMPLATE.md`
 - ⏳ Kubernetes deployment
 - ⏳ Dashboard: Deployments view (web UI)
 
-### Planowane (v2.0):
+### Planowane (v1.0):
 - ⏳ CI/CD pipeline generation (GitHub Actions, GitLab CI)
 - ⏳ Monitoring & alerting (Prometheus, Grafana)
 - ⏳ Video generation (Gemini API)

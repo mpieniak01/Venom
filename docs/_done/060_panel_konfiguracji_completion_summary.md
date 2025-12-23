@@ -194,7 +194,7 @@ docs/
 - **Frontend**: 2 komponenty (już istniejące), 3 pliki i18n (~300 linii tłumaczeń)
 - **Dokumentacja**: 1 sekcja w README, 2 pliki w docs/_done
 
-## Zgodność z zasadami Venom v2
+## Zgodność z zasadami Venom v1.0
 
 ✅ **Kod i komentarze po polsku** - Wszystkie komentarze w plikach Python
 ✅ **Pre-commit hooks** - Black, Ruff, isort zintegrowane

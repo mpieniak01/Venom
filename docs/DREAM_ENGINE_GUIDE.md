@@ -371,24 +371,24 @@ Uruchamia/zatrzymuje monitoring zasobów w tle.
 
 ### Planowane funkcje
 
-1. **Docker Isolation** (v2)
+1. **Docker Isolation** (v1.1)
    - Osobne namespace'y dla snów (`venom-dream-worker-X`)
    - Automatyczne czyszczenie kontenerów po sesji
 
-2. **Dashboard "Dream Journal"** (v2)
+2. **Dashboard "Dream Journal"** (v1.1)
    - Sekcja w The Academy
    - Statystyki nocy: "Wyśniłem 42 rozwiązania"
    - Możliwość ręcznego zatwierdzania snów
 
-3. **Multi-Library Scenarios** (v2)
+3. **Multi-Library Scenarios** (v1.1)
    - Łączenie 2+ bibliotek w jednym scenariuszu
    - Realityczne integracje (np. FastAPI + SQLAlchemy + Redis)
 
-4. **Adaptive Difficulty** (v3)
+4. **Adaptive Difficulty** (v1.2)
    - Automatyczne dostosowanie złożoności na podstawie success rate
    - Progresywne uczenie (start: simple → medium → complex)
 
-5. **Dream Replay** (v3)
+5. **Dream Replay** (v1.2)
    - Ponowne wykonanie zapisanych snów dla regresji
    - Benchmark scenariuszy na nowych wersjach bibliotek
 

@@ -25,7 +25,7 @@ Przeprowadzono kompleksową standaryzację struktury dokumentacji w katalogu `do
 - `knowledge_hygiene.md` → `KNOWLEDGE_HYGIENE.md`
 - `oracle_graphrag_guide.md` → `ORACLE_GRAPHRAG_GUIDE.md`
 - `qa_delivery_guide.md` → `QA_DELIVERY_GUIDE.md`
-- `VENOM_MASTER_VISION_v2.md` → `VENOM_MASTER_VISION_V2.md` (korekta mixed case)
+- `VENOM_MASTER_VISION_v1.md` → `VENOM_MASTER_VISION_V1.md` (korekta mixed case)
 
 **Rezultat:** 33 pliki w głównym katalogu `docs/`, wszystkie w UPPERCASE
 
@@ -43,7 +43,7 @@ Przeprowadzono kompleksową standaryzację struktury dokumentacji w katalogu `do
 - `IMPLEMENTATION_SUMMARY_035.md` → `implementation_summary_035.md`
 - `IMPLEMENTATION_SUMMARY_036.md` → `implementation_summary_036.md`
 - `IMPLEMENTATION_SUMMARY_AUTONOMY_GATE.md` → `implementation_summary_autonomy_gate.md`
-- `IMPLEMENTATION_SUMMARY_DASHBOARD_V23.md` → `implementation_summary_dashboard_v23.md`
+- `IMPLEMENTATION_SUMMARY_DASHBOARD_V13.md` → `implementation_summary_dashboard_v13.md`
 - `IMPLEMENTATION_SUMMARY_EXTERNAL_DISCOVERY.md` → `implementation_summary_external_discovery.md`
 - `IMPLEMENTATION_SUMMARY_FRONTEND_REFACTOR.md` → `implementation_summary_frontend_refactor.md`
 - `IMPLEMENTATION_SUMMARY_GOOGLE_GROUNDING.md` → `implementation_summary_google_grounding.md`
@@ -127,10 +127,10 @@ Przeprowadzono kompleksową standaryzację struktury dokumentacji w katalogu `do
    - `SECURITY_SUMMARY.md` → `security_summary.md`
 
 6. **README.md**
-   - `docs/VENOM_MASTER_VISION_v2.md` → `docs/VENOM_MASTER_VISION_V2.md`
+   - `docs/VENOM_MASTER_VISION_v1.md` → `docs/VENOM_MASTER_VISION_V1.md`
 
 7. **docs/TREE.md**
-   - `VENOM_MASTER_VISION_v2.md` → `VENOM_MASTER_VISION_V2.md`
+   - `VENOM_MASTER_VISION_v1.md` → `VENOM_MASTER_VISION_V1.md`
 
 ---
 
@@ -142,7 +142,7 @@ Przeprowadzono kompleksową standaryzację struktury dokumentacji w katalogu `do
    - `Path("docs/google_search_grounding_integration.md")` → `Path("docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md")`
 
 2. **scripts/genesis.py**
-   - `"VENOM_MASTER_VISION_v2.md"` → `"VENOM_MASTER_VISION_V2.md"`
+   - `"VENOM_MASTER_VISION_v1.md"` → `"VENOM_MASTER_VISION_V1.md"`
 
 ---
 
@@ -181,7 +181,7 @@ Przeprowadzono kompleksową standaryzację struktury dokumentacji w katalogu `do
 - [x] **DoD 4:** Istnieje ślad w dokumentacji po ostatnich wdrożeniach
   - ✅ Ten dokument stanowi podsumowanie standaryzacji
   - ✅ Ostatnie wdrożenia udokumentowane w:
-    - `implementation_summary_dashboard_v23.md` (Dashboard v2.3)
+    - `implementation_summary_dashboard_v13.md` (Dashboard v1.3)
     - `implementation_summary_google_grounding.md` (Google Grounding)
     - `implementation_complete.md` (Optimizacja samo-naprawy)
     - `034_gleboka_analiza_completed.md` (Oracle GraphRAG)
@@ -246,7 +246,7 @@ $ grep -r "oracle_graphrag_guide\.md\|qa_delivery_guide\.md" . | wc -l
 $ grep -r "google_search_grounding_integration\.md" . | wc -l
 0  # ✅ No old references
 
-$ grep -r "VENOM_MASTER_VISION_v2\.md" . | wc -l
+$ grep -r "VENOM_MASTER_VISION_V1\.md" . | wc -l
 0  # ✅ No old references
 ```
 
@@ -261,7 +261,7 @@ $ grep -r "VENOM_MASTER_VISION_v2\.md" . | wc -l
 
 ### Główne Dokumenty (docs/)
 Dokumentacja wysokopoziomowa - UPPERCASE:
-- Architektura: `VENOM_MASTER_VISION_V2.md`, `VENOM_DIAGRAM.md`, `TREE.md`
+- Architektura: `VENOM_MASTER_VISION_V1.md`, `VENOM_DIAGRAM.md`, `TREE.md`
 - Komponenty systemowe: `THE_HIVE.md`, `THE_EXECUTIVE.md`, `THE_ACADEMY.md`, etc.
 - Przewodniki: `DASHBOARD_GUIDE.md`, `GUARDIAN_GUIDE.md`, `ORACLE_GRAPHRAG_GUIDE.md`
 - Integracje: `GOOGLE_SEARCH_GROUNDING_INTEGRATION.md`, `EXTERNAL_INTEGRATIONS.md`

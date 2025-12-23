@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Venom v2 został rozszerzony o zaawansowaną warstwę pamięci, która przekształca system z prostego "wyszukiwania tekstowego" w inteligentną "sieć powiązań" z możliwością uczenia się na błędach.
+Venom v1.0 został rozszerzony o zaawansowaną warstwę pamięci, która przekształca system z prostego "wyszukiwania tekstowego" w inteligentną "sieć powiązań" z możliwością uczenia się na błędach.
 
 ## Komponenty
 

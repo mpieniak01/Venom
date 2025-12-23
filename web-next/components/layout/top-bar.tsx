@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { WifiOff, Wifi, Sparkles, BellRing, Cpu, Command as CommandIcon, Rows, ServerCog } from "lucide-react";
-import { useTelemetryFeed } from "@/hooks/use-telemetry";
+import { Sparkles, BellRing, Cpu, Command as CommandIcon, Rows, ServerCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CommandCenter } from "./command-center";
@@ -17,7 +16,6 @@ import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
 
 export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsInitialData }) {
-  const { connected } = useTelemetryFeed();
   const [commandOpen, setCommandOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -42,35 +40,6 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
       <div className="mr-auto flex w-full max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
         <div className="flex items-center gap-3">
           <MobileNav />
-          <span
-            className={cn(
-              "relative h-3 w-3 rounded-full",
-              connected ? "bg-emerald-400" : "bg-rose-500",
-            )}
-          >
-            <span
-              className={cn(
-                "absolute inset-0 rounded-full",
-                connected ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
-              )}
-            />
-          </span>
-        </div>
-        <div>
-          <p className="eyebrow">
-            {t("topBar.wsLabel")}
-          </p>
-          <p className="flex items-center gap-2 text-sm font-semibold text-white">
-            {connected ? (
-              <>
-                <Wifi className="h-3.5 w-3.5 text-emerald-400" /> {t("topBar.connected")}
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-3.5 w-3.5 text-rose-400" /> {t("topBar.offline")}
-              </>
-            )}
-          </p>
         </div>
         <div className="flex flex-1 items-center justify-end gap-4">
           <StatusPills initialData={initialStatusData} />

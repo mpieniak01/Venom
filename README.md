@@ -1,4 +1,4 @@
-# Venom v2.0 🐍
+# Venom v1.0 🐍
 
 **Venom Meta-Intelligence System** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
@@ -552,7 +552,7 @@ make run
 ## 📖 Dokumentacja
 
 - [Kompletna dokumentacja zadania 007](docs/_done/007_THE_HIVE_MIND_COMPLETED.md)
-- [Architektura systemu](docs/VENOM_MASTER_VISION_V2.md)
+- [Architektura systemu](docs/VENOM_MASTER_VISION_V1.md)
 - [System rozpoznawania intencji](docs/INTENT_RECOGNITION.md)
 - [Strojenie modelu LLM (Cockpit)](docs/_to_do/072_strojenie_modelu_llm_ui.md)
 - [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
@@ -632,7 +632,7 @@ mypy venom_core
 
 ## 🎯 Roadmap
 
-### ✅ v2.0 (Current - Q4 2024)
+### ✅ v1.0 (Current - Q4 2024)
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem
@@ -643,7 +643,7 @@ mypy venom_core
   - [x] Discord/Slack Notifications
   - [x] Issue-to-PR Workflow
 
-### 🚧 v2.1 (Planned)
+### 🚧 v1.1 (Planned)
 - [ ] Background polling dla GitHub Issues
 - [ ] Dashboard panel dla External Integrations
 - [ ] Recursive Summarization dla długich dokumentów
@@ -651,7 +651,7 @@ mypy venom_core
 - [ ] Plan Validation i Optimization
 - [ ] Better Error Recovery
 
-### 🔮 v3.0 (Future)
+### 🔮 v1.2 (Future)
 - [ ] Webhook support dla GitHub
 - [ ] MS Teams Integration
 - [ ] Multi-Source Verification
@@ -679,13 +679,10 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md) aby d
 - **Style:** Black + Ruff + isort (automatyczne przez pre-commit)
 - **Tests:** Wymagane dla nowych funkcjonalności
 
-## 📝 Licencja
-
-[LICENSE](LICENSE) - Szczegóły w pliku licencji
 
 ## 🌐 THE NEXUS: Architektura Rozproszona
 
-**NOWE w v2.1!** Venom może teraz działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores).
+**NOWE w v1.1!** Venom może teraz działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores).
 
 ### Cechy distributed mesh:
 - 🔗 **Master-Worker Architecture** - Nexus (mózg) + Spores (wykonawcy)
@@ -748,3 +745,21 @@ python examples/nexus_demo.py
 **Venom** - *Autonomiczny system agentów AI dla następnej generacji automatyzacji*
 
 🌟 Jeśli podoba Ci się projekt, zostaw gwiazdkę na GitHub!
+
+## 📝 Licencja
+
+Ten projekt znajduje się obecnie na wczesnym etapie rozwoju.
+Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
+
+Na tym etapie nie jest udzielana żadna licencja.
+Wszelkie prawa są zastrzeżone przez autora do odwołania.
+
+## License
+
+This project is currently in an early development phase.
+The repository is public for review and reference purposes only.
+
+No license is granted at this time.
+All rights are reserved by the author until further notice.
+
+---

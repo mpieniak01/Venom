@@ -1,5 +1,5 @@
 
-# VENOM – MASTER VISION v2 (ONNX Edition)
+# VENOM – MASTER VISION v1 (ONNX Edition)
 ## Meta-inteligencja lokalna. Jeden runtime. Jeden organizm.
 
 ## 0. Wprowadzenie – czym jest Venom?

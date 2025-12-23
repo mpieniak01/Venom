@@ -322,7 +322,7 @@ pytest tests/test_chrono*.py tests/test_historian*.py -v
 
 ## 📝 Best Practices
 
-1. **Nazywaj checkpointy opisowo**: Zamiast "cp1" użyj "before_migration_v2"
+1. **Nazywaj checkpointy opisowo**: Zamiast "cp1" użyj "before_migration_v1"
 2. **Dodawaj opisy**: Pomaga przy późniejszej analizie
 3. **Twórz checkpointy przed ryzykownymi operacjami**: hot_patch, migrations, refactoring
 4. **Używaj oddzielnych timelines do eksperymentów**: Nie zaśmiecaj main
@@ -370,7 +370,7 @@ risk_assessment = await historian.process(
 
 # 2. Utwórz checkpoint bezpieczeństwa
 checkpoint_id = historian.create_safety_checkpoint(
-    name="pre_migration_v2",
+    name="pre_migration_v1",
     description="Przed migracją do wersji 2.0 schematu"
 )
 
@@ -380,7 +380,7 @@ try:
 except Exception as e:
     # 4. Błąd - analizuj i cofnij
     await historian.analyze_failure(
-        operation="database_migration_v2",
+        operation="database_migration_v1",
         error=str(e),
         checkpoint_before=checkpoint_id
     )
@@ -391,7 +391,7 @@ except Exception as e:
 else:
     # 5. Sukces - zapisz nową lekcję
     lessons_store.add_lesson(
-        situation="Migracja bazy danych do v2.0",
+        situation="Migracja bazy danych do v1.0",
         action="Wykonano migrację z checkpointem bezpieczeństwa",
         result="SUKCES",
         feedback="Checkpoint umożliwił bezpieczne testowanie",

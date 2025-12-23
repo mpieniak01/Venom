@@ -1,4 +1,4 @@
-# Dashboard v2.3 Implementation Summary
+# Dashboard v1.3 Implementation Summary
 
 ## Cel
 Przekształcenie Dashboardu w pełnoprawne Centrum Dowodzenia z fizyczną kontrolą nad systemem, tokenomiką i live monitoring.
@@ -220,7 +220,7 @@ DEFAULT_COST_MODEL: str = "gpt-3.5-turbo"
 
 ## Następne Kroki (Przyszłe Wersje)
 
-### Dashboard v2.4 (potencjalne rozszerzenia):
+### Dashboard v1.4 (potencjalne rozszerzenia):
 - [ ] Wykres kołowy kosztów per-model
 - [ ] Historia kosztów (time series chart)
 - [ ] Eksport logów do pliku
@@ -232,7 +232,7 @@ DEFAULT_COST_MODEL: str = "gpt-3.5-turbo"
 
 ## Podsumowanie
 
-Dashboard v2.3 dostarcza pełną kontrolę operatora nad systemem Venom:
+Dashboard v1.3 dostarcza pełną kontrolę operatora nad systemem Venom:
 - ✅ **Obserwowalność**: Live logi + koszty w czasie rzeczywistym
 - ✅ **Kontrola**: Pause/Resume/Purge/Abort zadań
 - ✅ **Bezpieczeństwo**: Emergency Stop + limits współbieżności

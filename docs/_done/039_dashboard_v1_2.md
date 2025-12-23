@@ -1,4 +1,4 @@
-# Zadanie: Dashboard v2.2 - Historia Żądań i Śledzenie Przepływu (Request Tracing)
+# Zadanie: Dashboard v1.2 - Historia Żądań i Śledzenie Przepływu (Request Tracing)
 
 **Priorytet:** Wysoki
 **Cel:** Umożliwienie użytkownikowi śledzenia drogi jego polecenia przez system. Od momentu wysłania, przez decyzje Orchestratora, działania Agentów, aż po odpowiedź finalną.

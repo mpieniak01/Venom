@@ -1,4 +1,4 @@
-# Zadanie: Dashboard v2.1 - Monitoring Systemowy, Status API i Wizualizacja Procesów "Na Żywo"
+# Zadanie: Dashboard v1.1 - Monitoring Systemowy, Status API i Wizualizacja Procesów "Na Żywo"
 
 **Priorytet:** Wysoki
 **Cel:** Zapewnienie pełnej obserwowalności (observability) systemu. Użytkownik musi widzieć stan fizyczny maszyny, status połączeń z zewnętrznymi API oraz wizualizację tego, co system robi w danej chwili (np. "Trwa kodowanie").
@@ -41,7 +41,7 @@
   - 🌐 **API Call** (gdy działa Browser/Search) - pulsujący niebieski.
   - ⚙️ **System** (Docker/Git) - szary spinner.
 
-## 5. Frontend: Interaktywna Mapa Systemu (Mermaid v2)
+## 5. Frontend: Interaktywna Mapa Systemu (Mermaid v1)
 **Plik:** `web/static/js/app.js`
 **Opis:** Graf architektury reagujący na stan aktywności.
 **Wymagania:**

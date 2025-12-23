@@ -257,7 +257,7 @@ venom_core/
 
 ## Zgodność z zasadami projektu
 
-Zgodnie z `zasadami pracy z kodem — Venom v2`:
+Zgodnie z `zasadami pracy z kodem — Venom v1.0`:
 - ✓ Kod i komentarze po polsku
 - ✓ Używamy pre-commit, Black, Ruff (struktura gotowa)
 - ✓ Bez ciężkich zależności w kodzie

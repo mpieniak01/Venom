@@ -196,7 +196,7 @@ export function Sidebar() {
             </p>
           </div>
         </div>
-        <span className="pill-badge">v2.4.1</span>
+        <span className="pill-badge">v1.0</span>
       </div>
       <nav className="mt-8 space-y-5">
         <div>

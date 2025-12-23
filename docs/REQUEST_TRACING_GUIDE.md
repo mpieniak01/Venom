@@ -1,4 +1,4 @@
-# Dashboard v2.2 - Request Tracing Guide
+# Dashboard v1.2 - Request Tracing Guide
 
 ## Przegląd
 

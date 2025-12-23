@@ -164,7 +164,7 @@ weather_result = await assistant.get_weather(location="Warszawa")
 services_result = await assistant.check_services(detailed=True)
 ```
 
-## Zgodność z zasadami Venom v2
+## Zgodność z zasadami Venom v1.0
 
 ✅ **Komunikacja po polsku** - komentarze i komunikaty w języku polskim
 ✅ **Format/styl** - kod przeszedł przez Black, Ruff, isort

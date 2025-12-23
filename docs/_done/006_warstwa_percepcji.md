@@ -250,7 +250,7 @@ To największa zmiana w logice (`venom_core/core/orchestrator.py`).
 2.  ✅ **Code Review:**
     * Próba wygenerowania kodu z "hardcodowanym hasłem" zostaje zatrzymana przez `PolicyEngine` lub `CriticAgent`, a finalny kod używa zmiennych środowiskowych.
 3.  ✅ **Samonaprawa:**
-    * W logach widać, że Coder wygenerował kod, Krytyk go odrzucił, Coder poprawił, i dopiero wersja v2 trafiła do użytkownika.
+    * W logach widać, że Coder wygenerował kod, Krytyk go odrzucił, Coder poprawił, i dopiero wersja v1 trafiła do użytkownika.
 4.  ✅ **Bezpieczeństwo:**
     * System wykrywa próby ataku (np. Prompt Injection w obrazku) dzięki warstwie Policy.
 5.  ✅ **Testy:**

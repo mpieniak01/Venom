@@ -55,7 +55,7 @@
 1.  ✅ **Pełny Rollback:**
     * Stan początkowy: W bazie wiedzy jest wpis A, plik ma wersję v1.
     * Akcja: Venom tworzy checkpoint "Start".
-    * Zmiana: Venom dodaje wpis B do bazy i zmienia plik na v2.
+    * Zmiana: Venom dodaje wpis B do bazy i zmienia plik na v1.
     * Rollback: Przywracamy "Start".
     * Wynik: Baza nie ma wpisu B, plik jest v1. Agenci nie pamiętają, że w ogóle robili zmianę.
 2.  ✅ **Izolacja Eksperymentu:**

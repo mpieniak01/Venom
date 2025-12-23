@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Venom v2 zawiera kompletną warstwę jakości i dostarczania (QA & Delivery), która domyka cykl życia oprogramowania. Obejmuje:
+Venom v1.0 zawiera kompletną warstwę jakości i dostarczania (QA & Delivery), która domyka cykl życia oprogramowania. Obejmuje:
 
 1. **E2E Testing** - Testy end-to-end aplikacji webowych
 2. **Documentation Generation** - Automatyczne generowanie dokumentacji

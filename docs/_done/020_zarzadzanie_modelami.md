@@ -366,7 +366,7 @@ cost_actual = economist.calculate_cost(
 
 ---
 
-## 🚀 Future Enhancements (v2.1)
+## 🚀 Future Enhancements (v1.1)
 
 1. **Dashboard UI Components:**
    - Live token monitor (wykres zużycia w czasie)

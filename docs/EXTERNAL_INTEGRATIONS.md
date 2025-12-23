@@ -251,7 +251,7 @@ Repository nie istnieje lub brak dostępu:
 - ✅ Orchestrator pipeline (Issue-to-PR)
 - ✅ Konfiguracja i maskowanie sekretów
 
-### Planowane (v2.0)
+### Planowane (v1.0)
 - ⏳ Background task dla auto-pollingu Issues
 - ⏳ Webhook support (alternatywa dla pollingu)
 - ⏳ Dashboard panel "External Integrations"

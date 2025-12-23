@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
 import { useQueueStatus } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 
@@ -10,29 +9,17 @@ type StatusTone = "success" | "warning" | "danger" | "neutral";
 type StatusRow = {
   id: string;
   label: string;
-  value: string;
   hint: string;
   tone: StatusTone;
 };
 
 export function SystemStatusPanel() {
-  const {
-    data: queue,
-    error: queueError,
-    loading: queueLoading,
-  } = useQueueStatus(10000);
+  const { data: queue, error: queueError } = useQueueStatus(10000);
   const { connected } = useTelemetryFeed(5);
 
   const statuses: StatusRow[] = useMemo(() => {
     const hasQueue = Boolean(queue);
     const apiTone: StatusTone = hasQueue ? "success" : queueError ? "danger" : "warning";
-    const apiValue = queueLoading
-      ? "Łączenie..."
-      : hasQueue
-        ? "Dostępne"
-        : queueError
-          ? "Offline"
-          : "Brak danych";
 
     const queueTone: StatusTone = hasQueue
       ? queue?.paused
@@ -46,14 +33,12 @@ export function SystemStatusPanel() {
       {
         id: "api",
         label: "API",
-        value: apiValue,
         hint: hasQueue ? "/api/v1/*" : queueError ?? "Oczekiwanie na odpowiedź...",
         tone: apiTone,
       },
       {
         id: "queue",
         label: "Kolejka",
-        value: hasQueue ? (queue?.paused ? "Wstrzymana" : "Aktywna") : "—",
         hint: hasQueue
           ? `Aktywne ${queue?.active ?? 0} • Oczekujące ${queue?.pending ?? 0}`
           : "Brak danych kolejki",
@@ -62,12 +47,11 @@ export function SystemStatusPanel() {
       {
         id: "ws",
         label: "Kanał WS",
-        value: connected ? "Połączony" : "Rozłączony",
         hint: connected ? "Telemetria live" : "Kanał /ws/events",
         tone: wsTone,
       },
     ];
-  }, [connected, queue, queueError, queueLoading]);
+  }, [connected, queue, queueError]);
 
   return (
     <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
@@ -83,7 +67,17 @@ export function SystemStatusPanel() {
               <p className="text-xs font-semibold uppercase tracking-wide">{status.label}</p>
               <p className="text-hint">{status.hint}</p>
             </div>
-            <Badge tone={status.tone}>{status.value}</Badge>
+            <span
+              className={[
+                "mt-1 h-2.5 w-2.5 rounded-full",
+                status.tone === "success"
+                  ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]"
+                  : status.tone === "warning"
+                    ? "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]"
+                    : "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.6)]",
+              ].join(" ")}
+              aria-hidden="true"
+            />
           </div>
         ))}
       </div>

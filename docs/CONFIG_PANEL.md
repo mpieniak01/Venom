@@ -313,7 +313,7 @@ make clean-ports
 - [ ] Service dependencies graph
 - [ ] Export/import konfiguracji
 
-### TODO (v2.0)
+### TODO (v1.0)
 - [ ] Multi-user access control (role-based)
 - [ ] Audit log (kto, kiedy, co zmienił)
 - [ ] Config templates (dev/prod/test)

@@ -325,7 +325,7 @@ A: Tak - blokuje OpenAI, Google Gemini, Azure. Nie blokuje lokalnych modeli (są
 
 ## Changelog
 
-### v2.4.0 (2024-12-09)
+### v1.4.0 (2024-12-09)
 - ✨ Dodano Global Cost Guard
 - ✨ Dodano Model Attribution (badges)
 - ✨ Dodano Master Switch w UI
@@ -342,5 +342,5 @@ W razie pytań lub problemów:
 
 ---
 
-**Venom v2.4 - Global Cost Guard** 🛡️
+**Venom v1.4 - Global Cost Guard** 🛡️
 *Zero Surprise Costs. Maximum Control.*

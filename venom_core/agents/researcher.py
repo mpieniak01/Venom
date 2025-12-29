@@ -182,10 +182,12 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         """
         logger.info(f"ResearcherAgent przetwarza zapytanie: {input_text[:100]}...")
 
-        auto_summary = await self._search_scrape_and_summarize(input_text)
-        if auto_summary:
-            logger.info("ResearcherAgent: użyto ścieżki search->scrape->summary")
-            return auto_summary
+        auto_summary = None
+        if not self._testing_mode:
+            auto_summary = await self._search_scrape_and_summarize(input_text)
+            if auto_summary:
+                logger.info("ResearcherAgent: użyto ścieżki search->scrape->summary")
+                return auto_summary
 
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
@@ -248,6 +250,8 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         return self._last_search_source
 
     async def _search_scrape_and_summarize(self, query: str) -> str | None:
+        if self._testing_mode:
+            return None
         if not query or not query.strip():
             return None
 

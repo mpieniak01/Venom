@@ -30,7 +30,7 @@ def test_parse_unknown_command():
 
 def test_normalize_forced_provider():
     assert normalize_forced_provider("gpt") == "openai"
-    assert normalize_forced_provider("gem") == "google-gemini"
+    assert normalize_forced_provider("gem") == "google"
     assert normalize_forced_provider("openai") == "openai"
 
 

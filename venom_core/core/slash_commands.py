@@ -49,7 +49,8 @@ TOOL_INTENT_ALIASES = {
 def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
     if not content:
         return None
-    # Use strip only from left side (like trimStart() in JS)
+    # Usuwamy białe znaki z lewej strony (spacje, tabulatory - bardziej restrykcyjne niż trimStart() w JS)
+    # Celowo ograniczamy do spacji i tabulatorów aby zachować strukturę wieloliniową
     stripped = content.lstrip(" \t")
     if not stripped.startswith("/"):
         return None
@@ -63,7 +64,8 @@ def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
     if not token:
         return None
 
-    # Remove only spaces and tabs, like trimStart() in JS
+    # Usuwamy tylko spacje i tabulatory (bardziej restrykcyjne niż trimStart() w JS)
+    # Celowo ograniczamy aby zachować strukturę wieloliniową
     remaining = stripped[1 + len(token) :].lstrip(" \t")
 
     if token in LLM_PROVIDER_ALIASES:

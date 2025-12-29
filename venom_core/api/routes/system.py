@@ -548,7 +548,7 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     )
     model_name = request.model or default_model
 
-    # Transactional behavior: save previous values for rollback
+    # Zachowanie transakcyjne: zapisz poprzednie wartości dla rollbacku
     old_service_type = SETTINGS.LLM_SERVICE_TYPE
     old_model_name = SETTINGS.LLM_MODEL_NAME
     old_active_server = SETTINGS.ACTIVE_LLM_SERVER
@@ -571,7 +571,7 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
         }
         config_manager.update_config(updates)
     except Exception:
-        # Rollback changes in SETTINGS if config update fails
+        # Wycofaj zmiany w SETTINGS jeśli aktualizacja konfiguracji się nie powiedzie
         SETTINGS.LLM_SERVICE_TYPE = old_service_type
         SETTINGS.LLM_MODEL_NAME = old_model_name
         SETTINGS.ACTIVE_LLM_SERVER = old_active_server

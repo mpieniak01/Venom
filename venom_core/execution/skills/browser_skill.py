@@ -157,21 +157,21 @@ class BrowserSkill:
         if parsed.scheme:
             return url
         lowered = url.lower()
-        # Check localhost and local IP addresses
+        # Sprawdź localhost i lokalne adresy IP
         if lowered.startswith("localhost") or lowered.startswith("0.0.0.0"):
             return f"http://{url}"
 
         # Wydziel host bez portu, np. z "192.168.1.1:8080" → "192.168.1.1"
         host = lowered.split(":", 1)[0]
 
-        # Check if it looks like an IP address (all parts are numeric)
+        # Sprawdź czy wygląda jak adres IP (wszystkie części są numeryczne)
         parts = host.split(".")
         if len(parts) == 4 and all(part.isdigit() for part in parts):
             try:
-                # Validate octets are in valid range
+                # Waliduj czy oktety są w prawidłowym zakresie
                 octets = [int(part) for part in parts]
                 if all(0 <= octet <= 255 for octet in octets):
-                    # Check if it's a private/local IP
+                    # Sprawdź czy to prywatny/lokalny adres IP
                     if octets[0] == 127:  # Loopback
                         return f"http://{url}"
                     if octets[0] == 192 and octets[1] == 168:  # Private class C

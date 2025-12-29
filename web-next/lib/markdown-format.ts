@@ -60,7 +60,7 @@ export function softlyWrapMathLines(content: string) {
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  // Reset global regex before use
+  // Resetuj globalny regex przed użyciem
   CODE_FENCE_REGEX.lastIndex = 0;
   while ((match = CODE_FENCE_REGEX.exec(content))) {
     const segment = content.slice(lastIndex, match.index);
@@ -88,7 +88,7 @@ export function tokenizeMath(input: string): { text: string; tokens: MathToken[]
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  // Reset global regex before use
+  // Resetuj globalny regex przed użyciem
   CODE_FENCE_REGEX.lastIndex = 0;
   while ((match = CODE_FENCE_REGEX.exec(input))) {
     const segment = input.slice(lastIndex, match.index);
@@ -108,7 +108,7 @@ type MathToken = {
 };
 
 function wrapMathInSegment(segment: string) {
-  // Reset global regex before use in test methods
+  // Resetuj globalny regex przed użyciem w metodach testowych
   MATH_BLOCK_REGEX.lastIndex = 0;
   MATH_DISPLAY_REGEX.lastIndex = 0;
   MATH_INLINE_REGEX.lastIndex = 0;

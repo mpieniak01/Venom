@@ -131,10 +131,8 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           return;
         }
         const pending = pendingUpdatesRef.current.get(taskId) ?? {};
-        // Merge logs instead of overwriting
-        const mergedLogs = patch.logs
-          ? [...(pending.logs ?? []), ...patch.logs]
-          : pending.logs;
+        // Merge logs zamiast nadpisywania, z deduplikacją jak w updateState
+        const mergedLogs = mergeLogs(pending.logs ?? [], patch.logs ?? []);
         pendingUpdatesRef.current.set(taskId, {
           ...pending,
           ...patch,

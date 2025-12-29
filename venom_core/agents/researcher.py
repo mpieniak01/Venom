@@ -272,7 +272,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
     def _extract_urls(search_output: str) -> List[str]:
         if not search_output:
             return []
-        return re.findall(r"URL:\\s*(\\S+)", search_output)
+        return re.findall(r"URL:\s*(\S+)", search_output)
 
     async def _summarize_sources(
         self, query: str, sources: List[Tuple[str, str]]

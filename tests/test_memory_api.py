@@ -109,7 +109,7 @@ class TestMemoryIngestAPI:
         """Test z niepoprawnym JSON."""
         response = client.post(
             "/api/v1/memory/ingest",
-            data="not a json",
+            content="not a json",
             headers={"Content-Type": "application/json"},
         )
 

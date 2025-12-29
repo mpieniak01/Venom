@@ -3,6 +3,7 @@
 import time
 from pathlib import Path
 from typing import Annotated, Optional
+from urllib.parse import urlparse
 
 from playwright.async_api import Browser, Page, async_playwright
 from semantic_kernel.functions import kernel_function
@@ -130,19 +131,35 @@ class BrowserSkill:
         try:
             await self._ensure_browser()
 
-            logger.info(f"Odwiedzanie strony: {url}")
-            await self._page.goto(url, wait_until=wait_until, timeout=30000)
+            normalized_url = self._ensure_url_scheme(url)
+            logger.info(f"Odwiedzanie strony: {normalized_url}")
+            await self._page.goto(normalized_url, wait_until=wait_until, timeout=30000)
 
             # Pobierz tytuł strony
             title = await self._page.title()
             logger.info(f"Strona załadowana: {title}")
 
-            return f"✅ Strona załadowana pomyślnie\nURL: {url}\nTytuł: {title}"
+            return (
+                f"✅ Strona załadowana pomyślnie\nURL: {normalized_url}\nTytuł: {title}"
+            )
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas ładowania strony: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    @staticmethod
+    def _ensure_url_scheme(url: str) -> str:
+        """Dodaje schemat do URL, jeśli go brakuje."""
+        if not url:
+            return url
+        parsed = urlparse(url)
+        if parsed.scheme:
+            return url
+        lowered = url.lower()
+        if lowered.startswith(("localhost", "127.", "0.0.0.0")):
+            return f"http://{url}"
+        return f"https://{url}"
 
     @kernel_function(
         name="take_screenshot",

@@ -15,6 +15,7 @@ Dokument rozszerza `docs/DASHBOARD_GUIDE.md` o informacje specyficzne dla wersji
 web-next/
 ├── app/                    # App Router, server components (`page.tsx`, layouty, route handlers)
 │   ├── page.tsx            # Cockpit
+│   ├── chat/page.tsx       # Cockpit reference (pełny układ)
 │   ├── brain/page.tsx      # Widok Brain
 │   ├── inspector/page.tsx  # Flow Inspector
 │   ├── strategy/page.tsx   # Strategy / KPI
@@ -58,6 +59,9 @@ web-next/
 - `next.config.ts` ma włączone `experimental.optimizePackageImports` dla `lucide-react`, `framer-motion`, `chart.js`, `mermaid`, co obcina JS „first load” i przyśpiesza dynamiczne importy ikon/animacji.
 - Cockpit i Brain korzystają z serwerowych wrapperów (`app/page.tsx`, `app/brain/page.tsx`), które pobierają snapshot danych przez `fetchCockpitInitialData` / `fetchBrainInitialData`. Klientowe komponenty (`components/cockpit/cockpit-home.tsx`, `components/brain/brain-home.tsx`) łączą te snapshoty z hookami `usePolling`, więc KPI, lista modeli, lekcje i graf pokazują ostatni stan już po SSR i tylko dociągają aktualizacje po hydratacji.
 - Command Console (chat) ma optimistic UI: `optimisticRequests` renderują bąbelki użytkownika + placeholder odpowiedzi jeszcze przed zwrotką API, blokują otwieranie szczegółów do czasu zsynchronizowania z `useHistory`, a `ConversationBubble` pokazuje spinner oraz raportuje ostatni czas odpowiedzi w nagłówku.
+- Command Console obsługuje slash commands (`/gpt`, `/gem`, `/<tool>`) z autouzupełnianiem (max 3 propozycje) oraz badge „Forced” w odpowiedzi.
+- Język UI (PL/EN/DE) jest przesyłany jako `preferred_language` w `/api/v1/tasks` i backend tłumaczy odpowiedź, jeśli wykryje inny język.
+- Wyniki obliczeń (np. JSON/tablice) są formatowane w czacie do tabel/list; przy wykryciu formuł renderujemy KaTeX.
 
 ## 1. Brain / Strategy – Źródła danych i hooki
 

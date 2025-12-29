@@ -1478,7 +1478,7 @@ export function CockpitHome({
       return false;
     }
     let runtimeOverride: { configHash?: string | null; runtimeId?: string | null } | null = null;
-    // Mapowanie bezpośrednie do formatu backend (openai/google)
+    // Direct mapping to backend format (openai/google)
     const forcedRuntimeProvider =
       parsed.forcedProvider === "gpt"
         ? "openai"

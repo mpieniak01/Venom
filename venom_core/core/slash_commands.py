@@ -49,7 +49,7 @@ TOOL_INTENT_ALIASES = {
 def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
     if not content:
         return None
-    # Używamy strip() tylko z lewej strony (jak trimStart() w JS)
+    # Use strip only from left side (like trimStart() in JS)
     stripped = content.lstrip(" \t")
     if not stripped.startswith("/"):
         return None
@@ -63,7 +63,7 @@ def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
     if not token:
         return None
 
-    # Usuwamy tylko spacje i taby, jak trimStart() w JS
+    # Remove only spaces and tabs, like trimStart() in JS
     remaining = stripped[1 + len(token) :].lstrip(" \t")
 
     if token in LLM_PROVIDER_ALIASES:

@@ -157,26 +157,28 @@ class BrowserSkill:
         if parsed.scheme:
             return url
         lowered = url.lower()
-        # Sprawdź localhost i poprawnie adresy IP lokalne
+        # Check localhost and local IP addresses
         if lowered.startswith("localhost") or lowered.startswith("0.0.0.0"):
             return f"http://{url}"
-        # Sprawdź adresy IP 127.x.x.x (loopback)
-        if lowered.split(".")[0] == "127":
-            return f"http://{url}"
-        # Sprawdź prywatne sieci: 192.168.x.x, 10.x.x.x, 172.16-31.x.x
+        
+        # Check if it looks like an IP address (all parts are numeric)
         parts = lowered.split(".")
-        if len(parts) >= 2:
-            if parts[0] == "192" and parts[1] == "168":
-                return f"http://{url}"
-            if parts[0] == "10":
-                return f"http://{url}"
-            if parts[0] == "172" and len(parts[1]) > 0:
-                try:
-                    second_octet = int(parts[1])
-                    if 16 <= second_octet <= 31:
+        if len(parts) == 4 and all(part.isdigit() for part in parts):
+            try:
+                # Validate octets are in valid range
+                octets = [int(part) for part in parts]
+                if all(0 <= octet <= 255 for octet in octets):
+                    # Check if it's a private/local IP
+                    if octets[0] == 127:  # Loopback
                         return f"http://{url}"
-                except ValueError:
-                    pass
+                    if octets[0] == 192 and octets[1] == 168:  # Private class C
+                        return f"http://{url}"
+                    if octets[0] == 10:  # Private class A
+                        return f"http://{url}"
+                    if octets[0] == 172 and 16 <= octets[1] <= 31:  # Private class B
+                        return f"http://{url}"
+            except (ValueError, IndexError):
+                pass
         return f"https://{url}"
 
     @kernel_function(

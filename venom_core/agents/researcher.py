@@ -251,7 +251,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         if not query or not query.strip():
             return None
 
-        # Uruchom synchroniczne operacje I/O w thread pool
+        # Run synchronous I/O operations in thread pool
         search_output = await asyncio.to_thread(
             self.web_skill.search, query, max_results=3
         )

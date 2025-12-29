@@ -1,5 +1,6 @@
 """Moduł: researcher - agent badawczy, synteza wiedzy z Internetu."""
 
+import asyncio
 import os
 import re
 from typing import List, Tuple
@@ -250,14 +251,17 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         if not query or not query.strip():
             return None
 
-        search_output = self.web_skill.search(query, max_results=3)
+        # Uruchom synchroniczne operacje I/O w thread pool
+        search_output = await asyncio.to_thread(
+            self.web_skill.search, query, max_results=3
+        )
         urls = self._extract_urls(search_output)
         if not urls:
             return None
 
         scraped: List[Tuple[str, str]] = []
         for url in urls[:2]:
-            content = self.web_skill.scrape_text(url)
+            content = await asyncio.to_thread(self.web_skill.scrape_text, url)
             if content:
                 scraped.append((url, content))
 

@@ -181,6 +181,7 @@ class BrowserSkill:
                     if octets[0] == 172 and 16 <= octets[1] <= 31:  # Private class B
                         return f"http://{url}"
             except (ValueError, IndexError):
+                # Jeśli parsowanie IP się nie powiedzie, traktujemy URL jako zwykłą nazwę hosta
                 pass
         return f"https://{url}"
 

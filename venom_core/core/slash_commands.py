@@ -16,7 +16,7 @@ class SlashCommandResult:
 
 
 LLM_PROVIDER_ALIASES = {
-    "gem": "google-gemini",
+    "gem": "google",
     "gpt": "openai",
 }
 

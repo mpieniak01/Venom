@@ -548,20 +548,35 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     )
     model_name = request.model or default_model
 
-    SETTINGS.LLM_SERVICE_TYPE = provider_raw
-    SETTINGS.LLM_MODEL_NAME = model_name
-    SETTINGS.ACTIVE_LLM_SERVER = provider_raw
+    # Zachowanie transakcyjne: zapisz poprzednie wartości dla rollbacku
+    old_service_type = SETTINGS.LLM_SERVICE_TYPE
+    old_model_name = SETTINGS.LLM_MODEL_NAME
+    old_active_server = SETTINGS.ACTIVE_LLM_SERVER
+    old_config_hash = SETTINGS.LLM_CONFIG_HASH
 
-    runtime = get_active_llm_runtime()
-    SETTINGS.LLM_CONFIG_HASH = runtime.config_hash
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = provider_raw
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.ACTIVE_LLM_SERVER = provider_raw
 
-    updates = {
-        "LLM_SERVICE_TYPE": provider_raw,
-        "LLM_MODEL_NAME": model_name,
-        "ACTIVE_LLM_SERVER": provider_raw,
-        "LLM_CONFIG_HASH": runtime.config_hash,
-    }
-    config_manager.update_config(updates)
+        runtime = get_active_llm_runtime()
+        config_hash = runtime.config_hash
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+
+        updates = {
+            "LLM_SERVICE_TYPE": provider_raw,
+            "LLM_MODEL_NAME": model_name,
+            "ACTIVE_LLM_SERVER": provider_raw,
+            "LLM_CONFIG_HASH": config_hash,
+        }
+        config_manager.update_config(updates)
+    except Exception:
+        # Wycofaj zmiany w SETTINGS jeśli aktualizacja konfiguracji się nie powiedzie
+        SETTINGS.LLM_SERVICE_TYPE = old_service_type
+        SETTINGS.LLM_MODEL_NAME = old_model_name
+        SETTINGS.ACTIVE_LLM_SERVER = old_active_server
+        SETTINGS.LLM_CONFIG_HASH = old_config_hash
+        raise
 
     return {
         "status": "success",

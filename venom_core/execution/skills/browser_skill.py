@@ -160,9 +160,12 @@ class BrowserSkill:
         # Check localhost and local IP addresses
         if lowered.startswith("localhost") or lowered.startswith("0.0.0.0"):
             return f"http://{url}"
-        
+
+        # Wydziel host bez portu, np. z "192.168.1.1:8080" → "192.168.1.1"
+        host = lowered.split(":", 1)[0]
+
         # Check if it looks like an IP address (all parts are numeric)
-        parts = lowered.split(".")
+        parts = host.split(".")
         if len(parts) == 4 and all(part.isdigit() for part in parts):
             try:
                 # Validate octets are in valid range

@@ -1,7 +1,7 @@
 # Zbiorczy PR 75,76,79,80
 
 ## Cel
-Zakniencie funkcjonalnosci podstawowych dla Venom 1.0 zgodnie z zakresem:
+Zamkniecie funkcjonalności podstawowych dla Venom 1.0 zgodnie z zakresem:
 
 ## Zakres zmian (high-level)
 - Slash commands w Cockpicie (routing /gpt, /gem, /<tool> + autouzuplenianie).

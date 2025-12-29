@@ -1,13 +1,14 @@
 """Moduł: routes/system - Endpointy API dla systemu (metrics, scheduler, services)."""
 
 import asyncio
+import importlib.util
 import time
 from typing import Optional
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
@@ -511,6 +512,80 @@ async def get_active_llm_runtime_info():
     """Alias z pełnym payloadem aktywnego runtime LLM."""
     runtime = get_active_llm_runtime()
     return {"status": "success", "runtime": runtime.to_payload()}
+
+
+class LlmRuntimeActivateRequest(BaseModel):
+    provider: str = Field(..., description="Docelowy provider runtime (openai/google)")
+    model: str | None = Field(default=None, description="Opcjonalny model LLM")
+
+
+@router.post("/system/llm-runtime/active")
+async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
+    """
+    Przelacza runtime LLM na cloud provider (openai/google).
+    """
+    provider_raw = (request.provider or "").lower()
+    if provider_raw in ("google-gemini", "gem"):
+        provider_raw = "google"
+    if provider_raw not in ("openai", "google"):
+        raise HTTPException(status_code=400, detail="Nieznany provider runtime")
+
+    if provider_raw == "openai" and not SETTINGS.OPENAI_API_KEY:
+        raise HTTPException(status_code=400, detail="Brak OPENAI_API_KEY")
+    if provider_raw == "google":
+        if not SETTINGS.GOOGLE_API_KEY:
+            raise HTTPException(status_code=400, detail="Brak GOOGLE_API_KEY")
+        if importlib.util.find_spec("google.generativeai") is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Brak biblioteki google-generativeai",
+            )
+
+    default_model = (
+        SETTINGS.OPENAI_GPT4O_MODEL
+        if provider_raw == "openai"
+        else SETTINGS.GOOGLE_GEMINI_PRO_MODEL
+    )
+    model_name = request.model or default_model
+
+    # Zachowanie transakcyjne: zapisz poprzednie wartości dla rollbacku
+    old_service_type = SETTINGS.LLM_SERVICE_TYPE
+    old_model_name = SETTINGS.LLM_MODEL_NAME
+    old_active_server = SETTINGS.ACTIVE_LLM_SERVER
+    old_config_hash = SETTINGS.LLM_CONFIG_HASH
+
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = provider_raw
+        SETTINGS.LLM_MODEL_NAME = model_name
+        SETTINGS.ACTIVE_LLM_SERVER = provider_raw
+
+        runtime = get_active_llm_runtime()
+        config_hash = runtime.config_hash
+        SETTINGS.LLM_CONFIG_HASH = config_hash
+
+        updates = {
+            "LLM_SERVICE_TYPE": provider_raw,
+            "LLM_MODEL_NAME": model_name,
+            "ACTIVE_LLM_SERVER": provider_raw,
+            "LLM_CONFIG_HASH": config_hash,
+        }
+        config_manager.update_config(updates)
+    except Exception:
+        # Wycofaj zmiany w SETTINGS jeśli aktualizacja konfiguracji się nie powiedzie
+        SETTINGS.LLM_SERVICE_TYPE = old_service_type
+        SETTINGS.LLM_MODEL_NAME = old_model_name
+        SETTINGS.ACTIVE_LLM_SERVER = old_active_server
+        SETTINGS.LLM_CONFIG_HASH = old_config_hash
+        raise
+
+    return {
+        "status": "success",
+        "active_server": runtime.provider,
+        "active_endpoint": runtime.endpoint,
+        "active_model": runtime.model_name,
+        "config_hash": runtime.config_hash,
+        "runtime_id": runtime.runtime_id,
+    }
 
 
 @router.post("/system/llm-servers/active")

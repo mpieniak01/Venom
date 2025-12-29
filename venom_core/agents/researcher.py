@@ -1,6 +1,9 @@
 """Moduł: researcher - agent badawczy, synteza wiedzy z Internetu."""
 
+import asyncio
 import os
+import re
+from typing import List, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -139,8 +142,8 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         self._testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
         # Zarejestruj WebSearchSkill
-        web_skill = WebSearchSkill()
-        self.kernel.add_plugin(web_skill, plugin_name="WebSearchSkill")
+        self.web_skill = WebSearchSkill()
+        self.kernel.add_plugin(self.web_skill, plugin_name="WebSearchSkill")
 
         if not self._testing_mode:
             # Zarejestruj GitHubSkill
@@ -178,6 +181,11 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             Podsumowanie znalezionej wiedzy z przykładami
         """
         logger.info(f"ResearcherAgent przetwarza zapytanie: {input_text[:100]}...")
+
+        auto_summary = await self._search_scrape_and_summarize(input_text)
+        if auto_summary:
+            logger.info("ResearcherAgent: użyto ścieżki search->scrape->summary")
+            return auto_summary
 
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
@@ -238,3 +246,70 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             'google_grounding' lub 'duckduckgo'
         """
         return self._last_search_source
+
+    async def _search_scrape_and_summarize(self, query: str) -> str | None:
+        if not query or not query.strip():
+            return None
+
+        # Uruchom synchroniczne operacje I/O w puli wątków
+        search_output = await asyncio.to_thread(
+            self.web_skill.search, query, max_results=3
+        )
+        urls = self._extract_urls(search_output)
+        if not urls:
+            return None
+
+        scraped: List[Tuple[str, str]] = []
+        for url in urls[:2]:
+            content = await asyncio.to_thread(self.web_skill.scrape_text, url)
+            if content:
+                scraped.append((url, content))
+
+        if not scraped:
+            return None
+
+        summary = await self._summarize_sources(query, scraped)
+        sources_block = "\n".join(f"- {url}" for url, _ in scraped)
+        return f"{summary}\n\nŹródła:\n{sources_block}"
+
+    @staticmethod
+    def _extract_urls(search_output: str) -> List[str]:
+        if not search_output:
+            return []
+        return re.findall(r"URL:\s*(\S+)", search_output)
+
+    async def _summarize_sources(
+        self, query: str, sources: List[Tuple[str, str]]
+    ) -> str:
+        chat_service = self.kernel.get_service()
+        trimmed_sources = []
+        for url, content in sources:
+            snippet = content.strip()
+            if len(snippet) > 2000:
+                snippet = snippet[:2000] + "\n[...obcięto...]"
+            trimmed_sources.append((url, snippet))
+
+        summary_prompt = "Stwórz zwięzłe streszczenie na podstawie źródeł.\n"
+        summary_prompt += f"Zapytanie: {query}\n\nŹródła:\n"
+        for idx, (url, snippet) in enumerate(trimmed_sources, 1):
+            summary_prompt += f"[{idx}] {url}\n{snippet}\n\n"
+
+        chat_history = ChatHistory()
+        chat_history.add_message(
+            ChatMessageContent(
+                role=AuthorRole.SYSTEM,
+                content="Jesteś badaczem. Odpowiedz krótko i rzeczowo po polsku.",
+            )
+        )
+        chat_history.add_message(
+            ChatMessageContent(role=AuthorRole.USER, content=summary_prompt)
+        )
+
+        settings = OpenAIChatPromptExecutionSettings(max_tokens=1200)
+        response = await self._invoke_chat_with_fallbacks(
+            chat_service=chat_service,
+            chat_history=chat_history,
+            settings=settings,
+            enable_functions=False,
+        )
+        return str(response).strip()

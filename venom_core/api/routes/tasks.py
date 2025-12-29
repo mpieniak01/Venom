@@ -35,6 +35,8 @@ class HistoryRequestSummary(BaseModel):
     llm_endpoint: Optional[str] = None
     llm_config_hash: Optional[str] = None
     llm_runtime_id: Optional[str] = None
+    forced_tool: Optional[str] = None
+    forced_provider: Optional[str] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -58,6 +60,8 @@ class HistoryRequestDetail(BaseModel):
     llm_endpoint: Optional[str] = None
     llm_config_hash: Optional[str] = None
     llm_runtime_id: Optional[str] = None
+    forced_tool: Optional[str] = None
+    forced_provider: Optional[str] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -208,7 +212,9 @@ async def stream_task(task_id: UUID):
                 }
 
                 event_name = (
-                    "task_update" if (status_changed or logs_delta) else "heartbeat"
+                    "task_update"
+                    if (status_changed or logs_delta or result_changed)
+                    else "heartbeat"
                 )
 
                 # json.dumps nie obsługuje Enum więc wymuś str()
@@ -329,6 +335,8 @@ async def get_request_history(
                 llm_endpoint=trace.llm_endpoint,
                 llm_config_hash=trace.llm_config_hash,
                 llm_runtime_id=trace.llm_runtime_id,
+                forced_tool=trace.forced_tool,
+                forced_provider=trace.forced_provider,
                 error_code=trace.error_code,
                 error_class=trace.error_class,
                 error_message=trace.error_message,
@@ -394,6 +402,8 @@ async def get_request_detail(request_id: UUID):
         llm_endpoint=trace.llm_endpoint,
         llm_config_hash=trace.llm_config_hash,
         llm_runtime_id=trace.llm_runtime_id,
+        forced_tool=trace.forced_tool,
+        forced_provider=trace.forced_provider,
         error_code=trace.error_code,
         error_class=trace.error_class,
         error_message=trace.error_message,

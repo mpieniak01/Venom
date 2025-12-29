@@ -29,13 +29,24 @@ from venom_core.core.flows.issue_handler import IssueHandlerFlow
 from venom_core.core.hidden_prompts import build_hidden_prompts_context
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.lessons_manager import LessonsManager
-from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.core.models import (
+    TaskExtraContext,
+    TaskRequest,
+    TaskResponse,
+    TaskStatus,
+)
 from venom_core.core.queue_manager import QueueManager
+from venom_core.core.slash_commands import (
+    normalize_forced_provider,
+    parse_slash_command,
+    resolve_forced_intent,
+)
 from venom_core.core.state_manager import StateManager
 from venom_core.core.streaming_handler import StreamingHandler
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.perception.eyes import Eyes
+from venom_core.services.translation_service import translation_service
 from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -555,6 +566,56 @@ class Orchestrator:
         except Exception as exc:
             logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
 
+    async def _apply_preferred_language(
+        self, task_id: UUID, request: TaskRequest, result: str
+    ) -> str:
+        preferred_language = (request.preferred_language or "").strip().lower()
+        if not preferred_language or not isinstance(result, str) or not result.strip():
+            return result
+        if preferred_language not in ("pl", "en", "de"):
+            self.state_manager.add_log(
+                task_id,
+                f"Nieznany preferowany język odpowiedzi: {preferred_language}",
+            )
+            return result
+        detected_language = self.intent_manager._detect_language(result)
+        if detected_language == preferred_language:
+            return result
+        if not detected_language and not any(ch.isalpha() for ch in result):
+            return result
+        if self.request_tracer:
+            self.request_tracer.add_step(
+                task_id,
+                "Orchestrator",
+                "translate_response",
+                status="ok",
+                details=f"source={detected_language or 'unknown'}, target={preferred_language}",
+            )
+        self.state_manager.add_log(
+            task_id,
+            (
+                "Tłumaczenie odpowiedzi "
+                f"{detected_language or 'unknown'} -> {preferred_language}"
+            ),
+        )
+        translated = await translation_service.translate_text(
+            result,
+            preferred_language,
+            source_lang=detected_language or None,
+        )
+        if translated != result:
+            self.state_manager.update_context(
+                task_id,
+                {
+                    "translation": {
+                        "source": detected_language or "unknown",
+                        "target": preferred_language,
+                        "applied": True,
+                    }
+                },
+            )
+        return translated
+
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """
         Wykonuje zadanie w tle.
@@ -568,6 +629,9 @@ class Orchestrator:
         intent = "UNKNOWN"
         result = ""
         tool_required = False
+        forced_tool = request.forced_tool
+        forced_provider = request.forced_provider
+        forced_intent = None
 
         try:
             # Pobierz zadanie
@@ -598,6 +662,43 @@ class Orchestrator:
 
             logger.info(f"Rozpoczynam przetwarzanie zadania {task_id}")
 
+            if not forced_tool and not forced_provider:
+                parsed = parse_slash_command(context)
+                if parsed and parsed.cleaned != context:
+                    context = parsed.cleaned
+                    request.content = parsed.cleaned
+                    forced_tool = parsed.forced_tool
+                    forced_provider = parsed.forced_provider
+                    forced_intent = parsed.forced_intent
+
+            if forced_tool and not forced_intent:
+                forced_intent = resolve_forced_intent(forced_tool)
+
+            if forced_tool or forced_provider:
+                self.state_manager.update_context(
+                    task_id,
+                    {
+                        "forced_route": {
+                            "tool": forced_tool,
+                            "provider": forced_provider,
+                            "intent": forced_intent,
+                        }
+                    },
+                )
+                if self.request_tracer:
+                    self.request_tracer.set_forced_route(
+                        task_id,
+                        forced_tool=forced_tool,
+                        forced_provider=forced_provider,
+                    )
+                    self.request_tracer.add_step(
+                        task_id,
+                        "DecisionGate",
+                        "forced_route",
+                        status="ok",
+                        details=f"tool={forced_tool}, provider={forced_provider}, intent={forced_intent}",
+                    )
+
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
             dispatch_context = context
@@ -616,9 +717,24 @@ class Orchestrator:
                 await self._complete_perf_test_task(task_id)
                 return
 
+            if forced_tool and not forced_intent:
+                envelope = self._build_error_envelope(
+                    error_code="forced_tool_unknown",
+                    error_message=f"Nieznane narzędzie w dyrektywie /{forced_tool}",
+                    error_details={"forced_tool": forced_tool},
+                    stage="intent_detection",
+                    retryable=False,
+                )
+                self._set_runtime_error(task_id, envelope)
+                raise RuntimeError("forced_tool_unknown")
+
             # Klasyfikuj intencję użytkownika (bez domieszek z lekcji)
-            intent = await self.intent_manager.classify_intent(context)
-            intent_debug = getattr(self.intent_manager, "last_intent_debug", {})
+            if forced_intent:
+                intent = forced_intent
+                intent_debug = {"source": "forced", "intent": forced_intent}
+            else:
+                intent = await self.intent_manager.classify_intent(context)
+                intent_debug = getattr(self.intent_manager, "last_intent_debug", {})
             if intent_debug:
                 self.state_manager.update_context(
                     task_id, {"intent_debug": intent_debug}
@@ -737,6 +853,26 @@ class Orchestrator:
                 raise RuntimeError("execution_contract_violation")
 
             runtime_info = get_active_llm_runtime()
+            normalized_forced_provider = normalize_forced_provider(forced_provider)
+            if (
+                normalized_forced_provider
+                and runtime_info.provider != normalized_forced_provider
+            ):
+                envelope = self._build_error_envelope(
+                    error_code="forced_provider_mismatch",
+                    error_message=(
+                        "Wymuszony provider nie jest aktywny. "
+                        f"Aktywny={runtime_info.provider}, wymagany={normalized_forced_provider}."
+                    ),
+                    error_details={
+                        "active_provider": runtime_info.provider,
+                        "required_provider": normalized_forced_provider,
+                    },
+                    stage="routing_validation",
+                    retryable=False,
+                )
+                self._set_runtime_error(task_id, envelope)
+                raise RuntimeError("forced_provider_mismatch")
             expected_hash = request.expected_config_hash or SETTINGS.LLM_CONFIG_HASH
             expected_runtime_id = request.expected_runtime_id
             actual_hash = runtime_info.config_hash or compute_llm_config_hash(
@@ -967,6 +1103,8 @@ class Orchestrator:
                         result = await self.task_dispatcher.dispatch(intent, context)
             finally:
                 reset_llm_stream_callback(stream_token)
+
+            result = await self._apply_preferred_language(task_id, request, result)
 
             # Zaloguj które agent przejął zadanie
             agent = self.task_dispatcher.agent_map.get(intent)
@@ -1249,7 +1387,31 @@ class Orchestrator:
                         task_id, f"Nie udało się przeanalizować obrazu {i}: {e}"
                     )
 
+        if request.extra_context:
+            extra_block = self._format_extra_context(request.extra_context)
+            if extra_block:
+                context += f"\n\n[DODATKOWE DANE]\n{extra_block}"
+
         return context
+
+    @staticmethod
+    def _format_extra_context(extra_context: "TaskExtraContext") -> str:
+        sections = []
+
+        def add_section(label: str, items: Optional[list[str]]) -> None:
+            cleaned = [item.strip() for item in (items or []) if item and item.strip()]
+            if not cleaned:
+                return
+            section = [f"{label}:"]
+            section.extend(f"- {item}" for item in cleaned)
+            sections.append("\n".join(section))
+
+        add_section("Pliki", extra_context.files)
+        add_section("Linki", extra_context.links)
+        add_section("Ścieżki", extra_context.paths)
+        add_section("Notatki", extra_context.notes)
+
+        return "\n\n".join(sections)
 
     async def _code_generation_with_review(
         self, task_id: UUID, user_request: str

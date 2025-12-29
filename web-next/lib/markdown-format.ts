@@ -112,18 +112,14 @@ function wrapMathInSegment(segment: string) {
   MATH_BLOCK_REGEX.lastIndex = 0;
   MATH_DISPLAY_REGEX.lastIndex = 0;
   MATH_INLINE_REGEX.lastIndex = 0;
-  
+
   return segment
     .split("\n")
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed) return line;
-      // Reset before each test
-      MATH_BLOCK_REGEX.lastIndex = 0;
       if (MATH_BLOCK_REGEX.test(trimmed)) return line;
-      MATH_DISPLAY_REGEX.lastIndex = 0;
       if (MATH_DISPLAY_REGEX.test(trimmed)) return line;
-      MATH_INLINE_REGEX.lastIndex = 0;
       if (MATH_INLINE_REGEX.test(trimmed)) return line;
       if (!looksLikeMathLine(trimmed)) return line;
       return `$$${trimmed}$$`;

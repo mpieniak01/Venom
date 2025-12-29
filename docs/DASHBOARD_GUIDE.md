@@ -61,6 +61,8 @@ web-next/
 ### 1.6 Cockpit – panel operacyjny
 Najważniejsze bloki w Cockpicie (web-next):
 - **Serwery LLM** – wybór runtime (Ollama/vLLM), lista modeli dla wybranego runtime, aktywacja modelu.
+- **Slash commands** – `/gpt`, `/gem`, `/<tool>` z autouzupełnianiem, wymuszenie routingu i badge „Forced”.
+- **Język odpowiedzi** – ustawienie PL/EN/DE w UI jest przekazywane do backendu i służy do tłumaczenia wyniku.
 - **Feedback użytkownika** – kciuk w górę/dół przy odpowiedzi, logi feedbacku i metryki jakości (👍/👎).
 - **Hidden prompts** – agregacja, filtracja i aktywacja zatwierdzonych odpowiedzi.
 - **Logi nauki** – podgląd zapisów LLM-only z `data/learning/requests.jsonl`.

@@ -51,6 +51,8 @@ class RequestTrace(BaseModel):
     llm_endpoint: Optional[str] = None
     llm_config_hash: Optional[str] = None
     llm_runtime_id: Optional[str] = None
+    forced_tool: Optional[str] = None
+    forced_provider: Optional[str] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -226,6 +228,24 @@ class RequestTracer:
                 trace.finished_at = datetime.now()
 
         logger.debug(f"Zaktualizowano status trace {request_id}: {status}")
+
+    def set_forced_route(
+        self,
+        request_id: UUID,
+        forced_tool: Optional[str],
+        forced_provider: Optional[str],
+    ) -> None:
+        """Zapisuje informacje o wymuszonej ścieżce."""
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba ustawienia forced route dla nieistniejącego trace {request_id}"
+                )
+                return
+            trace.forced_tool = forced_tool
+            trace.forced_provider = forced_provider
+            trace.last_activity = datetime.now()
 
     def set_llm_metadata(
         self,

@@ -1,5 +1,5 @@
 # 075: Prezentacja wyników obliczeń (formatowanie danych)
-Status: do zrobienia
+Status: zrobione
 
 ## Cel
 Po wykonaniu obliczeń przez model, prezentować wynik w czytelnej formie
@@ -50,15 +50,20 @@ Oczekiwane wyjście:
 - Ewentualne formatowanie nagłówków (1..N).
 
 ## Zakres
-1. **Detekcja typu wyniku**
-   - Lista list (tabela), lista obiektów, słownik, liczby, tekst.
-2. **Formatowanie wyników**
-   - Tabela tekstowa (monospace, wyrównane kolumny).
-   - Listy punktowane dla struktur 1‑wymiarowych.
-3. **UI**
-   - Sekcja “Wynik obliczeń” w czacie (jeśli rozpoznany format).
-4. **Fallback**
-   - Jeśli nie da się zinterpretować, pokaż surowe dane.
+- [x] **Detekcja typu wyniku**
+  - Lista list (tabela), lista obiektów, słownik, liczby, tekst.
+- [x] **Formatowanie wyników**
+  - Tabela tekstowa (monospace, wyrównane kolumny).
+  - Listy punktowane dla struktur 1‑wymiarowych.
+- [x] **UI**
+  - Sekcja “Wynik obliczeń” w czacie (jeśli rozpoznany format).
+- [x] **Płynne dostarczanie odpowiedzi**
+  - Strumieniowe wyświetlanie fragmentów odpowiedzi (efekt „pisania”).
+  - Ograniczenie częstotliwości renderu, aby nie destabilizować pola input.
+  - Buforowanie i batchowanie aktualizacji (np. co 100–200 ms).
+  - Po zakończeniu strumienia wykryj pełne formuły i prze-renderuj wynik zgodnie z zasadami obsługi formuł.
+- [x] **Fallback**
+  - Jeśli nie da się zinterpretować, pokaż surowe dane.
 
 ## Kryteria akceptacji
 - Dla tablic 2D wynik jest czytelny i wyrównany.
@@ -66,8 +71,8 @@ Oczekiwane wyjście:
 - Brak regresji w standardowych odpowiedziach tekstowych.
 
 ## Dodatkowe zapisy (PR 075)
-- W ramach tego PR należy dodać funkcje zasilające model w dodatkowe dane.
-- Przykłady: pliki, linki, wskazywanie ścieżek do plików.
+- [x] W ramach tego PR dodano funkcje zasilające model w dodatkowe dane.
+- [x] Przykłady: pliki, linki, wskazywanie ścieżek do plików.
 
 ## Proponowane miejsca zmian
 - Warstwa odpowiedzi LLM (formatter/post‑processor).
@@ -79,3 +84,21 @@ Oczekiwane wyjście:
 2. Lista liczb → lista punktowana.
 3. Słownik → tabela klucz‑wartość.
 4. Tekst naturalny → brak zmian.
+
+## Przypadek testowy (UI: chat)
+Cel: potwierdzić, że wynik obliczeń jest wykrywany i renderowany w sekcji
+„Wynik obliczeń” w czacie, a nie jako surowy JSON/lista.
+
+### Kroki
+1) Otwórz Cockpit chat w `web-next`.
+2) Wyślij prompt:
+```
+Wygeneruj tablicę mnożenia 1..5 jako listę list, a potem pokaż wynik.
+```
+3) Poczekaj na zakończenie strumieniowania odpowiedzi.
+
+### Oczekiwany rezultat (na ekranie chat)
+- W treści odpowiedzi pojawia się sekcja „Wynik obliczeń”.
+- W sekcji widać tabelę tekstową z wyrównanymi kolumnami 1..5.
+- Brak surowego `[[1,2,3...]]` w miejscu prezentacji (może być w treści odpowiedzi,
+  ale nie zamiast tabeli).

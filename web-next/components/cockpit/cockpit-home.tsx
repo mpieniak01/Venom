@@ -30,6 +30,7 @@ import {
   sendFeedback,
   setActiveHiddenPrompt,
   setActiveLlmServer,
+  setActiveLlmRuntime,
   updateModelConfig,
   switchModel,
   toggleQueue,
@@ -53,6 +54,7 @@ import {
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { useTaskStream } from "@/hooks/use-task-stream";
 import { useToast } from "@/components/ui/toast";
+import { useLanguage } from "@/lib/i18n";
 import type { Chart } from "chart.js/auto";
 import {
   forwardRef,
@@ -76,6 +78,8 @@ import type { CockpitInitialData } from "@/lib/server-data";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { formatRelativeTime } from "@/lib/date";
+import type { SlashCommand } from "@/lib/slash-commands";
+import { filterSlashSuggestions, parseSlashCommand } from "@/lib/slash-commands";
 import { useTranslation } from "@/lib/i18n";
 import { motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
@@ -180,6 +184,8 @@ const ChatComposer = memo(
     ref,
   ) {
     const [draft, setDraft] = useState("");
+    const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
+    const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     useImperativeHandle(ref, () => ({
@@ -196,8 +202,51 @@ const ChatComposer = memo(
       }
     }, [draft, onSend]);
 
+    const applySlashSuggestion = useCallback((suggestion: SlashCommand) => {
+      setDraft((current) => {
+        const match = current.match(/^(\s*)\/[^\s]*/);
+        if (!match) return `${suggestion.command} `;
+        const prefix = match[1] ?? "";
+        const rest = current.slice(match[0].length).replace(/^\s*/, " ");
+        return `${prefix}${suggestion.command}${rest}`;
+      });
+      setSlashSuggestions([]);
+      setSlashIndex(0);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }, []);
+
+    const handleDraftChange = useCallback((value: string) => {
+      setDraft(value);
+      const matches = filterSlashSuggestions(value, 3);
+      setSlashSuggestions(matches);
+      setSlashIndex(0);
+    }, []);
+
     const handleTextareaKeyDown = useCallback(
       (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (slashSuggestions.length > 0) {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setSlashIndex((prev) => (prev + 1) % slashSuggestions.length);
+            return;
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setSlashIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            applySlashSuggestion(slashSuggestions[slashIndex]);
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setSlashSuggestions([]);
+            setSlashIndex(0);
+            return;
+          }
+        }
         const isEnter = event.key === "Enter";
         const isModifier = event.ctrlKey || event.metaKey;
         if (isEnter && isModifier) {
@@ -205,7 +254,7 @@ const ChatComposer = memo(
           handleSendClick();
         }
       },
-      [handleSendClick],
+      [applySlashSuggestion, handleSendClick, slashIndex, slashSuggestions],
     );
 
     const labelClassName = compactControls ? "sr-only" : "text-caption";
@@ -221,16 +270,35 @@ const ChatComposer = memo(
 
     return (
       <div className="mt-4 shrink-0 border-t border-white/5 pt-4">
-        <textarea
-          ref={textareaRef}
-          rows={2}
-          className="min-h-[72px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
-          placeholder="Opisz zadanie dla Venoma..."
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleTextareaKeyDown}
-          data-testid="cockpit-prompt-input"
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            className="min-h-[72px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
+            placeholder="Opisz zadanie dla Venoma..."
+            value={draft}
+            onChange={(event) => handleDraftChange(event.target.value)}
+            onKeyDown={handleTextareaKeyDown}
+            data-testid="cockpit-prompt-input"
+          />
+          {slashSuggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-white/10 bg-[#0c0f1c] shadow-xl">
+              {slashSuggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  onClick={() => applySlashSuggestion(suggestion)}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${
+                    index === slashIndex ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/5"
+                  }`}
+                >
+                  <span className="font-semibold text-zinc-100">{suggestion.command}</span>
+                  <span className="text-[11px] text-zinc-500">{suggestion.detail}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className={controlsWrapperClassName}>
           <div className={controlStackClassName}>
             <label className={labelClassName}>
@@ -520,6 +588,7 @@ export function CockpitHome({
   }, [optimisticRequests, history, selectedRequestId]);
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
+    throttleMs: 250,
   });
   const { data: liveModelsUsageResponse } = useModelsUsage(10000);
   const modelsUsageResponse =
@@ -530,6 +599,7 @@ export function CockpitHome({
   const activeServerInfo = liveActiveServer ?? null;
   const activeServerName = activeServerInfo?.active_server ?? "";
   const { pushToast } = useToast();
+  const { language } = useLanguage();
   const selectedServerEntry = useMemo(
     () => llmServers.find((server) => server.name === selectedLlmServer) ?? null,
     [llmServers, selectedLlmServer],
@@ -1036,7 +1106,7 @@ export function CockpitHome({
         matchedTask?.result?.trim() ??
         (item.status === "COMPLETED"
           ? "Brak zapisanej odpowiedzi – sprawdź szczegóły zadania."
-          : "Odpowiedź w trakcie generowania…");
+          : "Odpowiedź w trakcie generowania");
       const assistantStatus = matchedTask?.status ?? item.status;
       const assistantTimestamp =
         matchedTask?.updated_at ||
@@ -1053,6 +1123,8 @@ export function CockpitHome({
           timestamp: item.created_at,
           prompt,
           pending: false,
+          forcedTool: item.forced_tool ?? null,
+          forcedProvider: item.forced_provider ?? null,
         },
         {
           bubbleId: `${item.request_id}-response`,
@@ -1063,6 +1135,8 @@ export function CockpitHome({
           timestamp: assistantTimestamp ?? item.created_at,
           prompt,
           pending: false,
+          forcedTool: item.forced_tool ?? null,
+          forcedProvider: item.forced_provider ?? null,
         },
       ];
     });
@@ -1093,6 +1167,8 @@ export function CockpitHome({
           timestamp: entry.createdAt,
           prompt: entry.prompt,
           pending: isPending,
+          forcedTool: entry.forcedTool ?? null,
+          forcedProvider: entry.forcedProvider ?? null,
         },
         {
           bubbleId: `${baseId}-optimistic-response`,
@@ -1103,6 +1179,8 @@ export function CockpitHome({
           timestamp: entry.createdAt,
           prompt: entry.prompt,
           pending: isPending,
+          forcedTool: entry.forcedTool ?? null,
+          forcedProvider: entry.forcedProvider ?? null,
         },
       ];
     });
@@ -1354,7 +1432,10 @@ export function CockpitHome({
     [macroActions, customMacros],
   );
 
-  const enqueueOptimisticRequest = useCallback((prompt: string) => {
+  const enqueueOptimisticRequest = useCallback((
+    prompt: string,
+    forced?: { tool?: string; provider?: string },
+  ) => {
     const entry: OptimisticRequestState = {
       clientId: createOptimisticId(),
       requestId: null,
@@ -1362,6 +1443,8 @@ export function CockpitHome({
       createdAt: new Date().toISOString(),
       startedAt: Date.now(),
       confirmed: false,
+      forcedTool: forced?.tool ?? null,
+      forcedProvider: forced?.provider ?? null,
     };
     setOptimisticRequests((prev) => [...prev, entry]);
     return entry.clientId;
@@ -1388,21 +1471,69 @@ export function CockpitHome({
   }, []);
 
   const handleSend = useCallback(async (payload: string) => {
-    const trimmed = payload.trim();
+    const parsed = parseSlashCommand(payload);
+    const trimmed = parsed.cleaned.trim();
     if (!trimmed) {
       setMessage("Podaj treść zadania.");
       return false;
+    }
+    let runtimeOverride: { configHash?: string | null; runtimeId?: string | null } | null = null;
+    // Bezpośrednie mapowanie na format backendu (openai/google)
+    const forcedRuntimeProvider =
+      parsed.forcedProvider === "gpt"
+        ? "openai"
+        : parsed.forcedProvider === "gem"
+          ? "google"
+          : parsed.forcedProvider;
+    const activeRuntime = activeServerInfo?.active_server ?? null;
+    if (
+      forcedRuntimeProvider &&
+      activeRuntime !== forcedRuntimeProvider
+    ) {
+      const label = forcedRuntimeProvider === "openai" ? "OpenAI" : "Gemini";
+      const confirmed = window.confirm(
+        `Dyrektywa wymaga przełączenia runtime na ${label}. Przełączyć teraz?`,
+      );
+      if (!confirmed) {
+        setMessage("Anulowano przełączenie runtime.");
+        return false;
+      }
+      try {
+        const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google");
+        runtimeOverride = {
+          configHash: runtime.config_hash ?? null,
+          runtimeId: runtime.runtime_id ?? null,
+        };
+        refreshActiveServer();
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : "Nie udało się przełączyć runtime.");
+        return false;
+      }
     }
     autoScrollEnabled.current = true;
     scrollChatToBottom();
     setSending(true);
     setMessage(null);
-    const clientId = enqueueOptimisticRequest(trimmed);
+    const clientId = enqueueOptimisticRequest(trimmed, {
+      tool: parsed.forcedTool,
+      provider: parsed.forcedProvider,
+    });
     try {
-      const res = await sendTask(trimmed, !labMode, generationParams, {
-        configHash: activeServerInfo?.config_hash ?? null,
-        runtimeId: activeServerInfo?.runtime_id ?? null,
-      });
+      const res = await sendTask(
+        trimmed,
+        !labMode,
+        generationParams,
+        {
+          configHash: runtimeOverride?.configHash ?? activeServerInfo?.config_hash ?? null,
+          runtimeId: runtimeOverride?.runtimeId ?? activeServerInfo?.runtime_id ?? null,
+        },
+        null,
+        {
+          tool: parsed.forcedTool,
+          provider: parsed.forcedProvider,
+        },
+        language,
+      );
       const resolvedId = res.task_id ?? null;
       linkOptimisticRequest(clientId, resolvedId);
       setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
@@ -1427,7 +1558,11 @@ export function CockpitHome({
     refreshQueue,
     refreshHistory,
     activeServerInfo?.config_hash,
+    activeServerInfo?.active_server,
     activeServerInfo?.runtime_id,
+    refreshActiveServer,
+    setActiveLlmRuntime,
+    language,
     scrollChatToBottom,
   ]);
 
@@ -1485,10 +1620,18 @@ export function CockpitHome({
       setMessage(null);
       const clientId = enqueueOptimisticRequest(macro.content);
       try {
-        const res = await sendTask(macro.content, !labMode, null, {
-          configHash: activeServerInfo?.config_hash ?? null,
-          runtimeId: activeServerInfo?.runtime_id ?? null,
-        });
+        const res = await sendTask(
+          macro.content,
+          !labMode,
+          null,
+          {
+            configHash: activeServerInfo?.config_hash ?? null,
+            runtimeId: activeServerInfo?.runtime_id ?? null,
+          },
+          null,
+          null,
+          language,
+        );
         linkOptimisticRequest(clientId, res.task_id ?? null);
         setMessage(`Makro ${macro.label} wysłane: ${res.task_id ?? "w toku…"}`);
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
@@ -1510,6 +1653,7 @@ export function CockpitHome({
       refreshHistory,
       activeServerInfo?.config_hash,
       activeServerInfo?.runtime_id,
+      language,
     ],
   );
 
@@ -1768,6 +1912,11 @@ export function CockpitHome({
               )}
             </>
           ) : null;
+        const forcedLabel = msg.forcedProvider
+          ? `/${msg.forcedProvider}`
+          : msg.forcedTool
+            ? `/${msg.forcedTool}`
+            : null;
 
         return (
           <div key={msg.bubbleId}>
@@ -1782,6 +1931,7 @@ export function CockpitHome({
               onSelect={handleSelect}
               footerActions={feedbackActions}
               footerExtra={feedbackExtra}
+              forcedLabel={forcedLabel}
             />
           </div>
         );
@@ -3502,6 +3652,8 @@ type ChatMessage = {
   timestamp: string;
   prompt?: string;
   pending?: boolean;
+  forcedTool?: string | null;
+  forcedProvider?: string | null;
 };
 
 type OptimisticRequestState = {
@@ -3511,6 +3663,8 @@ type OptimisticRequestState = {
   createdAt: string;
   startedAt: number;
   confirmed: boolean;
+  forcedTool?: string | null;
+  forcedProvider?: string | null;
 };
 
 type TokenSample = { timestamp: string; value: number };

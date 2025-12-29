@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
+import { isComputationContent } from "@/lib/markdown-format";
 import { statusTone } from "@/lib/status";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -16,6 +17,7 @@ type ConversationBubbleProps = {
   pending?: boolean;
   footerActions?: ReactNode;
   footerExtra?: ReactNode;
+  forcedLabel?: string | null;
 };
 
 export function ConversationBubble({
@@ -29,8 +31,15 @@ export function ConversationBubble({
   pending,
   footerActions,
   footerExtra,
+  forcedLabel,
 }: ConversationBubbleProps) {
   const isUser = role === "user";
+  const terminalStatuses = ["COMPLETED", "FAILED", "LOST"];
+  const isTerminal =
+    typeof status === "string" && terminalStatuses.includes(status);
+  const showTyping = !isUser && (pending || (status && !isTerminal));
+  const showComputationLabel =
+    !isUser && !showTyping && isComputationContent(text);
   const disabled = pending || !onSelect;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (disabled) return;
@@ -58,14 +67,31 @@ export function ConversationBubble({
         <span>{new Date(timestamp).toLocaleTimeString()}</span>
       </div>
       <div className="mt-3 text-[15px] leading-relaxed text-white">
-        <MarkdownPreview content={text} emptyState="Brak treści." />
+        {showComputationLabel && (
+          <p className="mb-2 text-xs uppercase tracking-[0.35em] text-emerald-200/80">
+            Wynik obliczeń
+          </p>
+        )}
+        {showTyping ? (
+          <p className="whitespace-pre-wrap text-sm text-white/90">
+            {text}
+            <span className="typing-dots" aria-hidden="true">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </span>
+          </p>
+        ) : (
+          <MarkdownPreview content={text} emptyState="Brak treści." mode="final" />
+        )}
       </div>
-      {(footerActions || footerExtra || (!isUser && (pending || status || requestId))) && (
+      {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
         <div className="mt-4 border-t border-white/10 pt-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
           {footerActions && (
             <span className="flex items-center gap-2">{footerActions}</span>
           )}
+          {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
           {pending && role === "assistant" && (
             <span className="text-amber-300">W toku</span>
           )}

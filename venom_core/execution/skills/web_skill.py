@@ -6,7 +6,11 @@ from typing import Annotated, Optional
 import httpx
 import trafilatura
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+
+try:  # pragma: no cover - zależne od środowiska
+    from ddgs import DDGS
+except Exception:  # pragma: no cover
+    from duckduckgo_search import DDGS
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS

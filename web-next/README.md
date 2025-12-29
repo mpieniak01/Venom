@@ -62,6 +62,8 @@ npm run start
 ## Funkcje dostępne w Cockpit (Next)
 - Telemetria WS (`/ws/events`) z auto-reconnect
 - Zadania: wysyłanie / listowanie (`/api/v1/tasks`), Lab Mode toggle
+- Slash commands: `/gpt`, `/gem`, `/<tool>` z autouzupełnianiem i badge „Forced”
+- Preferowany język odpowiedzi (PL/EN/DE) przekazywany do backendu jako `preferred_language`
 - Kolejka: status + akcje pause/resume/purge/emergency stop (`/api/v1/queue/*`)
 - Modele: lista / switch / instalacja (`/api/v1/models*`)
 - Git: status + sync/undo (`/api/v1/git/*`)
@@ -75,6 +77,7 @@ npm run start
 - Flow: filtrowanie/kopiowanie kroków timeline, eksport JSON
 - Brain: filtry lekcji po tagach, relacje węzłów, analiza plików (`/graph/file`, `/graph/impact`)
 - War Room: dane roadmapy z `/api/roadmap` + raport statusu/kampania, renderowanie Markdown wizji/raportów
+- Formatowanie wyników obliczeń w czacie (tabele/listy, KaTeX dla formuł)
 
 ## Kolejne kroki
 - Dynamic import bibliotek (Chart.js, mermaid, Cytoscape) w trybie CSR.

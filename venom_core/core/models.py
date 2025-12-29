@@ -33,10 +33,28 @@ class VenomTask(BaseModel):
     )  # Słownik kontekstu dla przekazywania danych między krokami wykonania
 
 
+class TaskExtraContext(BaseModel):
+    """Dodatkowe dane kontekstowe przekazywane do modelu."""
+
+    files: Optional[List[str]] = None
+    links: Optional[List[str]] = None
+    paths: Optional[List[str]] = None
+    notes: Optional[List[str]] = None
+
+
 class TaskRequest(BaseModel):
     """DTO dla żądania utworzenia zadania."""
 
     content: str
+    preferred_language: Optional[str] = Field(
+        default=None, description="Preferowany jezyk odpowiedzi (pl/en/de)"
+    )
+    forced_tool: Optional[str] = Field(
+        default=None, description="Wymuszone narzędzie/skill (np. 'git', 'docs')"
+    )
+    forced_provider: Optional[str] = Field(
+        default=None, description="Wymuszony provider LLM (np. 'gpt', 'gem')"
+    )
     images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
     store_knowledge: bool = Field(
         default=True, description="Czy zapisywać lekcje i wnioski z tego zadania"
@@ -49,6 +67,9 @@ class TaskRequest(BaseModel):
     )
     expected_runtime_id: Optional[str] = Field(
         default=None, description="Oczekiwany runtime_id LLM z UI"
+    )
+    extra_context: Optional[TaskExtraContext] = Field(
+        default=None, description="Dodatkowe dane przekazywane do kontekstu zadania"
     )
 
 

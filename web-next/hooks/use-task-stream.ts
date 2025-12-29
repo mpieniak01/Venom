@@ -45,6 +45,7 @@ type UseTaskStreamOptions = {
   enabled?: boolean;
   autoCloseOnFinish?: boolean;
   onEvent?: (event: TaskStreamEvent) => void;
+  throttleMs?: number;
 };
 
 const defaultState: TaskStreamState = {
@@ -65,10 +66,17 @@ const defaultState: TaskStreamState = {
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
 
 export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions): UseTaskStreamResult {
-  const { enabled = true, autoCloseOnFinish = true, onEvent } = options ?? {};
+  const {
+    enabled = true,
+    autoCloseOnFinish = true,
+    onEvent,
+    throttleMs = 0,
+  } = options ?? {};
   const [streams, setStreams] = useState<Record<string, TaskStreamState>>({});
   const [lastEvent, setLastEvent] = useState<TaskStreamEvent | undefined>(undefined);
   const sourcesRef = useRef<Map<string, EventSource>>(new Map());
+  const pendingUpdatesRef = useRef<Map<string, Partial<TaskStreamState>>>(new Map());
+  const throttleTimersRef = useRef<Map<string, number>>(new Map());
   const dedupedTaskIds = useMemo(() => {
     const seen = new Set<string>();
     const filtered: string[] = [];
@@ -117,6 +125,44 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         });
       };
 
+      const scheduleUpdate = (patch: Partial<TaskStreamState>) => {
+        if (throttleMs <= 0) {
+          updateState(patch);
+          return;
+        }
+        const pending = pendingUpdatesRef.current.get(taskId) ?? {};
+        // Merge logs zamiast nadpisywania, z deduplikacją jak w updateState
+        const mergedLogs = mergeLogs(pending.logs ?? [], patch.logs ?? []);
+        pendingUpdatesRef.current.set(taskId, {
+          ...pending,
+          ...patch,
+          logs: mergedLogs,
+        });
+        if (throttleTimersRef.current.has(taskId)) return;
+        const timer = window.setTimeout(() => {
+          throttleTimersRef.current.delete(taskId);
+          const queued = pendingUpdatesRef.current.get(taskId);
+          pendingUpdatesRef.current.delete(taskId);
+          if (queued) {
+            updateState(queued);
+          }
+        }, throttleMs);
+        throttleTimersRef.current.set(taskId, timer);
+      };
+
+      const flushPending = () => {
+        const timer = throttleTimersRef.current.get(taskId);
+        if (timer) {
+          window.clearTimeout(timer);
+          throttleTimersRef.current.delete(taskId);
+        }
+        const queued = pendingUpdatesRef.current.get(taskId);
+        pendingUpdatesRef.current.delete(taskId);
+        if (queued) {
+          updateState(queued);
+        }
+      };
+
       const emitEvent = (event: TaskStreamEvent) => {
         setLastEvent(event);
         onEvent?.(event);
@@ -151,7 +197,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         };
 
         if (eventName === "heartbeat") {
-          updateState({
+          scheduleUpdate({
             heartbeatAt: timestamp ?? new Date().toISOString(),
             connected: true,
             error: null,
@@ -165,7 +211,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           return;
         }
 
-        updateState({
+        const patch = {
           status: status ?? null,
           logs,
           result: result ?? null,
@@ -177,7 +223,17 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           llmEndpoint: runtime.endpoint,
           llmStatus: runtime.status ?? null,
           context: runtime.context,
-        });
+        };
+        const isTerminal =
+          eventName === "task_finished" ||
+          eventName === "task_missing" ||
+          (status && TERMINAL_STATUSES.includes(status));
+        if (isTerminal) {
+          flushPending();
+          updateState(patch);
+        } else {
+          scheduleUpdate(patch);
+        }
         emitEvent(entry);
 
         if (
@@ -189,6 +245,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           const currentSource = sources.get(taskId);
           currentSource?.close();
           sources.delete(taskId);
+          flushPending();
           updateState({
             connected: false,
           });
@@ -246,6 +303,12 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       if (!targetIds.has(sourceTaskId)) {
         source.close();
         sources.delete(sourceTaskId);
+        const timer = throttleTimersRef.current.get(sourceTaskId);
+        if (timer) {
+          window.clearTimeout(timer);
+          throttleTimersRef.current.delete(sourceTaskId);
+        }
+        pendingUpdatesRef.current.delete(sourceTaskId);
         setStreams((prev) => {
           const next = { ...prev };
           delete next[sourceTaskId];
@@ -258,8 +321,11 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       sources.forEach((source) => source.close());
       sources.clear();
       setStreams({});
+      throttleTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      throttleTimersRef.current.clear();
+      pendingUpdatesRef.current.clear();
     };
-  }, [dedupedTaskIds, enabled, autoCloseOnFinish, onEvent]);
+  }, [dedupedTaskIds, enabled, autoCloseOnFinish, onEvent, throttleMs]);
 
   const connectedIds = useMemo(
     () => Object.entries(streams).filter(([, entry]) => entry.connected).map(([id]) => id),

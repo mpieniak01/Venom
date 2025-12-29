@@ -1,0 +1,20 @@
+[run]
+branch = True
+source =
+    venom_core
+omit =
+    */__init__.py
+    venom_core/main.py
+    tests/*
+
+[report]
+exclude_lines =
+    if __name__ == .__main__.:
+    pragma: no cover
+    if TYPE_CHECKING:
+    if settings\.DEBUG
+    if SETTINGS\.DEBUG
+    logger\.
+    logging\.
+    raise NotImplementedError
+    except ImportError

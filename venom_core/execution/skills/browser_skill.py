@@ -3,6 +3,7 @@
 import time
 from pathlib import Path
 from typing import Annotated, Optional
+from urllib.parse import urlparse
 
 from playwright.async_api import Browser, Page, async_playwright
 from semantic_kernel.functions import kernel_function
@@ -130,19 +131,59 @@ class BrowserSkill:
         try:
             await self._ensure_browser()
 
-            logger.info(f"Odwiedzanie strony: {url}")
-            await self._page.goto(url, wait_until=wait_until, timeout=30000)
+            normalized_url = self._ensure_url_scheme(url)
+            logger.info(f"Odwiedzanie strony: {normalized_url}")
+            await self._page.goto(normalized_url, wait_until=wait_until, timeout=30000)
 
             # Pobierz tytuł strony
             title = await self._page.title()
             logger.info(f"Strona załadowana: {title}")
 
-            return f"✅ Strona załadowana pomyślnie\nURL: {url}\nTytuł: {title}"
+            return (
+                f"✅ Strona załadowana pomyślnie\nURL: {normalized_url}\nTytuł: {title}"
+            )
 
         except Exception as e:
             error_msg = f"❌ Błąd podczas ładowania strony: {str(e)}"
             logger.error(error_msg)
             return error_msg
+
+    @staticmethod
+    def _ensure_url_scheme(url: str) -> str:
+        """Dodaje schemat do URL, jeśli go brakuje."""
+        if not url:
+            return url
+        parsed = urlparse(url)
+        if parsed.scheme:
+            return url
+        lowered = url.lower()
+        # Sprawdź localhost i lokalne adresy IP
+        if lowered.startswith("localhost") or lowered.startswith("0.0.0.0"):
+            return f"http://{url}"
+
+        # Wydziel host bez portu, np. z "192.168.1.1:8080" → "192.168.1.1"
+        host = lowered.split(":", 1)[0]
+
+        # Sprawdź czy wygląda jak adres IP (wszystkie części są numeryczne)
+        parts = host.split(".")
+        if len(parts) == 4 and all(part.isdigit() for part in parts):
+            try:
+                # Waliduj czy oktety są w prawidłowym zakresie
+                octets = [int(part) for part in parts]
+                if all(0 <= octet <= 255 for octet in octets):
+                    # Sprawdź czy to prywatny/lokalny adres IP
+                    if octets[0] == 127:  # Loopback
+                        return f"http://{url}"
+                    if octets[0] == 192 and octets[1] == 168:  # Private class C
+                        return f"http://{url}"
+                    if octets[0] == 10:  # Private class A
+                        return f"http://{url}"
+                    if octets[0] == 172 and 16 <= octets[1] <= 31:  # Private class B
+                        return f"http://{url}"
+            except (ValueError, IndexError):
+                # Jeśli parsowanie IP się nie powiedzie, traktujemy URL jako zwykłą nazwę hosta
+                pass
+        return f"https://{url}"
 
     @kernel_function(
         name="take_screenshot",

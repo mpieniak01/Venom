@@ -69,6 +69,8 @@ export interface HistoryRequest {
   llm_endpoint?: string | null;
   llm_config_hash?: string | null;
   llm_runtime_id?: string | null;
+  forced_tool?: string | null;
+  forced_provider?: string | null;
   error_code?: string | null;
   error_class?: string | null;
   error_message?: string | null;

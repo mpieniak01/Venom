@@ -77,7 +77,9 @@ function renderMathTokens(html: string, tokens: MathToken[]) {
       console.warn("KaTeX render error:", err);
       rendered = `<code>${escapeHtml(token.expression)}</code>`;
     }
-    output = output.split(token.id).join(rendered);
+    // Użyj replace z escape specjalnych znaków regex dla bezpiecznej zamiany
+    const escapedId = token.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    output = output.replace(new RegExp(escapedId, 'g'), rendered);
   }
   return output;
 }

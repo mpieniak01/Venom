@@ -131,10 +131,14 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           return;
         }
         const pending = pendingUpdatesRef.current.get(taskId) ?? {};
+        // Merge logs instead of overwriting
+        const mergedLogs = patch.logs
+          ? [...(pending.logs ?? []), ...patch.logs]
+          : pending.logs;
         pendingUpdatesRef.current.set(taskId, {
           ...pending,
           ...patch,
-          logs: patch.logs ?? pending.logs,
+          logs: mergedLogs,
         });
         if (throttleTimersRef.current.has(taskId)) return;
         const timer = window.setTimeout(() => {

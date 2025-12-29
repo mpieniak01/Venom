@@ -1478,11 +1478,12 @@ export function CockpitHome({
       return false;
     }
     let runtimeOverride: { configHash?: string | null; runtimeId?: string | null } | null = null;
+    // Bezpośrednie mapowanie na format backendu (openai/google)
     const forcedRuntimeProvider =
       parsed.forcedProvider === "gpt"
         ? "openai"
         : parsed.forcedProvider === "gem"
-          ? "google-gemini"
+          ? "google"
           : parsed.forcedProvider;
     const activeRuntime = activeServerInfo?.active_server ?? null;
     if (
@@ -1497,10 +1498,8 @@ export function CockpitHome({
         setMessage("Anulowano przełączenie runtime.");
         return false;
       }
-      const providerForSwitch =
-        forcedRuntimeProvider === "google-gemini" ? "google" : forcedRuntimeProvider;
       try {
-        const runtime = await setActiveLlmRuntime(providerForSwitch as "openai" | "google");
+        const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google");
         runtimeOverride = {
           configHash: runtime.config_hash ?? null,
           runtimeId: runtime.runtime_id ?? null,
@@ -1515,7 +1514,7 @@ export function CockpitHome({
     scrollChatToBottom();
     setSending(true);
     setMessage(null);
-    const clientId = enqueueOptimisticRequest(payload.trim(), {
+    const clientId = enqueueOptimisticRequest(trimmed, {
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
     });

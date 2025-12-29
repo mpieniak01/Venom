@@ -157,8 +157,32 @@ class BrowserSkill:
         if parsed.scheme:
             return url
         lowered = url.lower()
-        if lowered.startswith(("localhost", "127.", "0.0.0.0")):
+        # Sprawdź localhost i lokalne adresy IP
+        if lowered.startswith("localhost") or lowered.startswith("0.0.0.0"):
             return f"http://{url}"
+
+        # Wydziel host bez portu, np. z "192.168.1.1:8080" → "192.168.1.1"
+        host = lowered.split(":", 1)[0]
+
+        # Sprawdź czy wygląda jak adres IP (wszystkie części są numeryczne)
+        parts = host.split(".")
+        if len(parts) == 4 and all(part.isdigit() for part in parts):
+            try:
+                # Waliduj czy oktety są w prawidłowym zakresie
+                octets = [int(part) for part in parts]
+                if all(0 <= octet <= 255 for octet in octets):
+                    # Sprawdź czy to prywatny/lokalny adres IP
+                    if octets[0] == 127:  # Loopback
+                        return f"http://{url}"
+                    if octets[0] == 192 and octets[1] == 168:  # Private class C
+                        return f"http://{url}"
+                    if octets[0] == 10:  # Private class A
+                        return f"http://{url}"
+                    if octets[0] == 172 and 16 <= octets[1] <= 31:  # Private class B
+                        return f"http://{url}"
+            except (ValueError, IndexError):
+                # Jeśli parsowanie IP się nie powiedzie, traktujemy URL jako zwykłą nazwę hosta
+                pass
         return f"https://{url}"
 
     @kernel_function(

@@ -218,4 +218,93 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await panicButton.click();
     await expect(page.getByText(/Zatrzymano zadania/i)).toBeVisible();
   });
+
+  test("Slash command /gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
+    await page.route("**/api/v1/system/llm-servers/active", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            active_server: "vllm",
+            active_model: "phi3",
+            config_hash: "hash-local",
+            runtime_id: "vllm@local",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Method not allowed" }),
+      });
+    });
+    await page.route("**/api/v1/system/llm-runtime/active", async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            active_server: "openai",
+            active_model: "gpt-4o",
+            config_hash: "hash-openai",
+            runtime_id: "openai@cloud",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Method not allowed" }),
+      });
+    });
+    await page.route("**/api/v1/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        const body = route.request().postDataJSON();
+        expect(body.content).toBe("Test zadania");
+        expect(body.forced_provider).toBe("gpt");
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ task_id: "slash-gpt" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+    });
+
+    page.on("dialog", async (dialog) => {
+      await dialog.accept();
+    });
+
+    await page.goto("/chat");
+    await page.waitForResponse("**/api/v1/system/llm-servers/active");
+
+    const textarea = page.getByPlaceholder("Opisz zadanie dla Venoma...");
+    await textarea.fill("/gpt Test zadania");
+
+    const [runtimeReq, taskReq] = await Promise.all([
+      page.waitForRequest((req) =>
+        req.url().includes("/api/v1/system/llm-runtime/active") &&
+        req.method() === "POST",
+      ),
+      page.waitForRequest((req) =>
+        req.url().includes("/api/v1/tasks") && req.method() === "POST",
+      ),
+      page.getByTestId("cockpit-send-button").click(),
+    ]);
+
+    expect(runtimeReq.method()).toBe("POST");
+    expect(runtimeReq.postDataJSON()).toEqual({ provider: "openai" });
+    expect(taskReq.method()).toBe("POST");
+    await expect(page.getByText(/Wysłano zadanie: slash-gpt/i)).toBeVisible();
+  });
 });

@@ -1,6 +1,6 @@
 # Venom v1.0 🐍
 
-**Venom Meta-Intelligence System** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
+**Venom – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
 Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
 
@@ -11,9 +11,9 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł
 - 🤖 **Zarządzanie agentami** - Koordynacja wielu wyspecjalizowanych agentów
 - 💾 **Pamięć długoterminowa** - Zapisywanie i wykorzystywanie zdobytej wiedzy
-- 🎓 **Uczenie przez obserwację** - Nagrywanie demonstracji i automatyczne generowanie workflow (NOWOŚĆ!)
-- 👍👎 **Pętla jakości** - feedback użytkownika + logi i metryki jakości odpowiedzi
-- 🧠 **Hidden prompts** - zatwierdzone odpowiedzi jako skróty kontekstu
+- 🎓 **Uczenie przez obserwację** - Nagrywanie demonstracji i automatyczne generowanie przepływów pracy (NOWOŚĆ!)
+- 👍👎 **Pętla jakości** - informacje zwrotne użytkownika + logi i metryki jakości odpowiedzi
+- 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
 - 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
 
 ### 🎯 Przykłady użycia
@@ -29,7 +29,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
   1. Znajdzie dokumentację PyGame (ResearcherAgent)
   2. Stworzy strukturę gry (CoderAgent)
   3. Dodaj logikę węża (CoderAgent)
-  4. Zaimplementuje scoring (CoderAgent)
+  4. Zaimplementuje punktację (CoderAgent)
 
 # 3. Strona webowa z wieloma plikami
 "Stwórz stronę HTML z zegarem cyfrowym i stylem CSS"
@@ -38,7 +38,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 # 4. NOWE: Uczenie przez demonstrację
 "Venom, patrz jak wysyłam raport na Slacka"
 → [Użytkownik wykonuje akcje]
-→ System nagrywa, analizuje i generuje workflow
+→ System nagrywa, analizuje i generuje przepływ pracy
 → "Zapisałem jako umiejętność 'wyslij_raport_slack'"
 → Później: "Venom, wyślij raport na Slacka" - wykonuje automatycznie!
 ```
@@ -48,48 +48,48 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 ### Struktura projektu
 ```
 venom_core/
-├── api/routes/          # REST API endpoints (agents, tasks, memory, nodes)
+├── api/routes/          # Endpointy REST API (agenci, zadania, pamięć, węzły)
 ├── core/flows/          # Przepływy biznesowe i orkiestracja
 ├── agents/              # Wyspecjalizowani agenci AI
-├── execution/           # Warstwa wykonawcza i model routing
-├── perception/          # Sensory (desktop_sensor, audio)
-├── memory/              # Pamięć długoterminowa (vector, graph, workflow)
-└── infrastructure/      # Infrastruktura (hardware, cloud, message broker)
+├── execution/           # Warstwa wykonawcza i routing modeli
+├── perception/          # Percepcja (desktop_sensor, audio)
+├── memory/              # Pamięć długoterminowa (wektory, graf, przepływy pracy)
+└── infrastructure/      # Infrastruktura (sprzęt, chmura, broker wiadomości)
 ```
 
 ### Główne komponenty
 
-#### 1. **Strategic Layer** (Warstwa Planowania)
+#### 1. **Warstwa strategiczna** (Planowanie)
 - **ArchitectAgent** - Kierownik projektu, rozbija złożone zadania na kroki
 - **ExecutionPlan** - Model planu wykonania ze zdefiniowanymi krokami i zależnościami
 
-#### 2. **Knowledge Expansion** (Ekspansja Wiedzy)
+#### 2. **Ekspansja wiedzy**
 - **ResearcherAgent** - Zbiera i syntetyzuje wiedzę z Internetu
 - **WebSearchSkill** - Wyszukiwanie (DuckDuckGo) i scraping (trafilatura)
 - **MemorySkill** - Pamięć długoterminowa (LanceDB)
 
-#### 3. **Execution Layer** (Warstwa Wykonawcza)
+#### 3. **Warstwa wykonawcza**
 - **CoderAgent** - Generuje kod z wykorzystaniem wiedzy
 - **CriticAgent** - Weryfikuje jakość kodu
 - **LibrarianAgent** - Zarządza plikami i strukturą projektu
 - **ChatAgent** - Rozmowa i asystent
 - **GhostAgent** - Automatyzacja GUI (RPA - Robotic Process Automation)
-- **ApprenticeAgent** - Uczenie się workflow poprzez obserwację (NOWOŚĆ!)
+- **ApprenticeAgent** - Uczenie się przepływów pracy poprzez obserwację (NOWOŚĆ!)
 
-#### 4. **Hybrid AI Engine** (Silnik Hybrydowy) 🧠
-- **HybridModelRouter** (`venom_core/execution/model_router.py`) - Inteligentny routing między Local LLM a Cloud
+#### 4. **Silnik hybrydowy AI** 🧠
+- **HybridModelRouter** (`venom_core/execution/model_router.py`) - Inteligentny routing między lokalnym LLM a chmurą
 - **Tryby pracy**: LOCAL (tylko lokalne), HYBRID (mix), CLOUD (głównie chmura)
-- **Local First**: Prywatność i $0 kosztów operacyjnych
-- **Providerzy**: Ollama/vLLM (local), Google Gemini, OpenAI
+- **Lokalnie najpierw**: Prywatność i $0 kosztów operacyjnych
+- **Providerzy**: Ollama/vLLM (lokalne), Google Gemini, OpenAI
 - Wrażliwe dane **NIGDY** nie trafiają do chmury
 
-#### 5. **Visual Imitation Learning** (Uczenie przez Demonstrację) 🎓
+#### 5. **Uczenie przez demonstrację** 🎓
 - **DemonstrationRecorder** - Nagrywanie akcji użytkownika (mysz, klawiatura, zrzuty ekranu)
 - **DemonstrationAnalyzer** - Analiza behawioralna i transformacja pikseli → semantyka
 - **WorkflowStore** - Magazyn procedur z możliwością edycji
-- **Integration z GhostAgent** - Wykonywanie wygenerowanych workflow
+- **Integracja z GhostAgent** - Wykonywanie wygenerowanych przepływów pracy
 
-#### 6. **Orchestration** (Orkiestracja)
+#### 6. **Orkiestracja**
 - **Orchestrator** - Główny koordynator systemu
 - **IntentManager** - Klasyfikacja intencji (5 typów: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Routing zadań do odpowiednich agentów
@@ -97,7 +97,7 @@ venom_core/
 ### Przepływ danych
 
 ```
-User Request
+Zapytanie użytkownika
     ↓
 IntentManager (klasyfikacja intencji)
     ↓
@@ -109,12 +109,12 @@ Orchestrator (decyzja o przepływie)
 ├─────────────────────┼─────────────────────┼──────────────────────┤
 │  CoderAgent         │  ArchitectAgent     │  ResearcherAgent     │
 │       ↓             │       ↓             │       ↓              │
-│  CriticAgent        │  Create Plan        │  WebSearchSkill      │
+│  CriticAgent        │  Tworzenie planu    │  WebSearchSkill      │
 │       ↓             │       ↓             │       ↓              │
-│  Result             │  Execute Plan       │  MemorySkill         │
-│                     │   (Step by step)    │       ↓              │
-│                     │       ↓             │  Result              │
-│                     │  Result             │                      │
+│  Wynik              │  Wykonanie planu    │  MemorySkill         │
+│                     │   (krok po kroku)   │       ↓              │
+│                     │       ↓             │  Wynik               │
+│                     │  Wynik              │                      │
 └─────────────────────┴─────────────────────┴──────────────────────┘
 ```
 
@@ -126,7 +126,7 @@ Orchestrator (decyzja o przepływie)
 ## 🖥️ Frontend (Next.js – `web-next`)
 
 Nowa warstwa prezentacji działa na Next.js 15 (App Router, React 19). Interfejs jest złożony z dwóch typów komponentów:
-- **SCC (Server/Client Components)** – domyślnie tworzymy komponenty serwerowe (bez dyrektywy `"use client"`), a interaktywne fragmenty oznaczamy jako klientowe. Dzięki temu widoki Brain/Strategy i Cockpit mogą strumieniować dane bez dodatkowych fetchy.
+- **SCC (komponenty serwerowe/klienckie)** – domyślnie tworzymy komponenty serwerowe (bez dyrektywy `"use client"`), a interaktywne fragmenty oznaczamy jako klientowe. Dzięki temu widoki Brain/Strategy i Cockpit mogą strumieniować dane bez dodatkowych zapytań.
 - **Wspólny layout** (`components/layout/*`) – TopBar, Sidebar, dolna belka statusu oraz overlaye dzielą tokeny graficzne i tłumaczenia (`useTranslation`).
 
 ### Kluczowe komendy
@@ -138,17 +138,17 @@ npm --prefix web-next install
 # środowisko developerskie (http://localhost:3000)
 npm --prefix web-next run dev
 
-# build produkcyjny (generuje meta version + standalone)
+# build produkcyjny (generuje meta wersje + standalone)
 npm --prefix web-next run build
 
-# smoke E2E (Playwright, tryb prod)
+# krótkie testy E2E (Playwright, tryb prod)
 npm --prefix web-next run test:e2e
 
 # walidacja spójności tłumaczeń
 npm --prefix web-next run lint:locales
 ```
 
-Skrypt `predev/prebuild` uruchamia `scripts/generate-meta.mjs`, który zapisuje `public/meta.json` (wersja + commit). Wszystkie hooki HTTP korzystają z `lib/api-client.ts`; w trybie lokalnym możesz wskazać backend przez zmienne:
+Skrypt `predev/prebuild` uruchamia `scripts/generate-meta.mjs`, który zapisuje `public/meta.json` (wersja + skrót commitu). Wszystkie hooki HTTP korzystają z `lib/api-client.ts`; w trybie lokalnym możesz wskazać backend przez zmienne:
 
 ```
 NEXT_PUBLIC_API_BASE=http://localhost:8000
@@ -156,9 +156,15 @@ NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
 API_PROXY_TARGET=http://localhost:8000
 ```
 
-> Szczegóły (architektura katalogów, guidelines dla SCC, źródła danych widoków) opisuje `docs/FRONTEND_NEXT_GUIDE.md`.
+> Szczegóły (architektura katalogów, wytyczne dla SCC, źródła danych widoków) opisuje `docs/FRONTEND_NEXT_GUIDE.md`.
 
 Uwaga: Cockpit ma teraz dwa widoki — `/` (produkcyjny układ z wybranymi boxami) oraz `/chat` (referencyjna, pełna kopia wcześniejszego układu).
+
+#### Slash commands w Cockpit
+- Wymuszenie narzędzia: `/<tool>` (np. `/git`, `/web`).
+- Wymuszenie providerów: `/gpt` (OpenAI) i `/gem` (Gemini).
+- Po wykryciu prefiksu treść zapytania jest czyszczona z dyrektywy, a UI pokazuje etykietę "Forced".
+- Ustawienie języka UI (PL/EN/DE) jest przekazywane jako `preferred_language` w `/api/v1/tasks`.
 
 ### Instalacja
 
@@ -182,12 +188,12 @@ Python 3.10+ (zalecane 3.11)
 
 ### Kluczowe pakiety:
 - `semantic-kernel>=1.9.0` - Orkiestracja agentów
-- `duckduckgo-search>=6.0` - Wyszukiwarka
+- `ddgs>=1.0` - Wyszukiwarka (następca duckduckgo-search)
 - `trafilatura` - Ekstrakcja tekstu ze stron WWW
 - `beautifulsoup4` - Parsowanie HTML
 - `lancedb` - Baza wektorowa dla pamięci
 - `fastapi` - API serwera
-- `zeroconf` - mDNS service discovery dla lokalnej sieci
+- `zeroconf` - wykrywanie usług mDNS dla lokalnej sieci
 - `pynput` - Nagrywanie akcji użytkownika (THE_APPRENTICE)
 - `google-generativeai` - Google Gemini (opcjonalne)
 - `openai` / `anthropic` - Modele LLM (opcjonalne)
@@ -228,7 +234,7 @@ make stop
 - Next.js serwuje UI na `http://localhost:3000`,
 - flaga `SERVE_LEGACY_UI=True` uruchamia stary panel FastAPI na porcie 8000 (rozwiązanie awaryjne / referencyjne).
 
-### 🔧 Profile Uruchomieniowe (Light Mode)
+### 🔧 Profile uruchomieniowe (tryb lekki)
 
 Venom oferuje elastyczne tryby uruchamiania komponentów osobno - idealnie dla środowisk developerskich z ograniczonymi zasobami (PC, laptop).
 
@@ -236,11 +242,11 @@ Venom oferuje elastyczne tryby uruchamiania komponentów osobno - idealnie dla �
 
 | Komenda | Opis | Zużycie zasobów | Kiedy używać |
 |---------|------|-----------------|--------------|
-| `make api` | Backend (produkcyjny, **bez** autoreload) | ~50 MB RAM, ~5% CPU | Praca nad frontendem lub gdy nie edytujesz kodu backendu |
-| `make api-dev` | Backend (developerski, **z** autoreload) | ~110 MB RAM, ~70% CPU (spike) | Aktywna praca nad kodem backendu |
+| `make api` | Backend (produkcyjny, **bez** automatycznego przeładowania) | ~50 MB RAM, ~5% CPU | Praca nad frontendem lub gdy nie edytujesz kodu backendu |
+| `make api-dev` | Backend (developerski, **z** automatycznym przeładowaniem) | ~110 MB RAM, ~70% CPU (skoki) | Aktywna praca nad kodem backendu |
 | `make api-stop` | Zatrzymaj tylko backend | - | Zwalnia port 8000 i pamięć backendu |
 | `make web` | Frontend (produkcyjny build + start) | ~500 MB RAM, ~3% CPU | Demo lub gdy nie edytujesz UI |
-| `make web-dev` | Frontend (dev server z hot reload) | ~1.3 GB RAM, ~7% CPU | Aktywna praca nad UI |
+| `make web-dev` | Frontend (dev server z automatycznym przeładowaniem) | ~1.3 GB RAM, ~7% CPU | Aktywna praca nad UI |
 | `make web-stop` | Zatrzymaj tylko frontend | - | Zwalnia port 3000 i pamięć frontend |
 | `make vllm-start` | Uruchom vLLM (lokalny model LLM) | ~1.4 GB RAM, 13% RAM | Tylko gdy pracujesz z lokalnymi modelami |
 | `make vllm-stop` | Zatrzymaj vLLM | - | Zwalnia ~1.4 GB RAM |
@@ -251,21 +257,21 @@ Venom oferuje elastyczne tryby uruchamiania komponentów osobno - idealnie dla �
 
 **Scenariusz 1: Praca tylko nad API (Light)**
 ```bash
-make api          # Backend bez autoreload (~50 MB)
+make api          # Backend bez automatycznego przeładowania (~50 MB)
 # Nie uruchamiaj web ani LLM - oszczędzasz ~2.7 GB RAM
 ```
 
 **Scenariusz 2: Praca nad frontendem**
 ```bash
 make api          # Backend w tle (stabilny, bez reload)
-make web-dev      # Frontend z hot reload do pracy nad UI
+make web-dev      # Frontend z automatycznym przeładowaniem do pracy nad UI
 # Nie uruchamiaj LLM jeśli nie jest potrzebny
 ```
 
 **Scenariusz 3: Pełny stack development**
 ```bash
-make api-dev      # Backend z autoreload
-make web-dev      # Frontend z hot reload
+make api-dev      # Backend z automatycznym przeładowaniem
+make web-dev      # Frontend z automatycznym przeładowaniem
 make vllm-start   # LLM tylko jeśli pracujesz z lokalnymi modelami
 ```
 
@@ -292,42 +298,42 @@ curl http://localhost:8000/health
 
 - **Autoreload**: `--reload` w uvicorn spawnuje dodatkowy proces watchera. Używaj `make api` zamiast `make api-dev` gdy nie edytujesz kodu backendu.
 
-- **Next.js dev**: `next dev` zużywa ~1.3 GB RAM przez hot reload. Używaj `make web` (produkcyjny) gdy tylko testujesz, nie edytujesz UI.
+- **Next.js dev**: `next dev` zużywa ~1.3 GB RAM przez automatyczne przeładowanie. Używaj `make web` (produkcyjny) gdy tylko testujesz, nie edytujesz UI.
 
-- **LLM runtime**: vLLM/Ollama zużywają 1-2 GB RAM. Uruchamiaj je **tylko** gdy pracujesz z lokalnymi modelami. W trybie `AI_MODE=CLOUD` nie są potrzebne.
+- **Środowisko LLM**: vLLM/Ollama zużywają 1-2 GB RAM. Uruchamiaj je **tylko** gdy pracujesz z lokalnymi modelami. W trybie `AI_MODE=CLOUD` nie są potrzebne.
 
-> Wszystkie dane i testy są traktowane jako lokalny eksperyment – Venom działa na prywatnej maszynie użytkownika i **nie szyfrujemy artefaktów**. Zamiast tego katalogi z wynikami (`**/test-results/`, `perf-artifacts/`, raporty Playwright/Locust) trafiają na listę `.gitignore`, aby uniknąć przypadkowego commitowania wrażliwych danych. Transparencja ma priorytet nad formalnym „shadow data”.
+> Wszystkie dane i testy są traktowane jako lokalny eksperyment – Venom działa na prywatnej maszynie użytkownika i **nie szyfrujemy artefaktów**. Zamiast tego katalogi z wynikami (`**/test-results/`, `perf-artifacts/`, raporty Playwright/Locust) trafiają na listę `.gitignore`, aby uniknąć przypadkowego commitowania wrażliwych danych. Transparencja ma priorytet nad formalnymi „danymi typu shadow”.
 
 #### Kluczowe zmienne środowiskowe:
 
-**AI Configuration (Hybrid Engine):**
+**Konfiguracja AI (silnik hybrydowy):**
 ```bash
 # Tryb AI: LOCAL (tylko lokalne), HYBRID (mix), CLOUD (głównie chmura)
 AI_MODE=LOCAL
 
-# Local LLM (Ollama/vLLM)
+# Lokalne LLM (Ollama/vLLM)
 LLM_SERVICE_TYPE=local
 LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
 LLM_MODEL_NAME=llama3
 
-# Cloud Providers (opcjonalne, wymagane dla HYBRID/CLOUD)
+# Dostawcy chmurowi (opcjonalne, wymagane dla HYBRID/CLOUD)
 GOOGLE_API_KEY=your_key_here
 OPENAI_API_KEY=your_key_here
 
-# Hybrid Settings
+# Ustawienia hybrydowe
 HYBRID_CLOUD_PROVIDER=google        # google lub openai
 HYBRID_LOCAL_MODEL=llama3
 HYBRID_CLOUD_MODEL=gemini-1.5-pro
-SENSITIVE_DATA_LOCAL_ONLY=true     # Wrażliwe dane ZAWSZE local
+SENSITIVE_DATA_LOCAL_ONLY=true     # Wrażliwe dane ZAWSZE lokalnie
 ```
 
-**Network & Discovery (Local First):**
+**Sieć i wykrywanie (lokalnie najpierw):**
 ```bash
 # mDNS (Zeroconf) dla lokalnej sieci - venom.local
-# UWAGA: Cloudflare został usunięty, używamy lokalnego discovery
+# UWAGA: Cloudflare został usunięty, używamy lokalnego wykrywania
 ```
 
-**The Hive (Distributed Processing):**
+**The Hive (przetwarzanie rozproszone):**
 ```bash
 ENABLE_HIVE=false
 HIVE_URL=https://hive.example.com:8080
@@ -335,57 +341,57 @@ HIVE_REGISTRATION_TOKEN=your_token
 REDIS_HOST=localhost
 ```
 
-**The Nexus (Distributed Mesh):**
+**The Nexus (siatka rozproszona):**
 ```bash
 ENABLE_NEXUS=false
 NEXUS_SHARED_TOKEN=your_secret_token
 NEXUS_PORT=8765
 ```
 
-**External Integrations:**
+**Integracje zewnętrzne:**
 ```bash
-GITHUB_TOKEN=ghp_your_token         # Personal Access Token
+GITHUB_TOKEN=ghp_your_token         # Token dostępu osobistego
 GITHUB_REPO_NAME=username/repo      # Nazwa repozytorium
 DISCORD_WEBHOOK_URL=https://...     # Opcjonalne
-ENABLE_ISSUE_POLLING=false          # Włącz auto-polling Issues
+ENABLE_ISSUE_POLLING=false          # Włącz automatyczne odpytywanie zgłoszeń Issue
 ```
 
 📖 **Pełna lista zmiennych:** [.env.example](.env.example)
 📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
-📖 **Dokumentacja Hybrid AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
+📖 **Dokumentacja silnika hybrydowego AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
 
-### Panel Konfiguracji (Configuration UI)
+### Panel konfiguracji (UI)
 
 Venom 2.0 wprowadza **graficzny panel konfiguracji** dostępny w interfejsie webowym pod adresem `http://localhost:3000/config`. Panel umożliwia:
 
-#### Zarządzanie Usługami
-- **Monitoring statusów** - Backend, UI, LLM (Ollama/vLLM), Hive, Nexus, Background Tasks
-- **Kontrola procesów** - Start/Stop/Restart z UI bez konieczności korzystania z terminala
-- **Metryki w czasie rzeczywistym** - PID, port, CPU%, RAM, uptime, ostatnie logi
+#### Zarządzanie usługami
+- **Monitorowanie statusów** - Backend, UI, LLM (Ollama/vLLM), Hive, Nexus, zadania w tle
+- **Kontrola procesów** - Uruchamianie/zatrzymywanie/restart z UI bez konieczności korzystania z terminala
+- **Metryki w czasie rzeczywistym** - PID, port, CPU%, RAM, czas działania, ostatnie logi
 - **Profile szybkie**:
   - `Full Stack` - Wszystkie usługi aktywne
   - `Light` - Tylko Backend i UI (oszczędność zasobów)
   - `LLM OFF` - Wszystko oprócz modeli językowych
 
-#### Edycja Parametrów
+#### Edycja parametrów
 Panel umożliwia edycję kluczowych parametrów runtime z poziomu UI, z automatyczną:
-- **Walidacją zakresów** - Porty (1-65535), progi pewności (0.0-1.0), wartości boolean
-- **Maskowaniem sekretów** - API keys, tokeny, hasła są domyślnie ukryte
-- **Backupem konfiguracji** - Automatyczny backup `.env` do `config/env-history/` przed każdą zmianą
+- **Walidacją zakresów** - Porty (1-65535), progi pewności (0.0-1.0), wartości logiczne
+- **Maskowaniem sekretów** - Klucze API, tokeny, hasła są domyślnie ukryte
+- **Kopią zapasową konfiguracji** - Automatyczny backup `.env` do `config/env-history/` przed każdą zmianą
 - **Informacją o restartach** - System wskazuje które usługi wymagają restartu po zmianie
 
 #### Dostępne sekcje parametrów:
-1. **AI Mode** - Tryb AI, endpoint LLM, klucze API, routing modeli
-2. **Commands** - Komendy start/stop dla Ollama i vLLM
+1. **Tryb AI** - Tryb AI, endpoint LLM, klucze API, routing modeli
+2. **Komendy** - Komendy start/stop dla Ollama i vLLM
 3. **Hive** - Konfiguracja Redis, kolejki, timeouty
-4. **Nexus** - Distributed mesh, port, tokeny, heartbeat
-5. **Tasks** - Zadania w tle (dokumentacja, gardening, memory consolidation)
-6. **Shadow** - Desktop awareness, progi pewności, privacy filter
-7. **Ghost** - Visual GUI automation, verification, safety delays
-8. **Avatar** - Audio interface, Whisper, TTS, VAD
+4. **Nexus** - siatka rozproszona, port, tokeny, heartbeat
+5. **Zadania** - Zadania w tle (dokumentacja, porządkowanie, konsolidacja pamięci)
+6. **Shadow** - świadomość pulpitu, progi pewności, filtr prywatności
+7. **Ghost** - automatyzacja GUI, weryfikacja, opóźnienia bezpieczeństwa
+8. **Avatar** - interfejs audio, Whisper, TTS, VAD
 
 #### Bezpieczeństwo
-- **Whitelist parametrów** - Tylko zdefiniowane parametry można edytować przez UI
+- **Biała lista parametrów** - Tylko zdefiniowane parametry można edytować przez UI
 - **Walidacja typów i zakresów** - Sprawdzanie poprawności wartości przed zapisem
 - **Sprawdzanie zależności** - System nie pozwoli uruchomić usługi bez spełnienia wymagań (np. Nexus wymaga działającego backendu)
 - **Historia zmian** - Każda modyfikacja `.env` jest zapisywana z timestampem (zachowywanych ostatnie 50 backupów)
@@ -397,13 +403,13 @@ Panel oferuje funkcję przywracania `.env` z wcześniejszych backupów:
 config/env-history/.env-YYYYMMDD-HHMMSS
 ```
 
-> 💡 **Tip**: Profile szybkie są idealne do przełączania między trybami pracy. Użyj `Light` podczas developmentu na laptopie, a `Full Stack` na stacji roboczej z GPU.
+> 💡 **Wskazówka**: Profile szybkie są idealne do przełączania między trybami pracy. Użyj `Light` podczas developmentu na laptopie, a `Full Stack` na stacji roboczej z GPU.
 
 ### 📊 Monitoring Zasobów
 
 Venom oferuje narzędzia do szybkiej diagnostyki zużycia zasobów systemowych.
 
-#### System Snapshot
+#### Zrzut systemu
 ```bash
 # Generuje raport diagnostyczny (procesy, pamięć, CPU, status usług)
 make monitor
@@ -517,7 +523,7 @@ processors=6
 swap=8GB
 ```
 
-**Workstation z 64 GB RAM (performance):**
+**Stacja robocza z 64 GB RAM (wydajność):**
 ```ini
 [wsl2]
 memory=32GB
@@ -555,12 +561,12 @@ make run
 - [Strojenie modelu LLM (Cockpit)](docs/_to_do/072_strojenie_modelu_llm_ui.md)
 - [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
 - [Panel konfiguracji](docs/CONFIG_PANEL.md)
-- [Contributing Guide](docs/CONTRIBUTING.md)
+- [Przewodnik współpracy](docs/CONTRIBUTING.md)
 
 ## 🧪 Testy
 
 ```bash
-cd /path/to/venom
+cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
 # Uruchom wszystkie testy
@@ -571,7 +577,7 @@ pytest
 Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md). Najważniejsze komendy:
 
 ### Backend (FastAPI / agenci)
-- `pytest -q` — smoke całego systemu.
+- `pytest -q` — szybki test całego systemu.
 - `pytest tests/test_researcher_agent.py` / `tests/test_architect_agent.py` — scenariusze agentów.
 - `pytest tests/perf/test_chat_pipeline.py -m performance` — pomiar SSE (task_update → task_finished) + batch równoległy.
 - `pytest --cov=venom_core --cov-report=html` — raport pokrycia.
@@ -592,7 +598,7 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/TESTING_CHAT_LATE
 
 ## 🛠️ Narzędzia deweloperskie
 
-### Pre-commit hooks
+### Hooki pre-commit
 
 ```bash
 # Instalacja
@@ -624,71 +630,71 @@ mypy venom_core
 
 - **Linie kodu:** 118,555 (linie niepuste; bez `docs/`, `node_modules/`, `logs/`, `data/`)
 - **Liczba agentów:** 33 (moduły `venom_core/agents/*`)
-- **Liczba skills:** 19 wykonawczych (`venom_core/execution/skills/*`) + 4 pomocnicze (Memory/Voice/Whisper/Core)
+- **Liczba umiejętności:** 19 wykonawczych (`venom_core/execution/skills/*`) + 4 pomocnicze (Memory/Voice/Whisper/Core)
 - **Liczba testów:** 518 (pytest `def test_`) + 18 (Playwright `test(`)
 - **Pokrycie testami:** 65%
 
-## 🎯 Roadmap
+## 🎯 Mapa drogowa
 
-### ✅ v1.0 (Current - Q4 2024)
+### ✅ v1.0 (obecnie - Q4 2024)
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem
 - [x] Pamięć długoterminowa
-- [x] Comprehensive testing
-- [x] **NEW: External Integrations (PlatformSkill)** 🤖
-  - [x] GitHub Integration (Issues, Pull Requests)
-  - [x] Discord/Slack Notifications
-  - [x] Issue-to-PR Workflow
+- [x] Kompleksowe testy
+- [x] **NOWE: Integracje zewnętrzne (PlatformSkill)** 🤖
+  - [x] Integracja GitHub (zgłoszenia Issue, pull requesty)
+  - [x] Powiadomienia Discord/Slack
+  - [x] Proces Issue → PR
 
-### 🚧 v1.1 (Planned)
-- [ ] Background polling dla GitHub Issues
-- [ ] Dashboard panel dla External Integrations
-- [ ] Recursive Summarization dla długich dokumentów
-- [ ] Cached Search Results
-- [ ] Plan Validation i Optimization
-- [ ] Better Error Recovery
+### 🚧 v1.1 (planowane)
+- [ ] Odpytywanie w tle dla zgłoszeń GitHub Issues
+- [ ] Panel dashboardu dla integracji zewnętrznych
+- [ ] Rekurencyjne streszczanie długich dokumentów
+- [ ] Cache wyników wyszukiwania
+- [ ] Walidacja i optymalizacja planu
+- [ ] Lepsze odzyskiwanie po błędach
 
-### 🔮 v1.2 (Future)
-- [ ] Webhook support dla GitHub
-- [ ] MS Teams Integration
-- [ ] Multi-Source Verification
-- [ ] Google Search API Integration
-- [ ] Parallel Execution kroków planu
-- [ ] Plan Caching dla podobnych zadań
-- [ ] GraphRAG Integration
+### 🔮 v1.2 (w przyszłości)
+- [ ] Obsługa webhooków dla GitHub
+- [ ] Integracja MS Teams
+- [ ] Weryfikacja wieloźródłowa
+- [ ] Integracja Google Search API
+- [ ] Równoległe wykonanie kroków planu
+- [ ] Cache planów dla podobnych zadań
+- [ ] Integracja GraphRAG
 
-## 🤝 Contributing
+## 🤝 Wkład w projekt
 
-Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md) aby dowiedzieć się jak zacząć.
+Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md), aby dowiedzieć się jak zacząć.
 
-### Proces
+### Proces współpracy
 
-1. Fork repozytorium
-2. Stwórz branch dla feature (`git checkout -b feature/amazing-feature`)
-3. Commit zmian (`git commit -m 'feat: add amazing feature'`)
-4. Push do brancha (`git push origin feature/amazing-feature`)
-5. Otwórz Pull Request
+1. Wykonaj fork repozytorium
+2. Stwórz gałąź dla funkcji (`git checkout -b feature/amazing-feature`)
+3. Zrób commit zmian (`git commit -m 'feat: dodaj nowa funkcje'`)
+4. Wypchnij gałąź (`git push origin feature/amazing-feature`)
+5. Otwórz PR
 
 ### Konwencje
 
 - **Kod i komentarze:** Polski
-- **Commit messages:** Conventional Commits (feat, fix, docs, test, refactor)
-- **Style:** Black + Ruff + isort (automatyczne przez pre-commit)
-- **Tests:** Wymagane dla nowych funkcjonalności
+- **Wiadomości commitów:** Conventional Commits (feat, fix, docs, test, refactor)
+- **Styl:** Black + Ruff + isort (automatyczne przez pre-commit)
+- **Testy:** Wymagane dla nowych funkcjonalności
 
 
-## 🌐 THE NEXUS: Architektura Rozproszona
+## 🌐 THE NEXUS: architektura rozproszona
 
 **NOWE w v1.1!** Venom może teraz działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores).
 
-### Cechy distributed mesh:
-- 🔗 **Master-Worker Architecture** - Nexus (mózg) + Spores (wykonawcy)
-- 📡 **WebSocket Communication** - Szybka, dwukierunkowa komunikacja
-- 🔍 **mDNS Service Discovery** - Automatyczne wykrywanie węzłów w sieci lokalnej (venom.local)
-- ⚖️ **Load Balancing** - Automatyczny wybór najmniej obciążonego węzła
-- 🔄 **Hot-Plug** - Dynamiczne dodawanie/usuwanie węzłów
-- 💓 **Healthcheck & Failover** - Automatyczne wykrywanie offline nodes
+### Cechy siatki rozproszonej:
+- 🔗 **Architektura master-worker** - Nexus (mózg) + Spores (wykonawcy)
+- 📡 **Komunikacja WebSocket** - szybka, dwukierunkowa
+- 🔍 **Wykrywanie usług mDNS** - automatyczne wykrywanie węzłów w sieci lokalnej (venom.local)
+- ⚖️ **Równoważenie obciążenia** - automatyczny wybór najmniej obciążonego węzła
+- 🔄 **Gorące podłączanie** - dynamiczne dodawanie/usuwanie węzłów
+- 💓 **Kontrola zdrowia i przełączenie awaryjne** - automatyczne wykrywanie offline
 
 ### Przykład użycia:
 
@@ -727,9 +733,9 @@ python examples/nexus_demo.py
 
 ## 👥 Zespół
 
-- **Lead Developer:** mpieniak01
-- **Architecture:** Venom Core Team
-- **Contributors:** [Lista kontrybutorów](https://github.com/mpieniak01/Venom/graphs/contributors)
+- **Lider rozwoju:** mpieniak01
+- **Architektura:** Venom Core Team
+- **Współautorzy:** [Lista kontrybutorów](https://github.com/mpieniak01/Venom/graphs/contributors)
 
 ## 🙏 Podziękowania
 
@@ -752,12 +758,12 @@ Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
 Na tym etapie nie jest udzielana żadna licencja.
 Wszelkie prawa są zastrzeżone przez autora do odwołania.
 
-## License
+## Licencja
 
-This project is currently in an early development phase.
-The repository is public for review and reference purposes only.
+Projekt znajduje się obecnie na wczesnym etapie rozwoju.
+Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
 
-No license is granted at this time.
-All rights are reserved by the author until further notice.
+Na tym etapie nie jest udzielana żadna licencja.
+Wszelkie prawa są zastrzeżone przez autora do odwołania.
 
 ---

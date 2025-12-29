@@ -425,6 +425,13 @@ export async function setActiveLlmServer(serverName: string) {
   });
 }
 
+export async function setActiveLlmRuntime(provider: "openai" | "google", model?: string) {
+  return apiFetch<ActiveLlmServerResponse>("/api/v1/system/llm-runtime/active", {
+    method: "POST",
+    body: JSON.stringify({ provider, model }),
+  });
+}
+
 export async function controlLlmServer(
   serverName: string,
   action: "start" | "stop" | "restart",
@@ -494,11 +501,26 @@ export function useLessonsStats(intervalMs = 30000) {
   );
 }
 
+export type TaskExtraContext = {
+  files?: string[];
+  links?: string[];
+  paths?: string[];
+  notes?: string[];
+};
+
+export type ForcedRoute = {
+  tool?: string;
+  provider?: string;
+};
+
 export async function sendTask(
   content: string,
   storeKnowledge = true,
   generationParams?: GenerationParams | null,
-  runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null
+  runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
+  extraContext?: TaskExtraContext | null,
+  forcedRoute?: ForcedRoute | null,
+  preferredLanguage?: "pl" | "en" | "de" | null,
 ) {
   const body: {
     content: string;
@@ -506,6 +528,10 @@ export async function sendTask(
     generation_params?: GenerationParams;
     expected_config_hash?: string;
     expected_runtime_id?: string;
+    extra_context?: TaskExtraContext;
+    forced_tool?: string;
+    forced_provider?: string;
+    preferred_language?: string;
   } = {
     content,
     store_knowledge: storeKnowledge,
@@ -519,6 +545,18 @@ export async function sendTask(
   }
   if (runtimeMeta?.runtimeId) {
     body.expected_runtime_id = runtimeMeta.runtimeId;
+  }
+  if (extraContext) {
+    body.extra_context = extraContext;
+  }
+  if (forcedRoute?.tool) {
+    body.forced_tool = forcedRoute.tool;
+  }
+  if (forcedRoute?.provider) {
+    body.forced_provider = forcedRoute.provider;
+  }
+  if (preferredLanguage) {
+    body.preferred_language = preferredLanguage;
   }
 
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {

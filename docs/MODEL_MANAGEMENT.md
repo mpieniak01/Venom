@@ -271,6 +271,31 @@ ostatni model per runtime. Aktualny stan pobierzesz z:
 GET /api/v1/system/llm-servers/active
 ```
 
+### Cloud runtime (OpenAI/Gemini)
+
+Alias z pełnym payloadem aktywnego runtime:
+
+```bash
+GET /api/v1/system/llm-runtime/active
+```
+
+Przełączenie runtime na provider cloud (wykorzystywane m.in. przez `/gpt` i `/gem`):
+
+```bash
+POST /api/v1/system/llm-runtime/active
+Content-Type: application/json
+
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini"
+}
+```
+
+Uwagi:
+- `provider`: `openai` lub `google` (aliasy: `gem`, `google-gemini`).
+- Endpoint aktualizuje `LLM_SERVICE_TYPE`, `LLM_MODEL_NAME`, `ACTIVE_LLM_SERVER`.
+- Wymaga aktywnego klucza API (`OPENAI_API_KEY` lub `GOOGLE_API_KEY`).
+
 ## Cache i tryb offline
 
 Backend cache’uje listy trendów i katalogi modeli na 30 minut. W przypadku braku

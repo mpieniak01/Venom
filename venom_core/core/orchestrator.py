@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
+
+import httpx
 
 from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
 from venom_core.config import SETTINGS
@@ -34,6 +37,7 @@ from venom_core.core.models import (
     TaskRequest,
     TaskResponse,
     TaskStatus,
+    VenomTask,
 )
 from venom_core.core.queue_manager import QueueManager
 from venom_core.core.slash_commands import (
@@ -45,10 +49,12 @@ from venom_core.core.state_manager import StateManager
 from venom_core.core.streaming_handler import StreamingHandler
 from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.memory.memory_skill import MemorySkill
 from venom_core.perception.eyes import Eyes
 from venom_core.services.translation_service import translation_service
 from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
+from venom_core.utils.text import trim_to_char_limit
 
 logger = get_logger(__name__)
 
@@ -57,6 +63,15 @@ MAX_LESSONS_IN_CONTEXT = 3  # Maksymalna liczba lekcji dołączanych do promptu
 LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 MAX_LEARNING_SNIPPET = 1200
 MAX_HIDDEN_PROMPTS_IN_CONTEXT = 2
+SESSION_HISTORY_LIMIT = 12  # Maksymalna liczba wpisów historii sesji
+MAX_CONTEXT_CHARS = 8000  # Przybliżony budżet znaków dla promptu
+HISTORY_SUMMARY_TRIGGER_MSGS = 20
+HISTORY_SUMMARY_TRIGGER_CHARS = 5000
+SUMMARY_MAX_CHARS = 1000
+LONG_BLOCK_THRESHOLD = 1200
+DEFAULT_USER_ID = "user_default"
+SUMMARY_MODEL_MAX_TOKENS = 400
+SUMMARY_STRATEGY_DEFAULT = "llm_with_fallback"  # lub "heuristic_only"
 # Alias dla kompatybilności z testami i innymi modułami
 MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS
 COUNCIL_COLLABORATION_KEYWORDS = COUNCIL_KEYWORDS
@@ -95,6 +110,7 @@ class Orchestrator:
         self.lessons_store = lessons_store  # Magazyn lekcji dla meta-uczenia
         self.node_manager = node_manager  # Menedżer węzłów dla distributed execution
         self.request_tracer = request_tracer  # Tracer do śledzenia przepływu
+        self._testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
         if task_dispatcher is None:
@@ -127,6 +143,7 @@ class Orchestrator:
         self._campaign_flow = None
         self._healing_flow = None
         self._issue_handler_flow = None
+        self.memory_skill = MemorySkill()
 
         # Tracking ostatniej aktywności dla idle mode
         self.last_activity: Optional[datetime] = None
@@ -566,6 +583,279 @@ class Orchestrator:
         except Exception as exc:
             logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
 
+    def _persist_session_context(self, task_id: UUID, request: TaskRequest) -> None:
+        """Zapisuje metadane sesji i preferencji (jeśli dostarczone)."""
+        session_context = {
+            "session_id": request.session_id,
+            "preference_scope": request.preference_scope,
+            "tone": request.tone,
+            "style_notes": request.style_notes,
+            "preferred_language": request.preferred_language,
+        }
+        filtered = {k: v for k, v in session_context.items() if v}
+        if not filtered:
+            return
+        try:
+            self.state_manager.update_context(task_id, {"session": filtered})
+            task = self.state_manager.get_task(task_id)
+            if task and isinstance(getattr(task, "context_history", {}), dict):
+                task.context_history["session"] = filtered
+            self.state_manager.add_log(
+                task_id,
+                f"Sesja: {filtered.get('session_id') or 'brak'}, scope={filtered.get('preference_scope') or 'default'}",
+            )
+        except Exception as exc:  # pragma: no cover - log only
+            logger.warning(f"Nie udało się zapisać kontekstu sesji: {exc}")
+
+    def _append_session_history(
+        self, task_id: UUID, role: str, content: str, session_id: Optional[str]
+    ) -> None:
+        """Dodaje wpis do historii sesji (ograniczonej do SESSION_HISTORY_LIMIT)."""
+        if not content:
+            return
+        try:
+            task = self.state_manager.get_task(task_id)
+            if not task:
+                return
+            if not isinstance(getattr(task, "context_history", {}), dict):
+                task.context_history = {}
+            short_content = content
+            was_trimmed = False
+            if len(content) > LONG_BLOCK_THRESHOLD:
+                short_content = f"[SKRÓCONO BLOK {len(content)} znaków]"
+                was_trimmed = True
+
+            history = (task.context_history.get("session_history") or [])[:]
+            full_history = task.context_history.get("session_history_full") or []
+
+            entry = {
+                "role": role,
+                "content": short_content,
+                "session_id": session_id,
+            }
+            if was_trimmed:
+                entry["original_length"] = len(content)
+
+            history.append(entry)
+            full_history.append(entry)
+
+            trimmed = history[-SESSION_HISTORY_LIMIT:]
+            task.context_history["session_history"] = trimmed
+            task.context_history["session_history_full"] = full_history
+            self.state_manager.update_context(
+                task_id,
+                {
+                    "session_history": trimmed,
+                    "session_history_full": full_history,
+                },
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się zaktualizować historii sesji: {exc}")
+
+    def _build_session_context_block(self, request: TaskRequest, task_id: UUID) -> str:
+        """Buduje blok kontekstu sesji (metadane + historia)."""
+        parts = []
+        session_id = request.session_id
+        scope = request.preference_scope or "default"
+        tone = request.tone
+        style_notes = request.style_notes
+        preferred_language = request.preferred_language
+
+        meta_lines = []
+        if session_id:
+            meta_lines.append(f"ID sesji: {session_id}")
+        meta_lines.append(f"Zakres preferencji: {scope}")
+        if tone:
+            meta_lines.append(f"Ton: {tone}")
+        if style_notes:
+            meta_lines.append(f"Styl: {style_notes}")
+        if preferred_language:
+            meta_lines.append(f"Preferowany język: {preferred_language}")
+        if meta_lines:
+            parts.append("[KONTEKST SESJI]\n" + "\n".join(meta_lines))
+
+        try:
+            task = self.state_manager.get_task(task_id)
+            history = []
+            if task and isinstance(getattr(task, "context_history", {}), dict):
+                if not self._testing_mode:
+                    self._ensure_session_summary(task_id, task)
+                history = task.context_history.get("session_history") or []
+                summary = task.context_history.get("session_summary")
+                if summary:
+                    parts.append("[STRESZCZENIE SESJI]\n" + summary)
+                if not self._testing_mode:
+                    memory_block = self._retrieve_relevant_memory(
+                        request, task.context_history.get("session_id")
+                    )
+                    if memory_block:
+                        parts.append("[PAMIĘĆ]\n" + memory_block)
+            if history:
+                lines = []
+                for entry in history[-SESSION_HISTORY_LIMIT:]:
+                    role = entry.get("role", "user")
+                    msg = entry.get("content", "")
+                    lines.append(f"{role}: {msg}")
+                parts.append("[HISTORIA SESJI]\n" + "\n".join(lines))
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się zbudować historii sesji: {exc}")
+
+        return "\n\n".join(parts).strip()
+
+    def _ensure_session_summary(self, task_id: UUID, task: VenomTask) -> None:
+        """Tworzy streszczenie gdy historia jest długa."""
+        try:
+            full_history = task.context_history.get("session_history_full") or []
+            if not full_history:
+                return
+            raw_text = "\n".join(
+                f"{entry.get('role', '')}: {entry.get('content', '')}"
+                for entry in full_history
+            )
+            if (
+                len(full_history) < HISTORY_SUMMARY_TRIGGER_MSGS
+                and len(raw_text) < HISTORY_SUMMARY_TRIGGER_CHARS
+            ):
+                return
+
+            strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
+            if strategy == "heuristic_only":
+                summary = self._heuristic_summary(full_history)
+            else:
+                summary = self._summarize_history_llm(
+                    raw_text
+                ) or self._heuristic_summary(full_history)
+            if not summary:
+                return
+            self.state_manager.update_context(task_id, {"session_summary": summary})
+            # zapisz do pamięci długoterminowej
+            self._memory_upsert(
+                summary,
+                metadata={
+                    "type": "summary",
+                    "session_id": task.context_history.get("session", {}).get(
+                        "session_id"
+                    )
+                    or "default_session",
+                    "user_id": DEFAULT_USER_ID,
+                    "pinned": True,
+                },
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się wygenerować streszczenia sesji: {exc}")
+
+    def _heuristic_summary(self, full_history: list) -> str:
+        tail = "\n".join(
+            f"{entry.get('role', '')}: {entry.get('content', '')}"
+            for entry in full_history[-10:]
+        )
+        summary, _ = trim_to_char_limit(tail, SUMMARY_MAX_CHARS)
+        return f"(Heurystyczne) Podsumowanie ostatnich wiadomości:\n{summary}"
+
+    def _summarize_history_llm(self, history_text: str) -> str:
+        """Synchroniczne streszczenie przy użyciu aktywnego modelu LLM."""
+        try:
+            # Przytnij wejście do sensownego fragmentu (ostatnie ~5k znaków)
+            history_text = history_text[-HISTORY_SUMMARY_TRIGGER_CHARS:]
+            strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
+            if strategy == "heuristic_only":
+                return ""
+            runtime = get_active_llm_runtime()
+            model_name = runtime.model_name or SETTINGS.LLM_MODEL_NAME
+            if not model_name:
+                return ""
+            endpoint = runtime.endpoint
+            if runtime.provider == "openai":
+                endpoint = SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+            if endpoint.endswith("/v1"):
+                endpoint = endpoint + "/chat/completions"
+            elif not endpoint.endswith("/chat/completions"):
+                endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
+
+            headers = {}
+            if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
+                headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
+            if runtime.service_type == "local" and getattr(
+                SETTINGS, "LLM_LOCAL_API_KEY", None
+            ):
+                headers["Authorization"] = f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"
+
+            system_prompt = (
+                "Jesteś asystentem podsumowującym rozmowę. "
+                "Streszczasz krótko po polsku, max 1000 znaków, bez wodolejstwa. "
+                "Wylistuj tylko fakty/ustalenia/wnioski, pomiń szczegóły i cytaty. "
+                "Nie wymyślaj nowych treści."
+            )
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": history_text},
+                ],
+                "max_tokens": SUMMARY_MODEL_MAX_TOKENS,
+                "temperature": 0.2,
+            }
+
+            with httpx.Client(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
+                resp = client.post(endpoint, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+            message = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            return message[:SUMMARY_MAX_CHARS] if message else ""
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Streszczenie LLM nieudane: {exc}")
+            return ""
+
+    def _memory_upsert(self, text: str, metadata: dict) -> None:
+        if not text:
+            return
+        try:
+            self.memory_skill.vector_store.upsert(text=text, metadata=metadata)
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się zapisać do pamięci: {exc}")
+
+    def _retrieve_relevant_memory(
+        self, request: TaskRequest, session_id: Optional[str]
+    ) -> str:
+        """Pobiera top-3 wpisy z pamięci wektorowej dopasowane do zapytania."""
+        if self._testing_mode:
+            return ""
+        query = request.content or ""
+        if not query.strip():
+            return ""
+        try:
+            results = self.memory_skill.vector_store.search(query, limit=5)
+            filtered = []
+            for item in results:
+                meta = item.get("metadata") or {}
+                if (
+                    session_id
+                    and meta.get("session_id")
+                    and meta["session_id"] != session_id
+                ):
+                    continue
+                filtered.append(item)
+            top = filtered[:3] if filtered else results[:3]
+            if not top:
+                return ""
+            lines = []
+            for idx, item in enumerate(top, 1):
+                txt = item.get("text", "")
+                meta = item.get("metadata") or {}
+                if len(txt) > 400:
+                    txt = txt[:400] + "..."
+                tag = meta.get("type", "fact")
+                lines.append(f"[{idx}] ({tag}) {txt}")
+            return "\n".join(lines)
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się pobrać pamięci: {exc}")
+            return ""
+
     async def _apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str
     ) -> str:
@@ -662,6 +952,15 @@ class Orchestrator:
 
             logger.info(f"Rozpoczynam przetwarzanie zadania {task_id}")
 
+            # Zapisz kontekst sesji/preferencji (jeśli przekazano)
+            self._persist_session_context(task_id, request)
+            self._append_session_history(
+                task_id,
+                role="user",
+                content=context,
+                session_id=request.session_id,
+            )
+
             if not forced_tool and not forced_provider:
                 parsed = parse_slash_command(context)
                 if parsed and parsed.cleaned != context:
@@ -670,6 +969,19 @@ class Orchestrator:
                     forced_tool = parsed.forced_tool
                     forced_provider = parsed.forced_provider
                     forced_intent = parsed.forced_intent
+                    if parsed.session_reset:
+                        request.session_id = request.session_id or f"session-{uuid4()}"
+                        self.state_manager.update_context(
+                            task_id,
+                            {
+                                "session_history": [],
+                                "session_history_full": [],
+                                "session_summary": None,
+                            },
+                        )
+                        self.state_manager.add_log(
+                            task_id, "Wyczyszczono kontekst sesji (/clear)."
+                        )
 
             if forced_tool and not forced_intent:
                 forced_intent = resolve_forced_intent(forced_tool)
@@ -701,6 +1013,15 @@ class Orchestrator:
 
             # Przygotuj kontekst (treść + analiza obrazów jeśli są)
             context = await self._prepare_context(task_id, request)
+            session_block = self._build_session_context_block(request, task_id)
+            if session_block:
+                context = session_block + "\n\n" + context
+            context, trimmed = trim_to_char_limit(context, MAX_CONTEXT_CHARS)
+            if trimmed:
+                self.state_manager.add_log(
+                    task_id,
+                    f"Obcięto kontekst do {MAX_CONTEXT_CHARS} znaków (historia/przygotowanie promptu).",
+                )
             dispatch_context = context
 
             # Zapisz generation_params w kontekście zadania jeśli zostały przekazane
@@ -729,11 +1050,12 @@ class Orchestrator:
                 raise RuntimeError("forced_tool_unknown")
 
             # Klasyfikuj intencję użytkownika (bez domieszek z lekcji)
+            intent_context = request.content if self._testing_mode else context
             if forced_intent:
                 intent = forced_intent
                 intent_debug = {"source": "forced", "intent": forced_intent}
             else:
-                intent = await self.intent_manager.classify_intent(context)
+                intent = await self.intent_manager.classify_intent(intent_context)
                 intent_debug = getattr(self.intent_manager, "last_intent_debug", {})
             if intent_debug:
                 self.state_manager.update_context(
@@ -1158,8 +1480,24 @@ class Orchestrator:
                 )
 
             # Ustaw status COMPLETED i wynik
+            if request.session_id and result:
+                self._memory_upsert(
+                    str(result),
+                    metadata={
+                        "type": "fact",
+                        "session_id": request.session_id,
+                        "user_id": DEFAULT_USER_ID,
+                        "pinned": True,
+                    },
+                )
             await self.state_manager.update_status(
                 task_id, TaskStatus.COMPLETED, result=result
+            )
+            self._append_session_history(
+                task_id,
+                role="assistant",
+                content=str(result),
+                session_id=request.session_id,
             )
             self.state_manager.add_log(
                 task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"

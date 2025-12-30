@@ -3,13 +3,14 @@ export type SlashCommand = {
   command: string;
   label: string;
   detail: string;
-  type: "provider" | "tool";
+  type: "provider" | "tool" | "action";
   value: string;
 };
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { id: "gem", command: "/gem", label: "Gemini", detail: "LLM API (Google)", type: "provider", value: "gem" },
   { id: "gpt", command: "/gpt", label: "GPT", detail: "LLM API (OpenAI)", type: "provider", value: "gpt" },
+  { id: "clear", command: "/clear", label: "Nowa sesja", detail: "Wyczyść kontekst czatu", type: "action", value: "clear" },
   { id: "assistant", command: "/assistant", label: "Assistant", detail: "Operacje asystenta", type: "tool", value: "assistant" },
   { id: "browser", command: "/browser", label: "Browser", detail: "Akcje w przegladarce", type: "tool", value: "browser" },
   { id: "chrono", command: "/chrono", label: "Chrono", detail: "Czas i daty", type: "tool", value: "chrono" },
@@ -37,6 +38,7 @@ export type ParsedSlashCommand = {
   cleaned: string;
   forcedTool?: string;
   forcedProvider?: string;
+  sessionReset?: boolean;
 };
 
 export function parseSlashCommand(input: string): ParsedSlashCommand {
@@ -52,11 +54,15 @@ export function parseSlashCommand(input: string): ParsedSlashCommand {
   if (!command) {
     return { cleaned: input };
   }
-  return {
+  const base = {
     cleaned: rest,
     forcedTool: command.type === "tool" ? command.value : undefined,
     forcedProvider: command.type === "provider" ? command.value : undefined,
   };
+  if (command.type === "action" && command.value === "clear") {
+    return { ...base, sessionReset: true };
+  }
+  return base;
 }
 
 export function filterSlashSuggestions(input: string, limit = 3): SlashCommand[] {

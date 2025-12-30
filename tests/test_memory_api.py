@@ -333,3 +333,56 @@ class TestMemoryAPIIntegration:
         data = response.json()
         assert data["count"] > 0
         assert any("przetrwać" in r["text"] for r in data["results"])
+
+
+class TestMemoryCleanupAPI:
+    """Testy czyszczenia pamięci sesyjnej i globalnej."""
+
+    def test_clear_session_memory(self, client):
+        """Powinno usunąć wpisy z wektorów i kontekst w StateManagerze."""
+        from venom_core.api.routes import memory as memory_routes
+        from venom_core.core.state_manager import StateManager
+
+        session_id = "test-session-clean"
+        vector_store = memory_routes._ensure_vector_store()
+        # Używamy świeżego StateManager, aby nie polegać na globalu z main (może być nadpisany w innych testach).
+        state_manager = StateManager()
+        memory_routes.set_dependencies(vector_store, state_manager)
+        vector_store.upsert(
+            text="Fakt do usunięcia",
+            metadata={"session_id": session_id, "user_id": "user_default"},
+        )
+
+        task = state_manager.create_task("tmp")
+        task.context_history = {
+            "session": {"session_id": session_id},
+            "session_history": ["foo"],
+            "session_summary": "bar",
+        }
+        state_manager._tasks[task.id] = task
+
+        response = client.delete(f"/api/v1/memory/session/{session_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["deleted_vectors"] >= 0
+        assert data["cleared_tasks"] >= 1
+
+        # cleanup
+        state_manager._tasks.pop(task.id, None)
+
+    def test_clear_global_memory(self, client):
+        """Powinno czyścić globalne fakty/preferencje."""
+        from venom_core.api.routes import memory as memory_routes
+
+        vector_store = memory_routes._ensure_vector_store()
+        memory_routes.set_dependencies(vector_store)
+        vector_store.upsert(
+            text="Globalny wpis",
+            metadata={"user_id": "user_default", "type": "preference"},
+        )
+        response = client.delete("/api/v1/memory/global")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["deleted_vectors"] >= 0

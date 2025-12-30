@@ -217,6 +217,8 @@ async def get_all_services():
         raise HTTPException(status_code=503, detail="ServiceMonitor nie jest dostępny")
 
     try:
+        # Odśwież statusy przed zwróceniem – inaczej pozostają w stanie "unknown".
+        await _service_monitor.check_health()
         services = _service_monitor.get_all_services()
 
         services_data = [

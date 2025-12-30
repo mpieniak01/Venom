@@ -160,50 +160,46 @@ async def list_model_news(
 
         translation_error = None
         if target_lang != "en" and items:
-            try:
-                translated_items = []
-                for item in items:
-                    title = item.get("title")
-                    summary = item.get("summary")
-                    if title:
-                        try:
-                            translated_title = await asyncio.wait_for(
-                                _get_translation_service().translate_text(
-                                    title,
-                                    target_lang=target_lang,
-                                    source_lang="en",
-                                    allow_fallback=True,
-                                ),
-                                timeout=SETTINGS.TRANSLATION_TIMEOUT_NEWS,
-                            )
-                        except asyncio.TimeoutError:
-                            translated_title = title
-                    else:
-                        translated_title = title
+            translator = _get_translation_service()
+            if translator is None:
+                translation_error = "translator_unavailable"
+            else:
+                try:
+                    timeout_per_call = max(SETTINGS.TRANSLATION_TIMEOUT_NEWS, 0.5)
 
-                    if summary:
+                    async def translate_field(text: str) -> str:
+                        if not text:
+                            return text
                         try:
-                            translated_summary = await asyncio.wait_for(
-                                _get_translation_service().translate_text(
-                                    summary,
+                            return await asyncio.wait_for(
+                                translator.translate_text(
+                                    text,
                                     target_lang=target_lang,
                                     source_lang="en",
                                     allow_fallback=True,
                                 ),
-                                timeout=SETTINGS.TRANSLATION_TIMEOUT_PAPERS,
+                                timeout=timeout_per_call,
                             )
-                        except asyncio.TimeoutError:
-                            translated_summary = summary
-                    else:
-                        translated_summary = summary
-                    translated_item = dict(item)
-                    translated_item["title"] = translated_title
-                    translated_item["summary"] = translated_summary
-                    translated_items.append(translated_item)
-                items = translated_items
-            except Exception as exc:
-                translation_error = str(exc)
-                logger.warning(f"Nie udało się przetłumaczyć newsów: {exc}")
+                        except Exception:
+                            return text
+
+                    async def translate_item(item: dict) -> dict:
+                        title = item.get("title") or ""
+                        summary = item.get("summary") or ""
+                        translated_title, translated_summary = await asyncio.gather(
+                            translate_field(title), translate_field(summary)
+                        )
+                        translated_item = dict(item)
+                        translated_item["title"] = translated_title
+                        translated_item["summary"] = translated_summary
+                        return translated_item
+
+                    items = await asyncio.gather(
+                        *(translate_item(item) for item in items)
+                    )
+                except Exception as exc:
+                    translation_error = str(exc)
+                    logger.warning(f"Nie udało się przetłumaczyć newsów: {exc}")
 
         base_error = result.get("error")
         if translation_error:

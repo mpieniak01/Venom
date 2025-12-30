@@ -1,5 +1,5 @@
 # 082: Wizualizacja pamięci (LessonsStore + MemorySkill/VectorStore) w /brain
-Status: w trakcie (backend + UI warstwa pamięci w /brain; dodane filtry/pin/usuń; do dopięcia: testy/e2e)
+Status: zakończone (backend+UI + testy API; e2e opcjonalne)
 
 ## Cel
 Graficznie przedstawić dane z LanceDB (lekcje + fakty/streszczenia/preferencje) na stronie `http://localhost:3000/brain`, aby łatwiej zarządzać pamięcią wektorową.
@@ -36,10 +36,18 @@ Graficznie przedstawić dane z LanceDB (lekcje + fakty/streszczenia/preferencje)
 - Frontend: /brain ma toggle „Warstwa pamięci (LanceDB)”, merge grafów (knowledge + memory), kolory dla memory/session/user/lesson, licznik węzłów pamięci, obsługa błędów/ładowania; filtry session_id/only pinned + odświeżanie; akcje kontekstowe pin/odepnij i usuń wpis.
 - Wydajność: domyślnie nie dołączamy lekcji do grafu pamięci (checkbox „Dołącz lekcje” do włączenia); limit 200 wpisów LanceDB; filtrowanie w UI nie wywołuje ponownego layoutu (batch hide/show).
 - UX aktualne: warstwa pamięci jest domyślnie włączona i pokazuje węzły/edge LanceDB (bez nakładania demo grafu); dolny panel sterujący zawija się w dwie linie (tagi + filtry), statystyki węzłów/krawędzi biorą dane z aktualnie renderowanego grafu.
+- Zakładki: dodany przełącznik „Repo / Knowledge” vs „Pamięć / Lessons” z badge źródła; dane pobierane w interwałach tylko dla aktywnej zakładki (polling 0, gdy nieaktywna).
+- Legendy/UX: dodana lekka legenda kolorów (repo vs pamięć vs zaznaczenie), licznik renderowanych węzłów/krawędzi względem dostępnych; krawędzie domyślnie bez etykiet (toggle informuje o potencjalnym spowolnieniu).
+- Testy: dodano test API /api/v1/memory/graph (filtry session_id + pinned oraz włączenie lekcji przez include_lessons).
+- UX warstwa pamięci: potwierdzenie usunięcia wpisu + toasty dla pin/odepnij i usuwania.
+- Backend: `/api/v1/knowledge/graph` przyjmuje limit węzłów (domyślnie 500); UI wysyła limit w hooku `useKnowledgeGraph`, żeby zmniejszyć payload przy dużych grafach.
+- Konfiguracja: limity grafów (knowledge/memory) sparametryzowane w .env (`NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT`, `NEXT_PUBLIC_MEMORY_GRAPH_LIMIT`), wykorzystywane w hookach i SSR.
+- Fallback: `/api/v1/memory/graph` w razie braku VectorStore zwraca pusty graf (`status: unavailable`) zamiast 500, żeby UI nie wybuchało.
+- Konfiguracja backendu: nowe zmienne limitów dodane do `Settings` (pydantic), by uniknąć błędu walidacji przy odczycie `.env`.
 
-## Do zrobienia
-- Testy: smoke build /brain, e2e jeśli dostępne; obserwacja layoutu przy dużej liczbie węzłów (po włączeniu lekcji).
-- UX: legenda dla typów węzłów pamięci, potwierdzenia usunięcia, komunikaty toast dla pin/usuń.
+## Status testów
+- API: `/api/v1/memory/graph` (filtry/pinned/include_lessons) i `/api/v1/knowledge/graph` (limit + mock fallback) pokryte unitami.
+- Frontend: lint/build przechodzi; e2e/smoke dla /brain opcjonalne (do uruchomienia, gdy środowisko będzie dostępne).
 
 ## Ustalenia dalej (warstwy)
 - Zostajemy przy dwóch odrębnych warstwach: Knowledge (repo) i Memory (LanceDB/Lessons). Aktualnie brak korelacji między warstwami; chcemy je prezentować osobno.

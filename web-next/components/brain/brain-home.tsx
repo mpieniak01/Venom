@@ -35,6 +35,8 @@ import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-ana
 import { BrainMetricCard } from "@/components/brain/metric-card";
 import { GraphFilterButtons, GraphFilterType } from "@/components/brain/graph-filters";
 import { deleteMemoryEntry, pinMemoryEntry } from "@/hooks/use-api";
+import { useToast } from "@/components/ui/toast";
+import { KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
 
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
@@ -42,37 +44,67 @@ import { GraphActionButtons } from "@/components/brain/graph-actions";
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
   const summary = liveSummary ?? initialData.summary ?? null;
+  const initialKnowledge = initialData.knowledgeGraph;
+  const [activeTab, setActiveTab] = useState<"repo" | "memory">(
+    initialKnowledge?.elements?.nodes?.length ? "repo" : "memory",
+  );
   const {
     data: liveGraph,
     loading: liveGraphLoading,
     error: graphError,
     refresh: refreshGraph,
-  } = useKnowledgeGraph();
+  } = useKnowledgeGraph(KNOWLEDGE_GRAPH_LIMIT, activeTab === "repo" ? 20000 : 0);
   const [showMemoryLayer, setShowMemoryLayer] = useState(true);
   const [showEdgeLabels, setShowEdgeLabels] = useState(false);
   const [includeLessons, setIncludeLessons] = useState(false);
   const [memorySessionFilter, setMemorySessionFilter] = useState<string>("");
   const [memoryOnlyPinned, setMemoryOnlyPinned] = useState(false);
+  const memoryLimit = MEMORY_GRAPH_LIMIT;
   const memoryGraphPoll = useMemoryGraph(
-    100,
+    memoryLimit,
     memorySessionFilter || undefined,
     memoryOnlyPinned,
     includeLessons,
-    showMemoryLayer ? 20000 : 0,
+    activeTab === "memory" && showMemoryLayer ? 20000 : 0,
   );
   const memoryGraphLoading = memoryGraphPoll.loading;
   const memoryGraphError = memoryGraphPoll.error;
-  const graph = liveGraph ?? initialData.knowledgeGraph ?? null;
+  const graph = liveGraph ?? initialKnowledge ?? null;
   const memoryGraph = showMemoryLayer ? memoryGraphPoll.data : null;
+  const layoutName = activeTab === "repo" ? "cose" : "concentric";
   const mergedGraph = useMemo(() => {
-    if (showMemoryLayer && memoryGraph?.elements) {
+    if (activeTab === "memory" && showMemoryLayer && memoryGraph?.elements) {
       return memoryGraph;
     }
-    if (graph) return graph;
+    if (activeTab === "repo" && graph?.elements) {
+      return graph;
+    }
     return null;
-  }, [graph, memoryGraph, showMemoryLayer]);
-  const graphLoading = liveGraphLoading && !graph;
-  const memoryLoading = showMemoryLayer && memoryGraphLoading && !memoryGraph;
+  }, [activeTab, graph, memoryGraph, showMemoryLayer]);
+  const preparedElements = useMemo(() => {
+    if (!mergedGraph?.elements) return null;
+    const nodes = (mergedGraph.elements.nodes || []).map(
+      (node: { data: Record<string, unknown> }) => {
+        const data = { ...(node.data || {}) };
+        const label = typeof data.label === "string" ? data.label : "";
+        data.label_short = label.length > 40 ? `${label.slice(0, 40)}…` : label;
+        return { ...node, data };
+      },
+    );
+    const edges = (mergedGraph.elements.edges || []).map(
+      (edge: { data: Record<string, unknown> }) => {
+        const data = { ...(edge.data || {}) };
+        const label = typeof data.label === "string" ? data.label : "";
+        data.label_short = label.length > 30 ? `${label.slice(0, 30)}…` : label;
+        return { ...edge, data };
+      },
+    );
+    return { nodes, edges };
+  }, [mergedGraph]);
+  const graphLoading =
+    (activeTab === "repo" && liveGraphLoading && !graph) ||
+    (activeTab === "memory" && memoryGraphLoading && !memoryGraph);
+  const memoryLoading = activeTab === "memory" && showMemoryLayer && memoryGraphLoading && !memoryGraph;
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
   const lessons = liveLessons ?? initialData.lessons ?? null;
   const { data: liveLessonsStats } = useLessonsStats();
@@ -91,6 +123,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const [relations, setRelations] = useState<RelationEntry[]>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [memoryActionPending, setMemoryActionPending] = useState<string | null>(null);
+  const { pushToast } = useToast();
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const recentOperations = useMemo(() => {
@@ -113,14 +146,22 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const legacySummary = summary as { last_updated?: string } | undefined;
   const summaryNodes =
     mergedGraph?.elements?.nodes?.length ??
-    summaryStats?.nodes ??
-    summary?.nodes ??
+    (activeTab === "repo" ? summaryStats?.nodes ?? summary?.nodes : memoryGraph?.stats?.nodes) ??
     "—";
   const summaryEdges =
     mergedGraph?.elements?.edges?.length ??
-    summaryStats?.edges ??
-    summary?.edges ??
+    (activeTab === "repo" ? summaryStats?.edges ?? summary?.edges : memoryGraph?.stats?.edges) ??
     "—";
+  const renderedNodes = mergedGraph?.elements?.nodes?.length ?? 0;
+  const renderedEdges = mergedGraph?.elements?.edges?.length ?? 0;
+  const sourceTotalNodes =
+    activeTab === "repo"
+      ? (summaryStats?.nodes ?? summary?.nodes ?? renderedNodes)
+      : memoryGraph?.stats?.nodes ?? renderedNodes;
+  const sourceTotalEdges =
+    activeTab === "repo"
+      ? (summaryStats?.edges ?? summary?.edges ?? renderedEdges)
+      : memoryGraph?.stats?.edges ?? renderedEdges;
   const summaryUpdated =
     summary?.lastUpdated || legacySummaryStats?.last_updated || legacySummary?.last_updated;
   const lessonsTotal = lessonsStats?.stats?.total_lessons ?? lessons?.lessons?.length ?? 0;
@@ -194,7 +235,12 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     if (tagName) {
       cy.nodes().forEach((node) => {
         const props = node.data("properties") || {};
-        const tags = (props.tags || []) as string[];
+        const meta = (node.data("meta") || {}) as Record<string, unknown>;
+        const tagField = meta.tags || props.tags || [];
+        const tags =
+          typeof tagField === "string"
+            ? tagField.split(",").map((t) => t.trim()).filter(Boolean)
+            : (tagField as string[]);
         if (tags.includes(tagName)) {
           node.style("border-width", 4).style("border-color", "#f59e0b");
         }
@@ -240,8 +286,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     try {
       setMemoryActionPending(entryId);
       await pinMemoryEntry(entryId, pinned);
+      pushToast(pinned ? "Przypięto wpis pamięci." : "Odepnieto wpis pamięci.", "success");
       memoryGraphPoll.refresh();
     } catch (err) {
+      pushToast("Nie udało się zmienić stanu pinned.", "error");
       console.error("Nie udało się zmienić stanu pinned:", err);
     } finally {
       setMemoryActionPending(null);
@@ -249,12 +297,16 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   };
 
   const handleDeleteMemory = async (entryId: string) => {
+    const confirmed = window.confirm("Czy na pewno usunąć ten wpis pamięci?");
+    if (!confirmed) return;
     try {
       setMemoryActionPending(entryId);
       await deleteMemoryEntry(entryId);
       clearSelection();
       memoryGraphPoll.refresh();
+      pushToast("Usunięto wpis pamięci.", "success");
     } catch (err) {
+      pushToast("Nie udało się usunąć wpisu pamięci.", "error");
       console.error("Nie udało się usunąć wpisu pamięci:", err);
     } finally {
       setMemoryActionPending(null);
@@ -317,12 +369,12 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     let cyInstance: cytoscapeType.Core | null = null;
     const mount = async () => {
       if (!cyRef.current || !mergedGraph?.elements) return;
-      const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
-      const elements = mergedGraph.elements as unknown as cytoscapeType.ElementsDefinition;
-      const styles = [
-        {
-          selector: "node",
-          style: {
+          const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
+          const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
+          const styles = [
+            {
+              selector: "node",
+              style: {
             "background-color": (ele: cytoscapeType.NodeSingular) =>
               ele.data("type") === "agent"
                 ? "#22c55e"
@@ -335,11 +387,11 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       : ele.data("type") === "lesson"
                         ? "#a855f7"
                   : "#6366f1",
-            label: "data(label)",
+            label: "data(label_short)",
             color: "#e5e7eb",
-            "font-size": 11,
+            "font-size": 10,
             "text-wrap": "wrap",
-            "text-max-width": 120,
+            "text-max-width": 100,
             "border-width": 1,
             "border-color": "#1f2937",
           },
@@ -375,19 +427,20 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             "target-arrow-color": "#475569",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            label: showEdgeLabels ? "data(label)" : "",
+            label: showEdgeLabels ? "data(label_short)" : "",
             "font-size": 9,
             color: "#94a3b8",
             "text-background-opacity": 0.4,
             "text-background-color": "#0f172a",
             "text-background-padding": 2,
+            "text-overflow": "ellipsis",
           },
         },
       ] as unknown as cytoscapeType.StylesheetJson;
       cyInstance = cytoscape({
         container: cyRef.current,
         elements,
-        layout: { name: "concentric", padding: 30, animate: false },
+        layout: { name: layoutName, padding: 30, animate: false },
         style: styles,
       });
       cyInstance.on("tap", "node", (evt: cytoscapeType.EventObject) => {
@@ -425,7 +478,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         cyInstance.destroy();
       }
     };
-  }, [mergedGraph, clearSelection, focusNodeWithNeighbors, showEdgeLabels]);
+  }, [mergedGraph, clearSelection, focusNodeWithNeighbors, showEdgeLabels, layoutName, preparedElements]);
 
   useEffect(() => {
     if (mergedGraph) {
@@ -441,17 +494,40 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         description="Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji."
         as="h1"
         size="lg"
-        rightSlot={
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-wrap gap-2">
-              <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
-              <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
-              <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
-            </div>
-            <Brain className="page-heading-icon" />
-          </div>
-        }
+        rightSlot={<Brain className="page-heading-icon" />}
       />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-full border border-white/10 bg-black/40 p-1 text-xs text-white">
+          <Button
+            size="xs"
+            variant={activeTab === "memory" ? "secondary" : "ghost"}
+            className="px-3"
+            onClick={() => setActiveTab("memory")}
+          >
+            Pamięć / Lessons
+          </Button>
+          <Button
+            size="xs"
+            variant={activeTab === "repo" ? "secondary" : "ghost"}
+            className="px-3"
+            onClick={() => setActiveTab("repo")}
+          >
+            Repo / Knowledge
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
+        <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+        <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
+        <Badge tone="neutral">Źródło: {activeTab === "repo" ? "Knowledge" : "Pamięć"}</Badge>
+        {activeTab === "memory" ? <Badge tone="neutral">Limit: {memoryLimit}</Badge> : null}
+        <Badge tone="neutral">
+          Render: {renderedNodes}/{sourceTotalNodes} • {renderedEdges}/{sourceTotalEdges}
+        </Badge>
+      </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         {brainMetrics.map((metric) => (
@@ -500,7 +576,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           </div>
         )}
         <div className="pointer-events-auto absolute left-6 top-6">
-          <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
+          {activeTab === "repo" ? (
+            <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
+          ) : null}
         </div>
         <div className="pointer-events-auto absolute right-6 top-6">
           <GraphActionButtons
@@ -510,82 +588,129 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             scanMessage={scanMessage}
           />
         </div>
-        <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
-            {lessonTags.slice(0, 6).map((tag) => (
-              <Button
-                key={tag.name}
-                variant="ghost"
-                size="xs"
-                className={`rounded-full border px-3 py-1 ${
-                  highlightTag === tag.name
-                    ? "border-amber-400/50 bg-amber-500/20"
-                    : "border-white/10 bg-white/5 text-zinc-200"
-                }`}
-                onClick={() => handleTagToggle(tag.name)}
-              >
-                #{tag.name}
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showMemoryLayer}
-                onChange={(e) => setShowMemoryLayer(e.target.checked)}
-              />
-              <span>Warstwa pamięci (LanceDB)</span>
-            </label>
-            {memoryGraph?.stats?.nodes ? (
-              <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
-            ) : null}
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={memoryOnlyPinned}
-                onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
-              />
-              <span>Tylko pinned</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={includeLessons}
-                onChange={(e) => setIncludeLessons(e.target.checked)}
-              />
-              <span>Dołącz lekcje</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showEdgeLabels}
-                onChange={(e) => setShowEdgeLabels(e.target.checked)}
-              />
-              <span>Etykiety krawędzi</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span>Session</span>
-              <input
-                type="text"
-                value={memorySessionFilter}
-                onChange={(e) => setMemorySessionFilter(e.target.value)}
-                placeholder="session-id"
-                className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
-              />
+        {activeTab === "memory" ? (
+          <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2">
+              {lessonTags.slice(0, 6).map((tag) => (
+                <Button
+                  key={tag.name}
+                  variant="ghost"
+                  size="xs"
+                  className={`rounded-full border px-3 py-1 ${
+                    highlightTag === tag.name
+                      ? "border-amber-400/50 bg-amber-500/20"
+                      : "border-white/10 bg-white/5 text-zinc-200"
+                  }`}
+                  onClick={() => handleTagToggle(tag.name)}
+                >
+                  #{tag.name}
+                </Button>
+              ))}
             </div>
-            <Button
-              size="xs"
-              variant="outline"
-              className="border-white/20 text-white"
-              onClick={() => {
-                memoryGraphPoll.refresh();
-              }}
-            >
-              Odśwież pamięć
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showMemoryLayer}
+                  onChange={(e) => setShowMemoryLayer(e.target.checked)}
+                />
+                <span>Warstwa pamięci (LanceDB)</span>
+              </label>
+              {memoryGraph?.stats?.nodes ? (
+                <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
+              ) : null}
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={memoryOnlyPinned}
+                  onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
+                />
+                <span>Tylko pinned</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeLessons}
+                  onChange={(e) => setIncludeLessons(e.target.checked)}
+                />
+                <span>Dołącz lekcje</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showEdgeLabels}
+                  onChange={(e) => setShowEdgeLabels(e.target.checked)}
+                />
+                <span>Etykiety krawędzi</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span>Session</span>
+                <input
+                  type="text"
+                  value={memorySessionFilter}
+                  onChange={(e) => setMemorySessionFilter(e.target.value)}
+                  placeholder="session-id"
+                  className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+                />
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                className="border-white/20 text-white"
+                onClick={() => {
+                  memoryGraphPoll.refresh();
+                }}
+              >
+                Odśwież pamięć
+              </Button>
+            </div>
           </div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-xs text-white">
+        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+          <span className="text-zinc-400">Legenda:</span>
+          {activeTab === "repo" ? (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-indigo-400" />
+                file / function
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                memory / fact
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-sky-400" />
+                session
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                user
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                lesson
+              </span>
+            </>
+          )}
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
+            zaznaczony / sąsiedzi
+          </span>
         </div>
+        {activeTab === "memory" ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+            <span className="text-zinc-400">Etykiety krawędzi:</span>
+            <span className="text-zinc-200">
+              {showEdgeLabels ? "włączone (może spowolnić)" : "domyślnie ukryte"}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

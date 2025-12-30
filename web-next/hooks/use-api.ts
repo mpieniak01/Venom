@@ -38,6 +38,9 @@ import {
   ActiveLlmServerResponse,
 } from "@/lib/types";
 
+export const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
+export const MEMORY_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_MEMORY_GRAPH_LIMIT ?? "100");
+
 type PollingState<T> = {
   data: T | null;
   loading: boolean;
@@ -465,10 +468,10 @@ export function useAutonomyLevel(intervalMs = 15000) {
   );
 }
 
-export function useKnowledgeGraph(intervalMs = 20000) {
+export function useKnowledgeGraph(limit = KNOWLEDGE_GRAPH_LIMIT, intervalMs = 20000) {
   return usePolling<KnowledgeGraph>(
-    "knowledge-graph",
-    () => apiFetch("/api/v1/knowledge/graph"),
+    `knowledge-graph-${limit}`,
+    () => apiFetch(`/api/v1/knowledge/graph?limit=${limit}`),
     intervalMs,
   );
 }
@@ -502,7 +505,7 @@ export function useLessonsStats(intervalMs = 30000) {
 }
 
 export function useMemoryGraph(
-  limit = 200,
+  limit = MEMORY_GRAPH_LIMIT,
   sessionId?: string,
   onlyPinned = false,
   includeLessons = false,

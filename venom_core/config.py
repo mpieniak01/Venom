@@ -385,5 +385,9 @@ class Settings(BaseSettings):
     # Endpoint dla API systemowego (ServiceMonitor)
     SYSTEM_SERVICES_ENDPOINT: str = "http://localhost:8000/api/v1/system/services"
 
+    # ===== BRAIN / GRAPH LIMITS (UI) =====
+    NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT: int = 500
+    NEXT_PUBLIC_MEMORY_GRAPH_LIMIT: int = 100
+
 
 SETTINGS = Settings()

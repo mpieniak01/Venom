@@ -234,7 +234,16 @@ async def memory_graph(
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
     """
-    vector_store = _ensure_vector_store()
+    try:
+        vector_store = _ensure_vector_store()
+    except HTTPException as exc:  # pragma: no cover
+        logger.warning(f"Memory graph unavailable: {exc.detail}")
+        return {
+            "status": "unavailable",
+            "reason": exc.detail,
+            "elements": {"nodes": [], "edges": []},
+            "stats": {"nodes": 0, "edges": 0},
+        }
     filters = {}
     if session_id:
         filters["session_id"] = session_id

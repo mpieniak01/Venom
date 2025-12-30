@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from venom_core.perception.watcher import FileWatcher
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+TESTING_MODE = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
 # Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
@@ -228,16 +230,21 @@ async def lifespan(app: FastAPI):
             node_manager = None
 
     # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
-    orchestrator = Orchestrator(
-        state_manager,
-        event_broadcaster=event_broadcaster,
-        node_manager=node_manager,
-        request_tracer=request_tracer,
-    )
-    logger.info(
-        "Orchestrator zainicjalizowany"
-        + (" z obsługą węzłów rozproszonych" if node_manager else "")
-    )
+    if orchestrator is None:
+        orchestrator = Orchestrator(
+            state_manager,
+            event_broadcaster=event_broadcaster,
+            node_manager=node_manager,
+            request_tracer=request_tracer,
+        )
+        logger.info(
+            "Orchestrator zainicjalizowany"
+            + (" z obsługą węzłów rozproszonych" if node_manager else "")
+        )
+    else:
+        logger.info(
+            "Orchestrator już zainicjalizowany (np. tryb testowy) – pomijam ponowną inicjalizację"
+        )
 
     # Utwórz katalog workspace jeśli nie istnieje
     workspace_path = Path(SETTINGS.WORKSPACE_ROOT)
@@ -611,7 +618,7 @@ def setup_router_dependencies():
     # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
     # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie dostępny (np. po dodaniu obsługi w lifespan).
     metrics_routes.set_dependencies(token_economist=None)
-    memory_routes.set_dependencies(vector_store)
+    memory_routes.set_dependencies(vector_store, state_manager, lessons_store)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)
     agents_routes.set_dependencies(
@@ -632,6 +639,26 @@ def setup_router_dependencies():
     flow_routes.set_dependencies(request_tracer)
     benchmark_routes.set_dependencies(benchmark_service)
     calendar_routes.set_dependencies(google_calendar_skill)
+
+
+# W trybie testowym (np. httpx ASGITransport bez lifespan) preinicjalizujemy
+# orchestratora i zależności routerów, żeby uniknąć 503 Service Unavailable.
+if TESTING_MODE and orchestrator is None:
+    try:
+        orchestrator = Orchestrator(
+            state_manager,
+            event_broadcaster=event_broadcaster,
+            node_manager=node_manager,
+            request_tracer=request_tracer,
+        )
+        setup_router_dependencies()
+        logger.info(
+            "Tryb testowy: orchestrator i zależności routerów zainicjalizowane bez lifespan"
+        )
+    except Exception as e:  # pragma: no cover - log zamiast crash w teście
+        logger.warning(
+            f"Tryb testowy: nie udało się zainicjalizować orchestratora bez lifespan: {e}"
+        )
 
 
 # Montowanie routerów

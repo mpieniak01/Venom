@@ -13,12 +13,15 @@ class SlashCommandResult:
     forced_provider: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_intent: Optional[str] = None
+    session_reset: bool = False
 
 
 LLM_PROVIDER_ALIASES = {
     "gem": "google",
     "gpt": "openai",
 }
+
+CLEAR_ALIASES = {"clear", "cler"}
 
 # Mapowanie alias -> intent (gdzie mamy jednoznaczny agent)
 TOOL_INTENT_ALIASES = {
@@ -73,6 +76,13 @@ def parse_slash_command(content: str) -> Optional[SlashCommandResult]:
             token=token,
             cleaned=remaining,
             forced_provider=LLM_PROVIDER_ALIASES[token],
+        )
+
+    if token in CLEAR_ALIASES:
+        return SlashCommandResult(
+            token=token,
+            cleaned=remaining,
+            session_reset=True,
         )
 
     if token in TOOL_INTENT_ALIASES:

@@ -16,6 +16,7 @@ import {
   fetchGraphFileInfo,
   fetchGraphImpact,
   triggerGraphScan,
+  useMemoryGraph,
   useGraphSummary,
   useKnowledgeGraph,
   useLessons,
@@ -33,6 +34,7 @@ import { LessonStats } from "@/components/brain/lesson-stats";
 import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-analytics";
 import { BrainMetricCard } from "@/components/brain/metric-card";
 import { GraphFilterButtons, GraphFilterType } from "@/components/brain/graph-filters";
+import { deleteMemoryEntry, pinMemoryEntry } from "@/hooks/use-api";
 
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
@@ -46,8 +48,31 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     error: graphError,
     refresh: refreshGraph,
   } = useKnowledgeGraph();
+  const [showMemoryLayer, setShowMemoryLayer] = useState(true);
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [includeLessons, setIncludeLessons] = useState(false);
+  const [memorySessionFilter, setMemorySessionFilter] = useState<string>("");
+  const [memoryOnlyPinned, setMemoryOnlyPinned] = useState(false);
+  const memoryGraphPoll = useMemoryGraph(
+    100,
+    memorySessionFilter || undefined,
+    memoryOnlyPinned,
+    includeLessons,
+    showMemoryLayer ? 20000 : 0,
+  );
+  const memoryGraphLoading = memoryGraphPoll.loading;
+  const memoryGraphError = memoryGraphPoll.error;
   const graph = liveGraph ?? initialData.knowledgeGraph ?? null;
+  const memoryGraph = showMemoryLayer ? memoryGraphPoll.data : null;
+  const mergedGraph = useMemo(() => {
+    if (showMemoryLayer && memoryGraph?.elements) {
+      return memoryGraph;
+    }
+    if (graph) return graph;
+    return null;
+  }, [graph, memoryGraph, showMemoryLayer]);
   const graphLoading = liveGraphLoading && !graph;
+  const memoryLoading = showMemoryLayer && memoryGraphLoading && !memoryGraph;
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
   const lessons = liveLessons ?? initialData.lessons ?? null;
   const { data: liveLessonsStats } = useLessonsStats();
@@ -65,6 +90,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const [fileLoading, setFileLoading] = useState(false);
   const [relations, setRelations] = useState<RelationEntry[]>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [memoryActionPending, setMemoryActionPending] = useState<string | null>(null);
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const recentOperations = useMemo(() => {
@@ -85,8 +111,16 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const summaryStats = summary?.summary || summary;
   const legacySummaryStats = summaryStats as { last_updated?: string } | undefined;
   const legacySummary = summary as { last_updated?: string } | undefined;
-  const summaryNodes = summaryStats?.nodes ?? summary?.nodes ?? "—";
-  const summaryEdges = summaryStats?.edges ?? summary?.edges ?? "—";
+  const summaryNodes =
+    mergedGraph?.elements?.nodes?.length ??
+    summaryStats?.nodes ??
+    summary?.nodes ??
+    "—";
+  const summaryEdges =
+    mergedGraph?.elements?.edges?.length ??
+    summaryStats?.edges ??
+    summary?.edges ??
+    "—";
   const summaryUpdated =
     summary?.lastUpdated || legacySummaryStats?.last_updated || legacySummary?.last_updated;
   const lessonsTotal = lessonsStats?.stats?.total_lessons ?? lessons?.lessons?.length ?? 0;
@@ -120,20 +154,17 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     const activeFilters = nextFilters.filter(
       (item): item is SpecificFilter => item !== "all",
     );
-    cy.nodes().style("display", "element");
-    if (activeFilters.length > 0) {
-      cy.nodes().forEach((node) => {
-        const nodeType = node.data("type") as SpecificFilter | undefined;
-        if (!nodeType || !activeFilters.includes(nodeType)) {
-          node.style("display", "none");
-        }
-      });
-    }
-    try {
-      cy.layout({ name: "cose", padding: 30, animate: false }).run();
-    } catch {
-      // Layout can fail if the container unmounts between renders.
-    }
+    cy.batch(() => {
+      cy.nodes().style("display", "element");
+      if (activeFilters.length > 0) {
+        cy.nodes().forEach((node) => {
+          const nodeType = node.data("type") as SpecificFilter | undefined;
+          if (!nodeType || !activeFilters.includes(nodeType)) {
+            node.style("display", "none");
+          }
+        });
+      }
+    });
   }, []);
 
   const handleFilterToggle = (value: GraphFilterType) => {
@@ -205,6 +236,31 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     applyHighlightToNodes(next);
   };
 
+  const handlePinMemory = async (entryId: string, pinned: boolean) => {
+    try {
+      setMemoryActionPending(entryId);
+      await pinMemoryEntry(entryId, pinned);
+      memoryGraphPoll.refresh();
+    } catch (err) {
+      console.error("Nie udało się zmienić stanu pinned:", err);
+    } finally {
+      setMemoryActionPending(null);
+    }
+  };
+
+  const handleDeleteMemory = async (entryId: string) => {
+    try {
+      setMemoryActionPending(entryId);
+      await deleteMemoryEntry(entryId);
+      clearSelection();
+      memoryGraphPoll.refresh();
+    } catch (err) {
+      console.error("Nie udało się usunąć wpisu pamięci:", err);
+    } finally {
+      setMemoryActionPending(null);
+    }
+  };
+
   const handleFitGraph = () => {
     const cy = cyInstanceRef.current;
     if (!cy) return;
@@ -260,9 +316,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   useEffect(() => {
     let cyInstance: cytoscapeType.Core | null = null;
     const mount = async () => {
-      if (!cyRef.current || !graph?.elements) return;
+      if (!cyRef.current || !mergedGraph?.elements) return;
       const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
-      const elements = graph.elements as unknown as cytoscapeType.ElementsDefinition;
+      const elements = mergedGraph.elements as unknown as cytoscapeType.ElementsDefinition;
       const styles = [
         {
           selector: "node",
@@ -272,6 +328,12 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 ? "#22c55e"
                 : ele.data("type") === "memory"
                   ? "#f59e0b"
+                  : ele.data("type") === "memory_session"
+                    ? "#38bdf8"
+                    : ele.data("type") === "memory_user"
+                      ? "#0ea5e9"
+                      : ele.data("type") === "lesson"
+                        ? "#a855f7"
                   : "#6366f1",
             label: "data(label)",
             color: "#e5e7eb",
@@ -313,7 +375,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             "target-arrow-color": "#475569",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            label: "data(label)",
+            label: showEdgeLabels ? "data(label)" : "",
             "font-size": 9,
             color: "#94a3b8",
             "text-background-opacity": 0.4,
@@ -325,7 +387,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       cyInstance = cytoscape({
         container: cyRef.current,
         elements,
-        layout: { name: "cose", padding: 30, animate: false },
+        layout: { name: "concentric", padding: 30, animate: false },
         style: styles,
       });
       cyInstance.on("tap", "node", (evt: cytoscapeType.EventObject) => {
@@ -363,13 +425,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         cyInstance.destroy();
       }
     };
-  }, [graph, clearSelection, focusNodeWithNeighbors]);
+  }, [mergedGraph, clearSelection, focusNodeWithNeighbors, showEdgeLabels]);
 
   useEffect(() => {
-    if (graph) {
+    if (mergedGraph) {
       applyFiltersToGraph(filters);
     }
-  }, [graph, filters, applyFiltersToGraph]);
+  }, [mergedGraph, filters, applyFiltersToGraph]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -409,25 +471,28 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           data-testid="graph-container"
           className="relative h-[70vh] w-full"
         />
-        {(graphLoading || graphError) && (
+        {(graphLoading || memoryLoading || graphError || memoryGraphError) && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center text-sm text-white">
-            {graphLoading ? (
+            {graphLoading || memoryLoading ? (
               <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
             ) : (
               <AlertTriangle className="h-6 w-6 text-amber-300" />
             )}
             <p>
-              {graphLoading
-                ? "Ładuję graf wiedzy..."
-                : "Brak danych z /api/v1/knowledge/graph."}
+              {graphLoading || memoryLoading
+                ? "Ładuję graf..."
+                : "Brak danych z API grafu."}
             </p>
-            {graphError && (
+            {(graphError || memoryGraphError) && (
               <Button
                 type="button"
                 variant="outline"
                 size="xs"
                 className="pointer-events-auto border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
-                onClick={() => refreshGraph()}
+                onClick={() => {
+                  refreshGraph();
+                  if (showMemoryLayer) memoryGraphPoll.refresh();
+                }}
               >
                 Odśwież
               </Button>
@@ -445,22 +510,81 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             scanMessage={scanMessage}
           />
         </div>
-        <div className="pointer-events-auto absolute left-6 bottom-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
-          {lessonTags.slice(0, 6).map((tag) => (
+        <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            {lessonTags.slice(0, 6).map((tag) => (
+              <Button
+                key={tag.name}
+                variant="ghost"
+                size="xs"
+                className={`rounded-full border px-3 py-1 ${
+                  highlightTag === tag.name
+                    ? "border-amber-400/50 bg-amber-500/20"
+                    : "border-white/10 bg-white/5 text-zinc-200"
+                }`}
+                onClick={() => handleTagToggle(tag.name)}
+              >
+                #{tag.name}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showMemoryLayer}
+                onChange={(e) => setShowMemoryLayer(e.target.checked)}
+              />
+              <span>Warstwa pamięci (LanceDB)</span>
+            </label>
+            {memoryGraph?.stats?.nodes ? (
+              <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
+            ) : null}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={memoryOnlyPinned}
+                onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
+              />
+              <span>Tylko pinned</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={includeLessons}
+                onChange={(e) => setIncludeLessons(e.target.checked)}
+              />
+              <span>Dołącz lekcje</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showEdgeLabels}
+                onChange={(e) => setShowEdgeLabels(e.target.checked)}
+              />
+              <span>Etykiety krawędzi</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span>Session</span>
+              <input
+                type="text"
+                value={memorySessionFilter}
+                onChange={(e) => setMemorySessionFilter(e.target.value)}
+                placeholder="session-id"
+                className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+              />
+            </div>
             <Button
-              key={tag.name}
-              variant="ghost"
               size="xs"
-              className={`rounded-full border px-3 py-1 ${
-                highlightTag === tag.name
-                  ? "border-amber-400/50 bg-amber-500/20"
-                  : "border-white/10 bg-white/5 text-zinc-200"
-              }`}
-              onClick={() => handleTagToggle(tag.name)}
+              variant="outline"
+              className="border-white/20 text-white"
+              onClick={() => {
+                memoryGraphPoll.refresh();
+              }}
             >
-              #{tag.name}
+              Odśwież pamięć
             </Button>
-          ))}
+          </div>
         </div>
       </div>
 
@@ -643,6 +767,31 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                   {JSON.stringify(selected, null, 2)}
                 </pre>
               </div>
+              {selected.type === "memory" && selected.id ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={memoryActionPending === selected.id}
+                    onClick={() =>
+                      handlePinMemory(
+                        String(selected.id),
+                        !(selected as Record<string, unknown>)?.pinned,
+                      )
+                    }
+                  >
+                    {selected.pinned ? "Odepnij" : "Przypnij"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={memoryActionPending === selected.id}
+                    onClick={() => handleDeleteMemory(String(selected.id))}
+                  >
+                    Usuń wpis
+                  </Button>
+                </div>
+              ) : null}
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
                 {relations.length === 0 ? (

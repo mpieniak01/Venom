@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     MODEL_GENERATION_OVERRIDES: str = (
         ""  # Override parametrów generacji per runtime/model
     )
+    SUMMARY_STRATEGY: str = "llm_with_fallback"  # lub "heuristic_only"
 
     # Konfiguracja Prompt Manager
     PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -91,6 +92,37 @@ def _get_llm_runtime(task: VenomTask) -> dict:
     return runtime
 
 
+def _bootstrap_orchestrator_if_testing():
+    """Dla testów httpx/ASGITransport (bez lifespan) inicjalizuje orchestrator ad-hoc."""
+    global _orchestrator, _state_manager, _request_tracer
+
+    if _orchestrator is not None or not os.getenv("PYTEST_CURRENT_TEST"):
+        return
+
+    try:
+        from venom_core import main as main_module
+        from venom_core.api.stream import event_broadcaster
+        from venom_core.core.orchestrator import Orchestrator
+
+        orch = Orchestrator(
+            main_module.state_manager,
+            event_broadcaster=event_broadcaster,
+            node_manager=getattr(main_module, "node_manager", None),
+            request_tracer=getattr(main_module, "request_tracer", None),
+        )
+        _orchestrator = orch
+        _state_manager = main_module.state_manager
+        _request_tracer = getattr(main_module, "request_tracer", None)
+        logger.info(
+            "Tryb testowy: orchestrator zainicjalizowany bez lifespan (tasks router)"
+        )
+    except Exception as exc:  # pragma: no cover - awaria w test setup raportowana
+        logger.warning(
+            "Tryb testowy: nie udało się zainicjalizować orchestratora bez lifespan: %s",
+            exc,
+        )
+
+
 @router.post("/tasks", response_model=TaskResponse, status_code=201)
 async def create_task(request: TaskRequest):
     """
@@ -105,6 +137,8 @@ async def create_task(request: TaskRequest):
     Raises:
         HTTPException: 400 przy błędnym body, 500 przy błędzie wewnętrznym
     """
+    _bootstrap_orchestrator_if_testing()
+
     if _orchestrator is None:
         raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
 

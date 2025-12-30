@@ -31,6 +31,8 @@ import {
   setActiveHiddenPrompt,
   setActiveLlmServer,
   setActiveLlmRuntime,
+  clearSessionMemory,
+  clearGlobalMemory,
   updateModelConfig,
   switchModel,
   toggleQueue,
@@ -424,6 +426,7 @@ export function CockpitHome({
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [exportingPinned, setExportingPinned] = useState(false);
   const [gitAction, setGitAction] = useState<"sync" | "undo" | null>(null);
+  const [memoryAction, setMemoryAction] = useState<null | "session" | "global">(null);
   const [queueAction, setQueueAction] = useState<
     null | "pause" | "resume" | "purge" | "emergency"
   >(null);
@@ -439,7 +442,40 @@ export function CockpitHome({
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [tuningSaving, setTuningSaving] = useState(false);
+  const [sessionId, setSessionId] = useState<string>(() => `session-${Date.now()}`);
   const [chatFullscreen, setChatFullscreen] = useState(false);
+  const { pushToast } = useToast();
+  const handleSessionReset = useCallback(() => {
+    const newSession = `session-${Date.now()}`;
+    setSessionId(newSession);
+    setMessage(`Nowa sesja: ${newSession}`);
+  }, []);
+  const handleClearSessionMemory = useCallback(async () => {
+    if (!sessionId) return;
+    setMemoryAction("session");
+    try {
+      const resp = await clearSessionMemory(sessionId);
+      pushToast(`Wyczyszczono pamięć sesji (${resp.deleted_vectors} wpisów)`, "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Nie udało się wyczyścić pamięci sesji";
+      pushToast(msg, "error");
+    } finally {
+      setMemoryAction(null);
+    }
+  }, [pushToast, sessionId]);
+
+  const handleClearGlobalMemory = useCallback(async () => {
+    setMemoryAction("global");
+    try {
+      const resp = await clearGlobalMemory();
+      pushToast(`Wyczyszczono pamięć globalną (${resp.deleted_vectors} wpisów)`, "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Nie udało się wyczyścić pamięci globalnej";
+      pushToast(msg, "error");
+    } finally {
+      setMemoryAction(null);
+    }
+  }, [pushToast]);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
@@ -598,7 +634,6 @@ export function CockpitHome({
   const llmServers = useMemo(() => liveLlmServers ?? [], [liveLlmServers]);
   const activeServerInfo = liveActiveServer ?? null;
   const activeServerName = activeServerInfo?.active_server ?? "";
-  const { pushToast } = useToast();
   const { language } = useLanguage();
   const selectedServerEntry = useMemo(
     () => llmServers.find((server) => server.name === selectedLlmServer) ?? null,
@@ -1477,6 +1512,7 @@ export function CockpitHome({
       setMessage("Podaj treść zadania.");
       return false;
     }
+    let sessionOverride: string | null = null;
     let runtimeOverride: { configHash?: string | null; runtimeId?: string | null } | null = null;
     // Bezpośrednie mapowanie na format backendu (openai/google)
     const forcedRuntimeProvider =
@@ -1510,6 +1546,10 @@ export function CockpitHome({
         return false;
       }
     }
+    if (parsed.sessionReset) {
+      sessionOverride = `session-${Date.now()}`;
+      setSessionId(sessionOverride);
+    }
     autoScrollEnabled.current = true;
     scrollChatToBottom();
     setSending(true);
@@ -1533,6 +1573,8 @@ export function CockpitHome({
           provider: parsed.forcedProvider,
         },
         language,
+        sessionOverride ?? sessionId,
+        "session",
       );
       const resolvedId = res.task_id ?? null;
       linkOptimisticRequest(clientId, resolvedId);
@@ -1561,8 +1603,8 @@ export function CockpitHome({
     activeServerInfo?.active_server,
     activeServerInfo?.runtime_id,
     refreshActiveServer,
-    setActiveLlmRuntime,
     language,
+    sessionId,
     scrollChatToBottom,
   ]);
 
@@ -1624,14 +1666,16 @@ export function CockpitHome({
           macro.content,
           !labMode,
           null,
-          {
-            configHash: activeServerInfo?.config_hash ?? null,
-            runtimeId: activeServerInfo?.runtime_id ?? null,
-          },
-          null,
-          null,
-          language,
-        );
+        {
+          configHash: activeServerInfo?.config_hash ?? null,
+          runtimeId: activeServerInfo?.runtime_id ?? null,
+        },
+        null,
+        null,
+        language,
+        sessionId,
+        "session",
+      );
         linkOptimisticRequest(clientId, res.task_id ?? null);
         setMessage(`Makro ${macro.label} wysłane: ${res.task_id ?? "w toku…"}`);
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
@@ -1654,6 +1698,7 @@ export function CockpitHome({
       activeServerInfo?.config_hash,
       activeServerInfo?.runtime_id,
       language,
+      sessionId,
     ],
   );
 
@@ -2278,6 +2323,37 @@ export function CockpitHome({
                           selectedServerEntry.status,
                         )
                       : "unknown"}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-muted px-2 py-1 text-[11px] text-foreground" title="Id sesji">
+                      {sessionId}
+                    </span>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleSessionReset}
+                      title="Resetuj kontekst czatu (nowa sesja)"
+                    >
+                      Resetuj sesję
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleClearSessionMemory}
+                      disabled={memoryAction === "session"}
+                      title="Usuń historię/streszczenia i wektory tej sesji"
+                    >
+                      {memoryAction === "session" ? "Czyszczę..." : "Wyczyść pamięć sesji"}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleClearGlobalMemory}
+                      disabled={memoryAction === "global"}
+                      title="Usuń globalne preferencje/fakty (LanceDB)"
+                    >
+                      {memoryAction === "global" ? "Czyszczę..." : "Wyczyść pamięć globalną"}
+                    </Button>
                   </span>
                   <span>
                     Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}

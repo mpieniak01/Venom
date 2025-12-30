@@ -317,13 +317,15 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       }
     });
 
+    const timersSnapshot = throttleTimersRef.current;
+    const pendingSnapshot = pendingUpdatesRef.current;
     return () => {
       sources.forEach((source) => source.close());
       sources.clear();
       setStreams({});
-      throttleTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      throttleTimersRef.current.clear();
-      pendingUpdatesRef.current.clear();
+      timersSnapshot.forEach((timer) => window.clearTimeout(timer));
+      timersSnapshot.clear();
+      pendingSnapshot.clear();
     };
   }, [dedupedTaskIds, enabled, autoCloseOnFinish, onEvent, throttleMs]);
 

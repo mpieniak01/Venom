@@ -405,7 +405,10 @@ class VectorStore:
                 )
             str_value = str(value)
             if len(str_value) > MAX_VALUE_LENGTH:
-                raise ValueError(f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH}")
+                raise ValueError(
+                    f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH} "
+                    f"(otrzymano {len(str_value)} znaków)"
+                )
             
             # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
             # Celowo NIE dopuszczamy spacji ani znaków specjalnych

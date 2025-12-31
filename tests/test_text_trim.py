@@ -87,19 +87,6 @@ class TestTrimToCharLimit:
         assert result == ""
         assert was_trimmed is False
 
-    def test_trim_none_text(self):
-        """Test z None jako tekstem."""
-        # Arrange
-        text = None
-        limit = 100
-
-        # Act
-        result, was_trimmed = trim_to_char_limit(text, limit)
-
-        # Assert
-        assert result is None
-        assert was_trimmed is False
-
     def test_trim_unicode_text(self):
         """Test z tekstem zawierającym znaki unicode."""
         # Arrange

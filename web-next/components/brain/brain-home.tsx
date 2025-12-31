@@ -446,7 +446,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       if (!preparedElements) return;
       const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
       const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
-          const styles = [
+      const styles = [
         {
           selector: "node",
           style: {

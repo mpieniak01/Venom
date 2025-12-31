@@ -221,6 +221,7 @@ class VectorStore:
         metadata: Optional[Dict[str, Any]] = None,
         collection_name: str = None,
         chunk_text: bool = True,
+        id_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Zapisuje lub aktualizuje tekst w bazie wektorowej.
@@ -260,7 +261,7 @@ class VectorStore:
         records = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             record = {
-                "id": str(uuid.uuid4()),
+                "id": id_override if id_override and i == 0 else str(uuid.uuid4()),
                 "text": chunk,
                 "vector": embedding,
                 "metadata": json.dumps(metadata),
@@ -360,3 +361,267 @@ class VectorStore:
         self._db.drop_table(collection_name)
         logger.info(f"Kolekcja '{collection_name}' usunięta")
         return f"Kolekcja '{collection_name}' usunięta pomyślnie"
+
+    def delete_by_metadata(
+        self, filters: Dict[str, Any], collection_name: Optional[str] = None
+    ) -> int:
+        """
+        Usuwa rekordy na podstawie dopasowania metadanych (proste wyszukiwanie substringów w kolumnie JSON).
+
+        Args:
+            filters: słownik klucz→wartość, który musi wystąpić w metadacie
+            collection_name: opcjonalna nazwa kolekcji (domyślna, jeśli None)
+
+        Returns:
+            Szacowana liczba usuniętych rekordów (porównanie count przed/po).
+        """
+        if not filters:
+            raise ValueError("filters nie może być puste przy delete_by_metadata")
+
+        table = self._get_or_create_table(collection_name)
+
+        # Walidacja i sanityzacja kluczy i wartości
+        # UWAGA: LanceDB (w aktualnej wersji) nie wspiera tutaj zapytań
+        # parametryzowanych, więc jako obejście stosujemy bardzo restrykcyjny
+        # whitelisting znaków + escapowanie (defense in depth). Nie jest to
+        # pełnoprawny zamiennik zapytań parametryzowanych – gdy tylko API
+        # LanceDB to umożliwi, ten kod powinien zostać przerobiony na
+        # podejście z parametryzacją.
+        conditions = []
+        MAX_KEY_LENGTH = 64
+        MAX_VALUE_LENGTH = 256
+        
+        for key, value in filters.items():
+            if value is None:
+                continue
+            
+            # Walidacja klucza: tylko alfanumeryczne + underscore, max 64 znaki
+            if not isinstance(key, str) or len(key) > MAX_KEY_LENGTH:
+                raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
+            if not re.match(r'^[a-zA-Z0-9_]+$', key):
+                raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
+            
+            # Walidacja typu wartości i konwersja na string
+            if not isinstance(value, (str, int, float, bool)):
+                raise TypeError(
+                    f"Nieobsługiwany typ wartości dla klucza {key}: {type(value).__name__}. "
+                    "Dozwolone typy: str, int, float, bool."
+                )
+            str_value = str(value)
+            if len(str_value) > MAX_VALUE_LENGTH:
+                raise ValueError(
+                    f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH} "
+                    f"(otrzymano {len(str_value)} znaków)"
+                )
+            
+            # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
+            # Celowo NIE dopuszczamy spacji ani znaków specjalnych
+            if not re.match(r'^[a-zA-Z0-9_.\-]+$', str_value):
+                raise ValueError(
+                    f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
+                    f"Dozwolone: a-z, A-Z, 0-9, _, -, ."
+                )
+            
+            # Podwójne escapowanie mimo walidacji (defense in depth)
+            safe_value = str_value.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
+            conditions.append(f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\'')
+
+        if not conditions:
+            raise ValueError("Brak warunków do usunięcia rekordów")
+
+        where_clause = " AND ".join(conditions)
+
+        try:
+            before_count = table.count_rows()
+        except Exception:
+            before_count = None
+
+        table.delete(where=where_clause)
+
+        after_count = None
+        try:
+            after_count = table.count_rows()
+        except Exception:
+            after_count = None
+
+        if before_count is not None and after_count is not None:
+            deleted = max(before_count - after_count, 0)
+        else:
+            deleted = 0
+
+        logger.info(
+            "Usuwanie z pamięci (collection=%s) where=%s, usunięto szac. %s rekordów",
+            collection_name or self.collection_name,
+            where_clause,
+            deleted,
+        )
+        return deleted
+
+    def list_entries(
+        self,
+        collection_name: Optional[str] = None,
+        limit: int = 200,
+        metadata_filters: Optional[Dict[str, Any]] = None,
+        entry_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Zwraca listę wpisów (id, text, metadata) z bazy dla wizualizacji/diagnostyki.
+
+        Args:
+            collection_name: nazwa kolekcji (domyślna, jeśli None)
+            limit: maksymalna liczba rekordów
+            metadata_filters: słownik klucz→wartość, filtr exact match w metadacie
+
+        Returns:
+            Lista słowników z polami: id, text, metadata
+        """
+        table = self._get_or_create_table(collection_name)
+
+        # Bieżąca wersja LanceDB nie wspiera filtrów/limitów w to_arrow,
+        # więc pobieramy pełną tabelę i filtrujemy w Pythonie.
+        arrow_table = table.to_arrow()
+        rows = arrow_table.to_pylist()
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            meta_raw = row.get("metadata") or "{}"
+            try:
+                meta = (
+                    json.loads(meta_raw)
+                    if isinstance(meta_raw, str)
+                    else dict(meta_raw)
+                )
+            except Exception:
+                meta = {}
+            if entry_id and row.get("id") != entry_id:
+                continue
+            if metadata_filters:
+                match = True
+                for key, val in metadata_filters.items():
+                    if val is None:
+                        continue
+                    if meta.get(key) != val:
+                        match = False
+                        break
+                if not match:
+                    continue
+            results.append(
+                {
+                    "id": row.get("id"),
+                    "text": row.get("text"),
+                    "metadata": meta,
+                }
+            )
+            if limit and len(results) >= limit:
+                break
+        return results
+
+    def delete_entry(self, entry_id: str, collection_name: Optional[str] = None) -> int:
+        """Usuwa pojedynczy rekord po id."""
+        if not entry_id:
+            return 0
+        
+        # Walidacja entry_id: bardzo restrykcyjna
+        MAX_ID_LENGTH = 128
+        if not isinstance(entry_id, str) or len(entry_id) > MAX_ID_LENGTH:
+            raise ValueError(
+                f"Nieprawidłowy format entry_id: długość {len(entry_id)} przekracza maksymalną {MAX_ID_LENGTH}"
+            )
+        
+        # Tylko UUID-like lub bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', entry_id):
+            raise ValueError(f"entry_id zawiera niedozwolone znaki: {entry_id}")
+        
+        table = self._get_or_create_table(collection_name)
+        # Podwójne escapowanie mimo walidacji (defense in depth)
+        safe_id = entry_id.replace("\\", "\\\\").replace("'", "''")
+        table.delete(where=f"id = '{safe_id}'")
+        return 1
+
+    def delete_session(
+        self, session_id: str, collection_name: Optional[str] = None
+    ) -> int:
+        """
+        Usuwa rekordy powiązane z danym session_id (dev/test cleanup).
+        """
+        if not session_id:
+            return 0
+        
+        # Walidacja session_id: bardzo restrykcyjna
+        MAX_SESSION_ID_LENGTH = 128
+        if not isinstance(session_id, str) or len(session_id) > MAX_SESSION_ID_LENGTH:
+            raise ValueError(
+                f"Nieprawidłowy session_id: długość {len(session_id)} "
+                f"przekracza maksymalną {MAX_SESSION_ID_LENGTH}"
+            )
+        
+        # Tylko bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', session_id):
+            raise ValueError(f"session_id zawiera niedozwolone znaki: {session_id}")
+        
+        table = self._get_or_create_table(collection_name)
+        # Podwójne escapowanie mimo walidacji (defense in depth)
+        safe_id = session_id.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
+        clause = f'metadata LIKE \'%\\"session_id\\": \\"{safe_id}\\"%\''
+        try:
+            before = table.count_rows()
+        except Exception:
+            before = None
+        table.delete(where=clause)
+        try:
+            after = table.count_rows()
+        except Exception:
+            after = None
+        if before is not None and after is not None:
+            return max(before - after, 0)
+        return 0
+
+    def wipe_collection(self, collection_name: Optional[str] = None) -> int:
+        """
+        Usuwa wszystkie rekordy z kolekcji (dev/test cleanup).
+        """
+        table = self._get_or_create_table(collection_name)
+        try:
+            before = table.count_rows()
+        except Exception:
+            before = None
+        table.delete(where="TRUE")
+        try:
+            after = table.count_rows()
+        except Exception:
+            after = None
+        if before is not None and after is not None:
+            return max(before - after, 0)
+        return 0
+
+    def update_metadata(
+        self,
+        entry_id: str,
+        metadata_patch: Dict[str, Any],
+        collection_name: Optional[str] = None,
+    ) -> bool:
+        """
+        Aktualizuje metadane rekordu (nadpisuje/uzupełnia), zachowując tekst.
+        Implementacja: odczyt -> delete -> upsert z tym samym id.
+        """
+        if not entry_id:
+            return False
+        entries = self.list_entries(
+            collection_name=collection_name, limit=1, entry_id=entry_id
+        )
+        if not entries:
+            return False
+        entry = entries[0]
+        text = entry.get("text") or ""
+        meta = entry.get("metadata") or {}
+        meta.update(metadata_patch or {})
+        # usuń stary zapis
+        self.delete_entry(entry_id, collection_name=collection_name)
+        # wstaw z tym samym id (chunk_text False, aby nie dzielić)
+        self.upsert(
+            text=text,
+            metadata=meta,
+            collection_name=collection_name,
+            chunk_text=False,
+            id_override=entry_id,
+        )
+        return True

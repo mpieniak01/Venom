@@ -174,6 +174,37 @@ class StateManager:
         """
         return list(self._tasks.values())
 
+    def clear_session_context(self, session_id: str) -> int:
+        """
+        Czyści historię i streszczenie w zadaniach powiązanych z podaną sesją.
+
+        Args:
+            session_id: identyfikator sesji
+
+        Returns:
+            Liczba zadań, które zostały zaktualizowane.
+        """
+        if not session_id:
+            return 0
+
+        updated = 0
+        for task in self._tasks.values():
+            ctx = getattr(task, "context_history", {}) or {}
+            session_meta = ctx.get("session") or {}
+            if session_meta.get("session_id") != session_id:
+                continue
+
+            ctx["session_history"] = []
+            ctx["session_history_full"] = []
+            ctx["session_summary"] = None
+            ctx["session"] = {"session_id": session_id}
+            task.context_history = ctx
+            updated += 1
+
+        if updated:
+            self._schedule_save()
+        return updated
+
     async def update_status(
         self, task_id: UUID, status: TaskStatus, result: Optional[str] = None
     ) -> None:

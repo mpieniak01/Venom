@@ -333,3 +333,127 @@ class TestMemoryAPIIntegration:
         data = response.json()
         assert data["count"] > 0
         assert any("przetrwać" in r["text"] for r in data["results"])
+
+
+class TestMemoryCleanupAPI:
+    """Testy czyszczenia pamięci sesyjnej i globalnej."""
+
+    def test_clear_session_memory(self, client):
+        """Powinno usunąć wpisy z wektorów i kontekst w StateManagerze."""
+        from venom_core.api.routes import memory as memory_routes
+        from venom_core.core.state_manager import StateManager
+
+        session_id = "test-session-clean"
+        vector_store = memory_routes._ensure_vector_store()
+        # Używamy świeżego StateManager, aby nie polegać na globalu z main (może być nadpisany w innych testach).
+        state_manager = StateManager()
+        memory_routes.set_dependencies(vector_store, state_manager)
+        vector_store.upsert(
+            text="Fakt do usunięcia",
+            metadata={"session_id": session_id, "user_id": "user_default"},
+        )
+
+        task = state_manager.create_task("tmp")
+        task.context_history = {
+            "session": {"session_id": session_id},
+            "session_history": ["foo"],
+            "session_summary": "bar",
+        }
+        state_manager._tasks[task.id] = task
+
+        response = client.delete(f"/api/v1/memory/session/{session_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["deleted_vectors"] >= 0
+        assert data["cleared_tasks"] >= 1
+
+        # cleanup
+        state_manager._tasks.pop(task.id, None)
+
+    def test_clear_global_memory(self, client):
+        """Powinno czyścić globalne fakty/preferencje."""
+        from venom_core.api.routes import memory as memory_routes
+
+        vector_store = memory_routes._ensure_vector_store()
+        memory_routes.set_dependencies(vector_store)
+        vector_store.upsert(
+            text="Globalny wpis",
+            metadata={"user_id": "user_default", "type": "preference"},
+        )
+        response = client.delete("/api/v1/memory/global")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["deleted_vectors"] >= 0
+
+
+class TestMemoryGraphAPI:
+    """Testy dla /api/v1/memory/graph (fakty + lekcje)."""
+
+    def test_graph_filters_and_lessons(self, client, tmp_path):
+        """Powinno filtrować po session_id/pinned oraz dołączać lekcje na żądanie."""
+        from types import SimpleNamespace
+
+        from venom_core.api.routes import memory as memory_routes
+        from venom_core.core.state_manager import StateManager
+        from venom_core.memory.vector_store import VectorStore
+
+        db_path = tmp_path / "lancedb"
+        vector_store = VectorStore(db_path=str(db_path))
+        state_manager = StateManager()
+        lessons_store = SimpleNamespace(
+            lessons={
+                "lesson-1": SimpleNamespace(
+                    title="Lekcja 1",
+                    tags=["tag1"],
+                    timestamp="2025-01-01T00:00:00",
+                )
+            }
+        )
+        memory_routes.set_dependencies(vector_store, state_manager, lessons_store)
+
+        vector_store.upsert(
+            text="pinned fact",
+            metadata={
+                "session_id": "s1",
+                "user_id": "user_default",
+                "pinned": True,
+                "type": "fact",
+            },
+            id_override="mem-pinned",
+            chunk_text=False,
+        )
+        vector_store.upsert(
+            text="other fact",
+            metadata={"session_id": "s2", "user_id": "user_default"},
+            id_override="mem-other",
+            chunk_text=False,
+        )
+
+        resp = client.get(
+            "/api/v1/memory/graph",
+            params={"limit": 50, "session_id": "s1", "only_pinned": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        node_ids = {n["data"]["id"] for n in data["elements"]["nodes"]}
+        assert "mem-pinned" in node_ids
+        assert "mem-other" not in node_ids
+        assert not any(
+            n["data"]["id"].startswith("lesson:") for n in data["elements"]["nodes"]
+        )
+
+        resp_with_lessons = client.get(
+            "/api/v1/memory/graph",
+            params={
+                "limit": 50,
+                "session_id": "s1",
+                "only_pinned": True,
+                "include_lessons": True,
+            },
+        )
+        assert resp_with_lessons.status_code == 200
+        data_with_lessons = resp_with_lessons.json()
+        lesson_ids = {n["data"]["id"] for n in data_with_lessons["elements"]["nodes"]}
+        assert "lesson:lesson-1" in lesson_ids

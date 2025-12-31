@@ -16,6 +16,7 @@ import {
   fetchGraphFileInfo,
   fetchGraphImpact,
   triggerGraphScan,
+  useMemoryGraph,
   useGraphSummary,
   useKnowledgeGraph,
   useLessons,
@@ -31,8 +32,11 @@ import { LessonList } from "@/components/tasks/lesson-list";
 import { LessonActions } from "@/components/brain/lesson-actions";
 import { LessonStats } from "@/components/brain/lesson-stats";
 import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-analytics";
-import { BrainMetricCard } from "@/components/brain/metric-card";
 import { GraphFilterButtons, GraphFilterType } from "@/components/brain/graph-filters";
+import { clearGlobalMemory, clearSessionMemory, deleteMemoryEntry, pinMemoryEntry } from "@/hooks/use-api";
+import { useToast } from "@/components/ui/toast";
+import { KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
+import { useProjectionTrigger } from "@/hooks/use-projection";
 
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
@@ -40,14 +44,94 @@ import { GraphActionButtons } from "@/components/brain/graph-actions";
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
   const summary = liveSummary ?? initialData.summary ?? null;
+  const initialKnowledge = initialData.knowledgeGraph;
+  const [activeTab, setActiveTab] = useState<"repo" | "memory">("memory");
   const {
     data: liveGraph,
     loading: liveGraphLoading,
     error: graphError,
     refresh: refreshGraph,
-  } = useKnowledgeGraph();
-  const graph = liveGraph ?? initialData.knowledgeGraph ?? null;
-  const graphLoading = liveGraphLoading && !graph;
+  } = useKnowledgeGraph(KNOWLEDGE_GRAPH_LIMIT, activeTab === "repo" ? 20000 : 0);
+  const [showMemoryLayer, setShowMemoryLayer] = useState(true);
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false);
+  const [includeLessons, setIncludeLessons] = useState(false);
+  const [memorySessionFilter, setMemorySessionFilter] = useState<string>("");
+  const [memoryOnlyPinned, setMemoryOnlyPinned] = useState(false);
+  const [topicFilter, setTopicFilter] = useState("");
+  const [flowMode, setFlowMode] = useState<"default" | "flow">("default");
+  const memoryLimit = MEMORY_GRAPH_LIMIT;
+  const memoryGraphPoll = useMemoryGraph(
+    memoryLimit,
+    memorySessionFilter || undefined,
+    memoryOnlyPinned,
+    includeLessons,
+    activeTab === "memory" && showMemoryLayer ? 20000 : 0,
+    flowMode,
+  );
+  const memoryGraphLoading = memoryGraphPoll.loading;
+  const memoryGraphError = memoryGraphPoll.error;
+  const graph = liveGraph ?? initialKnowledge ?? null;
+  const memoryGraph = showMemoryLayer ? memoryGraphPoll.data : null;
+  const colorFromTopic = useCallback((topic?: string) => {
+    if (!topic) return undefined;
+    const palette = ["#fbbf24", "#22c55e", "#0ea5e9", "#a855f7", "#f97316", "#38bdf8", "#f43f5e"];
+    let hash = 0;
+    for (let i = 0; i < topic.length; i += 1) {
+      hash = (hash * 31 + topic.charCodeAt(i)) % 9973;
+    }
+    return palette[hash % palette.length];
+  }, []);
+  const mergedGraph = useMemo(() => {
+    if (activeTab === "memory" && showMemoryLayer && memoryGraph?.elements) {
+      return memoryGraph;
+    }
+    if (activeTab === "repo" && graph?.elements) {
+      return graph;
+    }
+    return null;
+  }, [activeTab, graph, memoryGraph, showMemoryLayer]);
+  const hasPresetPositions =
+    (mergedGraph?.elements?.nodes || []).some((n) => {
+      const pos = (n as { position?: { x?: number; y?: number } }).position;
+      return pos && typeof pos.x === "number" && typeof pos.y === "number";
+    }) || false;
+  const layoutName = hasPresetPositions ? "preset" : activeTab === "repo" ? "cose" : "concentric";
+  const preparedElements = useMemo(() => {
+    if (!mergedGraph?.elements) return null;
+    const nodes = (mergedGraph.elements.nodes || []).map(
+      (node: { data: Record<string, unknown>; position?: { x?: number; y?: number } }) => {
+        const data = { ...(node.data || {}) };
+        const label = typeof data.label === "string" ? data.label : "";
+        data.label_short = label.length > 40 ? `${label.slice(0, 40)}…` : label;
+        const topic = typeof data.topic === "string" ? data.topic : "";
+        if (topic) {
+          const topicColor = colorFromTopic(topic);
+          if (topicColor) data.node_color = topicColor;
+        }
+        const ts = (data.meta as Record<string, unknown> | undefined)?.timestamp;
+        if (ts && typeof ts === "string") {
+          const timeVal = Date.parse(ts);
+          if (!Number.isNaN(timeVal)) {
+            data._ts = timeVal;
+          }
+        }
+        return { ...node, data };
+      },
+    );
+    const edges = (mergedGraph.elements.edges || []).map(
+      (edge: { data: Record<string, unknown> }) => {
+        const data = { ...(edge.data || {}) };
+        const label = typeof data.label === "string" ? data.label : "";
+        data.label_short = label.length > 30 ? `${label.slice(0, 30)}…` : label;
+        return { ...edge, data };
+      },
+    );
+    return { nodes, edges };
+  }, [mergedGraph, colorFromTopic]);
+  const graphLoading =
+    (activeTab === "repo" && liveGraphLoading && !graph) ||
+    (activeTab === "memory" && memoryGraphLoading && !memoryGraph);
+  const memoryLoading = activeTab === "memory" && showMemoryLayer && memoryGraphLoading && !memoryGraph;
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
   const lessons = liveLessons ?? initialData.lessons ?? null;
   const { data: liveLessonsStats } = useLessonsStats();
@@ -65,6 +149,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const [fileLoading, setFileLoading] = useState(false);
   const [relations, setRelations] = useState<RelationEntry[]>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [memoryActionPending, setMemoryActionPending] = useState<string | null>(null);
+  const [memoryWipePending, setMemoryWipePending] = useState(false);
+  const { pushToast } = useToast();
+  const projection = useProjectionTrigger();
   const cyRef = useRef<HTMLDivElement | null>(null);
   const cyInstanceRef = useRef<cytoscapeType.Core | null>(null);
   const recentOperations = useMemo(() => {
@@ -85,56 +173,80 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const summaryStats = summary?.summary || summary;
   const legacySummaryStats = summaryStats as { last_updated?: string } | undefined;
   const legacySummary = summary as { last_updated?: string } | undefined;
-  const summaryNodes = summaryStats?.nodes ?? summary?.nodes ?? "—";
-  const summaryEdges = summaryStats?.edges ?? summary?.edges ?? "—";
+  const summaryNodes =
+    mergedGraph?.elements?.nodes?.length ??
+    (activeTab === "repo" ? summaryStats?.nodes ?? summary?.nodes : memoryGraph?.stats?.nodes) ??
+    "—";
+  const summaryEdges =
+    mergedGraph?.elements?.edges?.length ??
+    (activeTab === "repo" ? summaryStats?.edges ?? summary?.edges : memoryGraph?.stats?.edges) ??
+    "—";
+  const renderedNodes = mergedGraph?.elements?.nodes?.length ?? 0;
+  const renderedEdges = mergedGraph?.elements?.edges?.length ?? 0;
+  const sourceTotalNodes =
+    activeTab === "repo"
+      ? (summaryStats?.nodes ?? summary?.nodes ?? renderedNodes)
+      : memoryGraph?.stats?.nodes ?? renderedNodes;
+  const sourceTotalEdges =
+    activeTab === "repo"
+      ? (summaryStats?.edges ?? summary?.edges ?? renderedEdges)
+      : memoryGraph?.stats?.edges ?? renderedEdges;
   const summaryUpdated =
     summary?.lastUpdated || legacySummaryStats?.last_updated || legacySummary?.last_updated;
-  const lessonsTotal = lessonsStats?.stats?.total_lessons ?? lessons?.lessons?.length ?? 0;
   const lessonStatsEntries = useMemo(() => {
     const raw = lessonsStats?.stats;
     if (!raw) return [];
-    return Object.entries(raw)
-      .slice(0, 4)
-      .map(([key, value]) => ({
-        label: key.replace(/_/g, " "),
-        value: typeof value === "number" ? value : String(value),
-        hint: "LessonsStore",
-      }));
-  }, [lessonsStats?.stats]);
-  const brainMetrics = useMemo(
-    () => [
-      { label: "Węzły", value: summaryNodes ?? "—", hint: "Nodes w grafie" },
-      { label: "Krawędzie", value: summaryEdges ?? "—", hint: "Połączenia grafu" },
-      {
-        label: "Lekcje",
-        value: lessonsTotal ? lessonsTotal.toString() : "—",
-        hint: "LessonsStore entries",
-      },
-    ],
-    [lessonsTotal, summaryEdges, summaryNodes],
-  );
-
-  const applyFiltersToGraph = useCallback((nextFilters: GraphFilterType[]) => {
-    const cy = cyInstanceRef.current;
-    if (!cy || cy.destroyed() || !cy.container()) return;
-    const activeFilters = nextFilters.filter(
-      (item): item is SpecificFilter => item !== "all",
-    );
-    cy.nodes().style("display", "element");
-    if (activeFilters.length > 0) {
-      cy.nodes().forEach((node) => {
-        const nodeType = node.data("type") as SpecificFilter | undefined;
-        if (!nodeType || !activeFilters.includes(nodeType)) {
-          node.style("display", "none");
-        }
+    const entries: { label: string; value: string | number; hint?: string }[] = [];
+    const total = raw.total_lessons ?? raw.total;
+    const uniqueTags = raw.unique_tags ?? raw.tags_count;
+    if (typeof total === "number") {
+      entries.push({ label: "Lekcje", value: total, hint: "LessonsStore" });
+    }
+    if (typeof uniqueTags === "number") {
+      entries.push({ label: "Unikalne tagi", value: uniqueTags, hint: "LessonsStore" });
+    }
+    const tagDistribution = raw.tag_distribution as Record<string, number> | undefined;
+    if (tagDistribution && typeof tagDistribution === "object") {
+      const topTags = Object.entries(tagDistribution)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([tag, count]) => `${tag} (${count})`)
+        .join(", ");
+      entries.push({
+        label: "Top tagi",
+        value: topTags || "—",
+        hint: "Najczęstsze tagi LessonsStore",
       });
     }
-    try {
-      cy.layout({ name: "cose", padding: 30, animate: false }).run();
-    } catch {
-      // Layout can fail if the container unmounts between renders.
-    }
-  }, []);
+    return entries;
+  }, [lessonsStats?.stats]);
+  const applyFiltersToGraph = useCallback(
+    (nextFilters: GraphFilterType[]) => {
+      const cy = cyInstanceRef.current;
+      if (!cy || cy.destroyed() || !cy.container()) return;
+      const activeFilters = nextFilters.filter(
+        (item): item is SpecificFilter => item !== "all",
+      );
+      cy.batch(() => {
+        cy.nodes().style("display", "element");
+        cy.nodes().forEach((node) => {
+          const nodeType = node.data("type") as SpecificFilter | undefined;
+          const nodeTopic = (node.data("topic") as string | undefined) || "";
+          const matchesType =
+            activeFilters.length === 0 || (nodeType && activeFilters.includes(nodeType));
+          const matchesTopic =
+            activeTab === "memory"
+              ? !topicFilter ||
+                nodeTopic.toLowerCase().includes(topicFilter.trim().toLowerCase())
+              : true;
+          if (!(matchesType && matchesTopic)) {
+            node.style("display", "none");
+          }
+        });
+      });
+    },
+    [activeTab, topicFilter],
+  );
 
   const handleFilterToggle = (value: GraphFilterType) => {
     setFilters((prev) => {
@@ -163,7 +275,12 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     if (tagName) {
       cy.nodes().forEach((node) => {
         const props = node.data("properties") || {};
-        const tags = (props.tags || []) as string[];
+        const meta = (node.data("meta") || {}) as Record<string, unknown>;
+        const tagField = meta.tags || props.tags || [];
+        const tags =
+          typeof tagField === "string"
+            ? tagField.split(",").map((t) => t.trim()).filter(Boolean)
+            : (tagField as string[]);
         if (tags.includes(tagName)) {
           node.style("border-width", 4).style("border-color", "#f59e0b");
         }
@@ -203,6 +320,71 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     const next = highlightTag === tagName ? null : tagName;
     setHighlightTag(next);
     applyHighlightToNodes(next);
+  };
+
+  const handlePinMemory = async (entryId: string, pinned: boolean) => {
+    try {
+      setMemoryActionPending(entryId);
+      await pinMemoryEntry(entryId, pinned);
+      pushToast(pinned ? "Przypięto wpis pamięci." : "Odepnieto wpis pamięci.", "success");
+      memoryGraphPoll.refresh();
+    } catch (err) {
+      pushToast("Nie udało się zmienić stanu pinned.", "error");
+      console.error("Nie udało się zmienić stanu pinned:", err);
+    } finally {
+      setMemoryActionPending(null);
+    }
+  };
+
+  const handleDeleteMemory = async (entryId: string) => {
+    const confirmed = window.confirm("Czy na pewno usunąć ten wpis pamięci?");
+    if (!confirmed) return;
+    try {
+      setMemoryActionPending(entryId);
+      await deleteMemoryEntry(entryId);
+      clearSelection();
+      memoryGraphPoll.refresh();
+      pushToast("Usunięto wpis pamięci.", "success");
+    } catch (err) {
+      pushToast("Nie udało się usunąć wpisu pamięci.", "error");
+      console.error("Nie udało się usunąć wpisu pamięci:", err);
+    } finally {
+      setMemoryActionPending(null);
+    }
+  };
+
+  const handleClearSessionMemory = async () => {
+    if (!memorySessionFilter.trim()) {
+      pushToast("Podaj session_id do wyczyszczenia.", "warning");
+      return;
+    }
+    try {
+      setMemoryWipePending(true);
+      const resp = await clearSessionMemory(memorySessionFilter.trim());
+      pushToast(`Wyczyszczono sesję ${resp.session_id} (wektorów: ${resp.deleted_vectors}).`, "success");
+      memoryGraphPoll.refresh();
+    } catch (err) {
+      pushToast("Nie udało się wyczyścić pamięci sesji.", "error");
+      console.error(err);
+    } finally {
+      setMemoryWipePending(false);
+    }
+  };
+
+  const handleClearGlobalMemory = async () => {
+    const confirmed = window.confirm("Wyczyścić całą pamięć globalną? Tej operacji nie można cofnąć.");
+    if (!confirmed) return;
+    try {
+      setMemoryWipePending(true);
+      const resp = await clearGlobalMemory();
+      pushToast(`Wyczyszczono pamięć globalną (wektorów: ${resp.deleted_vectors ?? 0}).`, "success");
+      memoryGraphPoll.refresh();
+    } catch (err) {
+      pushToast("Nie udało się wyczyścić pamięci globalnej.", "error");
+      console.error(err);
+    } finally {
+      setMemoryWipePending(false);
+    }
   };
 
   const handleFitGraph = () => {
@@ -260,26 +442,46 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   useEffect(() => {
     let cyInstance: cytoscapeType.Core | null = null;
     const mount = async () => {
-      if (!cyRef.current || !graph?.elements) return;
+      if (!cyRef.current || !mergedGraph?.elements) return;
+      if (!preparedElements) return;
       const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
-      const elements = graph.elements as unknown as cytoscapeType.ElementsDefinition;
+      const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
       const styles = [
         {
           selector: "node",
           style: {
-            "background-color": (ele: cytoscapeType.NodeSingular) =>
-              ele.data("type") === "agent"
+            "background-color": (ele: cytoscapeType.NodeSingular) => {
+              const topicColor = ele.data("node_color");
+              if (topicColor) return topicColor;
+              return ele.data("type") === "agent"
                 ? "#22c55e"
                 : ele.data("type") === "memory"
                   ? "#f59e0b"
-                  : "#6366f1",
-            label: "data(label)",
+                  : ele.data("type") === "memory_session"
+                    ? "#38bdf8"
+                    : ele.data("type") === "memory_user"
+                      ? "#0ea5e9"
+                      : ele.data("type") === "lesson"
+                        ? "#a855f7"
+                        : "#6366f1";
+            },
+            label: "data(label_short)",
             color: "#e5e7eb",
-            "font-size": 11,
+            "font-size": 10,
             "text-wrap": "wrap",
-            "text-max-width": 120,
+            "text-max-width": 100,
             "border-width": 1,
             "border-color": "#1f2937",
+            opacity: (ele: cytoscapeType.NodeSingular) => {
+              const ts = ele.data("_ts");
+              if (!ts) return 1;
+              const now = Date.now();
+              const diffHours = Math.max(0, (now - Number(ts)) / (1000 * 60 * 60));
+              if (diffHours <= 1) return 1;
+              if (diffHours >= 48) return 0.35;
+              const t = Math.min(1, Math.max(0, (diffHours - 1) / (48 - 1)));
+              return 1 - 0.65 * t;
+            },
           },
         },
         {
@@ -313,19 +515,20 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             "target-arrow-color": "#475569",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            label: "data(label)",
+            label: showEdgeLabels ? "data(label_short)" : "",
             "font-size": 9,
             color: "#94a3b8",
             "text-background-opacity": 0.4,
             "text-background-color": "#0f172a",
             "text-background-padding": 2,
+            "text-overflow": "ellipsis",
           },
         },
       ] as unknown as cytoscapeType.StylesheetJson;
       cyInstance = cytoscape({
         container: cyRef.current,
         elements,
-        layout: { name: "cose", padding: 30, animate: false },
+        layout: { name: layoutName, padding: 30, animate: false },
         style: styles,
       });
       cyInstance.on("tap", "node", (evt: cytoscapeType.EventObject) => {
@@ -363,13 +566,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         cyInstance.destroy();
       }
     };
-  }, [graph, clearSelection, focusNodeWithNeighbors]);
+  }, [mergedGraph, clearSelection, focusNodeWithNeighbors, showEdgeLabels, layoutName, preparedElements]);
 
   useEffect(() => {
-    if (graph) {
+    if (mergedGraph) {
       applyFiltersToGraph(filters);
     }
-  }, [graph, filters, applyFiltersToGraph]);
+  }, [mergedGraph, filters, applyFiltersToGraph]);
 
   return (
     <div className="space-y-6 pb-10">
@@ -379,27 +582,39 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         description="Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji."
         as="h1"
         size="lg"
-        rightSlot={
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-wrap gap-2">
-              <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
-              <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
-              <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
-            </div>
-            <Brain className="page-heading-icon" />
-          </div>
-        }
+        rightSlot={<Brain className="page-heading-icon" />}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {brainMetrics.map((metric) => (
-          <BrainMetricCard
-            key={metric.label}
-            label={metric.label}
-            value={metric.value}
-            hint={metric.hint}
-          />
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-full border border-white/10 bg-black/40 p-1 text-xs text-white">
+          <Button
+            size="xs"
+            variant={activeTab === "memory" ? "secondary" : "ghost"}
+            className="px-3"
+            onClick={() => setActiveTab("memory")}
+          >
+            Pamięć / Lessons
+          </Button>
+          <Button
+            size="xs"
+            variant={activeTab === "repo" ? "secondary" : "ghost"}
+            className="px-3"
+            onClick={() => setActiveTab("repo")}
+          >
+            Repo / Knowledge
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
+        <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+        <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
+        <Badge tone="neutral">Źródło: {activeTab === "repo" ? "Knowledge" : "Pamięć"}</Badge>
+        {activeTab === "memory" ? <Badge tone="neutral">Limit: {memoryLimit}</Badge> : null}
+        <Badge tone="neutral">
+          Render: {renderedNodes}/{sourceTotalNodes} • {renderedEdges}/{sourceTotalEdges}
+        </Badge>
       </div>
 
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
@@ -409,25 +624,28 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           data-testid="graph-container"
           className="relative h-[70vh] w-full"
         />
-        {(graphLoading || graphError) && (
+        {(graphLoading || memoryLoading || graphError || memoryGraphError) && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center text-sm text-white">
-            {graphLoading ? (
+            {graphLoading || memoryLoading ? (
               <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
             ) : (
               <AlertTriangle className="h-6 w-6 text-amber-300" />
             )}
             <p>
-              {graphLoading
-                ? "Ładuję graf wiedzy..."
-                : "Brak danych z /api/v1/knowledge/graph."}
+              {graphLoading || memoryLoading
+                ? "Ładuję graf..."
+                : "Brak danych z API grafu."}
             </p>
-            {graphError && (
+            {(graphError || memoryGraphError) && (
               <Button
                 type="button"
                 variant="outline"
                 size="xs"
                 className="pointer-events-auto border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
-                onClick={() => refreshGraph()}
+                onClick={() => {
+                  refreshGraph();
+                  if (showMemoryLayer) memoryGraphPoll.refresh();
+                }}
               >
                 Odśwież
               </Button>
@@ -445,23 +663,187 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             scanMessage={scanMessage}
           />
         </div>
-        <div className="pointer-events-auto absolute left-6 bottom-6 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
-          {lessonTags.slice(0, 6).map((tag) => (
-            <Button
-              key={tag.name}
-              variant="ghost"
-              size="xs"
-              className={`rounded-full border px-3 py-1 ${
-                highlightTag === tag.name
-                  ? "border-amber-400/50 bg-amber-500/20"
-                  : "border-white/10 bg-white/5 text-zinc-200"
-              }`}
-              onClick={() => handleTagToggle(tag.name)}
-            >
-              #{tag.name}
-            </Button>
-          ))}
+        {activeTab === "memory" ? (
+          <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2">
+              {lessonTags.slice(0, 6).map((tag) => (
+                <Button
+                  key={tag.name}
+                  variant="ghost"
+                  size="xs"
+                  className={`rounded-full border px-3 py-1 ${
+                    highlightTag === tag.name
+                      ? "border-amber-400/50 bg-amber-500/20"
+                      : "border-white/10 bg-white/5 text-zinc-200"
+                  }`}
+                  onClick={() => handleTagToggle(tag.name)}
+                >
+                  #{tag.name}
+                </Button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showMemoryLayer}
+                  onChange={(e) => setShowMemoryLayer(e.target.checked)}
+                />
+                <span>Warstwa pamięci (LanceDB)</span>
+              </label>
+              {memoryGraph?.stats?.nodes ? (
+                <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
+              ) : null}
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={memoryOnlyPinned}
+                  onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
+                />
+                <span>Tylko pinned</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={includeLessons}
+                  onChange={(e) => setIncludeLessons(e.target.checked)}
+                />
+                <span>Dołącz lekcje</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showEdgeLabels}
+                  onChange={(e) => setShowEdgeLabels(e.target.checked)}
+                />
+                <span>Etykiety krawędzi</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={flowMode === "flow"}
+                  onChange={(e) => setFlowMode(e.target.checked ? "flow" : "default")}
+                />
+                <span>Tryb flow (sekwencja)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span>Session</span>
+                <input
+                  type="text"
+                  value={memorySessionFilter}
+                  onChange={(e) => setMemorySessionFilter(e.target.value)}
+                  placeholder="session-id"
+                  className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span>Topic</span>
+                <input
+                  type="text"
+                  value={topicFilter}
+                  onChange={(e) => {
+                    setTopicFilter(e.target.value);
+                    applyFiltersToGraph(filters);
+                  }}
+                  placeholder="np. ui / infra"
+                  className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="border-white/20 text-white"
+                  disabled={memoryWipePending}
+                  onClick={handleClearSessionMemory}
+                >
+                  Wyczyść tok sesji
+                </Button>
+                <Button
+                  size="xs"
+                  variant="danger"
+                  className="border-white/20 text-white"
+                  disabled={memoryWipePending}
+                  onClick={handleClearGlobalMemory}
+                >
+                  Wyczyść całą pamięć
+                </Button>
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                className="border-white/20 text-white"
+                onClick={() => {
+                  memoryGraphPoll.refresh();
+                }}
+              >
+                Odśwież pamięć
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                className="border-white/20 text-white"
+                disabled={projection.pending}
+                onClick={async () => {
+                  try {
+                    const res = await projection.trigger(memoryLimit);
+                    pushToast(`Zaktualizowano projekcję (records: ${res.updated})`, "success");
+                    memoryGraphPoll.refresh();
+                  } catch {
+                    pushToast("Nie udało się zaktualizować projekcji embeddingów.", "error");
+                  }
+                }}
+              >
+                Odśwież projekcję
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-xs text-white">
+        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+          <span className="text-zinc-400">Legenda:</span>
+          {activeTab === "repo" ? (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-indigo-400" />
+                file / function
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                memory / fact
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-sky-400" />
+                session
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                user
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-purple-500" />
+                lesson
+              </span>
+            </>
+          )}
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
+            zaznaczony / sąsiedzi
+          </span>
         </div>
+        {activeTab === "memory" ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+            <span className="text-zinc-400">Etykiety krawędzi:</span>
+            <span className="text-zinc-200">
+              {showEdgeLabels ? "włączone (może spowolnić)" : "domyślnie ukryte"}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -643,6 +1025,31 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                   {JSON.stringify(selected, null, 2)}
                 </pre>
               </div>
+              {selected.type === "memory" && selected.id ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={memoryActionPending === selected.id}
+                    onClick={() =>
+                      handlePinMemory(
+                        String(selected.id),
+                        !(selected as Record<string, unknown>)?.pinned,
+                      )
+                    }
+                  >
+                    {selected.pinned ? "Odepnij" : "Przypnij"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={memoryActionPending === selected.id}
+                    onClick={() => handleDeleteMemory(String(selected.id))}
+                  >
+                    Usuń wpis
+                  </Button>
+                </div>
+              ) : null}
               <div>
                 <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
                 {relations.length === 0 ? (

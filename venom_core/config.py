@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     MODEL_GENERATION_OVERRIDES: str = (
         ""  # Override parametrów generacji per runtime/model
     )
+    SUMMARY_STRATEGY: str = "llm_with_fallback"  # lub "heuristic_only"
 
     # Konfiguracja Prompt Manager
     PROMPTS_DIR: str = "./data/prompts"  # Katalog z plikami YAML promptów
@@ -383,6 +384,10 @@ class Settings(BaseSettings):
     # ===== SYSTEM & MONITORING ENDPOINTS =====
     # Endpoint dla API systemowego (ServiceMonitor)
     SYSTEM_SERVICES_ENDPOINT: str = "http://localhost:8000/api/v1/system/services"
+
+    # ===== BRAIN / GRAPH LIMITS (UI) =====
+    NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT: int = 500
+    NEXT_PUBLIC_MEMORY_GRAPH_LIMIT: int = 100
 
 
 SETTINGS = Settings()

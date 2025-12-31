@@ -49,6 +49,19 @@ class TaskRequest(BaseModel):
     preferred_language: Optional[str] = Field(
         default=None, description="Preferowany jezyk odpowiedzi (pl/en/de)"
     )
+    session_id: Optional[str] = Field(
+        default=None, description="Identyfikator sesji czatu (dla utrzymania kontekstu)"
+    )
+    preference_scope: Optional[str] = Field(
+        default=None, description="Zakres preferencji: session/global"
+    )
+    tone: Optional[str] = Field(
+        default=None,
+        description="Preferowany ton odpowiedzi (concise/detailed/neutral)",
+    )
+    style_notes: Optional[str] = Field(
+        default=None, description="Dodatkowe wskazówki stylu odpowiedzi"
+    )
     forced_tool: Optional[str] = Field(
         default=None, description="Wymuszone narzędzie/skill (np. 'git', 'docs')"
     )

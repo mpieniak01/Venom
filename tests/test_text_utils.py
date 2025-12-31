@@ -49,4 +49,3 @@ def test_trim_to_char_limit_unicode():
     assert trimmed == "Zażółć gęś"
     assert len(trimmed) == 10
     assert flag is True
-

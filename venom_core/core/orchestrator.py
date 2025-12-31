@@ -755,11 +755,15 @@ class Orchestrator:
     def _summarize_history_llm(self, history_text: str) -> str:
         """
         Synchroniczne streszczenie przy użyciu aktywnego modelu LLM.
-        
+
         UWAGA: Ta metoda używa synchronicznego httpx.Client zamiast async,
         ponieważ jest wywoływana z kontekstu synchronicznego (_get_context_for_task).
-        Jeśli w przyszłości zostanie przeniesiona do kontekstu async, należy
-        zamienić httpx.Client na httpx.AsyncClient i dodać await.
+        Jeśli w przyszłości zostanie przeniesiona do kontekstu async, konieczne będzie:
+        - zmienienie sygnatury na `async def _summarize_history_llm(...):`,
+        - zamiana `with httpx.Client(...) as client:` na
+          `async with httpx.AsyncClient(...) as client:`,
+        - dodanie `await` przed wywołaniem `client.post(...)`,
+        - wywoływanie tej metody wyłącznie z kontekstu asynchronicznego.
         """
         try:
             # Przytnij wejście do sensownego fragmentu

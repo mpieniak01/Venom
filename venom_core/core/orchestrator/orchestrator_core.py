@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
@@ -46,10 +47,14 @@ from venom_core.utils.text import trim_to_char_limit
 
 # Import decomposed modules
 from .constants import (
+    DEFAULT_USER_ID,
+    HISTORY_SUMMARY_TRIGGER_CHARS,
+    HISTORY_SUMMARY_TRIGGER_MSGS,
     LEARNING_LOG_PATH,
     MAX_CONTEXT_CHARS,
     MAX_HIDDEN_PROMPTS_IN_CONTEXT,
     MAX_LEARNING_SNIPPET,
+    SUMMARY_STRATEGY_DEFAULT,
 )
 from .flow_coordinator import FlowCoordinator
 from .kernel_manager import KernelManager
@@ -58,6 +63,7 @@ from .middleware import Middleware
 from .session_handler import SessionHandler
 
 logger = get_logger(__name__)
+
 
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
@@ -547,6 +553,11 @@ class Orchestrator:
 
         Zachowane dla kompatybilności z testami.
         """
+        log_path = getattr(
+            sys.modules.get("venom_core.core.orchestrator"),
+            "LEARNING_LOG_PATH",
+            LEARNING_LOG_PATH,
+        )
         entry = {
             "task_id": str(task_id),
             "timestamp": datetime.now().isoformat(),
@@ -561,22 +572,71 @@ class Orchestrator:
         }
 
         try:
-            LEARNING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with LEARNING_LOG_PATH.open("a", encoding="utf-8") as handle:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            self.state_manager.add_log(
-                task_id, f"🧠 Zapisano wpis nauki do {LEARNING_LOG_PATH}"
-            )
+            self.state_manager.add_log(task_id, f"🧠 Zapisano wpis nauki do {log_path}")
             collector = metrics_module.metrics_collector
             if collector:
                 collector.increment_learning_logged()
         except Exception as exc:
             logger.warning(f"Nie udało się zapisać wpisu nauki: {exc}")
 
+    def _heuristic_summary(self, full_history: list) -> str:
+        """Delegacja do SessionHandler (kompatybilność z testami)."""
+        return self.session_handler._heuristic_summary(full_history)
+
+    def _summarize_history_llm(self, history_text: str) -> str:
+        """Delegacja do SessionHandler (kompatybilność z testami)."""
+        return self.session_handler._summarize_history_llm(history_text)
+
+    def _ensure_session_summary(self, task_id: UUID, task: VenomTask) -> None:
+        """
+        Tworzy streszczenie historii sesji (kompatybilność z wcześniejszym API).
+        """
+        try:
+            full_history = task.context_history.get("session_history_full") or []
+            if not full_history:
+                return
+            raw_text = "\n".join(
+                f"{entry.get('role', '')}: {entry.get('content', '')}"
+                for entry in full_history
+            )
+            if (
+                len(full_history) < HISTORY_SUMMARY_TRIGGER_MSGS
+                and len(raw_text) < HISTORY_SUMMARY_TRIGGER_CHARS
+            ):
+                return
+
+            strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
+            if strategy == "heuristic_only":
+                summary = self._heuristic_summary(full_history)
+            else:
+                summary = self._summarize_history_llm(
+                    raw_text
+                ) or self._heuristic_summary(full_history)
+            if not summary:
+                return
+
+            self.state_manager.update_context(task_id, {"session_summary": summary})
+            self.session_handler._memory_upsert(
+                summary,
+                metadata={
+                    "type": "summary",
+                    "session_id": task.context_history.get("session", {}).get(
+                        "session_id"
+                    )
+                    or "default_session",
+                    "user_id": DEFAULT_USER_ID,
+                    "pinned": True,
+                },
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Nie udało się wygenerować streszczenia sesji: {exc}")
+
     def _persist_session_context(self, task_id: UUID, request: TaskRequest) -> None:
         """Delegacja do session_handler."""
         self.session_handler.persist_session_context(task_id, request)
-
 
     def _append_session_history(
         self, task_id: UUID, role: str, content: str, session_id: Optional[str]
@@ -584,16 +644,9 @@ class Orchestrator:
         """Delegacja do session_handler."""
         self.session_handler.append_session_history(task_id, role, content, session_id)
 
-
     def _build_session_context_block(self, request: TaskRequest, task_id: UUID) -> str:
         """Delegacja do session_handler."""
         return self.session_handler.build_session_context_block(request, task_id)
-
-
-
-
-
-
 
     async def _apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str
@@ -602,7 +655,6 @@ class Orchestrator:
         return await self.session_handler.apply_preferred_language(
             task_id, request, result, self.intent_manager
         )
-
 
     async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
         """

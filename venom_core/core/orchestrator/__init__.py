@@ -13,22 +13,29 @@ Ten moduł został zdekomponowany na mniejsze, spójne komponenty:
 Eksportujemy główną klasę Orchestrator dla zachowania kompatybilności wstecznej.
 """
 
-from .orchestrator_core import Orchestrator
-
 # Re-export dla backward compatibility
+from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.intent_manager import IntentManager
+
 from .constants import (
     COUNCIL_COLLABORATION_KEYWORDS,
     COUNCIL_TASK_THRESHOLD,
     ENABLE_COUNCIL_MODE,
+    LEARNING_LOG_PATH,
     MAX_CONTEXT_CHARS,
     MAX_HIDDEN_PROMPTS_IN_CONTEXT,
     MAX_LESSONS_IN_CONTEXT,
     MAX_REPAIR_ATTEMPTS,
     SESSION_HISTORY_LIMIT,
 )
+from .orchestrator_core import Orchestrator, metrics_module
 
 __all__ = [
     "Orchestrator",
+    "IntentManager",
+    "TaskDispatcher",
+    "metrics_module",
+    "LEARNING_LOG_PATH",
     "MAX_LESSONS_IN_CONTEXT",
     "MAX_HIDDEN_PROMPTS_IN_CONTEXT",
     "MAX_CONTEXT_CHARS",

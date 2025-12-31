@@ -63,6 +63,11 @@ class StateManager:
                     f"Rozpoczynanie z pustym stanem."
                 )
                 return
+            if file_size == 0:
+                logger.info(
+                    f"Plik stanu {self._state_file_path} jest pusty. Rozpoczynanie z pustym stanem."
+                )
+                return
 
             with open(self._state_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)

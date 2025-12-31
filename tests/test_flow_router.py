@@ -2,8 +2,6 @@
 
 from unittest.mock import Mock
 
-import pytest
-
 from venom_core.core.flow_router import FlowRouter
 
 
@@ -87,11 +85,48 @@ class TestFlowRouter:
         router = FlowRouter()
 
         # Act
-        flow_name, metadata = router.determine_flow("test context", "chat")
+        flow_name, metadata = router.determine_flow("test context", "CHAT")
 
         # Assert
-        assert isinstance(flow_name, str)
-        assert isinstance(metadata, dict)
+        assert flow_name == "standard"
+        assert metadata["mode"] == "standard"
+        assert metadata["intent"] == "CHAT"
+
+    def test_determine_flow_campaign_intent(self):
+        """Test determine_flow z intencją START_CAMPAIGN."""
+        # Arrange
+        router = FlowRouter()
+
+        # Act
+        flow_name, metadata = router.determine_flow("start campaign", "START_CAMPAIGN")
+
+        # Assert
+        assert flow_name == "campaign"
+        assert metadata["mode"] == "campaign"
+
+    def test_determine_flow_help_intent(self):
+        """Test determine_flow z intencją HELP_REQUEST."""
+        # Arrange
+        router = FlowRouter()
+
+        # Act
+        flow_name, metadata = router.determine_flow("need help", "HELP_REQUEST")
+
+        # Assert
+        assert flow_name == "help"
+        assert metadata["mode"] == "help"
+
+    def test_determine_flow_code_generation(self):
+        """Test determine_flow z intencją CODE_GENERATION."""
+        # Arrange
+        router = FlowRouter()
+
+        # Act
+        flow_name, metadata = router.determine_flow("write code", "CODE_GENERATION")
+
+        # Assert
+        assert flow_name == "code_review"
+        assert metadata["mode"] == "coder_critic"
 
     def test_determine_flow_with_council_enabled(self):
         """Test determine_flow z włączonym council."""
@@ -101,12 +136,12 @@ class TestFlowRouter:
         router = FlowRouter(council_flow=mock_council)
 
         # Act
-        flow_name, metadata = router.determine_flow("complex task", "analyze")
+        flow_name, metadata = router.determine_flow("complex task", "ANALYZE")
 
         # Assert
         mock_council.should_use_council.assert_called_once()
-        assert isinstance(flow_name, str)
-        assert isinstance(metadata, dict)
+        assert flow_name == "council"
+        assert metadata["mode"] == "council"
 
     def test_determine_flow_with_council_disabled(self):
         """Test determine_flow z wyłączonym council."""
@@ -116,8 +151,8 @@ class TestFlowRouter:
         router = FlowRouter(council_flow=mock_council)
 
         # Act
-        flow_name, metadata = router.determine_flow("simple task", "chat")
+        flow_name, metadata = router.determine_flow("simple task", "CHAT")
 
         # Assert
-        assert isinstance(flow_name, str)
-        assert isinstance(metadata, dict)
+        assert flow_name == "standard"
+        assert metadata["mode"] == "standard"

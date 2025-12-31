@@ -1,6 +1,6 @@
 """Testy dla modułu metrics - zbieranie metryk systemowych."""
 
-import pytest
+import threading
 
 from venom_core.core.metrics import MetricsCollector
 
@@ -72,7 +72,6 @@ class TestMetricsCollector:
         """Test wielowątkowej inkrementacji (thread safety)."""
         # Arrange
         collector = MetricsCollector()
-        import threading
 
         def increment_multiple_times():
             for _ in range(100):

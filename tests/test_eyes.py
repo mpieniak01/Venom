@@ -10,7 +10,6 @@ W środowisku z X11, testy te zostaną uruchomione poprawnie.
 import base64
 import os
 import sys
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -138,7 +137,7 @@ class TestEyes:
         mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
 
-        # Act & Assert
+        # Act & Assert (combined for exception testing)
         with pytest.raises(ValueError, match="Plik nie istnieje"):
             eyes._prepare_image_base64("/nonexistent/path/to/image.png")
 
@@ -158,3 +157,11 @@ class TestEyes:
         # Assert
         assert eyes.local_vision_available is False
         assert eyes.local_vision_model is None
+
+
+def test_headless_detection():
+    """Test sprawdzający mechanizm mockowania dla środowisk headless."""
+    # Assert
+    if HEADLESS:
+        assert 'venom_core.perception.recorder' in sys.modules
+        assert isinstance(sys.modules['venom_core.perception.recorder'].DemonstrationRecorder, type(Mock))

@@ -1,11 +1,9 @@
 """Testy dla modułu process_monitor - monitorowanie procesów."""
 
 import os
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import psutil
-import pytest
 
 from venom_core.services.process_monitor import ProcessMonitor
 

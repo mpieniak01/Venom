@@ -380,12 +380,23 @@ class VectorStore:
 
         table = self._get_or_create_table(collection_name)
 
-        # Zbuduj prosty predykat LIKE na kolumnie metadata (przechowywanej jako JSON string)
+        # Walidacja i sanityzacja kluczy i wartości
         conditions = []
         for key, value in filters.items():
             if value is None:
                 continue
-            safe_value = str(value).replace("'", "''").replace('"', '\\"')
+            # Walidacja: klucze muszą być bezpieczne (alfanumeryczne + underscore)
+            if not re.match(r'^[a-zA-Z0-9_]+$', key):
+                raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
+            
+            # Konwersja wartości na string i walidacja
+            str_value = str(value)
+            # Dopuszczamy tylko bezpieczne znaki w wartościach
+            if not re.match(r'^[a-zA-Z0-9_\-\.@\s]+$', str_value):
+                raise ValueError(f"Nieprawidłowa wartość metadanych dla klucza {key}: {str_value}")
+            
+            # Używamy podwójnego escapowania dla bezpieczeństwa
+            safe_value = str_value.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
             conditions.append(f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\'')
 
         if not conditions:
@@ -481,8 +492,14 @@ class VectorStore:
         """Usuwa pojedynczy rekord po id."""
         if not entry_id:
             return 0
+        
+        # Walidacja entry_id - musi być UUID lub bezpieczny identyfikator
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', entry_id):
+            raise ValueError(f"Nieprawidłowy format entry_id: {entry_id}")
+        
         table = self._get_or_create_table(collection_name)
-        safe_id = entry_id.replace("'", "''")
+        # Podwójne escapowanie dla bezpieczeństwa
+        safe_id = entry_id.replace("\\", "\\\\").replace("'", "''")
         table.delete(where=f"id = '{safe_id}'")
         return 1
 
@@ -494,8 +511,14 @@ class VectorStore:
         """
         if not session_id:
             return 0
+        
+        # Walidacja session_id - musi być bezpiecznym identyfikatorem
+        if not re.match(r'^[a-zA-Z0-9\-_]+$', session_id):
+            raise ValueError(f"Nieprawidłowy format session_id: {session_id}")
+        
         table = self._get_or_create_table(collection_name)
-        safe_id = session_id.replace("'", "''").replace('"', '\\"')
+        # Podwójne escapowanie dla bezpieczeństwa
+        safe_id = session_id.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
         clause = f'metadata LIKE \'%\\"session_id\\": \\"{safe_id}\\"%\''
         try:
             before = table.count_rows()

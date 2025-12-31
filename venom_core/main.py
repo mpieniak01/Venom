@@ -231,6 +231,7 @@ async def lifespan(app: FastAPI):
             node_manager = None
 
     # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
+    global orchestrator
     if orchestrator is None:
         orchestrator = Orchestrator(
             state_manager,
@@ -647,6 +648,7 @@ def setup_router_dependencies():
 # orchestratora i zależności routerów, żeby uniknąć 503 Service Unavailable.
 if TESTING_MODE and orchestrator is None:
     try:
+        global orchestrator, event_broadcaster, node_manager, request_tracer
         orchestrator = Orchestrator(
             state_manager,
             event_broadcaster=event_broadcaster,

@@ -93,34 +93,19 @@ def _get_llm_runtime(task: VenomTask) -> dict:
 
 
 def _bootstrap_orchestrator_if_testing():
-    """Dla testów httpx/ASGITransport (bez lifespan) inicjalizuje orchestrator ad-hoc."""
-    global _orchestrator, _state_manager, _request_tracer
+    """
+    Zachowane dla kompatybilności wstecznej.
 
-    if _orchestrator is not None or not os.getenv("PYTEST_CURRENT_TEST"):
-        return
-
-    try:
-        from venom_core import main as main_module
-        from venom_core.api.stream import event_broadcaster
-        from venom_core.core.orchestrator import Orchestrator
-
-        orch = Orchestrator(
-            main_module.state_manager,
-            event_broadcaster=event_broadcaster,
-            node_manager=getattr(main_module, "node_manager", None),
-            request_tracer=getattr(main_module, "request_tracer", None),
-        )
-        _orchestrator = orch
-        _state_manager = main_module.state_manager
-        _request_tracer = getattr(main_module, "request_tracer", None)
-        logger.info(
-            "Tryb testowy: orchestrator zainicjalizowany bez lifespan (tasks router)"
-        )
-    except Exception as exc:  # pragma: no cover - awaria w test setup raportowana
-        logger.warning(
-            "Tryb testowy: nie udało się zainicjalizować orchestratora bez lifespan: %s",
-            exc,
-        )
+    Pierwotnie inicjalizowało orchestrator "ad-hoc" w trybie testowym na podstawie
+    venom_core.main, co powodowało mutację globalnego stanu i ryzyko zależności
+    cyklicznych. Obecnie nie wykonuje żadnej logiki – zależności muszą być
+    wstrzyknięte jawnie przez `set_dependencies` (np. w lifespan lub w fixture'ach).
+    
+    DEPRECATED: Ta funkcja będzie usunięta w przyszłych wersjach.
+    Używaj dependency injection przez set_dependencies() zamiast tego.
+    """
+    # Funkcja celowo pusta - inicjalizacja powinna odbywać się przez set_dependencies
+    return
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)

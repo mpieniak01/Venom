@@ -510,14 +510,16 @@ export function useMemoryGraph(
   onlyPinned = false,
   includeLessons = false,
   intervalMs = 20000,
+  mode: "default" | "flow" = "default",
 ) {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   if (sessionId) params.set("session_id", sessionId);
   if (onlyPinned) params.set("only_pinned", "true");
    if (includeLessons) params.set("include_lessons", "true");
+  if (mode && mode !== "default") params.set("mode", mode);
   return usePolling<KnowledgeGraph>(
-    `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}`,
+    `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}-${mode}`,
     () => apiFetch(`/api/v1/memory/graph?${params.toString()}`),
     intervalMs,
   );
@@ -533,6 +535,20 @@ export async function pinMemoryEntry(entryId: string, pinned = true) {
 export async function deleteMemoryEntry(entryId: string) {
   return apiFetch<{ status: string; entry_id: string; deleted: number }>(
     `/api/v1/memory/entry/${encodeURIComponent(entryId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function clearSessionMemory(sessionId: string) {
+  return apiFetch<{ status: string; session_id: string; deleted_vectors: number; cleared_tasks: number }>(
+    `/api/v1/memory/session/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function clearGlobalMemory() {
+  return apiFetch<{ status: string; deleted_vectors: number; message: string }>(
+    "/api/v1/memory/global",
     { method: "DELETE" },
   );
 }
@@ -609,20 +625,6 @@ export async function sendTask(
     method: "POST",
     body: JSON.stringify(body),
   });
-}
-
-export async function clearSessionMemory(sessionId: string) {
-  return apiFetch<{ status: string; deleted_vectors: number; cleared_tasks: number }>(
-    `/api/v1/memory/session/${encodeURIComponent(sessionId)}`,
-    { method: "DELETE" },
-  );
-}
-
-export async function clearGlobalMemory() {
-  return apiFetch<{ status: string; deleted_vectors: number }>(
-    "/api/v1/memory/global",
-    { method: "DELETE" },
-  );
 }
 
 export async function sendFeedback(

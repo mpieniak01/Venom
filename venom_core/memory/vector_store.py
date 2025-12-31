@@ -486,6 +486,48 @@ class VectorStore:
         table.delete(where=f"id = '{safe_id}'")
         return 1
 
+    def delete_session(
+        self, session_id: str, collection_name: Optional[str] = None
+    ) -> int:
+        """
+        Usuwa rekordy powiązane z danym session_id (dev/test cleanup).
+        """
+        if not session_id:
+            return 0
+        table = self._get_or_create_table(collection_name)
+        safe_id = session_id.replace("'", "''").replace('"', '\\"')
+        clause = f'metadata LIKE \'%\\"session_id\\": \\"{safe_id}\\"%\''
+        try:
+            before = table.count_rows()
+        except Exception:
+            before = None
+        table.delete(where=clause)
+        try:
+            after = table.count_rows()
+        except Exception:
+            after = None
+        if before is not None and after is not None:
+            return max(before - after, 0)
+        return 0
+
+    def wipe_collection(self, collection_name: Optional[str] = None) -> int:
+        """
+        Usuwa wszystkie rekordy z kolekcji (dev/test cleanup).
+        """
+        table = self._get_or_create_table(collection_name)
+        try:
+            before = table.count_rows()
+        except Exception:
+            before = None
+        table.delete(where="TRUE")
+        try:
+            after = table.count_rows()
+        except Exception:
+            after = None
+        if before is not None and after is not None:
+            return max(before - after, 0)
+        return 0
+
     def update_metadata(
         self,
         entry_id: str,

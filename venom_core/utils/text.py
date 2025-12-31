@@ -13,5 +13,5 @@ def trim_to_char_limit(text: str, limit: int) -> tuple[str, bool]:
         return "", True
     if not text or len(text) <= limit:
         return text, False
-    trimmed = text[-limit:]
+    trimmed = text[:limit]
     return trimmed, True

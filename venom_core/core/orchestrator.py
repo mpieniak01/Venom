@@ -753,10 +753,25 @@ class Orchestrator:
         return f"(Heurystyczne) Podsumowanie ostatnich wiadomości:\n{summary}"
 
     def _summarize_history_llm(self, history_text: str) -> str:
-        """Synchroniczne streszczenie przy użyciu aktywnego modelu LLM."""
+        """
+        Synchroniczne streszczenie przy użyciu aktywnego modelu LLM.
+        
+        UWAGA: Ta metoda używa synchronicznego httpx.Client zamiast async,
+        ponieważ jest wywoływana z kontekstu synchronicznego (_get_context_for_task).
+        Jeśli w przyszłości zostanie przeniesiona do kontekstu async, należy
+        zamienić httpx.Client na httpx.AsyncClient i dodać await.
+        """
         try:
-            # Przytnij wejście do sensownego fragmentu (ostatnie ~5k znaków)
-            history_text = history_text[-HISTORY_SUMMARY_TRIGGER_CHARS:]
+            # Przytnij wejście do sensownego fragmentu
+            # Używamy trim_to_char_limit dla spójności i dodatkowej walidacji
+            from venom_core.utils.text import trim_to_char_limit
+            history_text, was_trimmed = trim_to_char_limit(
+                history_text, HISTORY_SUMMARY_TRIGGER_CHARS
+            )
+            if was_trimmed:
+                logger.debug(
+                    f"Historia przycięta do {HISTORY_SUMMARY_TRIGGER_CHARS} znaków dla streszczenia LLM"
+                )
             strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
             if strategy == "heuristic_only":
                 return ""

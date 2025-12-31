@@ -65,7 +65,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     memorySessionFilter || undefined,
     memoryOnlyPinned,
     includeLessons,
-    activeTab === "memory" && showMemoryLayer ? 0 : 0,
+    activeTab === "memory" && showMemoryLayer ? 20000 : 0,
     flowMode,
   );
   const memoryGraphLoading = memoryGraphPoll.loading;
@@ -97,7 +97,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     }) || false;
   const layoutName = hasPresetPositions ? "preset" : activeTab === "repo" ? "cose" : "concentric";
   const preparedElements = useMemo(() => {
-        if (!mergedGraph?.elements) return null;
+    if (!mergedGraph?.elements) return null;
     const nodes = (mergedGraph.elements.nodes || []).map(
       (node: { data: Record<string, unknown>; position?: { x?: number; y?: number } }) => {
         const data = { ...(node.data || {}) };
@@ -443,8 +443,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     let cyInstance: cytoscapeType.Core | null = null;
     const mount = async () => {
       if (!cyRef.current || !mergedGraph?.elements) return;
-          const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
-          const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
+      if (!preparedElements) return;
+      const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
+      const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
           const styles = [
         {
           selector: "node",

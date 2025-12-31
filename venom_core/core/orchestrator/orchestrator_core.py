@@ -40,12 +40,17 @@ from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.perception.eyes import Eyes
-from venom_core.utils.llm_runtime import get_active_llm_runtime
+from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.text import trim_to_char_limit
 
 # Import decomposed modules
-from .constants import MAX_CONTEXT_CHARS, MAX_HIDDEN_PROMPTS_IN_CONTEXT
+from .constants import (
+    LEARNING_LOG_PATH,
+    MAX_CONTEXT_CHARS,
+    MAX_HIDDEN_PROMPTS_IN_CONTEXT,
+    MAX_LEARNING_SNIPPET,
+)
 from .flow_coordinator import FlowCoordinator
 from .kernel_manager import KernelManager
 from .learning_handler import LearningHandler

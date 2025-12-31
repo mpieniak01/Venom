@@ -557,13 +557,47 @@ make run
 
 ## 📖 Dokumentacja
 
-- [Architektura rozproszona (The Hive)](docs/THE_HIVE.md)
+### Architektura i Wizja
 - [Architektura systemu](docs/VENOM_MASTER_VISION_V1.md)
+- [Architektura backendu](docs/BACKEND_ARCHITECTURE.md)
+- [Architektura rozproszona (The Hive)](docs/THE_HIVE.md)
 - [System rozpoznawania intencji](docs/INTENT_RECOGNITION.md)
-- [Strojenie modelu LLM (Cockpit)](docs/_done/072_strojenie_modelu_llm_ui.md)
-- [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
+- [Silnik hybrydowy AI](docs/HYBRID_AI_ENGINE.md)
+
+### Agenci
+- [**Indeks wszystkich agentów** (38 agentów)](docs/AGENTS_INDEX.md) 📋
+- [The Architect - Planowanie](docs/THE_ARCHITECT.md)
+- [The Coder - Generowanie kodu](docs/THE_CODER.md)
+- [The Researcher - Wyszukiwanie wiedzy](docs/THE_RESEARCHER.md)
+- [The Chat - Asystent konwersacyjny](docs/THE_CHAT.md)
+- [The Strategist - Analiza złożoności](docs/THE_STRATEGIST.md)
+- [The Critic - Weryfikacja kodu](docs/THE_CRITIC.md)
+- [The Librarian - Zarządzanie plikami](docs/THE_LIBRARIAN.md)
+- [The Integrator - Git & DevOps](docs/THE_INTEGRATOR.md)
+- [The Forge (Toolmaker) - Tworzenie narzędzi](docs/THE_FORGE.md)
+
+### Frontend i UI
+- [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md)
 - [Panel konfiguracji](docs/CONFIG_PANEL.md)
+- [Dashboard](docs/DASHBOARD_GUIDE.md)
+
+### Narzędzia i Funkcjonalności
+- [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
+- [Strojenie modelu LLM](docs/_done/072_strojenie_modelu_llm_ui.md)
+- [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
+- [Dream Engine](docs/DREAM_ENGINE_GUIDE.md)
+- [Warstwa pamięci](docs/MEMORY_LAYER_GUIDE.md)
+- [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
+
+### DevOps i Deployment
+- [Deployment (Next.js)](docs/DEPLOYMENT_NEXT.md)
+- [Integracje zewnętrzne](docs/EXTERNAL_INTEGRATIONS.md)
+- [Guardian - Bezpieczeństwo](docs/GUARDIAN_GUIDE.md)
+- [QA Delivery](docs/QA_DELIVERY_GUIDE.md)
+
+### Współpraca
 - [Przewodnik współpracy](docs/CONTRIBUTING.md)
+- [Testowanie i wydajność](docs/TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Testy
 

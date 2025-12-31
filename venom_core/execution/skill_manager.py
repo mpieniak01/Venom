@@ -19,7 +19,6 @@ class SkillValidationError(Exception):
     """Wyjątek rzucany gdy skill nie przechodzi walidacji."""
 
 
-
 class SkillManager:
     """
     Menedżer Umiejętności - zarządza cyklem życia dynamicznych pluginów.

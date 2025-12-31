@@ -1,7 +1,7 @@
 """Testy dla foreman - agent zarządcy klastra."""
 
 import asyncio
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from semantic_kernel import Kernel
@@ -64,23 +64,30 @@ def test_node_metrics_creation():
 
 def test_node_metrics_load_score():
     """Test obliczania load score."""
-    # Węzeł bez obciążenia
-    idle_node = NodeMetrics(
-        "node_1", "Idle", cpu_usage=0, memory_usage=0, active_tasks=0
-    )
-    assert idle_node.get_load_score() == 0.0
+    # Mock SETTINGS aby testy nie zależały od konfiguracji środowiska
+    with patch("venom_core.agents.foreman.SETTINGS") as mock_settings:
+        mock_settings.FOREMAN_CPU_WEIGHT = 0.4
+        mock_settings.FOREMAN_MEMORY_WEIGHT = 0.3
+        mock_settings.FOREMAN_TASKS_WEIGHT = 0.3
+        mock_settings.FOREMAN_MAX_TASKS_NORMALIZATION = 10
 
-    # Węzeł z pełnym obciążeniem
-    busy_node = NodeMetrics(
-        "node_2", "Busy", cpu_usage=100, memory_usage=100, active_tasks=10
-    )
-    assert busy_node.get_load_score() == 100.0
+        # Węzeł bez obciążenia
+        idle_node = NodeMetrics(
+            "node_1", "Idle", cpu_usage=0, memory_usage=0, active_tasks=0
+        )
+        assert idle_node.get_load_score() == 0.0
 
-    # Węzeł z średnim obciążeniem
-    medium_node = NodeMetrics(
-        "node_3", "Medium", cpu_usage=50, memory_usage=50, active_tasks=5
-    )
-    assert 40 < medium_node.get_load_score() < 60
+        # Węzeł z pełnym obciążeniem
+        busy_node = NodeMetrics(
+            "node_2", "Busy", cpu_usage=100, memory_usage=100, active_tasks=10
+        )
+        assert busy_node.get_load_score() == 100.0
+
+        # Węzeł z średnim obciążeniem
+        medium_node = NodeMetrics(
+            "node_3", "Medium", cpu_usage=50, memory_usage=50, active_tasks=5
+        )
+        assert 40 < medium_node.get_load_score() < 60
 
 
 def test_node_metrics_to_dict():

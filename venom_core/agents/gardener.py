@@ -91,7 +91,7 @@ class GardenerAgent:
                 await self._task
             except asyncio.CancelledError:
                 # Expected when cancelling task - no action needed
-                pass
+                logger.debug("Gardener monitoring task cancelled during shutdown")
 
         logger.info("GardenerAgent zatrzymany")
 

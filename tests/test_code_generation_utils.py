@@ -37,7 +37,7 @@ class TestEscapeStringForCode:
         result = escape_string_for_code(value)
 
         # Assert
-        assert result == '\'say "hello"\''
+        assert result == "'say \"hello\"'"
 
     def test_escape_potential_injection(self):
         """Test eskejpowania potencjalnej iniekcji kodu."""
@@ -48,7 +48,7 @@ class TestEscapeStringForCode:
         result = escape_string_for_code(value)
 
         # Assert
-        assert result == '\'test"; drop table\''
+        assert result == "'test\"; drop table'"
         # Upewnij się że wynik jest poprawnym literalem Pythona i odtwarza oryginalny string
         assert eval(result) == value
 

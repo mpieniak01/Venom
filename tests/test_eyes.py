@@ -20,11 +20,12 @@ HEADLESS = os.environ.get("DISPLAY", "") == ""
 if HEADLESS:
     # Mock całego modułu perception.recorder aby uniknąć importu pynput
     import types
+
     mock_recorder = types.ModuleType("venom_core.perception.recorder")
     mock_recorder.DemonstrationRecorder = Mock
     sys.modules["venom_core.perception.recorder"] = mock_recorder
 
-from venom_core.perception.eyes import Eyes
+from venom_core.perception.eyes import Eyes  # noqa: E402  # import after recorder mock
 
 
 class TestEyes:
@@ -103,7 +104,9 @@ class TestEyes:
 
     @patch("venom_core.perception.eyes.SETTINGS")
     @patch("venom_core.perception.eyes.httpx.get")
-    def test_prepare_image_base64_with_file_path(self, mock_get, mock_settings, tmp_path):
+    def test_prepare_image_base64_with_file_path(
+        self, mock_get, mock_settings, tmp_path
+    ):
         """Test przygotowania base64 z pliku."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
@@ -163,5 +166,8 @@ def test_headless_detection():
     """Test sprawdzający mechanizm mockowania dla środowisk headless."""
     # Assert
     if HEADLESS:
-        assert 'venom_core.perception.recorder' in sys.modules
-        assert isinstance(sys.modules['venom_core.perception.recorder'].DemonstrationRecorder, type(Mock))
+        assert "venom_core.perception.recorder" in sys.modules
+        assert isinstance(
+            sys.modules["venom_core.perception.recorder"].DemonstrationRecorder,
+            type(Mock),
+        )

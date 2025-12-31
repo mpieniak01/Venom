@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-System Venom składa się z 38 wyspecjalizowanych agentów, każdy odpowiedzialny za konkretny obszar funkcjonalności. Poniżej znajdziesz pełną listę z opisami i linkami do szczegółowej dokumentacji.
+System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialny za konkretny obszar funkcjonalności. Poniżej znajdziesz pełną listę z opisami i linkami do szczegółowej dokumentacji.
 
 ## Kategorie Agentów
 
@@ -100,7 +100,7 @@ System Venom składa się z 38 wyspecjalizowanych agentów, każdy odpowiedzialn
 
 ## Agenci bez Dedykowanej Dokumentacji
 
-Poniżsi agenci istnieją w kodzie ale nie mają jeszcze plików `THE_*.md`:
+Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (15 z 34):
 
 - **Analyst** (`analyst.py`) - Analiza wydajności i kosztów
 - **Creative Director** (`creative_director.py`) - Branding i marketing
@@ -169,9 +169,9 @@ User: "Dodaj możliwość sprawdzania pogody"
 ## Metryki Systemu Agentów
 
 **Ogólne statystyki:**
-- Liczba agentów: **38**
-- Z dokumentacją `THE_*.md`: **17** (45%)
-- Bez dokumentacji: **21** (55%)
+- Liczba agentów: **34**
+- Z dokumentacją `THE_*.md` lub dedykowanymi plikami: **21** (62%)
+- Bez dokumentacji: **13** (38%)
 - Kategorie: **10**
 
 **Najbardziej używane:**

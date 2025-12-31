@@ -565,7 +565,7 @@ make run
 - [Silnik hybrydowy AI](docs/HYBRID_AI_ENGINE.md)
 
 ### Agenci
-- [**Indeks wszystkich agentów** (38 agentów)](docs/AGENTS_INDEX.md) 📋
+- [**Indeks wszystkich agentów** (34 agenty)](docs/AGENTS_INDEX.md) 📋
 - [The Architect - Planowanie](docs/THE_ARCHITECT.md)
 - [The Coder - Generowanie kodu](docs/THE_CODER.md)
 - [The Researcher - Wyszukiwanie wiedzy](docs/THE_RESEARCHER.md)

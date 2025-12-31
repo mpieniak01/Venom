@@ -4,11 +4,8 @@ import asyncio
 import json
 import os
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 from uuid import UUID, uuid4
-
-import httpx
 
 from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
 from venom_core.config import SETTINGS
@@ -43,31 +40,12 @@ from venom_core.core.tracer import RequestTracer, TraceStatus
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.perception.eyes import Eyes
-from venom_core.services.translation_service import translation_service
-from venom_core.utils.llm_runtime import compute_llm_config_hash, get_active_llm_runtime
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.text import trim_to_char_limit
 
 # Import decomposed modules
-from .constants import (
-    COUNCIL_COLLABORATION_KEYWORDS,
-    COUNCIL_TASK_THRESHOLD,
-    DEFAULT_USER_ID,
-    ENABLE_COUNCIL_MODE,
-    HISTORY_SUMMARY_TRIGGER_CHARS,
-    HISTORY_SUMMARY_TRIGGER_MSGS,
-    LEARNING_LOG_PATH,
-    LONG_BLOCK_THRESHOLD,
-    MAX_CONTEXT_CHARS,
-    MAX_HIDDEN_PROMPTS_IN_CONTEXT,
-    MAX_LEARNING_SNIPPET,
-    MAX_LESSONS_IN_CONTEXT,
-    MAX_REPAIR_ATTEMPTS,
-    SESSION_HISTORY_LIMIT,
-    SUMMARY_MAX_CHARS,
-    SUMMARY_MODEL_MAX_TOKENS,
-    SUMMARY_STRATEGY_DEFAULT,
-)
+from .constants import MAX_CONTEXT_CHARS, MAX_HIDDEN_PROMPTS_IN_CONTEXT
 from .flow_coordinator import FlowCoordinator
 from .kernel_manager import KernelManager
 from .learning_handler import LearningHandler
@@ -104,9 +82,9 @@ class Orchestrator:
         self.state_manager = state_manager
         self.intent_manager = intent_manager or IntentManager()
         self.event_broadcaster = event_broadcaster
-        self.lessons_store = lessons_store  # Magazyn lekcji dla meta-uczenia
-        self.node_manager = node_manager  # Menedżer węzłów dla distributed execution
-        self.request_tracer = request_tracer  # Tracer do śledzenia przepływu
+        self.lessons_store = lessons_store
+        self.node_manager = node_manager
+        self.request_tracer = request_tracer
         self._testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
@@ -118,10 +96,10 @@ class Orchestrator:
             )
 
         self.task_dispatcher = task_dispatcher
-        self._kernel_config_hash = get_active_llm_runtime().config_hash
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
+        self.memory_skill = MemorySkill()
 
         # Inicjalizuj nowe komponenty (refactored)
         self.streaming_handler = StreamingHandler(state_manager=state_manager)
@@ -130,7 +108,35 @@ class Orchestrator:
             lessons_store=lessons_store,
             event_broadcaster=event_broadcaster,
         )
-        self.flow_router = FlowRouter()  # Lazy initialized z council_flow
+        self.flow_router = FlowRouter()
+
+        # Inicjalizuj zrefaktoryzowane moduły zarządzające
+        self.kernel_manager = KernelManager(
+            task_dispatcher=task_dispatcher,
+            event_broadcaster=event_broadcaster,
+            node_manager=node_manager,
+        )
+        self.session_handler = SessionHandler(
+            state_manager=state_manager,
+            memory_skill=self.memory_skill,
+            testing_mode=self._testing_mode,
+            request_tracer=request_tracer,
+        )
+        self.learning_handler = LearningHandler(
+            state_manager=state_manager,
+            lessons_manager=self.lessons_manager,
+        )
+        self.middleware = Middleware(
+            state_manager=state_manager,
+            event_broadcaster=event_broadcaster,
+            request_tracer=request_tracer,
+        )
+        self.flow_coordinator = FlowCoordinator(
+            state_manager=state_manager,
+            task_dispatcher=task_dispatcher,
+            event_broadcaster=event_broadcaster,
+            orchestrator_submit_task=self.submit_task,
+        )
 
         # Inicjalizuj flows (delegowane logiki biznesowe)
         self._code_review_loop = None
@@ -140,7 +146,6 @@ class Orchestrator:
         self._campaign_flow = None
         self._healing_flow = None
         self._issue_handler_flow = None
-        self.memory_skill = MemorySkill()
 
         # Tracking ostatniej aktywności dla idle mode
         self.last_activity: Optional[datetime] = None
@@ -151,36 +156,19 @@ class Orchestrator:
         )
 
     def _refresh_kernel(self, runtime_info=None) -> None:
-        """Odtwarza kernel i agentów po zmianie konfiguracji LLM."""
-        runtime_info = runtime_info or get_active_llm_runtime()
-        logger.info(
-            "Odświeżam kernel po zmianie LLM (hash=%s).",
-            runtime_info.config_hash,
-        )
-        kernel_builder = KernelBuilder()
-        kernel = kernel_builder.build_kernel()
-        goal_store = getattr(self.task_dispatcher, "goal_store", None)
-        self.task_dispatcher = TaskDispatcher(
-            kernel,
-            event_broadcaster=self.event_broadcaster,
-            node_manager=self.node_manager,
-            goal_store=goal_store,
-        )
-        self._kernel_config_hash = runtime_info.config_hash
-        # Resetuj flowy zależne od dispatcherów, aby użyły nowego kernela.
-        self._code_review_loop = None
-        self._council_flow = None
-        self._forge_flow = None
-        self._campaign_flow = None
-        self._healing_flow = None
-        self._issue_handler_flow = None
+        """Odtwarza kernel i agentów po zmianie konfiguracji LLM (delegacja do KernelManager)."""
+        self.task_dispatcher = self.kernel_manager.refresh_kernel(runtime_info)
+        # Zaktualizuj referencję w flow_coordinator
+        self.flow_coordinator.task_dispatcher = self.task_dispatcher
+        # Resetuj flowy zależne od dispatcherów
+        self.flow_coordinator.reset_flows()
 
     def _refresh_kernel_if_needed(self) -> None:
-        """Sprawdza drift konfiguracji i odświeża kernel przy zmianie."""
-        runtime_info = get_active_llm_runtime()
-        current_hash = runtime_info.config_hash
-        if self._kernel_config_hash != current_hash:
-            self._refresh_kernel(runtime_info)
+        """Sprawdza drift konfiguracji i odświeża kernel przy zmianie (delegacja do KernelManager)."""
+        if self.kernel_manager.refresh_kernel_if_needed():
+            self.task_dispatcher = self.kernel_manager.task_dispatcher
+            self.flow_coordinator.task_dispatcher = self.task_dispatcher
+            self.flow_coordinator.reset_flows()
 
     @property
     def is_paused(self) -> bool:
@@ -597,177 +585,10 @@ class Orchestrator:
         return self.session_handler.build_session_context_block(request, task_id)
 
 
-    def _ensure_session_summary(self, task_id: UUID, task: VenomTask) -> None:
-        """Tworzy streszczenie gdy historia jest długa."""
-        try:
-            full_history = task.context_history.get("session_history_full") or []
-            if not full_history:
-                return
-            raw_text = "\n".join(
-                f"{entry.get('role', '')}: {entry.get('content', '')}"
-                for entry in full_history
-            )
-            if (
-                len(full_history) < HISTORY_SUMMARY_TRIGGER_MSGS
-                and len(raw_text) < HISTORY_SUMMARY_TRIGGER_CHARS
-            ):
-                return
 
-            strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
-            if strategy == "heuristic_only":
-                summary = self._heuristic_summary(full_history)
-            else:
-                summary = self._summarize_history_llm(
-                    raw_text
-                ) or self._heuristic_summary(full_history)
-            if not summary:
-                return
-            self.state_manager.update_context(task_id, {"session_summary": summary})
-            # zapisz do pamięci długoterminowej
-            self._memory_upsert(
-                summary,
-                metadata={
-                    "type": "summary",
-                    "session_id": task.context_history.get("session", {}).get(
-                        "session_id"
-                    )
-                    or "default_session",
-                    "user_id": DEFAULT_USER_ID,
-                    "pinned": True,
-                },
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Nie udało się wygenerować streszczenia sesji: {exc}")
 
-    def _heuristic_summary(self, full_history: list) -> str:
-        tail = "\n".join(
-            f"{entry.get('role', '')}: {entry.get('content', '')}"
-            for entry in full_history[-10:]
-        )
-        summary, _ = trim_to_char_limit(tail, SUMMARY_MAX_CHARS)
-        return f"(Heurystyczne) Podsumowanie ostatnich wiadomości:\n{summary}"
 
-    def _summarize_history_llm(self, history_text: str) -> str:
-        """
-        Synchroniczne streszczenie przy użyciu aktywnego modelu LLM.
 
-        UWAGA: Ta metoda używa synchronicznego httpx.Client zamiast async,
-        ponieważ jest wywoływana z kontekstu synchronicznego (_get_context_for_task).
-        Jeśli w przyszłości zostanie przeniesiona do kontekstu async, konieczne będzie:
-        - zmienienie sygnatury na `async def _summarize_history_llm(...):`,
-        - zamiana `with httpx.Client(...) as client:` na
-          `async with httpx.AsyncClient(...) as client:`,
-        - dodanie `await` przed wywołaniem `client.post(...)`,
-        - wywoływanie tej metody wyłącznie z kontekstu asynchronicznego.
-        """
-        try:
-            # Przytnij wejście do sensownego fragmentu
-            # Używamy trim_to_char_limit dla spójności i dodatkowej walidacji
-            history_text, was_trimmed = trim_to_char_limit(
-                history_text, HISTORY_SUMMARY_TRIGGER_CHARS
-            )
-            if was_trimmed:
-                logger.debug(
-                    f"Historia przycięta do {HISTORY_SUMMARY_TRIGGER_CHARS} znaków dla streszczenia LLM"
-                )
-            strategy = getattr(SETTINGS, "SUMMARY_STRATEGY", SUMMARY_STRATEGY_DEFAULT)
-            if strategy == "heuristic_only":
-                return ""
-            runtime = get_active_llm_runtime()
-            model_name = runtime.model_name or SETTINGS.LLM_MODEL_NAME
-            if not model_name:
-                return ""
-            endpoint = runtime.endpoint
-            if runtime.provider == "openai":
-                endpoint = SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
-            if endpoint.endswith("/v1"):
-                endpoint = endpoint + "/chat/completions"
-            elif not endpoint.endswith("/chat/completions"):
-                endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
-
-            headers = {}
-            if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
-                headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
-            if runtime.service_type == "local" and getattr(
-                SETTINGS, "LLM_LOCAL_API_KEY", None
-            ):
-                headers["Authorization"] = f"Bearer {SETTINGS.LLM_LOCAL_API_KEY}"
-
-            system_prompt = (
-                "Jesteś asystentem podsumowującym rozmowę. "
-                "Streszczasz krótko po polsku, max 1000 znaków, bez wodolejstwa. "
-                "Wylistuj tylko fakty/ustalenia/wnioski, pomiń szczegóły i cytaty. "
-                "Nie wymyślaj nowych treści."
-            )
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": history_text},
-                ],
-                "max_tokens": SUMMARY_MODEL_MAX_TOKENS,
-                "temperature": 0.2,
-            }
-
-            with httpx.Client(timeout=SETTINGS.OPENAI_API_TIMEOUT) as client:
-                resp = client.post(endpoint, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-            message = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
-            return message[:SUMMARY_MAX_CHARS] if message else ""
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Streszczenie LLM nieudane: {exc}")
-            return ""
-
-    def _memory_upsert(self, text: str, metadata: dict) -> None:
-        if not text:
-            return
-        try:
-            self.memory_skill.vector_store.upsert(text=text, metadata=metadata)
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Nie udało się zapisać do pamięci: {exc}")
-
-    def _retrieve_relevant_memory(
-        self, request: TaskRequest, session_id: Optional[str]
-    ) -> str:
-        """Pobiera top-3 wpisy z pamięci wektorowej dopasowane do zapytania."""
-        if self._testing_mode:
-            return ""
-        query = request.content or ""
-        if not query.strip():
-            return ""
-        try:
-            results = self.memory_skill.vector_store.search(query, limit=5)
-            filtered = []
-            for item in results:
-                meta = item.get("metadata") or {}
-                if (
-                    session_id
-                    and meta.get("session_id")
-                    and meta["session_id"] != session_id
-                ):
-                    continue
-                filtered.append(item)
-            top = filtered[:3] if filtered else results[:3]
-            if not top:
-                return ""
-            lines = []
-            for idx, item in enumerate(top, 1):
-                txt = item.get("text", "")
-                meta = item.get("metadata") or {}
-                if len(txt) > 400:
-                    txt = txt[:400] + "..."
-                tag = meta.get("type", "fact")
-                lines.append(f"[{idx}] ({tag}) {txt}")
-            return "\n".join(lines)
-        except Exception as exc:  # pragma: no cover
-            logger.warning(f"Nie udało się pobrać pamięci: {exc}")
-            return ""
 
     async def _apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str
@@ -935,8 +756,6 @@ class Orchestrator:
                 )
                 if self.request_tracer:
                     try:
-                        import json
-
                         details = json.dumps(intent_debug, ensure_ascii=False)
                     except Exception:
                         details = str(intent_debug)
@@ -1325,8 +1144,6 @@ class Orchestrator:
                 # Wyślij odpowiedź agenta do dashboardu (np. ChatAgent)
                 formatted_result = ""
                 if isinstance(result, (dict, list)):
-                    import json
-
                     try:
                         formatted_result = json.dumps(
                             result, ensure_ascii=False, indent=2
@@ -1353,12 +1170,12 @@ class Orchestrator:
 
             # Ustaw status COMPLETED i wynik
             if request.session_id and result:
-                self._memory_upsert(
+                self.session_handler._memory_upsert(
                     str(result),
                     metadata={
                         "type": "fact",
                         "session_id": request.session_id,
-                        "user_id": DEFAULT_USER_ID,
+                        "user_id": "user_default",
                         "pinned": True,
                     },
                 )

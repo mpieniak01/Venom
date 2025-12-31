@@ -18,7 +18,6 @@ logger = get_logger(__name__)
 class SkillValidationError(Exception):
     """Wyjątek rzucany gdy skill nie przechodzi walidacji."""
 
-    pass
 
 
 class SkillManager:

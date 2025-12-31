@@ -123,8 +123,12 @@ class Settings(BaseSettings):
 
     # Konfiguracja Google Calendar Integration
     ENABLE_GOOGLE_CALENDAR: bool = False  # Włącz integrację z Google Calendar
-    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "./data/config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
-    GOOGLE_CALENDAR_TOKEN_PATH: str = "./data/config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
+    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = (
+        "./data/config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
+    )
+    GOOGLE_CALENDAR_TOKEN_PATH: str = (
+        "./data/config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
+    )
     VENOM_CALENDAR_ID: str = (
         "venom_work_calendar"  # ID kalendarza Venoma (write-only, NOT 'primary')
     )
@@ -388,6 +392,15 @@ class Settings(BaseSettings):
     # ===== BRAIN / GRAPH LIMITS (UI) =====
     NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT: int = 500
     NEXT_PUBLIC_MEMORY_GRAPH_LIMIT: int = 100
+
+    # ===== FOREMAN (Load Balancer) CONFIGURATION =====
+    # Wagi priorytetów dla obliczania obciążenia węzła (TD-010)
+    FOREMAN_CPU_WEIGHT: float = 0.4  # Waga użycia CPU (40%)
+    FOREMAN_MEMORY_WEIGHT: float = 0.3  # Waga użycia pamięci (30%)
+    FOREMAN_TASKS_WEIGHT: float = 0.3  # Waga liczby aktywnych zadań (30%)
+    FOREMAN_MAX_TASKS_NORMALIZATION: int = (
+        10  # Maksymalna liczba zadań dla normalizacji
+    )
 
 
 SETTINGS = Settings()

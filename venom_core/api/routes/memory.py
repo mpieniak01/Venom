@@ -214,7 +214,8 @@ async def clear_global_memory():
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Dev/test: jeśli są pozostałości bez user_id, wyczyść całą kolekcję
-        deleted += vector_store.wipe_collection()
+        # Usunięcie tej linii zapobiegnie przypadkowemu wyczyszczeniu całej kolekcji.
+        # deleted += vector_store.wipe_collection()
     except Exception as e:  # pragma: no cover
         logger.warning(f"Nie udało się usunąć pamięci globalnej: {e}")
         raise HTTPException(

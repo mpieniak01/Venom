@@ -91,7 +91,7 @@ class GardenerAgent:
                 await self._task
             except asyncio.CancelledError:
                 # Expected when cancelling task - no action needed
-                pass
+                logger.debug("Gardener monitoring task cancelled during shutdown")
 
         logger.info("GardenerAgent zatrzymany")
 
@@ -141,7 +141,6 @@ class GardenerAgent:
                 except (OSError, PermissionError) as e:
                     # Plik mógł zostać usunięty lub brak uprawnień
                     logger.debug(f"Nie można odczytać {file_path}: {e}")
-                    pass
 
             # Porównaj z poprzednim stanem
             if not self._last_file_mtimes:

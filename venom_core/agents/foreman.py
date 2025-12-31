@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
 
@@ -53,20 +54,21 @@ class NodeMetrics:
         Oblicza wynik obciążenia węzła (niższy = lepszy).
 
         Wagi można dostosować w config.py dla różnych scenariuszy:
-        - CPU-intensive workloads: zwiększ cpu_weight
-        - Memory-intensive workloads: zwiększ memory_weight
+        - CPU-intensive workloads: zwiększ FOREMAN_CPU_WEIGHT
+        - Memory-intensive workloads: zwiększ FOREMAN_MEMORY_WEIGHT
 
         Returns:
             Wynik obciążenia (0-100, gdzie 0 = wolny, 100 = zajęty)
         """
-        # TODO: Rozważyć przeniesienie wag do SETTINGS dla konfigurowalności
-        # Waga: CPU (40%), Memory (30%), Active Tasks (30%)
-        cpu_weight = 0.4
-        memory_weight = 0.3
-        tasks_weight = 0.3
+        # Wagi priorytetów z konfiguracji (TD-010 - przeniesione do config.py)
+        cpu_weight = SETTINGS.FOREMAN_CPU_WEIGHT
+        memory_weight = SETTINGS.FOREMAN_MEMORY_WEIGHT
+        tasks_weight = SETTINGS.FOREMAN_TASKS_WEIGHT
 
-        # Normalizuj active_tasks (max 10 zadań = 100%)
-        normalized_tasks = min(self.active_tasks / 10.0, 1.0) * 100
+        # Normalizuj active_tasks (max z konfiguracji)
+        normalized_tasks = (
+            min(self.active_tasks / SETTINGS.FOREMAN_MAX_TASKS_NORMALIZATION, 1.0) * 100
+        )
 
         load_score = (
             self.cpu_usage * cpu_weight

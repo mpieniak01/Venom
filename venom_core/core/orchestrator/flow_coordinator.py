@@ -4,14 +4,18 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from venom_core.agents.guardian import GuardianAgent
-from venom_core.core.council import CouncilConfig, CouncilSession, create_local_llm_config
+from venom_core.core.council import (
+    CouncilConfig,
+    CouncilSession,
+    create_local_llm_config,
+)
+from venom_core.core.flow_router import FlowRouter
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import CodeReviewLoop
 from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
-from venom_core.core.flow_router import FlowRouter
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:

@@ -15,7 +15,12 @@ logger = get_logger(__name__)
 class KernelManager:
     """Zarządza kernelem i jego odświeżaniem przy zmianie konfiguracji LLM."""
 
-    def __init__(self, task_dispatcher: "TaskDispatcher", event_broadcaster=None, node_manager=None):
+    def __init__(
+        self,
+        task_dispatcher: "TaskDispatcher",
+        event_broadcaster=None,
+        node_manager=None,
+    ):
         """
         Inicjalizacja KernelManager.
 

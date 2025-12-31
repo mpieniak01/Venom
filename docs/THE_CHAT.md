@@ -41,7 +41,7 @@ Użytkownik: "Jaka jest stolica Francji?"
 Chat Agent: "Stolicą Francji jest Paryż."
 
 Użytkownik: "Co mam w planach dziś?"
-Chat Agent: [wywołuje read_agenda(1)] 
+Chat Agent: [wywołuje read_agenda(1)]
            "Dziś masz zaplanowane: 1. Spotkanie z zespołem o 10:00..."
 
 Użytkownik: "Zapamiętaj że lubię kawę o 8 rano"

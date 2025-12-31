@@ -331,4 +331,3 @@ class FileSkill:
 
 class SecurityError(Exception):
     """Wyjątek rzucany przy próbie dostępu poza workspace."""
-

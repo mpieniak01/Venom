@@ -21,7 +21,6 @@ except ModuleNotFoundError as exc:
     class HttpError(Exception):
         """Fallback HttpError when Google API dependencies are missing."""
 
-
     _GOOGLE_CALENDAR_AVAILABLE = False
     _GOOGLE_CALENDAR_IMPORT_ERROR = exc
 from semantic_kernel.functions import kernel_function

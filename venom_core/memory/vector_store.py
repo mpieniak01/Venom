@@ -404,7 +404,7 @@ class VectorStore:
             
             # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
             # Celowo NIE dopuszczamy spacji ani znaków specjalnych
-            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', str_value):
+            if not re.match(r'^[a-zA-Z0-9_.\-]+$', str_value):
                 raise ValueError(
                     f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
                     f"Dozwolone: a-z, A-Z, 0-9, _, -, ."

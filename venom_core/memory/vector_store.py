@@ -523,7 +523,9 @@ class VectorStore:
         # Walidacja entry_id: bardzo restrykcyjna
         MAX_ID_LENGTH = 128
         if not isinstance(entry_id, str) or len(entry_id) > MAX_ID_LENGTH:
-            raise ValueError(f"Nieprawidłowy format entry_id: długość przekracza {MAX_ID_LENGTH}")
+            raise ValueError(
+                f"Nieprawidłowy format entry_id: długość {len(entry_id)} przekracza maksymalną {MAX_ID_LENGTH}"
+            )
         
         # Tylko UUID-like lub bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
         if not re.match(r'^[a-zA-Z0-9\-_]+$', entry_id):

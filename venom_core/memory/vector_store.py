@@ -549,7 +549,10 @@ class VectorStore:
         # Walidacja session_id: bardzo restrykcyjna
         MAX_SESSION_ID_LENGTH = 128
         if not isinstance(session_id, str) or len(session_id) > MAX_SESSION_ID_LENGTH:
-            raise ValueError(f"Nieprawidłowy session_id: długość przekracza {MAX_SESSION_ID_LENGTH}")
+            raise ValueError(
+                f"Nieprawidłowy session_id: długość {len(session_id)} "
+                f"przekracza maksymalną {MAX_SESSION_ID_LENGTH}"
+            )
         
         # Tylko bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
         if not re.match(r'^[a-zA-Z0-9\-_]+$', session_id):

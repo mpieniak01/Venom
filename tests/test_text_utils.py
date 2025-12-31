@@ -16,9 +16,9 @@ def test_trim_to_char_limit_exact_limit():
 
 
 def test_trim_to_char_limit_over_limit():
-    text = "a" * 15
+    text = "abcdefghijklmno"
     trimmed, flag = trim_to_char_limit(text, 10)
-    assert trimmed == "a" * 10
+    assert trimmed == "abcdefghij"
     assert flag is True
 
 

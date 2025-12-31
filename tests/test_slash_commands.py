@@ -20,6 +20,13 @@ def test_parse_tool_command():
     assert result.cleaned == "status"
 
 
+def test_parse_clear_command():
+    result = parse_slash_command("/clear")
+    assert result is not None
+    assert result.session_reset is True
+    assert result.cleaned == ""
+
+
 def test_parse_unknown_command():
     result = parse_slash_command("/unknown foo bar")
     assert result is not None

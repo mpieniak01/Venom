@@ -15,6 +15,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 👍👎 **Pętla jakości** - informacje zwrotne użytkownika + logi i metryki jakości odpowiedzi
 - 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
 - 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
+- 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
 
 ### 🎯 Przykłady użycia
 
@@ -107,14 +108,14 @@ Orchestrator (decyzja o przepływie)
 │  Prosty kod         │  Złożony projekt    │  Wyszukiwanie        │
 │  CODE_GENERATION    │  COMPLEX_PLANNING   │  RESEARCH            │
 ├─────────────────────┼─────────────────────┼──────────────────────┤
-│  CoderAgent         │  ArchitectAgent     │  ResearcherAgent     │
-│       ↓             │       ↓             │       ↓              │
-│  CriticAgent        │  Tworzenie planu    │  WebSearchSkill      │
-│       ↓             │       ↓             │       ↓              │
-│  Wynik              │  Wykonanie planu    │  MemorySkill         │
-│                     │   (krok po kroku)   │       ↓              │
-│                     │       ↓             │  Wynik               │
-│                     │  Wynik              │                      │
+│    CoderAgent       │  ArchitectAgent     │   ResearcherAgent    │
+│         ↓           │         ↓           │        ↓             │
+│    CriticAgent      │  Tworzenie planu    │   WebSearchSkill     │
+│         ↓           │         ↓           │        ↓             │
+│       Wynik         │  Wykonanie planu    │   MemorySkill        │
+│                     │   (krok po kroku)   │        ↓             │
+│                     │        ↓            │      Wynik           │
+│                     │      Wynik          │                      │
 └─────────────────────┴─────────────────────┴──────────────────────┘
 ```
 
@@ -165,6 +166,7 @@ Uwaga: Cockpit ma teraz dwa widoki — `/` (produkcyjny układ z wybranymi boxam
 - Wymuszenie providerów: `/gpt` (OpenAI) i `/gem` (Gemini).
 - Po wykryciu prefiksu treść zapytania jest czyszczona z dyrektywy, a UI pokazuje etykietę "Forced".
 - Ustawienie języka UI (PL/EN/DE) jest przekazywane jako `preferred_language` w `/api/v1/tasks`.
+- Strategia streszczeń kontekstu (`SUMMARY_STRATEGY` w `.env`): `llm_with_fallback` (domyślnie, aktywny model) lub `heuristic_only`.
 
 ### Instalacja
 

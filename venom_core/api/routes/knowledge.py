@@ -1,6 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from venom_core.utils.logger import get_logger
 
@@ -21,7 +21,14 @@ def set_dependencies(graph_store, lessons_store):
 
 
 @router.get("/knowledge/graph")
-async def get_knowledge_graph():
+async def get_knowledge_graph(
+    limit: int = Query(
+        500,
+        ge=1,
+        le=5000,
+        description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
+    ),
+):
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
 
@@ -88,10 +95,15 @@ async def get_knowledge_graph():
                     }
                 }
             )
+            if len(nodes) >= limit:
+                break
 
+        allowed_ids = {n["data"]["id"] for n in nodes}
         # Dodaj krawędzie
         edge_id = 0
         for source, target, edge_data in _graph_store.graph.edges(data=True):
+            if allowed_ids and (source not in allowed_ids or target not in allowed_ids):
+                continue
             edge_type = edge_data.get("type", "RELATED")
             edges.append(
                 {

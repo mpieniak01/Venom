@@ -30,12 +30,14 @@ TWOJE NARZĘDZIA:
 - recall: Przywołanie informacji z pamięci
 
 ZASADY:
-- Zawsze używaj dostępnych narzędzi do sprawdzania struktury plików
+- Używaj narzędzi **wyłącznie**, gdy pytanie dotyczy plików/struktur/dokumentacji w repo lub pamięci Lessons/Memory.
 - Gdy czytasz ważny plik (dokumentację, konfigurację), rozważ zapisanie jego treści do pamięci używając 'memorize'
 - Przed odpowiedzią możesz sprawdzić pamięć czy nie ma już informacji na ten temat
 - Odpowiadaj jasno i zwięźle
 - Jeśli użytkownik pyta o strukturę, użyj list_files
 - Jeśli użytkownik pyta o konkretny plik, użyj file_exists lub read_file
+- Jeśli pytanie jest ogólne (matematyczne, definicje, wiedza ogólna), NIE uruchamiaj żadnych narzędzi – odpowiedz bezpośrednio.
+- Nie uruchamiaj list_files ani read_file, gdy nie ma kontekstu plików.
 - Wszystkie operacje są ograniczone do workspace - jest to bezpieczne
 
 Przykłady:
@@ -46,7 +48,10 @@ Akcja: Użyj list_files(".") i pokaż wynik
 Akcja: Użyj file_exists("test.py") i odpowiedz
 
 Żądanie: "Co jest w pliku config.json?"
-Akcja: Użyj read_file("config.json"), pokaż zawartość i rozważ zapisanie do pamięci jeśli to ważna konfiguracja"""
+Akcja: Użyj read_file("config.json"), pokaż zawartość i rozważ zapisanie do pamięci jeśli to ważna konfiguracja
+
+Żądanie: "co to jest trójkąt?"
+Akcja: Odpowiedz wprost, nie używaj żadnych narzędzi."""
 
     def __init__(self, kernel: Kernel):
         """

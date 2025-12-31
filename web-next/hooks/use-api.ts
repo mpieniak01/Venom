@@ -38,6 +38,9 @@ import {
   ActiveLlmServerResponse,
 } from "@/lib/types";
 
+export const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
+export const MEMORY_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_MEMORY_GRAPH_LIMIT ?? "100");
+
 type PollingState<T> = {
   data: T | null;
   loading: boolean;
@@ -465,10 +468,10 @@ export function useAutonomyLevel(intervalMs = 15000) {
   );
 }
 
-export function useKnowledgeGraph(intervalMs = 20000) {
+export function useKnowledgeGraph(limit = KNOWLEDGE_GRAPH_LIMIT, intervalMs = 20000) {
   return usePolling<KnowledgeGraph>(
-    "knowledge-graph",
-    () => apiFetch("/api/v1/knowledge/graph"),
+    `knowledge-graph-${limit}`,
+    () => apiFetch(`/api/v1/knowledge/graph?limit=${limit}`),
     intervalMs,
   );
 }
@@ -501,6 +504,55 @@ export function useLessonsStats(intervalMs = 30000) {
   );
 }
 
+export function useMemoryGraph(
+  limit = MEMORY_GRAPH_LIMIT,
+  sessionId?: string,
+  onlyPinned = false,
+  includeLessons = false,
+  intervalMs = 20000,
+  mode: "default" | "flow" = "default",
+) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (sessionId) params.set("session_id", sessionId);
+  if (onlyPinned) params.set("only_pinned", "true");
+  if (includeLessons) params.set("include_lessons", "true");
+  if (mode && mode !== "default") params.set("mode", mode);
+  return usePolling<KnowledgeGraph>(
+    `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}-${mode}`,
+    () => apiFetch(`/api/v1/memory/graph?${params.toString()}`),
+    intervalMs,
+  );
+}
+
+export async function pinMemoryEntry(entryId: string, pinned = true) {
+  return apiFetch<{ status: string; entry_id: string; pinned: boolean }>(
+    `/api/v1/memory/entry/${encodeURIComponent(entryId)}/pin?pinned=${pinned ? "true" : "false"}`,
+    { method: "POST" },
+  );
+}
+
+export async function deleteMemoryEntry(entryId: string) {
+  return apiFetch<{ status: string; entry_id: string; deleted: number }>(
+    `/api/v1/memory/entry/${encodeURIComponent(entryId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function clearSessionMemory(sessionId: string) {
+  return apiFetch<{ status: string; session_id: string; deleted_vectors: number; cleared_tasks: number }>(
+    `/api/v1/memory/session/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function clearGlobalMemory() {
+  return apiFetch<{ status: string; deleted_vectors: number; message: string }>(
+    "/api/v1/memory/global",
+    { method: "DELETE" },
+  );
+}
+
 export type TaskExtraContext = {
   files?: string[];
   links?: string[];
@@ -521,6 +573,8 @@ export async function sendTask(
   extraContext?: TaskExtraContext | null,
   forcedRoute?: ForcedRoute | null,
   preferredLanguage?: "pl" | "en" | "de" | null,
+  sessionId?: string | null,
+  preferenceScope?: "session" | "global" | null,
 ) {
   const body: {
     content: string;
@@ -532,6 +586,8 @@ export async function sendTask(
     forced_tool?: string;
     forced_provider?: string;
     preferred_language?: string;
+    session_id?: string;
+    preference_scope?: string;
   } = {
     content,
     store_knowledge: storeKnowledge,
@@ -557,6 +613,12 @@ export async function sendTask(
   }
   if (preferredLanguage) {
     body.preferred_language = preferredLanguage;
+  }
+  if (sessionId) {
+    body.session_id = sessionId;
+  }
+  if (preferenceScope) {
+    body.preference_scope = preferenceScope;
   }
 
   return apiFetch<{ task_id: string }>("/api/v1/tasks", {

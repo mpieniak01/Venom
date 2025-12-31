@@ -17,6 +17,8 @@ import {
   TokenMetrics,
 } from "@/lib/types";
 
+const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
+
 const API_BASE =
   process.env.API_PROXY_TARGET ||
   process.env.NEXT_PUBLIC_API_BASE ||
@@ -186,7 +188,7 @@ export type BrainInitialData = {
 export async function fetchBrainInitialData(): Promise<BrainInitialData> {
   const [summary, knowledgeGraph, lessons, lessonsStats] = await Promise.all([
     fetchJson<GraphSummary>("/api/v1/graph/summary"),
-    fetchJson<KnowledgeGraph>("/api/v1/knowledge/graph"),
+    fetchJson<KnowledgeGraph>(`/api/v1/knowledge/graph?limit=${KNOWLEDGE_GRAPH_LIMIT}`),
     fetchJson<LessonsResponse>("/api/v1/lessons?limit=5"),
     fetchJson<LessonsStats>("/api/v1/lessons/stats"),
   ]);

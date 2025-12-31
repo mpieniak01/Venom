@@ -152,7 +152,8 @@ class InputSkill:
             if len(seq) >= 2:
                 return int(seq[0]), int(seq[1])
         except TypeError:
-            pass
+            # size might not be iterable in some edge cases
+            logger.debug(f"Could not convert screen size to tuple: {size}")
 
         raise RuntimeError("PyAutoGUI zwróciło nieprawidłowy rozmiar ekranu")
 

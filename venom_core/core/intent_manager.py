@@ -508,8 +508,9 @@ Przykłady:
             if self.kernel:
                 try:
                     await self.kernel.get_service().get_chat_message_content()
-                except Exception:
-                    pass
+                except Exception as e:
+                    # LLM service might not be available - this is expected
+                    logger.debug(f"LLM service not available for intent: {e}")
             self._append_user_phrase("HELP_REQUEST", user_input, language)
             return "HELP_REQUEST"
         if any(

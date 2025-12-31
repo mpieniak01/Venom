@@ -516,7 +516,7 @@ export function useMemoryGraph(
   params.set("limit", String(limit));
   if (sessionId) params.set("session_id", sessionId);
   if (onlyPinned) params.set("only_pinned", "true");
-   if (includeLessons) params.set("include_lessons", "true");
+  if (includeLessons) params.set("include_lessons", "true");
   if (mode && mode !== "default") params.set("mode", mode);
   return usePolling<KnowledgeGraph>(
     `memory-graph-${limit}-${sessionId || "all"}-${onlyPinned}-${includeLessons}-${mode}`,

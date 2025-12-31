@@ -231,6 +231,7 @@ async def lifespan(app: FastAPI):
             node_manager = None
 
     # Inicjalizuj Orchestrator (z node_manager jeśli dostępny)
+    global orchestrator
     if orchestrator is None:
         orchestrator = Orchestrator(
             state_manager,

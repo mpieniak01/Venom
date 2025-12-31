@@ -381,21 +381,36 @@ class VectorStore:
         table = self._get_or_create_table(collection_name)
 
         # Walidacja i sanityzacja kluczy i wartości
+        # UWAGA: LanceDB nie wspiera parametryzowanych zapytań, więc używamy
+        # bardzo restrykcyjnej walidacji wejścia jako mitygacji SQL injection
         conditions = []
+        MAX_KEY_LENGTH = 64
+        MAX_VALUE_LENGTH = 256
+        
         for key, value in filters.items():
             if value is None:
                 continue
-            # Walidacja: klucze muszą być bezpieczne (alfanumeryczne + underscore)
-            if not re.match(r'^[a-zA-Z0-9_]+$', key):
+            
+            # Walidacja klucza: tylko alfanumeryczne + underscore, max 64 znaki
+            if not isinstance(key, str) or len(key) > MAX_KEY_LENGTH:
                 raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
+            if not re.match(r'^[a-zA-Z0-9_]+$', key):
+                raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
             
             # Konwersja wartości na string i walidacja
             str_value = str(value)
-            # Dopuszczamy tylko bezpieczne znaki w wartościach
-            if not re.match(r'^[a-zA-Z0-9_\-\.@\s]+$', str_value):
-                raise ValueError(f"Nieprawidłowa wartość metadanych dla klucza {key}: {str_value}")
+            if len(str_value) > MAX_VALUE_LENGTH:
+                raise ValueError(f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH}")
             
-            # Używamy podwójnego escapowania dla bezpieczeństwa
+            # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
+            # Celowo NIE dopuszczamy spacji ani znaków specjalnych
+            if not re.match(r'^[a-zA-Z0-9_\-\.]+$', str_value):
+                raise ValueError(
+                    f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
+                    f"Dozwolone: a-z, A-Z, 0-9, _, -, ."
+                )
+            
+            # Podwójne escapowanie mimo walidacji (defense in depth)
             safe_value = str_value.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
             conditions.append(f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\'')
 
@@ -493,12 +508,17 @@ class VectorStore:
         if not entry_id:
             return 0
         
-        # Walidacja entry_id - musi być UUID lub bezpieczny identyfikator
+        # Walidacja entry_id: bardzo restrykcyjna
+        MAX_ID_LENGTH = 128
+        if not isinstance(entry_id, str) or len(entry_id) > MAX_ID_LENGTH:
+            raise ValueError(f"Nieprawidłowy format entry_id: długość przekracza {MAX_ID_LENGTH}")
+        
+        # Tylko UUID-like lub bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
         if not re.match(r'^[a-zA-Z0-9\-_]+$', entry_id):
-            raise ValueError(f"Nieprawidłowy format entry_id: {entry_id}")
+            raise ValueError(f"entry_id zawiera niedozwolone znaki: {entry_id}")
         
         table = self._get_or_create_table(collection_name)
-        # Podwójne escapowanie dla bezpieczeństwa
+        # Podwójne escapowanie mimo walidacji (defense in depth)
         safe_id = entry_id.replace("\\", "\\\\").replace("'", "''")
         table.delete(where=f"id = '{safe_id}'")
         return 1
@@ -512,12 +532,17 @@ class VectorStore:
         if not session_id:
             return 0
         
-        # Walidacja session_id - musi być bezpiecznym identyfikatorem
+        # Walidacja session_id: bardzo restrykcyjna
+        MAX_SESSION_ID_LENGTH = 128
+        if not isinstance(session_id, str) or len(session_id) > MAX_SESSION_ID_LENGTH:
+            raise ValueError(f"Nieprawidłowy session_id: długość przekracza {MAX_SESSION_ID_LENGTH}")
+        
+        # Tylko bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
         if not re.match(r'^[a-zA-Z0-9\-_]+$', session_id):
-            raise ValueError(f"Nieprawidłowy format session_id: {session_id}")
+            raise ValueError(f"session_id zawiera niedozwolone znaki: {session_id}")
         
         table = self._get_or_create_table(collection_name)
-        # Podwójne escapowanie dla bezpieczeństwa
+        # Podwójne escapowanie mimo walidacji (defense in depth)
         safe_id = session_id.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
         clause = f'metadata LIKE \'%\\"session_id\\": \\"{safe_id}\\"%\''
         try:

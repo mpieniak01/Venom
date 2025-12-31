@@ -768,7 +768,6 @@ class Orchestrator:
         try:
             # Przytnij wejście do sensownego fragmentu
             # Używamy trim_to_char_limit dla spójności i dodatkowej walidacji
-            from venom_core.utils.text import trim_to_char_limit
             history_text, was_trimmed = trim_to_char_limit(
                 history_text, HISTORY_SUMMARY_TRIGGER_CHARS
             )

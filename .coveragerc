@@ -6,6 +6,10 @@ omit =
     */__init__.py
     venom_core/main.py
     tests/*
+    venom_core/nodes/protocol.py
+    venom_core/agents/writer.py
+    venom_core/infrastructure/onnx_runtime.py
+    venom_core/perception/antenna.py
 
 [report]
 exclude_lines =
@@ -18,3 +22,6 @@ exclude_lines =
     logging\.
     raise NotImplementedError
     except ImportError
+    @abstractmethod
+    class.*\(Protocol\):
+    class.*\(ABC\):

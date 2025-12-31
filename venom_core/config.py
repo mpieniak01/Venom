@@ -391,9 +391,10 @@ class Settings(BaseSettings):
 
     # ===== FOREMAN (Load Balancer) CONFIGURATION =====
     # Wagi priorytetów dla obliczania obciążenia węzła (TD-010)
-    FOREMAN_CPU_WEIGHT: float = 0.4  # Waga użycia CPU (40%)
-    FOREMAN_MEMORY_WEIGHT: float = 0.3  # Waga użycia pamięci (30%)
-    FOREMAN_TASKS_WEIGHT: float = 0.3  # Waga liczby aktywnych zadań (30%)
+    # Suma wag powinna wynosić 1.0 (100%)
+    FOREMAN_CPU_WEIGHT: float = 0.4  # Waga użycia CPU (0.4 = 40%)
+    FOREMAN_MEMORY_WEIGHT: float = 0.3  # Waga użycia pamięci (0.3 = 30%)
+    FOREMAN_TASKS_WEIGHT: float = 0.3  # Waga liczby aktywnych zadań (0.3 = 30%)
     FOREMAN_MAX_TASKS_NORMALIZATION: int = (
         10  # Maksymalna liczba zadań dla normalizacji
     )

@@ -21,6 +21,7 @@ from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import learning as learning_routes
 from venom_core.api.routes import memory as memory_routes
+from venom_core.api.routes import memory_projection as memory_projection_routes
 from venom_core.api.routes import metrics as metrics_routes
 from venom_core.api.routes import models as models_routes
 from venom_core.api.routes import nodes as nodes_routes
@@ -639,6 +640,7 @@ def setup_router_dependencies():
     flow_routes.set_dependencies(request_tracer)
     benchmark_routes.set_dependencies(benchmark_service)
     calendar_routes.set_dependencies(google_calendar_skill)
+    memory_projection_routes.set_dependencies(vector_store)
 
 
 # W trybie testowym (np. httpx ASGITransport bez lifespan) preinicjalizujemy
@@ -666,6 +668,7 @@ app.include_router(tasks_routes.router)
 app.include_router(queue_routes.router)
 app.include_router(metrics_routes.router)
 app.include_router(memory_routes.router)
+app.include_router(memory_projection_routes.router)
 app.include_router(git_routes.router)
 app.include_router(feedback_routes.router)
 app.include_router(learning_routes.router)

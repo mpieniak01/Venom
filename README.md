@@ -108,14 +108,14 @@ Orchestrator (decyzja o przepływie)
 │  Prosty kod         │  Złożony projekt    │  Wyszukiwanie        │
 │  CODE_GENERATION    │  COMPLEX_PLANNING   │  RESEARCH            │
 ├─────────────────────┼─────────────────────┼──────────────────────┤
-│  CoderAgent         │  ArchitectAgent     │  ResearcherAgent     │
-│       ↓             │       ↓             │       ↓              │
-│  CriticAgent        │  Tworzenie planu    │  WebSearchSkill      │
-│       ↓             │       ↓             │       ↓              │
-│  Wynik              │  Wykonanie planu    │  MemorySkill         │
-│                     │   (krok po kroku)   │       ↓              │
-│                     │       ↓             │  Wynik               │
-│                     │  Wynik              │                      │
+│    CoderAgent       │  ArchitectAgent     │   ResearcherAgent    │
+│         ↓           │         ↓           │        ↓             │
+│    CriticAgent      │  Tworzenie planu    │   WebSearchSkill     │
+│         ↓           │         ↓           │        ↓             │
+│       Wynik         │  Wykonanie planu    │   MemorySkill        │
+│                     │   (krok po kroku)   │        ↓             │
+│                     │        ↓            │      Wynik           │
+│                     │      Wynik          │                      │
 └─────────────────────┴─────────────────────┴──────────────────────┘
 ```
 

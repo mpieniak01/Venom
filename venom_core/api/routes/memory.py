@@ -46,14 +46,19 @@ class MemorySearchRequest(BaseModel):
 _vector_store = None
 _state_manager = None
 _lessons_store = None
+_embedding_service = None
 
 
 def set_dependencies(vector_store, state_manager=None, lessons_store=None):
     """Ustaw zależności dla routera."""
-    global _vector_store, _state_manager, _lessons_store
+    global _vector_store, _state_manager, _lessons_store, _embedding_service
     _vector_store = vector_store
     _state_manager = state_manager
     _lessons_store = lessons_store
+    try:
+        _embedding_service = vector_store.embedding_service
+    except Exception:
+        _embedding_service = None
 
 
 def _ensure_vector_store():
@@ -183,6 +188,7 @@ async def clear_session_memory(session_id: str):
     deleted_vectors = 0
     try:
         deleted_vectors = vector_store.delete_by_metadata({"session_id": session_id})
+        deleted_vectors += vector_store.delete_session(session_id)
     except Exception as e:  # pragma: no cover
         logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
 
@@ -207,6 +213,8 @@ async def clear_global_memory():
     vector_store = _ensure_vector_store()
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
+        # Dev/test: jeśli są pozostałości bez user_id, wyczyść całą kolekcję
+        deleted += vector_store.wipe_collection()
     except Exception as e:  # pragma: no cover
         logger.warning(f"Nie udało się usunąć pamięci globalnej: {e}")
         raise HTTPException(
@@ -229,6 +237,9 @@ async def memory_graph(
     ),
     include_lessons: bool = Query(
         False, description="Czy dołączyć lekcje z LessonsStore"
+    ),
+    mode: str = Query(
+        "default", description="Tryb grafu: default lub flow (sekwencja)"
     ),
 ):
     """
@@ -268,21 +279,23 @@ async def memory_graph(
         user = meta.get("user_id") or DEFAULT_USER_ID
         pinned = bool(meta.get("pinned"))
         scope = meta.get("scope") or ("session" if sess else "global")
-        nodes.append(
-            {
-                "data": {
-                    "id": eid,
-                    "label": label,
-                    "type": "memory",
-                    "memory_kind": mem_type,
-                    "session_id": sess,
-                    "user_id": user,
-                    "scope": scope,
-                    "pinned": pinned,
-                    "meta": meta,
-                }
+        node_payload = {
+            "data": {
+                "id": eid,
+                "label": label,
+                "type": "memory",
+                "memory_kind": mem_type,
+                "session_id": sess,
+                "user_id": user,
+                "scope": scope,
+                "pinned": pinned,
+                "topic": meta.get("topic"),
+                "meta": meta,
             }
-        )
+        }
+        if "x" in meta and "y" in meta:
+            node_payload["position"] = {"x": meta.get("x"), "y": meta.get("y")}
+        nodes.append(node_payload)
         if sess and sess not in session_nodes:
             session_nodes[sess] = {
                 "data": {
@@ -368,6 +381,30 @@ async def memory_graph(
         list(session_nodes.values()) + list(user_nodes.values()) + nodes + lesson_nodes
     )
     all_edges = edges + lesson_edges
+
+    if mode == "flow":
+        # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
+        try:
+            entries_for_flow = sorted(
+                nodes,
+                key=lambda n: (n["data"].get("meta") or {}).get("timestamp", ""),
+            )
+        except Exception:
+            entries_for_flow = nodes
+        for idx in range(len(entries_for_flow) - 1):
+            src = entries_for_flow[idx]["data"]["id"]
+            tgt = entries_for_flow[idx + 1]["data"]["id"]
+            all_edges.append(
+                {
+                    "data": {
+                        "id": f"flow:{src}->{tgt}",
+                        "source": src,
+                        "target": tgt,
+                        "label": "next",
+                        "type": "flow",
+                    }
+                }
+            )
 
     return {
         "status": "success",

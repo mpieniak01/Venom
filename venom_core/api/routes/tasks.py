@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -100,7 +99,7 @@ def _bootstrap_orchestrator_if_testing():
     venom_core.main, co powodowało mutację globalnego stanu i ryzyko zależności
     cyklicznych. Obecnie nie wykonuje żadnej logiki – zależności muszą być
     wstrzyknięte jawnie przez `set_dependencies` (np. w lifespan lub w fixture'ach).
-    
+
     DEPRECATED: Ta funkcja będzie usunięta w przyszłych wersjach.
     Używaj dependency injection przez set_dependencies() zamiast tego.
     """

@@ -187,7 +187,8 @@ class DesktopSensor:
             try:
                 await self._monitor_task
             except asyncio.CancelledError:
-                pass
+                # Expected when cancelling monitor task during shutdown
+                logger.debug("Monitor task cancelled during shutdown")
 
         logger.info("DesktopSensor zatrzymany")
 
@@ -478,7 +479,8 @@ class DesktopSensor:
                             }
                         )
                     except AttributeError:
-                        pass
+                        # Key object may not have all attributes depending on the key type
+                        logger.debug("Key press event missing expected attributes")
 
             # Uruchom listenery w osobnych wątkach
             self._mouse_listener = mouse.Listener(

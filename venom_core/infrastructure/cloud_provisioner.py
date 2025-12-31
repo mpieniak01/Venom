@@ -20,8 +20,6 @@ logger = get_logger(__name__)
 class CloudProvisionerError(Exception):
     """Błąd podczas operacji cloud provisioning."""
 
-    pass
-
 
 class CloudProvisioner:
     """

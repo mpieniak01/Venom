@@ -214,12 +214,16 @@ class TestSkill:
                         try:
                             passed = int(parts[i - 1])
                         except (ValueError, IndexError):
-                            pass
+                            logger.debug(
+                                f"Nie udało się sparsować liczby passed z: {parts}"
+                            )
                     elif part == "failed" and i > 0:
                         try:
                             failed = int(parts[i - 1])
                         except (ValueError, IndexError):
-                            pass
+                            logger.debug(
+                                f"Nie udało się sparsować liczby failed z: {parts}"
+                            )
 
             # Zbierz szczegóły błędów (linie z FAILED)
             if line.strip().startswith("FAILED") or "AssertionError" in line:

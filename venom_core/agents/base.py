@@ -54,7 +54,7 @@ class BaseAgent(ABC):
         Returns:
             Wynik przetwarzania zadania
         """
-        pass
+        raise NotImplementedError("Subclasses must implement process() method")
 
     async def process_with_params(
         self, input_text: str, generation_params: Dict[str, Any]

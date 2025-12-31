@@ -195,4 +195,3 @@ class DockerHabitat:
     def __del__(self):
         """Destruktor - nie usuwa kontenera automatycznie (długożyjący kontener)."""
         # Nie wywołujemy cleanup() tutaj - kontener powinien zostać
-        pass

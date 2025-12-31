@@ -21,7 +21,6 @@ except ModuleNotFoundError as exc:
     class HttpError(Exception):
         """Fallback HttpError when Google API dependencies are missing."""
 
-        pass
 
     _GOOGLE_CALENDAR_AVAILABLE = False
     _GOOGLE_CALENDAR_IMPORT_ERROR = exc

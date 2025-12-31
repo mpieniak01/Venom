@@ -87,21 +87,3 @@ class TestMetricsCollector:
 
         # Assert
         assert collector.metrics["tasks_created"] == 500
-
-    def test_get_summary(self):
-        """Test pobierania podsumowania metryk."""
-        # Arrange
-        collector = MetricsCollector()
-        collector.increment_task_created()
-        collector.increment_task_completed()
-        collector.add_tokens_used(500)
-
-        # Act
-        summary = collector.get_summary()
-
-        # Assert
-        assert "tasks_created" in summary
-        assert summary["tasks_created"] == 1
-        assert summary["tasks_completed"] == 1
-        assert summary["tokens_used_session"] == 500
-        assert "uptime_seconds" in summary

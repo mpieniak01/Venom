@@ -381,8 +381,12 @@ class VectorStore:
         table = self._get_or_create_table(collection_name)
 
         # Walidacja i sanityzacja kluczy i wartości
-        # UWAGA: LanceDB nie wspiera parametryzowanych zapytań, więc używamy
-        # bardzo restrykcyjnej walidacji wejścia jako mitygacji SQL injection
+        # UWAGA: LanceDB (w aktualnej wersji) nie wspiera tutaj zapytań
+        # parametryzowanych, więc jako obejście stosujemy bardzo restrykcyjny
+        # whitelisting znaków + escapowanie (defense in depth). Nie jest to
+        # pełnoprawny zamiennik zapytań parametryzowanych – gdy tylko API
+        # LanceDB to umożliwi, ten kod powinien zostać przerobiony na
+        # podejście z parametryzacją.
         conditions = []
         MAX_KEY_LENGTH = 64
         MAX_VALUE_LENGTH = 256

@@ -260,6 +260,6 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 ## Zobacz też
 
-- [THE_RELEASE_MANAGER.md](THE_RELEASE_MANAGER.md) - Release workflow
+- [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) - Release workflow i deployment
 - [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) - GitHub/Discord/Slack
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Zasady commitów i PR

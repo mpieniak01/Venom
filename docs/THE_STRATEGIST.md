@@ -220,6 +220,6 @@ OPENAI_DAILY_TOKENS_LIMIT=500000
 ## Zobacz też
 
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie zadań
-- [THE_ANALYST.md](THE_ANALYST.md) - Analiza kosztów i wydajności
 - [THE_HIVE.md](THE_HIVE.md) - Rozproszone wykonanie zadań
 - [COST_GUARD.md](COST_GUARD.md) - Ochrona budżetu API
+- [AGENTS_INDEX.md](AGENTS_INDEX.md) - Pełny indeks agentów

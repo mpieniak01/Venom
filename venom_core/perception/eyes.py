@@ -10,9 +10,6 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Stała do rozróżnienia base64 od ścieżki pliku
-MIN_BASE64_LENGTH = 500
-
 
 class Eyes:
     """Warstwa percepcji wizualnej - analiza obrazów."""

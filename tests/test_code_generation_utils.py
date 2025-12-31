@@ -1,7 +1,5 @@
 """Testy dla modułu code_generation_utils - narzędzia do generowania kodu."""
 
-import pytest
-
 from venom_core.utils.code_generation_utils import escape_string_for_code
 
 
@@ -51,8 +49,8 @@ class TestEscapeStringForCode:
 
         # Assert
         assert result == '\'test"; drop table\''
-        # Upewnij się że wynik jest bezpieczny i nie pozwala na injection
-        assert ";" in result  # Średnik jest eskejpowany w środku stringa
+        # Upewnij się że wynik jest poprawnym literalem Pythona i odtwarza oryginalny string
+        assert eval(result) == value
 
     def test_escape_backslash(self):
         """Test eskejpowania backslasha."""
@@ -96,7 +94,9 @@ class TestEscapeStringForCode:
         result = escape_string_for_code(value)
 
         # Assert
-        assert "Zażółć" in result or "\\u" in result
+        # Python repr() zachowuje znaki Unicode jeśli są printable
+        assert result == "'Zażółć gęślą jaźń 🎉'"
+        assert result.startswith("'") and result.endswith("'")
 
     def test_escape_empty_string(self):
         """Test eskejpowania pustego stringa."""

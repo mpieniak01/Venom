@@ -1,6 +1,6 @@
 """Koordynacja i routing przepływów pracy (flows/workflows)."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from venom_core.agents.guardian import GuardianAgent

@@ -16,7 +16,8 @@ Nowa struktura:
 """
 
 # Re-export everything from the package for backward compatibility
-from .orchestrator import (
+# Import from package __init__.py, not from self
+from venom_core.core.orchestrator import (
     COUNCIL_COLLABORATION_KEYWORDS,
     COUNCIL_TASK_THRESHOLD,
     ENABLE_COUNCIL_MODE,

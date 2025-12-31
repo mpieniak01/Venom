@@ -44,7 +44,7 @@ class BaseAgent(ABC):
         self.role = role or self.__class__.__name__
 
     @abstractmethod
-    async def process(self, input_text: str) -> str:
+    async def process(self, input_text: str) -> str:  # pragma: no cover
         """
         Przetwarza wejście i zwraca wynik.
 

@@ -14,7 +14,8 @@ type TargetConfig = {
 const defaultBaseUrl = (() => {
   if (process.env.BASE_URL) return process.env.BASE_URL;
   const host = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
-  const port = process.env.PLAYWRIGHT_PORT ?? "3001";
+  // Domyślnie celujemy w port z konfiguracji Playwrighta (3100).
+  const port = process.env.PLAYWRIGHT_PORT ?? "3100";
   return `http://${host}:${port}`;
 })();
 

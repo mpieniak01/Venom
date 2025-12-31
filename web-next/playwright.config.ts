@@ -1,10 +1,12 @@
 import type { PlaywrightTestConfig } from "@playwright/test";
 
 const devHost = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
-const devPort = Number(process.env.PLAYWRIGHT_PORT || 3001);
+// Domyślny port 3100, żeby nie kolidować z dev (3000) ani starymi procesami 3001.
+const devPort = Number(process.env.PLAYWRIGHT_PORT || 3100);
 const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
 const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === "true";
 const webServerCommand = isProdServer
   ? [
       // Zapewnia dostępność zasobów statycznych dla standalone builda.
@@ -29,7 +31,8 @@ const config: PlaywrightTestConfig = {
   webServer: {
     command: webServerCommand,
     url: baseURL,
-    reuseExistingServer: false,
+    // Pozwala użyć już działającego serwera na porcie (lokalnie), wymusza restart w CI.
+    reuseExistingServer,
     timeout: 120_000,
   },
 };

@@ -397,7 +397,12 @@ class VectorStore:
             if not re.match(r'^[a-zA-Z0-9_]+$', key):
                 raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
             
-            # Konwersja wartości na string i walidacja
+            # Walidacja typu wartości i konwersja na string
+            if not isinstance(value, (str, int, float, bool)):
+                raise TypeError(
+                    f"Nieobsługiwany typ wartości dla klucza {key}: {type(value).__name__}. "
+                    "Dozwolone typy: str, int, float, bool."
+                )
             str_value = str(value)
             if len(str_value) > MAX_VALUE_LENGTH:
                 raise ValueError(f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH}")

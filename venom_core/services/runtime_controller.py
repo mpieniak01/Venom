@@ -60,6 +60,7 @@ class ServiceInfo:
     uptime_seconds: Optional[int] = None
     last_log: Optional[str] = None
     error_message: Optional[str] = None
+    actionable: bool = True  # Czy usługa ma realne akcje start/stop/restart
 
 
 @dataclass
@@ -116,10 +117,19 @@ class RuntimeController:
 
     def get_service_status(self, service_type: ServiceType) -> ServiceInfo:
         """Pobiera status usługi."""
+        # Określ czy usługa jest actionable (ma realne akcje start/stop)
+        actionable = service_type in [
+            ServiceType.BACKEND,
+            ServiceType.UI,
+            ServiceType.LLM_OLLAMA,
+            ServiceType.LLM_VLLM,
+        ]
+
         info = ServiceInfo(
             name=service_type.value,
             service_type=service_type,
             status=ServiceStatus.UNKNOWN,
+            actionable=actionable,
         )
 
         # Backend i UI - sprawdź PID file
@@ -200,13 +210,13 @@ class RuntimeController:
             else:
                 info.status = ServiceStatus.STOPPED
 
-        # Hive
+        # Hive (kontrolowane przez konfigurację, nie przez runtime)
         elif service_type == ServiceType.HIVE:
             info.status = (
                 ServiceStatus.RUNNING if SETTINGS.ENABLE_HIVE else ServiceStatus.STOPPED
             )
 
-        # Nexus
+        # Nexus (kontrolowane przez konfigurację, nie przez runtime)
         elif service_type == ServiceType.NEXUS:
             info.status = (
                 ServiceStatus.RUNNING
@@ -216,7 +226,7 @@ class RuntimeController:
             if SETTINGS.ENABLE_NEXUS:
                 info.port = SETTINGS.NEXUS_PORT
 
-        # Background Tasks
+        # Background Tasks (kontrolowane przez konfigurację, nie przez runtime)
         elif service_type == ServiceType.BACKGROUND_TASKS:
             info.status = (
                 ServiceStatus.STOPPED

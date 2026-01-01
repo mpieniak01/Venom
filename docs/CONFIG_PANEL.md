@@ -1,4 +1,4 @@
-# Panel Konfiguracji i Sterowania Stosem (ZADANIE 060)
+# Panel Konfiguracji i Sterowania Stosem (ZADANIE 060 + 084)
 
 ## Przegląd
 
@@ -7,6 +7,7 @@ Panel konfiguracji dostępny pod `/config` w interfejsie web-next pozwala na:
 - Edycję parametrów konfiguracji z poziomu UI
 - Monitorowanie statusu usług (CPU, RAM, uptime)
 - Stosowanie profili szybkich (Full Stack, Light, LLM OFF)
+- **Rozróżnienie usług sterowalnych od konfiguracyjnych** (ZADANIE 084)
 
 ## Architektura
 
@@ -18,16 +19,25 @@ Zarządza cyklem życia procesów Venom:
 - **Metryki**: Pobiera CPU/RAM za pomocą `psutil`
 - **Akcje**: Start/stop/restart dla każdej usługi
 - **Historia**: Przechowuje ostatnie 100 akcji
+- **Pole `actionable`**: Rozróżnia usługi z realnymi akcjami od kontrolowanych przez konfigurację
 
 **Obsługiwane usługi:**
-- `backend` (Backend API – FastAPI/uvicorn)
-- `ui` (Next.js UI – dev/prod)
-- `llm_ollama` (Ollama)
-- `llm_vllm` (vLLM)
-- `hive` (przetwarzanie rozproszone, zależne od konfiguracji)
-- `nexus` (mesh/kooperacja, zależny od konfiguracji; domyślnie wyłączony, bez realnych akcji start/stop)
-- `background_tasks` (flaga workerów w tle; stan zależy od backendu i `VENOM_PAUSE_BACKGROUND_TASKS`)
-- **Lokalne serwisy pomocnicze:** LanceDB (pamięć wektorowa), Redis (broker/locki), Docker Daemon (sandbox) – raportowane przez ServiceMonitor w `/api/v1/runtime/status`; Redis i Docker mogą być opcjonalne.
+
+**Usługi sterowalne (actionable=true):**
+- `backend` (Backend API – FastAPI/uvicorn) – sterowanie przez `make start-dev` / `make stop`
+- `ui` (Next.js UI – dev/prod) – sterowanie przez make, razem z backendem
+- `llm_ollama` (Ollama) – sterowanie przez komendy z env (`OLLAMA_START_COMMAND`, `OLLAMA_STOP_COMMAND`)
+- `llm_vllm` (vLLM) – sterowanie przez komendy z env (`VLLM_START_COMMAND`, `VLLM_STOP_COMMAND`)
+
+**Usługi konfigurowalne (actionable=false):**
+- `hive` (przetwarzanie rozproszone) – kontrolowane przez flagę `ENABLE_HIVE` w konfiguracji
+- `nexus` (mesh/kooperacja) – kontrolowane przez flagę `ENABLE_NEXUS` w konfiguracji
+- `background_tasks` (workery w tle) – kontrolowane przez flagę `VENOM_PAUSE_BACKGROUND_TASKS`
+
+**Usługi monitorowane (actionable=false, z ServiceMonitor):**
+- LanceDB (pamięć wektorowa embedded) – tylko health check, brak start/stop
+- Redis (broker/locki) – serwis zewnętrzny, tylko health check
+- Docker Daemon (sandbox) – serwis systemowy, tylko health check
 
 **Profile:**
 - `full` - Uruchamia backend, UI i Ollama
@@ -58,12 +68,19 @@ Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-
 **Runtime:**
 ```
 GET  /api/v1/runtime/status
-     → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log, endpoint?, latency_ms?}]}
+     → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log, actionable, endpoint?, latency_ms?}]}
+     
+     Pole 'actionable' określa czy usługa ma realne akcje start/stop/restart:
+     - true: usługi sterowalne (backend, ui, llm_ollama, llm_vllm)
+     - false: usługi kontrolowane przez konfigurację lub tylko monitorowane (hive, nexus, background_tasks, Redis, Docker, LanceDB)
 
 POST /api/v1/runtime/{service}/{action}
      service: backend|ui|llm_ollama|llm_vllm|hive|nexus|background_tasks
      action: start|stop|restart
      → {success: bool, message: str}
+     
+     Uwaga: Dla usług z actionable=false (hive, nexus, background_tasks) akcje zwracają komunikat 
+     "kontrolowane przez konfigurację" bez wykonywania realnej operacji.
 
 GET  /api/v1/runtime/history?limit=50
      → {history: [{timestamp, service, action, success, message}]}
@@ -109,10 +126,16 @@ web-next/
 #### ServicesPanel (`components/config/services-panel.tsx`)
 - **Auto-refresh**: Pobiera status co 5 sekund
 - **Kafelki usług**: Wyświetla live status, PID, port, CPU, RAM, uptime, ostatni log
-- **Akcje**: Przyciski start/stop/restart per usługa
+- **Akcje warunkowe**: Przyciski start/stop/restart tylko dla usług z `actionable=true`
+- **Usługi non-actionable**: Zamiast przycisków wyświetlany jest info badge "Kontrolowane przez konfigurację"
 - **Profile szybkie**: 3 przyciski (Full Stack, Light, LLM OFF)
 - **Historia akcji**: Ostatnie 10 akcji z timestampem
 - **Feedback**: Komunikaty sukcesu/błędu w formie bannerów
+
+**Rozróżnienie typów usług w UI:**
+- **Sterowalne (actionable=true)**: Pełny zestaw przycisków Start/Stop/Restart
+- **Konfigurowalne (actionable=false)**: Info badge "Kontrolowane przez konfigurację" - zmiana statusu wymaga edycji parametrów w zakładce "Parametry"
+- **Monitorowane (actionable=false, z ServiceMonitor)**: Info badge + ewentualna latencja/endpoint - tylko odczyt statusu
 
 #### ParametersPanel (`components/config/parameters-panel.tsx`)
 - **Sekcje**: 8 sekcji konfiguracji (AI, Commands, Hive, Nexus, Tasks, Shadow, Ghost, Avatar)

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Target } from "lucide-react";
 import { statusTone } from "@/lib/status";
 import { RoadmapKpiCard } from "@/components/strategy/roadmap-kpi-card";
+import { DataSourceIndicator, calculateDataSourceStatus } from "@/components/strategy/data-source-indicator";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date";
@@ -29,6 +30,8 @@ const ROADMAP_CACHE_KEY = "strategy-roadmap-cache";
 const REPORT_CACHE_KEY = "strategy-status-report";
 const REPORT_TS_KEY = "strategy-status-report-ts";
 const REPORT_STALE_MS = 60_000;
+const ROADMAP_TS_KEY = "strategy-roadmap-ts";
+const AUTO_REFRESH_DELAY_MS = 2000;
 
 const safeParseJson = <T,>(payload: string | null): T | null => {
   if (!payload) return null;
@@ -46,10 +49,11 @@ const safeNumber = (payload: string | null): number | null => {
 };
 
 export default function StrategyPage() {
-  const { data: liveRoadmap, refresh: refreshRoadmap } = useRoadmap();
+  const { data: liveRoadmap, refresh: refreshRoadmap, error: roadmapError } = useRoadmap();
   const { data: liveTasks, loading: liveTasksLoading } = useTasks();
   const { data: timelineHistory, loading: timelineLoading } = useHistory(10);
   const [cachedRoadmap, setCachedRoadmap] = useState<RoadmapResponse | null>(null);
+  const [roadmapTimestamp, setRoadmapTimestamp] = useState<number | null>(null);
   const [visionInput, setVisionInput] = useState("");
   const [showVisionForm, setShowVisionForm] = useState(false);
   const [statusReport, setStatusReport] = useState<string | null>(null);
@@ -66,12 +70,14 @@ export default function StrategyPage() {
   );
   const roadmapData = liveRoadmap ?? cachedRoadmap;
   const autoReportTriggered = useRef(false);
+  const campaignRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setCachedRoadmap(
       safeParseJson<RoadmapResponse>(window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
     );
+    setRoadmapTimestamp(safeNumber(window.sessionStorage.getItem(ROADMAP_TS_KEY)));
     setStatusReport(window.sessionStorage.getItem(REPORT_CACHE_KEY));
     setReportTimestamp(safeNumber(window.sessionStorage.getItem(REPORT_TS_KEY)));
   }, []);
@@ -129,7 +135,10 @@ export default function StrategyPage() {
     setCachedRoadmap(liveRoadmap);
     if (typeof window === "undefined") return;
     try {
+      const timestamp = Date.now();
       window.sessionStorage.setItem(ROADMAP_CACHE_KEY, JSON.stringify(liveRoadmap));
+      window.sessionStorage.setItem(ROADMAP_TS_KEY, timestamp.toString());
+      setRoadmapTimestamp(timestamp);
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[strategy] Nie udało się zapisać roadmapy w sessionStorage", err);
@@ -146,6 +155,14 @@ export default function StrategyPage() {
       fetchStatusReport({ silent: true }).catch(() => undefined);
     }
   }, [fetchStatusReport, reportTimestamp]);
+
+  useEffect(() => {
+    return () => {
+      if (campaignRefreshTimer.current) {
+        clearTimeout(campaignRefreshTimer.current);
+      }
+    };
+  }, []);
 
   const kpis = roadmapData?.kpis;
   const visionProgress = roadmapData?.vision?.progress ?? 0;
@@ -227,6 +244,7 @@ export default function StrategyPage() {
         percent: visionProgress,
         description: "Roadmap vision progress",
         tone: "violet" as const,
+        source: "Roadmapa",
       },
       {
         label: "Milestones",
@@ -234,6 +252,7 @@ export default function StrategyPage() {
         percent: milestonesRaw,
         description: "Incomplete milestones",
         tone: "indigo" as const,
+        source: "Roadmapa",
       },
       {
         label: "Tasks",
@@ -241,9 +260,24 @@ export default function StrategyPage() {
         percent: tasksRaw,
         description: "Execution tasks",
         tone: "emerald" as const,
+        source: "Roadmapa",
       },
     ],
     [visionProgress, kpis, milestonesRaw, tasksRaw],
+  );
+
+  const roadmapDataStatus = calculateDataSourceStatus(
+    !!liveRoadmap,
+    !!cachedRoadmap,
+    roadmapTimestamp,
+    REPORT_STALE_MS,
+  );
+
+  const reportDataStatus = calculateDataSourceStatus(
+    false, // Report is always from cache/manual fetch
+    !!statusReport,
+    reportTimestamp,
+    REPORT_STALE_MS,
   );
 
   const handleCreateRoadmap = async () => {
@@ -280,6 +314,14 @@ export default function StrategyPage() {
     try {
       const res = await startCampaign();
       showToast("success", res.message || "Kampania wystartowała (patrz logi).");
+      // Automatycznie odśwież dane po uruchomieniu kampanii
+      if (campaignRefreshTimer.current) {
+        clearTimeout(campaignRefreshTimer.current);
+      }
+      campaignRefreshTimer.current = setTimeout(() => {
+        refreshRoadmap();
+        fetchStatusReport({ silent: true });
+      }, AUTO_REFRESH_DELAY_MS);
     } catch (err) {
       showToast(
         "error",
@@ -371,12 +413,22 @@ export default function StrategyPage() {
             description={card.description}
             percent={card.percent}
             tone={card.tone}
+            source={card.source}
           />
         ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Wizja" description="Migawka magazynu celów">
+        <Panel 
+          title="Wizja" 
+          description="Migawka magazynu celów"
+          action={
+            <DataSourceIndicator 
+              status={roadmapDataStatus}
+              timestamp={roadmapTimestamp}
+            />
+          }
+        >
           {roadmapData?.vision ? (
             <div className="space-y-3 text-sm text-muted">
               <div className="flex items-center justify-between">
@@ -389,6 +441,12 @@ export default function StrategyPage() {
                 <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
               </div>
             </div>
+          ) : roadmapError ? (
+            <EmptyState
+              icon={<span className="text-lg">⚠️</span>}
+              title="Backend niedostępny"
+              description="Nie udało się pobrać roadmapy. Sprawdź czy backend działa i odśwież stronę."
+            />
           ) : (
             <EmptyState
               icon={<span className="text-lg">✨</span>}
@@ -397,7 +455,16 @@ export default function StrategyPage() {
             />
           )}
         </Panel>
-        <Panel title="Raport statusu" description="Ostatni snapshot z `/api/roadmap/status`.">
+        <Panel 
+          title="Raport statusu" 
+          description="Ostatni snapshot z `/api/roadmap/status`."
+          action={
+            <DataSourceIndicator 
+              status={reportDataStatus}
+              timestamp={reportTimestamp}
+            />
+          }
+        >
           {statusReport ? (
             <MarkdownPreview content={statusReport} />
           ) : (

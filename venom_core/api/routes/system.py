@@ -961,7 +961,7 @@ async def get_runtime_status():
     Zwraca status wszystkich usług Venom (backend, UI, LLM, Hive, Nexus, background tasks).
 
     Returns:
-        Lista usług z ich statusem, PID, portem, CPU/RAM
+        Lista usług z ich statusem, PID, portem, CPU/RAM, actionable
     """
     try:
         services = runtime_controller.get_all_services_status()
@@ -978,6 +978,7 @@ async def get_runtime_status():
                 "uptime_seconds": s.uptime_seconds,
                 "last_log": s.last_log,
                 "error_message": s.error_message,
+                "actionable": s.actionable,
             }
             for s in services
         ]
@@ -1018,6 +1019,7 @@ async def get_runtime_status():
                         "error_message": svc.error_message,
                         "latency_ms": getattr(svc, "latency_ms", 0.0),
                         "endpoint": svc.endpoint,
+                        "actionable": False,  # Usługi z ServiceMonitor są tylko monitorowane
                     }
                 )
 

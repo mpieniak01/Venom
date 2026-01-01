@@ -18,7 +18,7 @@ export function ModelListItem({ name, sizeGb, source, active, onActivate }: Mode
         <div>
           <p className="text-lg font-semibold">{name}</p>
           <p className="text-xs text-zinc-400">
-            {sizeGb ? `${sizeGb} GB` : "Rozmiar —"}
+            {typeof sizeGb === "number" ? `${sizeGb.toFixed(2)} GB` : "Rozmiar —"}
             {source ? ` • ${source}` : ""}
           </p>
         </div>

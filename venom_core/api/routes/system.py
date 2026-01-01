@@ -982,6 +982,45 @@ async def get_runtime_status():
             for s in services
         ]
 
+        # Dorzuć statusy z ServiceMonitor (bazy/LLM lokalny/Docker/GitHub).
+        if _service_monitor:
+            try:
+                monitor_services = await _service_monitor.check_health()
+            except Exception as exc:  # pragma: no cover - fallback
+                logger.warning(f"Nie udało się sprawdzić ServiceMonitor: {exc}")
+                monitor_services = _service_monitor.get_all_services()
+
+            status_map = {
+                "online": "running",
+                "offline": "stopped",
+                "degraded": "degraded",
+                "unknown": "unknown",
+            }
+            for svc in monitor_services:
+                # Pomijamy zewnętrzne API (OpenAI/GitHub) i duplikaty LLM z runtime.
+                if svc.service_type == "api":
+                    continue
+                if svc.name.lower() in {"local llm", "vllm", "ollama"}:
+                    continue
+                if any(s["name"].lower() == svc.name.lower() for s in services_data):
+                    continue
+                services_data.append(
+                    {
+                        "name": svc.name,
+                        "service_type": svc.service_type,
+                        "status": status_map.get(svc.status.value, "unknown"),
+                        "pid": None,
+                        "port": None,
+                        "cpu_percent": 0.0,
+                        "memory_mb": 0.0,
+                        "uptime_seconds": None,
+                        "last_log": None,
+                        "error_message": svc.error_message,
+                        "latency_ms": getattr(svc, "latency_ms", 0.0),
+                        "endpoint": svc.endpoint,
+                    }
+                )
+
         return {
             "status": "success",
             "services": services_data,

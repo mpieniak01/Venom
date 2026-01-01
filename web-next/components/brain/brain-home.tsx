@@ -22,7 +22,7 @@ import {
   useLessons,
   useLessonsStats,
 } from "@/hooks/use-api";
-import type { Lesson } from "@/lib/types";
+import type { KnowledgeGraph, Lesson } from "@/lib/types";
 import type { BrainInitialData } from "@/lib/server-data";
 import type { TagEntry } from "@/components/brain/types";
 import type cytoscapeType from "cytoscape";
@@ -71,7 +71,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const memoryGraphLoading = memoryGraphPoll.loading;
   const memoryGraphError = memoryGraphPoll.error;
   const graph = liveGraph ?? initialKnowledge ?? null;
-  const memoryGraph = showMemoryLayer ? memoryGraphPoll.data : null;
+  const [memoryGraphOverride, setMemoryGraphOverride] = useState<KnowledgeGraph | null>(null);
+  const memoryGraph = showMemoryLayer ? memoryGraphOverride ?? memoryGraphPoll.data : null;
+  const isMemoryEmpty =
+    activeTab === "memory" &&
+    showMemoryLayer &&
+    !memoryGraphLoading &&
+    ((memoryGraph?.stats?.nodes ?? memoryGraph?.elements?.nodes?.length ?? 0) <= 1);
   const colorFromTopic = useCallback((topic?: string) => {
     if (!topic) return undefined;
     const palette = ["#fbbf24", "#22c55e", "#0ea5e9", "#a855f7", "#f97316", "#38bdf8", "#f43f5e"];
@@ -362,7 +368,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       setMemoryWipePending(true);
       const resp = await clearSessionMemory(memorySessionFilter.trim());
       pushToast(`Wyczyszczono sesję ${resp.session_id} (wektorów: ${resp.deleted_vectors}).`, "success");
-      memoryGraphPoll.refresh();
+      setMemoryGraphOverride({ elements: { nodes: [], edges: [] }, stats: { nodes: 0, edges: 0 } });
+      await memoryGraphPoll.refresh();
+      await refreshSummary();
+      setMemoryGraphOverride(null);
     } catch (err) {
       pushToast("Nie udało się wyczyścić pamięci sesji.", "error");
       console.error(err);
@@ -378,7 +387,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       setMemoryWipePending(true);
       const resp = await clearGlobalMemory();
       pushToast(`Wyczyszczono pamięć globalną (wektorów: ${resp.deleted_vectors ?? 0}).`, "success");
-      memoryGraphPoll.refresh();
+      setMemoryGraphOverride({ elements: { nodes: [], edges: [] }, stats: { nodes: 0, edges: 0 } });
+      await memoryGraphPoll.refresh();
+      await refreshSummary();
+      setMemoryGraphOverride(null);
     } catch (err) {
       pushToast("Nie udało się wyczyścić pamięci globalnej.", "error");
       console.error(err);
@@ -624,6 +636,30 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           data-testid="graph-container"
           className="relative h-[70vh] w-full"
         />
+        {isMemoryEmpty && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-black/70 via-black/60 to-black/70 text-center text-white">
+            <p className="text-sm uppercase tracking-[0.35em] text-zinc-400">Brak danych</p>
+            <p className="max-w-md text-lg font-semibold text-white">
+              Pamięć jest pusta. Rozpocznij rozmowę lub skanuj graf, aby wczytać węzły.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button asChild size="sm" variant="secondary">
+                <a href="/chat">Rozpocznij chat</a>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-white/30 text-white"
+                onClick={() => refreshSummary()}
+              >
+                Odśwież status
+              </Button>
+              <Button size="sm" onClick={handleScanGraph} disabled={scanning}>
+                {scanning ? "Skanuję..." : "Skanuj graf"}
+              </Button>
+            </div>
+          </div>
+        )}
         {(graphLoading || memoryLoading || graphError || memoryGraphError) && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center text-sm text-white">
             {graphLoading || memoryLoading ? (

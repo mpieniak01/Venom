@@ -295,16 +295,17 @@ export function ParametersPanel() {
         [
           "AI_MODE",
           "LLM_SERVICE_TYPE",
-          "LLM_LOCAL_ENDPOINT",
-          "LLM_MODEL_NAME",
-          "LLM_LOCAL_API_KEY",
-          "OPENAI_API_KEY",
-          "GOOGLE_API_KEY",
-          "HYBRID_CLOUD_PROVIDER",
-          "HYBRID_LOCAL_MODEL",
-          "HYBRID_CLOUD_MODEL",
-          "SENSITIVE_DATA_LOCAL_ONLY",
-          "ENABLE_MODEL_ROUTING",
+        "LLM_LOCAL_ENDPOINT",
+        "LLM_MODEL_NAME",
+        "LLM_LOCAL_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "SUMMARY_STRATEGY",
+        "HYBRID_CLOUD_PROVIDER",
+        "HYBRID_LOCAL_MODEL",
+        "HYBRID_CLOUD_MODEL",
+        "SENSITIVE_DATA_LOCAL_ONLY",
+        "ENABLE_MODEL_ROUTING",
           "FORCE_LOCAL_MODEL",
           "ENABLE_MULTI_SERVICE",
         ]
@@ -317,9 +318,38 @@ export function ParametersPanel() {
         [
           "VLLM_START_COMMAND",
           "VLLM_STOP_COMMAND",
+          "VLLM_RESTART_COMMAND",
+          "VLLM_ENDPOINT",
           "OLLAMA_START_COMMAND",
           "OLLAMA_STOP_COMMAND",
+          "OLLAMA_RESTART_COMMAND",
         ]
+      )}
+
+      {renderSection(
+        "vLLM – zaawansowane",
+        "Ścieżki modeli i limity dla runtime vLLM",
+        [
+          "VLLM_MODEL_PATH",
+          "VLLM_SERVED_MODEL_NAME",
+          "VLLM_GPU_MEMORY_UTILIZATION",
+          "VLLM_MAX_BATCHED_TOKENS",
+        ]
+      )}
+
+      {renderSection(
+        "Routing i kontekst",
+        "Strategia podsumowań oraz kompresja kontekstu",
+        [
+          "ENABLE_CONTEXT_COMPRESSION",
+          "MAX_CONTEXT_TOKENS",
+        ]
+      )}
+
+      {renderSection(
+        "Prompty",
+        "Katalogi promptów",
+        ["PROMPTS_DIR"]
       )}
 
       {/* Hive Configuration */}
@@ -366,7 +396,16 @@ export function ParametersPanel() {
           "ENABLE_HEALTH_CHECKS",
           "WATCHER_DEBOUNCE_SECONDS",
           "IDLE_THRESHOLD_MINUTES",
+          "GARDENER_COMPLEXITY_THRESHOLD",
+          "MEMORY_CONSOLIDATION_INTERVAL_MINUTES",
+          "HEALTH_CHECK_INTERVAL_MINUTES",
         ]
+      )}
+
+      {renderSection(
+        "Sandbox / Docker",
+        "Ustawienia sandboxa i obrazu bazowego",
+        ["ENABLE_SANDBOX", "DOCKER_IMAGE_NAME"]
       )}
 
       {/* Shadow Agent */}
@@ -408,6 +447,115 @@ export function ParametersPanel() {
           "AUDIO_DEVICE",
           "VAD_THRESHOLD",
           "SILENCE_DURATION",
+        ]
+      )}
+
+      {renderSection(
+        "Integracje zewnętrzne",
+        "Klucze i tokeny dla integracji (HF, GitHub, Slack/Discord, Tavily)",
+        [
+          "ENABLE_HF_INTEGRATION",
+          "HF_TOKEN",
+          "GITHUB_TOKEN",
+          "GITHUB_REPO_NAME",
+          "DISCORD_WEBHOOK_URL",
+          "SLACK_WEBHOOK_URL",
+          "ENABLE_ISSUE_POLLING",
+          "ISSUE_POLLING_INTERVAL_MINUTES",
+          "TAVILY_API_KEY",
+        ]
+      )}
+
+      {renderSection(
+        "Kalendarz",
+        "Integracja Google Calendar",
+        [
+          "ENABLE_GOOGLE_CALENDAR",
+          "GOOGLE_CALENDAR_CREDENTIALS_PATH",
+          "GOOGLE_CALENDAR_TOKEN_PATH",
+          "VENOM_CALENDAR_ID",
+          "VENOM_CALENDAR_NAME",
+        ]
+      )}
+
+      {renderSection(
+        "IoT Bridge (Rider-Pi)",
+        "Parametry połączenia z Raspberry Pi / IoT",
+        [
+          "ENABLE_IOT_BRIDGE",
+          "RIDER_PI_HOST",
+          "RIDER_PI_PORT",
+          "RIDER_PI_USERNAME",
+          "RIDER_PI_PASSWORD",
+          "RIDER_PI_KEY_FILE",
+          "RIDER_PI_PROTOCOL",
+          "IOT_REQUIRE_CONFIRMATION",
+        ]
+      )}
+
+      {renderSection(
+        "Academy (Fine-tuning)",
+        "Parametry treningu/fine-tuningu modeli",
+        [
+          "ENABLE_ACADEMY",
+          "ACADEMY_TRAINING_DIR",
+          "ACADEMY_MODELS_DIR",
+          "ACADEMY_MIN_LESSONS",
+          "ACADEMY_TRAINING_INTERVAL_HOURS",
+          "ACADEMY_DEFAULT_BASE_MODEL",
+          "ACADEMY_LORA_RANK",
+          "ACADEMY_LEARNING_RATE",
+          "ACADEMY_NUM_EPOCHS",
+          "ACADEMY_BATCH_SIZE",
+          "ACADEMY_MAX_SEQ_LENGTH",
+          "ACADEMY_ENABLE_GPU",
+          "ACADEMY_TRAINING_IMAGE",
+        ]
+      )}
+
+      {renderSection(
+        "Symulacje",
+        "Warstwa THE_SIMULACRUM",
+        [
+          "ENABLE_SIMULATION",
+          "SIMULATION_CHAOS_ENABLED",
+          "SIMULATION_MAX_STEPS",
+          "SIMULATION_USER_MODEL",
+          "SIMULATION_ANALYST_MODEL",
+          "SIMULATION_DEFAULT_USERS",
+          "SIMULATION_LOGS_DIR",
+        ]
+      )}
+
+      {renderSection(
+        "Launchpad / Media",
+        "Deployment i generowanie obrazów",
+        [
+          "ENABLE_LAUNCHPAD",
+          "DEPLOYMENT_SSH_KEY_PATH",
+          "DEPLOYMENT_DEFAULT_USER",
+          "DEPLOYMENT_TIMEOUT",
+          "ASSETS_DIR",
+          "ENABLE_IMAGE_GENERATION",
+          "IMAGE_GENERATION_SERVICE",
+          "DALLE_MODEL",
+          "IMAGE_DEFAULT_SIZE",
+          "IMAGE_STYLE",
+        ]
+      )}
+
+      {renderSection(
+        "Dreamer",
+        "Parametry systemu śnienia (THE_DREAMER)",
+        [
+          "ENABLE_DREAMING",
+          "DREAMING_IDLE_THRESHOLD_MINUTES",
+          "DREAMING_NIGHT_HOURS",
+          "DREAMING_MAX_SCENARIOS",
+          "DREAMING_CPU_THRESHOLD",
+          "DREAMING_MEMORY_THRESHOLD",
+          "DREAMING_SCENARIO_COMPLEXITY",
+          "DREAMING_VALIDATION_STRICT",
         ]
       )}
 

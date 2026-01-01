@@ -31,6 +31,7 @@ const REPORT_CACHE_KEY = "strategy-status-report";
 const REPORT_TS_KEY = "strategy-status-report-ts";
 const REPORT_STALE_MS = 60_000;
 const ROADMAP_TS_KEY = "strategy-roadmap-ts";
+const AUTO_REFRESH_DELAY_MS = 2000;
 
 const safeParseJson = <T,>(payload: string | null): T | null => {
   if (!payload) return null;
@@ -308,7 +309,7 @@ export default function StrategyPage() {
       setTimeout(() => {
         refreshRoadmap();
         fetchStatusReport({ silent: true });
-      }, 2000);
+      }, AUTO_REFRESH_DELAY_MS);
     } catch (err) {
       showToast(
         "error",

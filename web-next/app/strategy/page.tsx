@@ -70,6 +70,7 @@ export default function StrategyPage() {
   );
   const roadmapData = liveRoadmap ?? cachedRoadmap;
   const autoReportTriggered = useRef(false);
+  const campaignRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -154,6 +155,14 @@ export default function StrategyPage() {
       fetchStatusReport({ silent: true }).catch(() => undefined);
     }
   }, [fetchStatusReport, reportTimestamp]);
+
+  useEffect(() => {
+    return () => {
+      if (campaignRefreshTimer.current) {
+        clearTimeout(campaignRefreshTimer.current);
+      }
+    };
+  }, []);
 
   const kpis = roadmapData?.kpis;
   const visionProgress = roadmapData?.vision?.progress ?? 0;
@@ -306,7 +315,10 @@ export default function StrategyPage() {
       const res = await startCampaign();
       showToast("success", res.message || "Kampania wystartowała (patrz logi).");
       // Automatycznie odśwież dane po uruchomieniu kampanii
-      setTimeout(() => {
+      if (campaignRefreshTimer.current) {
+        clearTimeout(campaignRefreshTimer.current);
+      }
+      campaignRefreshTimer.current = setTimeout(() => {
         refreshRoadmap();
         fetchStatusReport({ silent: true });
       }, AUTO_REFRESH_DELAY_MS);
@@ -414,7 +426,6 @@ export default function StrategyPage() {
             <DataSourceIndicator 
               status={roadmapDataStatus}
               timestamp={roadmapTimestamp}
-              staleThresholdMs={REPORT_STALE_MS}
             />
           }
         >
@@ -451,7 +462,6 @@ export default function StrategyPage() {
             <DataSourceIndicator 
               status={reportDataStatus}
               timestamp={reportTimestamp}
-              staleThresholdMs={REPORT_STALE_MS}
             />
           }
         >

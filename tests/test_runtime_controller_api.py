@@ -44,6 +44,7 @@ class TestRuntimeStatusAPI:
             mock_service.uptime_seconds = 3600
             mock_service.last_log = "Server started"
             mock_service.error_message = None
+            mock_service.actionable = True
 
             mock_controller.get_all_services_status.return_value = [mock_service]
 
@@ -56,6 +57,61 @@ class TestRuntimeStatusAPI:
             assert data["services"][0]["name"] == "backend"
             assert data["services"][0]["status"] == "running"
             assert data["services"][0]["pid"] == 12345
+            assert data["services"][0]["actionable"] is True
+
+    def test_runtime_status_with_non_actionable_services(self, client):
+        """Test statusu runtime z usługami non-actionable (Hive/Nexus/BackgroundTasks)."""
+        with (
+            patch("venom_core.api.routes.system.runtime_controller") as mock_controller,
+            patch("venom_core.api.routes.system._service_monitor", None),
+        ):
+            # Mock actionable service (backend)
+            mock_backend = MagicMock()
+            mock_backend.name = "backend"
+            mock_backend.service_type.value = "backend"
+            mock_backend.status.value = "running"
+            mock_backend.pid = 12345
+            mock_backend.port = 8000
+            mock_backend.cpu_percent = 5.5
+            mock_backend.memory_mb = 256.0
+            mock_backend.uptime_seconds = 3600
+            mock_backend.last_log = "Server started"
+            mock_backend.error_message = None
+            mock_backend.actionable = True
+
+            # Mock non-actionable service (hive)
+            mock_hive = MagicMock()
+            mock_hive.name = "hive"
+            mock_hive.service_type.value = "hive"
+            mock_hive.status.value = "stopped"
+            mock_hive.pid = None
+            mock_hive.port = None
+            mock_hive.cpu_percent = 0.0
+            mock_hive.memory_mb = 0.0
+            mock_hive.uptime_seconds = None
+            mock_hive.last_log = None
+            mock_hive.error_message = None
+            mock_hive.actionable = False
+
+            mock_controller.get_all_services_status.return_value = [
+                mock_backend,
+                mock_hive,
+            ]
+
+            response = client.get("/api/v1/runtime/status")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "success"
+            assert len(data["services"]) == 2
+
+            # Check backend (actionable)
+            backend_service = next(s for s in data["services"] if s["name"] == "backend")
+            assert backend_service["actionable"] is True
+
+            # Check hive (non-actionable)
+            hive_service = next(s for s in data["services"] if s["name"] == "hive")
+            assert hive_service["actionable"] is False
 
     def test_runtime_status_error(self, client):
         """Test błędu podczas pobierania statusu runtime."""

@@ -15,6 +15,7 @@ interface ServiceInfo {
   uptime_seconds: number | null;
   last_log: string | null;
   error_message: string | null;
+  actionable: boolean;
 }
 
 interface ActionHistory {
@@ -335,43 +336,51 @@ export function ServicesPanel() {
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => executeAction(service.service_type, "start")}
-                  disabled={
-                    isRunning || actionInProgress === `${actionKey}-start` || loading
-                  }
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
-                >
-                  <Play className="mr-1 h-3 w-3" />
-                  Start
-                </Button>
-                <Button
-                  onClick={() => executeAction(service.service_type, "stop")}
-                  disabled={
-                    !isRunning || actionInProgress === `${actionKey}-stop` || loading
-                  }
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
-                >
-                  <Square className="mr-1 h-3 w-3" />
-                  Stop
-                </Button>
-                <Button
-                  onClick={() => executeAction(service.service_type, "restart")}
-                  disabled={actionInProgress === `${actionKey}-restart` || loading}
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
-                >
-                  <RotateCw className="mr-1 h-3 w-3" />
-                  Restart
-                </Button>
-              </div>
+              {/* Actions or Info Badge */}
+              {service.actionable ? (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => executeAction(service.service_type, "start")}
+                    disabled={
+                      isRunning || actionInProgress === `${actionKey}-start` || loading
+                    }
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
+                  >
+                    <Play className="mr-1 h-3 w-3" />
+                    Start
+                  </Button>
+                  <Button
+                    onClick={() => executeAction(service.service_type, "stop")}
+                    disabled={
+                      !isRunning || actionInProgress === `${actionKey}-stop` || loading
+                    }
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
+                  >
+                    <Square className="mr-1 h-3 w-3" />
+                    Stop
+                  </Button>
+                  <Button
+                    onClick={() => executeAction(service.service_type, "restart")}
+                    disabled={actionInProgress === `${actionKey}-restart` || loading}
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
+                  >
+                    <RotateCw className="mr-1 h-3 w-3" />
+                    Restart
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-blue-500/10 p-2 border border-blue-500/30">
+                  <p className="text-[11px] text-blue-300 text-center">
+                    Kontrolowane przez konfigurację
+                  </p>
+                </div>
+              )}
             </div>
           );
         })}

@@ -9,7 +9,6 @@ type DataSourceStatus = "live" | "cache" | "stale" | "offline";
 type DataSourceIndicatorProps = {
   status: DataSourceStatus;
   timestamp?: number | null;
-  staleThresholdMs?: number;
   className?: string;
 };
 

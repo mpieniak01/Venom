@@ -4,25 +4,25 @@ import { calculateDataSourceStatus } from "@/components/strategy/data-source-ind
 
 const STALE_THRESHOLD_MS = 60000;
 
-// Test: Live data available
+// Test: Dane live dostępne
 const liveStatus = calculateDataSourceStatus(true, false, null, STALE_THRESHOLD_MS);
-assert.equal(liveStatus, "live", "Should return 'live' when live data is available");
+assert.equal(liveStatus, "live", "Powinno zwrócić 'live' gdy dane live są dostępne");
 
-// Test: Cache data available (not stale)
+// Test: Dane cache dostępne (świeże)
 const now = Date.now();
 const cacheStatus = calculateDataSourceStatus(false, true, now - 30000, STALE_THRESHOLD_MS);
-assert.equal(cacheStatus, "cache", "Should return 'cache' when cached data is fresh");
+assert.equal(cacheStatus, "cache", "Powinno zwrócić 'cache' gdy dane cache są świeże");
 
-// Test: Stale cache data
+// Test: Przestarzałe dane cache
 const staleStatus = calculateDataSourceStatus(false, true, now - 90000, STALE_THRESHOLD_MS);
-assert.equal(staleStatus, "stale", "Should return 'stale' when cached data is old");
+assert.equal(staleStatus, "stale", "Powinno zwrócić 'stale' gdy dane cache są stare");
 
-// Test: No data available
+// Test: Brak danych
 const offlineStatus = calculateDataSourceStatus(false, false, null, STALE_THRESHOLD_MS);
-assert.equal(offlineStatus, "offline", "Should return 'offline' when no data is available");
+assert.equal(offlineStatus, "offline", "Powinno zwrócić 'offline' gdy brak danych");
 
-// Test: Cache without timestamp
+// Test: Cache bez timestampu
 const cacheNoTimestamp = calculateDataSourceStatus(false, true, null, STALE_THRESHOLD_MS);
-assert.equal(cacheNoTimestamp, "cache", "Should return 'cache' when no timestamp is available");
+assert.equal(cacheNoTimestamp, "cache", "Powinno zwrócić 'cache' gdy brak timestampu");
 
-console.log("✅ All data source indicator tests passed!");
+console.log("✅ Wszystkie testy wskaźnika źródła danych przeszły!");

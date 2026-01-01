@@ -16,6 +16,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
 - 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
 - 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
+- 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
 
 ### 🎯 Przykłady użycia
 
@@ -94,6 +95,12 @@ venom_core/
 - **Orchestrator** - Główny koordynator systemu
 - **IntentManager** - Klasyfikacja intencji (5 typów: CODE_GENERATION, RESEARCH, COMPLEX_PLANNING, KNOWLEDGE_SEARCH, GENERAL_CHAT)
 - **TaskDispatcher** - Routing zadań do odpowiednich agentów
+
+#### 7. **Usługi runtime (operacyjne)**
+- **Backend API** (FastAPI/uvicorn) i **Next.js UI** – podstawowe procesy.
+- **Serwery LLM**: Ollama, vLLM – start/stop z panelu usług.
+- **LanceDB** – lokalna pamięć wektorowa (embedded); **Redis** – opcjonalny broker/locki (może być wyłączony).
+- **Nexus**, **Background Tasks** – opcjonalne miejsca na przyszłe procesy (domyślnie disabled, bez akcji start/stop; można ukryć/ignorować jeśli niewykorzystane).
 
 ### Przepływ danych
 

@@ -49,17 +49,11 @@ export default function StrategyPage() {
   const { data: liveRoadmap, refresh: refreshRoadmap } = useRoadmap();
   const { data: liveTasks, loading: liveTasksLoading } = useTasks();
   const { data: timelineHistory, loading: timelineLoading } = useHistory(10);
-  const [cachedRoadmap, setCachedRoadmap] = useState<RoadmapResponse | null>(() =>
-    typeof window === "undefined" ? null : safeParseJson<RoadmapResponse>(window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
-  );
+  const [cachedRoadmap, setCachedRoadmap] = useState<RoadmapResponse | null>(null);
   const [visionInput, setVisionInput] = useState("");
   const [showVisionForm, setShowVisionForm] = useState(false);
-  const [statusReport, setStatusReport] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : window.sessionStorage.getItem(REPORT_CACHE_KEY),
-  );
-  const [reportTimestamp, setReportTimestamp] = useState<number | null>(() =>
-    typeof window === "undefined" ? null : safeNumber(window.sessionStorage.getItem(REPORT_TS_KEY)),
-  );
+  const [statusReport, setStatusReport] = useState<string | null>(null);
+  const [reportTimestamp, setReportTimestamp] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
@@ -72,6 +66,15 @@ export default function StrategyPage() {
   );
   const roadmapData = liveRoadmap ?? cachedRoadmap;
   const autoReportTriggered = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setCachedRoadmap(
+      safeParseJson<RoadmapResponse>(window.sessionStorage.getItem(ROADMAP_CACHE_KEY)),
+    );
+    setStatusReport(window.sessionStorage.getItem(REPORT_CACHE_KEY));
+    setReportTimestamp(safeNumber(window.sessionStorage.getItem(REPORT_TS_KEY)));
+  }, []);
   const persistStatusReport = useCallback((value: string) => {
     if (typeof window === "undefined") return;
     try {

@@ -20,13 +20,14 @@ Zarządza cyklem życia procesów Venom:
 - **Historia**: Przechowuje ostatnie 100 akcji
 
 **Obsługiwane usługi:**
-- `backend` - FastAPI (uvicorn)
-- `ui` - Next.js dev/prod
-- `llm_ollama` - Ollama server
-- `llm_vllm` - vLLM server
-- `hive` - Przetwarzanie rozproszone
-- `nexus` - Distributed mesh
-- `background_tasks` - Zadania w tle
+- `backend` (Backend API – FastAPI/uvicorn)
+- `ui` (Next.js UI – dev/prod)
+- `llm_ollama` (Ollama)
+- `llm_vllm` (vLLM)
+- `hive` (przetwarzanie rozproszone, zależne od konfiguracji)
+- `nexus` (mesh/kooperacja, zależny od konfiguracji; domyślnie wyłączony, bez realnych akcji start/stop)
+- `background_tasks` (flaga workerów w tle; stan zależy od backendu i `VENOM_PAUSE_BACKGROUND_TASKS`)
+- **Lokalne serwisy pomocnicze:** LanceDB (pamięć wektorowa), Redis (broker/locki), Docker Daemon (sandbox) – raportowane przez ServiceMonitor w `/api/v1/runtime/status`; Redis i Docker mogą być opcjonalne.
 
 **Profile:**
 - `full` - Uruchamia backend, UI i Ollama
@@ -57,7 +58,7 @@ Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-
 **Runtime:**
 ```
 GET  /api/v1/runtime/status
-     → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log}]}
+     → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log, endpoint?, latency_ms?}]}
 
 POST /api/v1/runtime/{service}/{action}
      service: backend|ui|llm_ollama|llm_vllm|hive|nexus|background_tasks

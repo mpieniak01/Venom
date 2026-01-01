@@ -210,6 +210,19 @@ export function ServicesPanel() {
     }
   };
 
+  const getDisplayName = (raw: string) => {
+    const name = raw.toLowerCase();
+    if (name === "backend") return "Backend API";
+    if (name === "ui") return "Next.js UI";
+    if (name === "llm_ollama") return "Ollama";
+    if (name === "llm_vllm") return "vLLM";
+    if (name === "background_tasks") return "Background Tasks";
+    if (name === "local llm") return "Local LLM";
+    // Fallback: zamiana podkreśleń na spacje + kapitalizacja pierwszej litery
+    const pretty = raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    return pretty;
+  };
+
   return (
     <div className="space-y-6">
       {/* Message */}
@@ -265,7 +278,7 @@ export function ServicesPanel() {
 
           return (
             <div
-              key={service.service_type}
+              key={`${service.service_type}-${service.name}`}
               className="glass-panel rounded-2xl box-subtle p-4"
             >
               {/* Header */}
@@ -274,7 +287,7 @@ export function ServicesPanel() {
                   <div className={`${getStatusColor(service.status)}`}>
                     {getServiceIcon(service.service_type)}
                   </div>
-                  <h4 className="heading-h4">{service.name}</h4>
+                  <h4 className="heading-h4">{getDisplayName(service.name)}</h4>
                 </div>
                 <span className={`pill-badge ${getStatusBadge(service.status)}`}>
                   {service.status}

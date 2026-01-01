@@ -28,9 +28,10 @@ class TestRuntimeStatusAPI:
 
     def test_runtime_status_success(self, client):
         """Test poprawnego pobrania statusu runtime."""
-        with patch(
-            "venom_core.api.routes.system.runtime_controller"
-        ) as mock_controller:
+        with (
+            patch("venom_core.api.routes.system.runtime_controller") as mock_controller,
+            patch("venom_core.api.routes.system._service_monitor", None),
+        ):
             # Mock service info
             mock_service = MagicMock()
             mock_service.name = "backend"

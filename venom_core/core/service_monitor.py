@@ -76,48 +76,7 @@ class ServiceRegistry:
                 )
             )
 
-        # Local LLM (Ollama/vLLM)
-        if SETTINGS.LLM_SERVICE_TYPE == "local":
-            self.register_service(
-                ServiceInfo(
-                    name="Local LLM",
-                    service_type="api",
-                    endpoint=f"{SETTINGS.LLM_LOCAL_ENDPOINT}/models",
-                    description=f"Lokalny serwer LLM ({SETTINGS.LLM_MODEL_NAME})",
-                    is_critical=True,
-                )
-            )
-            self.register_service(
-                ServiceInfo(
-                    name="vLLM",
-                    service_type="api",
-                    endpoint=SETTINGS.LLM_LOCAL_ENDPOINT,
-                    description="Serwer vLLM (OpenAI-compatible)",
-                    is_critical=True,
-                )
-            )
-            self.register_service(
-                ServiceInfo(
-                    name="Ollama",
-                    service_type="api",
-                    endpoint="http://localhost:11434/api/tags",
-                    description="Daemon Ollama dla modeli GGUF",
-                    is_critical=False,
-                )
-            )
-
-        # GitHub API (jeśli skonfigurowane)
-        github_token = SETTINGS.GITHUB_TOKEN.get_secret_value()
-        if github_token and github_token.strip():
-            self.register_service(
-                ServiceInfo(
-                    name="GitHub API",
-                    service_type="api",
-                    endpoint="https://api.github.com/rate_limit",
-                    description="GitHub API do integracji z repozytorium",
-                    is_critical=False,
-                )
-            )
+        # LLM health check przeniesiony do runtime status (dedykowane karty) – nie dodajemy tutaj.
 
         # Docker Daemon (jeśli sandbox włączony)
         if SETTINGS.ENABLE_SANDBOX:
@@ -134,10 +93,21 @@ class ServiceRegistry:
         # Local Memory (VectorDB)
         self.register_service(
             ServiceInfo(
-                name="Local Memory",
+                name="LanceDB",
                 service_type="database",
                 endpoint=None,  # Lokalne, brak endpointu HTTP
-                description="Pamięć wektorowa (ChromaDB)",
+                description="LanceDB – lokalna pamięć wektorowa (embedded)",
+                is_critical=False,
+            )
+        )
+
+        # Redis (broker/locki)
+        self.register_service(
+            ServiceInfo(
+                name="Redis",
+                service_type="database",
+                endpoint=f"redis://{SETTINGS.REDIS_HOST}:{SETTINGS.REDIS_PORT}/{SETTINGS.REDIS_DB}",
+                description="Broker/locki Redis (jeśli skonfigurowany)",
                 is_critical=False,
             )
         )
@@ -365,44 +335,44 @@ class ServiceHealthMonitor:
 
     async def _check_local_database_service(self, service: ServiceInfo):
         """
-        Sprawdza lokalną bazę danych (VectorDB).
+        Sprawdza lokalną bazę danych (LanceDB/Redis).
 
         Args:
             service: Usługa do sprawdzenia
         """
-        # Check cache for ChromaDB availability (initialize once)
-        if self._chromadb_available is None:
-            if chromadb is None:
-                self._chromadb_available = False
-                self._chromadb_module = None
-                self._chromadb_client = None
-            else:
-                self._chromadb_available = True
-                self._chromadb_module = chromadb
-                # Initialize client once and reuse
-                try:
-                    self._chromadb_client = chromadb.Client()
-                except Exception:
-                    # Jeśli inicjalizacja klienta się nie uda, oznacz jako niedostępne
-                    self._chromadb_available = False
-                    self._chromadb_module = None
-                    self._chromadb_client = None
+        name = service.name.lower()
 
-        if not self._chromadb_available:
-            service.status = ServiceStatus.OFFLINE
-            service.error_message = "ChromaDB nie zainstalowane"
+        if "redis" in name:
+            try:
+                import redis.asyncio as redis  # type: ignore
+
+                client = redis.from_url(
+                    service.endpoint or "", socket_connect_timeout=1
+                )
+                await asyncio.wait_for(client.ping(), timeout=self.check_timeout)
+                service.status = ServiceStatus.ONLINE
+                service.error_message = None
+            except ModuleNotFoundError:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = "redis nie jest zainstalowany"
+            except Exception as e:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = str(e)[:100]
             return
 
+        # LanceDB (lokalna pamięć embed)
         try:
-            # Reuse the cached client
-            if self._chromadb_client is None:
-                self._chromadb_client = self._chromadb_module.Client()
+            import lancedb  # type: ignore
 
-            # Simple check - list collections (don't store unused result)
-            self._chromadb_client.list_collections()
-
+            db_path = getattr(SETTINGS, "VECTOR_DB_PATH", "data/vector_store")
+            conn = lancedb.connect(db_path)
+            # Prosty check: pobierz listę tabel (nie przechowujemy wyniku)
+            _ = conn.table_names()
             service.status = ServiceStatus.ONLINE
             service.error_message = None
+        except ModuleNotFoundError:
+            service.status = ServiceStatus.OFFLINE
+            service.error_message = "lancedb nie jest zainstalowane"
         except Exception as e:
             service.status = ServiceStatus.OFFLINE
             service.error_message = str(e)[:100]

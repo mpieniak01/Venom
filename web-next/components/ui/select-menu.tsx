@@ -25,6 +25,7 @@ type SelectMenuProps = {
   menuClassName?: string;
   optionClassName?: string;
   disabled?: boolean;
+  menuWidth?: "trigger" | "content";
   renderButton?: (option: SelectMenuOption | null) => ReactNode;
   renderOption?: (option: SelectMenuOption, active: boolean) => ReactNode;
 };
@@ -40,6 +41,7 @@ export function SelectMenu({
   menuClassName,
   optionClassName,
   disabled,
+  menuWidth = "trigger",
   renderButton,
   renderOption,
 }: SelectMenuProps) {
@@ -78,13 +80,25 @@ export function SelectMenu({
     const updatePosition = () => {
       if (!triggerRef.current) return;
       const rect = triggerRef.current.getBoundingClientRect();
-      setMenuStyle({
-        position: "fixed",
-        top: rect.bottom + 8,
-        left: rect.left,
-        width: rect.width,
-        zIndex: 80,
-      });
+      setMenuStyle(
+        menuWidth === "content"
+          ? {
+              position: "fixed",
+              top: rect.bottom + 8,
+              left: rect.left,
+              minWidth: rect.width,
+              maxWidth: "90vw",
+              width: "max-content",
+              zIndex: 80,
+            }
+          : {
+              position: "fixed",
+              top: rect.bottom + 8,
+              left: rect.left,
+              width: rect.width,
+              zIndex: 80,
+            },
+      );
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);
@@ -93,7 +107,7 @@ export function SelectMenu({
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [open]);
+  }, [open, menuWidth]);
 
   return (
     <div className={cn("relative", className)} ref={triggerRef}>

@@ -1,5 +1,7 @@
 "use client";
 
+const SOURCE_LABEL = "Źródło:";
+
 type RoadmapKpiCardProps = {
   label: string;
   value: string;
@@ -29,7 +31,7 @@ export function RoadmapKpiCard({
     <div className="card-shell card-base p-4 text-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{label}</p>
-        {source && <p className="text-xs text-zinc-600">Źródło: {source}</p>}
+        {source && <p className="text-xs text-zinc-600">{SOURCE_LABEL} {source}</p>}
       </div>
       <div className="mt-2 flex items-center justify-between">
         <p className="text-2xl font-semibold">{value}</p>

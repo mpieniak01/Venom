@@ -15,8 +15,8 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
   - `venom-backend-boot-id` (boot backendu).
 - UI porownuje `boot_id` z backendu. Gdy jest inny, sesja jest resetowana.
 
-## Zrodla danych i magazyny
-### SessionStore (zrodlo prawdy)
+## Źródła danych i magazyny
+### SessionStore (źródło prawdy)
 - Plik: `data/memory/session_store.json`
 - Zawartosc: historia sesji (`history`), opcjonalne `summary`, metadane.
 - Uzywany do budowania kontekstu dla kolejnych requestow w tej samej sesji.

@@ -26,9 +26,27 @@ interface ActionHistory {
   message: string;
 }
 
+interface StorageSnapshot {
+  refreshed_at?: string;
+  disk?: {
+    total_bytes?: number;
+    used_bytes?: number;
+    free_bytes?: number;
+  };
+  items?: Array<{
+    name: string;
+    path: string;
+    size_bytes: number;
+    kind: string;
+  }>;
+}
+
 export function ServicesPanel() {
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [history, setHistory] = useState<ActionHistory[]>([]);
+  const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
@@ -95,9 +113,39 @@ export function ServicesPanel() {
     }
   }, []);
 
+  const fetchStorageSnapshot = useCallback(async () => {
+    setStorageLoading(true);
+    setStorageError(null);
+    try {
+      const response = await fetch("/api/v1/system/storage");
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const errorMessage =
+          errorText || `Nie udało się pobrać danych storage (HTTP ${response.status})`;
+        setStorageError(errorMessage);
+        return;
+      }
+      const data = (await response.json()) as { status?: string } & StorageSnapshot & {
+        message?: string;
+      };
+      if (data.status === "success") {
+        setStorageSnapshot(data);
+      } else {
+        setStorageError(data.message || "Nie udało się pobrać danych storage.");
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Błąd pobierania danych storage.";
+      setStorageError(errorMessage);
+    } finally {
+      setStorageLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
     fetchHistory();
+    fetchStorageSnapshot();
 
     // Odświeżaj status co 5 sekund
     const interval = setInterval(() => {
@@ -105,7 +153,7 @@ export function ServicesPanel() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchHistory]);
+  }, [fetchStatus, fetchHistory, fetchStorageSnapshot]);
 
   const executeAction = async (service: string, action: string) => {
     const actionKey = `${service}-${action}`;
@@ -222,6 +270,26 @@ export function ServicesPanel() {
     // Fallback: zamiana podkreśleń na spacje + kapitalizacja pierwszej litery
     const pretty = raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
     return pretty;
+  };
+
+  const formatBytes = (value?: number) => {
+    if (typeof value !== "number" || Number.isNaN(value)) return "—";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let index = 0;
+    let current = value;
+    while (current >= 1024 && index < units.length - 1) {
+      current /= 1024;
+      index += 1;
+    }
+    const digits = current >= 100 || index === 0 ? 0 : 1;
+    return `${current.toFixed(digits)} ${units[index]}`;
+  };
+
+  const formatStorageTimestamp = (value?: string) => {
+    if (!value) return "—";
+    const parsed = Date.parse(value);
+    if (Number.isNaN(parsed)) return value;
+    return new Date(parsed).toLocaleString("pl-PL");
   };
 
   return (
@@ -384,6 +452,69 @@ export function ServicesPanel() {
             </div>
           );
         })}
+      </div>
+
+      {/* Storage */}
+      <div className="glass-panel rounded-2xl box-subtle p-6">
+        <h2 className="mb-4 heading-h2">Koszty dysku</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-zinc-200">
+            {storageSnapshot?.disk ? (
+              <span>
+                Użycie:{" "}
+                <span className="font-semibold text-white">
+                  {formatBytes(storageSnapshot.disk.used_bytes)} /{" "}
+                  {formatBytes(storageSnapshot.disk.total_bytes)}
+                </span>{" "}
+                (wolne: {formatBytes(storageSnapshot.disk.free_bytes)})
+              </span>
+            ) : (
+              <span>Brak danych o dysku.</span>
+            )}
+          </div>
+          <Button
+            size="xs"
+            variant="outline"
+            className="rounded-full"
+            onClick={fetchStorageSnapshot}
+            disabled={storageLoading}
+          >
+            {storageLoading ? "Odświeżam..." : "Odśwież"}
+          </Button>
+        </div>
+        {storageSnapshot?.refreshed_at ? (
+          <p className="mt-2 text-xs text-zinc-500">
+            Ostatnie sprawdzenie: {formatStorageTimestamp(storageSnapshot.refreshed_at)}
+          </p>
+        ) : null}
+        {storageError ? (
+          <p className="mt-3 text-xs text-rose-300">{storageError}</p>
+        ) : (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            {(storageSnapshot?.items ?? [])
+              .slice()
+              .sort((a, b) => b.size_bytes - a.size_bytes)
+              .map((item) => (
+                <div
+                  key={item.path}
+                  className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">{item.name}</p>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                        {item.kind}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-white text-right">
+                      {formatBytes(item.size_bytes)}
+                    </p>
+                  </div>
+                  <p className="min-w-0 text-[11px] text-zinc-500">{item.path}</p>
+                </div>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* History */}

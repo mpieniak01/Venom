@@ -525,6 +525,35 @@ export function useMemoryGraph(
   );
 }
 
+type SessionHistoryEntry = {
+  role?: string;
+  content?: string;
+  session_id?: string;
+  request_id?: string;
+  timestamp?: string;
+};
+
+type SessionHistoryResponse = {
+  status?: string;
+  session_id?: string;
+  history?: SessionHistoryEntry[];
+  summary?: string | null;
+  count?: number;
+};
+
+export function useSessionHistory(sessionId?: string | null, intervalMs = 10000) {
+  return usePolling<SessionHistoryResponse>(
+    `session-history-${sessionId || "none"}`,
+    () => {
+      if (!sessionId) {
+        return Promise.resolve({ status: "success", history: [] });
+      }
+      return apiFetch(`/api/v1/memory/session/${encodeURIComponent(sessionId)}`);
+    },
+    intervalMs,
+  );
+}
+
 export async function pinMemoryEntry(entryId: string, pinned = true) {
   return apiFetch<{ status: string; entry_id: string; pinned: boolean }>(
     `/api/v1/memory/entry/${encodeURIComponent(entryId)}/pin?pinned=${pinned ? "true" : "false"}`,

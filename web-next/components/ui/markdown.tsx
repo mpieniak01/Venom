@@ -18,6 +18,7 @@ type MarkdownPreviewProps = {
 
 export function MarkdownPreview({ content, emptyState, mode = "final" }: MarkdownPreviewProps) {
   const [html, setHtml] = useState<string>("");
+  const hasSources = Boolean(content && SOURCES_LABEL_TEST.test(content));
 
   useEffect(() => {
     if (!content || content.trim().length === 0) {
@@ -32,7 +33,9 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
         mode === "final" ? softlyWrapMathLines(formatted) : formatted;
       const { text: tokenized, tokens } =
         mode === "final" ? tokenizeMath(wrappedMath) : { text: formatted, tokens: [] };
-      const rendered = marked(tokenized, { async: false });
+      const withSources =
+        mode === "final" && hasSources ? decorateSourcesLabel(tokenized) : tokenized;
+      const rendered = marked(withSources, { async: false });
       const withMath = tokens.length > 0 ? renderMathTokens(rendered, tokens) : rendered;
       const sanitized = DOMPurify.sanitize(withMath);
       setHtml(sanitized);
@@ -52,7 +55,9 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
 
   return (
     <div
-      className="prose prose-invert max-w-none text-sm leading-relaxed"
+      className={`prose prose-invert max-w-none break-words text-sm leading-relaxed [&_a]:break-all [&_.chat-sources-label]:text-xs ${
+        hasSources ? "[&_a]:text-xs [&_a]:italic" : ""
+      }`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -92,3 +97,13 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+function decorateSourcesLabel(value: string) {
+  return value.replace(SOURCES_LABEL_REGEX, (match) => {
+    const label = match.trim();
+    return `<small class="chat-sources-label"><em>${label}</em></small>`;
+  });
+}
+
+const SOURCES_LABEL_REGEX = /^(Źródła|Zrodla|Sources?)\s*:\s*$/gim;
+const SOURCES_LABEL_TEST = /^(Źródła|Zrodla|Sources?)\s*:\s*$/im;

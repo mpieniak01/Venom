@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ENV: str = "development"
 
     WORKSPACE_ROOT: str = "./workspace"
+    REPO_ROOT: str = "."
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
     SERVE_LEGACY_UI: bool = True  # Serwuj stare szablony FastAPI (Cockpit/Strategy)

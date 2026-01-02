@@ -847,6 +847,7 @@ class Orchestrator:
                 )
 
             tool_required = self.intent_manager.requires_tool(intent)
+
             self.state_manager.update_context(
                 task_id,
                 {"tool_requirement": {"required": tool_required, "intent": intent}},

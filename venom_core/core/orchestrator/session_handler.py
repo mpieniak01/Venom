@@ -1,5 +1,6 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
@@ -109,6 +110,8 @@ class SessionHandler:
                 "role": role,
                 "content": short_content,
                 "session_id": session_id,
+                "request_id": str(task_id),
+                "timestamp": datetime.now().isoformat(),
             }
             if was_trimmed:
                 entry["original_length"] = len(content)

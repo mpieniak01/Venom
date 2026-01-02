@@ -188,7 +188,11 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
             )}
             <span className="text-zinc-600">•</span>
             <span>{t("statusBar.repoLabel")}:</span>
-            <span data-testid="status-bar-repo" className={repoTone} title={repoTitle}>
+            <span
+              data-testid="status-bar-repo"
+              className={cn(repoTone, "cursor-help")}
+              title={repoTitle}
+            >
               {gitLoading ? (
                 <span className="text-emerald-300">…</span>
               ) : (
@@ -216,7 +220,7 @@ function resolveRepoStatus(
 ): RepoStatus {
   if (!gitStatus) {
     return {
-      text: gitLoading ? t("statusBar.versionLoading") : t("statusBar.repoUnknown"),
+      text: gitLoading ? t("statusBar.versionLoading") : t("statusBar.repoUnavailable"),
       tone: { "text-zinc-400": true },
       title: undefined,
     };
@@ -224,7 +228,7 @@ function resolveRepoStatus(
 
   if (gitStatus.is_git_repo === false) {
     return {
-      text: t("statusBar.repoUnknown"),
+      text: t("statusBar.repoNotGit"),
       tone: { "text-zinc-400": true },
       title: gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined,
     };

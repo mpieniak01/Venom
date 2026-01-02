@@ -48,13 +48,9 @@ export function ConversationBubble({
       onSelect?.();
     }
   };
+  const footerClickable = !disabled && !pending && !isUser;
   return (
     <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      onClick={disabled ? undefined : onSelect}
-      onKeyDown={handleKeyDown}
-      aria-disabled={disabled}
       data-testid={isUser ? "conversation-bubble-user" : "conversation-bubble-assistant"}
       className={`w-full rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${
         isUser
@@ -86,23 +82,41 @@ export function ConversationBubble({
         )}
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
-        <div className="mt-4 border-t border-white/10 pt-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-          {footerActions && (
-            <span className="flex items-center gap-2">{footerActions}</span>
-          )}
-          {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
-          {pending && role === "assistant" && (
-            <span className="text-amber-300">W toku</span>
-          )}
-          {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
-          {requestId && <span>#{requestId.slice(0, 6)}…</span>}
-          {!pending && !isUser && (
-            <span className="ml-auto text-caption">
-              Szczegóły ↗
-            </span>
-          )}
-        </div>
+        <div
+          role={footerClickable ? "button" : undefined}
+          tabIndex={footerClickable ? 0 : undefined}
+          aria-disabled={footerClickable ? false : undefined}
+          onClick={footerClickable ? onSelect : undefined}
+          onKeyDown={footerClickable ? handleKeyDown : undefined}
+          className={`mt-4 border-t border-white/10 pt-3 ${
+            footerClickable ? "cursor-pointer hover:text-white" : ""
+          }`}
+        >
+          <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            {footerActions && (
+              <span className="flex items-center gap-2">{footerActions}</span>
+            )}
+            {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
+            {pending && role === "assistant" && (
+              <span className="text-amber-300">W toku</span>
+            )}
+            {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
+            {requestId && <span>#{requestId.slice(0, 6)}…</span>}
+            {!pending && !isUser && footerClickable && (
+              <span className="ml-auto text-caption">
+                <button
+                  type="button"
+                  className="text-xs uppercase tracking-wide text-zinc-300 transition hover:text-white"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect?.();
+                  }}
+                >
+                  Szczegóły ↗
+                </button>
+              </span>
+            )}
+          </div>
           {footerExtra && <div className="mt-2">{footerExtra}</div>}
         </div>
       )}

@@ -45,6 +45,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let active = true;
     try {
       const buildId = getBuildId();
       const storedBuild = window.localStorage.getItem(SESSION_BUILD_KEY);
@@ -75,12 +76,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           window.localStorage.setItem(SESSION_ID_KEY, nextSession);
           window.localStorage.setItem(SESSION_BUILD_KEY, getBuildId());
           window.localStorage.setItem(SESSION_BOOT_KEY, bootId);
-          setSessionIdState(nextSession);
+          if (active) {
+            setSessionIdState(nextSession);
+          }
         }
       } catch {
         // ignore fetch failures
       }
     })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const value = useMemo(

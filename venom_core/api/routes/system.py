@@ -1133,18 +1133,23 @@ async def get_storage_snapshot():
                 "kind": "deps",
             },
         ]
-        items = []
-        for entry in entries:
-            target = PROJECT_ROOT / entry["path"]
-            size_bytes = _dir_size_bytes(target)
-            items.append(
-                {
-                    "name": entry["name"],
-                    "path": str(target),
-                    "size_bytes": size_bytes,
-                    "kind": entry["kind"],
-                }
-            )
+        # Zrównoleglenie operacji I/O aby uniknąć blokowania event loop
+        loop = asyncio.get_running_loop()
+        tasks = [
+            loop.run_in_executor(None, _dir_size_bytes, PROJECT_ROOT / entry["path"])
+            for entry in entries
+        ]
+        sizes = await asyncio.gather(*tasks)
+
+        items = [
+            {
+                "name": entry["name"],
+                "path": str(PROJECT_ROOT / entry["path"]),
+                "size_bytes": size,
+                "kind": entry["kind"],
+            }
+            for entry, size in zip(entries, sizes)
+        ]
         items.sort(key=lambda item: item["size_bytes"], reverse=True)
         return {
             "status": "success",

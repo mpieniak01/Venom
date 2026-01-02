@@ -27,7 +27,7 @@ export function SystemStatusPanel() {
         : "success"
       : "neutral";
 
-    const wsTone: StatusTone = connected ? "success" : "danger";
+    const wsTone: StatusTone = connected ? "success" : hasQueue ? "warning" : "danger";
 
     return [
       {
@@ -47,7 +47,11 @@ export function SystemStatusPanel() {
       {
         id: "ws",
         label: "Kanał WS",
-        hint: connected ? "Telemetria live" : "Kanał /ws/events",
+        hint: connected
+          ? "Telemetria live"
+          : hasQueue
+            ? "WS nieaktywny"
+            : "Kanał /ws/events",
         tone: wsTone,
       },
     ];

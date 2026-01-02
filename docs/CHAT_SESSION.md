@@ -48,6 +48,13 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
    - StateManager (wynik zadania),
    - opcjonalnie do pamieci wektorowej.
 
+## Logika routingu w chat (dlaczego i co wywolywane)
+- Domyslna zasada: **jesli intencja nie wymaga narzedzia i nie jest wymuszona, idzie do LLM** (GENERAL_CHAT).
+- Narzedzia/skills uruchamiane sa tylko gdy:
+  - intencja wymaga narzedzia (np. STATUS_REPORT, VERSION_CONTROL, RESEARCH), lub
+  - uzytkownik wymusi to przez slash command (`/git`, `/web`, itp.).
+- To zapobiega blednym przekierowaniom (np. pytanie definicyjne jako HELP_REQUEST) i utrzymuje chat jako rozmowe.
+
 ## Reset sesji
 - Reset sesji w UI tworzy nowe `session_id`.
 - Reset sesji czyści:

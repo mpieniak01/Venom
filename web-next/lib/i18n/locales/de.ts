@@ -197,7 +197,8 @@ export const de = {
     repoNoLocalMain: "Lokales main fehlt",
     repoDirty: "Lokale Änderungen",
     repoDirtySuffix: "+ Arbeitsbaum-Änderungen",
-    repoUnknown: "Repo offline",
+    repoUnavailable: "Repo-Status nicht verfügbar",
+    repoNotGit: "Kein Git-Repository",
     labels: {
       cpu: "CPU",
       gpu: "GPU",

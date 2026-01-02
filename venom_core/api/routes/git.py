@@ -57,13 +57,13 @@ async def get_git_status():
     Raises:
         HTTPException: 503 jeśli GitSkill nie jest dostępny lub workspace nie jest repozytorium Git
     """
-    if _git_skill is None:
+    repo_root = Path(getattr(SETTINGS, "REPO_ROOT", SETTINGS.WORKSPACE_ROOT)).resolve()
+    if (repo_root / ".git").exists():
         try:
-            workspace_root = Path(SETTINGS.WORKSPACE_ROOT).resolve()
 
             def run_git(args: list[str]) -> str:
                 result = subprocess.run(
-                    ["git", "-C", str(workspace_root), *args],
+                    ["git", "-C", str(repo_root), *args],
                     capture_output=True,
                     text=True,
                     check=False,
@@ -99,7 +99,7 @@ async def get_git_status():
                     [
                         "git",
                         "-C",
-                        str(workspace_root),
+                        str(repo_root),
                         "show-ref",
                         "--verify",
                         "--quiet",
@@ -117,7 +117,7 @@ async def get_git_status():
                         [
                             "git",
                             "-C",
-                            str(workspace_root),
+                            str(repo_root),
                             "remote",
                             "get-url",
                             "origin",
@@ -136,7 +136,7 @@ async def get_git_status():
                             [
                                 "git",
                                 "-C",
-                                str(workspace_root),
+                                str(repo_root),
                                 "show-ref",
                                 "--verify",
                                 "--quiet",
@@ -186,8 +186,15 @@ async def get_git_status():
         except Exception:
             raise HTTPException(
                 status_code=503,
-                detail="GitSkill nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
+                detail="Git status nie jest dostępny. Upewnij się, że git jest zainstalowany.",
             )
+
+    if _git_skill is None:
+        return {
+            "status": "error",
+            "is_git_repo": False,
+            "message": "Repozytorium Git nie zostało wykryte.",
+        }
 
     try:
         # Pobierz aktualny branch

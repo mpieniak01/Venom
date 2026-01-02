@@ -197,7 +197,8 @@ export const pl = {
     repoNoLocalMain: "Brak lokalnego main",
     repoDirty: "Repo z lokalnymi zmianami",
     repoDirtySuffix: "+ zmiany robocze",
-    repoUnknown: "Repo offline",
+    repoUnavailable: "Status repo niedostępny",
+    repoNotGit: "Brak repozytorium git",
     labels: {
       cpu: "CPU",
       gpu: "GPU",

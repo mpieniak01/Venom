@@ -215,6 +215,25 @@ async def clear_session_memory(session_id: str):
     }
 
 
+@router.get("/session/{session_id}")
+async def get_session_memory(session_id: str):
+    """Zwraca historię i streszczenie sesji z SessionStore."""
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id jest wymagane")
+    if not _session_store:
+        raise HTTPException(status_code=503, detail="SessionStore nie jest dostępny")
+
+    history = _session_store.get_history(session_id)
+    summary = _session_store.get_summary(session_id)
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "history": history,
+        "summary": summary,
+        "count": len(history),
+    }
+
+
 @router.delete("/global")
 async def clear_global_memory():
     """

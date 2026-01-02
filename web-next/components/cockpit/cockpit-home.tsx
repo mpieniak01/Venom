@@ -42,6 +42,7 @@ import {
   useActiveLlmServer,
   useGraphSummary,
   useHistory,
+  useSessionHistory,
   useHiddenPrompts,
   useLlmServers,
   useLearningLogs,
@@ -86,21 +87,6 @@ import { filterSlashSuggestions, parseSlashCommand } from "@/lib/slash-commands"
 import { useTranslation } from "@/lib/i18n";
 import { motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
-
-type StorageSnapshot = {
-  refreshed_at?: string;
-  disk?: {
-    total_bytes?: number;
-    used_bytes?: number;
-    free_bytes?: number;
-  };
-  items?: Array<{
-    name: string;
-    path: string;
-    size_bytes: number;
-    kind: string;
-  }>;
-};
 import {
   Bot,
   Command,
@@ -404,8 +390,15 @@ export function CockpitHome({
   variant?: "reference" | "home";
 }) {
   const [isClientReady, setIsClientReady] = useState(false);
+  const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
     setIsClientReady(true);
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSystemTime(formatSystemClock(new Date()));
+    }, 1000);
+    return () => window.clearInterval(timer);
   }, []);
   const showReferenceSections = variant === "reference";
   const showSharedSections = variant === "reference" || variant === "home";
@@ -458,9 +451,6 @@ export function CockpitHome({
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [tuningSaving, setTuningSaving] = useState(false);
-  const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(null);
-  const [storageLoading, setStorageLoading] = useState(false);
-  const [storageError, setStorageError] = useState<string | null>(null);
   const { sessionId, resetSession } = useSession();
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const { pushToast } = useToast();
@@ -514,41 +504,6 @@ export function CockpitHome({
     }
   }, [pushToast]);
 
-  const fetchStorageSnapshot = useCallback(async () => {
-    setStorageLoading(true);
-    setStorageError(null);
-    try {
-      const response = await fetch("/api/v1/system/storage");
-      if (!response.ok) {
-        let errorMsg;
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.detail || JSON.stringify(errorData);
-        } catch {
-          errorMsg = await response.text().catch(() => `Błąd pobierania storage (HTTP ${response.status})`);
-        }
-        setStorageError(errorMsg);
-        return;
-      }
-      const data = (await response.json()) as { status?: string } & StorageSnapshot & {
-        message?: string;
-      };
-      if (data.status === "success") {
-        setStorageSnapshot(data);
-      } else {
-        setStorageError(data.message || "Nie udało się pobrać danych storage.");
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Błąd pobierania danych storage.";
-      setStorageError(msg);
-    } finally {
-      setStorageLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStorageSnapshot();
-  }, [fetchStorageSnapshot]);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
@@ -626,6 +581,8 @@ export function CockpitHome({
   const tokenMetrics = liveTokenMetrics ?? initialData.tokenMetrics ?? null;
   const { data: liveHistory, loading: historyLoading, refresh: refreshHistory } = useHistory(6);
   const history = liveHistory ?? initialData.history ?? null;
+  const { data: sessionHistoryData } = useSessionHistory(sessionId, 10000);
+  const sessionHistory = sessionHistoryData?.history ?? [];
   const { data: learningLogs, loading: learningLoading, error: learningError } =
     useLearningLogs(6);
   const { data: feedbackLogs, loading: feedbackLoading, error: feedbackError } =
@@ -1201,6 +1158,25 @@ export function CockpitHome({
         : null;
   const sessionCostValue = formatUsd(tokenMetrics?.session_cost_usd);
   const historyMessages = useMemo<ChatMessage[]>(() => {
+    if (sessionHistory.length > 0) {
+      return sessionHistory.map((entry, index) => {
+        const role = entry.role === "assistant" ? "assistant" : "user";
+        const requestId = entry.request_id ?? null;
+        const timestamp = entry.timestamp ?? new Date().toISOString();
+        return {
+          bubbleId: `session-${index}-${role}`,
+          requestId,
+          role,
+          text: entry.content || "Brak treści.",
+          status: "COMPLETED",
+          timestamp,
+          prompt: entry.content || "",
+          pending: false,
+          forcedTool: null,
+          forcedProvider: null,
+        };
+      });
+    }
     if (!history) return [];
     const sortedHistory = [...history].sort((a, b) => {
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -1248,7 +1224,7 @@ export function CockpitHome({
         },
       ];
     });
-  }, [history, findTaskMatch]);
+  }, [history, sessionHistory, findTaskMatch]);
 
   const optimisticMessages = useMemo<ChatMessage[]>(() => {
     return optimisticRequests.flatMap((entry) => {
@@ -1635,38 +1611,39 @@ export function CockpitHome({
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
     });
-    try {
-      const res = await sendTask(
-        trimmed,
-        !labMode,
-        generationParams,
-        {
-          configHash: runtimeOverride?.configHash ?? activeServerInfo?.config_hash ?? null,
-          runtimeId: runtimeOverride?.runtimeId ?? activeServerInfo?.runtime_id ?? null,
-        },
-        null,
-        {
-          tool: parsed.forcedTool,
-          provider: parsed.forcedProvider,
-        },
-        language,
-        resolvedSession,
-        "session",
-      );
-      const resolvedId = res.task_id ?? null;
-      linkOptimisticRequest(clientId, resolvedId);
-      setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
-      await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
-      return true;
-    } catch (err) {
-      dropOptimisticRequest(clientId);
-      setMessage(
-        err instanceof Error ? err.message : "Nie udało się wysłać zadania",
-      );
-      return false;
-    } finally {
-      setSending(false);
-    }
+    void (async () => {
+      try {
+        const res = await sendTask(
+          trimmed,
+          !labMode,
+          generationParams,
+          {
+            configHash: runtimeOverride?.configHash ?? activeServerInfo?.config_hash ?? null,
+            runtimeId: runtimeOverride?.runtimeId ?? activeServerInfo?.runtime_id ?? null,
+          },
+          null,
+          {
+            tool: parsed.forcedTool,
+            provider: parsed.forcedProvider,
+          },
+          language,
+          resolvedSession,
+          "session",
+        );
+        const resolvedId = res.task_id ?? null;
+        linkOptimisticRequest(clientId, resolvedId);
+        setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
+        await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
+      } catch (err) {
+        dropOptimisticRequest(clientId);
+        setMessage(
+          err instanceof Error ? err.message : "Nie udało się wysłać zadania",
+        );
+      } finally {
+        setSending(false);
+      }
+    })();
+    return true;
   }, [
     enqueueOptimisticRequest,
     labMode,
@@ -2727,13 +2704,9 @@ export function CockpitHome({
                     accent="green"
                   />
                   <StatCard
-                    label="Uptime"
-                    value={
-                      metrics?.uptime_seconds !== undefined
-                        ? formatUptime(metrics.uptime_seconds)
-                        : "—"
-                    }
-                    hint="Od startu backendu"
+                    label="Czas"
+                    value={systemTime}
+                    hint="Aktualny czas systemowy"
                   />
                   <StatCard
                     label="Kolejka"
@@ -3388,71 +3361,6 @@ export function CockpitHome({
       )}
         </>
       )}
-      <Panel
-        eyebrow="Storage"
-        title="Koszty dysku"
-        description="Stan odświeżany po starcie lub ręcznie."
-        className="kpi-panel"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-slate-200">
-            {storageSnapshot?.disk ? (
-              <span>
-                Użycie:{" "}
-                <span className="font-semibold text-white">
-                  {formatBytes(storageSnapshot.disk.used_bytes)} /{" "}
-                  {formatBytes(storageSnapshot.disk.total_bytes)}
-                </span>{" "}
-                (wolne: {formatBytes(storageSnapshot.disk.free_bytes)})
-              </span>
-            ) : (
-              <span>Brak danych o dysku.</span>
-            )}
-          </div>
-          <Button
-            size="xs"
-            variant="outline"
-            className="rounded-full"
-            onClick={fetchStorageSnapshot}
-            disabled={storageLoading}
-          >
-            {storageLoading ? "Odświeżam..." : "Odśwież"}
-          </Button>
-        </div>
-        {storageSnapshot?.refreshed_at ? (
-          <p className="mt-2 text-xs text-slate-400">
-            Ostatnie sprawdzenie: {formatRelativeTime(storageSnapshot.refreshed_at)}
-          </p>
-        ) : null}
-        {storageError ? (
-          <p className="mt-3 text-xs text-rose-300">{storageError}</p>
-        ) : (
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {(storageSnapshot?.items ?? [])
-              .slice()
-              .sort((a, b) => b.size_bytes - a.size_bytes)
-              .map((item) => (
-                <div
-                  key={item.path}
-                  className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white">{item.name}</p>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                        {item.kind}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold text-white text-right">
-                      {formatBytes(item.size_bytes)}
-                    </p>
-                  </div>
-                  <p className="min-w-0 text-[11px] text-slate-400">{item.path}</p>
-                </div>
-              ))}
-          </div>
-        )}
-      </Panel>
       <Sheet
         open={detailOpen}
         onOpenChange={(open) => {
@@ -3791,17 +3699,13 @@ function mapTelemetryTone(type: string): "success" | "warning" | "danger" | "neu
   return "neutral";
 }
 
-function formatBytes(value?: number) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let index = 0;
-  let current = value;
-  while (current >= 1024 && index < units.length - 1) {
-    current /= 1024;
-    index += 1;
-  }
-  const digits = current >= 100 || index === 0 ? 0 : 1;
-  return `${current.toFixed(digits)} ${units[index]}`;
+function formatSystemClock(date: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function formatUptime(totalSeconds: number) {

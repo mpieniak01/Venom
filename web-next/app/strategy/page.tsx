@@ -419,11 +419,11 @@ export default function StrategyPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel 
-          title="Wizja" 
+        <Panel
+          title="Wizja"
           description="Migawka magazynu celów"
           action={
-            <DataSourceIndicator 
+            <DataSourceIndicator
               status={roadmapDataStatus}
               timestamp={roadmapTimestamp}
             />
@@ -455,11 +455,11 @@ export default function StrategyPage() {
             />
           )}
         </Panel>
-        <Panel 
-          title="Raport statusu" 
+        <Panel
+          title="Raport statusu"
           description="Ostatni snapshot z `/api/roadmap/status`."
           action={
-            <DataSourceIndicator 
+            <DataSourceIndicator
               status={reportDataStatus}
               timestamp={reportTimestamp}
             />

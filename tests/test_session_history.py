@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from venom_core.core.models import TaskStatus, VenomTask
+from venom_core.core.models import TaskRequest, TaskStatus, VenomTask
 from venom_core.core.orchestrator import SESSION_HISTORY_LIMIT, Orchestrator
+from venom_core.services.session_store import SessionStore
 
 
 def make_state_with_task() -> MagicMock:
@@ -41,3 +42,29 @@ def test_append_session_history_trims_to_limit():
     history = args[1]["session_history"]
     assert len(history) == SESSION_HISTORY_LIMIT
     assert history[0]["content"] == f"msg-{5}"  # najstarsze obcięte
+
+
+def test_session_history_shared_across_tasks(tmp_path):
+    store_path = tmp_path / "session_store.json"
+    session_store = SessionStore(store_path=str(store_path))
+    task_id_1 = uuid4()
+    task_id_2 = uuid4()
+    task_1 = VenomTask(id=task_id_1, content="foo", status=TaskStatus.PENDING)
+    task_2 = VenomTask(id=task_id_2, content="bar", status=TaskStatus.PENDING)
+    for task in (task_1, task_2):
+        task.context_history = {"session": {"session_id": "s1"}}
+
+    state = MagicMock()
+    state.get_task.side_effect = lambda tid: task_1 if tid == task_id_1 else task_2
+    state.update_context = MagicMock()
+
+    orch = Orchestrator(state_manager=state, session_store=session_store)
+    orch._append_session_history(task_id_1, "user", "hello", session_id="s1")
+    orch._append_session_history(task_id_1, "assistant", "hi", session_id="s1")
+
+    context = orch._build_session_context_block(
+        TaskRequest(content="test", session_id="s1"), task_id_2
+    )
+
+    assert "HISTORIA SESJI" in context
+    assert "user: hello" in context

@@ -76,6 +76,7 @@ class Orchestrator:
         event_broadcaster=None,
         lessons_store=None,
         node_manager=None,
+        session_store=None,
         request_tracer: RequestTracer = None,
     ):
         """
@@ -88,6 +89,7 @@ class Orchestrator:
             event_broadcaster: Opcjonalny broadcaster zdarzeń do WebSocket
             lessons_store: Opcjonalny magazyn lekcji (dla meta-uczenia)
             node_manager: Opcjonalny menedżer węzłów (dla distributed execution)
+            session_store: Opcjonalny magazyn historii sesji
             request_tracer: Opcjonalny tracer do śledzenia przepływu zadań
         """
         self.state_manager = state_manager
@@ -130,6 +132,7 @@ class Orchestrator:
         self.session_handler = SessionHandler(
             state_manager=state_manager,
             memory_skill=self.memory_skill,
+            session_store=session_store,
             testing_mode=self._testing_mode,
             request_tracer=request_tracer,
         )

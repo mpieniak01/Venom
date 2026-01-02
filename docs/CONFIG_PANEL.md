@@ -69,7 +69,7 @@ Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-
 ```
 GET  /api/v1/runtime/status
      → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log, actionable, endpoint?, latency_ms?}]}
-     
+
      Pole 'actionable' określa czy usługa ma realne akcje start/stop/restart:
      - true: usługi sterowalne (backend, ui, llm_ollama, llm_vllm)
      - false: usługi kontrolowane przez konfigurację lub tylko monitorowane (hive, nexus, background_tasks, Redis, Docker, LanceDB)
@@ -78,8 +78,8 @@ POST /api/v1/runtime/{service}/{action}
      service: backend|ui|llm_ollama|llm_vllm|hive|nexus|background_tasks
      action: start|stop|restart
      → {success: bool, message: str}
-     
-     Uwaga: Dla usług z actionable=false (hive, nexus, background_tasks) akcje zwracają komunikat 
+
+     Uwaga: Dla usług z actionable=false (hive, nexus, background_tasks) akcje zwracają komunikat
      "kontrolowane przez konfigurację" bez wykonywania realnej operacji.
 
 GET  /api/v1/runtime/history?limit=50

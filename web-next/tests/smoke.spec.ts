@@ -219,6 +219,35 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(page.getByText(/Zatrzymano zadania/i)).toBeVisible();
   });
 
+  test("Reset sesji po zmianie boot_id backendu", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("venom-session-id", "session-old");
+      window.localStorage.setItem("venom-backend-boot-id", "boot-old");
+      window.localStorage.setItem("venom-next-build-id", "build-old");
+    });
+
+    await page.route("**/api/v1/system/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ boot_id: "boot-new" }),
+      });
+    });
+
+    await page.goto("/");
+
+    await page.waitForFunction(() => {
+      const sessionId = window.localStorage.getItem("venom-session-id");
+      const bootId = window.localStorage.getItem("venom-backend-boot-id");
+      return sessionId !== "session-old" && bootId === "boot-new";
+    });
+
+    const sessionId = await page.evaluate(() =>
+      window.localStorage.getItem("venom-session-id"),
+    );
+    expect(sessionId).not.toBe("session-old");
+  });
+
   test("Slash command /gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
     await page.route("**/api/v1/system/llm-servers/active", async (route) => {
       if (route.request().method() === "GET") {

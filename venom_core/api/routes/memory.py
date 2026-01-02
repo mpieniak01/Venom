@@ -47,14 +47,22 @@ _vector_store = None
 _state_manager = None
 _lessons_store = None
 _embedding_service = None
+_session_store = None
 
 
-def set_dependencies(vector_store, state_manager=None, lessons_store=None):
+def set_dependencies(
+    vector_store, state_manager=None, lessons_store=None, session_store=None
+):
     """Ustaw zależności dla routera."""
-    global _vector_store, _state_manager, _lessons_store, _embedding_service
+    global _vector_store
+    global _state_manager
+    global _lessons_store
+    global _embedding_service
+    global _session_store
     _vector_store = vector_store
     _state_manager = state_manager
     _lessons_store = lessons_store
+    _session_store = session_store
     try:
         _embedding_service = vector_store.embedding_service
     except Exception:
@@ -195,6 +203,8 @@ async def clear_session_memory(session_id: str):
     cleared_tasks = 0
     if _state_manager:
         cleared_tasks = _state_manager.clear_session_context(session_id)
+    if _session_store:
+        _session_store.clear_session(session_id)
 
     return {
         "status": "success",

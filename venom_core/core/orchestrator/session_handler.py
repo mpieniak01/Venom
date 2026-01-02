@@ -181,7 +181,8 @@ class SessionHandler:
                 if not self._testing_mode:
                     if self._should_include_memory(request, len(history)):
                         memory_block = self._retrieve_relevant_memory(
-                            request, task.context_history.get("session_id")
+                            request,
+                            task.context_history.get("session", {}).get("session_id"),
                         )
                         if memory_block:
                             parts.append("[PAMIĘĆ]\n" + memory_block)

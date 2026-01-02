@@ -520,8 +520,14 @@ export function CockpitHome({
     try {
       const response = await fetch("/api/v1/system/storage");
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        setStorageError(text || `Błąd pobierania storage (HTTP ${response.status})`);
+        let errorMsg;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.detail || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text().catch(() => `Błąd pobierania storage (HTTP ${response.status})`);
+        }
+        setStorageError(errorMsg);
         return;
       }
       const data = (await response.json()) as { status?: string } & StorageSnapshot & {

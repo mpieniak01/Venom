@@ -54,12 +54,9 @@ def set_dependencies(
     vector_store, state_manager=None, lessons_store=None, session_store=None
 ):
     """Ustaw zależności dla routera."""
-    global \
-        _vector_store, \
-        _state_manager, \
-        _lessons_store, \
-        _embedding_service, \
-        _session_store
+    # fmt: off
+    global _vector_store, _state_manager, _lessons_store, _embedding_service, _session_store
+    # fmt: on
     _vector_store = vector_store
     _state_manager = state_manager
     _lessons_store = lessons_store

@@ -3,6 +3,8 @@ from uuid import uuid4
 
 from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator import Orchestrator
+from venom_core.core.orchestrator.session_handler import SessionHandler
+from venom_core.services.session_store import SessionStore
 
 
 def build_orchestrator_with_state(state_manager: MagicMock) -> Orchestrator:
@@ -53,3 +55,32 @@ def test_persist_session_context_saves_filtered_fields():
     assert "style_notes" not in saved
 
     state.add_log.assert_called_once()
+
+
+def test_session_context_uses_session_store(tmp_path):
+    state = MagicMock()
+    task_id = uuid4()
+    task = MagicMock()
+    task.context_history = {"session": {"session_id": "sess-1"}}
+    state.get_task.return_value = task
+
+    store_path = tmp_path / "session_store.json"
+    session_store = SessionStore(store_path=str(store_path))
+    session_store.append_message("sess-1", {"role": "user", "content": "hello"})
+    session_store.append_message("sess-1", {"role": "assistant", "content": "hi"})
+    session_store.set_summary("sess-1", "summary")
+
+    handler = SessionHandler(
+        state_manager=state,
+        memory_skill=MagicMock(),
+        session_store=session_store,
+        testing_mode=True,
+    )
+    request = TaskRequest(content="test", session_id="sess-1")
+    context = handler.build_session_context_block(request, task_id)
+
+    assert "STRESZCZENIE SESJI" in context
+    assert "summary" in context
+    assert "HISTORIA SESJI" in context
+    assert "user: hello" in context
+    assert "assistant: hi" in context

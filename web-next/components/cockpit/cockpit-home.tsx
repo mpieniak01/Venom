@@ -57,6 +57,7 @@ import { useTelemetryFeed } from "@/hooks/use-telemetry";
 import { useTaskStream } from "@/hooks/use-task-stream";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
+import { useSession } from "@/lib/session";
 import type { Chart } from "chart.js/auto";
 import {
   forwardRef,
@@ -85,6 +86,21 @@ import { filterSlashSuggestions, parseSlashCommand } from "@/lib/slash-commands"
 import { useTranslation } from "@/lib/i18n";
 import { motion } from "framer-motion";
 import { CockpitMetricCard, CockpitTokenCard } from "@/components/cockpit/kpi-card";
+
+type StorageSnapshot = {
+  refreshed_at?: string;
+  disk?: {
+    total_bytes?: number;
+    used_bytes?: number;
+    free_bytes?: number;
+  };
+  items?: Array<{
+    name: string;
+    path: string;
+    size_bytes: number;
+    kind: string;
+  }>;
+};
 import {
   Bot,
   Command,
@@ -442,14 +458,35 @@ export function CockpitHome({
   const [modelSchema, setModelSchema] = useState<GenerationSchema | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [tuningSaving, setTuningSaving] = useState(false);
-  const [sessionId, setSessionId] = useState<string>(() => `session-${Date.now()}`);
+  const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const { sessionId, resetSession } = useSession();
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const { pushToast } = useToast();
   const handleSessionReset = useCallback(() => {
-    const newSession = `session-${Date.now()}`;
-    setSessionId(newSession);
-    setMessage(`Nowa sesja: ${newSession}`);
-  }, []);
+    const newSession = resetSession();
+    setMessage(`Nowa sesja chat: ${newSession}`);
+  }, [resetSession]);
+  const handleServerSessionReset = useCallback(async () => {
+    if (!sessionId) {
+      const newSession = resetSession();
+      setMessage(`Nowa sesja chat: ${newSession}`);
+      return;
+    }
+    setMemoryAction("session");
+    try {
+      await clearSessionMemory(sessionId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Nie udało się zresetować sesji serwera";
+      setMessage(msg);
+      return;
+    } finally {
+      setMemoryAction(null);
+    }
+    const newSession = resetSession();
+    setMessage(`Nowa sesja chat: ${newSession}`);
+  }, [resetSession, sessionId]);
   const handleClearSessionMemory = useCallback(async () => {
     if (!sessionId) return;
     setMemoryAction("session");
@@ -476,6 +513,42 @@ export function CockpitHome({
       setMemoryAction(null);
     }
   }, [pushToast]);
+
+  const fetchStorageSnapshot = useCallback(async () => {
+    setStorageLoading(true);
+    setStorageError(null);
+    try {
+      const response = await fetch("/api/v1/system/storage");
+      if (!response.ok) {
+        let errorMsg;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.detail || JSON.stringify(errorData);
+        } catch {
+          errorMsg = await response.text().catch(() => `Błąd pobierania storage (HTTP ${response.status})`);
+        }
+        setStorageError(errorMsg);
+        return;
+      }
+      const data = (await response.json()) as { status?: string } & StorageSnapshot & {
+        message?: string;
+      };
+      if (data.status === "success") {
+        setStorageSnapshot(data);
+      } else {
+        setStorageError(data.message || "Nie udało się pobrać danych storage.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Błąd pobierania danych storage.";
+      setStorageError(msg);
+    } finally {
+      setStorageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStorageSnapshot();
+  }, [fetchStorageSnapshot]);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const t = useTranslation();
   const streamCompletionRef = useRef<Set<string>>(new Set());
@@ -1547,8 +1620,12 @@ export function CockpitHome({
       }
     }
     if (parsed.sessionReset) {
-      sessionOverride = `session-${Date.now()}`;
-      setSessionId(sessionOverride);
+      sessionOverride = resetSession();
+    }
+    const resolvedSession = sessionOverride ?? sessionId;
+    if (!resolvedSession) {
+      setMessage("Sesja inicjalizuje się. Spróbuj ponownie za chwilę.");
+      return false;
     }
     autoScrollEnabled.current = true;
     scrollChatToBottom();
@@ -1573,7 +1650,7 @@ export function CockpitHome({
           provider: parsed.forcedProvider,
         },
         language,
-        sessionOverride ?? sessionId,
+        resolvedSession,
         "session",
       );
       const resolvedId = res.task_id ?? null;
@@ -1605,6 +1682,7 @@ export function CockpitHome({
     refreshActiveServer,
     language,
     sessionId,
+    resetSession,
     scrollChatToBottom,
   ]);
 
@@ -2335,6 +2413,15 @@ export function CockpitHome({
                       title="Resetuj kontekst czatu (nowa sesja)"
                     >
                       Resetuj sesję
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={handleServerSessionReset}
+                      disabled={memoryAction === "session"}
+                      title="Nowa sesja serwera: wyczyść pamięć/streszczenie i utwórz nową sesję"
+                    >
+                      {memoryAction === "session" ? "Resetuję..." : "Nowa sesja serwera"}
                     </Button>
                     <Button
                       size="xs"
@@ -3301,6 +3388,71 @@ export function CockpitHome({
       )}
         </>
       )}
+      <Panel
+        eyebrow="Storage"
+        title="Koszty dysku"
+        description="Stan odświeżany po starcie lub ręcznie."
+        className="kpi-panel"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-slate-200">
+            {storageSnapshot?.disk ? (
+              <span>
+                Użycie:{" "}
+                <span className="font-semibold text-white">
+                  {formatBytes(storageSnapshot.disk.used_bytes)} /{" "}
+                  {formatBytes(storageSnapshot.disk.total_bytes)}
+                </span>{" "}
+                (wolne: {formatBytes(storageSnapshot.disk.free_bytes)})
+              </span>
+            ) : (
+              <span>Brak danych o dysku.</span>
+            )}
+          </div>
+          <Button
+            size="xs"
+            variant="outline"
+            className="rounded-full"
+            onClick={fetchStorageSnapshot}
+            disabled={storageLoading}
+          >
+            {storageLoading ? "Odświeżam..." : "Odśwież"}
+          </Button>
+        </div>
+        {storageSnapshot?.refreshed_at ? (
+          <p className="mt-2 text-xs text-slate-400">
+            Ostatnie sprawdzenie: {formatRelativeTime(storageSnapshot.refreshed_at)}
+          </p>
+        ) : null}
+        {storageError ? (
+          <p className="mt-3 text-xs text-rose-300">{storageError}</p>
+        ) : (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            {(storageSnapshot?.items ?? [])
+              .slice()
+              .sort((a, b) => b.size_bytes - a.size_bytes)
+              .map((item) => (
+                <div
+                  key={item.path}
+                  className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">{item.name}</p>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                        {item.kind}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-white text-right">
+                      {formatBytes(item.size_bytes)}
+                    </p>
+                  </div>
+                  <p className="min-w-0 text-[11px] text-slate-400">{item.path}</p>
+                </div>
+              ))}
+          </div>
+        )}
+      </Panel>
       <Sheet
         open={detailOpen}
         onOpenChange={(open) => {
@@ -3637,6 +3789,19 @@ function mapTelemetryTone(type: string): "success" | "warning" | "danger" | "neu
   if (type.includes("PAUSED") || type.includes("PURGED")) return "warning";
   if (type.includes("COMPLETED") || type.includes("RESUMED")) return "success";
   return "neutral";
+}
+
+function formatBytes(value?: number) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let index = 0;
+  let current = value;
+  while (current >= 1024 && index < units.length - 1) {
+    current /= 1024;
+    index += 1;
+  }
+  const digits = current >= 100 || index === 0 ? 0 : 1;
+  return `${current.toFixed(digits)} ${units[index]}`;
 }
 
 function formatUptime(totalSeconds: number) {

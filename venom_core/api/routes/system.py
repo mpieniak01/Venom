@@ -2,7 +2,11 @@
 
 import asyncio
 import importlib.util
+import os
+import shutil
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
@@ -15,6 +19,7 @@ from venom_core.core import metrics as metrics_module
 from venom_core.core.permission_guard import permission_guard
 from venom_core.services.config_manager import config_manager
 from venom_core.services.runtime_controller import ServiceType, runtime_controller
+from venom_core.utils.boot_id import BOOT_ID
 from venom_core.utils.llm_runtime import (
     compute_llm_config_hash,
     get_active_llm_runtime,
@@ -379,6 +384,7 @@ async def get_system_status():
 
         return {
             "status": "success",
+            "boot_id": BOOT_ID,
             "system_healthy": system_summary["system_healthy"],
             "memory_usage_mb": memory_metrics["memory_usage_mb"],
             "memory_total_mb": memory_metrics["memory_total_mb"],
@@ -1101,6 +1107,65 @@ async def runtime_service_action(service: str, action: str):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
+@router.get("/system/storage")
+async def get_storage_snapshot():
+    """
+    Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).
+    """
+    try:
+        total, used, free = shutil.disk_usage(PROJECT_ROOT)
+        entries = [
+            {"name": "Modele LLM", "path": "models", "kind": "models"},
+            {"name": "Modele cache", "path": "models_cache", "kind": "cache"},
+            {"name": "Logi", "path": "logs", "kind": "logs"},
+            {"name": "Dane: timelines", "path": "data/timelines", "kind": "data"},
+            {"name": "Dane: memory", "path": "data/memory", "kind": "data"},
+            {"name": "Dane: audio", "path": "data/audio", "kind": "data"},
+            {"name": "Dane: learning", "path": "data/learning", "kind": "data"},
+            {
+                "name": "Build: web-next/.next",
+                "path": "web-next/.next",
+                "kind": "build",
+            },
+            {
+                "name": "Deps: web-next/node_modules",
+                "path": "web-next/node_modules",
+                "kind": "deps",
+            },
+        ]
+        # Zrównoleglenie operacji I/O aby uniknąć blokowania event loop
+        loop = asyncio.get_running_loop()
+        tasks = [
+            loop.run_in_executor(None, _dir_size_bytes, PROJECT_ROOT / entry["path"])
+            for entry in entries
+        ]
+        sizes = await asyncio.gather(*tasks)
+
+        items = [
+            {
+                "name": entry["name"],
+                "path": str(PROJECT_ROOT / entry["path"]),
+                "size_bytes": size,
+                "kind": entry["kind"],
+            }
+            for entry, size in zip(entries, sizes)
+        ]
+        items.sort(key=lambda item: item["size_bytes"], reverse=True)
+        return {
+            "status": "success",
+            "refreshed_at": datetime.now().isoformat(),
+            "disk": {
+                "total_bytes": total,
+                "used_bytes": used,
+                "free_bytes": free,
+            },
+            "items": items,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas pobierania snapshotu storage")
+        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
 @router.get("/runtime/history")
 async def get_runtime_history(limit: int = 50):
     """
@@ -1221,3 +1286,27 @@ async def restore_config_backup(request: RestoreBackupRequest):
     except Exception as e:
         logger.exception("Błąd podczas przywracania backupu")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# ----------------------------------------
+# Storage monitoring helpers
+# ----------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _dir_size_bytes(path: Path) -> int:
+    """Suma rozmiarów plików w katalogu (bez podążania za symlinkami)."""
+    if not path.exists():
+        return 0
+    total = 0
+    for root, _, files in os.walk(path, followlinks=False):
+        for name in files:
+            file_path = os.path.join(root, name)
+            try:
+                if os.path.islink(file_path):
+                    continue
+                total += os.path.getsize(file_path)
+            except OSError:
+                continue
+    return total

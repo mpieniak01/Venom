@@ -47,6 +47,7 @@ from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
+from venom_core.services.session_store import SessionStore
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -54,6 +55,9 @@ TESTING_MODE = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
 # Inicjalizacja StateManager
 state_manager = StateManager(state_file_path=SETTINGS.STATE_FILE_PATH)
+
+# Inicjalizacja SessionStore (źródło prawdy historii sesji)
+session_store = SessionStore()
 
 # Inicjalizacja PermissionGuard z StateManager
 permission_guard.set_state_manager(state_manager)
@@ -237,6 +241,7 @@ async def lifespan(app: FastAPI):
             state_manager,
             event_broadcaster=event_broadcaster,
             node_manager=node_manager,
+            session_store=session_store,
             request_tracer=request_tracer,
         )
         logger.info(
@@ -620,7 +625,9 @@ def setup_router_dependencies():
     # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
     # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie dostępny (np. po dodaniu obsługi w lifespan).
     metrics_routes.set_dependencies(token_economist=None)
-    memory_routes.set_dependencies(vector_store, state_manager, lessons_store)
+    memory_routes.set_dependencies(
+        vector_store, state_manager, lessons_store, session_store
+    )
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)
     agents_routes.set_dependencies(
@@ -652,6 +659,7 @@ if TESTING_MODE and orchestrator is None:
             state_manager,
             event_broadcaster=event_broadcaster,
             node_manager=node_manager,
+            session_store=session_store,
             request_tracer=request_tracer,
         )
         setup_router_dependencies()

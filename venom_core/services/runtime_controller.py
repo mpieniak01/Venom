@@ -224,7 +224,7 @@ class RuntimeController:
                 else ServiceStatus.STOPPED
             )
             if SETTINGS.ENABLE_NEXUS:
-                info.port = SETTINGS.NEXUS_PORT
+                info.port = getattr(SETTINGS, "NEXUS_PORT", None)
 
         # Background Tasks (kontrolowane przez konfigurację, nie przez runtime)
         elif service_type == ServiceType.BACKGROUND_TASKS:

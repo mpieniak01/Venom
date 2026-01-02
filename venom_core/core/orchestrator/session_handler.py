@@ -8,6 +8,7 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskRequest
 from venom_core.memory.memory_skill import MemorySkill
+from venom_core.services.session_store import SessionStore
 from venom_core.services.translation_service import translation_service
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -39,6 +40,7 @@ class SessionHandler:
         self,
         state_manager: "StateManager",
         memory_skill: MemorySkill,
+        session_store: Optional[SessionStore] = None,
         testing_mode: bool = False,
         request_tracer: Optional["RequestTracer"] = None,
     ):
@@ -48,11 +50,13 @@ class SessionHandler:
         Args:
             state_manager: Menedżer stanu zadań
             memory_skill: Skill zarządzający pamięcią wektorową
+            session_store: Magazyn historii sesji (źródło prawdy)
             testing_mode: Czy uruchomiony w trybie testowym
             request_tracer: Opcjonalny tracer do śledzenia przepływu
         """
         self.state_manager = state_manager
         self.memory_skill = memory_skill
+        self.session_store = session_store
         self._testing_mode = testing_mode
         self.request_tracer = request_tracer
 
@@ -115,6 +119,8 @@ class SessionHandler:
             trimmed = history[-SESSION_HISTORY_LIMIT:]
             task.context_history["session_history"] = trimmed
             task.context_history["session_history_full"] = full_history
+            if session_id and self.session_store:
+                self.session_store.append_message(session_id, entry)
             self.state_manager.update_context(
                 task_id,
                 {
@@ -153,16 +159,32 @@ class SessionHandler:
             if task and isinstance(getattr(task, "context_history", {}), dict):
                 if not self._testing_mode:
                     self._ensure_session_summary(task_id, task)
-                history = task.context_history.get("session_history") or []
-                summary = task.context_history.get("session_summary")
+                summary = None
+                if session_id and self.session_store:
+                    summary = self.session_store.get_summary(session_id)
+                    history = self.session_store.get_history(
+                        session_id, SESSION_HISTORY_LIMIT
+                    )
+                if not summary:
+                    summary = task.context_history.get("session_summary")
+                if not history:
+                    history = task.context_history.get("session_history") or []
+                if not summary and history and self._should_generate_summary(request):
+                    summary = self._heuristic_summary(history)
+                    self.state_manager.update_context(
+                        task_id, {"session_summary": summary}
+                    )
+                    if session_id and self.session_store:
+                        self.session_store.set_summary(session_id, summary)
                 if summary:
                     parts.append("[STRESZCZENIE SESJI]\n" + summary)
                 if not self._testing_mode:
-                    memory_block = self._retrieve_relevant_memory(
-                        request, task.context_history.get("session_id")
-                    )
-                    if memory_block:
-                        parts.append("[PAMIĘĆ]\n" + memory_block)
+                    if self._should_include_memory(request, len(history)):
+                        memory_block = self._retrieve_relevant_memory(
+                            request, task.context_history.get("session_id")
+                        )
+                        if memory_block:
+                            parts.append("[PAMIĘĆ]\n" + memory_block)
             if history:
                 lines = []
                 for entry in history[-SESSION_HISTORY_LIMIT:]:
@@ -174,6 +196,45 @@ class SessionHandler:
             logger.warning(f"Nie udało się zbudować historii sesji: {exc}")
 
         return "\n\n".join(parts).strip()
+
+    def _should_include_memory(self, request: TaskRequest, history_len: int) -> bool:
+        """Heuristic gating for memory retrieval to reduce token usage."""
+        if not request.content:
+            return False
+        text = request.content.lower()
+        keywords = (
+            "przypomnij",
+            "pamietasz",
+            "pamiętasz",
+            "wczesniej",
+            "wcześniej",
+            "wroc",
+            "wróć",
+            "poprzednio",
+            "remember",
+            "earlier",
+            "previous",
+            "as before",
+            "as earlier",
+        )
+        if any(key in text for key in keywords):
+            return True
+        return history_len >= SESSION_HISTORY_LIMIT
+
+    def _should_generate_summary(self, request: TaskRequest) -> bool:
+        """Generate a short summary only when explicitly requested."""
+        if not request.content:
+            return False
+        text = request.content.lower()
+        keywords = (
+            "podsumuj",
+            "podsumowanie",
+            "streszcz",
+            "streszczenie",
+            "summary",
+            "summarize",
+        )
+        return any(key in text for key in keywords)
 
     def _ensure_session_summary(self, task_id: UUID, task: "VenomTask") -> None:
         """Tworzy streszczenie gdy historia jest długa."""
@@ -201,6 +262,9 @@ class SessionHandler:
             if not summary:
                 return
             self.state_manager.update_context(task_id, {"session_summary": summary})
+            session_id = task.context_history.get("session", {}).get("session_id")
+            if session_id and self.session_store:
+                self.session_store.set_summary(session_id, summary)
             # zapisz do pamięci długoterminowej
             self._memory_upsert(
                 summary,

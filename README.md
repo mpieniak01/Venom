@@ -15,6 +15,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 👍👎 **Pętla jakości** - informacje zwrotne użytkownika + logi i metryki jakości odpowiedzi
 - 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
 - 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
+- 💬 **Ciągłość czatu** - spójna historia sesji per `session_id` (SessionStore) z resetem po restarcie backendu
 - 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
 - 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
 
@@ -130,6 +131,7 @@ Orchestrator (decyzja o przepływie)
 
 > 🔎 **Nowy dashboard web-next**
 > Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
+> Dokumentacja sesji chatu i zachowania pamięci: `docs/CHAT_SESSION.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 

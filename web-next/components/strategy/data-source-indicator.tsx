@@ -25,7 +25,7 @@ export function DataSourceIndicator({
   className,
 }: DataSourceIndicatorProps) {
   const config = statusConfig[status];
-  
+
   const timestampText = timestamp
     ? formatRelativeTime(new Date(timestamp).toISOString())
     : null;

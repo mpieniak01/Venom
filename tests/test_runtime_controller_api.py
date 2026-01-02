@@ -106,7 +106,9 @@ class TestRuntimeStatusAPI:
             assert len(data["services"]) == 2
 
             # Check backend (actionable)
-            backend_service = next(s for s in data["services"] if s["name"] == "backend")
+            backend_service = next(
+                s for s in data["services"] if s["name"] == "backend"
+            )
             assert backend_service["actionable"] is True
 
             # Check hive (non-actionable)

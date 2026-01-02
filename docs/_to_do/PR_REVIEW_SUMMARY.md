@@ -1,6 +1,6 @@
 # Podsumowanie do recenzji kodu (PR 85 + PR 86)
 
-## PR 85 – Monitoring kosztow dysku
+## PR 85 – Monitoring kosztów dysku
 **Zakres:** backendowy snapshot storage + panel w Cockpit AI.
 
 **Zrealizowane:**

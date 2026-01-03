@@ -85,6 +85,8 @@ venom_core/
 - **Lokalnie najpierw**: Prywatność i $0 kosztów operacyjnych
 - **Providerzy**: Ollama/vLLM (lokalne), Google Gemini, OpenAI
 - Wrażliwe dane **NIGDY** nie trafiają do chmury
+- **Runtime jako API**: silnik modeli jest traktowany jak wymienialny serwer HTTP — możemy go uruchamiać lub nie, bez wpływu na logikę bazową. To pozwala korzystać z różnych standardów modeli.
+- **Kierunek LLM-first (Ollama)**: w trybie single-user i niskiego natężenia zapytań wydajność Ollamy jest w praktyce porównywalna do vLLM, a przełączanie modeli jest prostsze. vLLM zyskuje przewagę głównie przy dużej równoległości i wysokim obciążeniu.
 
 #### 5. **Uczenie przez demonstrację** 🎓
 - **DemonstrationRecorder** - Nagrywanie akcji użytkownika (mysz, klawiatura, zrzuty ekranu)
@@ -102,6 +104,9 @@ venom_core/
 - **Serwery LLM**: Ollama, vLLM – start/stop z panelu usług.
 - **LanceDB** – lokalna pamięć wektorowa (embedded); **Redis** – opcjonalny broker/locki (może być wyłączony).
 - **Nexus**, **Background Tasks** – opcjonalne miejsca na przyszłe procesy (domyślnie disabled, bez akcji start/stop; można ukryć/ignorować jeśli niewykorzystane).
+
+**Uwaga o vision/obrazie:** obecnie percepcja (OCR/rozpoznawanie obiektów) korzysta z lokalnych modeli ONNX lub opcjonalnych endpointów zewnętrznych. Ollama/vLLM mogą obsługiwać modele multimodalne, ale w tym repo nie są jeszcze podłączone jako runtime dla vision — wymagają osobnej integracji.
+**ONNX już używamy:** obecnie w warstwie percepcji (vision) — OCR/rozpoznawanie obiektów — poprzez lokalne modele ONNX Runtime. LLM-y pozostają na Ollama/vLLM (lub chmurze), a ONNX pokrywa zakres vision.
 
 ### Przepływ danych
 

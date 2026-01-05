@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const emptyJson = JSON.stringify([]);
 
-async function selectChatMode(page, label: string) {
+async function selectChatMode(page: Page, label: string) {
   const modeValueMap: Record<string, string> = {
     Direct: "direct",
     Normal: "normal",

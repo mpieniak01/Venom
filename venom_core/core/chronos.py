@@ -223,15 +223,29 @@ class ChronosEngine:
                     try:
                         with open(metadata_file, "r") as f:
                             data = json.load(f)
-                            checkpoints.append(Checkpoint.from_dict(data))
+                            checkpoint = Checkpoint.from_dict(data)
+                            try:
+                                mtime_ns = checkpoint_dir.stat().st_mtime_ns
+                            except OSError:
+                                mtime_ns = 0
+                            checkpoints.append((checkpoint, mtime_ns))
                     except Exception as e:
                         logger.warning(
                             f"Błąd odczytu metadanych checkpointu {checkpoint_dir.name}: {e}"
                         )
 
-        # Sortuj po timestamp (od najnowszych)
-        checkpoints.sort(key=lambda x: x.timestamp, reverse=True)
-        return checkpoints
+        def _parse_timestamp(value: str) -> datetime:
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                return datetime.min
+
+        # Sortuj po timestamp (od najnowszych), z fallbackiem na mtime
+        checkpoints.sort(
+            key=lambda item: (_parse_timestamp(item[0].timestamp), item[1]),
+            reverse=True,
+        )
+        return [checkpoint for checkpoint, _ in checkpoints]
 
     def delete_checkpoint(self, checkpoint_id: str, timeline: str = "main") -> bool:
         """

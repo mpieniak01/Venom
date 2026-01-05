@@ -55,6 +55,38 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
   - uzytkownik wymusi to przez slash command (`/git`, `/web`, itp.).
 - To zapobiega blednym przekierowaniom (np. pytanie definicyjne jako HELP_REQUEST) i utrzymuje chat jako rozmowe.
 
+## Tryby pracy czatu (manualny przełącznik)
+W UI czatu są trzy tryby. To nie duplikuje architektury – to kontrola strategii.
+
+### 1) Direct (bezpośredni)
+- **Routing:** bez orkiestratora, bez narzędzi, bez planowania.
+- **Ścieżka krytyczna:** UI → LLM → UI (najkrótsza).
+- **Logowanie:** RequestTracer z `session_id`, prompt i response (SimpleMode).
+- **Zastosowanie:** referencja dla TTFT i maszynopisania.
+
+### 2) Normal (standard)
+- **Routing:** orkiestrator + klasyfikacja intencji + standardowe logi.
+- **Ścieżka krytyczna:** UI → (intent/gating) → LLM → UI.
+- **Logowanie:** pełne (history, steps, runtime).
+- **Zastosowanie:** domyślna praca systemu.
+
+### 3) Complex (planowanie)
+- **Routing:** wymuszona intencja `COMPLEX_PLANNING` → Architect → plan/kroki.
+- **Ścieżka krytyczna:** UI → planowanie → LLM → UI.
+- **Logowanie:** pełne + kroki planu + decyzje.
+- **Zastosowanie:** zadania wieloetapowe i złożone.
+
+## Szczegóły requestu i timingi
+Panel „Szczegóły requestu” pokazuje kluczowe metryki ścieżki krytycznej:
+- **UI timings:** `submit → historia`, `TTFT (UI)`.
+- **Backend timings:** `LLM.start` (krok tracera), `first_token.elapsed_ms`, `streaming.first_chunk_ms`, `streaming.chunk_count`, `streaming.last_emit_ms`.
+To pozwala ocenić, czy streaming działa przyrostowo oraz gdzie powstaje opóźnienie.
+
+## Wzorzec ścieżki krytycznej (UI → LLM → UI)
+Cel: wszystko poza wysłaniem promptu i pierwszym chunkem ma działać w tle.
+- **Na ścieżce:** submit → TTFT → streaming/odpowiedź.
+- **W tle:** trace, memory, refreshy paneli, dodatkowe logi.
+
 ## Reset sesji
 - Reset sesji w UI tworzy nowe `session_id`.
 - Reset sesji czyści:

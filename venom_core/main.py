@@ -1,8 +1,10 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +22,7 @@ from venom_core.api.routes import flow as flow_routes
 from venom_core.api.routes import git as git_routes
 from venom_core.api.routes import knowledge as knowledge_routes
 from venom_core.api.routes import learning as learning_routes
+from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
 from venom_core.api.routes import metrics as metrics_routes
@@ -48,6 +51,7 @@ from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.session_store import SessionStore
+from venom_core.utils.llm_runtime import get_active_llm_runtime, warmup_local_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -563,6 +567,19 @@ async def lifespan(app: FastAPI):
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
 
+    if SETTINGS.LLM_WARMUP_ON_STARTUP:
+        runtime = get_active_llm_runtime()
+        if runtime.service_type == "local":
+            asyncio.create_task(
+                warmup_local_runtime(
+                    runtime=runtime,
+                    prompt=SETTINGS.LLM_WARMUP_PROMPT,
+                    timeout_seconds=SETTINGS.LLM_WARMUP_TIMEOUT_SECONDS,
+                    max_tokens=SETTINGS.LLM_WARMUP_MAX_TOKENS,
+                )
+            )
+            logger.info("Warm-up LLM uruchomiony w tle.")
+
     yield
 
     # Shutdown
@@ -614,6 +631,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Venom Core", version="0.1.0", lifespan=lifespan)
 
+# CORS dla lokalnego UI (bezpośredni dostęp do API, bez proxy Next).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3100",
+        "http://127.0.0.1:3100",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
 def setup_router_dependencies():
@@ -628,6 +659,7 @@ def setup_router_dependencies():
     memory_routes.set_dependencies(
         vector_store, state_manager, lessons_store, session_store
     )
+    llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)
     agents_routes.set_dependencies(
@@ -681,6 +713,7 @@ app.include_router(memory_projection_routes.router)
 app.include_router(git_routes.router)
 app.include_router(feedback_routes.router)
 app.include_router(learning_routes.router)
+app.include_router(llm_simple_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)
 app.include_router(system_routes.router)

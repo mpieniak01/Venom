@@ -27,6 +27,7 @@ class HistoryRequestSummary(BaseModel):
     request_id: UUID
     prompt: str
     status: str
+    session_id: Optional[str] = None
     created_at: str
     finished_at: Optional[str] = None
     duration_seconds: Optional[float] = None
@@ -51,6 +52,7 @@ class HistoryRequestDetail(BaseModel):
     request_id: UUID
     prompt: str
     status: str
+    session_id: Optional[str] = None
     created_at: str
     finished_at: Optional[str] = None
     duration_seconds: Optional[float] = None
@@ -62,6 +64,8 @@ class HistoryRequestDetail(BaseModel):
     llm_runtime_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
+    first_token: Optional[dict] = None
+    streaming: Optional[dict] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -186,6 +190,7 @@ async def stream_task(task_id: UUID):
         """Asynchroniczny generator zdarzeń SSE."""
 
         poll_interval_seconds = 0.25
+        fast_poll_interval_seconds = 0.05
         heartbeat_every_ticks = 10
         previous_status: Optional[TaskStatus] = None
         previous_log_index = 0
@@ -268,7 +273,12 @@ async def stream_task(task_id: UUID):
                 break
 
             try:
-                await asyncio.sleep(poll_interval_seconds)
+                interval = (
+                    fast_poll_interval_seconds
+                    if previous_result is None and task.status == TaskStatus.PROCESSING
+                    else poll_interval_seconds
+                )
+                await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 logger.debug("Zamknięto stream SSE dla zadania %s", task_id)
                 break
@@ -343,6 +353,7 @@ async def get_request_history(
                 request_id=trace.request_id,
                 prompt=trace.prompt,
                 status=trace.status,
+                session_id=trace.session_id,
                 created_at=trace.created_at.isoformat(),
                 finished_at=(
                     trace.finished_at.isoformat() if trace.finished_at else None
@@ -407,10 +418,19 @@ async def get_request_detail(request_id: UUID):
             }
         )
 
+    first_token = None
+    streaming = None
+    if _state_manager is not None:
+        task = _state_manager.get_task(request_id)
+        context = getattr(task, "context_history", {}) or {} if task else {}
+        first_token = context.get("first_token")
+        streaming = context.get("streaming")
+
     return HistoryRequestDetail(
         request_id=trace.request_id,
         prompt=trace.prompt,
         status=trace.status,
+        session_id=trace.session_id,
         created_at=trace.created_at.isoformat(),
         finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
         duration_seconds=duration,
@@ -422,6 +442,8 @@ async def get_request_detail(request_id: UUID):
         llm_runtime_id=trace.llm_runtime_id,
         forced_tool=trace.forced_tool,
         forced_provider=trace.forced_provider,
+        first_token=first_token,
+        streaming=streaming,
         error_code=trace.error_code,
         error_class=trace.error_class,
         error_message=trace.error_message,

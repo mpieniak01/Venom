@@ -63,6 +63,7 @@ export interface HistoryRequest {
   request_id: string;
   prompt: string;
   status: TaskStatus;
+  session_id?: string | null;
   model?: string;
   llm_provider?: string | null;
   llm_model?: string | null;
@@ -84,6 +85,16 @@ export interface HistoryRequest {
 
 export interface HistoryRequestDetail extends HistoryRequest {
   steps?: HistoryStep[];
+  first_token?: {
+    at?: string | null;
+    elapsed_ms?: number | null;
+    preview?: string | null;
+  } | null;
+  streaming?: {
+    chunk_count?: number | null;
+    first_chunk_ms?: number | null;
+    last_emit_ms?: number | null;
+  } | null;
 }
 
 export interface HistoryStep {

@@ -15,6 +15,7 @@ import {
   useTasks,
 } from "@/hooks/use-api";
 import { useTaskStream } from "@/hooks/use-task-stream";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Target } from "lucide-react";
@@ -126,7 +127,7 @@ export default function StrategyPage() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 4000);
+    const timer = setTimeout(() => setToast(null), NOTIFICATIONS.STRATEGY_TOAST_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [toast]);
 

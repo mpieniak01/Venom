@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
     GOOGLE_API_KEY: str = ""  # Opcjonalne, wymagane dla Google Gemini
+    LLM_WARMUP_ON_STARTUP: bool = True
+    LLM_WARMUP_PROMPT: str = "Ping."
+    LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0
+    LLM_WARMUP_MAX_TOKENS: int = 8
 
     # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)
     AI_MODE: str = "LOCAL"  # Opcje: "LOCAL", "HYBRID", "CLOUD"

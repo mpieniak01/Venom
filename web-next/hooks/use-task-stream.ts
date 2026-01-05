@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchTaskDetail } from "@/hooks/use-api";
+import { POLLING } from "@/lib/ui-config";
 import type { TaskStatus } from "@/lib/types";
 
 export type TaskStreamEventName = "task_update" | "task_finished" | "task_missing" | "heartbeat";
@@ -74,9 +76,13 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   } = options ?? {};
   const [streams, setStreams] = useState<Record<string, TaskStreamState>>({});
   const [lastEvent, setLastEvent] = useState<TaskStreamEvent | undefined>(undefined);
+  const onEventRef = useRef<UseTaskStreamOptions["onEvent"]>(onEvent);
   const sourcesRef = useRef<Map<string, EventSource>>(new Map());
   const pendingUpdatesRef = useRef<Map<string, Partial<TaskStreamState>>>(new Map());
   const throttleTimersRef = useRef<Map<string, number>>(new Map());
+  const pollTimersRef = useRef<Map<string, number>>(new Map());
+  const pollInFlightRef = useRef<Set<string>>(new Set());
+  const firstResultSeenRef = useRef<Map<string, boolean>>(new Map());
   const dedupedTaskIds = useMemo(() => {
     const seen = new Set<string>();
     const filtered: string[] = [];
@@ -90,17 +96,88 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
   }, [taskIds]);
 
   useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const sources = sourcesRef.current;
     if (!enabled) {
       // Zamknij wszystkie istniejące źródła jeśli streaming wyłączony
       sources.forEach((source) => source.close());
       sources.clear();
-      setStreams({});
+      setStreams((prev) => {
+        if (Object.keys(prev).length === 0) {
+          return prev;
+        }
+        return {};
+      });
       return undefined;
     }
 
     const targetIds = new Set(dedupedTaskIds);
+
+    const stopPolling = (taskId: string) => {
+      const timer = pollTimersRef.current.get(taskId);
+      if (timer) {
+        window.clearInterval(timer);
+        pollTimersRef.current.delete(taskId);
+      }
+      pollInFlightRef.current.delete(taskId);
+    };
+
+    const pollTask = async (taskId: string) => {
+      if (pollInFlightRef.current.has(taskId)) return;
+      pollInFlightRef.current.add(taskId);
+      try {
+        const task = await fetchTaskDetail(taskId);
+        const status = normalizeStatus(task.status);
+        const logs = Array.isArray(task.logs) ? task.logs.map(String) : [];
+        const result = typeof task.result === "string" ? task.result : null;
+        updateStateById(taskId, {
+          status: status ?? null,
+          logs,
+          result,
+          lastEventAt: task.updated_at ?? new Date().toISOString(),
+          connected: false,
+          error: "Połączenie SSE przerwane – używam pollingu.",
+        });
+        if (status && TERMINAL_STATUSES.includes(status)) {
+          stopPolling(taskId);
+        }
+      } catch {
+        // Ignoruj pojedyncze błędy, polling spróbuje ponownie.
+      } finally {
+        pollInFlightRef.current.delete(taskId);
+      }
+    };
+
+    const ensurePolling = (taskId: string) => {
+      if (pollTimersRef.current.has(taskId)) return;
+      const source = sources.get(taskId);
+      if (source && source.readyState === EventSource.OPEN) return;
+      pollTask(taskId);
+      const timer = window.setInterval(() => pollTask(taskId), POLLING.TASK_INTERVAL_MS);
+      pollTimersRef.current.set(taskId, timer);
+    };
+
+    const updateStateById = (taskId: string, patch: Partial<TaskStreamState>) => {
+      setStreams((prev) => {
+        const existing = prev[taskId] ?? defaultState;
+        const mergedLogs =
+          patch.logs === undefined
+            ? existing.logs
+            : mergeLogs(existing.logs, patch.logs);
+        return {
+          ...prev,
+          [taskId]: {
+            ...existing,
+            ...patch,
+            logs: mergedLogs,
+          },
+        };
+      });
+    };
 
     // Dodaj nowe strumienie
     for (const taskId of targetIds) {
@@ -108,21 +185,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       const source = new EventSource(`/api/v1/tasks/${taskId}/stream`);
 
       const updateState = (patch: Partial<TaskStreamState>) => {
-        setStreams((prev) => {
-          const existing = prev[taskId] ?? defaultState;
-          const mergedLogs =
-            patch.logs === undefined
-              ? existing.logs
-              : mergeLogs(existing.logs, patch.logs);
-          return {
-            ...prev,
-            [taskId]: {
-              ...existing,
-              ...patch,
-              logs: mergedLogs,
-            },
-          };
-        });
+        updateStateById(taskId, patch);
       };
 
       const scheduleUpdate = (patch: Partial<TaskStreamState>) => {
@@ -165,7 +228,15 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
       const emitEvent = (event: TaskStreamEvent) => {
         setLastEvent(event);
-        onEvent?.(event);
+        onEventRef.current?.(event);
+        if (typeof window !== "undefined") {
+          const win = window as typeof window & {
+            __lastTaskStreamEvent?: TaskStreamEvent;
+            __taskStreamEvents?: TaskStreamEvent[];
+          };
+          win.__lastTaskStreamEvent = event;
+          win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
+        }
       };
 
       const handlePayload = (eventName: TaskStreamEventName, payload: Record<string, unknown>) => {
@@ -228,7 +299,19 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           eventName === "task_finished" ||
           eventName === "task_missing" ||
           (status && TERMINAL_STATUSES.includes(status));
+        const hasResult =
+          typeof result === "string" && result.trim().length > 0;
+        const firstResultSeen = firstResultSeenRef.current.get(taskId) ?? false;
+        const firstResultNow = hasResult && !firstResultSeen;
+        if (firstResultNow) {
+          firstResultSeenRef.current.set(taskId, true);
+        }
+
         if (isTerminal) {
+          flushPending();
+          updateState(patch);
+          stopPolling(taskId);
+        } else if (firstResultNow) {
           flushPending();
           updateState(patch);
         } else {
@@ -273,6 +356,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       });
 
       source.onopen = () => {
+        stopPolling(taskId);
         updateState({
           connected: true,
           error: null,
@@ -284,6 +368,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           connected: false,
           error: "Połączenie SSE przerwane – używam pollingu.",
         });
+        ensurePolling(taskId);
       };
 
       sources.set(taskId, source);
@@ -303,6 +388,8 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       if (!targetIds.has(sourceTaskId)) {
         source.close();
         sources.delete(sourceTaskId);
+        stopPolling(sourceTaskId);
+        firstResultSeenRef.current.delete(sourceTaskId);
         const timer = throttleTimersRef.current.get(sourceTaskId);
         if (timer) {
           window.clearTimeout(timer);
@@ -318,16 +405,26 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     });
 
     const timersSnapshot = throttleTimersRef.current;
+    const pollTimersSnapshot = pollTimersRef.current;
     const pendingSnapshot = pendingUpdatesRef.current;
     return () => {
       sources.forEach((source) => source.close());
       sources.clear();
-      setStreams({});
+      setStreams((prev) => {
+        if (Object.keys(prev).length === 0) {
+          return prev;
+        }
+        return {};
+      });
       timersSnapshot.forEach((timer) => window.clearTimeout(timer));
       timersSnapshot.clear();
+      pollTimersSnapshot.forEach((timer) => window.clearInterval(timer));
+      pollTimersSnapshot.clear();
+      pollInFlightRef.current.clear();
       pendingSnapshot.clear();
+      firstResultSeenRef.current.clear();
     };
-  }, [dedupedTaskIds, enabled, autoCloseOnFinish, onEvent, throttleMs]);
+  }, [dedupedTaskIds, enabled, autoCloseOnFinish, throttleMs]);
 
   const connectedIds = useMemo(
     () => Object.entries(streams).filter(([, entry]) => entry.connected).map(([id]) => id),

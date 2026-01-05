@@ -68,6 +68,10 @@ class TaskRequest(BaseModel):
     forced_provider: Optional[str] = Field(
         default=None, description="Wymuszony provider LLM (np. 'gpt', 'gem')"
     )
+    forced_intent: Optional[str] = Field(
+        default=None,
+        description="Wymuszona intencja (np. GENERAL_CHAT, COMPLEX_PLANNING)",
+    )
     images: Optional[List[str]] = None  # Lista base64 lub URL obrazów
     store_knowledge: bool = Field(
         default=True, description="Czy zapisywać lekcje i wnioski z tego zadania"

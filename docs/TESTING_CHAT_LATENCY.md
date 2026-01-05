@@ -79,3 +79,8 @@ Tworzy `perf-artifacts/<timestamp>/` i kopiuje:
 - Repozytorium jest lokalnym eksperymentem – artefakty testów NIE są szyfrowane, ale są ignorowane (`.gitignore`) i przechowywane lokalnie.
 - Gdy Next ma działać bez legacy UI, pamiętaj aby uruchamiać test `Legacy Cockpit` tylko przy włączonym `SERVE_LEGACY_UI=True`.
 - Wydajnościowe testy nie są jeszcze podpięte pod CI – wykonujemy je ręcznie przed wydaniem.
+
+## Referencyjne wyniki (ostatni przebieg)
+| Data (UTC) | Test | Wynik |
+| --- | --- | --- |
+| 2026-01-05 | `tests/perf/chat-latency.spec.ts` (Next Cockpit) | PASS, 4.0s |

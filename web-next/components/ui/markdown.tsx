@@ -43,7 +43,7 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
       console.error("Markdown render error:", err);
       setHtml(DOMPurify.sanitize(content));
     }
-  }, [content, mode]);
+  }, [content, mode, hasSources]);
 
   if (!html) {
     return (

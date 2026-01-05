@@ -68,12 +68,12 @@ class CouncilFlow:
                 event_type=event_type, message=message, agent=agent, data=data
             )
 
-    def should_use_council(self, context: str, intent: str) -> bool:
+    def should_use_council(self, content: str, intent: str) -> bool:
         """
         Decyduje czy użyć trybu Council dla danego zadania.
 
         Args:
-            context: Kontekst zadania
+            content: Treść zadania
             intent: Sklasyfikowana intencja
 
         Returns:
@@ -82,18 +82,23 @@ class CouncilFlow:
         if not ENABLE_COUNCIL_MODE:
             return False
 
-        # Council dla złożonych zadań planistycznych
-        if intent == "COMPLEX_PLANNING":
-            return True
+        # Council tylko dla złożonego planowania.
+        if intent != "COMPLEX_PLANNING":
+            return False
+
+        if not content:
+            return False
 
         # Council dla długich zadań wymagających współpracy
-        if len(context) > COUNCIL_TASK_THRESHOLD:
-            # Sprawdź czy zadanie zawiera słowa kluczowe sugerujące współpracę
-            context_lower = context.lower()
-            for keyword in COUNCIL_COLLABORATION_KEYWORDS:
-                if keyword in context_lower:
-                    logger.info(f"Wykryto słowo kluczowe '{keyword}' - użyję Council")
-                    return True
+        if len(content) >= COUNCIL_TASK_THRESHOLD:
+            return True
+
+        # Krótkie prompt'y nie powinny uruchamiać Council (chyba że sugerują projekt).
+        content_lower = content.lower()
+        for keyword in COUNCIL_COLLABORATION_KEYWORDS:
+            if keyword in content_lower:
+                logger.info(f"Wykryto słowo kluczowe '{keyword}' - użyję Council")
+                return True
 
         return False
 

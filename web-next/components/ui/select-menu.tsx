@@ -20,6 +20,9 @@ type SelectMenuProps = {
   onChange: (value: string) => void;
   placeholder?: string;
   ariaLabel?: string;
+  buttonTestId?: string;
+  menuTestId?: string;
+  optionTestIdPrefix?: string;
   className?: string;
   buttonClassName?: string;
   menuClassName?: string;
@@ -36,6 +39,9 @@ export function SelectMenu({
   onChange,
   placeholder = "Wybierz",
   ariaLabel,
+  buttonTestId,
+  menuTestId,
+  optionTestIdPrefix,
   className,
   buttonClassName,
   menuClassName,
@@ -121,6 +127,7 @@ export function SelectMenu({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
+        data-testid={buttonTestId}
         disabled={disabled}
       >
         {renderButton ? (
@@ -142,6 +149,7 @@ export function SelectMenu({
               "mt-2 rounded-2xl border border-white/10 bg-zinc-950/95 p-1 text-left shadow-xl",
               menuClassName,
             )}
+            data-testid={menuTestId}
           >
             {options.length === 0 ? (
               <div className="px-3 py-2 text-xs text-zinc-500">Brak opcji</div>
@@ -157,6 +165,10 @@ export function SelectMenu({
                       active ? "bg-white/10" : "",
                       optionClassName,
                     )}
+                    data-testid={
+                      optionTestIdPrefix ? `${optionTestIdPrefix}-${option.value}` : undefined
+                    }
+                    data-value={option.value}
                     onClick={() => {
                       if (option.disabled) return;
                       onChange(option.value);

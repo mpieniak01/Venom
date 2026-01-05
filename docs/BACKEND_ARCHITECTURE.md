@@ -33,3 +33,6 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 
 ## Kontrakty API
 Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
+
+## Chat routing (uwaga spójności)
+Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w `docs/CHAT_SESSION.md`.

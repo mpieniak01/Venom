@@ -68,6 +68,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     0,
     "flow",
   );
+  const refreshMemoryGraph = memoryGraphPoll.refresh;
   const memoryGraphLoading = memoryGraphPoll.loading;
   const memoryGraphError = memoryGraphPoll.error;
   const graph = liveGraph ?? initialKnowledge ?? null;
@@ -343,6 +344,29 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     (activeTab === "repo" && liveGraphLoading && !graph) ||
     (activeTab === "memory" && memoryGraphLoading && !memoryGraph);
   const memoryLoading = activeTab === "memory" && showMemoryLayer && memoryGraphLoading && !memoryGraph;
+  useEffect(() => {
+    refreshSummary();
+    refreshGraph();
+    if (showMemoryLayer) {
+      refreshMemoryGraph();
+    }
+  }, [refreshGraph, refreshMemoryGraph, refreshSummary, showMemoryLayer]);
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshSummary();
+      refreshGraph();
+      if (showMemoryLayer) {
+        refreshMemoryGraph();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [refreshGraph, refreshMemoryGraph, refreshSummary, showMemoryLayer]);
   const { data: liveLessons, refresh: refreshLessons } = useLessons(5);
   const lessons = liveLessons ?? initialData.lessons ?? null;
   const { data: liveLessonsStats } = useLessonsStats();

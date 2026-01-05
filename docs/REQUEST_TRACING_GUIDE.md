@@ -91,6 +91,11 @@ Zwraca szczegółowy ślad wykonania zadania z wszystkimi krokami.
   "created_at": "2024-12-09T08:00:00",
   "finished_at": "2024-12-09T08:00:15",
   "duration_seconds": 15.5,
+  "llm_provider": "ollama",
+  "llm_model": "gemma3:latest",
+  "llm_endpoint": "http://localhost:11434/v1",
+  "first_token": { "elapsed_ms": 740, "preview": "O" },
+  "streaming": { "chunk_count": 120, "first_chunk_ms": 740, "last_emit_ms": 5200 },
   "steps": [
     {
       "component": "User",
@@ -105,6 +110,13 @@ Zwraca szczegółowy ślad wykonania zadania z wszystkimi krokami.
       "timestamp": "2024-12-09T08:00:01",
       "status": "ok",
       "details": "Intent: RESEARCH"
+    },
+    {
+      "component": "LLM",
+      "action": "start",
+      "timestamp": "2024-12-09T08:00:02",
+      "status": "ok",
+      "details": "intent=GENERAL_CHAT"
     },
     {
       "component": "ResearcherAgent",

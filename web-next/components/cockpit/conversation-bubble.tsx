@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { isComputationContent } from "@/lib/markdown-format";
 import { statusTone } from "@/lib/status";
+import { TYPING_EFFECT } from "@/lib/ui-config";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 type ConversationBubbleProps = {
@@ -18,6 +20,7 @@ type ConversationBubbleProps = {
   footerActions?: ReactNode;
   footerExtra?: ReactNode;
   forcedLabel?: string | null;
+  modeLabel?: string | null;
 };
 
 export function ConversationBubble({
@@ -32,6 +35,7 @@ export function ConversationBubble({
   footerActions,
   footerExtra,
   forcedLabel,
+  modeLabel,
 }: ConversationBubbleProps) {
   const isUser = role === "user";
   const terminalStatuses = ["COMPLETED", "FAILED", "LOST"];
@@ -41,6 +45,42 @@ export function ConversationBubble({
   const showComputationLabel =
     !isUser && !showTyping && isComputationContent(text);
   const disabled = pending || !onSelect;
+  const typingText = text.trim().length > 0 ? text : "Generuję odpowiedź";
+  const [visibleText, setVisibleText] = useState(text);
+  const typingTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (isUser) {
+      setVisibleText(text);
+      return;
+    }
+    if (!showTyping) {
+      setVisibleText(text);
+      return;
+    }
+    setVisibleText((prev) => {
+      if (typingText.startsWith(prev)) return prev;
+      return "";
+    });
+  }, [isUser, showTyping, text, typingText]);
+  useEffect(() => {
+    if (isUser || !showTyping) return undefined;
+    if (visibleText.length >= typingText.length) return undefined;
+    if (typingTimerRef.current) {
+      window.clearTimeout(typingTimerRef.current);
+    }
+    const remaining = typingText.length - visibleText.length;
+    const step = Math.max(1, Math.min(Math.ceil(typingText.length / TYPING_EFFECT.MAX_STEPS), remaining));
+    typingTimerRef.current = window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        setVisibleText(typingText.slice(0, Math.min(visibleText.length + step, typingText.length)));
+      });
+    }, TYPING_EFFECT.INTERVAL_MS);
+    return () => {
+      if (typingTimerRef.current) {
+        window.clearTimeout(typingTimerRef.current);
+      }
+    };
+  }, [isUser, showTyping, typingText, visibleText]);
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (disabled) return;
     if (event.key === "Enter" || event.key === " ") {
@@ -70,7 +110,7 @@ export function ConversationBubble({
         )}
         {showTyping ? (
           <p className="whitespace-pre-wrap text-sm text-white/90">
-            {text}
+            {visibleText}
             <span className="typing-dots" aria-hidden="true">
               <span className="typing-dot" />
               <span className="typing-dot" />
@@ -101,6 +141,9 @@ export function ConversationBubble({
               <span className="text-amber-300">W toku</span>
             )}
             {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
+            {!isUser && status && modeLabel && (
+              <Badge tone="neutral">{modeLabel}</Badge>
+            )}
             {requestId && <span>#{requestId.slice(0, 6)}…</span>}
             {!pending && !isUser && footerClickable && (
               <span className="ml-auto text-caption">

@@ -142,8 +142,8 @@ flow_coordinator = FlowCoordinator(
     event_broadcaster=event_broadcaster
 )
 
-# Sprawdź czy użyć Council mode
-if flow_coordinator.should_use_council(context, intent):
+# Sprawdź czy użyć Council mode (bazując na treści żądania)
+if flow_coordinator.should_use_council(request.content, intent):
     result = await flow_coordinator.run_council(task_id, context, middleware)
 ```
 

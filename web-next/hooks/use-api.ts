@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { getApiBaseUrl } from "@/lib/env";
 import {
   AutonomyLevel,
   CampaignResponse,
@@ -198,7 +199,15 @@ function usePolling<T>(
     const actualEntry = ensureEntry(key, fetcher, intervalMs);
     entryRef.current = actualEntry;
     setReady(true);
-  }, [isBrowser, pollingDisabled, key, fetcher, intervalMs]);
+  }, [isBrowser, pollingDisabled, key, intervalMs]);
+
+  useEffect(() => {
+    if (pollingDisabled) return;
+    const entry = entryRef.current;
+    if (entry) {
+      entry.fetcher = fetcher;
+    }
+  }, [fetcher, pollingDisabled]);
 
   const entry = pollingDisabled
     ? fallbackEntry
@@ -582,6 +591,36 @@ export async function clearGlobalMemory() {
   );
 }
 
+export async function ingestMemoryEntry(payload: {
+  text: string;
+  category?: string;
+  collection?: string;
+  sessionId?: string | null;
+  userId?: string | null;
+  pinned?: boolean;
+  memoryType?: string | null;
+  scope?: string | null;
+  topic?: string | null;
+  timestamp?: string | null;
+}) {
+  const body = {
+    text: payload.text,
+    category: payload.category ?? "general",
+    collection: payload.collection ?? "default",
+    session_id: payload.sessionId ?? undefined,
+    user_id: payload.userId ?? undefined,
+    pinned: payload.pinned ?? undefined,
+    memory_type: payload.memoryType ?? undefined,
+    scope: payload.scope ?? undefined,
+    topic: payload.topic ?? undefined,
+    timestamp: payload.timestamp ?? undefined,
+  };
+  return apiFetch<{ status: string; message: string; chunks_count: number }>(
+    "/api/v1/memory/ingest",
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
 export type TaskExtraContext = {
   files?: string[];
   links?: string[];
@@ -594,6 +633,59 @@ export type ForcedRoute = {
   provider?: string;
 };
 
+export type SimpleChatStreamRequest = {
+  content: string;
+  model?: string | null;
+  maxTokens?: number | null;
+  temperature?: number | null;
+  sessionId?: string | null;
+};
+
+export async function sendSimpleChatStream(payload: SimpleChatStreamRequest) {
+  const baseUrl = getApiBaseUrl();
+  const target = baseUrl ? `${baseUrl}/api/v1/llm/simple/stream` : "/api/v1/llm/simple/stream";
+  const body: {
+    content: string;
+    model?: string;
+    max_tokens?: number;
+    temperature?: number;
+    session_id?: string;
+  } = {
+    content: payload.content,
+  };
+  if (payload.model) body.model = payload.model;
+  if (typeof payload.maxTokens === "number") body.max_tokens = payload.maxTokens;
+  if (typeof payload.temperature === "number") body.temperature = payload.temperature;
+  if (payload.sessionId) body.session_id = payload.sessionId;
+  let response: Response;
+  try {
+    response = await fetch(target, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (baseUrl) {
+      response = await fetch("/api/v1/llm/simple/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } else {
+      throw error;
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ApiError(
+      `Request failed: ${response.status}`,
+      response.status,
+      text,
+    );
+  }
+  return response;
+}
+
 export async function sendTask(
   content: string,
   storeKnowledge = true,
@@ -601,6 +693,7 @@ export async function sendTask(
   runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
   extraContext?: TaskExtraContext | null,
   forcedRoute?: ForcedRoute | null,
+  forcedIntent?: string | null,
   preferredLanguage?: "pl" | "en" | "de" | null,
   sessionId?: string | null,
   preferenceScope?: "session" | "global" | null,
@@ -614,6 +707,7 @@ export async function sendTask(
     extra_context?: TaskExtraContext;
     forced_tool?: string;
     forced_provider?: string;
+    forced_intent?: string;
     preferred_language?: string;
     session_id?: string;
     preference_scope?: string;
@@ -639,6 +733,9 @@ export async function sendTask(
   }
   if (forcedRoute?.provider) {
     body.forced_provider = forcedRoute.provider;
+  }
+  if (forcedIntent) {
+    body.forced_intent = forcedIntent;
   }
   if (preferredLanguage) {
     body.preferred_language = preferredLanguage;

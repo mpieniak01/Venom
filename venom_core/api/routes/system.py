@@ -26,8 +26,11 @@ from venom_core.utils.llm_runtime import (
     infer_local_provider,
 )
 from venom_core.utils.logger import get_logger
+from venom_core.utils.ttl_cache import TTLCache
 
 logger = get_logger(__name__)
+_metrics_cache = TTLCache[dict](ttl_seconds=1.0)
+_services_cache = TTLCache[dict](ttl_seconds=2.0)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
@@ -108,7 +111,12 @@ async def get_metrics():
     collector = metrics_module.metrics_collector
     if collector is None:
         raise HTTPException(status_code=503, detail="Metrics collector not initialized")
-    return collector.get_metrics()
+    cached = _metrics_cache.get()
+    if cached is not None:
+        return cached
+    metrics = collector.get_metrics()
+    _metrics_cache.set(metrics)
+    return metrics
 
 
 @router.get("/scheduler/status")
@@ -222,6 +230,9 @@ async def get_all_services():
         raise HTTPException(status_code=503, detail="ServiceMonitor nie jest dostępny")
 
     try:
+        cached = _services_cache.get()
+        if cached is not None:
+            return cached
         # Odśwież statusy przed zwróceniem – inaczej pozostają w stanie "unknown".
         await _service_monitor.check_health()
         services = _service_monitor.get_all_services()
@@ -238,7 +249,13 @@ async def get_all_services():
             for service in services
         ]
 
-        return {"status": "success", "services": services_data, "count": len(services)}
+        payload = {
+            "status": "success",
+            "services": services_data,
+            "count": len(services),
+        }
+        _services_cache.set(payload)
+        return payload
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania listy usług")
@@ -263,6 +280,16 @@ async def get_service_status(service_name: str):
         raise HTTPException(status_code=503, detail="ServiceMonitor nie jest dostępny")
 
     try:
+        cached = _services_cache.get()
+        if cached is not None:
+            services = cached.get("services", [])
+            services = [s for s in services if s.get("name") == service_name]
+            if not services:
+                raise HTTPException(
+                    status_code=404, detail=f"Usługa {service_name} nie istnieje"
+                )
+            return {"status": "success", "service": services[0]}
+
         services = _service_monitor.get_all_services()
         services = [s for s in services if s.name == service_name]
 

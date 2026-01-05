@@ -136,7 +136,7 @@ Orchestrator (decyzja o przepływie)
 
 > 🔎 **Nowy dashboard web-next**
 > Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
-> Dokumentacja sesji chatu i zachowania pamięci: `docs/CHAT_SESSION.md`.
+> Dokumentacja sesji chatu, trybów Direct/Normal/Complex i zachowania pamięci: `docs/CHAT_SESSION.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 

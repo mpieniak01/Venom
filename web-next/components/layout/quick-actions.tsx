@@ -122,7 +122,10 @@ export function QuickActions({ open, onOpenChange }: QuickActionsProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex h-full max-w-lg flex-col gap-4 border-l border-white/10 bg-zinc-950/95">
+      <SheetContent
+        data-testid="quick-actions-sheet"
+        className="flex h-full max-w-lg flex-col gap-4 border-l border-white/10 bg-zinc-950/95"
+      >
         <SheetHeader>
           <SheetTitle>{t("quickActions.title")}</SheetTitle>
           <SheetDescription>{t("quickActions.description")}</SheetDescription>

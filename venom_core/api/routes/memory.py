@@ -24,6 +24,13 @@ class MemoryIngestRequest(BaseModel):
     text: str
     category: str = "general"
     collection: str = "default"
+    session_id: str | None = None
+    user_id: str | None = None
+    pinned: bool | None = None
+    memory_type: str | None = None
+    scope: str | None = None
+    topic: str | None = None
+    timestamp: str | None = None
 
 
 class MemoryIngestResponse(BaseModel):
@@ -109,6 +116,20 @@ async def ingest_to_memory(request: MemoryIngestRequest):
 
         # Zapisz do pamięci
         metadata = {"category": request.category}
+        if request.session_id:
+            metadata["session_id"] = request.session_id
+        if request.user_id:
+            metadata["user_id"] = request.user_id
+        if request.pinned is not None:
+            metadata["pinned"] = bool(request.pinned)
+        if request.memory_type:
+            metadata["type"] = request.memory_type
+        if request.scope:
+            metadata["scope"] = request.scope
+        if request.topic:
+            metadata["topic"] = request.topic
+        if request.timestamp:
+            metadata["timestamp"] = request.timestamp
         result = vector_store.upsert(
             text=request.text,
             metadata=metadata,

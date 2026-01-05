@@ -44,6 +44,15 @@ const resolveBrowserBase = (): string => {
   return sanitizeBase(envApiBase);
 };
 
+const resolveDefaultLocalApiBase = (): string => {
+  if (typeof window === "undefined") return "";
+  const hostname = window.location.hostname;
+  if (isLocalhost(hostname)) {
+    return `http://127.0.0.1:${DEFAULT_API_PORT}`;
+  }
+  return "";
+};
+
 const resolveBrowserWsBase = (): string => {
   if (typeof window === "undefined") {
     return `ws://127.0.0.1:${DEFAULT_API_PORT}`;
@@ -66,7 +75,12 @@ const resolveBrowserWsBase = (): string => {
   return sanitizeBase(origin.replace(/^http/, "ws"));
 };
 
-export const getApiBaseUrl = (): string => sanitizeBase(resolveBrowserBase());
+export const getApiBaseUrl = (): string => {
+  const resolved = resolveBrowserBase();
+  if (resolved) return sanitizeBase(resolved);
+  const fallback = resolveDefaultLocalApiBase();
+  return sanitizeBase(fallback);
+};
 
 export const getWsBaseUrl = (): string => {
   const explicit = getEnv("NEXT_PUBLIC_WS_BASE");

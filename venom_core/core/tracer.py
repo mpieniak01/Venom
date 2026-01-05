@@ -42,6 +42,10 @@ class RequestTrace(BaseModel):
     request_id: UUID
     status: TraceStatus = TraceStatus.PENDING
     prompt: str = Field(description="Treść polecenia użytkownika (skrócona)")
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Identyfikator sesji czatu (jeśli dostępny)",
+    )
     created_at: datetime = Field(default_factory=datetime.now)
     finished_at: Optional[datetime] = None
     steps: List[TraceStep] = Field(default_factory=list)
@@ -144,7 +148,12 @@ class RequestTracer:
                                 )
                             )
 
-    def create_trace(self, request_id: UUID, prompt: str) -> RequestTrace:
+    def create_trace(
+        self,
+        request_id: UUID,
+        prompt: str,
+        session_id: Optional[str] = None,
+    ) -> RequestTrace:
         """
         Tworzy nowy ślad dla zadania.
 
@@ -161,6 +170,7 @@ class RequestTracer:
         trace = RequestTrace(
             request_id=request_id,
             prompt=prompt_truncated,
+            session_id=session_id,
             status=TraceStatus.PENDING,
         )
         with self._traces_lock:

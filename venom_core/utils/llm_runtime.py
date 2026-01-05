@@ -152,6 +152,22 @@ def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     return f"{endpoint}/models"
 
 
+def _build_chat_completions_url(runtime: LLMRuntimeInfo) -> Optional[str]:
+    """Buduje URL do /chat/completions na bazie endpointu runtime."""
+    if not runtime.endpoint:
+        return None
+    parsed = urlparse(runtime.endpoint)
+    base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    path = parsed.path.rstrip("/")
+    if path.endswith("/chat/completions"):
+        return runtime.endpoint
+    if path.endswith("/v1"):
+        return f"{base}{path}/chat/completions"
+    if path:
+        return f"{base}{path}/v1/chat/completions"
+    return f"{base}/v1/chat/completions"
+
+
 async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[str]]:
     """
     Sprawdza rzeczywisty stan runtime i zwraca status + ewentualny błąd.
@@ -175,3 +191,33 @@ async def probe_runtime_status(runtime: LLMRuntimeInfo) -> Tuple[str, Optional[s
         return "offline", str(exc)
     except Exception as exc:  # pragma: no cover - defensywnie
         return "offline", str(exc)
+
+
+async def warmup_local_runtime(
+    runtime: LLMRuntimeInfo,
+    prompt: str,
+    timeout_seconds: float,
+    max_tokens: int,
+) -> bool:
+    """
+    Wysyła krótki request do lokalnego runtime aby podnieść model (best-effort).
+    """
+    if runtime.service_type != "local":
+        return False
+    warmup_url = _build_chat_completions_url(runtime)
+    if not warmup_url:
+        return False
+
+    payload = {
+        "model": runtime.model_name,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.0,
+        "stream": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            response = await client.post(warmup_url, json=payload)
+        return response.status_code < 400
+    except Exception:
+        return False

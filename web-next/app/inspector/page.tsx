@@ -73,7 +73,7 @@ export default function InspectorPage() {
     refresh: refreshHistory,
     loading: historyLoading,
   } = useHistory(50);
-  const { data: tasks } = useTasks();
+  const { data: tasks, refresh: refreshTasks } = useTasks(0);
   const DEFAULT_DIAGRAM = [
     "sequenceDiagram",
     "    autonumber",
@@ -160,6 +160,23 @@ export default function InspectorPage() {
     ],
     [filteredSteps.length, inspectorStats.avgDuration, inspectorStats.processing, inspectorStats.total, stepsCount],
   );
+  useEffect(() => {
+    refreshHistory();
+    refreshTasks();
+  }, [refreshHistory, refreshTasks]);
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshHistory();
+      refreshTasks();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [refreshHistory, refreshTasks]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

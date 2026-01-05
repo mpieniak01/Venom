@@ -70,12 +70,12 @@ class FlowCoordinator:
         self._healing_flow = None
         self._issue_handler_flow = None
 
-    def should_use_council(self, context: str, intent: str) -> bool:
+    def should_use_council(self, content: str, intent: str) -> bool:
         """
         Decyduje czy użyć trybu Council dla danego zadania.
 
         Args:
-            context: Kontekst zadania
+            content: Treść zadania
             intent: Sklasyfikowana intencja
 
         Returns:
@@ -92,7 +92,7 @@ class FlowCoordinator:
             self.flow_router.set_council_flow(self._council_flow)
 
         # Deleguj decyzję do FlowRouter
-        return self.flow_router.should_use_council(context, intent)
+        return self.flow_router.should_use_council(content, intent)
 
     async def run_council(self, task_id: UUID, context: str, middleware) -> str:
         """

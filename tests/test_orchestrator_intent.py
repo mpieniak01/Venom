@@ -470,3 +470,31 @@ async def test_orchestrator_help_broadcasts_widget(
     widget = widget_data["widget"]
     assert widget["type"] == "markdown"
     assert "content" in widget["data"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_forced_intent_skips_classification(
+    temp_state_file, mock_intent_manager, mock_task_dispatcher
+):
+    """Test że forced_intent omija klasyfikację i wymusza ścieżkę."""
+    state_manager = StateManager(state_file_path=temp_state_file)
+    mock_task_dispatcher.dispatch.return_value = "Plan wykonany"
+    mock_task_dispatcher.agent_map["COMPLEX_PLANNING"] = MagicMock(
+        __class__=MagicMock(__name__="ArchitectAgent")
+    )
+
+    orchestrator = Orchestrator(
+        state_manager=state_manager,
+        intent_manager=mock_intent_manager,
+        task_dispatcher=mock_task_dispatcher,
+    )
+
+    response = await orchestrator.submit_task(
+        TaskRequest(content="Zrób plan projektu", forced_intent="COMPLEX_PLANNING")
+    )
+    await asyncio.sleep(1)
+
+    assert not mock_intent_manager.classify_intent.called
+    task = state_manager.get_task(response.task_id)
+    log_text = " ".join(task.logs)
+    assert "COMPLEX_PLANNING" in log_text

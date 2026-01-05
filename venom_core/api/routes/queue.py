@@ -5,8 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.ttl_cache import TTLCache
 
 logger = get_logger(__name__)
+_queue_cache = TTLCache[dict](ttl_seconds=1.0)
 
 router = APIRouter(prefix="/api/v1/queue", tags=["queue"])
 
@@ -35,7 +37,11 @@ async def get_queue_status():
         raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
 
     try:
+        cached = _queue_cache.get()
+        if cached is not None:
+            return cached
         status = _orchestrator.get_queue_status()
+        _queue_cache.set(status)
         return status
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu kolejki")
@@ -60,6 +66,7 @@ async def pause_queue():
 
     try:
         result = await _orchestrator.pause_queue()
+        _queue_cache.clear()
         logger.info("Kolejka zadań wstrzymana przez API")
         return result
     except Exception as e:
@@ -85,6 +92,7 @@ async def resume_queue():
 
     try:
         result = await _orchestrator.resume_queue()
+        _queue_cache.clear()
         logger.info("Kolejka zadań wznowiona przez API")
         return result
     except Exception as e:
@@ -110,6 +118,7 @@ async def purge_queue():
 
     try:
         result = await _orchestrator.purge_queue()
+        _queue_cache.clear()
         logger.warning(
             f"Kolejka zadań wyczyszczona przez API - usunięto {result.get('removed', 0)} zadań"
         )

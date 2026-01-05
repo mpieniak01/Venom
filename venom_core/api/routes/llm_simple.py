@@ -28,7 +28,7 @@ def set_dependencies(request_tracer):
 
 
 class SimpleChatRequest(BaseModel):
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=50000)
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None

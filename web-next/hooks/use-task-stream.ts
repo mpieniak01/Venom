@@ -153,6 +153,8 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
     const ensurePolling = (taskId: string) => {
       if (pollTimersRef.current.has(taskId)) return;
+      const source = sources.get(taskId);
+      if (source && source.readyState === EventSource.OPEN) return;
       pollTask(taskId);
       const timer = window.setInterval(() => pollTask(taskId), 2000);
       pollTimersRef.current.set(taskId, timer);

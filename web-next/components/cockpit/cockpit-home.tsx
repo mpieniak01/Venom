@@ -1601,7 +1601,7 @@ export function CockpitHome({
         if (!existing) {
           seenMap.set(key, entry);
         } else if (entry.timestamp && existing.timestamp) {
-          if (entry.timestamp > existing.timestamp) {
+          if (new Date(entry.timestamp) > new Date(existing.timestamp)) {
             seenMap.set(key, entry);
           }
         } else if (entry.timestamp && !existing.timestamp) {

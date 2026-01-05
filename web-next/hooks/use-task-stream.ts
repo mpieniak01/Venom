@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchTaskDetail } from "@/hooks/use-api";
+import { POLLING } from "@/lib/ui-config";
 import type { TaskStatus } from "@/lib/types";
 
 export type TaskStreamEventName = "task_update" | "task_finished" | "task_missing" | "heartbeat";
@@ -156,7 +157,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       const source = sources.get(taskId);
       if (source && source.readyState === EventSource.OPEN) return;
       pollTask(taskId);
-      const timer = window.setInterval(() => pollTask(taskId), 2000);
+      const timer = window.setInterval(() => pollTask(taskId), POLLING.TASK_INTERVAL_MS);
       pollTimersRef.current.set(taskId, timer);
     };
 

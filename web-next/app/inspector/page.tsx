@@ -7,6 +7,7 @@ import { Panel, StatCard } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { fetchFlowTrace, fetchHistoryDetail, useHistory, useTasks } from "@/hooks/use-api";
 import { useTaskStream } from "@/hooks/use-task-stream";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 import type { FlowTrace, HistoryStep as HistoryStepType, HistoryRequest, Task } from "@/lib/types";
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -991,11 +992,11 @@ async function handleCopySteps(
   try {
     await navigator.clipboard.writeText(JSON.stringify(steps, null, 2));
     setCopyMessage("Skopiowano kroki.");
-    setTimeout(() => setCopyMessage(null), 2000);
+    setTimeout(() => setCopyMessage(null), NOTIFICATIONS.COPY_MESSAGE_TIMEOUT_MS);
   } catch (err) {
     console.error("Clipboard error:", err);
     setCopyMessage("Nie udało się skopiować.");
-    setTimeout(() => setCopyMessage(null), 2000);
+    setTimeout(() => setCopyMessage(null), NOTIFICATIONS.COPY_MESSAGE_TIMEOUT_MS);
   }
 }
 

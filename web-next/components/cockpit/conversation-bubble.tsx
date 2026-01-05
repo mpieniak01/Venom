@@ -71,7 +71,7 @@ export function ConversationBubble({
     const step = Math.max(1, Math.min(Math.ceil(typingText.length / 120), remaining));
     typingTimerRef.current = window.setTimeout(() => {
       window.requestAnimationFrame(() => {
-        setVisibleText(typingText.slice(0, visibleText.length + step));
+        setVisibleText(typingText.slice(0, Math.min(visibleText.length + step, typingText.length)));
       });
     }, 20);
     return () => {

@@ -1598,7 +1598,13 @@ export function CockpitHome({
       resolvedHistory.forEach((entry) => {
         const key = sessionEntryKey(entry);
         const existing = seenMap.get(key);
-        if (!existing || (entry.timestamp && existing.timestamp && entry.timestamp > existing.timestamp)) {
+        if (!existing) {
+          seenMap.set(key, entry);
+        } else if (entry.timestamp && existing.timestamp) {
+          if (entry.timestamp > existing.timestamp) {
+            seenMap.set(key, entry);
+          }
+        } else if (entry.timestamp && !existing.timestamp) {
           seenMap.set(key, entry);
         }
       });

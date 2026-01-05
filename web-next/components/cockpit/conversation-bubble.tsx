@@ -67,9 +67,12 @@ export function ConversationBubble({
     if (typingTimerRef.current) {
       window.clearTimeout(typingTimerRef.current);
     }
-    const step = Math.max(1, Math.ceil(typingText.length / 120));
+    const remaining = typingText.length - visibleText.length;
+    const step = Math.max(1, Math.min(Math.ceil(typingText.length / 120), remaining));
     typingTimerRef.current = window.setTimeout(() => {
-      setVisibleText(typingText.slice(0, visibleText.length + step));
+      window.requestAnimationFrame(() => {
+        setVisibleText(typingText.slice(0, Math.min(visibleText.length + step, typingText.length)));
+      });
     }, 20);
     return () => {
       if (typingTimerRef.current) {

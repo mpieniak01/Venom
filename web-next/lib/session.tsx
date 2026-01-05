@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { POLLING } from "@/lib/ui-config";
 
 type SessionContextValue = {
   sessionId: string;
@@ -95,7 +96,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("focus", handleFocus);
     window.addEventListener("visibilitychange", handleVisibility);
-    const interval = window.setInterval(syncBootId, 30000);
+    const interval = window.setInterval(syncBootId, POLLING.BOOT_SYNC_INTERVAL_MS);
     return () => {
       active = false;
       window.removeEventListener("focus", handleFocus);

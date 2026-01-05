@@ -84,6 +84,7 @@ import type { CockpitInitialData } from "@/lib/server-data";
 import { LogEntryType, isLogPayload } from "@/lib/logs";
 import { statusTone } from "@/lib/status";
 import { formatRelativeTime } from "@/lib/date";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 import type { SlashCommand } from "@/lib/slash-commands";
 import { filterSlashSuggestions, parseSlashCommand } from "@/lib/slash-commands";
 import { useTranslation } from "@/lib/i18n";
@@ -2172,9 +2173,9 @@ export function CockpitHome({
             });
           };
           upsertLocalHistory("user", trimmed);
-          const timing = uiTimingsRef.current.get(clientId);
-          if (timing && timing.historyMs === undefined) {
-            recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
+          const historyTiming = uiTimingsRef.current.get(clientId);
+          if (historyTiming && historyTiming.historyMs === undefined) {
+            recordUiTiming(clientId, { historyMs: Date.now() - historyTiming.t0 });
           }
           const reader = response.body?.getReader();
           if (!reader) {
@@ -2191,9 +2192,9 @@ export function CockpitHome({
             if (!chunk) continue;
             buffer += chunk;
             if (!firstChunkLogged) {
-              const timing = uiTimingsRef.current.get(simpleRequestId);
-              if (timing && timing.ttftMs === undefined) {
-                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - timing.t0 });
+              const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
+              if (ttftTiming && ttftTiming.ttftMs === undefined) {
+                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
               }
               firstChunkLogged = true;
             }
@@ -2605,7 +2606,7 @@ export function CockpitHome({
   const handleCopyDetailSteps = async () => {
     if (!historyDetail?.steps || historyDetail.steps.length === 0) {
       setCopyStepsMessage("Brak danych do skopiowania.");
-      setTimeout(() => setCopyStepsMessage(null), 2000);
+      setTimeout(() => setCopyStepsMessage(null), NOTIFICATIONS.COPY_MESSAGE_TIMEOUT_MS);
       return;
     }
     try {
@@ -2615,7 +2616,7 @@ export function CockpitHome({
       console.error("Clipboard error:", err);
       setCopyStepsMessage("Nie udało się skopiować.");
     } finally {
-      setTimeout(() => setCopyStepsMessage(null), 2000);
+      setTimeout(() => setCopyStepsMessage(null), NOTIFICATIONS.COPY_MESSAGE_TIMEOUT_MS);
     }
   };
 

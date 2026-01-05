@@ -9,6 +9,7 @@ import {
   formatUsd,
   formatVramMetric,
 } from "@/lib/formatters";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useAppMeta } from "@/lib/app-meta";
@@ -46,7 +47,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       if (commitResetRef.current) {
         clearTimeout(commitResetRef.current);
       }
-      commitResetRef.current = setTimeout(() => setCommitCopied(false), 1500);
+      commitResetRef.current = setTimeout(() => setCommitCopied(false), NOTIFICATIONS.COMMIT_COPY_TIMEOUT_MS);
     };
 
     if (navigator.clipboard?.writeText) {

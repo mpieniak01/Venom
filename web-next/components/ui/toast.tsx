@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 
 type ToastTone = "success" | "error" | "warning" | "info";
 
@@ -41,7 +42,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string, tone: ToastTone = "success") => {
       const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       setToasts((prev) => [...prev, { id, message, tone }]);
-      const timer = window.setTimeout(() => removeToast(id), 2500);
+      const timer = window.setTimeout(() => removeToast(id), NOTIFICATIONS.TOAST_TIMEOUT_MS);
       timersRef.current.set(id, timer);
     },
     [removeToast],

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListCard } from "@/components/ui/list-card";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
+import { NOTIFICATIONS } from "@/lib/ui-config";
 import { AlertTriangle, Filter, Copy } from "lucide-react";
 import { OverlayFallback } from "./overlay-fallback";
 import { useTranslation } from "@/lib/i18n";
@@ -54,7 +55,7 @@ export function AlertCenter({ open, onOpenChange }: AlertCenterProps) {
       console.error("Clipboard error", err);
       setCopyMessage(t("alertCenter.copyError"));
     } finally {
-      setTimeout(() => setCopyMessage(null), 2000);
+      setTimeout(() => setCopyMessage(null), NOTIFICATIONS.COPY_MESSAGE_TIMEOUT_MS);
     }
   };
 

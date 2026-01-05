@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { MarkdownPreview } from "@/components/ui/markdown";
 import { isComputationContent } from "@/lib/markdown-format";
 import { statusTone } from "@/lib/status";
+import { TYPING_EFFECT } from "@/lib/ui-config";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -68,12 +69,12 @@ export function ConversationBubble({
       window.clearTimeout(typingTimerRef.current);
     }
     const remaining = typingText.length - visibleText.length;
-    const step = Math.max(1, Math.min(Math.ceil(typingText.length / 120), remaining));
+    const step = Math.max(1, Math.min(Math.ceil(typingText.length / TYPING_EFFECT.MAX_STEPS), remaining));
     typingTimerRef.current = window.setTimeout(() => {
       window.requestAnimationFrame(() => {
         setVisibleText(typingText.slice(0, Math.min(visibleText.length + step, typingText.length)));
       });
-    }, 20);
+    }, TYPING_EFFECT.INTERVAL_MS);
     return () => {
       if (typingTimerRef.current) {
         window.clearTimeout(typingTimerRef.current);

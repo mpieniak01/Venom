@@ -1594,13 +1594,21 @@ export function CockpitHome({
     const resolvedHistory =
       localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
     if (resolvedHistory.length > 0) {
-      const seen = new Set<string>();
-      const deduped = resolvedHistory.filter((entry) => {
+      const seenMap = new Map<string, SessionHistoryEntry>();
+      resolvedHistory.forEach((entry) => {
         const key = sessionEntryKey(entry);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+        const existing = seenMap.get(key);
+        if (!existing) {
+          seenMap.set(key, entry);
+        } else if (entry.timestamp && existing.timestamp) {
+          if (new Date(entry.timestamp) > new Date(existing.timestamp)) {
+            seenMap.set(key, entry);
+          }
+        } else if (entry.timestamp && !existing.timestamp) {
+          seenMap.set(key, entry);
+        }
       });
+      const deduped = Array.from(seenMap.values());
       return deduped.map((entry, index) => {
         const role = entry.role === "assistant" ? "assistant" : "user";
         const requestId = entry.request_id ?? null;
@@ -2131,7 +2139,6 @@ export function CockpitHome({
           const simpleRequestId = headerRequestId || `simple-${clientId}`;
           linkOptimisticRequest(clientId, simpleRequestId);
           const createdTimestamp = new Date().toISOString();
-          let userEntryAdded = false;
           let lastHistoryUpdate = 0;
           const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
@@ -2164,13 +2171,10 @@ export function CockpitHome({
               return next;
             });
           };
-          if (!userEntryAdded) {
-            upsertLocalHistory("user", trimmed);
-            const timing = uiTimingsRef.current.get(clientId);
-            if (timing && timing.historyMs === undefined) {
-              recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
-            }
-            userEntryAdded = true;
+          upsertLocalHistory("user", trimmed);
+          const timing = uiTimingsRef.current.get(clientId);
+          if (timing && timing.historyMs === undefined) {
+            recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
           }
           const reader = response.body?.getReader();
           if (!reader) {

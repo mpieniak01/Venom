@@ -1,6 +1,6 @@
 /**
  * Konfiguracja stałych UI - timing, interwały, opóźnienia
- * 
+ *
  * Wszystkie wartości czasowe w milisekundach.
  */
 

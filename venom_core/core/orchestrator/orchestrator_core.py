@@ -1630,17 +1630,21 @@ class Orchestrator:
         self,
         content: str | None = None,
         intent: str = "",
+        context: str | None = None,
     ) -> bool:
         """
         Decyduje czy użyć trybu Council dla danego zadania.
 
         Args:
             content: Treść bieżącego zapytania
+            context: Backwards-compat alias dla treści zapytania
             intent: Sklasyfikowana intencja
 
         Returns:
             True jeśli należy użyć Council, False dla standardowego flow
         """
+        if content is None and context is not None:
+            content = context
         content = content or ""
 
         # Lazy init CouncilFlow

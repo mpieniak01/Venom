@@ -1,4 +1,4 @@
-"""E2E testy latencji LLM: aktywacja modelu + pomiar odpowiedzi."""
+"""E2E test trybu prostego: bezpośredni streaming z Ollama."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple
 import httpx
 import pytest
 
-from .chat_pipeline import API_BASE, is_backend_available, stream_task, submit_task
+from .chat_pipeline import API_BASE, is_backend_available
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
 
@@ -37,30 +37,34 @@ async def _get_active_runtime() -> Dict[str, object]:
         return response.json()
 
 
-async def _measure_latency(prompt: str) -> Tuple[float, float]:
-    task_id = await submit_task(prompt, store_knowledge=False)
+async def _measure_simple_latency(prompt: str, model: str) -> Tuple[float, float]:
     start = time.perf_counter()
     first_token_time = None
-    async for event, payload in stream_task(task_id):
-        elapsed = time.perf_counter() - start
-        if event == "task_update" and first_token_time is None:
-            result = payload.get("result") if isinstance(payload, dict) else None
-            if isinstance(result, str) and result.strip():
-                first_token_time = elapsed
-        if event == "task_finished":
-            total_time = elapsed
-            if first_token_time is None:
-                first_token_time = total_time
-            return first_token_time, total_time
-        if elapsed > STREAM_TIMEOUT:
-            raise TimeoutError(
-                f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (ostatnie zdarzenie: {event})",
-            )
-    raise RuntimeError("Stream zakończył się bez eventu task_finished")
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream(
+            "POST",
+            f"{API_BASE}/api/v1/llm/simple/stream",
+            json={"content": prompt, "model": model},
+        ) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_text():
+                if not chunk:
+                    continue
+                elapsed = time.perf_counter() - start
+                if first_token_time is None:
+                    first_token_time = elapsed
+                if elapsed > STREAM_TIMEOUT:
+                    raise TimeoutError(
+                        f"Streaming przekroczył timeout {STREAM_TIMEOUT}s.",
+                    )
+    total_time = time.perf_counter() - start
+    if first_token_time is None:
+        first_token_time = total_time
+    return first_token_time, total_time
 
 
 @pytest.mark.smoke
-async def test_llm_latency_e2e():
+async def test_llm_simple_e2e():
     await _skip_if_backend_unavailable()
 
     payload = await _list_models()
@@ -85,15 +89,17 @@ async def test_llm_latency_e2e():
     first_tokens: List[float] = []
     totals: List[float] = []
     for idx in range(REPEATS):
-        prompt = f"Latency test {model_to_use} #{idx}: podaj liczbę PI do 5 miejsc."
-        first_token, total = await _measure_latency(prompt)
+        prompt = (
+            f"Simple latency test {model_to_use} #{idx}: podaj liczbę PI do 5 miejsc."
+        )
+        first_token, total = await _measure_simple_latency(prompt, model_to_use)
         first_tokens.append(first_token)
         totals.append(total)
 
     assert all(value > 0 for value in first_tokens)
     assert all(value > 0 for value in totals)
     print(
-        "LLM latency summary:",
+        "LLM simple latency summary:",
         f"model={model_to_use}",
         f"runtime={runtime_info.get('active_server')}@{runtime_info.get('active_endpoint')}",
         f"first_token avg={sum(first_tokens) / len(first_tokens):.2f}s",

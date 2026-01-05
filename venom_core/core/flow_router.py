@@ -19,14 +19,14 @@ class FlowRouter:
         """
         self._council_flow = council_flow
 
-    def should_use_council(self, context: str, intent: str) -> bool:
+    def should_use_council(self, content: str, intent: str) -> bool:
         """
         Decyduje czy zadanie powinno być przekierowane do Council mode.
 
         Deleguje decyzję do CouncilFlow jeśli jest dostępny.
 
         Args:
-            context: Treść zadania
+            content: Treść zadania
             intent: Sklasyfikowana intencja
 
         Returns:
@@ -37,7 +37,7 @@ class FlowRouter:
             return False
 
         # Deleguj decyzję do CouncilFlow
-        return self._council_flow.should_use_council(context, intent)
+        return self._council_flow.should_use_council(content, intent)
 
     def set_council_flow(self, council_flow) -> None:
         """
@@ -48,12 +48,12 @@ class FlowRouter:
         """
         self._council_flow = council_flow
 
-    def determine_flow(self, context: str, intent: str) -> Tuple[str, dict]:
+    def determine_flow(self, content: str, intent: str) -> Tuple[str, dict]:
         """
         Określa jaki flow powinien obsłużyć zadanie.
 
         Args:
-            context: Treść zadania
+            content: Treść zadania
             intent: Sklasyfikowana intencja
 
         Returns:
@@ -69,7 +69,7 @@ class FlowRouter:
             return ("help", {"mode": "help"})
 
         # Council mode
-        if self.should_use_council(context, intent):
+        if self.should_use_council(content, intent):
             return (
                 "council",
                 {

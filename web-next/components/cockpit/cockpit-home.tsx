@@ -25,7 +25,9 @@ import {
   fetchTaskDetail,
   gitSync,
   gitUndo,
+  ingestMemoryEntry,
   purgeQueue,
+  sendSimpleChatStream,
   sendTask,
   sendFeedback,
   setActiveHiddenPrompt,
@@ -138,6 +140,24 @@ type TelemetryEventPayload = {
   message?: string;
 };
 
+const SystemTimeStat = memo(function SystemTimeStat() {
+  const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSystemTime(formatSystemClock(new Date()));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <StatCard
+      label="Czas"
+      value={systemTime}
+      hint="Aktualny czas systemowy"
+    />
+  );
+});
+
 const isTelemetryEventPayload = (payload: unknown): payload is TelemetryEventPayload => {
   if (typeof payload !== "object" || payload === null) return false;
   const candidate = payload as { type?: unknown };
@@ -148,9 +168,13 @@ type ChatComposerHandle = {
   setDraft: (value: string) => void;
 };
 
+type ChatMode = "direct" | "normal" | "complex";
+
 type ChatComposerProps = {
   onSend: (payload: string) => Promise<boolean>;
   sending: boolean;
+  chatMode: ChatMode;
+  setChatMode: (value: ChatMode) => void;
   labMode: boolean;
   setLabMode: (value: boolean) => void;
   selectedLlmServer: string;
@@ -171,6 +195,8 @@ const ChatComposer = memo(
     {
       onSend,
       sending,
+      chatMode,
+      setChatMode,
       labMode,
       setLabMode,
       selectedLlmServer,
@@ -191,6 +217,11 @@ const ChatComposer = memo(
     const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
     const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const chatModeOptions: SelectMenuOption[] = [
+      { value: "direct", label: "Direct (LLM bezpośrednio)" },
+      { value: "normal", label: "Normal (standard)" },
+      { value: "complex", label: "Complex (planowanie)" },
+    ];
 
     useImperativeHandle(ref, () => ({
       setDraft: (value: string) => {
@@ -261,24 +292,39 @@ const ChatComposer = memo(
       [applySlashSuggestion, handleSendClick, slashIndex, slashSuggestions],
     );
 
-    const labelClassName = compactControls ? "sr-only" : "text-caption";
+    const labelClassName = compactControls ? "sr-only" : "text-caption shrink-0 whitespace-nowrap";
     const controlsWrapperClassName = compactControls
-      ? "mt-3 flex flex-wrap items-end gap-3"
-      : "mt-3 grid gap-3 md:grid-cols-2";
+      ? "mt-2 flex flex-wrap items-center gap-2"
+      : "mt-2 grid w-full max-w-full gap-2";
+    const selectsRowClassName = compactControls
+      ? "flex flex-wrap items-center gap-2"
+      : "grid w-full max-w-full items-center gap-2 md:grid-cols-[auto_auto_auto] md:justify-between";
+    const secondaryRowClassName = compactControls
+      ? "flex flex-wrap items-center gap-2"
+      : "flex w-full flex-wrap items-center gap-2";
     const controlStackClassName = compactControls
-      ? "flex min-w-[180px] flex-1 flex-col gap-2"
-      : "space-y-2";
+      ? "flex min-w-[150px] flex-1 flex-col gap-2"
+      : "flex min-w-0 items-center gap-1.5";
+    const modelControlClassName = compactControls
+      ? controlStackClassName
+      : "flex min-w-0 items-center gap-1.5";
+    const modelMinWidthCh = useMemo(() => {
+      const longest = llmModelOptions.reduce((max, option) => {
+        return Math.max(max, option.label.length);
+      }, 0);
+      return Math.max(longest + 4, 22);
+    }, [llmModelOptions]);
     const actionsClassName = compactControls
       ? "ml-auto flex flex-wrap items-center gap-2"
-      : "ml-auto flex flex-wrap items-center justify-end gap-2 md:col-span-2";
+      : "ml-auto flex flex-wrap items-center justify-end gap-2";
 
     return (
-      <div className="mt-4 shrink-0 border-t border-white/5 pt-4">
+      <div className="mt-3 shrink-0 border-t border-white/5 pt-3">
         <div className="relative">
           <textarea
             ref={textareaRef}
             rows={2}
-            className="min-h-[72px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
+            className="min-h-[64px] w-full rounded-xl box-base p-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
             placeholder="Opisz zadanie dla Venoma..."
             value={draft}
             onChange={(event) => handleDraftChange(event.target.value)}
@@ -304,77 +350,108 @@ const ChatComposer = memo(
           )}
         </div>
         <div className={controlsWrapperClassName}>
-          <div className={controlStackClassName}>
-            <label className={labelClassName}>
-              Serwer
-            </label>
-            <SelectMenu
-              value={selectedLlmServer}
-              options={llmServerOptions}
-              onChange={setSelectedLlmServer}
-              ariaLabel="Wybierz serwer LLM"
-              placeholder="Wybierz serwer"
-              buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-              menuClassName="w-full max-h-72 overflow-y-auto"
-            />
+          <div className={selectsRowClassName}>
+            <div className={controlStackClassName}>
+              <label className={labelClassName}>
+                Serwer
+              </label>
+              <SelectMenu
+                value={selectedLlmServer}
+                options={llmServerOptions}
+                onChange={setSelectedLlmServer}
+                ariaLabel="Wybierz serwer LLM"
+                buttonTestId="llm-server-select"
+                placeholder="Wybierz serwer"
+                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
+                menuClassName="w-full max-h-72 overflow-y-auto"
+              />
+            </div>
+            <div
+              className={modelControlClassName}
+              style={
+                !compactControls
+                  ? {
+                      width: `${modelMinWidthCh}ch`,
+                      minWidth: `${modelMinWidthCh}ch`,
+                      maxWidth: `${modelMinWidthCh}ch`,
+                    }
+                  : undefined
+              }
+            >
+              <label className={labelClassName}>
+                Model
+              </label>
+              <SelectMenu
+                value={selectedLlmModel}
+                options={llmModelOptions}
+                onChange={(value) => {
+                  setSelectedLlmModel(value);
+                  if (value && value !== selectedLlmModel) {
+                    onActivateModel?.(value);
+                  }
+                }}
+                ariaLabel="Wybierz model LLM (czat)"
+                buttonTestId="llm-model-select"
+                placeholder="Brak modeli"
+                disabled={!hasModels}
+                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap overflow-hidden text-ellipsis"
+                menuClassName="w-full max-h-72 overflow-y-auto"
+              />
+            </div>
+            <div className={controlStackClassName}>
+              <label className={labelClassName}>Tryb</label>
+              <SelectMenu
+                value={chatMode}
+                options={chatModeOptions}
+                onChange={(value) => setChatMode(value as ChatMode)}
+                ariaLabel="Wybierz tryb czatu"
+                buttonTestId="chat-mode-select"
+                menuTestId="chat-mode-menu"
+                optionTestIdPrefix="chat-mode-option"
+                buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
+                menuClassName="w-full max-h-72 overflow-y-auto"
+              />
+            </div>
           </div>
-          <div className={controlStackClassName}>
-            <label className={labelClassName}>
-              Model
+          <div className={secondaryRowClassName}>
+            <label className="flex items-center gap-1 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                checked={labMode}
+                onChange={(event) => setLabMode(event.target.checked)}
+              />
+              Lab Mode (nie zapisuj lekcji)
             </label>
-            <SelectMenu
-              value={selectedLlmModel}
-              options={llmModelOptions}
-              onChange={(value) => {
-                setSelectedLlmModel(value);
-                if (value && value !== selectedLlmModel) {
-                  onActivateModel?.(value);
-                }
-              }}
-              ariaLabel="Wybierz model LLM (czat)"
-              placeholder="Brak modeli"
-              disabled={!hasModels}
-              buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
-              menuClassName="w-full max-h-72 overflow-y-auto"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-xs text-zinc-400">
-            <input
-              type="checkbox"
-              checked={labMode}
-              onChange={(event) => setLabMode(event.target.checked)}
-            />
-            Lab Mode (nie zapisuj lekcji)
-          </label>
-          <div className={actionsClassName}>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenTuning}
-              className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
-              title="Dostosuj parametry generacji"
-            >
-              <Settings className="h-4 w-4 mr-1" />
-              {tuningLabel}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDraft("")}
-              className="text-zinc-300"
-            >
-              Wyczyść
-            </Button>
-            <Button
-              onClick={handleSendClick}
-              disabled={sending}
-              size="sm"
-              variant="macro"
-              className="px-6"
-              data-testid="cockpit-send-button"
-            >
-              {sending ? "Wysyłanie..." : "Wyślij"}
-            </Button>
+            <div className={actionsClassName}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenTuning}
+                className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
+                title="Dostosuj parametry generacji"
+              >
+                <Settings className="h-4 w-4 mr-1" />
+                {tuningLabel}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDraft("")}
+                className="text-zinc-300"
+              >
+                Wyczyść
+              </Button>
+              <Button
+                onClick={handleSendClick}
+                disabled={sending}
+                size="sm"
+                variant="macro"
+                className="px-6"
+                data-testid="cockpit-send-button"
+              >
+                {sending ? "Wysyłanie..." : "Wyślij"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -390,19 +467,17 @@ export function CockpitHome({
   variant?: "reference" | "home";
 }) {
   const [isClientReady, setIsClientReady] = useState(false);
-  const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
     setIsClientReady(true);
   }, []);
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setSystemTime(formatSystemClock(new Date()));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
   const showReferenceSections = variant === "reference";
   const showSharedSections = variant === "reference" || variant === "home";
+  const [showArtifacts, setShowArtifacts] = useState(true);
+  useEffect(() => {
+    setShowArtifacts(true);
+  }, [showReferenceSections]);
   const [labMode, setLabMode] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("normal");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [llmActionPending, setLlmActionPending] = useState<string | null>(null);
@@ -443,6 +518,23 @@ export function CockpitHome({
     null,
   );
   const [optimisticRequests, setOptimisticRequests] = useState<OptimisticRequestState[]>([]);
+  const [simpleStreams, setSimpleStreams] = useState<Record<
+    string,
+    { text: string; status: string; done: boolean }
+  >>({});
+  const [simpleRequestDetails, setSimpleRequestDetails] = useState<Record<
+    string,
+    HistoryRequestDetail
+  >>({});
+  const uiTimingsRef = useRef<Map<
+    string,
+    { t0: number; historyMs?: number; ttftMs?: number }
+  >>(new Map());
+  const uiTimingKeyMapRef = useRef<Map<string, string>>(new Map());
+  const [uiTimingsByRequest, setUiTimingsByRequest] = useState<Record<
+    string,
+    { historyMs?: number; ttftMs?: number }
+  >>({});
   const [lastResponseDurationMs, setLastResponseDurationMs] = useState<number | null>(null);
   const [responseDurations, setResponseDurations] = useState<number[]>([]);
   const lastTelemetryRefreshRef = useRef<string | null>(null);
@@ -554,13 +646,17 @@ export function CockpitHome({
     ],
     [],
   );
-  const { data: liveMetrics, loading: metricsLoading } = useMetrics();
+  const {
+    data: liveMetrics,
+    loading: metricsLoading,
+    refresh: refreshMetrics,
+  } = useMetrics(0);
   const metrics = liveMetrics ?? initialData.metrics ?? null;
-  const { data: liveTasks, refresh: refreshTasks } = useTasks();
+  const { data: liveTasks, refresh: refreshTasks } = useTasks(0);
   const tasks = liveTasks ?? initialData.tasks ?? null;
-  const { data: liveQueue, loading: queueLoading, refresh: refreshQueue } = useQueueStatus();
+  const { data: liveQueue, loading: queueLoading, refresh: refreshQueue } = useQueueStatus(0);
   const queue = liveQueue ?? initialData.queue ?? null;
-  const { data: liveServices } = useServiceStatus();
+  const { data: liveServices, refresh: refreshServices } = useServiceStatus();
   const {
     data: liveLlmServers,
     loading: llmServersLoading,
@@ -577,12 +673,184 @@ export function CockpitHome({
   const models = liveModels ?? initialData.models ?? null;
   const { data: liveGit, refresh: refreshGit } = useGitStatus();
   const git = liveGit ?? initialData.gitStatus ?? null;
-  const { data: liveTokenMetrics, loading: tokenMetricsLoading } = useTokenMetrics();
+  const {
+    data: liveTokenMetrics,
+    loading: tokenMetricsLoading,
+    refresh: refreshTokenMetrics,
+  } = useTokenMetrics(0);
   const tokenMetrics = liveTokenMetrics ?? initialData.tokenMetrics ?? null;
-  const { data: liveHistory, loading: historyLoading, refresh: refreshHistory } = useHistory(6);
+  const { data: liveHistory, loading: historyLoading, refresh: refreshHistory } = useHistory(6, 0);
   const history = liveHistory ?? initialData.history ?? null;
-  const { data: sessionHistoryData } = useSessionHistory(sessionId, 10000);
-  const sessionHistory = sessionHistoryData?.history ?? [];
+  const { data: sessionHistoryData, refresh: refreshSessionHistory } =
+    useSessionHistory(sessionId, 0);
+  const sessionHistory = useMemo(
+    () => sessionHistoryData?.history ?? [],
+    [sessionHistoryData],
+  );
+  type SessionHistoryEntry = {
+    role?: string;
+    content?: string;
+    session_id?: string;
+    request_id?: string;
+    timestamp?: string;
+  };
+  const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
+  const sessionEntryKey = useCallback((entry: SessionHistoryEntry) => {
+    const role = entry.role ?? "user";
+    const requestId = entry.request_id ?? "no-request";
+    if (requestId !== "no-request") {
+      return `${requestId}:${role}`;
+    }
+    const content = entry.content ?? "";
+    return `no-request:${role}:${content}`;
+  }, []);
+  const enqueueOptimisticRequest = useCallback((
+    prompt: string,
+    forced?: { tool?: string; provider?: string; simpleMode?: boolean },
+  ) => {
+    const entry: OptimisticRequestState = {
+      clientId: createOptimisticId(),
+      requestId: null,
+      prompt,
+      createdAt: new Date().toISOString(),
+      startedAt: Date.now(),
+      confirmed: false,
+      forcedTool: forced?.tool ?? null,
+      forcedProvider: forced?.provider ?? null,
+      simpleMode: forced?.simpleMode ?? false,
+      chatMode,
+    };
+    setOptimisticRequests((prev) => [...prev, entry]);
+    uiTimingsRef.current.set(entry.clientId, { t0: entry.startedAt });
+    return entry.clientId;
+  }, []);
+
+  const linkOptimisticRequest = useCallback((clientId: string, requestId: string | null) => {
+    if (!clientId) return;
+    setOptimisticRequests((prev) =>
+      prev.map((entry) =>
+        entry.clientId === clientId
+          ? {
+              ...entry,
+              requestId: requestId ?? entry.requestId ?? entry.clientId,
+              confirmed: true,
+            }
+          : entry,
+      ),
+    );
+    if (requestId) {
+      setLocalSessionHistory((prev) =>
+        prev.map((entry) =>
+          entry.request_id === clientId
+            ? { ...entry, request_id: requestId }
+            : entry,
+        ),
+      );
+    }
+    if (requestId) {
+      const existing = uiTimingsRef.current.get(clientId);
+      if (existing) {
+        uiTimingsRef.current.delete(clientId);
+        uiTimingsRef.current.set(requestId, existing);
+        uiTimingKeyMapRef.current.set(clientId, requestId);
+        setUiTimingsByRequest((prev) => ({
+          ...prev,
+          [requestId]: {
+            historyMs: existing.historyMs,
+            ttftMs: existing.ttftMs,
+          },
+        }));
+      } else {
+        uiTimingKeyMapRef.current.set(clientId, requestId);
+      }
+    }
+  }, []);
+
+  const dropOptimisticRequest = useCallback((clientId: string) => {
+    if (!clientId) return;
+    setOptimisticRequests((prev) => prev.filter((entry) => entry.clientId !== clientId));
+    const mapped = uiTimingKeyMapRef.current.get(clientId);
+    uiTimingKeyMapRef.current.delete(clientId);
+    if (mapped) {
+      uiTimingsRef.current.delete(mapped);
+      setUiTimingsByRequest((prev) => {
+        const next = { ...prev };
+        delete next[mapped];
+        return next;
+      });
+    } else {
+      uiTimingsRef.current.delete(clientId);
+    }
+  }, []);
+  const lastSessionIdRef = useRef<string | null>(null);
+  const [bootId, setBootId] = useState<string | null>(null);
+  const sessionHistoryStorageKey =
+    sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const storedBootId = window.localStorage.getItem("venom-backend-boot-id");
+      setBootId(storedBootId);
+    } catch {
+      setBootId(null);
+    }
+  }, [sessionId]);
+  useEffect(() => {
+    if (!bootId) return;
+    setLocalSessionHistory([]);
+  }, [bootId]);
+  useEffect(() => {
+    if (!sessionId) return;
+    if (lastSessionIdRef.current && lastSessionIdRef.current !== sessionId) {
+      setLocalSessionHistory([]);
+    }
+    lastSessionIdRef.current = sessionId;
+    if (sessionHistoryStorageKey) {
+      try {
+        const cached = window.sessionStorage.getItem(sessionHistoryStorageKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as SessionHistoryEntry[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLocalSessionHistory(parsed);
+          }
+        }
+      } catch {
+        // ignore cache errors
+      }
+    }
+    refreshSessionHistory();
+    refreshHistory();
+  }, [sessionId, refreshSessionHistory, refreshHistory, sessionHistoryStorageKey]);
+  useEffect(() => {
+    if (!sessionId) return;
+    if (!sessionHistory.length) return;
+    setLocalSessionHistory((prev) => {
+      if (prev.length === 0) return sessionHistory;
+      const keys = new Set(prev.map(sessionEntryKey));
+      const merged = [...prev];
+      sessionHistory.forEach((entry) => {
+        const key = sessionEntryKey(entry);
+        if (!keys.has(key)) {
+          keys.add(key);
+          merged.push(entry);
+        }
+      });
+      return merged;
+    });
+  }, [sessionHistory, sessionId, sessionEntryKey]);
+  useEffect(() => {
+    if (!sessionHistoryStorageKey) return;
+    if (localSessionHistory.length === 0) return;
+    try {
+      const snapshot = localSessionHistory.slice(-200);
+      window.sessionStorage.setItem(
+        sessionHistoryStorageKey,
+        JSON.stringify(snapshot),
+      );
+    } catch {
+      // ignore cache errors
+    }
+  }, [localSessionHistory, sessionHistoryStorageKey]);
   const { data: learningLogs, loading: learningLoading, error: learningError } =
     useLearningLogs(6);
   const { data: feedbackLogs, loading: feedbackLoading, error: feedbackError } =
@@ -655,8 +923,52 @@ export function CockpitHome({
   const { streams: taskStreams } = useTaskStream(trackedRequestIds, {
     enabled: isClientReady && trackedRequestIds.length > 0,
     throttleMs: 250,
+    onEvent: (event) => {
+      if (!event.taskId || !event.result) return;
+      const timing = uiTimingsRef.current.get(event.taskId);
+      if (!timing || timing.ttftMs !== undefined) return;
+      const ttftMs = Date.now() - timing.t0;
+      recordUiTiming(event.taskId, { ttftMs });
+      console.info(`[TTFT] ${event.taskId}: ${ttftMs}ms`);
+    },
   });
-  const { data: liveModelsUsageResponse } = useModelsUsage(10000);
+  const updateSimpleStream = useCallback((
+    clientId: string,
+    patch: { text?: string; status?: string; done?: boolean },
+  ) => {
+    setSimpleStreams((prev) => {
+      const existing = prev[clientId] ?? { text: "", status: "W toku", done: false };
+      return {
+        ...prev,
+        [clientId]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
+  }, []);
+  const recordUiTiming = useCallback((
+    key: string,
+    patch: { historyMs?: number; ttftMs?: number },
+  ) => {
+    const mapped = uiTimingKeyMapRef.current.get(key);
+    const targetKey = mapped ?? key;
+    const current = uiTimingsRef.current.get(targetKey) ?? uiTimingsRef.current.get(key);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    uiTimingsRef.current.set(targetKey, next);
+    setUiTimingsByRequest((prev) => ({
+      ...prev,
+      [targetKey]: {
+        historyMs: next.historyMs,
+        ttftMs: next.ttftMs,
+      },
+    }));
+  }, []);
+  const {
+    data: liveModelsUsageResponse,
+    refresh: refreshModelsUsage,
+  } = useModelsUsage(0);
   const modelsUsageResponse =
     liveModelsUsageResponse ?? initialData.modelsUsage ?? null;
   const { connected, entries } = useTelemetryFeed();
@@ -1057,11 +1369,12 @@ export function CockpitHome({
     let latestDuration: number | null = null;
     setOptimisticRequests((prev) => {
       if (prev.length === 0) return prev;
+      const terminalStatuses = new Set(["COMPLETED", "FAILED", "LOST"]);
       let mutated = false;
       const next = prev.filter((entry) => {
         if (!entry.requestId) return true;
         const match = history.find((item) => item.request_id === entry.requestId);
-        if (match) {
+        if (match && terminalStatuses.has(match.status)) {
           mutated = true;
           const finishTs = match.finished_at ?? match.created_at ?? entry.createdAt;
           if (finishTs) {
@@ -1099,9 +1412,24 @@ export function CockpitHome({
       refreshQueue();
       refreshTasks();
       refreshHistory();
+      refreshSessionHistory();
+      refreshMetrics();
+      refreshTokenMetrics();
+      refreshModelsUsage();
+      refreshServices();
     }, 250);
     return () => clearTimeout(debounce);
-  }, [entries, refreshQueue, refreshTasks, refreshHistory]);
+  }, [
+    entries,
+    refreshQueue,
+    refreshTasks,
+    refreshHistory,
+    refreshSessionHistory,
+    refreshMetrics,
+    refreshTokenMetrics,
+    refreshModelsUsage,
+    refreshServices,
+  ]);
 
   useEffect(() => {
     const activeIds = new Set(Object.keys(taskStreams));
@@ -1121,13 +1449,89 @@ export function CockpitHome({
       if (!terminalStatuses.has(state.status)) continue;
       if (streamCompletionRef.current.has(taskId)) continue;
       streamCompletionRef.current.add(taskId);
+      const optimisticEntry = optimisticRequests.find((entry) => entry.requestId === taskId);
+      if (optimisticEntry) {
+        const assistantText =
+          state.result?.trim() ||
+          (state.logs?.length ? state.logs[state.logs.length - 1] : "") ||
+          "Brak odpowiedzi.";
+        const timestamp = new Date().toISOString();
+        setLocalSessionHistory((prev) => {
+          let hasUser = false;
+          let hasAssistant = false;
+          const next = prev.map((entry) => {
+            if (entry.request_id !== taskId) return entry;
+            if (entry.role === "user") {
+              hasUser = true;
+              return entry;
+            }
+            if (entry.role === "assistant") {
+              hasAssistant = true;
+              return {
+                ...entry,
+                content: assistantText,
+                timestamp,
+              };
+            }
+            return entry;
+          });
+          if (!hasUser) {
+            next.push({
+              role: "user",
+              content: optimisticEntry.prompt,
+              request_id: taskId,
+              timestamp,
+              session_id: sessionId ?? undefined,
+            });
+          }
+          if (!hasAssistant) {
+            next.push({
+              role: "assistant",
+              content: assistantText,
+              request_id: taskId,
+              timestamp,
+              session_id: sessionId ?? undefined,
+            });
+          }
+          return next;
+        });
+        window.setTimeout(() => {
+          dropOptimisticRequest(optimisticEntry.clientId);
+        }, 200);
+        const duration = Date.now() - optimisticEntry.startedAt;
+        if (Number.isFinite(duration)) {
+          setLastResponseDurationMs(duration);
+          setResponseDurations((prev) => {
+            const next = [...prev, duration];
+            return next.slice(-10);
+          });
+        }
+      }
       shouldRefresh = true;
     }
     if (shouldRefresh) {
       refreshHistory();
       refreshTasks();
+      refreshSessionHistory();
+      refreshMetrics();
+      refreshTokenMetrics();
+      refreshModelsUsage();
+      refreshServices();
     }
-  }, [taskStreams, refreshHistory, refreshTasks]);
+  }, [
+    taskStreams,
+    refreshHistory,
+    refreshTasks,
+    refreshSessionHistory,
+    refreshMetrics,
+    refreshTokenMetrics,
+    refreshModelsUsage,
+    refreshServices,
+    optimisticRequests,
+    dropOptimisticRequest,
+    sessionEntryKey,
+    sessionId,
+  ]);
 
   const tasksPreview = (tasks || []).slice(0, 4);
   const fallbackAgents: ServiceStatus[] = [
@@ -1157,9 +1561,47 @@ export function CockpitHome({
         ? `${usageMetrics.disk_usage_percent.toFixed(1)}%`
         : null;
   const sessionCostValue = formatUsd(tokenMetrics?.session_cost_usd);
+  const requestModeById = useMemo(() => {
+    const modeMap = new Map<string, string>();
+    optimisticRequests.forEach((entry) => {
+      const id = entry.requestId ?? entry.clientId;
+      if (!id) return;
+      if (entry.simpleMode) {
+        modeMap.set(id, "Direct");
+        return;
+      }
+      const label =
+        entry.chatMode === "complex"
+          ? "Complex"
+          : entry.chatMode === "normal"
+            ? "Normal"
+            : entry.chatMode === "direct"
+              ? "Direct"
+              : null;
+      if (label) {
+        modeMap.set(id, label);
+      }
+    });
+    Object.keys(simpleRequestDetails).forEach((id) => {
+      if (!modeMap.has(id)) {
+        modeMap.set(id, "Direct");
+      }
+    });
+    return modeMap;
+  }, [optimisticRequests, simpleRequestDetails]);
+
   const historyMessages = useMemo<ChatMessage[]>(() => {
-    if (sessionHistory.length > 0) {
-      return sessionHistory.map((entry, index) => {
+    const resolvedHistory =
+      localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
+    if (resolvedHistory.length > 0) {
+      const seen = new Set<string>();
+      const deduped = resolvedHistory.filter((entry) => {
+        const key = sessionEntryKey(entry);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return deduped.map((entry, index) => {
         const role = entry.role === "assistant" ? "assistant" : "user";
         const requestId = entry.request_id ?? null;
         const timestamp = entry.timestamp ?? new Date().toISOString();
@@ -1197,6 +1639,7 @@ export function CockpitHome({
         matchedTask?.created_at ||
         item.finished_at ||
         item.created_at;
+      const modeLabel = requestModeById.get(item.request_id) ?? null;
       return [
         {
           bubbleId: `${item.request_id}-prompt`,
@@ -1209,6 +1652,7 @@ export function CockpitHome({
           pending: false,
           forcedTool: item.forced_tool ?? null,
           forcedProvider: item.forced_provider ?? null,
+          modeLabel,
         },
         {
           bubbleId: `${item.request_id}-response`,
@@ -1221,28 +1665,75 @@ export function CockpitHome({
           pending: false,
           forcedTool: item.forced_tool ?? null,
           forcedProvider: item.forced_provider ?? null,
+          modeLabel,
         },
       ];
     });
-  }, [history, sessionHistory, findTaskMatch]);
+  }, [
+    history,
+    localSessionHistory,
+    sessionHistory,
+    findTaskMatch,
+    sessionEntryKey,
+    requestModeById,
+  ]);
 
   const optimisticMessages = useMemo<ChatMessage[]>(() => {
+    const historySnapshot =
+      localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
     return optimisticRequests.flatMap((entry) => {
       const baseId = entry.requestId ?? entry.clientId;
+      const simpleStream = entry.simpleMode ? simpleStreams[entry.clientId] : null;
       const stream = entry.requestId ? taskStreams[entry.requestId] : null;
-      const assistantText =
-        stream?.result && stream.result.trim().length > 0
+      const assistantText = entry.simpleMode
+        ? simpleStream?.text ?? ""
+        : stream?.result && stream.result.trim().length > 0
           ? stream.result
           : stream?.logs && stream.logs.length > 0
-            ? stream.logs[stream.logs.length - 1] ?? "Generuję odpowiedź…"
-            : "Generuję odpowiedź…";
-      const assistantStatus =
-        stream?.status ??
-        (stream?.error ? "Błąd strumienia" : stream ? "W toku" : "W kolejce");
-      const isPending =
-        !stream?.status || (stream.status !== "COMPLETED" && stream.status !== "FAILED");
-      return [
-        {
+            ? stream.logs[stream.logs.length - 1] ?? "Generuję odpowiedź"
+            : "Generuję odpowiedź";
+      const assistantStatus = entry.simpleMode
+        ? simpleStream?.status ?? "W toku"
+        : stream?.status ??
+          (stream?.error ? "Błąd strumienia" : stream ? "W toku" : "W kolejce");
+      const terminal = entry.simpleMode
+        ? Boolean(simpleStream?.done)
+        : stream?.status === "COMPLETED" || stream?.status === "FAILED";
+      const pendingGraceMs = Math.min(
+        1200,
+        Math.max(300, Math.floor(assistantText.length * 4)),
+      );
+      const inGraceWindow =
+        terminal && Date.now() - entry.startedAt < pendingGraceMs;
+      const isPending = !terminal || inGraceWindow;
+      const hasUserInHistory = Boolean(
+        entry.requestId &&
+          historySnapshot.some(
+            (item) => item.request_id === entry.requestId && item.role === "user",
+          ),
+      );
+      const hasAssistantInHistory = Boolean(
+        entry.requestId &&
+          historySnapshot.some(
+            (item) =>
+              item.request_id === entry.requestId && item.role === "assistant",
+          ),
+      );
+      const showOptimisticAssistant = entry.simpleMode
+        ? !hasAssistantInHistory
+        : !(hasAssistantInHistory && !isPending);
+      const modeLabel = entry.simpleMode
+        ? "Direct"
+        : entry.chatMode === "complex"
+          ? "Complex"
+          : entry.chatMode === "normal"
+            ? "Normal"
+            : entry.chatMode === "direct"
+              ? "Direct"
+              : null;
+      const messages: ChatMessage[] = [];
+      if (!hasUserInHistory) {
+        messages.push({
           bubbleId: `${baseId}-optimistic-prompt`,
           requestId: entry.requestId,
           role: "user",
@@ -1253,8 +1744,11 @@ export function CockpitHome({
           pending: isPending,
           forcedTool: entry.forcedTool ?? null,
           forcedProvider: entry.forcedProvider ?? null,
-        },
-        {
+          modeLabel,
+        });
+      }
+      if (showOptimisticAssistant) {
+        messages.push({
           bubbleId: `${baseId}-optimistic-response`,
           requestId: entry.requestId,
           role: "assistant",
@@ -1265,10 +1759,18 @@ export function CockpitHome({
           pending: isPending,
           forcedTool: entry.forcedTool ?? null,
           forcedProvider: entry.forcedProvider ?? null,
-        },
-      ];
+          modeLabel,
+        });
+      }
+      return messages;
     });
-  }, [optimisticRequests, taskStreams]);
+  }, [
+    optimisticRequests,
+    taskStreams,
+    simpleStreams,
+    localSessionHistory,
+    sessionHistory,
+  ]);
 
   const chatMessages = useMemo(
     () => [...historyMessages, ...optimisticMessages],
@@ -1516,44 +2018,6 @@ export function CockpitHome({
     [macroActions, customMacros],
   );
 
-  const enqueueOptimisticRequest = useCallback((
-    prompt: string,
-    forced?: { tool?: string; provider?: string },
-  ) => {
-    const entry: OptimisticRequestState = {
-      clientId: createOptimisticId(),
-      requestId: null,
-      prompt,
-      createdAt: new Date().toISOString(),
-      startedAt: Date.now(),
-      confirmed: false,
-      forcedTool: forced?.tool ?? null,
-      forcedProvider: forced?.provider ?? null,
-    };
-    setOptimisticRequests((prev) => [...prev, entry]);
-    return entry.clientId;
-  }, []);
-
-  const linkOptimisticRequest = useCallback((clientId: string, requestId: string | null) => {
-    if (!clientId) return;
-    setOptimisticRequests((prev) =>
-      prev.map((entry) =>
-        entry.clientId === clientId
-          ? {
-              ...entry,
-              requestId: requestId ?? entry.requestId ?? entry.clientId,
-              confirmed: true,
-            }
-          : entry,
-      ),
-    );
-  }, []);
-
-  const dropOptimisticRequest = useCallback((clientId: string) => {
-    if (!clientId) return;
-    setOptimisticRequests((prev) => prev.filter((entry) => entry.clientId !== clientId));
-  }, []);
-
   const handleSend = useCallback(async (payload: string) => {
     const parsed = parseSlashCommand(payload);
     const trimmed = parsed.cleaned.trim();
@@ -1607,11 +2071,251 @@ export function CockpitHome({
     scrollChatToBottom();
     setSending(true);
     setMessage(null);
+    const shouldUseSimple =
+      chatMode === "direct" &&
+      !parsed.forcedTool &&
+      !parsed.forcedProvider &&
+      !parsed.sessionReset;
+    const forcedIntent = chatMode === "complex" ? "COMPLEX_PLANNING" : null;
     const clientId = enqueueOptimisticRequest(trimmed, {
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
+      simpleMode: shouldUseSimple,
     });
+    if (!shouldUseSimple) {
+      const timestamp = new Date().toISOString();
+      setLocalSessionHistory((prev) => {
+        if (
+          prev.some(
+            (entry) => entry.request_id === clientId && entry.role === "user",
+          )
+        ) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            role: "user",
+            content: trimmed,
+            request_id: clientId,
+            timestamp,
+            session_id: resolvedSession ?? undefined,
+          },
+        ];
+      });
+      const timing = uiTimingsRef.current.get(clientId);
+      if (timing && timing.historyMs === undefined) {
+        recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
+      }
+    }
     void (async () => {
+      if (shouldUseSimple) {
+        try {
+          updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
+          const maxTokens =
+            typeof generationParams?.max_tokens === "number"
+              ? generationParams.max_tokens
+              : null;
+          const temperature =
+            typeof generationParams?.temperature === "number"
+              ? generationParams.temperature
+              : null;
+          const response = await sendSimpleChatStream({
+            content: trimmed,
+            model: selectedLlmModel || null,
+            maxTokens,
+            temperature,
+            sessionId: resolvedSession,
+          });
+          const headerRequestId = response.headers.get("x-request-id");
+          const simpleRequestId = headerRequestId || `simple-${clientId}`;
+          linkOptimisticRequest(clientId, simpleRequestId);
+          const createdTimestamp = new Date().toISOString();
+          let userEntryAdded = false;
+          let lastHistoryUpdate = 0;
+          const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
+            const now = Date.now();
+            if (role === "assistant" && now - lastHistoryUpdate < 60) {
+              return;
+            }
+            lastHistoryUpdate = now;
+            setLocalSessionHistory((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex(
+                (entry) =>
+                  entry.request_id === simpleRequestId && entry.role === role,
+              );
+              const timestamp = role === "assistant" ? new Date().toISOString() : createdTimestamp;
+              if (idx >= 0) {
+                next[idx] = {
+                  ...next[idx],
+                  content,
+                  timestamp,
+                };
+              } else {
+                next.push({
+                  role,
+                  content,
+                  request_id: simpleRequestId,
+                  timestamp,
+                  session_id: resolvedSession ?? undefined,
+                });
+              }
+              return next;
+            });
+          };
+          if (!userEntryAdded) {
+            upsertLocalHistory("user", trimmed);
+            const timing = uiTimingsRef.current.get(clientId);
+            if (timing && timing.historyMs === undefined) {
+              recordUiTiming(clientId, { historyMs: Date.now() - timing.t0 });
+            }
+            userEntryAdded = true;
+          }
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error("Brak strumienia odpowiedzi z API.");
+          }
+          const decoder = new TextDecoder();
+          let buffer = "";
+          const startedAt = Date.now();
+          let firstChunkLogged = false;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            if (!chunk) continue;
+            buffer += chunk;
+            if (!firstChunkLogged) {
+              const timing = uiTimingsRef.current.get(simpleRequestId);
+              if (timing && timing.ttftMs === undefined) {
+                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - timing.t0 });
+              }
+              firstChunkLogged = true;
+            }
+            updateSimpleStream(clientId, { text: buffer, status: "W toku" });
+            upsertLocalHistory("assistant", buffer);
+          }
+          updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
+          const duration = Date.now() - startedAt;
+          const timestamp = new Date().toISOString();
+          const simpleModelName = selectedLlmModel || activeServerInfo?.active_model || undefined;
+          const simpleEndpoint = activeServerInfo?.active_endpoint ?? undefined;
+          setLocalSessionHistory((prev) => {
+            const next = [...prev];
+            const upsert = (role: "user" | "assistant", content: string) => {
+              const idx = next.findIndex(
+                (entry) =>
+                  entry.request_id === simpleRequestId && entry.role === role,
+              );
+              if (idx >= 0) {
+                next[idx] = {
+                  ...next[idx],
+                  content,
+                  timestamp,
+                };
+              } else {
+                next.push({
+                  role,
+                  content,
+                  request_id: simpleRequestId,
+                  timestamp,
+                  session_id: resolvedSession ?? undefined,
+                });
+              }
+            };
+            upsert("user", trimmed);
+            upsert("assistant", buffer);
+            return next;
+          });
+          const timing = uiTimingsRef.current.get(simpleRequestId);
+          const steps = [
+            timing?.historyMs !== undefined
+              ? {
+                  component: "UI",
+                  action: "submit_to_history",
+                  status: "OK",
+                  timestamp,
+                  details: `history_ms=${Math.round(timing.historyMs)}`,
+                }
+              : null,
+            timing?.ttftMs !== undefined
+              ? {
+                  component: "UI",
+                  action: "ttft",
+                  status: "OK",
+                  timestamp,
+                  details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+                }
+              : null,
+          ].filter(Boolean) as HistoryRequestDetail["steps"];
+          setSimpleRequestDetails((prev) => ({
+            ...prev,
+            [simpleRequestId]: {
+              request_id: simpleRequestId,
+              prompt: trimmed,
+              status: "COMPLETED",
+              model: simpleModelName,
+              llm_provider: "ollama",
+              llm_model: simpleModelName ?? null,
+              llm_endpoint: simpleEndpoint ?? null,
+              llm_config_hash: activeServerInfo?.config_hash ?? null,
+              llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+              forced_tool: null,
+              forced_provider: null,
+              session_id: resolvedSession ?? null,
+              created_at: timestamp,
+              finished_at: timestamp,
+              duration_seconds: Number.isFinite(duration)
+                ? Math.round((duration / 1000) * 100) / 100
+                : null,
+              steps: steps.length > 0 ? steps : undefined,
+            },
+          }));
+          try {
+            await ingestMemoryEntry({
+              text: buffer,
+              category: "assistant",
+              sessionId: resolvedSession ?? null,
+              userId: "user_default",
+              pinned: true,
+              memoryType: "fact",
+              scope: "session",
+              timestamp,
+            });
+          } catch (err) {
+            console.warn(
+              "Nie udało się zapisać pamięci dla trybu prostego:",
+              err,
+            );
+          }
+          if (Number.isFinite(duration)) {
+            setLastResponseDurationMs(duration);
+            setResponseDurations((prev) => [...prev, duration].slice(-10));
+          }
+          window.setTimeout(() => {
+            dropOptimisticRequest(clientId);
+            setSimpleStreams((prev) => {
+              const next = { ...prev };
+              delete next[clientId];
+              return next;
+            });
+          }, 200);
+        } catch (err) {
+          updateSimpleStream(clientId, {
+            text: err instanceof Error ? err.message : "Błąd trybu prostego.",
+            status: "FAILED",
+            done: true,
+          });
+          dropOptimisticRequest(clientId);
+          setMessage(
+            err instanceof Error ? err.message : "Nie udało się wysłać zadania",
+          );
+        } finally {
+          setSending(false);
+        }
+        return;
+      }
       try {
         const res = await sendTask(
           trimmed,
@@ -1626,6 +2330,7 @@ export function CockpitHome({
             tool: parsed.forcedTool,
             provider: parsed.forcedProvider,
           },
+          forcedIntent,
           language,
           resolvedSession,
           "session",
@@ -1633,7 +2338,12 @@ export function CockpitHome({
         const resolvedId = res.task_id ?? null;
         linkOptimisticRequest(clientId, resolvedId);
         setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
-        await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
+        await Promise.all([
+          refreshTasks(),
+          refreshQueue(),
+          refreshHistory(),
+          refreshSessionHistory(),
+        ]);
       } catch (err) {
         dropOptimisticRequest(clientId);
         setMessage(
@@ -1648,13 +2358,19 @@ export function CockpitHome({
     enqueueOptimisticRequest,
     labMode,
     generationParams,
+    chatMode,
+    selectedLlmModel,
     linkOptimisticRequest,
     dropOptimisticRequest,
+    updateSimpleStream,
     refreshTasks,
     refreshQueue,
     refreshHistory,
+    refreshSessionHistory,
     activeServerInfo?.config_hash,
     activeServerInfo?.active_server,
+    activeServerInfo?.active_endpoint,
+    activeServerInfo?.active_model,
     activeServerInfo?.runtime_id,
     refreshActiveServer,
     language,
@@ -1721,16 +2437,17 @@ export function CockpitHome({
           macro.content,
           !labMode,
           null,
-        {
-          configHash: activeServerInfo?.config_hash ?? null,
-          runtimeId: activeServerInfo?.runtime_id ?? null,
-        },
-        null,
-        null,
-        language,
-        sessionId,
-        "session",
-      );
+          {
+            configHash: activeServerInfo?.config_hash ?? null,
+            runtimeId: activeServerInfo?.runtime_id ?? null,
+          },
+          null,
+          null,
+          null,
+          language,
+          sessionId,
+          "session",
+        );
         linkOptimisticRequest(clientId, res.task_id ?? null);
         setMessage(`Makro ${macro.label} wysłane: ${res.task_id ?? "w toku…"}`);
         await Promise.all([refreshTasks(), refreshQueue(), refreshHistory()]);
@@ -1840,6 +2557,12 @@ export function CockpitHome({
     setHistoryError(null);
     setCopyStepsMessage(null);
     setSelectedTask(null);
+    const localSimple = simpleRequestDetails[requestId];
+    if (localSimple) {
+      setHistoryDetail(localSimple);
+      setLoadingHistory(false);
+      return;
+    }
     setLoadingHistory(true);
     const fallback = findTaskMatch(requestId, prompt);
     try {
@@ -1873,7 +2596,7 @@ export function CockpitHome({
     } finally {
       setLoadingHistory(false);
     }
-  }, [findTaskMatch]);
+  }, [findTaskMatch, simpleRequestDetails]);
 
   const handleCopyDetailSteps = async () => {
     if (!historyDetail?.steps || historyDetail.steps.length === 0) {
@@ -2032,6 +2755,7 @@ export function CockpitHome({
               footerActions={feedbackActions}
               footerExtra={feedbackExtra}
               forcedLabel={forcedLabel}
+              modeLabel={msg.modeLabel}
             />
           </div>
         );
@@ -2051,6 +2775,15 @@ export function CockpitHome({
     updateFeedbackState,
     historyLoading,
   ]);
+  const uiTimingEntry = selectedRequestId ? uiTimingsByRequest[selectedRequestId] : undefined;
+  const llmStartStep = useMemo(
+    () =>
+      historyDetail?.steps?.find(
+        (step) => step.component === "LLM" && step.action === "start",
+      ),
+    [historyDetail?.steps],
+  );
+  const llmStartAt = llmStartStep?.timestamp ?? null;
 
   const handleGitSync = async () => {
     if (gitAction) return;
@@ -2293,14 +3026,28 @@ export function CockpitHome({
         }
         as="h1"
         size="lg"
-        rightSlot={<Command className="page-heading-icon" />}
+        rightSlot={
+          <div className="flex items-center gap-3">
+            {!showReferenceSections && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-zinc-200"
+                onClick={() => setShowArtifacts((prev) => !prev)}
+              >
+                {showArtifacts ? "Ukryj panele" : "Pokaż panele"}
+              </Button>
+            )}
+            <Command className="page-heading-icon" />
+          </div>
+        }
       />
       <section
         className={`grid gap-6 ${
           chatFullscreen ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,420px)_1fr]"
         }`}
       >
-        {!chatFullscreen && (
+        {!chatFullscreen && showArtifacts && (
           <div className="space-y-6">
           {showReferenceSections && (
             <>
@@ -2622,6 +3369,7 @@ export function CockpitHome({
                   className="chat-history-scroll flex-1 min-h-0 space-y-4 overflow-y-auto pr-4 overscroll-contain"
                   ref={chatScrollRef}
                   onScroll={handleChatScroll}
+                  data-testid="cockpit-chat-history"
                 >
                   {chatList}
                 </div>
@@ -2630,6 +3378,8 @@ export function CockpitHome({
                     ref={composerRef}
                     onSend={handleSend}
                     sending={sending}
+                    chatMode={chatMode}
+                    setChatMode={setChatMode}
                     labMode={labMode}
                     setLabMode={setLabMode}
                     selectedLlmServer={selectedLlmServer}
@@ -2652,7 +3402,7 @@ export function CockpitHome({
               </div>
             </div>
           </motion.div>
-          {!chatFullscreen && showSharedSections && (
+          {!chatFullscreen && showSharedSections && showArtifacts && (
             <>
               <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-zinc-300">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2703,11 +3453,7 @@ export function CockpitHome({
                     hint="Aktualna skuteczność"
                     accent="green"
                   />
-                  <StatCard
-                    label="Czas"
-                    value={systemTime}
-                    hint="Aktualny czas systemowy"
-                  />
+                  <SystemTimeStat />
                   <StatCard
                     label="Kolejka"
                     value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
@@ -2838,7 +3584,7 @@ export function CockpitHome({
           )}
         </div>
       </section>
-      {!chatFullscreen && (
+      {!chatFullscreen && showArtifacts && (
         <>
           {showReferenceSections && (
             <section className="grid gap-6">
@@ -3109,14 +3855,14 @@ export function CockpitHome({
             {showReferenceSections && hiddenPromptsPanel}
           </div>
 
-      {showReferenceSections && (
+      {showReferenceSections && showArtifacts && (
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           <VoiceCommandCenter />
           <IntegrationMatrix services={services} events={entries} />
         </section>
       )}
 
-      {showSharedSections && (
+      {showSharedSections && showArtifacts && (
         <Panel
           title="Makra Cockpitu"
           description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
@@ -3200,7 +3946,7 @@ export function CockpitHome({
         </Panel>
       )}
 
-      {showReferenceSections && (
+      {showReferenceSections && showArtifacts && (
         <>
           <Panel
             title="Task Insights"
@@ -3401,6 +4147,9 @@ export function CockpitHome({
                 <span>Start: {formatDateTime(historyDetail.created_at)}</span>
                 <span>Stop: {formatDateTime(historyDetail.finished_at)}</span>
                 <span>Czas: {formatDurationSeconds(historyDetail.duration_seconds)}</span>
+                {historyDetail.session_id && (
+                  <span>Sesja: {historyDetail.session_id}</span>
+                )}
               </div>
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -3451,6 +4200,82 @@ export function CockpitHome({
                   />
                 </div>
               </div>
+              {uiTimingEntry && (
+                <div className="mt-4 rounded-2xl box-muted p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    UI timings
+                  </p>
+                  <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                    <div>
+                      <span className="text-zinc-400">submit → historia</span>
+                      <div className="text-sm text-white">
+                        {uiTimingEntry.historyMs !== undefined
+                          ? `${Math.round(uiTimingEntry.historyMs)} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">TTFT (UI)</span>
+                      <div className="text-sm text-white">
+                        {uiTimingEntry.ttftMs !== undefined
+                          ? `${Math.round(uiTimingEntry.ttftMs)} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {(historyDetail.first_token || historyDetail.streaming || llmStartAt) && (
+                <div className="mt-4 rounded-2xl box-muted p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    Backend timings
+                  </p>
+                  <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                    <div>
+                      <span className="text-zinc-400">accepted (request)</span>
+                      <div className="text-sm text-white">
+                        {formatDateTime(historyDetail.created_at)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">LLM start</span>
+                      <div className="text-sm text-white">
+                        {llmStartAt ? formatDateTime(llmStartAt) : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">first token (ms)</span>
+                      <div className="text-sm text-white">
+                        {historyDetail.first_token?.elapsed_ms !== undefined
+                          ? `${Math.round(historyDetail.first_token.elapsed_ms)} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">first chunk (ms)</span>
+                      <div className="text-sm text-white">
+                        {historyDetail.streaming?.first_chunk_ms !== undefined
+                          ? `${Math.round(historyDetail.streaming.first_chunk_ms)} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">chunks</span>
+                      <div className="text-sm text-white">
+                        {historyDetail.streaming?.chunk_count ?? "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-zinc-400">last emit (ms)</span>
+                      <div className="text-sm text-white">
+                        {historyDetail.streaming?.last_emit_ms !== undefined
+                          ? `${Math.round(historyDetail.streaming.last_emit_ms)} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {selectedTask && (
                 <div className="mt-4 rounded-2xl border border-emerald-400/10 bg-emerald-400/5 p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">
@@ -3799,6 +4624,7 @@ type ChatMessage = {
   pending?: boolean;
   forcedTool?: string | null;
   forcedProvider?: string | null;
+  modeLabel?: string | null;
 };
 
 type OptimisticRequestState = {
@@ -3810,6 +4636,8 @@ type OptimisticRequestState = {
   confirmed: boolean;
   forcedTool?: string | null;
   forcedProvider?: string | null;
+  simpleMode?: boolean;
+  chatMode?: ChatMode;
 };
 
 type TokenSample = { timestamp: string; value: number };

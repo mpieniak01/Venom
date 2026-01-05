@@ -211,6 +211,18 @@ class Orchestrator:
                 event_type=event_type, message=message, agent=agent, data=data
             )
 
+    def _trace_llm_start(self, task_id: UUID, intent: str) -> None:
+        """Zapisuje krok startu LLM dla pomiarów latencji."""
+        if not self.request_tracer:
+            return
+        self.request_tracer.add_step(
+            task_id,
+            "LLM",
+            "start",
+            status="ok",
+            details=f"intent={intent}",
+        )
+
     async def submit_task(self, request: TaskRequest) -> TaskResponse:
         """
         Przyjmuje nowe zadanie do wykonania.
@@ -239,7 +251,11 @@ class Orchestrator:
 
         # Utwórz trace dla zadania jeśli tracer jest dostępny
         if self.request_tracer:
-            self.request_tracer.create_trace(task.id, request.content)
+            self.request_tracer.create_trace(
+                task.id,
+                request.content,
+                session_id=request.session_id,
+            )
             self.request_tracer.add_step(
                 task.id,
                 "User",
@@ -255,11 +271,13 @@ class Orchestrator:
         log_message = f"Zadanie uruchomione: {datetime.now().isoformat()}"
         self.state_manager.add_log(task.id, log_message)
 
-        # Broadcast zdarzenia utworzenia zadania
-        await self._broadcast_event(
-            event_type="TASK_CREATED",
-            message=f"Utworzono nowe zadanie: {request.content[:100]}...",
-            data={"task_id": str(task.id), "content": request.content},
+        # Broadcast zdarzenia utworzenia zadania (async, bez blokowania odpowiedzi)
+        asyncio.create_task(
+            self._broadcast_event(
+                event_type="TASK_CREATED",
+                message=f"Utworzono nowe zadanie: {request.content[:100]}...",
+                data={"task_id": str(task.id), "content": request.content},
+            )
         )
 
         # Zapisz obrazy w kontekście zadania jeśli istnieją
@@ -317,8 +335,12 @@ class Orchestrator:
                     llm_endpoint=runtime_info.endpoint,
                 )
 
-        # Uruchom zadanie w tle (przekaż request zamiast tylko ID)
-        asyncio.create_task(self._run_task_with_queue(task.id, request))
+        # Fast-path bez kolejki dla prostych zadań (brak narzędzi/obrazów).
+        if self._should_use_fast_path(request):
+            asyncio.create_task(self._run_task_fastpath(task.id, request))
+        else:
+            # Uruchom zadanie w tle (przekaż request zamiast tylko ID)
+            asyncio.create_task(self._run_task_with_queue(task.id, request))
 
         logger.info(f"Zadanie {task.id} przyjęte do wykonania")
 
@@ -368,9 +390,29 @@ class Orchestrator:
 
         try:
             # Wykonaj zadanie
-            await self._run_task(task_id, request)
+            await self._run_task(task_id, request, fast_path=False)
         finally:
             # Usuń z active tasks
+            await self.queue_manager.unregister_task(task_id)
+
+    async def _run_task_fastpath(self, task_id: UUID, request: TaskRequest) -> None:
+        """
+        Fast-path: uruchamia zadanie bez oczekiwania w kolejce,
+        ale rejestruje je jako aktywne dla spójnego statusu.
+        """
+        task_handle = asyncio.current_task()
+        if task_handle is None:
+            logger.error(f"Nie można uzyskać task handle dla {task_id}")
+            await self.state_manager.update_status(
+                task_id,
+                TaskStatus.FAILED,
+                result="Błąd systemu: nie można uzyskać task handle",
+            )
+            return
+        await self.queue_manager.register_task(task_id, task_handle)
+        try:
+            await self._run_task(task_id, request, fast_path=True)
+        finally:
             await self.queue_manager.unregister_task(task_id)
 
     async def pause_queue(self) -> dict:
@@ -647,9 +689,36 @@ class Orchestrator:
         """Delegacja do session_handler."""
         self.session_handler.append_session_history(task_id, role, content, session_id)
 
-    def _build_session_context_block(self, request: TaskRequest, task_id: UUID) -> str:
+    def _build_session_context_block(
+        self,
+        request: TaskRequest,
+        task_id: UUID,
+        include_memory: bool = True,
+    ) -> str:
         """Delegacja do session_handler."""
-        return self.session_handler.build_session_context_block(request, task_id)
+        return self.session_handler.build_session_context_block(
+            request, task_id, include_memory=include_memory
+        )
+
+    def _should_use_fast_path(self, request: TaskRequest) -> bool:
+        """Fast-path dla prostych zadań (bez narzędzi/obrazów)."""
+        if not request.content:
+            return False
+        if request.images:
+            return False
+        if request.forced_tool or request.forced_provider:
+            return False
+        return len(request.content) <= 500
+
+    async def _trace_step_async(
+        self, task_id: UUID, actor: str, action: str, **kwargs
+    ) -> None:
+        if not self.request_tracer:
+            return
+        try:
+            self.request_tracer.add_step(task_id, actor, action, **kwargs)
+        except Exception as exc:  # pragma: no cover - log only
+            logger.debug("Tracer step failed: %s", exc)
 
     async def _apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str
@@ -659,7 +728,12 @@ class Orchestrator:
             task_id, request, result, self.intent_manager
         )
 
-    async def _run_task(self, task_id: UUID, request: TaskRequest) -> None:
+    async def _run_task(
+        self,
+        task_id: UUID,
+        request: TaskRequest,
+        fast_path: bool = False,
+    ) -> None:
         """
         Wykonuje zadanie w tle.
 
@@ -674,7 +748,7 @@ class Orchestrator:
         tool_required = False
         forced_tool = request.forced_tool
         forced_provider = request.forced_provider
-        forced_intent = None
+        forced_intent = request.forced_intent
 
         try:
             # Pobierz zadanie
@@ -692,15 +766,19 @@ class Orchestrator:
             # Aktualizuj tracer
             if self.request_tracer:
                 self.request_tracer.update_status(task_id, TraceStatus.PROCESSING)
-                self.request_tracer.add_step(
-                    task_id, "Orchestrator", "start_processing", status="ok"
+                asyncio.create_task(
+                    self._trace_step_async(
+                        task_id, "Orchestrator", "start_processing", status="ok"
+                    )
                 )
 
-            # Broadcast rozpoczęcia zadania
-            await self._broadcast_event(
-                event_type="TASK_STARTED",
-                message=f"Rozpoczynam przetwarzanie zadania {task_id}",
-                data={"task_id": str(task_id)},
+            # Broadcast rozpoczęcia zadania (asynchronicznie)
+            asyncio.create_task(
+                self._broadcast_event(
+                    event_type="TASK_STARTED",
+                    message=f"Rozpoczynam przetwarzanie zadania {task_id}",
+                    data={"task_id": str(task_id)},
+                )
             )
 
             logger.info(f"Rozpoczynam przetwarzanie zadania {task_id}")
@@ -721,7 +799,8 @@ class Orchestrator:
                     request.content = parsed.cleaned
                     forced_tool = parsed.forced_tool
                     forced_provider = parsed.forced_provider
-                    forced_intent = parsed.forced_intent
+                    if not forced_intent:
+                        forced_intent = parsed.forced_intent
                     if parsed.session_reset:
                         request.session_id = request.session_id or f"session-{uuid4()}"
                         self.state_manager.update_context(
@@ -739,7 +818,7 @@ class Orchestrator:
             if forced_tool and not forced_intent:
                 forced_intent = resolve_forced_intent(forced_tool)
 
-            if forced_tool or forced_provider:
+            if forced_tool or forced_provider or forced_intent:
                 self.state_manager.update_context(
                     task_id,
                     {
@@ -751,11 +830,12 @@ class Orchestrator:
                     },
                 )
                 if self.request_tracer:
-                    self.request_tracer.set_forced_route(
-                        task_id,
-                        forced_tool=forced_tool,
-                        forced_provider=forced_provider,
-                    )
+                    if forced_tool or forced_provider:
+                        self.request_tracer.set_forced_route(
+                            task_id,
+                            forced_tool=forced_tool,
+                            forced_provider=forced_provider,
+                        )
                     self.request_tracer.add_step(
                         task_id,
                         "DecisionGate",
@@ -764,9 +844,17 @@ class Orchestrator:
                         details=f"tool={forced_tool}, provider={forced_provider}, intent={forced_intent}",
                     )
 
-            # Przygotuj kontekst (treść + analiza obrazów jeśli są)
-            context = await self._prepare_context(task_id, request)
-            session_block = self._build_session_context_block(request, task_id)
+            # Przygotuj kontekst i blok sesji równolegle, żeby skrócić czas wstępny.
+            context_task = asyncio.create_task(self._prepare_context(task_id, request))
+            session_block_task = asyncio.to_thread(
+                self._build_session_context_block,
+                request,
+                task_id,
+                include_memory=not fast_path,
+            )
+            context, session_block = await asyncio.gather(
+                context_task, session_block_task
+            )
             if session_block:
                 context = session_block + "\n\n" + context
             context, trimmed = trim_to_char_limit(context, MAX_CONTEXT_CHARS)
@@ -1093,7 +1181,7 @@ class Orchestrator:
                     result = await self._generate_help_response(task_id)
 
                 # DECYZJA: Council mode vs Standard mode
-                elif self._should_use_council(context, intent):
+                elif self._should_use_council(request.content, intent):
                     # Tryb Council - autonomiczna dyskusja agentów
                     self.state_manager.add_log(
                         task_id,
@@ -1108,6 +1196,7 @@ class Orchestrator:
                             status="ok",
                             details=f"🏛️ Complex task detected (intent={intent}) -> Council Mode",
                         )
+                    self._trace_llm_start(task_id, intent)
                     result = await self.run_council(task_id, context)
                 elif intent == "CODE_GENERATION":
                     # Standardowy tryb - pętla Coder-Critic
@@ -1120,6 +1209,7 @@ class Orchestrator:
                             status="ok",
                             details="💻 Routing to Coder-Critic Review Loop",
                         )
+                    self._trace_llm_start(task_id, intent)
                     result = await self._code_generation_with_review(
                         task_id, dispatch_context
                     )
@@ -1144,6 +1234,7 @@ class Orchestrator:
                         agent="Architect",
                         data={"task_id": str(task_id)},
                     )
+                    self._trace_llm_start(task_id, intent)
                     if request.generation_params:
                         result = await self.task_dispatcher.dispatch(
                             intent,
@@ -1167,6 +1258,7 @@ class Orchestrator:
                             status="ok",
                             details=f"📤 Routing to {agent_name} (intent={intent})",
                         )
+                    self._trace_llm_start(task_id, intent)
                     if request.generation_params:
                         result = await self.task_dispatcher.dispatch(
                             intent,
@@ -1534,17 +1626,27 @@ class Orchestrator:
         # Deleguj do CodeReviewLoop
         return await self._code_review_loop.execute(task_id, user_request)
 
-    def _should_use_council(self, context: str, intent: str) -> bool:
+    def _should_use_council(
+        self,
+        content: str | None = None,
+        intent: str = "",
+        *,
+        context: str | None = None,
+    ) -> bool:
         """
         Decyduje czy użyć trybu Council dla danego zadania.
 
         Args:
-            context: Kontekst zadania
+            content: Treść bieżącego zapytania
             intent: Sklasyfikowana intencja
 
         Returns:
             True jeśli należy użyć Council, False dla standardowego flow
         """
+        if content is None and context is not None:
+            content = context
+        content = content or ""
+
         # Lazy init CouncilFlow
         if self._council_flow is None:
             self._council_flow = CouncilFlow(
@@ -1556,7 +1658,7 @@ class Orchestrator:
             self.flow_router.set_council_flow(self._council_flow)
 
         # Deleguj decyzję do FlowRouter
-        return self.flow_router.should_use_council(context, intent)
+        return self.flow_router.should_use_council(content, intent)
 
     async def run_council(self, task_id: UUID, context: str) -> str:
         """

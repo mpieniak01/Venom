@@ -134,7 +134,12 @@ class SessionHandler:
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się zaktualizować historii sesji: {exc}")
 
-    def build_session_context_block(self, request: TaskRequest, task_id: UUID) -> str:
+    def build_session_context_block(
+        self,
+        request: TaskRequest,
+        task_id: UUID,
+        include_memory: bool = True,
+    ) -> str:
         """Buduje blok kontekstu sesji (metadane + historia)."""
         parts = []
         session_id = request.session_id
@@ -181,7 +186,7 @@ class SessionHandler:
                         self.session_store.set_summary(session_id, summary)
                 if summary:
                     parts.append("[STRESZCZENIE SESJI]\n" + summary)
-                if not self._testing_mode:
+                if not self._testing_mode and include_memory:
                     if self._should_include_memory(request, len(history)):
                         memory_block = self._retrieve_relevant_memory(
                             request,

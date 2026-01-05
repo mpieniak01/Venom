@@ -46,20 +46,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     let active = true;
-    try {
-      const buildId = getBuildId();
-      const storedBuild = window.localStorage.getItem(SESSION_BUILD_KEY);
-      let storedSession = window.localStorage.getItem(SESSION_ID_KEY);
-      if (!storedSession || storedBuild !== buildId) {
-        storedSession = createSessionId();
-        window.localStorage.setItem(SESSION_ID_KEY, storedSession);
-        window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
-      }
-      setSessionIdState(storedSession);
-    } catch {
-      setSessionIdState(createSessionId());
-    }
-    (async () => {
+    const syncBootId = async () => {
       try {
         const response = await fetch("/api/v1/system/status");
         if (!response.ok) return;
@@ -83,9 +70,37 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // ignore fetch failures
       }
-    })();
+    };
+    try {
+      const buildId = getBuildId();
+      const storedBuild = window.localStorage.getItem(SESSION_BUILD_KEY);
+      let storedSession = window.localStorage.getItem(SESSION_ID_KEY);
+      if (!storedSession || storedBuild !== buildId) {
+        storedSession = createSessionId();
+        window.localStorage.setItem(SESSION_ID_KEY, storedSession);
+        window.localStorage.setItem(SESSION_BUILD_KEY, buildId);
+      }
+      setSessionIdState(storedSession);
+    } catch {
+      setSessionIdState(createSessionId());
+    }
+    void syncBootId();
+    const handleFocus = () => {
+      void syncBootId();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void syncBootId();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("visibilitychange", handleVisibility);
+    const interval = window.setInterval(syncBootId, 30000);
     return () => {
       active = false;
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("visibilitychange", handleVisibility);
+      window.clearInterval(interval);
     };
   }, []);
 

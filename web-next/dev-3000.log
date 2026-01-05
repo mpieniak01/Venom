@@ -1,0 +1,22 @@
+
+> web-next@1.0.0 predev
+> node scripts/generate-meta.mjs
+
+[meta] Wrote /home/ubuntu/venom/web-next/public/meta.json -> 1.0.0 (21b8041)
+
+> web-next@1.0.0 dev
+> next dev --hostname 0.0.0.0 --port 3000
+
+   ▲ Next.js 15.5.9
+   - Local:        http://localhost:3000
+   - Network:      http://0.0.0.0:3000
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+ ✓ Ready in 1777ms
+ ○ Compiling / ...
+ ✓ Compiled / in 7.9s (1687 modules)
+ GET / 200 in 9540ms
+[?25h

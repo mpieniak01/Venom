@@ -44,14 +44,16 @@ class StreamingHandler:
         collector = metrics_module.metrics_collector
         stream_buffer: list[str] = []
         last_partial_emit = stream_start
+        chunk_count = 0
 
         def _handle_stream_chunk(text: str) -> None:
-            nonlocal first_chunk_sent, last_partial_emit
+            nonlocal first_chunk_sent, last_partial_emit, chunk_count
 
             if not text:
                 return
 
             stream_buffer.append(text)
+            chunk_count += 1
             now = time.perf_counter()
 
             # Emituj częściowe wyniki z określonym interwałem
@@ -65,6 +67,16 @@ class StreamingHandler:
                     task_id, "".join(stream_buffer)
                 )
                 last_partial_emit = now
+                elapsed_ms = int((now - stream_start) * 1000)
+                self.state_manager.update_context(
+                    task_id,
+                    {
+                        "streaming": {
+                            "chunk_count": chunk_count,
+                            "last_emit_ms": elapsed_ms,
+                        }
+                    },
+                )
 
             # Obsługa pierwszego fragmentu (first token latency)
             if first_chunk_sent:
@@ -91,6 +103,15 @@ class StreamingHandler:
                         "at": datetime.now().isoformat(),
                         "elapsed_ms": elapsed_ms,
                         "preview": preview_trimmed,
+                    }
+                },
+            )
+            self.state_manager.update_context(
+                task_id,
+                {
+                    "streaming": {
+                        "chunk_count": chunk_count,
+                        "first_chunk_ms": elapsed_ms,
                     }
                 },
             )

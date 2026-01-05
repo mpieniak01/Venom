@@ -145,14 +145,18 @@ test.describe("Venom Next Cockpit Smoke", () => {
 
   test("Quick actions sheet shows fallback when API is offline", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("topbar-quick-actions").click();
-    await expect(page.getByRole("dialog", { name: /Quick Actions/i })).toBeVisible();
+    const quickActions = page.getByTestId("topbar-quick-actions");
+    await expect(quickActions).toBeVisible();
+    await quickActions.click({ force: true });
+    await expect(page.getByTestId("quick-actions-sheet")).toBeVisible();
     const offline = page.getByTestId("queue-offline-state");
-    if ((await offline.count()) > 0) {
-      await expect(offline).toBeVisible();
-    } else {
-      await expect(page.getByTestId("queue-offline-state-online")).toBeVisible();
-    }
+    await expect
+      .poll(async () => {
+        if (await offline.isVisible()) return "offline";
+        if (await page.getByTestId("queue-offline-state-online").isVisible()) return "online";
+        return "none";
+      })
+      .not.toBe("none");
   });
 
   test("LLM panel shows server and model selectors", async ({ page }) => {

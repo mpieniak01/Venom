@@ -1,8 +1,8 @@
 import type { PlaywrightTestConfig } from "@playwright/test";
 
 const devHost = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
-// Domyślny port 3100, żeby nie kolidować z dev (3000) ani starymi procesami 3001.
-const devPort = Number(process.env.PLAYWRIGHT_PORT || 3100);
+// Domyślnie używamy istniejącej instancji na 3000 (ten sam runtime co UI).
+const devPort = Number(process.env.PLAYWRIGHT_PORT || 3000);
 const baseURL = process.env.BASE_URL || `http://${devHost}:${devPort}`;
 
 const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
@@ -28,13 +28,13 @@ const config: PlaywrightTestConfig = {
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: webServerCommand,
-    url: baseURL,
-    // Pozwala użyć już działającego serwera na porcie (lokalnie), wymusza restart w CI.
-    reuseExistingServer,
-    timeout: 120_000,
-  },
+  webServer: reuseExistingServer
+    ? undefined
+    : {
+        command: webServerCommand,
+        url: baseURL,
+        timeout: 120_000,
+      },
 };
 
 export default config;

@@ -17,6 +17,15 @@ class TaskStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class ContextUsed(BaseModel):
+    """Informacje o użytym kontekście w zadaniu."""
+
+    lessons: List[str] = Field(default_factory=list)  # Lista ID użytych lekcji
+    memory_entries: List[str] = Field(
+        default_factory=list
+    )  # Lista ID użytych wpisów pamięci
+
+
 class VenomTask(BaseModel):
     """Wewnętrzne przedstawienie zadania w systemie."""
 
@@ -31,6 +40,9 @@ class VenomTask(BaseModel):
     context_history: Dict[str, Any] = Field(
         default_factory=dict
     )  # Słownik kontekstu dla przekazywania danych między krokami wykonania
+    context_used: Optional[ContextUsed] = Field(
+        default=None, description="Metadane użytego kontekstu (lekcje, pamięć)"
+    )
 
 
 class TaskExtraContext(BaseModel):

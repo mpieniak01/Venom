@@ -7,7 +7,7 @@ from uuid import UUID
 import httpx
 
 from venom_core.config import SETTINGS
-from venom_core.core.models import TaskRequest
+from venom_core.core.models import ContextUsed, TaskRequest
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
 from venom_core.services.translation_service import translation_service
@@ -188,12 +188,47 @@ class SessionHandler:
                     parts.append("[STRESZCZENIE SESJI]\n" + summary)
                 if not self._testing_mode and include_memory:
                     if self._should_include_memory(request, len(history)):
-                        memory_block = self._retrieve_relevant_memory(
+                        memory_block, memory_ids = self._retrieve_relevant_memory(
                             request,
                             task.context_history.get("session", {}).get("session_id"),
                         )
                         if memory_block:
                             parts.append("[PAMIĘĆ]\n" + memory_block)
+                            # Zaktualizuj context_used w zadaniu
+                            if memory_ids:
+                                current_used = task.context_used
+
+                                # 1) Migracja starego formatu (dict) na model ContextUsed
+                                if isinstance(current_used, dict):
+                                    try:
+                                        # Bezpieczna konwersja dict -> ContextUsed, używamy tylko znanych pól
+                                        task.context_used = ContextUsed(
+                                            lessons=current_used.get("lessons", []),
+                                            memory_entries=current_used.get("memory_entries", [])
+                                        )
+                                        current_used = task.context_used
+                                    except Exception as e:
+                                        # W przypadku błędu migracji, tworzymy pusty obiekt
+                                        self.logger.warning(f"Błąd migracji context_used: {e}")
+                                        task.context_used = ContextUsed(memory_entries=memory_ids)
+                                        current_used = task.context_used
+
+                                # 2) Jeśli ContextUsed już istnieje – rozszerz listę wpisów pamięci
+                                if current_used is not None:
+                                    current_used.memory_entries.extend(memory_ids)
+                                    # Deduplikacja
+                                    current_used.memory_entries = list(
+                                        set(current_used.memory_entries)
+                                    )
+                                # 3) Brak context_used – utwórz nowy obiekt
+                                else:
+                                    task.context_used = ContextUsed(
+                                        memory_entries=memory_ids
+                                    )
+
+                                self.state_manager.update_context(
+                                    task_id, {"context_used": task.context_used}
+                                )
             if history:
                 lines = []
                 for entry in history[-SESSION_HISTORY_LIMIT:]:
@@ -385,13 +420,13 @@ class SessionHandler:
 
     def _retrieve_relevant_memory(
         self, request: TaskRequest, session_id: Optional[str]
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         """Pobiera top-3 wpisy z pamięci wektorowej dopasowane do zapytania."""
         if self._testing_mode:
-            return ""
+            return "", []
         query = request.content or ""
         if not query.strip():
-            return ""
+            return "", []
         try:
             results = self.memory_skill.vector_store.search(query, limit=5)
             filtered = []
@@ -406,19 +441,25 @@ class SessionHandler:
                 filtered.append(item)
             top = filtered[:3] if filtered else results[:3]
             if not top:
-                return ""
+                return "", []
             lines = []
+            ids = []
             for idx, item in enumerate(top, 1):
                 txt = item.get("text", "")
                 meta = item.get("metadata") or {}
+                # ID wpisu (jeśli dostępne w metadanych lub id rekordu)
+                entry_id = item.get("id") or meta.get("id")
+                if entry_id:
+                    ids.append(str(entry_id))
+
                 if len(txt) > 400:
                     txt = txt[:400] + "..."
                 tag = meta.get("type", "fact")
                 lines.append(f"[{idx}] ({tag}) {txt}")
-            return "\n".join(lines)
+            return "\n".join(lines), ids
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się pobrać pamięci: {exc}")
-            return ""
+            return "", []
 
     async def apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str, intent_manager

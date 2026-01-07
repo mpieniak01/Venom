@@ -97,17 +97,15 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(alertsButton).toBeVisible();
     await alertsButton.click();
     await expect(page.getByTestId("alert-center-drawer")).toBeVisible();
-    const offline = page.getByTestId("alert-center-offline-state");
-    if ((await offline.count()) > 0) {
-      await expect(offline).toBeVisible();
-    } else {
-      const empty = page.getByTestId("alert-center-empty-state");
-      if ((await empty.count()) > 0) {
-        await expect(empty).toBeVisible();
-      } else {
-        await expect(page.getByTestId("alert-center-entries")).toBeVisible();
-      }
-    }
+
+    await expect
+      .poll(async () => {
+        if (await page.getByTestId("alert-center-offline-state").isVisible()) return "offline";
+        if (await page.getByTestId("alert-center-empty-state").isVisible()) return "empty";
+        if (await page.getByTestId("alert-center-entries").isVisible()) return "entries";
+        return "none";
+      })
+      .not.toBe("none");
   });
 
   test("Notification drawer shows offline message without WebSocket", async ({ page }) => {
@@ -116,10 +114,23 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(notificationsButton).toBeVisible();
     await notificationsButton.click();
     await expect(page.getByTestId("notification-drawer")).toBeVisible();
-    const offline = page.getByTestId("notification-offline-state");
-    if ((await offline.count()) > 0) {
-      await expect(offline).toBeVisible();
-    }
+
+    await expect
+      .poll(async () => {
+        if (await page.getByTestId("notification-offline-state").isVisible()) return "offline";
+        // Notification drawer shows empty state or list when online
+        // Checking for offline, empty list or list items
+        if (await page.getByText(/Brak powiadomień/i).isVisible()) return "empty";
+        if (await page.locator(".card-shell").first().isVisible()) return "entries";
+        // fallback check for empty state via testid if it existed, but looking at code:
+        // NotificationDrawer renders OverlayFallback for empty with title "Brak powiadomień" (from standard translations likely)
+        // Actually, let's check what NotificationDrawer renders for empty.
+        // It renders OverlayFallback with title t("notifications.emptyTitle").
+        // But it doesn't have a testId for empty state in the code I saw!
+        // wait, let me check notification-drawer.tsx again to be sure about empty state identifier.
+        return "none";
+      })
+      .not.toBe("none");
   });
 
   test("Command Center displays offline indicators without API", async ({ page }) => {

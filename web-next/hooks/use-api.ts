@@ -175,7 +175,7 @@ function usePolling<T>(
       loading: false,
       refreshing: false,
       error: null,
-      refresh: async () => {},
+      refresh: async () => { },
     }),
     [],
   );
@@ -217,7 +217,7 @@ function usePolling<T>(
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      if (pollingDisabled) return () => {};
+      if (pollingDisabled) return () => { };
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         if (entry.interval > 0 && !entry.timer) {
@@ -253,12 +253,12 @@ function usePolling<T>(
       pollingDisabled
         ? disabledState
         : {
-            data: snapshot.data,
-            loading: snapshot.loading,
-            refreshing: snapshot.refreshing,
-            error: snapshot.error,
-            refresh,
-          },
+          data: snapshot.data,
+          loading: snapshot.loading,
+          refreshing: snapshot.refreshing,
+          error: snapshot.error,
+          refresh,
+        },
     [
       pollingDisabled,
       disabledState,
@@ -971,4 +971,80 @@ export async function updateModelConfig(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+export function useLessonPruning() {
+  const pruneByTTL = useCallback(async (days: number) => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/ttl?days=${days}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by TTL: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const pruneByTag = useCallback(async (tag: string) => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/tag?tag=${encodeURIComponent(tag)}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by tag: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const pruneByDate = useCallback(async (fromDate: string, toDate: string) => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/range?from_date=${fromDate}&to_date=${toDate}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by date range: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const pruneLatest = useCallback(async (count: number) => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/latest?count=${count}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune latest lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const dedupeLessons = useCallback(async () => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        "/api/v1/lessons/dedupe",
+        { method: "POST" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to deduplicate lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const purgeLessons = useCallback(async () => {
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        "/api/v1/lessons/purge",
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to purge all lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  return {
+    pruneByTTL,
+    pruneByTag,
+    pruneByDate,
+    pruneLatest,
+    dedupeLessons,
+    purgeLessons,
+  };
 }

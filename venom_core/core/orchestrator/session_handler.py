@@ -200,8 +200,18 @@ class SessionHandler:
 
                                 # 1) Migracja starego formatu (dict) na model ContextUsed
                                 if isinstance(current_used, dict):
-                                    task.context_used = ContextUsed(**current_used)
-                                    current_used = task.context_used
+                                    try:
+                                        # Bezpieczna konwersja dict -> ContextUsed, używamy tylko znanych pól
+                                        task.context_used = ContextUsed(
+                                            lessons=current_used.get("lessons", []),
+                                            memory_entries=current_used.get("memory_entries", [])
+                                        )
+                                        current_used = task.context_used
+                                    except Exception as e:
+                                        # W przypadku błędu migracji, tworzymy pusty obiekt
+                                        self.logger.warning(f"Błąd migracji context_used: {e}")
+                                        task.context_used = ContextUsed(memory_entries=memory_ids)
+                                        current_used = task.context_used
 
                                 # 2) Jeśli ContextUsed już istnieje – rozszerz listę wpisów pamięci
                                 if current_used is not None:

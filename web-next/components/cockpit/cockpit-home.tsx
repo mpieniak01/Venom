@@ -1769,7 +1769,7 @@ export function CockpitHome({
           prompt: entry.prompt,
           pending: isPending,
           forcedTool: entry.forcedTool ?? null,
-          forcedProvider: entry.forcedProvider ?? null, // Fixed trailing comma
+          forcedProvider: entry.forcedProvider ?? null,
           modeLabel,
           contextUsed,
         });

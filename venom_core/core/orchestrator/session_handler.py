@@ -7,7 +7,7 @@ from uuid import UUID
 import httpx
 
 from venom_core.config import SETTINGS
-from venom_core.core.models import TaskRequest
+from venom_core.core.models import ContextUsed, TaskRequest
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
 from venom_core.services.translation_service import translation_service
@@ -196,22 +196,22 @@ class SessionHandler:
                             parts.append("[PAMIĘĆ]\n" + memory_block)
                             # Zaktualizuj context_used w zadaniu
                             if memory_ids:
-                                current_used = task.context_used or {}
-                                # Jeśli to dict (z poprzedniej wersji/migracji)
-                                if isinstance(current_used, dict):
-                                    # Pomiń jeśli jest dict, bo teraz używamy modelu.
-                                    # W praktyce StateManager już powinien to obsłużyć.
-                                    pass
-                                elif current_used:
-                                    task.context_used.memory_entries.extend(memory_ids)
-                                    # Deduplikacja
-                                    task.context_used.memory_entries = list(
-                                        set(task.context_used.memory_entries)
-                                    )
-                                else:
-                                    # Import lokalny by uniknąć cyklu
-                                    from venom_core.core.models import ContextUsed
+                                current_used = task.context_used
 
+                                # 1) Migracja starego formatu (dict) na model ContextUsed
+                                if isinstance(current_used, dict):
+                                    task.context_used = ContextUsed(**current_used)
+                                    current_used = task.context_used
+
+                                # 2) Jeśli ContextUsed już istnieje – rozszerz listę wpisów pamięci
+                                if current_used is not None:
+                                    current_used.memory_entries.extend(memory_ids)
+                                    # Deduplikacja
+                                    current_used.memory_entries = list(
+                                        set(current_used.memory_entries)
+                                    )
+                                # 3) Brak context_used – utwórz nowy obiekt
+                                else:
                                     task.context_used = ContextUsed(
                                         memory_entries=memory_ids
                                     )

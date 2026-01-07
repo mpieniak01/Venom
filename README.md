@@ -1,6 +1,6 @@
 # Venom v1.0 🐍
 
-**Venom – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
+**Venom wersja dekstop – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
 Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
 

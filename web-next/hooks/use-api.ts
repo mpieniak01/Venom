@@ -175,7 +175,7 @@ function usePolling<T>(
       loading: false,
       refreshing: false,
       error: null,
-      refresh: async () => {},
+      refresh: async () => { },
     }),
     [],
   );
@@ -217,7 +217,7 @@ function usePolling<T>(
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      if (pollingDisabled) return () => {};
+      if (pollingDisabled) return () => { };
       entry.listeners.add(listener);
       if (entry.listeners.size === 1) {
         if (entry.interval > 0 && !entry.timer) {
@@ -253,12 +253,12 @@ function usePolling<T>(
       pollingDisabled
         ? disabledState
         : {
-            data: snapshot.data,
-            loading: snapshot.loading,
-            refreshing: snapshot.refreshing,
-            error: snapshot.error,
-            refresh,
-          },
+          data: snapshot.data,
+          loading: snapshot.loading,
+          refreshing: snapshot.refreshing,
+          error: snapshot.error,
+          refresh,
+        },
     [
       pollingDisabled,
       disabledState,
@@ -971,4 +971,56 @@ export async function updateModelConfig(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+export function useLessonPruning() {
+  const pruneByTTL = useCallback(async (days: number) => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      `/api/v1/lessons/prune/ttl?days=${days}`,
+      { method: "DELETE" }
+    );
+  }, []);
+
+  const pruneByTag = useCallback(async (tag: string) => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      `/api/v1/lessons/prune/tag?tag=${encodeURIComponent(tag)}`,
+      { method: "DELETE" }
+    );
+  }, []);
+
+  const pruneByDate = useCallback(async (fromDate: string, toDate: string) => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      `/api/v1/lessons/prune/range?from_date=${fromDate}&to_date=${toDate}`,
+      { method: "DELETE" }
+    );
+  }, []);
+
+  const pruneLatest = useCallback(async (count: number) => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      `/api/v1/lessons/prune/latest?count=${count}`,
+      { method: "DELETE" }
+    );
+  }, []);
+
+  const dedupeLessons = useCallback(async () => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      "/api/v1/lessons/dedupe",
+      { method: "POST" }
+    );
+  }, []);
+
+  const purgeLessons = useCallback(async () => {
+    return apiFetch<{ deleted: number; remaining: number }>(
+      "/api/v1/lessons/purge",
+      { method: "DELETE" }
+    );
+  }, []);
+
+  return {
+    pruneByTTL,
+    pruneByTag,
+    pruneByDate,
+    pruneLatest,
+    dedupeLessons,
+    purgeLessons,
+  };
 }

@@ -91,9 +91,13 @@ export interface HistoryRequestDetail extends HistoryRequest {
     preview?: string | null;
   } | null;
   streaming?: {
-    chunk_count?: number | null;
     first_chunk_ms?: number | null;
     last_emit_ms?: number | null;
+    chunk_count?: number | null;
+  } | null;
+  context_used?: {
+    lessons?: string[];
+    memory_entries?: string[];
   } | null;
 }
 
@@ -356,9 +360,15 @@ export interface GraphScanResponse {
   stats?: Record<string, unknown>;
 }
 
+export interface LessonsStatsData {
+  total_lessons: number;
+  tag_distribution: Record<string, number>;
+  [key: string]: unknown;
+}
+
 export interface LessonsStats {
   status?: string;
-  stats?: Record<string, unknown>;
+  stats?: LessonsStatsData;
 }
 
 export interface LearningLogEntry {

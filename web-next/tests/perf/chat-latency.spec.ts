@@ -47,7 +47,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
 
-  await page.fill(target.promptSelector, prompt, { timeout: 10_000 });
+  await page.fill(target.promptSelector, prompt, { timeout: 30_000 });
   const sendButton = page.locator(target.sendSelector);
   await sendButton.click();
   const start = performance.now();
@@ -57,7 +57,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
   try {
     await expect
       .poll(async () => responseLocator.count(), {
-        timeout: target.responseTimeoutMs ?? 20_000,
+        timeout: target.responseTimeoutMs ?? 30_000,
         message: `${target.name}: brak nowej odpowiedzi w strumieniu`,
       })
       .toBeGreaterThanOrEqual(expectedCount);

@@ -20,6 +20,10 @@ export type TaskStreamEvent = {
   llmStatus?: string | null;
   llmRuntimeError?: string | null;
   context?: Record<string, unknown> | null;
+  contextUsed?: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 export type TaskStreamState = {
@@ -35,6 +39,10 @@ export type TaskStreamState = {
   llmEndpoint: string | null;
   llmStatus: string | null;
   context: Record<string, unknown> | null;
+  contextUsed: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 export type UseTaskStreamResult = {
@@ -63,6 +71,7 @@ const defaultState: TaskStreamState = {
   llmEndpoint: null,
   llmStatus: null,
   context: null,
+  contextUsed: null,
 };
 
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
@@ -252,6 +261,12 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           typeof payload.timestamp === "string" ? payload.timestamp : null;
         const derivedTaskId = typeof payload.task_id === "string" ? payload.task_id : taskId;
         const runtime = extractRuntime(payload);
+        const contextUsed =
+          (payload.context_used as {
+            lessons?: string[];
+            memory_entries?: string[];
+          } | null) ?? null;
+
         const entry: TaskStreamEvent = {
           taskId: derivedTaskId,
           event: eventName,
@@ -265,6 +280,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           llmStatus: runtime.status,
           llmRuntimeError: runtime.error,
           context: runtime.context,
+          contextUsed,
         };
 
         if (eventName === "heartbeat") {
@@ -294,7 +310,22 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           llmEndpoint: runtime.endpoint,
           llmStatus: runtime.status ?? null,
           context: runtime.context,
+          contextUsed: contextUsed ?? null, // keep existing if null? actually streaming might send partial?
+          // usually context_used comes once. If undefined in payload, we might not want to overwrite if we accumulate.
+          // But strict patch says: overwrite.
+          // However, streaming usually sends it when available.
+          // Let's assume if it is in payload, we update. If not, we might overwrite with null?
+          // Wait, extractRuntime returns full object.
+          // Here `contextUsed` is extracted from payload. If payload doesn't have it, it is null.
+          // If we want to preserve it, we should check.
+          // For now, let's just pass it. If parsing failed, it is null.
         };
+        // Re-read strategy: We merge logs, but other fields are usually replaced.
+        // If context_used is sent only once, then subsequent patches might have it null.
+        // We should probably only update if it is non-null.
+        if (contextUsed) {
+          patch.contextUsed = contextUsed;
+        }
         const isTerminal =
           eventName === "task_finished" ||
           eventName === "task_missing" ||

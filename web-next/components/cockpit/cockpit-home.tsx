@@ -339,9 +339,8 @@ const ChatComposer = memo(
                   key={suggestion.id}
                   type="button"
                   onClick={() => applySlashSuggestion(suggestion)}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${
-                    index === slashIndex ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/5"
-                  }`}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition ${index === slashIndex ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/5"
+                    }`}
                 >
                   <span className="font-semibold text-zinc-100">{suggestion.command}</span>
                   <span className="text-[11px] text-zinc-500">{suggestion.detail}</span>
@@ -372,10 +371,10 @@ const ChatComposer = memo(
               style={
                 !compactControls
                   ? {
-                      width: `${modelMinWidthCh}ch`,
-                      minWidth: `${modelMinWidthCh}ch`,
-                      maxWidth: `${modelMinWidthCh}ch`,
-                    }
+                    width: `${modelMinWidthCh}ch`,
+                    minWidth: `${modelMinWidthCh}ch`,
+                    maxWidth: `${modelMinWidthCh}ch`,
+                  }
                   : undefined
               }
             >
@@ -732,10 +731,10 @@ export function CockpitHome({
       prev.map((entry) =>
         entry.clientId === clientId
           ? {
-              ...entry,
-              requestId: requestId ?? entry.requestId ?? entry.clientId,
-              confirmed: true,
-            }
+            ...entry,
+            requestId: requestId ?? entry.requestId ?? entry.clientId,
+            confirmed: true,
+          }
           : entry,
       ),
     );
@@ -996,8 +995,8 @@ export function CockpitHome({
       models.providers && selectedLlmServer in models.providers
         ? models.providers[selectedLlmServer] ?? []
         : (models.models ?? []).filter(
-            (model) => normalProvider(model.provider) === selectedLlmServer,
-          );
+          (model) => normalProvider(model.provider) === selectedLlmServer,
+        );
     base = base.filter((model) => normalProvider(model.provider) !== "onnx");
     const names = new Set(base.map((model) => model.name));
     const fallbackNames: string[] = [];
@@ -1552,7 +1551,7 @@ export function CockpitHome({
   const vramValue = formatVramMetric(usageMetrics?.vram_usage_mb, usageMetrics?.vram_total_mb);
   const diskValue =
     usageMetrics?.disk_system_used_gb !== undefined &&
-    usageMetrics?.disk_system_total_gb !== undefined
+      usageMetrics?.disk_system_total_gb !== undefined
       ? formatDiskSnapshot(usageMetrics.disk_system_used_gb, usageMetrics.disk_system_total_gb)
       : formatDiskSnapshot(usageMetrics?.disk_usage_gb, usageMetrics?.disk_limit_gb);
   const diskPercent =
@@ -1675,6 +1674,7 @@ export function CockpitHome({
           forcedTool: item.forced_tool ?? null,
           forcedProvider: item.forced_provider ?? null,
           modeLabel,
+          contextUsed: null, // History summary doesn't have context info yet
         },
       ];
     });
@@ -1704,7 +1704,7 @@ export function CockpitHome({
       const assistantStatus = entry.simpleMode
         ? simpleStream?.status ?? "W toku"
         : stream?.status ??
-          (stream?.error ? "Błąd strumienia" : stream ? "W toku" : "W kolejce");
+        (stream?.error ? "Błąd strumienia" : stream ? "W toku" : "W kolejce");
       const terminal = entry.simpleMode
         ? Boolean(simpleStream?.done)
         : stream?.status === "COMPLETED" || stream?.status === "FAILED";
@@ -1717,16 +1717,16 @@ export function CockpitHome({
       const isPending = !terminal || inGraceWindow;
       const hasUserInHistory = Boolean(
         entry.requestId &&
-          historySnapshot.some(
-            (item) => item.request_id === entry.requestId && item.role === "user",
-          ),
+        historySnapshot.some(
+          (item) => item.request_id === entry.requestId && item.role === "user",
+        ),
       );
       const hasAssistantInHistory = Boolean(
         entry.requestId &&
-          historySnapshot.some(
-            (item) =>
-              item.request_id === entry.requestId && item.role === "assistant",
-          ),
+        historySnapshot.some(
+          (item) =>
+            item.request_id === entry.requestId && item.role === "assistant",
+        ),
       );
       const showOptimisticAssistant = entry.simpleMode
         ? !hasAssistantInHistory
@@ -1740,6 +1740,7 @@ export function CockpitHome({
             : entry.chatMode === "direct"
               ? "Direct"
               : null;
+      const contextUsed = stream?.contextUsed ?? null;
       const messages: ChatMessage[] = [];
       if (!hasUserInHistory) {
         messages.push({
@@ -1754,6 +1755,7 @@ export function CockpitHome({
           forcedTool: entry.forcedTool ?? null,
           forcedProvider: entry.forcedProvider ?? null,
           modeLabel,
+          contextUsed: null,
         });
       }
       if (showOptimisticAssistant) {
@@ -1767,8 +1769,9 @@ export function CockpitHome({
           prompt: entry.prompt,
           pending: isPending,
           forcedTool: entry.forcedTool ?? null,
-          forcedProvider: entry.forcedProvider ?? null,
+          forcedProvider: entry.forcedProvider ?? null, // Fixed trailing comma
           modeLabel,
+          contextUsed,
         });
       }
       return messages;
@@ -1899,7 +1902,7 @@ export function CockpitHome({
   const averageResponseDurationMs =
     responseDurations.length > 0
       ? responseDurations.reduce((acc, value) => acc + value, 0) /
-        Math.max(responseDurations.length, 1)
+      Math.max(responseDurations.length, 1)
       : null;
   const responseBadgeText =
     lastResponseDurationMs !== null ? `${(lastResponseDurationMs / 1000).toFixed(1)}s` : "n/d";
@@ -2237,21 +2240,21 @@ export function CockpitHome({
           const steps = [
             timing?.historyMs !== undefined
               ? {
-                  component: "UI",
-                  action: "submit_to_history",
-                  status: "OK",
-                  timestamp,
-                  details: `history_ms=${Math.round(timing.historyMs)}`,
-                }
+                component: "UI",
+                action: "submit_to_history",
+                status: "OK",
+                timestamp,
+                details: `history_ms=${Math.round(timing.historyMs)}`,
+              }
               : null,
             timing?.ttftMs !== undefined
               ? {
-                  component: "UI",
-                  action: "ttft",
-                  status: "OK",
-                  timestamp,
-                  details: `ttft_ms=${Math.round(timing.ttftMs)}`,
-                }
+                component: "UI",
+                action: "ttft",
+                status: "OK",
+                timestamp,
+                details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+              }
               : null,
           ].filter(Boolean) as HistoryRequestDetail["steps"];
           setSimpleRequestDetails((prev) => ({
@@ -2274,7 +2277,7 @@ export function CockpitHome({
               duration_seconds: Number.isFinite(duration)
                 ? Math.round((duration / 1000) * 100) / 100
                 : null,
-              steps: steps.length > 0 ? steps : undefined,
+              steps: steps && steps.length > 0 ? steps : undefined,
             },
           }));
           try {
@@ -2717,9 +2720,9 @@ export function CockpitHome({
           ) : null;
         const feedbackExtra =
           msg.role === "assistant" &&
-          requestId &&
-          !msg.pending &&
-          feedbackState?.rating === "down" ? (
+            requestId &&
+            !msg.pending &&
+            feedbackState?.rating === "down" ? (
             <>
               <textarea
                 className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
@@ -3048,277 +3051,276 @@ export function CockpitHome({
         }
       />
       <section
-        className={`grid gap-6 ${
-          chatFullscreen ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,420px)_1fr]"
-        }`}
+        className={`grid gap-6 ${chatFullscreen ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,420px)_1fr]"
+          }`}
       >
         {!chatFullscreen && showArtifacts && (
           <div className="space-y-6">
-          {showReferenceSections && (
-            <>
-              <Panel
-            title="Serwery LLM"
-            description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
-            className="allow-overflow overflow-visible"
-          >
-            <div className="space-y-3">
-              {llmServersLoading ? (
-                <p className="text-hint">Ładuję status serwerów…</p>
-              ) : llmServers.length === 0 ? (
-                <EmptyState
-                  icon={<Package className="h-4 w-4" />}
-                  title="Brak danych"
-                  description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
-                />
-              ) : null}
-              <div className="card-shell card-base p-4 text-sm">
-                <div className="grid gap-3">
-                  <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                    Serwer
-                  </label>
-                  <SelectMenu
-                    value={selectedLlmServer}
-                    options={llmServerOptions}
-                    onChange={setSelectedLlmServer}
-                    ariaLabel="Wybierz serwer LLM"
-                    placeholder="Wybierz serwer"
-                    disabled={llmServers.length === 0}
-                    buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                    menuClassName="w-full max-h-72 overflow-y-auto"
-                  />
-                  <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                    Model
-                  </label>
-                  <SelectMenu
-                    value={selectedLlmModel}
-                    options={llmModelOptions}
-                    onChange={setSelectedLlmModel}
-                    ariaLabel="Wybierz model LLM"
-                    placeholder="Brak modeli"
-                    disabled={llmServers.length === 0 || availableModelsForServer.length === 0}
-                    buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
-                    menuClassName="w-full max-h-72 overflow-y-auto"
-                  />
-                  {selectedLlmServer && availableModelsForServer.length === 0 && (
-                    <div className="space-y-2">
+            {showReferenceSections && (
+              <>
+                <Panel
+                  title="Serwery LLM"
+                  description="Steruj lokalnymi runtime (vLLM, Ollama) i monitoruj ich status."
+                  className="allow-overflow overflow-visible"
+                >
+                  <div className="space-y-3">
+                    {llmServersLoading ? (
+                      <p className="text-hint">Ładuję status serwerów…</p>
+                    ) : llmServers.length === 0 ? (
                       <EmptyState
                         icon={<Package className="h-4 w-4" />}
-                        title="Brak modeli"
-                        description="Dodaj model dla wybranego serwera, aby go aktywować."
+                        title="Brak danych"
+                        description="Skonfiguruj komendy LLM_*_COMMAND w .env, aby włączyć sterowanie serwerami."
                       />
-                    </div>
-                  )}
-                  <Link
-                    href="/docs/llm-models"
-                    className="group inline-flex cursor-pointer items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]"
-                  >
-                    <HelpCircle
-                      className="h-4 w-4 transition group-hover:opacity-90 !text-[color:var(--secondary)]"
-                      aria-hidden="true"
-                    />
-                    <span className="!text-[color:var(--secondary)]">
-                      Instrukcja dodawania modeli
-                    </span>
-                  </Link>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-                  <span>
-                    Status:{" "}
-                    {selectedServerEntry
-                      ? resolveServerStatus(
-                          selectedServerEntry.display_name,
-                          selectedServerEntry.status,
-                        )
-                      : "unknown"}
-                  </span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-muted px-2 py-1 text-[11px] text-foreground" title="Id sesji">
-                      {sessionId}
-                    </span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={handleSessionReset}
-                      title="Resetuj kontekst czatu (nowa sesja)"
-                    >
-                      Resetuj sesję
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={handleServerSessionReset}
-                      disabled={memoryAction === "session"}
-                      title="Nowa sesja serwera: wyczyść pamięć/streszczenie i utwórz nową sesję"
-                    >
-                      {memoryAction === "session" ? "Resetuję..." : "Nowa sesja serwera"}
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={handleClearSessionMemory}
-                      disabled={memoryAction === "session"}
-                      title="Usuń historię/streszczenia i wektory tej sesji"
-                    >
-                      {memoryAction === "session" ? "Czyszczę..." : "Wyczyść pamięć sesji"}
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={handleClearGlobalMemory}
-                      disabled={memoryAction === "global"}
-                      title="Usuń globalne preferencje/fakty (LanceDB)"
-                    >
-                      {memoryAction === "global" ? "Czyszczę..." : "Wyczyść pamięć globalną"}
-                    </Button>
-                  </span>
-                  <span>
-                    Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
-                    {activeServerName || "—"}
-                  </span>
-                </div>
-                <Button
-                  variant="macro"
-                  size="sm"
-                  className="mt-4 w-full justify-center text-center tracking-[0.2em]"
-                  onClick={() => handleLlmServerActivate()}
-                  disabled={
-                    llmActionPending === `activate:${selectedLlmServer}` ||
-                    !selectedLlmServer ||
-                    !selectedLlmModel
-                  }
-                >
-                  {llmActionPending === `activate:${selectedLlmServer}`
-                    ? "Aktywuję..."
-                    : "Aktywuj"}
-                </Button>
-              </div>
-            </div>
-          </Panel>
-          <Panel
-            title="Live Feed"
-            description="/ws/events stream – ostatnie logi operacyjne"
-            action={
-              <Badge tone={connected ? "success" : "warning"}>
-                {connected ? "Połączono" : "Brak sygnału"}
-              </Badge>
-            }
-          >
-            <div className="space-y-4">
-              <input
-                className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
-                placeholder="Filtruj logi..."
-                value={logFilter}
-                onChange={(e) => setLogFilter(e.target.value)}
-              />
-              <div className="terminal internal-scroll h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
-                {logEntries.length === 0 && (
-                  <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
-                )}
-                {logEntries
-                  .filter((entry) => {
-                    if (!logFilter.trim()) return true;
-                    const payload = entry.payload;
-                    const text =
-                      typeof payload === "string"
-                        ? payload
-                        : JSON.stringify(payload, null, 2);
-                    return text.toLowerCase().includes(logFilter.toLowerCase());
-                  })
-                  .map((entry) => (
-                    <LogEntry
-                      key={entry.id}
-                      entry={entry}
-                      pinned={pinnedLogs.some((log) => log.id === entry.id)}
-                      onPin={() =>
-                        setPinnedLogs((prev) =>
-                          prev.some((log) => log.id === entry.id)
-                            ? prev.filter((log) => log.id !== entry.id)
-                            : [...prev, entry],
-                        )
-                      }
-                    />
-                  ))}
-              </div>
-              {pinnedLogs.length > 0 && (
-                <div className="rounded-3xl card-shell border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div>
-                      <p className="text-caption text-emerald-200/80">
-                        Przypięte logi
-                      </p>
-                      <p className="text-sm text-emerald-100/80">
-                        Najważniejsze zdarzenia z kanału /ws/events.
-                      </p>
-                    </div>
-                    <div className="ml-auto flex flex-wrap gap-2">
+                    ) : null}
+                    <div className="card-shell card-base p-4 text-sm">
+                      <div className="grid gap-3">
+                        <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                          Serwer
+                        </label>
+                        <SelectMenu
+                          value={selectedLlmServer}
+                          options={llmServerOptions}
+                          onChange={setSelectedLlmServer}
+                          ariaLabel="Wybierz serwer LLM"
+                          placeholder="Wybierz serwer"
+                          disabled={llmServers.length === 0}
+                          buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                          menuClassName="w-full max-h-72 overflow-y-auto"
+                        />
+                        <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                          Model
+                        </label>
+                        <SelectMenu
+                          value={selectedLlmModel}
+                          options={llmModelOptions}
+                          onChange={setSelectedLlmModel}
+                          ariaLabel="Wybierz model LLM"
+                          placeholder="Brak modeli"
+                          disabled={llmServers.length === 0 || availableModelsForServer.length === 0}
+                          buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                          menuClassName="w-full max-h-72 overflow-y-auto"
+                        />
+                        {selectedLlmServer && availableModelsForServer.length === 0 && (
+                          <div className="space-y-2">
+                            <EmptyState
+                              icon={<Package className="h-4 w-4" />}
+                              title="Brak modeli"
+                              description="Dodaj model dla wybranego serwera, aby go aktywować."
+                            />
+                          </div>
+                        )}
+                        <Link
+                          href="/docs/llm-models"
+                          className="group inline-flex cursor-pointer items-center gap-2 text-xs underline underline-offset-2 transition hover:opacity-90 !text-[color:var(--secondary)]"
+                        >
+                          <HelpCircle
+                            className="h-4 w-4 transition group-hover:opacity-90 !text-[color:var(--secondary)]"
+                            aria-hidden="true"
+                          />
+                          <span className="!text-[color:var(--secondary)]">
+                            Instrukcja dodawania modeli
+                          </span>
+                        </Link>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
+                        <span>
+                          Status:{" "}
+                          {selectedServerEntry
+                            ? resolveServerStatus(
+                              selectedServerEntry.display_name,
+                              selectedServerEntry.status,
+                            )
+                            : "unknown"}
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-muted px-2 py-1 text-[11px] text-foreground" title="Id sesji">
+                            {sessionId}
+                          </span>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={handleSessionReset}
+                            title="Resetuj kontekst czatu (nowa sesja)"
+                          >
+                            Resetuj sesję
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={handleServerSessionReset}
+                            disabled={memoryAction === "session"}
+                            title="Nowa sesja serwera: wyczyść pamięć/streszczenie i utwórz nową sesję"
+                          >
+                            {memoryAction === "session" ? "Resetuję..." : "Nowa sesja serwera"}
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={handleClearSessionMemory}
+                            disabled={memoryAction === "session"}
+                            title="Usuń historię/streszczenia i wektory tej sesji"
+                          >
+                            {memoryAction === "session" ? "Czyszczę..." : "Wyczyść pamięć sesji"}
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={handleClearGlobalMemory}
+                            disabled={memoryAction === "global"}
+                            title="Usuń globalne preferencje/fakty (LanceDB)"
+                          >
+                            {memoryAction === "global" ? "Czyszczę..." : "Wyczyść pamięć globalną"}
+                          </Button>
+                        </span>
+                        <span>
+                          Aktywny: {activeServerInfo?.active_model ?? "—"} @{" "}
+                          {activeServerName || "—"}
+                        </span>
+                      </div>
                       <Button
-                        variant="outline"
-                        size="xs"
-                        className="px-3 text-white"
-                        disabled={exportingPinned}
-                        onClick={handleExportPinnedLogs}
+                        variant="macro"
+                        size="sm"
+                        className="mt-4 w-full justify-center text-center tracking-[0.2em]"
+                        onClick={() => handleLlmServerActivate()}
+                        disabled={
+                          llmActionPending === `activate:${selectedLlmServer}` ||
+                          !selectedLlmServer ||
+                          !selectedLlmModel
+                        }
                       >
-                        {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="xs"
-                        className="px-3"
-                        onClick={() => setPinnedLogs([])}
-                      >
-                        Wyczyść
+                        {llmActionPending === `activate:${selectedLlmServer}`
+                          ? "Aktywuję..."
+                          : "Aktywuj"}
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {pinnedLogs.map((log) => (
-                      <PinnedLogCard
-                        key={`pinned-${log.id}`}
-                        log={log}
-                        onUnpin={() =>
-                          setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+                </Panel>
+                <Panel
+                  title="Live Feed"
+                  description="/ws/events stream – ostatnie logi operacyjne"
+                  action={
+                    <Badge tone={connected ? "success" : "warning"}>
+                      {connected ? "Połączono" : "Brak sygnału"}
+                    </Badge>
+                  }
+                >
+                  <div className="space-y-4">
+                    <input
+                      className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
+                      placeholder="Filtruj logi..."
+                      value={logFilter}
+                      onChange={(e) => setLogFilter(e.target.value)}
+                    />
+                    <div className="terminal internal-scroll h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
+                      {logEntries.length === 0 && (
+                        <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
+                      )}
+                      {logEntries
+                        .filter((entry) => {
+                          if (!logFilter.trim()) return true;
+                          const payload = entry.payload;
+                          const text =
+                            typeof payload === "string"
+                              ? payload
+                              : JSON.stringify(payload, null, 2);
+                          return text.toLowerCase().includes(logFilter.toLowerCase());
+                        })
+                        .map((entry) => (
+                          <LogEntry
+                            key={entry.id}
+                            entry={entry}
+                            pinned={pinnedLogs.some((log) => log.id === entry.id)}
+                            onPin={() =>
+                              setPinnedLogs((prev) =>
+                                prev.some((log) => log.id === entry.id)
+                                  ? prev.filter((log) => log.id !== entry.id)
+                                  : [...prev, entry],
+                              )
+                            }
+                          />
+                        ))}
+                    </div>
+                    {pinnedLogs.length > 0 && (
+                      <div className="rounded-3xl card-shell border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4 text-xs">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div>
+                            <p className="text-caption text-emerald-200/80">
+                              Przypięte logi
+                            </p>
+                            <p className="text-sm text-emerald-100/80">
+                              Najważniejsze zdarzenia z kanału /ws/events.
+                            </p>
+                          </div>
+                          <div className="ml-auto flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              className="px-3 text-white"
+                              disabled={exportingPinned}
+                              onClick={handleExportPinnedLogs}
+                            >
+                              {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="xs"
+                              className="px-3"
+                              onClick={() => setPinnedLogs([])}
+                            >
+                              Wyczyść
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {pinnedLogs.map((log) => (
+                            <PinnedLogCard
+                              key={`pinned-${log.id}`}
+                              log={log}
+                              onUnpin={() =>
+                                setPinnedLogs((prev) => prev.filter((entry) => entry.id !== log.id))
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Panel>
+                <Panel
+                  title="Aktywne zadania"
+                  description="Podgląd ostatnich requestów /api/v1/tasks."
+                >
+                  <div className="space-y-3">
+                    {tasksPreview.length === 0 && (
+                      <EmptyState
+                        icon={<Inbox className="h-4 w-4" />}
+                        title="Brak zadań"
+                        description="Wyślij nowe polecenie, aby pojawiło się na liście."
+                      />
+                    )}
+                    {tasksPreview.map((task, index) => (
+                      <ListCard
+                        key={`${task.task_id ?? task.id ?? "task"}-${index}`}
+                        title={task.content}
+                        subtitle={
+                          task.created_at
+                            ? new Date(task.created_at).toLocaleString()
+                            : "—"
                         }
+                        badge={<Badge tone={statusTone(task.status)}>{task.status}</Badge>}
                       />
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </Panel>
-          <Panel
-            title="Aktywne zadania"
-            description="Podgląd ostatnich requestów /api/v1/tasks."
-          >
-            <div className="space-y-3">
-              {tasksPreview.length === 0 && (
-                <EmptyState
-                  icon={<Inbox className="h-4 w-4" />}
-                  title="Brak zadań"
-                  description="Wyślij nowe polecenie, aby pojawiło się na liście."
-                />
-              )}
-              {tasksPreview.map((task, index) => (
-                <ListCard
-                  key={`${task.task_id ?? task.id ?? "task"}-${index}`}
-                  title={task.content}
-                  subtitle={
-                    task.created_at
-                      ? new Date(task.created_at).toLocaleString()
-                      : "—"
-                  }
-                  badge={<Badge tone={statusTone(task.status)}>{task.status}</Badge>}
-                />
-              ))}
-            </div>
-          </Panel>
-            </>
-          )}
-          {!showReferenceSections && (
-            <>
-              {historyRequestsPanel}
-              {hiddenPromptsPanel}
-            </>
-          )}
+                </Panel>
+              </>
+            )}
+            {!showReferenceSections && (
+              <>
+                {historyRequestsPanel}
+                {hiddenPromptsPanel}
+              </>
+            )}
           </div>
         )}
         <div className="space-y-6">
@@ -3499,11 +3501,10 @@ export function CockpitHome({
                               : "Brak zadań"
                           }
                           progress={successRate}
-                          footer={`Uptime: ${
-                            metrics?.uptime_seconds !== undefined
-                              ? formatUptime(metrics.uptime_seconds)
-                              : "—"
-                          }`}
+                          footer={`Uptime: ${metrics?.uptime_seconds !== undefined
+                            ? formatUptime(metrics.uptime_seconds)
+                            : "—"
+                            }`}
                         />
                       )}
                     </Panel>
@@ -3593,83 +3594,83 @@ export function CockpitHome({
         <>
           {showReferenceSections && (
             <section className="grid gap-6">
-            <Panel
-              title="Zasoby"
-              description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
-            >
-              <div className="grid gap-3 sm:grid-cols-3">
-                <ResourceMetricCard
-                  label="CPU"
-                  value={cpuUsageValue}
-                  hint="Średnie obciążenie modeli"
-                />
-                <ResourceMetricCard
-                  label="GPU"
-                  value={gpuUsageValue}
-                  hint="Wskaźnik wykorzystania akceleratora"
-                />
-                <ResourceMetricCard
-                  label="RAM"
-                  value={ramValue}
-                  hint={
-                    usageMetrics?.memory_usage_percent
-                      ? `${usageMetrics.memory_usage_percent.toFixed(0)}%`
-                      : ""
-                  }
-                />
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <ResourceMetricCard
-                  label="VRAM"
-                  value={vramValue}
-                  hint="Aktywny model/GPU"
-                />
-                <ResourceMetricCard label="Dysk" value={diskValue} hint={diskPercent ?? ""} />
-              </div>
-              <div className="mt-4 flex items-center justify-between rounded-2xl box-muted px-4 py-3 text-xs text-zinc-400">
-                <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
-                <span className="text-base font-semibold text-white">{sessionCostValue}</span>
-              </div>
-            </Panel>
-          </section>
+              <Panel
+                title="Zasoby"
+                description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
+              >
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <ResourceMetricCard
+                    label="CPU"
+                    value={cpuUsageValue}
+                    hint="Średnie obciążenie modeli"
+                  />
+                  <ResourceMetricCard
+                    label="GPU"
+                    value={gpuUsageValue}
+                    hint="Wskaźnik wykorzystania akceleratora"
+                  />
+                  <ResourceMetricCard
+                    label="RAM"
+                    value={ramValue}
+                    hint={
+                      usageMetrics?.memory_usage_percent
+                        ? `${usageMetrics.memory_usage_percent.toFixed(0)}%`
+                        : ""
+                    }
+                  />
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <ResourceMetricCard
+                    label="VRAM"
+                    value={vramValue}
+                    hint="Aktywny model/GPU"
+                  />
+                  <ResourceMetricCard label="Dysk" value={diskValue} hint={diskPercent ?? ""} />
+                </div>
+                <div className="mt-4 flex items-center justify-between rounded-2xl box-muted px-4 py-3 text-xs text-zinc-400">
+                  <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
+                  <span className="text-base font-semibold text-white">{sessionCostValue}</span>
+                </div>
+              </Panel>
+            </section>
           )}
 
           {showReferenceSections && (
             <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)]">
-            <div className="glass-panel flex flex-col gap-4">
-              <header className="flex items-center gap-3">
-                <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
-                  <Bot className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    Agenci
-                  </p>
-                  <h2 className="heading-h2">Aktywność systemowa</h2>
-                </div>
-              </header>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Badge tone="neutral">Węzły: {graphNodes}</Badge>
-                <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
-              </div>
-              <div className="space-y-3">
-                {agentDeck.map((svc) => (
-                  <div
-                    key={svc.name}
-                    className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-semibold text-white">{svc.name}</p>
-                      <p className="text-xs text-zinc-500">
-                        {svc.detail ?? "Brak opisu"}
-                      </p>
-                    </div>
-                    <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
+              <div className="glass-panel flex flex-col gap-4">
+                <header className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-violet-600/30 p-3 text-violet-100 shadow-neon">
+                    <Bot className="h-5 w-5" />
                   </div>
-                ))}
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                      Agenci
+                    </p>
+                    <h2 className="heading-h2">Aktywność systemowa</h2>
+                  </div>
+                </header>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge tone="neutral">Węzły: {graphNodes}</Badge>
+                  <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
+                </div>
+                <div className="space-y-3">
+                  {agentDeck.map((svc) => (
+                    <div
+                      key={svc.name}
+                      className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <p className="font-semibold text-white">{svc.name}</p>
+                        <p className="text-xs text-zinc-500">
+                          {svc.detail ?? "Brak opisu"}
+                        </p>
+                      </div>
+                      <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
           )}
 
           {showReferenceSections && (
@@ -3860,256 +3861,256 @@ export function CockpitHome({
             {showReferenceSections && hiddenPromptsPanel}
           </div>
 
-      {showReferenceSections && showArtifacts && (
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <VoiceCommandCenter />
-          <IntegrationMatrix services={services} events={entries} />
-        </section>
-      )}
+          {showReferenceSections && showArtifacts && (
+            <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+              <VoiceCommandCenter />
+              <IntegrationMatrix services={services} events={entries} />
+            </section>
+          )}
 
-      {showSharedSections && showArtifacts && (
-        <Panel
-          title="Makra Cockpitu"
-          description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
-          action={
-            <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
-            <form
-              className="flex flex-col gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newMacro.label.trim() || !newMacro.content.trim()) return;
-                setCustomMacros((prev) => [
-                  ...prev,
-                  {
-                    id: `custom-${prev.length + 1}`,
-                    label: newMacro.label.trim(),
-                    description: newMacro.description.trim() || "Makro użytkownika",
-                    content: newMacro.content.trim(),
-                    custom: true,
-                  },
-                ]);
-                setNewMacro({ label: "", description: "", content: "" });
-              }}
-            >
-              <p className="text-caption text-zinc-400">
-                Dodaj makro
-              </p>
-              <input
-                className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                placeholder="Nazwa"
-                value={newMacro.label}
-                onChange={(e) => setNewMacro((prev) => ({ ...prev, label: e.target.value }))}
-              />
-              <input
-                className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                placeholder="Opis"
-                value={newMacro.description}
-                onChange={(e) => setNewMacro((prev) => ({ ...prev, description: e.target.value }))}
-              />
-              <textarea
-                className="min-h-[60px] rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                placeholder="Treść polecenia / prompt"
-                value={newMacro.content}
-                onChange={(e) => setNewMacro((prev) => ({ ...prev, content: e.target.value }))}
-              />
-              <Button type="submit" size="xs" variant="outline" className="px-3">
-                Dodaj makro
-              </Button>
-            </form>
-            {customMacros.length > 0 && (
-              <Button
-                type="button"
-                size="xs"
-                variant="danger"
-                className="px-3"
-                onClick={() => setCustomMacros([])}
-              >
-                Resetuj makra użytkownika
-              </Button>
-            )}
-            </div>
-          }
-        >
-        <div className="grid gap-4 lg:grid-cols-2">
-          {allMacros.map((macro) => (
-            <MacroCard
-              key={macro.id}
-              title={macro.label}
-              description={macro.description}
-              isCustom={macro.custom}
-              pending={macroSending === macro.id}
-              onRun={() => handleMacroRun(macro)}
-              onRemove={
-                macro.custom
-                  ? () =>
-                      setCustomMacros((prev) => prev.filter((item) => item.id !== macro.id))
-                  : undefined
-              }
-            />
-          ))}
-        </div>
-        </Panel>
-      )}
-
-      {showReferenceSections && showArtifacts && (
-        <>
-          <Panel
-            title="Task Insights"
-            description="Podsumowanie statusów i ostatnich requestów /history/requests."
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <TaskStatusBreakdown
-                title="Statusy"
-                datasetLabel="Ostatnie 50 historii"
-                totalLabel="Historia"
-                totalValue={(history || []).length}
-                entries={historyStatusEntries}
-                emptyMessage="Brak historii do analizy."
-              />
-              <RecentRequestList requests={history} />
-            </div>
-          </Panel>
-
-          <Panel
-            title="Zarządzanie kolejką"
-            description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
-            action={
-              <Badge tone={queue?.paused ? "warning" : "success"}>
-                {queue?.paused ? "Wstrzymana" : "Aktywna"}
-              </Badge>
-            }
-          >
-            <div className="space-y-4">
-              <QueueStatusCard queue={queue} loading={queueLoading && !queue} />
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Akcje dostępne w panelu Quick Actions.
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
-                  onClick={() => setQuickActionsOpen(true)}
-                >
-                  ⚡ Otwórz Quick Actions
-                </Button>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel
-            title="Repozytorium"
-            description="Status i szybkie akcje git (/api/v1/git/*)."
-            action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
-          >
-            <div className="space-y-4">
-              <div className="card-shell bg-black/30 p-4">
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
-                <p className="mt-2 text-sm text-white">
-                  {git?.changes ?? git?.status ?? "Brak danych z API."}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Aktualna gałąź: <span className="font-semibold text-white">{git?.branch ?? "—"}</span>
-                </p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <RepoActionCard
-                  title="Synchronizacja"
-                  description="Pobierz/publikuj zmiany i odśwież status pipeline’u."
-                  pending={gitAction === "sync"}
-                  onClick={handleGitSync}
-                />
-                <RepoActionCard
-                  title="Cofnij zmiany"
-                  description="Przywróć HEAD do stanu origin – operacja nieodwracalna."
-                  variant="danger"
-                  pending={gitAction === "undo"}
-                  onClick={handleGitUndo}
-                />
-              </div>
-            </div>
-          </Panel>
-
-          <div className="grid gap-6 md:grid-cols-2">
+          {showSharedSections && showArtifacts && (
             <Panel
-              title="Efektywność tokenów"
-              description="Średnie zużycie i tempo – KPI na bazie /metrics i /metrics/tokens."
-            >
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <TokenEfficiencyStat
-                    label="Śr./zadanie"
-                    value={
-                      avgTokensPerTask !== null
-                        ? `${avgTokensPerTask.toLocaleString("pl-PL")} tok`
-                        : "—"
-                    }
-                    hint="Total tokens ÷ tasks.created"
-                  />
-                  <TokenEfficiencyStat
-                    label="Delta próbki"
-                    value={tokenTrendMagnitude ? `${tokenTrendMagnitude} tok` : "—"}
-                    hint="Różnica między dwoma ostatnimi odczytami"
-                  />
-                  <TokenEfficiencyStat
-                    label="Prompt / completion"
-                    value={promptCompletionRatio ? `${promptCompletionRatio}x` : "—"}
-                    hint="Większa wartość = dłuższe prompty"
-                  />
-                </div>
-                <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-sky-500/10 to-emerald-500/5 p-4 text-sm text-emerald-50">
-                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
-                    Live próbka
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-end gap-3">
-                    <p className="text-3xl font-semibold text-white">
-                      {lastTokenSample !== null
-                        ? lastTokenSample.toLocaleString("pl-PL")
-                        : "—"}
+              title="Makra Cockpitu"
+              description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
+              action={
+                <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
+                  <form
+                    className="flex flex-col gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!newMacro.label.trim() || !newMacro.content.trim()) return;
+                      setCustomMacros((prev) => [
+                        ...prev,
+                        {
+                          id: `custom-${prev.length + 1}`,
+                          label: newMacro.label.trim(),
+                          description: newMacro.description.trim() || "Makro użytkownika",
+                          content: newMacro.content.trim(),
+                          custom: true,
+                        },
+                      ]);
+                      setNewMacro({ label: "", description: "", content: "" });
+                    }}
+                  >
+                    <p className="text-caption text-zinc-400">
+                      Dodaj makro
                     </p>
-                    <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
-                      {tokenTrendLabel}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-emerald-100/70">
-                    {tokenTrendDelta === null
-                      ? "Oczekuję kolejnych danych z /metrics/tokens."
-                      : tokenTrendDelta >= 0
-                        ? "Zużycie rośnie względem poprzedniej próbki – rozważ throttle."
-                        : "Zużycie spadło – cache i makra działają."}
-                  </p>
+                    <input
+                      className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
+                      placeholder="Nazwa"
+                      value={newMacro.label}
+                      onChange={(e) => setNewMacro((prev) => ({ ...prev, label: e.target.value }))}
+                    />
+                    <input
+                      className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
+                      placeholder="Opis"
+                      value={newMacro.description}
+                      onChange={(e) => setNewMacro((prev) => ({ ...prev, description: e.target.value }))}
+                    />
+                    <textarea
+                      className="min-h-[60px] rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
+                      placeholder="Treść polecenia / prompt"
+                      value={newMacro.content}
+                      onChange={(e) => setNewMacro((prev) => ({ ...prev, content: e.target.value }))}
+                    />
+                    <Button type="submit" size="xs" variant="outline" className="px-3">
+                      Dodaj makro
+                    </Button>
+                  </form>
+                  {customMacros.length > 0 && (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="danger"
+                      className="px-3"
+                      onClick={() => setCustomMacros([])}
+                    >
+                      Resetuj makra użytkownika
+                    </Button>
+                  )}
                 </div>
-              </div>
-            </Panel>
-            <Panel
-              title="Cache boost"
-              description="Udziały prompt/completion/cached – pozwala ocenić optymalizację."
+              }
             >
-              <div className="space-y-3">
-                <TokenShareBar
-                  label="Prompt"
-                  percent={promptShare}
-                  accent="from-emerald-400/70 via-emerald-500/40 to-emerald-500/10"
-                />
-                <TokenShareBar
-                  label="Completion"
-                  percent={completionShare}
-                  accent="from-sky-400/70 via-blue-500/40 to-violet-500/10"
-                />
-                <TokenShareBar
-                  label="Cached"
-                  percent={cachedShare}
-                  accent="from-amber-300/70 via-amber-400/40 to-rose-400/10"
-                />
-                <p className="text-xs text-[--color-muted]">
-                  Dane z `/api/v1/metrics/tokens`. Dążymy do wysokiego udziału cache przy zachowaniu
-                  równowagi prompt/completion.
-                </p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {allMacros.map((macro) => (
+                  <MacroCard
+                    key={macro.id}
+                    title={macro.label}
+                    description={macro.description}
+                    isCustom={macro.custom}
+                    pending={macroSending === macro.id}
+                    onRun={() => handleMacroRun(macro)}
+                    onRemove={
+                      macro.custom
+                        ? () =>
+                          setCustomMacros((prev) => prev.filter((item) => item.id !== macro.id))
+                        : undefined
+                    }
+                  />
+                ))}
               </div>
             </Panel>
-          </div>
-        </>
-      )}
+          )}
+
+          {showReferenceSections && showArtifacts && (
+            <>
+              <Panel
+                title="Task Insights"
+                description="Podsumowanie statusów i ostatnich requestów /history/requests."
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <TaskStatusBreakdown
+                    title="Statusy"
+                    datasetLabel="Ostatnie 50 historii"
+                    totalLabel="Historia"
+                    totalValue={(history || []).length}
+                    entries={historyStatusEntries}
+                    emptyMessage="Brak historii do analizy."
+                  />
+                  <RecentRequestList requests={history} />
+                </div>
+              </Panel>
+
+              <Panel
+                title="Zarządzanie kolejką"
+                description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
+                action={
+                  <Badge tone={queue?.paused ? "warning" : "success"}>
+                    {queue?.paused ? "Wstrzymana" : "Aktywna"}
+                  </Badge>
+                }
+              >
+                <div className="space-y-4">
+                  <QueueStatusCard queue={queue} loading={queueLoading && !queue} />
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                      Akcje dostępne w panelu Quick Actions.
+                    </p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
+                      onClick={() => setQuickActionsOpen(true)}
+                    >
+                      ⚡ Otwórz Quick Actions
+                    </Button>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
+                title="Repozytorium"
+                description="Status i szybkie akcje git (/api/v1/git/*)."
+                action={<Badge tone="neutral">{git?.branch ?? "brak"}</Badge>}
+              >
+                <div className="space-y-4">
+                  <div className="card-shell bg-black/30 p-4">
+                    <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Stan repo</p>
+                    <p className="mt-2 text-sm text-white">
+                      {git?.changes ?? git?.status ?? "Brak danych z API."}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      Aktualna gałąź: <span className="font-semibold text-white">{git?.branch ?? "—"}</span>
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <RepoActionCard
+                      title="Synchronizacja"
+                      description="Pobierz/publikuj zmiany i odśwież status pipeline’u."
+                      pending={gitAction === "sync"}
+                      onClick={handleGitSync}
+                    />
+                    <RepoActionCard
+                      title="Cofnij zmiany"
+                      description="Przywróć HEAD do stanu origin – operacja nieodwracalna."
+                      variant="danger"
+                      pending={gitAction === "undo"}
+                      onClick={handleGitUndo}
+                    />
+                  </div>
+                </div>
+              </Panel>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <Panel
+                  title="Efektywność tokenów"
+                  description="Średnie zużycie i tempo – KPI na bazie /metrics i /metrics/tokens."
+                >
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <TokenEfficiencyStat
+                        label="Śr./zadanie"
+                        value={
+                          avgTokensPerTask !== null
+                            ? `${avgTokensPerTask.toLocaleString("pl-PL")} tok`
+                            : "—"
+                        }
+                        hint="Total tokens ÷ tasks.created"
+                      />
+                      <TokenEfficiencyStat
+                        label="Delta próbki"
+                        value={tokenTrendMagnitude ? `${tokenTrendMagnitude} tok` : "—"}
+                        hint="Różnica między dwoma ostatnimi odczytami"
+                      />
+                      <TokenEfficiencyStat
+                        label="Prompt / completion"
+                        value={promptCompletionRatio ? `${promptCompletionRatio}x` : "—"}
+                        hint="Większa wartość = dłuższe prompty"
+                      />
+                    </div>
+                    <div className="rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/20 via-sky-500/10 to-emerald-500/5 p-4 text-sm text-emerald-50">
+                      <p className="text-xs uppercase tracking-[0.35em] text-emerald-100/70">
+                        Live próbka
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-end gap-3">
+                        <p className="text-3xl font-semibold text-white">
+                          {lastTokenSample !== null
+                            ? lastTokenSample.toLocaleString("pl-PL")
+                            : "—"}
+                        </p>
+                        <Badge tone={tokenTrendDelta !== null && tokenTrendDelta < 0 ? "success" : "warning"}>
+                          {tokenTrendLabel}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-emerald-100/70">
+                        {tokenTrendDelta === null
+                          ? "Oczekuję kolejnych danych z /metrics/tokens."
+                          : tokenTrendDelta >= 0
+                            ? "Zużycie rośnie względem poprzedniej próbki – rozważ throttle."
+                            : "Zużycie spadło – cache i makra działają."}
+                      </p>
+                    </div>
+                  </div>
+                </Panel>
+                <Panel
+                  title="Cache boost"
+                  description="Udziały prompt/completion/cached – pozwala ocenić optymalizację."
+                >
+                  <div className="space-y-3">
+                    <TokenShareBar
+                      label="Prompt"
+                      percent={promptShare}
+                      accent="from-emerald-400/70 via-emerald-500/40 to-emerald-500/10"
+                    />
+                    <TokenShareBar
+                      label="Completion"
+                      percent={completionShare}
+                      accent="from-sky-400/70 via-blue-500/40 to-violet-500/10"
+                    />
+                    <TokenShareBar
+                      label="Cached"
+                      percent={cachedShare}
+                      accent="from-amber-300/70 via-amber-400/40 to-rose-400/10"
+                    />
+                    <p className="text-xs text-[--color-muted]">
+                      Dane z `/api/v1/metrics/tokens`. Dążymy do wysokiego udziału cache przy zachowaniu
+                      równowagi prompt/completion.
+                    </p>
+                  </div>
+                </Panel>
+              </div>
+            </>
+          )}
         </>
       )}
       <Sheet
@@ -4251,7 +4252,7 @@ export function CockpitHome({
                     <div>
                       <span className="text-zinc-400">first token (ms)</span>
                       <div className="text-sm text-white">
-                        {historyDetail.first_token?.elapsed_ms !== undefined
+                        {historyDetail.first_token?.elapsed_ms != null
                           ? `${Math.round(historyDetail.first_token.elapsed_ms)} ms`
                           : "—"}
                       </div>
@@ -4259,7 +4260,7 @@ export function CockpitHome({
                     <div>
                       <span className="text-zinc-400">first chunk (ms)</span>
                       <div className="text-sm text-white">
-                        {historyDetail.streaming?.first_chunk_ms !== undefined
+                        {historyDetail.streaming?.first_chunk_ms != null
                           ? `${Math.round(historyDetail.streaming.first_chunk_ms)} ms`
                           : "—"}
                       </div>
@@ -4273,7 +4274,7 @@ export function CockpitHome({
                     <div>
                       <span className="text-zinc-400">last emit (ms)</span>
                       <div className="text-sm text-white">
-                        {historyDetail.streaming?.last_emit_ms !== undefined
+                        {historyDetail.streaming?.last_emit_ms != null
                           ? `${Math.round(historyDetail.streaming.last_emit_ms)} ms`
                           : "—"}
                       </div>
@@ -4388,23 +4389,23 @@ export function CockpitHome({
                 </div>
               )}
               <div className="mt-4 space-y-2 rounded-2xl box-muted p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h4 className="heading-h4">
-                      Kroki RequestTracer ({historyDetail.steps?.length ?? 0})
-                    </h4>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {copyStepsMessage && (
-                        <span className="text-emerald-300">{copyStepsMessage}</span>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={handleCopyDetailSteps}
-                      >
-                        Kopiuj JSON
-                      </Button>
-                    </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h4 className="heading-h4">
+                    Kroki RequestTracer ({historyDetail.steps?.length ?? 0})
+                  </h4>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {copyStepsMessage && (
+                      <span className="text-emerald-300">{copyStepsMessage}</span>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={handleCopyDetailSteps}
+                    >
+                      Kopiuj JSON
+                    </Button>
                   </div>
+                </div>
                 <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-2">
                   {(historyDetail.steps || []).length === 0 && (
                     <p className="text-hint">Brak kroków do wyświetlenia.</p>
@@ -4424,9 +4425,9 @@ export function CockpitHome({
                         {step.action || step.details || "Brak opisu kroku."}
                       </p>
                       {step.timestamp && (
-                      <p className="text-caption">
-                        {formatDateTime(step.timestamp)}
-                      </p>
+                        <p className="text-caption">
+                          {formatDateTime(step.timestamp)}
+                        </p>
                       )}
                     </div>
                   ))}
@@ -4630,6 +4631,10 @@ type ChatMessage = {
   forcedTool?: string | null;
   forcedProvider?: string | null;
   modeLabel?: string | null;
+  contextUsed?: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 type OptimisticRequestState = {

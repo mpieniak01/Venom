@@ -6,12 +6,24 @@ import { useToast } from "@/components/ui/toast";
 import { Loader2, Trash2, Calendar, Tag, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import {
+    ConfirmDialog,
+    ConfirmDialogContent,
+    ConfirmDialogTitle,
+    ConfirmDialogDescription,
+    ConfirmDialogActions,
+} from "@/components/ui/confirm-dialog";
 
 export function LessonPruningPanel() {
     const { pruneByTTL, pruneByTag, dedupeLessons, purgeLessons, pruneLatest } = useLessonPruning();
     const { data: stats, refresh: refreshStats } = useLessonsStats();
     const { pushToast } = useToast();
-    const [loading, setLoading] = useState(false);
+    const [loadingActions, setLoadingActions] = useState<Set<string>>(new Set());
+    const [confirmDialog, setConfirmDialog] = useState<{
+        open: boolean;
+        actionName: string;
+        actionFn: (() => Promise<{ deleted: number; remaining: number }>) | null;
+    }>({ open: false, actionName: "", actionFn: null });
 
     // Form states
     const [ttlDays, setTtlDays] = useState("30");
@@ -22,9 +34,16 @@ export function LessonPruningPanel() {
         actionName: string,
         actionFn: () => Promise<{ deleted: number; remaining: number }>
     ) => {
-        if (!window.confirm(`Czy na pewno chcesz wykonać operację: ${actionName}?`)) return;
+        setConfirmDialog({ open: true, actionName, actionFn });
+    };
 
-        setLoading(true);
+    const executeAction = async () => {
+        if (!confirmDialog.actionFn) return;
+
+        const { actionName, actionFn } = confirmDialog;
+        setConfirmDialog({ open: false, actionName: "", actionFn: null });
+
+        setLoadingActions(prev => new Set(prev).add(actionName));
         try {
             const result = await actionFn();
             pushToast(
@@ -36,9 +55,15 @@ export function LessonPruningPanel() {
             pushToast(`Błąd podczas ${actionName}`, "error");
             console.error(err);
         } finally {
-            setLoading(false);
+            setLoadingActions(prev => {
+                const next = new Set(prev);
+                next.delete(actionName);
+                return next;
+            });
         }
     };
+
+    const isActionLoading = (actionName: string) => loadingActions.has(actionName);
 
     return (
         <div className="space-y-6 animate-in fade-in">
@@ -89,10 +114,10 @@ export function LessonPruningPanel() {
                             </div>
                             <Button
                                 size="sm" variant="outline"
-                                disabled={loading}
+                                disabled={isActionLoading("Deduplikacja")}
                                 onClick={() => handleAction("Deduplikacja", dedupeLessons)}
                             >
-                                Uruchom
+                                {isActionLoading("Deduplikacja") ? <Loader2 className="h-4 w-4 animate-spin" /> : "Uruchom"}
                             </Button>
                         </div>
 
@@ -108,10 +133,10 @@ export function LessonPruningPanel() {
                             </div>
                             <Button
                                 size="sm" variant="danger"
-                                disabled={loading}
+                                disabled={isActionLoading("Purge All")}
                                 onClick={() => handleAction("Purge All", purgeLessons)}
                             >
-                                Wyczyść
+                                {isActionLoading("Purge All") ? <Loader2 className="h-4 w-4 animate-spin" /> : "Wyczyść"}
                             </Button>
                         </div>
                     </div>
@@ -133,10 +158,10 @@ export function LessonPruningPanel() {
                         />
                         <Button
                             variant="secondary"
-                            disabled={loading || !ttlDays}
+                            disabled={isActionLoading(`Usuń starsze niż ${ttlDays} dni`) || !ttlDays}
                             onClick={() => handleAction(`Usuń starsze niż ${ttlDays} dni`, () => pruneByTTL(Number(ttlDays)))}
                         >
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`Usuń starsze niż ${ttlDays} dni`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
@@ -158,10 +183,10 @@ export function LessonPruningPanel() {
                         />
                         <Button
                             variant="secondary"
-                            disabled={loading || !tagToPrune}
+                            disabled={isActionLoading(`Usuń tag #${tagToPrune}`) || !tagToPrune}
                             onClick={() => handleAction(`Usuń tag #${tagToPrune}`, () => pruneByTag(tagToPrune))}
                         >
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`Usuń tag #${tagToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
@@ -183,10 +208,10 @@ export function LessonPruningPanel() {
                         />
                         <Button
                             variant="secondary"
-                            disabled={loading || !countToPrune}
+                            disabled={isActionLoading(`Usuń ${countToPrune} ostatnich`) || !countToPrune}
                             onClick={() => handleAction(`Usuń ${countToPrune} ostatnich`, () => pruneLatest(Number(countToPrune)))}
                         >
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`Usuń ${countToPrune} ostatnich`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
@@ -194,6 +219,25 @@ export function LessonPruningPanel() {
                     </p>
                 </div>
             </div>
+
+            {/* Confirmation Dialog */}
+            <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
+                <ConfirmDialogContent>
+                    <ConfirmDialogTitle>Potwierdzenie operacji</ConfirmDialogTitle>
+                    <ConfirmDialogDescription>
+                        Czy na pewno chcesz wykonać operację: <strong>{confirmDialog.actionName}</strong>?
+                        <br />
+                        Ta operacja może być nieodwracalna.
+                    </ConfirmDialogDescription>
+                    <ConfirmDialogActions
+                        onConfirm={executeAction}
+                        onCancel={() => setConfirmDialog({ open: false, actionName: "", actionFn: null })}
+                        confirmLabel="Tak, wykonaj"
+                        cancelLabel="Anuluj"
+                        confirmVariant="danger"
+                    />
+                </ConfirmDialogContent>
+            </ConfirmDialog>
         </div>
     );
 }

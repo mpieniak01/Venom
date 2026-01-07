@@ -21,6 +21,10 @@ type ConversationBubbleProps = {
   footerExtra?: ReactNode;
   forcedLabel?: string | null;
   modeLabel?: string | null;
+  contextUsed?: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 export function ConversationBubble({
@@ -36,6 +40,7 @@ export function ConversationBubble({
   footerExtra,
   forcedLabel,
   modeLabel,
+  contextUsed,
 }: ConversationBubbleProps) {
   const isUser = role === "user";
   const terminalStatuses = ["COMPLETED", "FAILED", "LOST"];
@@ -92,11 +97,10 @@ export function ConversationBubble({
   return (
     <div
       data-testid={isUser ? "conversation-bubble-user" : "conversation-bubble-assistant"}
-      className={`w-full rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${
-        isUser
-          ? "ml-auto border-violet-500/40 bg-gradient-to-r from-violet-500/20 via-violet-500/10 to-transparent text-violet-50"
-          : "border-white/10 bg-white/5 text-zinc-100"
-      } ${isSelected ? "ring-2 ring-violet-400/60" : ""} ${pending ? "cursor-wait opacity-95" : ""}`}
+      className={`w-full rounded-3xl border px-4 py-3 text-left text-sm shadow-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/50 ${isUser
+        ? "ml-auto border-violet-500/40 bg-gradient-to-r from-violet-500/20 via-violet-500/10 to-transparent text-violet-50"
+        : "border-white/10 bg-white/5 text-zinc-100"
+        } ${isSelected ? "ring-2 ring-violet-400/60" : ""} ${pending ? "cursor-wait opacity-95" : ""}`}
     >
       <div className="flex items-center justify-between text-caption">
         <span>{isUser ? "Operacja" : "Venom"}</span>
@@ -128,9 +132,8 @@ export function ConversationBubble({
           aria-disabled={footerClickable ? false : undefined}
           onClick={footerClickable ? onSelect : undefined}
           onKeyDown={footerClickable ? handleKeyDown : undefined}
-          className={`mt-4 border-t border-white/10 pt-3 ${
-            footerClickable ? "cursor-pointer hover:text-white" : ""
-          }`}
+          className={`mt-4 border-t border-white/10 pt-3 ${footerClickable ? "cursor-pointer hover:text-white" : ""
+            }`}
         >
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             {footerActions && (
@@ -143,6 +146,16 @@ export function ConversationBubble({
             {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
             {!isUser && status && modeLabel && (
               <Badge tone="neutral">{modeLabel}</Badge>
+            )}
+            {contextUsed?.lessons && contextUsed.lessons.length > 0 && (
+              <Badge tone="neutral" title="Użyto lekcji">
+                🎓 {contextUsed.lessons.length}
+              </Badge>
+            )}
+            {contextUsed?.memory_entries && contextUsed.memory_entries.length > 0 && (
+              <Badge tone="neutral" title="Użyto pamięci długoterminowej">
+                🧠 {contextUsed.memory_entries.length}
+              </Badge>
             )}
             {requestId && <span>#{requestId.slice(0, 6)}…</span>}
             {!pending && !isUser && footerClickable && (

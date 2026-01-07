@@ -20,6 +20,10 @@ export type TaskStreamEvent = {
   llmStatus?: string | null;
   llmRuntimeError?: string | null;
   context?: Record<string, unknown> | null;
+  contextUsed?: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 export type TaskStreamState = {
@@ -35,6 +39,10 @@ export type TaskStreamState = {
   llmEndpoint: string | null;
   llmStatus: string | null;
   context: Record<string, unknown> | null;
+  contextUsed: {
+    lessons?: string[];
+    memory_entries?: string[];
+  } | null;
 };
 
 export type UseTaskStreamResult = {
@@ -63,6 +71,7 @@ const defaultState: TaskStreamState = {
   llmEndpoint: null,
   llmStatus: null,
   context: null,
+  contextUsed: null,
 };
 
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
@@ -252,6 +261,12 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           typeof payload.timestamp === "string" ? payload.timestamp : null;
         const derivedTaskId = typeof payload.task_id === "string" ? payload.task_id : taskId;
         const runtime = extractRuntime(payload);
+        const contextUsed =
+          (payload.context_used as {
+            lessons?: string[];
+            memory_entries?: string[];
+          } | null) ?? null;
+
         const entry: TaskStreamEvent = {
           taskId: derivedTaskId,
           event: eventName,
@@ -265,6 +280,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           llmStatus: runtime.status,
           llmRuntimeError: runtime.error,
           context: runtime.context,
+          contextUsed,
         };
 
         if (eventName === "heartbeat") {
@@ -294,6 +310,10 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           llmEndpoint: runtime.endpoint,
           llmStatus: runtime.status ?? null,
           context: runtime.context,
+          // contextUsed bywa wysyłane tylko raz; nie nadpisujemy istniejącej wartości nullem.
+          ...(contextUsed !== undefined && contextUsed !== null
+            ? { contextUsed }
+            : {}),
         };
         const isTerminal =
           eventName === "task_finished" ||

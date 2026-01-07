@@ -851,6 +851,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             variant={activeTab === "hygiene" ? "secondary" : "ghost"}
             className="px-3"
             onClick={() => setActiveTab("hygiene")}
+            data-testid="hygiene-tab"
           >
             Hygiene / Clean
           </Button>

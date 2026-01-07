@@ -5,11 +5,10 @@ test.describe("Brain Hygiene Tab", () => {
         // 1. Go to Brain
         await page.goto("/brain");
 
-        // 2. Check if Tab structure exists (we assume "Hygiene / Clean" button logic)
-        // Note: Since button text might be dynamic or stylized, we look for text "Hygiene" or "Clean"
-        const hygieneTab = page.getByRole("button", { name: /Hygiene|Clean|Higiena/i });
+        // 2. Find hygiene tab using data-testid for more reliable selection
+        const hygieneTab = page.getByTestId("hygiene-tab");
 
-        // Ensure tab button exists (might require clicking "Brain" first if routed differently, but /brain should land there)
+        // Ensure tab button exists
         await expect(hygieneTab).toBeVisible();
 
         // 3. Click tab
@@ -22,7 +21,7 @@ test.describe("Brain Hygiene Tab", () => {
 
     test("should display pruning controls", async ({ page }) => {
         await page.goto("/brain");
-        await page.getByRole("button", { name: /Hygiene|Clean|Higiena/i }).click();
+        await page.getByTestId("hygiene-tab").click();
 
         // Check for specific buttons/inputs
         await expect(page.getByPlaceholder("Dni (np. 30)")).toBeVisible();

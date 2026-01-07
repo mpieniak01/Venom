@@ -974,45 +974,69 @@ export async function updateModelConfig(
 }
 export function useLessonPruning() {
   const pruneByTTL = useCallback(async (days: number) => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      `/api/v1/lessons/prune/ttl?days=${days}`,
-      { method: "DELETE" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/ttl?days=${days}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by TTL: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   const pruneByTag = useCallback(async (tag: string) => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      `/api/v1/lessons/prune/tag?tag=${encodeURIComponent(tag)}`,
-      { method: "DELETE" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/tag?tag=${encodeURIComponent(tag)}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by tag: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   const pruneByDate = useCallback(async (fromDate: string, toDate: string) => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      `/api/v1/lessons/prune/range?from_date=${fromDate}&to_date=${toDate}`,
-      { method: "DELETE" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/range?from_date=${fromDate}&to_date=${toDate}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune lessons by date range: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   const pruneLatest = useCallback(async (count: number) => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      `/api/v1/lessons/prune/latest?count=${count}`,
-      { method: "DELETE" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        `/api/v1/lessons/prune/latest?count=${count}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to prune latest lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   const dedupeLessons = useCallback(async () => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      "/api/v1/lessons/dedupe",
-      { method: "POST" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        "/api/v1/lessons/dedupe",
+        { method: "POST" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to deduplicate lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   const purgeLessons = useCallback(async () => {
-    return apiFetch<{ deleted: number; remaining: number }>(
-      "/api/v1/lessons/purge",
-      { method: "DELETE" }
-    );
+    try {
+      return await apiFetch<{ deleted: number; remaining: number }>(
+        "/api/v1/lessons/purge",
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      throw new Error(`Failed to purge all lessons: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, []);
 
   return {

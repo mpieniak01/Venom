@@ -98,8 +98,10 @@ class StreamingHandler:
             # Zaktualizuj kontekst z informacją o pierwszym tokenie
             task = self.state_manager.get_task(task_id)
             context_used_dict = None
-            if task and task.context_used:
-                context_used_dict = task.context_used.model_dump()
+            if task:
+                context_used_dict = getattr(task, 'context_used', None)
+                if context_used_dict:
+                    context_used_dict = context_used_dict.model_dump()
 
             self.state_manager.update_context(
                 task_id,

@@ -66,6 +66,7 @@ class HistoryRequestDetail(BaseModel):
     forced_provider: Optional[str] = None
     first_token: Optional[dict] = None
     streaming: Optional[dict] = None
+    context_used: Optional[dict] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
@@ -420,11 +421,21 @@ async def get_request_detail(request_id: UUID):
 
     first_token = None
     streaming = None
+    context_used = None
     if _state_manager is not None:
         task = _state_manager.get_task(request_id)
         context = getattr(task, "context_history", {}) or {} if task else {}
         first_token = context.get("first_token")
         streaming = context.get("streaming")
+        # Extract context_used if available
+        if task and hasattr(task, "context_used") and task.context_used:
+            # Convert model to dict
+            if hasattr(task.context_used, "model_dump"):
+                context_used = task.context_used.model_dump()
+            elif hasattr(task.context_used, "dict"):
+                context_used = task.context_used.dict()
+            else:
+                context_used = task.context_used
 
     return HistoryRequestDetail(
         request_id=trace.request_id,
@@ -444,6 +455,7 @@ async def get_request_detail(request_id: UUID):
         forced_provider=trace.forced_provider,
         first_token=first_token,
         streaming=streaming,
+        context_used=context_used,
         error_code=trace.error_code,
         error_class=trace.error_class,
         error_message=trace.error_message,

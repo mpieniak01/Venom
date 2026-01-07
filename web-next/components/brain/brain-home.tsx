@@ -41,11 +41,13 @@ import { useProjectionTrigger } from "@/hooks/use-projection";
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
 
+import { LessonPruningPanel } from "@/components/brain/lesson-pruning";
+
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
   const summary = liveSummary ?? initialData.summary ?? null;
   const initialKnowledge = initialData.knowledgeGraph;
-  const [activeTab, setActiveTab] = useState<"repo" | "memory">("memory");
+  const [activeTab, setActiveTab] = useState<"repo" | "memory" | "hygiene">("memory");
   const {
     data: liveGraph,
     loading: liveGraphLoading,
@@ -472,7 +474,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           const matchesTopic =
             activeTab === "memory"
               ? !topicFilter ||
-                nodeTopic.toLowerCase().includes(topicFilter.trim().toLowerCase())
+              nodeTopic.toLowerCase().includes(topicFilter.trim().toLowerCase())
               : true;
           if (!(matchesType && matchesTopic)) {
             node.style("display", "none");
@@ -844,6 +846,14 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           >
             Repo / Knowledge
           </Button>
+          <Button
+            size="xs"
+            variant={activeTab === "hygiene" ? "secondary" : "ghost"}
+            className="px-3"
+            onClick={() => setActiveTab("hygiene")}
+          >
+            Hygiene / Clean
+          </Button>
         </div>
       </div>
 
@@ -858,490 +868,500 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         </Badge>
       </div>
 
-      <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
-        <div className="pointer-events-none absolute inset-0 grid-overlay" />
-        <div
-          ref={cyRef}
-          data-testid="graph-container"
-          className="relative h-[70vh] w-full"
-        />
-        {isMemoryEmpty && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-black/70 via-black/60 to-black/70 text-center text-white">
-            <p className="text-sm uppercase tracking-[0.35em] text-zinc-400">Brak danych</p>
-            <p className="max-w-md text-lg font-semibold text-white">
-              Pamięć jest pusta. Rozpocznij rozmowę lub skanuj graf, aby wczytać węzły.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <Button asChild size="sm" variant="secondary">
-                <a href="/chat">Rozpocznij chat</a>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-white/30 text-white"
-                onClick={() => refreshSummary()}
-              >
-                Odśwież status
-              </Button>
-              <Button size="sm" onClick={handleScanGraph} disabled={scanning}>
-                {scanning ? "Skanuję..." : "Skanuj graf"}
-              </Button>
-            </div>
-          </div>
-        )}
-        {(graphLoading || memoryLoading || graphError || memoryGraphError) && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center text-sm text-white">
-            {graphLoading || memoryLoading ? (
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
-            ) : (
-              <AlertTriangle className="h-6 w-6 text-amber-300" />
-            )}
-            <p>
-              {graphLoading || memoryLoading
-                ? "Ładuję graf..."
-                : "Brak danych z API grafu."}
-            </p>
-            {(graphError || memoryGraphError) && (
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                className="pointer-events-auto border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
-                onClick={() => {
-                  refreshGraph();
-                  if (showMemoryLayer) memoryGraphPoll.refresh();
-                }}
-              >
-                Odśwież
-              </Button>
-            )}
-          </div>
-        )}
-        <div className="pointer-events-auto absolute left-6 top-6">
-          <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
-        </div>
-        <div className="pointer-events-auto absolute right-6 top-6">
-          <GraphActionButtons
-            onFit={handleFitGraph}
-            onScan={handleScanGraph}
-            scanning={scanning}
-            scanMessage={scanMessage}
-          />
-        </div>
-        {activeTab === "memory" ? (
-          <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
-            <div className="flex flex-wrap items-center gap-2">
-              {lessonTags.slice(0, 6).map((tag) => (
-                <Button
-                  key={tag.name}
-                  variant="ghost"
-                  size="xs"
-                  className={`rounded-full border px-3 py-1 ${
-                    highlightTag === tag.name
-                      ? "border-amber-400/50 bg-amber-500/20"
-                      : "border-white/10 bg-white/5 text-zinc-200"
-                  }`}
-                  onClick={() => handleTagToggle(tag.name)}
-                >
-                  #{tag.name}
-                </Button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showMemoryLayer}
-                  onChange={(e) => setShowMemoryLayer(e.target.checked)}
-                />
-                <span>Warstwa pamięci (LanceDB)</span>
-              </label>
-              {memoryGraph?.stats?.nodes ? (
-                <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
-              ) : null}
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={memoryOnlyPinned}
-                  onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
-                />
-                <span>Tylko pinned</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={includeLessons}
-                  onChange={(e) => setIncludeLessons(e.target.checked)}
-                />
-                <span>Dołącz lekcje</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showEdgeLabels}
-                  onChange={(e) => setShowEdgeLabels(e.target.checked)}
-                />
-                <span>Etykiety krawędzi</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={flowMode === "flow"}
-                  onChange={(e) => setFlowMode(e.target.checked ? "flow" : "default")}
-                />
-                <span>Tryb flow (sekwencja)</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <span>Session</span>
-                <input
-                  type="text"
-                  value={memorySessionFilter}
-                  onChange={(e) => setMemorySessionFilter(e.target.value)}
-                  placeholder="session-id"
-                  className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span>Topic</span>
-                <input
-                  type="text"
-                  value={topicFilter}
-                  onChange={(e) => {
-                    setTopicFilter(e.target.value);
-                    applyFiltersToGraph(filters);
-                  }}
-                  placeholder="np. ui / infra"
-                  className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  className="border-white/20 text-white"
-                  disabled={memoryWipePending}
-                  onClick={handleClearSessionMemory}
-                >
-                  Wyczyść tok sesji
-                </Button>
-                <Button
-                  size="xs"
-                  variant="danger"
-                  className="border-white/20 text-white"
-                  disabled={memoryWipePending}
-                  onClick={handleClearGlobalMemory}
-                >
-                  Wyczyść całą pamięć
-                </Button>
-              </div>
-              <Button
-                size="xs"
-                variant="outline"
-                className="border-white/20 text-white"
-                onClick={() => {
-                  memoryGraphPoll.refresh();
-                }}
-              >
-                Odśwież pamięć
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                className="border-white/20 text-white"
-                disabled={projection.pending}
-                onClick={async () => {
-                  try {
-                    const res = await projection.trigger(memoryLimit);
-                    pushToast(`Zaktualizowano projekcję (records: ${res.updated})`, "success");
-                    memoryGraphPoll.refresh();
-                  } catch {
-                    pushToast("Nie udało się zaktualizować projekcji embeddingów.", "error");
-                  }
-                }}
-              >
-                Odśwież projekcję
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="flex flex-wrap gap-3 text-xs text-white">
-        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
-          <span className="text-zinc-400">Legenda:</span>
-          {activeTab === "repo" ? (
-            <>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-indigo-400" />
-                file / function
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-amber-400" />
-                memory / fact
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-sky-400" />
-                session
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                user
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-purple-500" />
-                lesson
-              </span>
-            </>
-          )}
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
-            zaznaczony / sąsiedzi
-          </span>
-        </div>
-        {activeTab === "memory" ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
-            <span className="text-zinc-400">Etykiety krawędzi:</span>
-            <span className="text-zinc-200">
-              {showEdgeLabels ? "włączone (może spowolnić)" : "domyślnie ukryte"}
-            </span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="card-shell card-base p-4 text-sm">
-          <h4 className="heading-h4">Podsumowanie zaznaczenia</h4>
-          {selected ? (
-            <div className="mt-3 space-y-2 text-xs text-zinc-300">
-              <p>
-                <span className="text-zinc-400">Węzeł:</span>{" "}
-                <span className="font-semibold text-white">
-                  {String(selected.label || selected.id || "n/a")}
-                </span>
-              </p>
-              <p>
-                <span className="text-zinc-400">Typ:</span>{" "}
-                <span className="font-semibold text-emerald-300">
-                  {String((selected as Record<string, unknown>)?.type || "n/a")}
-                </span>
-              </p>
-              <p>
-                <span className="text-zinc-400">Relacje:</span>{" "}
-                <span className="font-semibold">{relations.length}</span>
-              </p>
-              <p className="text-hint">
-                Kliknij „Szczegóły”, by zobaczyć pełne dane JSON oraz kierunki relacji.
-              </p>
-              <Button
-                size="xs"
-                variant="outline"
-                className="text-caption"
-                onClick={() => {
-                  if (!selected) return;
-                  setDetailsSheetOpen(true);
-                }}
-              >
-                Szczegóły
-              </Button>
-            </div>
-          ) : (
-            <p className="mt-3 text-hint">
-              Wybierz węzeł w grafie, aby zobaczyć jego podstawowe dane.
-            </p>
-          )}
-        </div>
-        <div className="card-shell card-base p-4 text-sm">
-          <h4 className="heading-h4">Relacje (podgląd)</h4>
-          {selected && relations.length > 0 ? (
-            <ul className="mt-3 space-y-2 text-xs">
-              {relations.slice(0, 5).map((rel) => (
-                <li key={`${selected.id}-${rel.id}-${rel.direction}`} className="rounded-2xl box-muted px-3 py-2">
-                  <span className="font-semibold text-white">{rel.label}</span>{" "}
-                  <span className="text-zinc-400">
-                    ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
-                  </span>
-                </li>
-              ))}
-              {relations.length > 5 && (
-                <p className="text-caption">
-                  +{relations.length - 5} kolejnych relacji w panelu szczegółów.
+      {activeTab === "hygiene" ? (
+        <LessonPruningPanel />
+      ) : (
+        <>
+          <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
+            <div className="pointer-events-none absolute inset-0 grid-overlay" />
+            <div
+              ref={cyRef}
+              data-testid="graph-container"
+              className="relative h-[70vh] w-full"
+            />
+            {isMemoryEmpty && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-black/70 via-black/60 to-black/70 text-center text-white">
+                <p className="text-sm uppercase tracking-[0.35em] text-zinc-400">Brak danych</p>
+                <p className="max-w-md text-lg font-semibold text-white">
+                  Pamięć jest pusta. Rozpocznij rozmowę lub skanuj graf, aby wczytać węzły.
                 </p>
-              )}
-            </ul>
-          ) : (
-            <p className="mt-3 text-hint">
-              Brak relacji (lub nie wybrano węzła).
-            </p>
-          )}
-        </div>
-        <div className="card-shell card-base p-4 text-sm">
-          <h4 className="heading-h4">Ostatnie operacje grafu</h4>
-          {recentOperations.length === 0 ? (
-            <p className="mt-3 text-hint">
-              Brak zarejestrowanych operacji. Uruchom skan lub odśwież lekcje.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-xs text-zinc-300">
-              {recentOperations.map((op) => (
-                <li
-                  key={op.id}
-                  className="rounded-2xl box-subtle px-3 py-2 shadow-inner"
-                >
-                  <p className="font-semibold text-white">{op.title}</p>
-                  <p className="text-caption">
-                    {formatOperationTimestamp(op.timestamp)}
-                  </p>
-                  <p className="text-hint">{op.summary}</p>
-                  {op.tags.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {op.tags.slice(0, 3).map((tag) => (
-                        <span
-                          key={`${op.id}-${tag}`}
-                          className="pill-badge text-emerald-200"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <Panel
-        title="Lekcje i operacje grafu"
-        description="LessonsStore + akcje skanowania grafu."
-        action={
-          <Button size="sm" variant="secondary" onClick={() => refreshLessons()}>
-            Odśwież lekcje
-          </Button>
-        }
-      >
-        <div className="space-y-4">
-          <div className="rounded-2xl box-base p-4 text-sm text-white">
-            <h4 className="heading-h4">Statystyki Lessons</h4>
-            {lessonStatsEntries.length > 0 ? (
-              <div className="mt-3">
-                <LessonStats entries={lessonStatsEntries} />
-              </div>
-            ) : (
-              <EmptyState
-                icon={<Radar className="h-4 w-4" />}
-                title="Brak statystyk"
-                description="LessonsStore może być offline lub puste."
-                className="mt-3 text-xs"
-              />
-            )}
-          </div>
-          <div>
-            <h4 className="heading-h4">Ostatnie lekcje</h4>
-            <LessonActions tags={lessonTags} activeTag={activeTag} onSelect={setActiveTag} />
-            <div className="mt-3">
-              <LessonList lessons={filteredLessons} emptyMessage="Lekcje pojawią się po zapisaniu nowych wpisów w LessonsStore." />
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel title="Analiza pliku" description="Pobierz informacje z grafu (file info / impact).">
-        <div className="space-y-4">
-          <FileAnalysisForm
-            filePath={filePath}
-            onPathChange={setFilePath}
-            loading={fileLoading}
-            onFileInfo={() => handleFileFetch("info")}
-            onImpact={() => handleFileFetch("impact")}
-            message={fileMessage}
-          />
-          <div className="grid gap-4 md:grid-cols-2">
-            <FileAnalysisPanel label="File info" payload={fileInfo} />
-            <FileAnalysisPanel label="Impact" payload={impactInfo} />
-          </div>
-        </div>
-      </Panel>
-
-      <Sheet
-        open={detailsSheetOpen && selected !== null}
-        onOpenChange={(open) => {
-          setDetailsSheetOpen(open);
-          if (!open) {
-            clearSelection();
-          }
-        }}
-      >
-        <SheetContent className="bg-zinc-950/95 text-white">
-          <SheetHeader>
-            <SheetTitle>{String(selected?.label || selected?.id || "Node")}</SheetTitle>
-            <SheetDescription>
-              Typ: {String((selected as Record<string, unknown>)?.type || "n/a")}
-            </SheetDescription>
-          </SheetHeader>
-          {selected ? (
-            <div className="space-y-4 text-sm text-zinc-300">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Właściwości</p>
-                <pre className="mt-2 max-h-60 overflow-auto rounded-xl box-muted p-3 text-xs text-zinc-100">
-                  {JSON.stringify(selected, null, 2)}
-                </pre>
-              </div>
-              {selected.type === "memory" && selected.id ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <Button asChild size="sm" variant="secondary">
+                    <a href="/chat">Rozpocznij chat</a>
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={memoryActionPending === selected.id}
-                    onClick={() =>
-                      handlePinMemory(
-                        String(selected.id),
-                        !(selected as Record<string, unknown>)?.pinned,
-                      )
-                    }
+                    className="border-white/30 text-white"
+                    onClick={() => refreshSummary()}
                   >
-                    {selected.pinned ? "Odepnij" : "Przypnij"}
+                    Odśwież status
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={memoryActionPending === selected.id}
-                    onClick={() => handleDeleteMemory(String(selected.id))}
-                  >
-                    Usuń wpis
+                  <Button size="sm" onClick={handleScanGraph} disabled={scanning}>
+                    {scanning ? "Skanuję..." : "Skanuj graf"}
                   </Button>
                 </div>
-              ) : null}
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
-                {relations.length === 0 ? (
-                <p className="text-hint">Brak relacji.</p>
+              </div>
+            )}
+            {(graphLoading || memoryLoading || graphError || memoryGraphError) && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 text-center text-sm text-white">
+                {graphLoading || memoryLoading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-300" />
                 ) : (
-                  <ul className="mt-2 space-y-2 text-xs">
-                    {relations.map((rel) => (
-                      <li
-                        key={`${selected.id}-${rel.id}-${rel.direction}`}
-                        className="rounded-xl box-base px-3 py-2"
-                      >
-                        <span className="font-semibold text-white">{rel.label}</span>
-                        <span className="text-zinc-400">
-                          {" "}
-                          ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <AlertTriangle className="h-6 w-6 text-amber-300" />
+                )}
+                <p>
+                  {graphLoading || memoryLoading
+                    ? "Ładuję graf..."
+                    : "Brak danych z API grafu."}
+                </p>
+                {(graphError || memoryGraphError) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="pointer-events-auto border-white/20 px-4 py-2 text-xs uppercase tracking-wider text-white hover:border-white/50"
+                    onClick={() => {
+                      refreshGraph();
+                      if (showMemoryLayer) memoryGraphPoll.refresh();
+                    }}
+                  >
+                    Odśwież
+                  </Button>
                 )}
               </div>
+            )}
+            <div className="pointer-events-auto absolute left-6 top-6">
+              <GraphFilterButtons selectedFilters={filters} onToggleFilter={handleFilterToggle} />
             </div>
-          ) : (
-            <p className="text-hint">Kliknij węzeł, by zobaczyć szczegóły.</p>
-          )}
-        </SheetContent>
-      </Sheet>
+            <div className="pointer-events-auto absolute right-6 top-6">
+              <GraphActionButtons
+                onFit={handleFitGraph}
+                onScan={handleScanGraph}
+                scanning={scanning}
+                scanMessage={scanMessage}
+              />
+            </div>
+            {activeTab === "memory" ? (
+              <div className="pointer-events-auto absolute left-6 right-6 bottom-6 flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-xs text-white backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2">
+                  {lessonTags.slice(0, 6).map((tag) => (
+                    <Button
+                      key={tag.name}
+                      variant="ghost"
+                      size="xs"
+                      className={`rounded-full border px-3 py-1 ${highlightTag === tag.name
+                        ? "border-amber-400/50 bg-amber-500/20"
+                        : "border-white/10 bg-white/5 text-zinc-200"
+                        }`}
+                      onClick={() => handleTagToggle(tag.name)}
+                    >
+                      #{tag.name}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showMemoryLayer}
+                      onChange={(e) => setShowMemoryLayer(e.target.checked)}
+                    />
+                    <span>Warstwa pamięci (LanceDB)</span>
+                  </label>
+                  {memoryGraph?.stats?.nodes ? (
+                    <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
+                  ) : null}
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={memoryOnlyPinned}
+                      onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
+                    />
+                    <span>Tylko pinned</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={includeLessons}
+                      onChange={(e) => setIncludeLessons(e.target.checked)}
+                    />
+                    <span>Dołącz lekcje</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showEdgeLabels}
+                      onChange={(e) => setShowEdgeLabels(e.target.checked)}
+                    />
+                    <span>Etykiety krawędzi</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={flowMode === "flow"}
+                      onChange={(e) => setFlowMode(e.target.checked ? "flow" : "default")}
+                    />
+                    <span>Tryb flow (sekwencja)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span>Session</span>
+                    <input
+                      type="text"
+                      value={memorySessionFilter}
+                      onChange={(e) => setMemorySessionFilter(e.target.value)}
+                      placeholder="session-id"
+                      className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>Topic</span>
+                    <input
+                      type="text"
+                      value={topicFilter}
+                      onChange={(e) => {
+                        setTopicFilter(e.target.value);
+                        applyFiltersToGraph(filters);
+                      }}
+                      placeholder="np. ui / infra"
+                      className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      disabled={memoryWipePending}
+                      onClick={handleClearSessionMemory}
+                    >
+                      Wyczyść tok sesji
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="danger"
+                      className="border-white/20 text-white"
+                      disabled={memoryWipePending}
+                      onClick={handleClearGlobalMemory}
+                    >
+                      Wyczyść całą pamięć
+                    </Button>
+                  </div>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="border-white/20 text-white"
+                    onClick={() => {
+                      memoryGraphPoll.refresh();
+                    }}
+                  >
+                    Odśwież pamięć
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="border-white/20 text-white"
+                    disabled={projection.pending}
+                    onClick={async () => {
+                      try {
+                        const res = await projection.trigger(memoryLimit);
+                        pushToast(`Zaktualizowano projekcję (records: ${res.updated})`, "success");
+                        memoryGraphPoll.refresh();
+                      } catch {
+                        pushToast("Nie udało się zaktualizować projekcji embeddingów.", "error");
+                      }
+                    }}
+                  >
+                    Odśwież projekcję
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-xs text-white">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+              <span className="text-zinc-400">Legenda:</span>
+              {activeTab === "repo" ? (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-indigo-400" />
+                    file / function
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-amber-400" />
+                    memory / fact
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-sky-400" />
+                    session
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                    user
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-purple-500" />
+                    lesson
+                  </span>
+                </>
+              )}
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
+                zaznaczony / sąsiedzi
+              </span>
+            </div>
+            {activeTab === "memory" ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
+                <span className="text-zinc-400">Etykiety krawędzi:</span>
+                <span className="text-zinc-200">
+                  {showEdgeLabels ? "włączone (może spowolnić)" : "domyślnie ukryte"}
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="card-shell card-base p-4 text-sm">
+              <h4 className="heading-h4">Podsumowanie zaznaczenia</h4>
+              {selected ? (
+                <div className="mt-3 space-y-2 text-xs text-zinc-300">
+                  <p>
+                    <span className="text-zinc-400">Węzeł:</span>{" "}
+                    <span className="font-semibold text-white">
+                      {String(selected.label || selected.id || "n/a")}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-zinc-400">Typ:</span>{" "}
+                    <span className="font-semibold text-emerald-300">
+                      {String((selected as Record<string, unknown>)?.type || "n/a")}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-zinc-400">Relacje:</span>{" "}
+                    <span className="font-semibold">{relations.length}</span>
+                  </p>
+                  <p className="text-hint">
+                    Kliknij „Szczegóły”, by zobaczyć pełne dane JSON oraz kierunki relacji.
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="text-caption"
+                    onClick={() => {
+                      if (!selected) return;
+                      setDetailsSheetOpen(true);
+                    }}
+                  >
+                    Szczegóły
+                  </Button>
+                </div>
+              ) : (
+                <p className="mt-3 text-hint">
+                  Wybierz węzeł w grafie, aby zobaczyć jego podstawowe dane.
+                </p>
+              )}
+            </div>
+            <div className="card-shell card-base p-4 text-sm">
+              <h4 className="heading-h4">Relacje (podgląd)</h4>
+              {selected && relations.length > 0 ? (
+                <ul className="mt-3 space-y-2 text-xs">
+                  {relations.slice(0, 5).map((rel) => (
+                    <li key={`${selected.id}-${rel.id}-${rel.direction}`} className="rounded-2xl box-muted px-3 py-2">
+                      <span className="font-semibold text-white">{rel.label}</span>{" "}
+                      <span className="text-zinc-400">
+                        ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
+                      </span>
+                    </li>
+                  ))}
+                  {relations.length > 5 && (
+                    <p className="text-caption">
+                      +{relations.length - 5} kolejnych relacji w panelu szczegółów.
+                    </p>
+                  )}
+                </ul>
+              ) : (
+                <p className="mt-3 text-hint">
+                  Brak relacji (lub nie wybrano węzła).
+                </p>
+              )}
+            </div>
+            <div className="card-shell card-base p-4 text-sm">
+              <h4 className="heading-h4">Ostatnie operacje grafu</h4>
+              {recentOperations.length === 0 ? (
+                <p className="mt-3 text-hint">
+                  Brak zarejestrowanych operacji. Uruchom skan lub odśwież lekcje.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2 text-xs text-zinc-300">
+                  {recentOperations.map((op) => (
+                    <li
+                      key={op.id}
+                      className="rounded-2xl box-subtle px-3 py-2 shadow-inner"
+                    >
+                      <p className="font-semibold text-white">{op.title}</p>
+                      <p className="text-caption">
+                        {formatOperationTimestamp(op.timestamp)}
+                      </p>
+                      <p className="text-hint">{op.summary}</p>
+                      {op.tags.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {op.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={`${op.id}-${tag}`}
+                              className="pill-badge text-emerald-200"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Panels rendered outside of graph container */}
+      {activeTab !== "hygiene" && (
+        <>
+          <Panel
+            title="Lekcje i operacje grafu"
+            description="LessonsStore + akcje skanowania grafu."
+            action={
+              <Button size="sm" variant="secondary" onClick={() => refreshLessons()}>
+                Odśwież lekcje
+              </Button>
+            }
+          >
+            <div className="space-y-4">
+              <div className="rounded-2xl box-base p-4 text-sm text-white">
+                <h4 className="heading-h4">Statystyki Lessons</h4>
+                {lessonStatsEntries.length > 0 ? (
+                  <div className="mt-3">
+                    <LessonStats entries={lessonStatsEntries} />
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={<Radar className="h-4 w-4" />}
+                    title="Brak statystyk"
+                    description="LessonsStore może być offline lub puste."
+                    className="mt-3 text-xs"
+                  />
+                )}
+              </div>
+              <div>
+                <h4 className="heading-h4">Ostatnie lekcje</h4>
+                <LessonActions tags={lessonTags} activeTag={activeTag} onSelect={setActiveTag} />
+                <div className="mt-3">
+                  <LessonList lessons={filteredLessons} emptyMessage="Lekcje pojawią się po zapisaniu nowych wpisów w LessonsStore." />
+                </div>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel title="Analiza pliku" description="Pobierz informacje z grafu (file info / impact).">
+            <div className="space-y-4">
+              <FileAnalysisForm
+                filePath={filePath}
+                onPathChange={setFilePath}
+                loading={fileLoading}
+                onFileInfo={() => handleFileFetch("info")}
+                onImpact={() => handleFileFetch("impact")}
+                message={fileMessage}
+              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <FileAnalysisPanel label="File info" payload={fileInfo} />
+                <FileAnalysisPanel label="Impact" payload={impactInfo} />
+              </div>
+            </div>
+          </Panel>
+
+          <Sheet
+            open={detailsSheetOpen && selected !== null}
+            onOpenChange={(open) => {
+              setDetailsSheetOpen(open);
+              if (!open) {
+                clearSelection();
+              }
+            }}
+          >
+            <SheetContent className="bg-zinc-950/95 text-white">
+              <SheetHeader>
+                <SheetTitle>{String(selected?.label || selected?.id || "Node")}</SheetTitle>
+                <SheetDescription>
+                  Typ: {String((selected as Record<string, unknown>)?.type || "n/a")}
+                </SheetDescription>
+              </SheetHeader>
+              {selected ? (
+                <div className="space-y-4 text-sm text-zinc-300">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">Właściwości</p>
+                    <pre className="mt-2 max-h-60 overflow-auto rounded-xl box-muted p-3 text-xs text-zinc-100">
+                      {JSON.stringify(selected, null, 2)}
+                    </pre>
+                  </div>
+                  {selected.type === "memory" && selected.id ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={memoryActionPending === selected.id}
+                        onClick={() =>
+                          handlePinMemory(
+                            String(selected.id),
+                            !(selected as Record<string, unknown>)?.pinned,
+                          )
+                        }
+                      >
+                        {selected.pinned ? "Odepnij" : "Przypnij"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={memoryActionPending === selected.id}
+                        onClick={() => handleDeleteMemory(String(selected.id))}
+                      >
+                        Usuń wpis
+                      </Button>
+                    </div>
+                  ) : null}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-zinc-500">Relacje</p>
+                    {relations.length === 0 ? (
+                      <p className="text-hint">Brak relacji.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2 text-xs">
+                        {relations.map((rel) => (
+                          <li
+                            key={`${selected.id}-${rel.id}-${rel.direction}`}
+                            className="rounded-xl box-base px-3 py-2"
+                          >
+                            <span className="font-semibold text-white">{rel.label}</span>
+                            <span className="text-zinc-400">
+                              {" "}
+                              ({rel.direction === "out" ? "→" : "←"} {rel.type || "link"})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-hint">Kliknij węzeł, by zobaczyć szczegóły.</p>
+              )}
+            </SheetContent>
+          </Sheet>
+        </>
+      )}
     </div>
   );
 }

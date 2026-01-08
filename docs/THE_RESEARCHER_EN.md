@@ -61,7 +61,7 @@ HYBRID_CLOUD_MODEL=gemini-1.5-pro
 ENABLE_GROUNDING=true
 ```
 
-📖 **Full documentation:** [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
+📖 **Full documentation:** [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(Polish only)*
 
 ### 3. Workflow
 
@@ -345,8 +345,8 @@ class ResearchResult:
 ## Related Documentation
 
 - [WebSearchSkill](../execution/skills/web_skill.py)
-- [Google Grounding Integration](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
-- [Memory Layer](MEMORY_LAYER_GUIDE.md)
+- [Google Grounding Integration](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(Polish only)*
+- [Memory Layer](MEMORY_LAYER_GUIDE.md) *(Polish only)*
 - [Orchestrator](../core/flows/orchestrator.py)
 
 ---

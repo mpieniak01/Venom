@@ -86,7 +86,7 @@ print(f"Token usage: {status['tokens_used']}/{status['max_tokens']}")
 print(f"Budget: ${status['cost_used']:.2f}/${status['max_cost']:.2f}")
 ```
 
-📖 **Full documentation:** [COST_GUARD.md](COST_GUARD.md)
+📖 **Full documentation:** [COST_GUARD.md](COST_GUARD.md) *(Polish only)*
 
 ### 3. Complexity Classifier
 
@@ -451,8 +451,8 @@ class TaskAssessment:
 
 ## Related Documentation
 
-- [Cost Guard](COST_GUARD.md)
-- [ArchitectAgent](THE_ARCHITECT.md)
+- [Cost Guard](COST_GUARD.md) *(Polish only)*
+- [ArchitectAgent](THE_ARCHITECT_EN.md)
 - [Orchestrator](../core/flows/orchestrator.py)
 - [Work Ledger](../ops/work_ledger.py)
 

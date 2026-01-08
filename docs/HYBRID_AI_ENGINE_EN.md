@@ -417,10 +417,10 @@ class TaskType(Enum):
 
 ## Related Documentation
 
-- [Model Management](MODEL_MANAGEMENT.md)
-- [Cost Guard](COST_GUARD.md)
-- [Configuration Panel](CONFIG_PANEL.md)
-- [Backend Architecture](BACKEND_ARCHITECTURE.md)
+- [Model Management](MODEL_MANAGEMENT.md) *(Polish only)*
+- [Cost Guard](COST_GUARD.md) *(Polish only)*
+- [Configuration Panel](CONFIG_PANEL.md) *(Polish only)*
+- [Backend Architecture](BACKEND_ARCHITECTURE.md) *(Polish only)*
 
 ---
 

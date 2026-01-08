@@ -5,8 +5,8 @@ This document tracks the progress of translating Venom documentation from Polish
 
 **Last Updated:** 2026-01-08
 **Total Files:** 55 markdown files in `docs/`
-**Completed:** 30 files (55%)
-**Remaining:** 25 files (45%)
+**Completed:** 37 files (67%)
+**Remaining:** 18 files (33%)
 
 ## Completed Files (30)
 
@@ -36,7 +36,7 @@ This document tracks the progress of translating Venom documentation from Polish
 21. THE_ARCHITECT.md
 22. THE_CHAT.md
 
-### Current PR - copilot/finish-english-documentation-task (8 files):
+### PR #227 - copilot/finish-english-documentation-task (8 files):
 23. THE_CODER.md
 24. THE_CRITIC.md
 25. THE_INTEGRATOR.md
@@ -46,17 +46,20 @@ This document tracks the progress of translating Venom documentation from Polish
 29. VENOM_MASTER_VISION_V1.md
 30. THE_COUNCIL.md
 
-## Remaining Files (25)
+### Current PR - copilot/complete-documentation-task (7 files):
+31. THE_ACADEMY.md
+32. THE_APPRENTICE.md
+33. THE_CHRONOMANCER.md
+34. THE_EXECUTIVE.md
+35. THE_FORGE.md
+36. THE_LAUNCHPAD.md
+37. THE_OVERMIND.md
 
-### Priority 1 - Agent Documentation (7 files):
-- THE_ACADEMY.md (education agent)
-- THE_APPRENTICE.md (learning by observation)
-- THE_CHRONOMANCER.md (time management)
-- THE_EXECUTIVE.md (high-level orchestration)
-- THE_FORGE.md (tool creation)
-- THE_LAUNCHPAD.md (release management)
-- THE_OVERMIND.md (system monitoring)
+## Remaining Files (18)
+
+### Priority 1 - Agent Documentation (2 files):
 - THE_SHADOW.md (desktop awareness)
+- THE_HIVE.md (swarm coordination)
 
 ### Priority 2 - System Guides (12 files):
 - DREAM_ENGINE_GUIDE.md
@@ -72,11 +75,10 @@ This document tracks the progress of translating Venom documentation from Polish
 - QA_DELIVERY_GUIDE.md
 - REQUEST_TRACING_GUIDE.md
 
-### Priority 3 - Technical Reports (5 files):
+### Priority 3 - Technical Reports (4 files):
 - GENERATION_PARAMS_EXECUTION.md
 - SKILLS_ENHANCEMENTS_SUMMARY.md
 - TECHNICAL_DEBT_ELIMINATION_REPORT.md
-- THE_HIVE.md
 - refactoring_report_config_centralization.md
 
 ## Translation Guidelines

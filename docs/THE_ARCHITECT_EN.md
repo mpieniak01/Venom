@@ -309,10 +309,10 @@ class ExecutionPlan:
 
 ## Related Documentation
 
-- [Strategist](THE_STRATEGIST.md)
+- [Strategist](THE_STRATEGIST_EN.md)
 - [Orchestrator](../core/flows/orchestrator.py)
-- [ResearcherAgent](THE_RESEARCHER.md)
-- [CoderAgent](THE_CODER.md)
+- [ResearcherAgent](THE_RESEARCHER_EN.md)
+- [CoderAgent](THE_CODER_EN.md)
 
 ---
 

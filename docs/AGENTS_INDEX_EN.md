@@ -267,10 +267,10 @@ Planned additions:
 
 ## Related Documentation
 
-- [System Architecture](VENOM_MASTER_VISION_V1.md)
+- [System Architecture](VENOM_MASTER_VISION_V1.md) *(Polish only)*
 - [Orchestrator](../core/flows/orchestrator.py)
-- [Intent Recognition](INTENT_RECOGNITION.md)
-- [Skills System](SKILLS_ENHANCEMENTS_SUMMARY.md)
+- [Intent Recognition](INTENT_RECOGNITION.md) *(Polish only)*
+- [Skills System](SKILLS_ENHANCEMENTS_SUMMARY.md) *(Polish only)*
 
 ---
 

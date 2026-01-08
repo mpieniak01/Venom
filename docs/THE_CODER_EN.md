@@ -409,8 +409,8 @@ class CodeResult:
 
 - [FileSkill](../execution/skills/file_skill.py)
 - [ComposeSkill](../execution/skills/compose_skill.py)
-- [Critic Agent](THE_CRITIC.md)
-- [Architect Agent](THE_ARCHITECT.md)
+- [Critic Agent](THE_CRITIC.md) *(Polish only)*
+- [Architect Agent](THE_ARCHITECT_EN.md)
 
 ---
 

@@ -389,10 +389,10 @@ class ChatResponse:
 
 ## Related Documentation
 
-- [Memory Layer](MEMORY_LAYER_GUIDE.md)
-- [Google Calendar Integration](EXTERNAL_INTEGRATIONS.md)
+- [Memory Layer](MEMORY_LAYER_GUIDE.md) *(Polish only)*
+- [Google Calendar Integration](EXTERNAL_INTEGRATIONS.md) *(Polish only)*
 - [Orchestrator](../core/flows/orchestrator.py)
-- [Intent Recognition](INTENT_RECOGNITION.md)
+- [Intent Recognition](INTENT_RECOGNITION.md) *(Polish only)*
 
 ---
 

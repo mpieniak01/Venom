@@ -5,8 +5,8 @@ This document tracks the progress of translating Venom documentation from Polish
 
 **Last Updated:** 2026-01-08
 **Total Files:** 55 markdown files in `docs/`
-**Completed:** 37 files (67%)
-**Remaining:** 18 files (33%)
+**Completed:** 42 files (76%)
+**Remaining:** 13 files (24%)
 
 ## Completed Files (30)
 
@@ -55,22 +55,22 @@ This document tracks the progress of translating Venom documentation from Polish
 36. THE_LAUNCHPAD.md
 37. THE_OVERMIND.md
 
-## Remaining Files (18)
+### Current session - copilot/complete-english-documentation (5 files):
+38. THE_SHADOW.md
+39. THE_HIVE.md
+40. MODEL_TUNING_GUIDE.md
+41. FLOW_INSPECTOR_GUIDE.md
+42. HYBRID_AI_ENGINE.md
 
-### Priority 1 - Agent Documentation (2 files):
-- THE_SHADOW.md (desktop awareness)
-- THE_HIVE.md (swarm coordination)
+## Remaining Files (13)
 
-### Priority 2 - System Guides (12 files):
+### Priority 2 - System Guides (9 files):
 - DREAM_ENGINE_GUIDE.md
-- FLOW_INSPECTOR_GUIDE.md
 - GOOGLE_SEARCH_GROUNDING_INTEGRATION.md
 - GUARDIAN_GUIDE.md
-- HYBRID_AI_ENGINE.md
 - KNOWLEDGE_HYGIENE.md
 - MEMORY_LAYER_GUIDE.md
 - MODEL_MANAGEMENT.md
-- MODEL_TUNING_GUIDE.md
 - ORACLE_GRAPHRAG_GUIDE.md
 - QA_DELIVERY_GUIDE.md
 - REQUEST_TRACING_GUIDE.md

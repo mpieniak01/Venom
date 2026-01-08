@@ -1,5 +1,7 @@
 # Venom v1.0 🐍
 
+> **[English Documentation](#-venom-v10-)** | **[Dokumentacja w języku polskim](README.md)**
+
 **Venom desktop version – meta-intelligence system** - Autonomous AI agent system with strategic planning layer and knowledge expansion.
 
 Venom is transforming from a simple command executor into an **autonomous engineer** that can:

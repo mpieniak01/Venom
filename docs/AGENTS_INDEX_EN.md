@@ -10,34 +10,34 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Architect** | `architect.py` | [THE_ARCHITECT.md](THE_ARCHITECT.md) | Strategic planning, complex task decomposition |
-| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | Complexity assessment, API budget management |
-| **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) | High-level orchestration, decision-making |
+| **Architect** | `architect.py` | [THE_ARCHITECT_EN.md](THE_ARCHITECT_EN.md) | Strategic planning, complex task decomposition |
+| **Strategist** | `strategist.py` | [THE_STRATEGIST_EN.md](THE_STRATEGIST_EN.md) | Complexity assessment, API budget management |
+| **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) *(Polish only)* | High-level orchestration, decision-making |
 
 ### 💻 Implementation and Code
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Coder** | `coder.py` | [THE_CODER.md](THE_CODER.md) | Code generation, Docker Compose, self-repair |
-| **Critic** | `critic.py` | [THE_CRITIC.md](THE_CRITIC.md) | Code quality and security verification |
-| **Toolmaker** | `toolmaker.py` | [THE_FORGE.md](THE_FORGE.md) | Creating new Skills/tools |
+| **Coder** | `coder.py` | [THE_CODER_EN.md](THE_CODER_EN.md) | Code generation, Docker Compose, self-repair |
+| **Critic** | `critic.py` | [THE_CRITIC.md](THE_CRITIC.md) *(Polish only)* | Code quality and security verification |
+| **Toolmaker** | `toolmaker.py` | [THE_FORGE.md](THE_FORGE.md) *(Polish only)* | Creating new Skills/tools |
 
 ### 📚 Knowledge and Research
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Researcher** | `researcher.py` | [THE_RESEARCHER.md](THE_RESEARCHER.md) | Internet search, knowledge synthesis |
-| **Librarian** | `librarian.py` | [THE_LIBRARIAN.md](THE_LIBRARIAN.md) | File management, project navigation |
-| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](ORACLE_GRAPHRAG_GUIDE.md) | GraphRAG, project knowledge analysis |
+| **Researcher** | `researcher.py` | [THE_RESEARCHER_EN.md](THE_RESEARCHER_EN.md) | Internet search, knowledge synthesis |
+| **Librarian** | `librarian.py` | [THE_LIBRARIAN.md](THE_LIBRARIAN.md) *(Polish only)* | File management, project navigation |
+| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](ORACLE_GRAPHRAG_GUIDE.md) *(Polish only)* | GraphRAG, project knowledge analysis |
 | **Historian** | `historian.py` | - | Project history, change tracking |
 
 ### 🤖 User Interaction
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Chat** | `chat.py` | [THE_CHAT.md](THE_CHAT.md) | Conversational assistant, general questions |
-| **Apprentice** | `apprentice.py` | [THE_APPRENTICE.md](THE_APPRENTICE.md) | Learning by observation, workflow recording |
-| **Professor** | `professor.py` | [THE_ACADEMY.md](THE_ACADEMY.md) | User education, concept explanations |
+| **Chat** | `chat.py` | [THE_CHAT_EN.md](THE_CHAT_EN.md) | Conversational assistant, general questions |
+| **Apprentice** | `apprentice.py` | [THE_APPRENTICE.md](THE_APPRENTICE.md) *(Polish only)* | Learning by observation, workflow recording |
+| **Professor** | `professor.py` | [THE_ACADEMY.md](THE_ACADEMY.md) *(Polish only)* | User education, concept explanations |
 
 ### 🎨 Creativity and Design
 
@@ -52,18 +52,18 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Integrator** | `integrator.py` | [THE_INTEGRATOR.md](THE_INTEGRATOR.md) | Git, GitHub Issues, Pull Requests |
+| **Integrator** | `integrator.py` | [THE_INTEGRATOR.md](THE_INTEGRATOR.md) *(Polish only)* | Git, GitHub Issues, Pull Requests |
 | **DevOps** | `devops.py` | - | CI/CD, deployment, monitoring |
 | **System Engineer** | `system_engineer.py` | - | System configuration, infrastructure |
 | **Operator** | `operator.py` | - | Runtime operations, maintenance |
-| **Release Manager** | `release_manager.py` | [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) | Release management, CHANGELOG |
+| **Release Manager** | `release_manager.py` | [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) *(Polish only)* | Release management, CHANGELOG |
 
 ### 🧪 Testing and Quality
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
 | **Tester** | `tester.py` | - | Unit and integration test generation |
-| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](GUARDIAN_GUIDE.md) | Security, sandbox verification |
+| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](GUARDIAN_GUIDE.md) *(Polish only)* | Security, sandbox verification |
 | **Analyst** | `analyst.py` | - | Performance analysis, metrics, costs |
 
 ### 📝 Documentation and Maintenance
@@ -80,23 +80,23 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
 | **Simulated User** | `simulated_user.py` | - | User simulation for E2E tests |
-| **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) | GUI automation (RPA) |
-| **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) | Desktop awareness, proactive help |
+| **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) *(Polish only)* | GUI automation (RPA) |
+| **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) *(Polish only)* | Desktop awareness, proactive help |
 
 ### ⏰ Time and Monitoring
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|-------------|
-| **Time Assistant** | `time_assistant.py` | [THE_CHRONOMANCER.md](THE_CHRONOMANCER.md) | Time management, schedules |
-| **System Status** | `system_status.py` | [THE_OVERMIND.md](THE_OVERMIND.md) | System state monitoring, health checks |
+| **Time Assistant** | `time_assistant.py` | [THE_CHRONOMANCER.md](THE_CHRONOMANCER.md) *(Polish only)* | Time management, schedules |
+| **System Status** | `system_status.py` | [THE_OVERMIND.md](THE_OVERMIND.md) *(Polish only)* | System state monitoring, health checks |
 
 ### 🌐 Distributed Architecture
 
 | Concept | Documentation | Description |
 |---------|--------------|-------------|
-| **The Hive** | [THE_HIVE.md](THE_HIVE.md) | Distributed architecture with Redis |
+| **The Hive** | [THE_HIVE.md](THE_HIVE.md) *(Polish only)* | Distributed architecture with Redis |
 | **The Nexus** | - | Master-worker mesh, distributed execution |
-| **The Council** | [THE_COUNCIL.md](THE_COUNCIL.md) | Collective management, consensus |
+| **The Council** | [THE_COUNCIL.md](THE_COUNCIL.md) *(Polish only)* | Collective management, consensus |
 
 ## Agent Interaction Patterns
 

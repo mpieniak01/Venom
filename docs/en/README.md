@@ -135,8 +135,8 @@ Orchestrator (flow decision)
 ## 🚀 Quick Start
 
 > 🔎 **New web-next dashboard**
-> Detailed description of data sources for Brain/Strategy views and test checklist can be found in `docs/en/FRONTEND_NEXT_GUIDE.md`. The document also defines criteria for entering the next UI work phase.
-> Chat session documentation, Direct/Normal/Complex modes and memory behavior: `docs/en/CHAT_SESSION.md`.
+> Detailed description of data sources for Brain/Strategy views and test checklist can be found in the `FRONTEND_NEXT_GUIDE.md` document (translation in progress).
+> Chat session documentation, Direct/Normal/Complex modes and memory behavior: `CHAT_SESSION.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 
@@ -171,7 +171,7 @@ NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
 API_PROXY_TARGET=http://localhost:8000
 ```
 
-> Details (directory architecture, SCC guidelines, view data sources) are described in `docs/en/FRONTEND_NEXT_GUIDE.md`.
+> Details (directory architecture, SCC guidelines, view data sources) will be described in the `FRONTEND_NEXT_GUIDE.md` document (translation in progress).
 
 Note: Cockpit now has two views — `/` (production layout with selected boxes) and `/chat` (reference, full copy of previous layout).
 
@@ -572,46 +572,46 @@ make run
 ## 📖 Documentation
 
 ### Architecture and Vision
-- [System architecture](docs/en/VENOM_MASTER_VISION_V1.md)
-- [Backend architecture](docs/en/BACKEND_ARCHITECTURE.md)
-- [Distributed architecture (The Hive)](docs/en/THE_HIVE.md)
-- [Intent recognition system](docs/en/INTENT_RECOGNITION.md)
-- [Hybrid AI engine](docs/en/HYBRID_AI_ENGINE.md)
+- [System architecture](VENOM_MASTER_VISION_V1.md) *(translation in progress)*
+- [Backend architecture](BACKEND_ARCHITECTURE.md)
+- [Distributed architecture (The Hive)](THE_HIVE.md) *(translation in progress)*
+- [Intent recognition system](INTENT_RECOGNITION.md)
+- [Hybrid AI engine](HYBRID_AI_ENGINE.md) *(translation in progress)*
 
 ### Agents
-- [**Index of all agents** (34 agents)](docs/en/AGENTS_INDEX.md) 📋
-- [The Architect - Planning](docs/en/THE_ARCHITECT.md)
-- [The Coder - Code generation](docs/en/THE_CODER.md)
-- [The Researcher - Knowledge search](docs/en/THE_RESEARCHER.md)
-- [The Chat - Conversational assistant](docs/en/THE_CHAT.md)
-- [The Strategist - Complexity analysis](docs/en/THE_STRATEGIST.md)
-- [The Critic - Code verification](docs/en/THE_CRITIC.md)
-- [The Librarian - File management](docs/en/THE_LIBRARIAN.md)
-- [The Integrator - Git & DevOps](docs/en/THE_INTEGRATOR.md)
-- [The Forge (Toolmaker) - Tool creation](docs/en/THE_FORGE.md)
+- [**Index of all agents** (34 agents)](AGENTS_INDEX.md) 📋
+- [The Architect - Planning](THE_ARCHITECT.md) *(translation in progress)*
+- [The Coder - Code generation](THE_CODER.md) *(translation in progress)*
+- [The Researcher - Knowledge search](THE_RESEARCHER.md) *(translation in progress)*
+- [The Chat - Conversational assistant](THE_CHAT.md) *(translation in progress)*
+- [The Strategist - Complexity analysis](THE_STRATEGIST.md) *(translation in progress)*
+- [The Critic - Code verification](THE_CRITIC.md) *(translation in progress)*
+- [The Librarian - File management](THE_LIBRARIAN.md) *(translation in progress)*
+- [The Integrator - Git & DevOps](THE_INTEGRATOR.md) *(translation in progress)*
+- [The Forge (Toolmaker) - Tool creation](THE_FORGE.md) *(translation in progress)*
 
 ### Frontend and UI
-- [Frontend Next.js](docs/en/FRONTEND_NEXT_GUIDE.md)
-- [Configuration panel](docs/en/CONFIG_PANEL.md)
-- [Dashboard](docs/en/DASHBOARD_GUIDE.md)
+- [Frontend Next.js](FRONTEND_NEXT_GUIDE.md) *(translation in progress)*
+- [Configuration panel](CONFIG_PANEL.md)
+- [Dashboard](DASHBOARD_GUIDE.md)
 
 ### Tools and Features
-- [Model management](docs/en/MODEL_MANAGEMENT.md)
-- [LLM model tuning](docs/en/_done/072_strojenie_modelu_llm_ui.md)
-- [Flow Inspector](docs/en/FLOW_INSPECTOR_GUIDE.md)
-- [Dream Engine](docs/en/DREAM_ENGINE_GUIDE.md)
-- [Memory layer](docs/en/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/en/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
+- [Model management](MODEL_MANAGEMENT.md) *(translation in progress)*
+- [LLM model tuning](../docs/_done/072_strojenie_modelu_llm_ui.md) *(Polish only)*
+- [Flow Inspector](FLOW_INSPECTOR_GUIDE.md) *(translation in progress)*
+- [Dream Engine](DREAM_ENGINE_GUIDE.md) *(translation in progress)*
+- [Memory layer](MEMORY_LAYER_GUIDE.md) *(translation in progress)*
+- [Google Search Grounding](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(translation in progress)*
 
 ### DevOps and Deployment
-- [Deployment (Next.js)](docs/en/DEPLOYMENT_NEXT.md)
-- [External integrations](docs/en/EXTERNAL_INTEGRATIONS.md)
-- [Guardian - Security](docs/en/GUARDIAN_GUIDE.md)
-- [QA Delivery](docs/en/QA_DELIVERY_GUIDE.md)
+- [Deployment (Next.js)](DEPLOYMENT_NEXT.md)
+- [External integrations](EXTERNAL_INTEGRATIONS.md) *(translation in progress)*
+- [Guardian - Security](GUARDIAN_GUIDE.md) *(translation in progress)*
+- [QA Delivery](QA_DELIVERY_GUIDE.md) *(translation in progress)*
 
 ### Collaboration
-- [Contribution guide](docs/en/CONTRIBUTING.md)
-- [Testing and performance](docs/en/TESTING_CHAT_LATENCY.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Testing and performance](TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Tests
 
@@ -778,8 +778,8 @@ docker-compose -f docker-compose.spores.yml up
 python examples/nexus_demo.py
 ```
 
-📖 **Full documentation:** [venom_spore/README.md](venom_spore/README.md)
-📖 **Hive architecture:** [docs/en/THE_HIVE.md](docs/en/THE_HIVE.md)
+📖 **Full documentation:** [venom_spore/README.md](../venom_spore/README.md)
+📖 **Hive architecture:** [THE_HIVE.md](THE_HIVE.md) *(translation in progress)*
 
 ## 👥 Team
 
@@ -803,14 +803,6 @@ python examples/nexus_demo.py
 ## 📝 License
 
 This project is currently in early development stage.
-The repository is public solely for viewing and reference purposes.
-
-At this stage no license is granted.
-All rights are reserved by the author until further notice.
-
-## License
-
-The project is currently in early development stage.
 The repository is public solely for viewing and reference purposes.
 
 At this stage no license is granted.

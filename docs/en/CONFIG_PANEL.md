@@ -53,12 +53,13 @@ Manages `.env` file:
 
 **Parameter whitelist:**
 - AI Configuration: `AI_MODE`, `LLM_SERVICE_TYPE`, `LLM_LOCAL_ENDPOINT`, API keys
-- LLM Commands: `VLLM_START_COMMAND`, `OLLAMA_START_COMMAND`
 - Generation parameters (per runtime/model): `MODEL_GENERATION_OVERRIDES` (JSON)
 - Hive: `ENABLE_HIVE`, `REDIS_HOST`, `REDIS_PORT`
 - Nexus: `ENABLE_NEXUS`, `NEXUS_PORT`, `NEXUS_SHARED_TOKEN`
 - Background Tasks: `ENABLE_AUTO_DOCUMENTATION`, `ENABLE_AUTO_GARDENING`
 - Agents: `ENABLE_GHOST_AGENT`, `ENABLE_DESKTOP_SENSOR`, `ENABLE_AUDIO_INTERFACE`
+
+> **Security Note:** LLM runtime start/stop commands (e.g., `VLLM_START_COMMAND`, `OLLAMA_START_COMMAND`) are **not** editable from the configuration panel for security reasons. These commands are configured outside the UI to prevent potential command injection vulnerabilities.
 
 **Secret masking:**
 Parameters containing "KEY", "TOKEN", "PASSWORD" are masked in format: `sk-****1234` (first 4 and last 4 characters)
@@ -95,9 +96,16 @@ POST /api/v1/runtime/profile/{profile_name}
 GET  /api/v1/config/runtime?mask_secrets=true
      → {config: {KEY: "value", ...}}
 
+     Note: Secret masking is enforced server-side. In production deployments,
+     this endpoint should be protected with authentication to prevent
+     unauthorized access to configuration data.
+
 POST /api/v1/config/runtime
      body: {updates: {KEY: "new_value", ...}}
      → {success: bool, message: str, restart_required: [services], changed_keys: [...], backup_path: str}
+
+     Note: In production deployments, this endpoint should require authentication
+     and authorization to prevent unauthorized configuration changes.
 
 GET  /api/v1/config/backups?limit=20
      → {backups: [{filename, path, size_bytes, created_at}]}
@@ -337,7 +345,7 @@ make clean-ports
 - [ ] Service dependencies graph
 - [ ] Configuration export/import
 
-### TODO (v1.0)
+### TODO (v2.0)
 - [ ] Multi-user access control (role-based)
 - [ ] Audit log (who, when, what changed)
 - [ ] Config templates (dev/prod/test)

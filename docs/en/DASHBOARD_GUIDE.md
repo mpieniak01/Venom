@@ -4,7 +4,7 @@ This document describes two frontends:
 - **New Next.js (`web-next`)** – default interface with App Router and Playwright smoke.
 - **Legacy (`web/` + FastAPI templates)** – preserved for compatibility (last deployments before migration).
 
-Detailed data sources, tests and SCC rules can also be found in `docs/en/FRONTEND_NEXT_GUIDE.md`.
+Detailed data sources, tests and SCC rules will be documented in the dedicated Frontend Next.js guide (translation in progress).
 
 ---
 

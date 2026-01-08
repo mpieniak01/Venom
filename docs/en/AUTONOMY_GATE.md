@@ -97,9 +97,13 @@ print(f"Current level: {state_manager.autonomy_level}")
 
 ```bash
 # Get current level
+# Note: In production, these endpoints should require authentication
+# to prevent unauthorized autonomy level changes
 GET /api/v1/system/autonomy
 
 # Set new level
+# IMPORTANT: This endpoint should be restricted to authenticated,
+# trusted operators only to prevent security bypass
 POST /api/v1/system/autonomy
 {
   "level": 20
@@ -108,6 +112,8 @@ POST /api/v1/system/autonomy
 # List all levels
 GET /api/v1/system/autonomy/levels
 ```
+
+> **Security Warning:** The autonomy control endpoints should be protected with authentication and restricted to localhost or trusted networks only. Unrestricted access allows any caller to raise the autonomy level to ROOT, bypassing all permission checks for network access, file writes, and shell execution.
 
 ### Frontend
 

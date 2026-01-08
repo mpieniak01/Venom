@@ -4,6 +4,8 @@
 
 The Venom system consists of 34 specialized agents, each responsible for a specific functionality area. Below you'll find the complete list with descriptions and links to detailed documentation.
 
+> **Note:** This index has been translated to English. Individual agent documentation files (THE_*.md) are currently being translated. Links to untranslated files may not work yet.
+
 ## Agent Categories
 
 ### 🏗️ Planning and Architecture
@@ -183,7 +185,7 @@ User: "Add weather checking capability"
 
 ## See also
 
-- [VENOM_MASTER_VISION_V1.md](VENOM_MASTER_VISION_V1.md) - System vision
 - [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture
 - [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification
-- [THE_HIVE.md](THE_HIVE.md) - Distributed architecture
+
+*Note: Additional documentation files (VENOM_MASTER_VISION_V1.md, THE_HIVE.md) are currently being translated.*

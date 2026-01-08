@@ -1,5 +1,7 @@
 # Venom v1.0 🐍
 
+> **[English Documentation Available](README_EN.md)** | **[Dokumentacja w języku polskim](#-venom-v10-)**
+
 **Venom wersja dekstop – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
 Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:

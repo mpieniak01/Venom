@@ -688,7 +688,7 @@ mypy venom_core
 
 ## 🎯 Roadmap
 
-### ✅ v1.0 (current - Q4 2024)
+### ✅ v1.0 (current - Q4 2025)
 - [x] Planning Layer (ArchitectAgent)
 - [x] Knowledge Expansion (ResearcherAgent + WebSearchSkill)
 - [x] Internet Integration

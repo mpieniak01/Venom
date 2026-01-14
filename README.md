@@ -688,7 +688,7 @@ mypy venom_core
 
 ## 🎯 Mapa drogowa
 
-### ✅ v1.0 (obecnie - Q4 2024)
+### ✅ v1.0 (obecnie - Q4 2025)
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem

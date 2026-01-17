@@ -149,5 +149,5 @@ MEMORY_ROOT=./data/memory
 ## See also
 
 - [THE_RESEARCHER.md](THE_RESEARCHER.md) - Searching current information
-- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Long-term memory
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - How short-term memory works
 - [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification

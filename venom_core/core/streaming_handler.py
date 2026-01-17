@@ -99,7 +99,7 @@ class StreamingHandler:
             task = self.state_manager.get_task(task_id)
             context_used_dict = None
             if task:
-                context_used_dict = getattr(task, 'context_used', None)
+                context_used_dict = getattr(task, "context_used", None)
                 if context_used_dict:
                     context_used_dict = context_used_dict.model_dump()
 

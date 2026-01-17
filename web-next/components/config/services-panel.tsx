@@ -55,13 +55,22 @@ export function ServicesPanel() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await fetch("/api/v1/runtime/status");
+      const response = await fetch("/api/v1/runtime/status").catch((error) => {
+        console.warn("Błąd sieci przy pobieraniu statusu usług:", error);
+        setMessage({
+          type: "error",
+          text: "Brak połączenia z API statusu usług.",
+        });
+        return null;
+      });
+
+      if (!response) return;
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
           errorText || `Nie udało się pobrać statusu usług (HTTP ${response.status})`;
-        console.error("Błąd pobierania statusu (HTTP):", response.status, errorText);
+        console.warn("Błąd pobierania statusu (HTTP):", response.status, errorText);
         setMessage({ type: "error", text: errorMessage });
         return;
       }
@@ -74,8 +83,7 @@ export function ServicesPanel() {
         setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
-      // TODO: Replace with proper error reporting service
-      console.error("Błąd pobierania statusu:", error);
+      console.warn("Błąd pobierania statusu:", error);
       setMessage({
         type: "error",
         text: "Wystąpił błąd podczas pobierania statusu usług",
@@ -85,7 +93,16 @@ export function ServicesPanel() {
 
   const fetchHistory = useCallback(async () => {
     try {
-      const response = await fetch("/api/v1/runtime/history?limit=10");
+      const response = await fetch("/api/v1/runtime/history?limit=10").catch((error) => {
+        console.warn("Błąd sieci przy pobieraniu historii akcji:", error);
+        setMessage({
+          type: "error",
+          text: "Brak połączenia z API historii akcji.",
+        });
+        return null;
+      });
+
+      if (!response) return;
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
@@ -104,7 +121,6 @@ export function ServicesPanel() {
         setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
-      // TODO: Replace with proper error reporting service
       console.error("Błąd pobierania historii:", error);
       setMessage({
         type: "error",
@@ -117,7 +133,16 @@ export function ServicesPanel() {
     setStorageLoading(true);
     setStorageError(null);
     try {
-      const response = await fetch("/api/v1/system/storage");
+      const response = await fetch("/api/v1/system/storage").catch((error) => {
+        console.warn("Błąd sieci przy pobieraniu danych storage:", error);
+        setStorageError("Brak połączenia z API storage.");
+        return null;
+      });
+
+      if (!response) {
+        setStorageLoading(false);
+        return;
+      }
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
@@ -459,14 +484,55 @@ export function ServicesPanel() {
         <h2 className="mb-4 heading-h2">Koszty dysku</h2>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-zinc-200">
-            {storageSnapshot?.disk ? (
+            {storageSnapshot?.disk_root ? (
+              <div className="flex flex-col gap-1">
+                {(() => {
+                  const total = storageSnapshot.disk_root.total_bytes ?? 0;
+                  const free = storageSnapshot.disk_root.free_bytes ?? 0;
+                  const used =
+                    storageSnapshot.disk_root.used_bytes ?? Math.max(total - free, 0);
+                  return (
+                    <span>
+                      Użycie (WSL root):{" "}
+                      <span className="font-semibold text-white">
+                        {formatBytes(used)}
+                      </span>
+                    </span>
+                  );
+                })()}
+                {storageSnapshot.disk ? (
+                  <span className="text-xs text-zinc-400">
+                    Dysk fizyczny:{" "}
+                    <span className="font-semibold text-white">
+                      {formatBytes(
+                        storageSnapshot.disk.used_bytes ??
+                          Math.max(
+                            (storageSnapshot.disk.total_bytes ?? 0) -
+                              (storageSnapshot.disk.free_bytes ?? 0),
+                            0
+                          )
+                      )}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+            ) : storageSnapshot?.disk ? (
               <span>
-                Użycie:{" "}
-                <span className="font-semibold text-white">
-                  {formatBytes(storageSnapshot.disk.used_bytes)} /{" "}
-                  {formatBytes(storageSnapshot.disk.total_bytes)}
-                </span>{" "}
-                (wolne: {formatBytes(storageSnapshot.disk.free_bytes)})
+                {(() => {
+                  const total = storageSnapshot.disk.total_bytes ?? 0;
+                  const free = storageSnapshot.disk.free_bytes ?? 0;
+                  const used =
+                    storageSnapshot.disk.used_bytes ?? Math.max(total - free, 0);
+                  return (
+                    <>
+                      Użycie:{" "}
+                      <span className="font-semibold text-white">
+                        {formatBytes(used)} / {formatBytes(total)}
+                      </span>{" "}
+                      (wolne: {formatBytes(free)})
+                    </>
+                  );
+                })()}
               </span>
             ) : (
               <span>Brak danych o dysku.</span>
@@ -496,7 +562,7 @@ export function ServicesPanel() {
               .sort((a, b) => b.size_bytes - a.size_bytes)
               .map((item) => (
                 <div
-                  key={item.path}
+                  key={`${item.path}:${item.name}`}
                   className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs"
                 >
                   <div className="flex items-start justify-between gap-3">

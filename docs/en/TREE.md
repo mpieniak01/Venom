@@ -24,6 +24,12 @@
 │       └── js/
 │           └── app.js           # frontend logic
 │
+├── web-next/                    # [NEW] Next.js Dashboard (VENOM 2.0)
+│   ├── app/                     # App Router
+│   ├── components/              # React/Shadcn UI components
+│   ├── lib/                     # utils, types, api clients
+│   └── public/                  # static assets
+│
 ├── tests/                       # tests (API, core, etc.)
 │   ├── __init__.py
 │   └── test_healthz.py          # e.g. /healthz endpoint test
@@ -46,7 +52,9 @@
     │   ├── orchestrator.py      # task lifecycle
     │   ├── intent_manager.py    # intent classification (code/research/arch)
     │   ├── policy_engine.py     # ethics, autonomy, domain levels
-    │   └── state_manager.py     # organism state, task log
+    │   ├── state_manager.py     # organism state, task log
+    │   ├── model_registry.py    # model registry (ONNX + GGUF)
+    │   └── llm_server_controller.py # LLM server management (Ollama/vLLM)
     │
     ├── agents/                  # [LAYER 2: AGENT SERVICES] – SPECIALISTS
     │   ├── __init__.py
@@ -54,7 +62,11 @@
     │   ├── librarian.py         # repo / file structure
     │   ├── coder.py             # code generation
     │   ├── critic.py            # tests / review
-    │   └── writer.py            # documentation, logs, PR descriptions
+    │   ├── writer.py            # documentation, logs, PR descriptions
+    │   ├── ghost_agent.py       # visual GUI automation
+    │   ├── apprentice.py        # learning by observation
+    │   ├── professor.py         # user education system
+    │   └── oracle.py            # knowledge graph analysis (GraphRAG)
     │
     ├── execution/               # [LAYER 3: HANDS] – Semantic Kernel / tools
     │   ├── __init__.py
@@ -78,7 +90,7 @@
     │
     ├── infrastructure/          # [LAYER 4: METABOLISM] – ENGINES
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # wrapper for onnxruntime(-gpu)
+    │   ├── onnx_runtime.py      # Vision/Audio runtime
     │   ├── docker_habitat.py    # container / sandbox management
     │   └── hardware_pi.py       # bridge to Rider-Pi (API, heartbeat)
     │

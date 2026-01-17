@@ -147,7 +147,25 @@ await gardener.stop()
 
 - `GET /api/v1/gardener/status` - Status agenta Ogrodnika
 
-### 4. Orchestrator - Pętla Meta-Uczenia
+### 4. Semantic Cache (Hidden Prompts)
+
+**Lokalizacja:** `venom_core/core/hidden_prompts.py`
+
+Mechanizm Semantic Cache służy do optymalizacji czatu poprzez zapamiętywanie zatwierdzonych par Pytanie-Odpowiedź i serwowanie ich dla semantycznie podobnych zapytań bez angażowania LLM.
+
+#### Działanie:
+1.  **Exact Match:** Najpierw sprawdza dokładne dopasowanie w plikach JSONL.
+2.  **Semantic Match:** Jeśli brak dokładnego dopasowania, przeszukuje wektorową bazę danych (LanceDB).
+3.  **Threshold:** Akceptuje wynik tylko, gdy podobieństwo (cosine similarity) przekracza `SEMANTIC_CACHE_THRESHOLD` (domyślnie 0.85).
+
+#### Konfiguracja (constants.py):
+- `SEMANTIC_CACHE_THRESHOLD = 0.85`
+- `SEMANTIC_CACHE_COLLECTION_NAME = "hidden_prompts"`
+
+#### Integracja:
+Cache wykorzystuje `VectorStore` (tę samą klasę co Memory/Lessons) oraz model embeddingów `sentence-transformers/all-MiniLM-L6-v2`.
+
+### 5. Orchestrator - Pętla Meta-Uczenia
 
 **Lokalizacja:** `venom_core/core/orchestrator.py`
 

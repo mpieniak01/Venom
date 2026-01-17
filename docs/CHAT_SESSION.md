@@ -56,7 +56,7 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
 - To zapobiega blednym przekierowaniom (np. pytanie definicyjne jako HELP_REQUEST) i utrzymuje chat jako rozmowe.
 
 ## Tryby pracy czatu (manualny przełącznik)
-W UI czatu są trzy tryby. To nie duplikuje architektury – to kontrola strategii.
+W UI czatu są trzy tryby. Mechanizmy retencji i semantic cache wdrożone w zadaniach 088/090 działają w pełni w trybach **DIRECT** i **NORMAL**. Tryb **COMPLEX** korzysta z tych samych danych, ale posiada własną strategię orkiestracji.
 
 ### 1) Direct (bezpośredni)
 - **Routing:** bez orkiestratora, bez narzędzi, bez planowania.
@@ -94,6 +94,15 @@ Cel: wszystko poza wysłaniem promptu i pierwszym chunkem ma działać w tle.
   - wpisy sesyjne w `state_dump.json`,
   - pamiec sesyjna w wektorowej pamieci (jesli byla tagowana `session_id`).
 - Pamiec wektorowa globalna nie jest czyszczona automatycznie.
+
+## Zarządzanie Retencją (Memory Hygiene)
+System udostępnia dedykowane endpointy API do zarządzania cyklem życia wiedzy (Lekcji):
+- **Pruning wg TTL:** Usuwanie lekcji starszych niż N dni.
+- **Pruning wg Ilości:** Zachowanie tylko N ostatnich lekcji.
+- **Pruning wg Tagu:** Usuwanie grup tematycznych (np. po refactoringu biblioteki).
+- **Global Wipe:** Pełne czyszczenie pamięci długoterminowej.
+
+Te operacje są kluczowe dla utrzymania jakości kontekstu w czasie. Interfejs do tych operacji znajduje się w panelu **Brain -> Hygiene**.
 
 ## Konsekwencje dla tokenow
 - Summary i pamiec wektorowa zwiekszaja dlugosc promptu tylko wtedy, gdy sa wlaczane.

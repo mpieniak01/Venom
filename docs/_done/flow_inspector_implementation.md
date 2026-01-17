@@ -169,9 +169,9 @@ System teraz oferuje:
 
 ## 📚 Linki
 
-- [Przewodnik użytkownika](FLOW_INSPECTOR_GUIDE.md)
-- [REQUEST_TRACING_GUIDE.md](REQUEST_TRACING_GUIDE.md)
-- [THE_COUNCIL.md](THE_COUNCIL.md)
+- [Przewodnik użytkownika](../FLOW_INSPECTOR_GUIDE.md)
+- [REQUEST_TRACING_GUIDE.md](../REQUEST_TRACING_GUIDE.md)
+- [THE_COUNCIL.md](../THE_COUNCIL.md)
 
 ---
 

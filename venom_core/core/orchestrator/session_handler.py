@@ -19,7 +19,6 @@ from .constants import (
     DEFAULT_USER_ID,
     HISTORY_SUMMARY_TRIGGER_CHARS,
     HISTORY_SUMMARY_TRIGGER_MSGS,
-    LONG_BLOCK_THRESHOLD,
     SESSION_HISTORY_LIMIT,
     SUMMARY_MAX_CHARS,
     SUMMARY_MODEL_MAX_TOKENS,
@@ -98,10 +97,7 @@ class SessionHandler:
             if not isinstance(getattr(task, "context_history", {}), dict):
                 task.context_history = {}
             short_content = content
-            was_trimmed = False
-            if len(content) > LONG_BLOCK_THRESHOLD:
-                short_content = f"[SKRÓCONO BLOK {len(content)} znaków]"
-                was_trimmed = True
+            was_trimmed = False  # pełny tekst w historii (bez placeholdera)
 
             history = (task.context_history.get("session_history") or [])[:]
             full_history = task.context_history.get("session_history_full") or []
@@ -204,13 +200,19 @@ class SessionHandler:
                                         # Bezpieczna konwersja dict -> ContextUsed, używamy tylko znanych pól
                                         task.context_used = ContextUsed(
                                             lessons=current_used.get("lessons", []),
-                                            memory_entries=current_used.get("memory_entries", [])
+                                            memory_entries=current_used.get(
+                                                "memory_entries", []
+                                            ),
                                         )
                                         current_used = task.context_used
                                     except Exception as e:
                                         # W przypadku błędu migracji, tworzymy pusty obiekt
-                                        self.logger.warning(f"Błąd migracji context_used: {e}")
-                                        task.context_used = ContextUsed(memory_entries=memory_ids)
+                                        self.logger.warning(
+                                            f"Błąd migracji context_used: {e}"
+                                        )
+                                        task.context_used = ContextUsed(
+                                            memory_entries=memory_ids
+                                        )
                                         current_used = task.context_used
 
                                 # 2) Jeśli ContextUsed już istnieje – rozszerz listę wpisów pamięci

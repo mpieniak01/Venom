@@ -170,7 +170,9 @@ async def test_wait_for_healthcheck_success(benchmark_service):
         mock_client_class.return_value = mock_client
 
         # Powinno zakończyć się bez błędu
-        await benchmark_service._wait_for_healthcheck(timeout=5)
+        await benchmark_service._wait_for_healthcheck(
+            endpoint="http://localhost:8000", timeout=5
+        )
 
 
 @pytest.mark.asyncio
@@ -185,7 +187,9 @@ async def test_wait_for_healthcheck_timeout(benchmark_service):
         mock_client_class.return_value = mock_client
 
         with pytest.raises(TimeoutError, match="healthcheck failed"):
-            await benchmark_service._wait_for_healthcheck(timeout=1)
+            await benchmark_service._wait_for_healthcheck(
+                endpoint="http://localhost:8000", timeout=1
+            )
 
 
 @pytest.mark.asyncio
@@ -220,7 +224,9 @@ async def test_query_model_with_metrics(benchmark_service):
 
             mock_client_class.return_value = mock_client
 
-            metrics = await benchmark_service._query_model_with_metrics(question)
+            metrics = await benchmark_service._query_model_with_metrics(
+                question, model_name="model1", endpoint="http://localhost:8000"
+            )
 
             assert "latency_ms" in metrics
             assert "duration_ms" in metrics

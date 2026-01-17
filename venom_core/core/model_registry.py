@@ -42,6 +42,7 @@ class ModelProvider(str, Enum):
 
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
+    VLLM = "vllm"
     LOCAL = "local"
 
 
@@ -872,23 +873,93 @@ class ModelRegistry:
 
     async def activate_model(self, model_name: str, runtime: str) -> bool:
         """
-        Aktywuje model dla danego runtime (stub - wymaga integracji z LlmServerController).
+        Aktywuje model dla danego runtime (prosty update konfiguracji).
 
         Returns:
             True jeśli sukces
         """
-        # TODO: Integracja z LlmServerController do restartu runtime
         logger.info(f"Aktywacja modelu {model_name} dla runtime {runtime}")
 
         if model_name not in self.manifest:
             logger.error(f"Model {model_name} nie znaleziony w manifeście")
             return False
 
-        # Aktualizuj konfigurację (stub - do rozszerzenia)
-        # W pełnej wersji należy:
-        # 1. Zaktualizować SETTINGS.LLM_MODEL_NAME
-        # 2. Zrestartować odpowiedni runtime przez LlmServerController
-        # 3. Wykonać health-check
+        meta = self.manifest.get(model_name)
 
-        logger.info(f"Model {model_name} aktywowany (stub)")
+        # Aktualizuj SETTINGS i .env przez config_manager
+        try:
+            from venom_core.config import SETTINGS
+            from venom_core.services.config_manager import config_manager
+
+            template_value = ""
+            updates = {
+                "LLM_MODEL_NAME": model_name,
+                "ACTIVE_LLM_SERVER": runtime,
+            }
+            if runtime == "vllm":
+                local_path = meta.local_path or model_name
+                template_candidate = Path(local_path) / "chat_template.jinja"
+                if not template_candidate.is_absolute():
+                    template_candidate = Path(SETTINGS.REPO_ROOT) / template_candidate
+                if template_candidate.exists():
+                    template_value = str(template_candidate)
+                updates.update(
+                    {
+                        "VLLM_MODEL_PATH": local_path,
+                        "VLLM_SERVED_MODEL_NAME": model_name,
+                        "VLLM_CHAT_TEMPLATE": template_value,
+                        "LAST_MODEL_VLLM": model_name,
+                    }
+                )
+                SETTINGS.VLLM_MODEL_PATH = local_path
+                SETTINGS.VLLM_SERVED_MODEL_NAME = model_name
+                try:
+                    SETTINGS.VLLM_CHAT_TEMPLATE = template_value  # type: ignore[attr-defined]
+                except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
+                    pass
+            if runtime == "ollama":
+                updates["LAST_MODEL_OLLAMA"] = model_name
+
+            config_manager.update_config(updates)
+
+            SETTINGS.LLM_MODEL_NAME = model_name
+            SETTINGS.ACTIVE_LLM_SERVER = runtime
+            if runtime == "ollama":
+                try:
+                    SETTINGS.LAST_MODEL_OLLAMA = model_name  # type: ignore[attr-defined]
+                except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
+                    pass
+            if runtime == "vllm":
+                try:
+                    SETTINGS.LAST_MODEL_VLLM = model_name  # type: ignore[attr-defined]
+                except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
+                    pass
+
+            # Restart odpowiedniego runtime, jeśli mamy komendę
+            try:
+                from venom_core.core.llm_server_controller import LlmServerController
+
+                controller = LlmServerController(SETTINGS)
+                action = "restart"
+                if controller.has_server(runtime):
+                    result = await controller.run_action(runtime, action)
+                    if not result.ok:
+                        logger.warning(
+                            "Restart %s po aktywacji modelu nie powiódł się: %s",
+                            runtime,
+                            result.stderr,
+                        )
+            except Exception as exc:
+                logger.warning("Nie udało się wykonać restartu %s: %s", runtime, exc)
+
+        except Exception as e:
+            logger.warning(
+                f"Nie udało się zaktualizować SETTINGS/config dla {model_name}: {e}"
+            )
+            return False
+
+        logger.info(f"Model {model_name} aktywowany (runtime={runtime})")
         return True

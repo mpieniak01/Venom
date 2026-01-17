@@ -5,6 +5,7 @@ import { MarkdownPreview } from "@/components/ui/markdown";
 import { isComputationContent } from "@/lib/markdown-format";
 import { statusTone } from "@/lib/status";
 import { TYPING_EFFECT } from "@/lib/ui-config";
+import { useTranslation } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -21,6 +22,7 @@ type ConversationBubbleProps = {
   footerExtra?: ReactNode;
   forcedLabel?: string | null;
   modeLabel?: string | null;
+  sourceLabel?: string | null;
   contextUsed?: {
     lessons?: string[];
     memory_entries?: string[];
@@ -40,8 +42,10 @@ export function ConversationBubble({
   footerExtra,
   forcedLabel,
   modeLabel,
+  sourceLabel,
   contextUsed,
 }: ConversationBubbleProps) {
+  const t = useTranslation();
   const isUser = role === "user";
   const terminalStatuses = ["COMPLETED", "FAILED", "LOST"];
   const isTerminal =
@@ -93,6 +97,40 @@ export function ConversationBubble({
       onSelect?.();
     }
   };
+  const statusLabel = (() => {
+    if (!status) return null;
+    const normalized = status.toUpperCase();
+    switch (normalized) {
+      case "COMPLETED":
+        return t("cockpit.chatStatus.completed");
+      case "FAILED":
+        return t("cockpit.chatStatus.failed");
+      case "LOST":
+        return t("cockpit.chatStatus.lost");
+      case "PENDING":
+        return t("cockpit.chatStatus.pending");
+      case "PROCESSING":
+        return t("cockpit.chatStatus.processing");
+      default:
+        break;
+    }
+    const localizedMap: Record<string, string> = {
+      "W TOKU": t("cockpit.chatStatus.inProgress"),
+      "WYSŁANO": t("cockpit.chatStatus.sent"),
+      "WYSYŁANO": t("cockpit.chatStatus.sent"),
+      "W KOLEJCE": t("cockpit.chatStatus.queued"),
+      "BŁĄD STRUMIENIA": t("cockpit.chatStatus.streamError"),
+    };
+    return localizedMap[normalized] ?? status;
+  })();
+  const modeLabelText = (() => {
+    if (!modeLabel) return null;
+    const normalized = modeLabel.toLowerCase();
+    if (normalized === "direct") return t("cockpit.chatMode.direct");
+    if (normalized === "normal") return t("cockpit.chatMode.normal");
+    if (normalized === "complex") return t("cockpit.chatMode.complex");
+    return modeLabel;
+  })();
   const footerClickable = !disabled && !pending && !isUser;
   return (
     <div
@@ -140,12 +178,15 @@ export function ConversationBubble({
               <span className="flex items-center gap-2">{footerActions}</span>
             )}
             {forcedLabel && <Badge tone="neutral">{forcedLabel}</Badge>}
+            {sourceLabel && <Badge tone="neutral">{sourceLabel}</Badge>}
             {pending && role === "assistant" && (
-              <span className="text-amber-300">W toku</span>
+              <span className="text-amber-300">{t("cockpit.chatStatus.inProgress")}</span>
             )}
-            {!isUser && status && <Badge tone={statusTone(status)}>{status}</Badge>}
-            {!isUser && status && modeLabel && (
-              <Badge tone="neutral">{modeLabel}</Badge>
+            {!isUser && status && (
+              <Badge tone={statusTone(status)}>{statusLabel ?? status}</Badge>
+            )}
+            {!isUser && status && modeLabelText && (
+              <Badge tone="neutral">{modeLabelText}</Badge>
             )}
             {contextUsed?.lessons && contextUsed.lessons.length > 0 && (
               <Badge tone="neutral" title="Użyto lekcji">

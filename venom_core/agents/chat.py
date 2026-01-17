@@ -353,6 +353,13 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
         Args:
             chat_service: Instancja serwisu czatu
         """
+        # Lokalny endpoint (Ollama/vLLM) nie ma jeszcze stabilnego wsparcia function-calling
+        # w naszej konfiguracji – wymuszenie tools="auto" generuje błąd 400.
+        from venom_core.config import SETTINGS
+
+        if SETTINGS.LLM_SERVICE_TYPE == "local":
+            return False
+
         raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
         model_id = raw_model_id.lower()
 

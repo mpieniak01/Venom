@@ -106,4 +106,4 @@ class TestResearcherAgent:
 
         assert settings is not None
         assert hasattr(settings, "max_tokens")
-        assert settings.max_tokens == 2000
+        assert settings.max_tokens == 800

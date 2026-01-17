@@ -2,6 +2,8 @@
 
 **Venom desktop version – meta-intelligence system** - Autonomous AI agent system with strategic planning layer and knowledge expansion.
 
+> **[Polska Wersja](../../README.md)**
+
 Venom is being transformed from a simple command executor into an **autonomous engineer** capable of:
 
 ### ✨ Key Features
@@ -214,7 +216,7 @@ Python 3.10+ (recommended 3.11)
 - `google-generativeai` - Google Gemini (optional)
 - `openai` / `anthropic` - LLM models (optional)
 
-Full list in [requirements.txt](requirements.txt)
+Full list in [requirements.txt](../../requirements.txt)
 
 ### Configuration
 
@@ -226,7 +228,7 @@ cp .env.example .env
 
 ## ⚙️ Running (FastAPI + Next.js)
 
-Full list of steps and deployment checklist can be found in [`docs/en/DEPLOYMENT_NEXT.md`](docs/en/DEPLOYMENT_NEXT.md). Summary below:
+Full list of steps and deployment checklist can be found in [`DEPLOYMENT_NEXT.md`](DEPLOYMENT_NEXT.md). Summary below:
 
 ### Development Mode
 ```bash
@@ -372,9 +374,9 @@ DISCORD_WEBHOOK_URL=https://...     # Optional
 ENABLE_ISSUE_POLLING=false          # Enable automatic Issue polling
 ```
 
-📖 **Full list of variables:** [.env.example](.env.example)
-📖 **External integrations documentation:** [docs/en/EXTERNAL_INTEGRATIONS.md](docs/en/EXTERNAL_INTEGRATIONS.md)
-📖 **Hybrid AI engine documentation:** [docs/en/HYBRID_AI_ENGINE.md](docs/en/HYBRID_AI_ENGINE.md)
+📖 **Full list of variables:** [.env.example](../../.env.example)
+📖 **External integrations documentation:** [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md)
+📖 **Hybrid AI engine documentation:** [HYBRID_AI_ENGINE.md](HYBRID_AI_ENGINE.md)
 
 ### Configuration Panel (UI)
 
@@ -572,11 +574,11 @@ make run
 ## 📖 Documentation
 
 ### Architecture and Vision
-- [System architecture](VENOM_MASTER_VISION_V1.md) *(translation in progress)*
+- [System architecture](VENOM_MASTER_VISION_V1.md)
 - [Backend architecture](BACKEND_ARCHITECTURE.md)
-- [Distributed architecture (The Hive)](THE_HIVE.md) *(translation in progress)*
+- [Venom Architecture Overview](README.md)
 - [Intent recognition system](INTENT_RECOGNITION.md)
-- [Hybrid AI engine](HYBRID_AI_ENGINE.md) *(translation in progress)*
+- [Hybrid AI engine](HYBRID_AI_ENGINE.md)
 
 ### Agents
 - [**Index of all agents** (34 agents)](AGENTS_INDEX.md) 📋
@@ -596,18 +598,18 @@ make run
 - [Dashboard](DASHBOARD_GUIDE.md)
 
 ### Tools and Features
-- [Model management](MODEL_MANAGEMENT.md) *(translation in progress)*
-- [LLM model tuning](../docs/_done/072_strojenie_modelu_llm_ui.md) *(Polish only)*
-- [Flow Inspector](FLOW_INSPECTOR_GUIDE.md) *(translation in progress)*
-- [Dream Engine](DREAM_ENGINE_GUIDE.md) *(translation in progress)*
-- [Memory layer](MEMORY_LAYER_GUIDE.md) *(translation in progress)*
-- [Google Search Grounding](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(translation in progress)*
+- [Model management](../MODEL_MANAGEMENT.md) *(translation in progress)*
+- [LLM model tuning](../../docs/_done/072_strojenie_modelu_llm_ui.md) *(Polish only)*
+- [Flow Inspector](FLOW_INSPECTOR_GUIDE.md)
+- [Dream Engine](../DREAM_ENGINE_GUIDE.md) *(translation in progress)*
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrieval
+- [Google Search Grounding](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(translation in progress)*
 
 ### DevOps and Deployment
 - [Deployment (Next.js)](DEPLOYMENT_NEXT.md)
-- [External integrations](EXTERNAL_INTEGRATIONS.md) *(translation in progress)*
-- [Guardian - Security](GUARDIAN_GUIDE.md) *(translation in progress)*
-- [QA Delivery](QA_DELIVERY_GUIDE.md) *(translation in progress)*
+- [External integrations](EXTERNAL_INTEGRATIONS.md)
+- [Guardian - Security](../GUARDIAN_GUIDE.md)
+- [QA Delivery](../QA_DELIVERY_GUIDE.md) *(translation in progress)*
 
 ### Collaboration
 - [Contribution guide](CONTRIBUTING.md)
@@ -624,7 +626,7 @@ pytest
 
 ## 🔬 Tests and Benchmarks
 
-Full instructions (steps + expected values) are in [`docs/en/TESTING_CHAT_LATENCY.md`](docs/en/TESTING_CHAT_LATENCY.md). Most important commands:
+Full instructions (steps + expected values) are in [`TESTING_CHAT_LATENCY.md`](TESTING_CHAT_LATENCY.md). Most important commands:
 
 ### Backend (FastAPI / agents)
 - `pytest -q` — quick system-wide test.
@@ -716,7 +718,7 @@ mypy venom_core
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](docs/en/CONTRIBUTING.md) to learn how to start.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) to learn how to start.
 
 ### Contribution Process
 
@@ -778,8 +780,8 @@ docker-compose -f docker-compose.spores.yml up
 python examples/nexus_demo.py
 ```
 
-📖 **Full documentation:** [venom_spore/README.md](../venom_spore/README.md)
-📖 **Hive architecture:** [THE_HIVE.md](THE_HIVE.md) *(translation in progress)*
+📖 **Full documentation:** [venom_spore/README.md](../../venom_spore/README.md)
+📖 **Hive architecture:** [THE_HIVE.md](THE_HIVE.md)
 
 ## 👥 Team
 

@@ -1425,8 +1425,8 @@ def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int:
             # Format: "<size>\t<path>"
             size_str = proc.stdout.split()[0]
             return int(size_str)
-    except Exception:
-        return 0
+    except Exception as exc:
+        logger.warning(f"Szybkie liczenie rozmiaru dla {path} nie powiodło się: {exc}")
     return 0
 
 

@@ -101,5 +101,5 @@ To complete the remaining 25 files:
 ## Related PRs
 
 - PR #223: Initial documentation translation (copilot/prepare-english-documentation)
-- PR #225: Continuation (copilot/finish-documentation-task)  
+- PR #225: Continuation (copilot/finish-documentation-task)
 - Current: Final completion (copilot/finish-english-documentation-task)

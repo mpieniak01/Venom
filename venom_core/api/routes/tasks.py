@@ -66,6 +66,9 @@ class HistoryRequestDetail(BaseModel):
     forced_provider: Optional[str] = None
     first_token: Optional[dict] = None
     streaming: Optional[dict] = None
+    context_preview: Optional[dict] = None
+    generation_params: Optional[dict] = None
+    llm_runtime: Optional[dict] = None
     context_used: Optional[dict] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
@@ -94,6 +97,19 @@ def _get_llm_runtime(task: VenomTask) -> dict:
     context = getattr(task, "context_history", {}) or {}
     runtime = context.get("llm_runtime", {}) or {}
     return runtime
+
+
+def _extract_context_preview(steps: list) -> Optional[dict]:
+    """
+    Wyszukuje krok `context_preview` w TraceStep i zwraca zdekodowane detale (json).
+    """
+    for step in steps or []:
+        try:
+            if getattr(step, "action", None) == "context_preview" and step.details:
+                return json.loads(step.details)
+        except Exception:
+            continue
+    return None
 
 
 def _bootstrap_orchestrator_if_testing():
@@ -422,11 +438,16 @@ async def get_request_detail(request_id: UUID):
     first_token = None
     streaming = None
     context_used = None
+    context_preview = None
+    generation_params = None
+    llm_runtime = None
     if _state_manager is not None:
         task = _state_manager.get_task(request_id)
         context = getattr(task, "context_history", {}) or {} if task else {}
         first_token = context.get("first_token")
         streaming = context.get("streaming")
+        generation_params = context.get("generation_params")
+        llm_runtime = context.get("llm_runtime")
         # Extract context_used if available
         if task and hasattr(task, "context_used") and task.context_used:
             # Convert model to dict
@@ -436,6 +457,8 @@ async def get_request_detail(request_id: UUID):
                 context_used = task.context_used.dict()
             else:
                 context_used = task.context_used
+
+    context_preview = _extract_context_preview(trace.steps)
 
     return HistoryRequestDetail(
         request_id=trace.request_id,
@@ -455,6 +478,9 @@ async def get_request_detail(request_id: UUID):
         forced_provider=trace.forced_provider,
         first_token=first_token,
         streaming=streaming,
+        context_preview=context_preview,
+        generation_params=generation_params,
+        llm_runtime=llm_runtime,
         context_used=context_used,
         error_code=trace.error_code,
         error_class=trace.error_class,

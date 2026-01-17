@@ -503,7 +503,7 @@ export interface GenerationParams {
   [key: string]: number | string | boolean | null | undefined;
 }
 // Benchmark types
-export type BenchmarkStatus = "idle" | "running" | "completed" | "failed";
+export type BenchmarkStatus = "idle" | "running" | "completed" | "failed" | "pending";
 
 export interface BenchmarkConfig {
   runtime: "vllm" | "ollama";
@@ -540,6 +540,25 @@ export interface BenchmarkResponse {
   benchmark_id?: string;
   message?: string;
   result?: BenchmarkResult;
+}
+
+export interface BenchmarkStartResponse {
+  benchmark_id: string;
+  message: string;
+}
+
+export interface BenchmarkStatusResponse {
+  benchmark_id: string;
+  status: string;
+  progress: string;
+  current_model: string | null;
+  models: string[];
+  num_questions: number;
+  results: Record<string, unknown>[]; // Słownik wyników z API
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
 }
 
 // Calendar types

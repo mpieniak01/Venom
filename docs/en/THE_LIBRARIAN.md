@@ -168,5 +168,5 @@ MEMORY_ROOT=./data/memory   # Long-term memory
 
 - [THE_CODER.md](THE_CODER.md) - File creation and editing
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planning with audit utilization
-- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Long-term memory
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrievalm memory
 - [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture

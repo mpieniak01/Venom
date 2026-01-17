@@ -14,7 +14,7 @@
 │   LAYER 2: AGENT SERVICES  —  Specialized Organs                             │
 │                                                                               │
 │   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐   ┌────────────┐ │
-│   │ planner.arch │   │  coder.onnx    │   │ tester.pytest│   │ git.write  │ │
+│   │ planner.arch │   │  coder.llm     │   │ tester.pytest│   │ git.write  │ │
 │   │ planner.repo │   │  (AutoGen+Phi) │   │ test.smoke   │   │ docs.writer│ │
 │   └──────────────┘   └────────────────┘   └──────────────┘   └────────────┘ │
 │            (Coordination between agents via AutoGen GroupChat)               │
@@ -37,8 +37,8 @@
 │                                                                               │
 │   ┌─────────────────────────────────────────────────────────────────────────┐ │
 │   │ RIDER-PC (Host Body)                                                    │ │
-│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ ONNX Runtime (GPU/CPU) ]              │ │
-│   │                 (Single Model Engine for ALL local models)              │ │
+│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ ONNX / GGUF Engines ]                 │ │
+│   │                 (Dual-Engine Architecture: ONNX + Native LLM)           │ │
 │   └─────────────────────────────────────────────────────────────────────────┘ │
 │                                       │ Network / IoT                           │
 │                                       ▼                                          │

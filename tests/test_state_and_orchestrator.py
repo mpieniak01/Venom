@@ -4,6 +4,7 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,35 @@ import pytest
 from venom_core.core.models import TaskStatus
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
+from venom_core.utils.llm_runtime import LLMRuntimeInfo
+
+
+@pytest.fixture
+def mock_runtime_info():
+    """Mock dla get_active_llm_runtime."""
+    return LLMRuntimeInfo(
+        provider="local",
+        model_name="mock-model",
+        endpoint="http://mock",
+        service_type="local",
+        mode="LOCAL",
+        config_hash="abc123456789",
+        runtime_id="local@http://mock",
+    )
+
+
+@pytest.fixture(autouse=True)
+def patch_runtime(mock_runtime_info):
+    """Automatycznie patchuje runtime dla wszystkich testów."""
+    with patch(
+        "venom_core.core.orchestrator.orchestrator_core.get_active_llm_runtime",
+        return_value=mock_runtime_info,
+    ):
+        with patch(
+            "venom_core.core.orchestrator.orchestrator_core.SETTINGS"
+        ) as mock_settings:
+            mock_settings.LLM_CONFIG_HASH = "abc123456789"
+            yield
 
 
 @pytest.fixture
@@ -333,7 +363,7 @@ async def test_orchestrator_creates_trace_on_submit(temp_state_file):
 @pytest.mark.asyncio
 async def test_orchestrator_updates_trace_status_during_processing(temp_state_file):
     """Test że Orchestrator aktualizuje status trace podczas przetwarzania."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
 
     from venom_core.core.models import TaskRequest
     from venom_core.core.tracer import RequestTracer
@@ -380,7 +410,7 @@ async def test_orchestrator_updates_trace_status_during_processing(temp_state_fi
 @pytest.mark.asyncio
 async def test_orchestrator_adds_steps_for_key_moments(temp_state_file):
     """Test że Orchestrator dodaje kroki dla kluczowych momentów."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
 
     from venom_core.core.models import TaskRequest
     from venom_core.core.tracer import RequestTracer
@@ -430,7 +460,7 @@ async def test_orchestrator_adds_steps_for_key_moments(temp_state_file):
 @pytest.mark.asyncio
 async def test_orchestrator_sets_failed_status_on_error(temp_state_file):
     """Test że Orchestrator ustawia status FAILED przy błędzie."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
 
     from venom_core.core.models import TaskRequest
     from venom_core.core.tracer import RequestTracer, TraceStatus
@@ -474,7 +504,7 @@ async def test_orchestrator_sets_failed_status_on_error(temp_state_file):
 @pytest.mark.asyncio
 async def test_orchestrator_works_without_tracer(temp_state_file):
     """Test że Orchestrator działa bez tracera (backward compatibility)."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import patch
 
     from venom_core.core.models import TaskRequest
 

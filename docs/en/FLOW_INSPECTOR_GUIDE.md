@@ -239,7 +239,7 @@ System recognizes following Decision Gate types:
 
 ## 🔗 Related Documents
 
-- [REQUEST_TRACING_GUIDE.md](REQUEST_TRACING_GUIDE.md) - request tracing system details
+- [REQUEST_TRACING_GUIDE.md](../REQUEST_TRACING_GUIDE.md) - request tracing system details
 - [THE_COUNCIL.md](THE_COUNCIL.md) - Council mode documentation
 - [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - intent classification
 

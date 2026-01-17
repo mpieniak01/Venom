@@ -49,6 +49,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
 
   await page.fill(target.promptSelector, prompt, { timeout: 30_000 });
   const sendButton = page.locator(target.sendSelector);
+  await expect(sendButton).toBeEnabled({ timeout: 15000 });
   await sendButton.click();
   const start = performance.now();
   let latency: number | null = null;

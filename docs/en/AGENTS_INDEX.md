@@ -2,6 +2,8 @@
 
 ## Overview
 
+> **[Polska Wersja](../AGENTS_INDEX.md)**
+
 The Venom system consists of 34 specialized agents, each responsible for a specific functionality area. Below you'll find the complete list with descriptions and links to detailed documentation.
 
 > **Note:** This index has been translated to English. Individual agent documentation files (THE_*.md) are currently being translated. Links to untranslated files may not work yet.
@@ -30,7 +32,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 |-------|------|--------------|------|
 | **Researcher** | `researcher.py` | [THE_RESEARCHER.md](THE_RESEARCHER.md) | Internet search, knowledge synthesis |
 | **Librarian** | `librarian.py` | [THE_LIBRARIAN.md](THE_LIBRARIAN.md) | File management, project navigation |
-| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](ORACLE_GRAPHRAG_GUIDE.md) | GraphRAG, project knowledge analysis |
+| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](../ORACLE_GRAPHRAG_GUIDE.md) | GraphRAG, project knowledge analysis |
 | **Historian** | `historian.py` | - | Project history, change tracking |
 
 ### 🤖 User Interaction
@@ -65,7 +67,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 | Agent | File | Documentation | Description |
 |-------|------|--------------|------|
 | **Tester** | `tester.py` | - | Unit and integration test generation |
-| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](GUARDIAN_GUIDE.md) | Security, sandbox verification |
+| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](../GUARDIAN_GUIDE.md) | Security, sandbox verification |
 | **Analyst** | `analyst.py` | - | Performance analysis, metrics, costs |
 
 ### 📝 Documentation and Cleanup

@@ -93,9 +93,19 @@ async def activate_model_endpoint(request: ModelActivateRequest):
         )
 
         if success:
+            # po aktywacji spróbuj zwrócić status health runtime
+            from venom_core.utils.llm_runtime import (
+                get_active_llm_runtime,
+                probe_runtime_status,
+            )
+
+            runtime_info = get_active_llm_runtime()
+            runtime_status, runtime_error = await probe_runtime_status(runtime_info)
             return {
                 "success": True,
                 "message": f"Model {request.name} aktywowany dla runtime {request.runtime}",
+                "runtime": runtime_info.to_payload()
+                | {"status": runtime_status, "error": runtime_error},
             }
         raise HTTPException(status_code=500, detail="Nie udało się aktywować modelu")
     except HTTPException:

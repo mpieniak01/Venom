@@ -202,18 +202,25 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             # Pobierz serwis chat completion
             chat_service = self.kernel.get_service()
 
-            # Włącz automatyczne wywoływanie funkcji
-            settings = OpenAIChatPromptExecutionSettings(
-                function_choice_behavior=FunctionChoiceBehavior.Auto(),
-                max_tokens=2000,  # Ogranicz długość odpowiedzi
+            # Lokalny endpoint (vLLM/Ollama) nie wspiera jeszcze narzędzi w naszej konfiguracji.
+            from venom_core.utils.llm_runtime import get_active_llm_runtime
+
+            runtime = get_active_llm_runtime()
+            allow_functions = runtime.provider not in ("vllm", "ollama", "local")
+
+            settings = self._create_execution_settings(
+                default_settings={"max_tokens": 800},
+                function_choice_behavior=(
+                    FunctionChoiceBehavior.Auto() if allow_functions else None
+                ),
             )
 
-            # Wywołaj model z możliwością auto-wywołania funkcji
+            # Wywołaj model; function calling tylko gdy provider to wspiera
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
                 chat_history=chat_history,
                 settings=settings,
-                enable_functions=True,
+                enable_functions=allow_functions,
             )
 
             result = str(response).strip()

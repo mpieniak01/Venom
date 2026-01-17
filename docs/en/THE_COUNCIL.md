@@ -268,4 +268,4 @@ logging.getLogger("venom_core.core.swarm").setLevel(logging.DEBUG)
 
 - [AutoGen Documentation](https://microsoft.github.io/autogen/)
 - [Semantic Kernel Documentation](https://learn.microsoft.com/en-us/semantic-kernel/)
-- [Venom Architecture Overview](../README.md)
+- [Venom Architecture Overview](README.md)

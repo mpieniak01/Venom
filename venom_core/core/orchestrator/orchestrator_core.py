@@ -746,6 +746,7 @@ class Orchestrator:
         intent = "UNKNOWN"
         result = ""
         tool_required = False
+        hidden_context = ""
         forced_tool = request.forced_tool
         forced_provider = request.forced_provider
         forced_intent = request.forced_intent
@@ -811,6 +812,15 @@ class Orchestrator:
                                 "session_summary": None,
                             },
                         )
+                        if self.session_handler.session_store and request.session_id:
+                            try:
+                                self.session_handler.session_store.clear_session(
+                                    request.session_id
+                                )
+                            except Exception as exc:  # pragma: no cover - log only
+                                logger.warning(
+                                    "Nie udalo sie wyczyscic SessionStore: %s", exc
+                                )
                         self.state_manager.add_log(
                             task_id, "Wyczyszczono kontekst sesji (/clear)."
                         )
@@ -1109,6 +1119,28 @@ class Orchestrator:
                         status="ok",
                         details=f"Hidden prompts: {MAX_HIDDEN_PROMPTS_IN_CONTEXT}",
                     )
+            if self.request_tracer:
+                hidden_count = hidden_context.count("[Hidden ")
+                max_len = 2000
+                truncated = len(context) > max_len
+                context_preview = (
+                    context[:max_len] + "...(truncated)" if truncated else context
+                )
+                self.request_tracer.add_step(
+                    task_id,
+                    "DecisionGate",
+                    "context_preview",
+                    status="ok",
+                    details=json.dumps(
+                        {
+                            "mode": "normal",
+                            "prompt_context_preview": context_preview,
+                            "prompt_context_truncated": truncated,
+                            "hidden_prompts_count": hidden_count,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
 
             # Zaloguj sklasyfikowaną intencję
             self.state_manager.add_log(
@@ -1412,13 +1444,58 @@ class Orchestrator:
                 runtime_ctx = task.context_history.get("llm_runtime", {}) or {}
                 if isinstance(runtime_ctx, dict):
                     existing_error = runtime_ctx.get("error")
+            # Zbuduj bogatsze metadane błędu (np. input/max tokens)
+            error_details = {"exception": e.__class__.__name__}
+            error_message_text = str(e) or ""
+            try:
+                import re
+
+                # Przykład: "'max_tokens' or 'max_completion_tokens' is too large: 1200. This model's maximum context length is 2048 tokens and your request has 2007 input tokens (1200 > 2048 - 2007)."
+                token_match = re.search(
+                    r"maximum context length is (\\d+) tokens.*request has (\\d+) input tokens \\((\\d+) > (\\d+) - (\\d+)\\)",
+                    error_message_text,
+                )
+                if token_match:
+                    max_ctx = int(token_match.group(1))
+                    input_tokens = int(token_match.group(2))
+                    requested_tokens = int(token_match.group(3))
+                    error_details.update(
+                        {
+                            "max_context_tokens": max_ctx,
+                            "input_tokens": input_tokens,
+                            "requested_max_tokens": requested_tokens,
+                        }
+                    )
+                elif (
+                    "input tokens" in error_message_text
+                    or "max_tokens" in error_message_text
+                ):
+                    error_details["raw_token_error"] = error_message_text
+            except Exception:
+                # Ignorowanie błędów parsowania metadanych - nie krytyczne dla diagnostyki
+                pass
+
+            if request and getattr(request, "content", None):
+                error_details.setdefault(
+                    "prompt_preview",
+                    request.content[:400]
+                    + ("..." if len(request.content) > 400 else ""),
+                )
+            if "context" in locals() and isinstance(context, str) and context:
+                max_len = 4000
+                truncated = len(context) > max_len
+                error_details.setdefault(
+                    "prompt_context",
+                    context[:max_len] + ("...(truncated)" if truncated else ""),
+                )
+                error_details.setdefault("prompt_context_truncated", truncated)
             if not (
                 isinstance(existing_error, dict) and existing_error.get("error_code")
             ):
                 envelope = self._build_error_envelope(
                     error_code="agent_error",
                     error_message=str(e) or "Unhandled agent error",
-                    error_details={"exception": e.__class__.__name__},
+                    error_details=error_details,
                     stage="agent_runtime",
                     retryable=False,
                 )

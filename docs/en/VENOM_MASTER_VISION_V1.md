@@ -1,6 +1,8 @@
 # VENOM – MASTER VISION v1 (ONNX Edition)
 ## Local meta-intelligence. One runtime. One organism.
 
+> **[Polska Wersja](../VENOM_MASTER_VISION_V1.md)**
+
 ## 0. Introduction – what is Venom?
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
@@ -35,14 +37,15 @@ Venom is a local meta-intelligence layer that takes user intent and transforms i
 - local and external knowledge management,
 - self-improvement mechanisms.
 
-Venom operates based on one local model standard: **ONNX Runtime**.
+Venom strives for technological unification based on the **ONNX Runtime** standard.
+However, in practical terms, Large Language Models (LLM) have evolved towards a **Dual-Engine** architecture, supporting both ONNX and native formats GGUF/vLLM for maximum performance.
 Oracle Models (cloud) are optional and work only in selected policies.
 
 ## 2. Venom's biological model – artificial intelligence organism
 <table>
 <tr><th>Organ</th><th>Function</th><th>Technology</th><th>Role in organism</th></tr>
 <tr><td>Nervous system</td><td>Orchestration</td><td>AutoGen</td><td>Dialog, decision loops</td></tr>
-<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 ONNX</td><td>Generates 90% of code</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td></tr>
 <tr><td>Oracle</td><td>Deep thinking</td><td>GPT-4o, Gemini Pro, Claude</td><td>Difficult problems</td></tr>
 <tr><td>Antenna</td><td>External sense</td><td>Web-Agent</td><td>Internet knowledge</td></tr>
 <tr><td>Hippocampus</td><td>Memory</td><td>GraphRAG</td><td>Knowledge map</td></tr>
@@ -50,12 +53,24 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>OCR, UI analysis</td></tr>
 <tr><td>Eyes (physical)</td><td>World perception</td><td>YOLO ONNX</td><td>Objects, obstacles</td></tr>
 <tr><td>Legs</td><td>Movement</td><td>Rider-Pi</td><td>Mobility</td></tr>
-<tr><td>Metabolism</td><td>Performance</td><td>ONNX Runtime</td><td>Model execution</td></tr>
+<tr><td>Metabolism</td><td>Performance</td><td>ONNX / GGUF</td><td>Model execution</td></tr>
 <tr><td>Habitat</td><td>Environment</td><td>WSL2 + Dev Containers</td><td>Sandbox</td></tr>
 </table>
 
-## 2A. Model layer – one standard: ONNX Runtime
-Venom uses one local model standard – **ONNX Runtime**.
+## 2A. Model layer – Dual-Engine Strategy
+The original vision assumed basing the entire system solely on **ONNX Runtime**.
+In practice, Large Language Model (LLM) engineering necessitated a hybrid approach.
+
+### Engine Architecture:
+1.  **Vision & Audio & Small Models** -> Remain in the **ONNX Runtime** domain (full unification, speed, portability).
+2.  **Large Language Models (LLM)** -> Operate in a **Dual-Engine** architecture:
+    *   **Engine A (Vision/Portability):** ONNX (for smaller models, edge devices, full compatibility).
+    *   **Engine B (Performance/Quality):** Native/GGUF (Ollama, vLLM, llama.cpp) – for maximum quantization quality and large model performance.
+
+> [!NOTE]
+> **Architectural Decision: Experimental Dual-Stack (Ollama vs vLLM)**
+> Maintaining parallel support for both serving technologies (Ollama and vLLM) is currently a **conscious design choice**.
+> It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
 
 ### Model categories:
 1. **Worker Models (workers)** – fast ONNX models.
@@ -91,7 +106,10 @@ Semantic Kernel – files, shell, git, tests.
 - YOLO ONNX – physical vision
 
 ### 3.6. Metabolism layer (Performance Layer)
-ONNX Runtime – model execution, GPU/CPU optimization.
+### 3.6. Metabolism layer (Performance Layer)
+Support for two computational engines:
+- **ONNX Runtime** – for Vision, Audio, and lightweight models.
+- **Native/GGUF Engine** – for heavy Large Language Models (LLM).
 
 ## 4. External knowledge layer (External Knowledge Layer)
 Three sources:
@@ -127,8 +145,8 @@ Improves:
 4. (optionally) Oracle/Web
 5. planner.arch
 6. planner.repo
-7. AutoGen + ONNX
-8. Phi-3 ONNX
+7. AutoGen + Local Engine
+8. Phi-3 (ONNX/GGUF)
 9. Semantic Kernel
 10. Tests
 11. Git integrator
@@ -160,4 +178,4 @@ Venom is:
 - policy guardian,
 - AI creating AI.
 
-And all models work in one standard: **ONNX Runtime**.
+And all models work in a unified **Dual-Engine Architecture (ONNX + GGUF)**.

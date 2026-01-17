@@ -351,10 +351,10 @@ pytest tests/test_chrono*.py tests/test_historian*.py -v
 
 ## 📚 Related Documents
 
-- [THE_DREAMER](./DREAM_ENGINE_GUIDE.md) - Dream integration
+- [THE_DREAMER](../DREAM_ENGINE_GUIDE.md) - Background processing
 - [THE_ACADEMY](./THE_ACADEMY.md) - Training pipelines
-- [MEMORY_LAYER_GUIDE](./MEMORY_LAYER_GUIDE.md) - LessonsStore
-- [GUARDIAN_GUIDE](./GUARDIAN_GUIDE.md) - Change validation
+- [MEMORY_LAYER_GUIDE](../MEMORY_LAYER_GUIDE.md) - Knowledge consolidation
+- [GUARDIAN_GUIDE](../GUARDIAN_GUIDE.md) - Safety checksange validation
 
 ## 🎓 End-to-End Example
 

@@ -51,7 +51,11 @@ from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.session_store import SessionStore
-from venom_core.utils.llm_runtime import get_active_llm_runtime, warmup_local_runtime
+from venom_core.utils.llm_runtime import (
+    get_active_llm_runtime,
+    probe_runtime_status,
+    warmup_local_runtime,
+)
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -567,18 +571,52 @@ async def lifespan(app: FastAPI):
     setup_router_dependencies()
     logger.info("Aplikacja uruchomiona - zależności routerów ustawione")
 
-    if SETTINGS.LLM_WARMUP_ON_STARTUP:
+    async def ensure_local_llm_ready() -> None:
         runtime = get_active_llm_runtime()
-        if runtime.service_type == "local":
-            asyncio.create_task(
-                warmup_local_runtime(
-                    runtime=runtime,
-                    prompt=SETTINGS.LLM_WARMUP_PROMPT,
-                    timeout_seconds=SETTINGS.LLM_WARMUP_TIMEOUT_SECONDS,
-                    max_tokens=SETTINGS.LLM_WARMUP_MAX_TOKENS,
-                )
+        if runtime.service_type != "local":
+            return
+        status, _ = await probe_runtime_status(runtime)
+        if status != "online":
+            active_server = (
+                SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or ""
+            ).lower()
+            if (
+                llm_controller
+                and active_server
+                and llm_controller.has_server(active_server)
+            ):
+                try:
+                    for server in llm_controller.list_servers():
+                        name = server.get("name", "").lower()
+                        if not name or name == active_server:
+                            continue
+                        if server.get("supports", {}).get("stop"):
+                            await llm_controller.run_action(name, "stop")
+                    await llm_controller.run_action(active_server, "start")
+                    logger.info(
+                        "Uruchamianie lokalnego LLM (%s) na starcie.",
+                        active_server,
+                    )
+                except Exception as exc:
+                    logger.warning("Nie udało się uruchomić lokalnego LLM: %s", exc)
+            for _ in range(90):
+                status, _ = await probe_runtime_status(runtime)
+                if status == "online":
+                    break
+                await asyncio.sleep(1.0)
+            if status != "online":
+                logger.warning("Lokalny LLM nadal offline po oczekiwaniu na start.")
+
+        if SETTINGS.LLM_WARMUP_ON_STARTUP:
+            await warmup_local_runtime(
+                runtime=runtime,
+                prompt=SETTINGS.LLM_WARMUP_PROMPT,
+                timeout_seconds=SETTINGS.LLM_WARMUP_TIMEOUT_SECONDS,
+                max_tokens=SETTINGS.LLM_WARMUP_MAX_TOKENS,
             )
             logger.info("Warm-up LLM uruchomiony w tle.")
+
+    asyncio.create_task(ensure_local_llm_ready())
 
     yield
 
@@ -643,6 +681,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["x-request-id", "x-session-id"],
 )
 
 

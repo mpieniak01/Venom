@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import os
 import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -1140,7 +1141,15 @@ async def get_storage_snapshot():
     Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).
     """
     try:
-        total, used, free = shutil.disk_usage(PROJECT_ROOT)
+        disk_physical_mount = Path("/usr/lib/wsl/drivers")
+        if not disk_physical_mount.exists():
+            disk_physical_mount = PROJECT_ROOT
+        total_physical, used_physical, free_physical = shutil.disk_usage(
+            disk_physical_mount
+        )
+
+        disk_root_mount = Path("/")
+        total_root, used_root, free_root = shutil.disk_usage(disk_root_mount)
         entries = [
             {"name": "Modele LLM", "path": "models", "kind": "models"},
             {"name": "Modele cache", "path": "models_cache", "kind": "cache"},
@@ -1160,31 +1169,90 @@ async def get_storage_snapshot():
                 "kind": "deps",
             },
         ]
-        # Zrównoleglenie operacji I/O aby uniknąć blokowania event loop
-        loop = asyncio.get_running_loop()
-        tasks = [
-            loop.run_in_executor(None, _dir_size_bytes, PROJECT_ROOT / entry["path"])
-            for entry in entries
-        ]
-        sizes = await asyncio.gather(*tasks)
+        # Liczenie po kolei (mniej podatne na timeouty i utratę wyników), z du -sb + fallback
+        sizes = []
+        for entry in entries:
+            size = _dir_size_bytes_fast(PROJECT_ROOT / entry["path"], timeout_sec=5.0)
+            if size == 0:
+                try:
+                    size = _dir_size_bytes(PROJECT_ROOT / entry["path"])
+                except Exception as exc:
+                    logger.warning(
+                        "Nie udało się policzyć rozmiaru %s: %s", entry["path"], exc
+                    )
+                    size = 0
+            sizes.append(size)
 
-        items = [
+        items = []
+        total_items_size = 0
+        for entry, size in zip(entries, sizes):
+            if isinstance(size, Exception):
+                logger.warning(
+                    "Nie udało się policzyć rozmiaru %s: %s", entry["path"], size
+                )
+                size_bytes = 0
+            else:
+                size_bytes = size
+            total_items_size += size_bytes
+            items.append(
+                {
+                    "name": entry["name"],
+                    "path": str(PROJECT_ROOT / entry["path"]),
+                    "size_bytes": size_bytes,
+                    "kind": entry["kind"],
+                }
+            )
+        # Sumaryczny wpis repo (przybliżenie: suma sekcji)
+        items.insert(
+            0,
             {
-                "name": entry["name"],
-                "path": str(PROJECT_ROOT / entry["path"]),
-                "size_bytes": size,
-                "kind": entry["kind"],
-            }
-            for entry, size in zip(entries, sizes)
-        ]
+                "name": "Katalog venom (repo)",
+                "path": str(PROJECT_ROOT),
+                "size_bytes": total_items_size,
+                "kind": "project",
+            },
+        )
+        # Wpis kodu (bez modeli/deps/build/logs/data)
+        code_size = _dir_size_code(
+            PROJECT_ROOT,
+            skip_top={
+                "models",
+                "models_cache",
+                "logs",
+                "data",
+                "web-next/.next",
+                "web-next/node_modules",
+                ".git",
+                "node_modules",
+                "htmlcov",
+            },
+        )
+        items.insert(
+            1,
+            {
+                "name": "Kod (repo, bez modeli/deps/build/logs/data)",
+                "path": str(PROJECT_ROOT),
+                "size_bytes": code_size,
+                "kind": "code",
+            },
+        )
         items.sort(key=lambda item: item["size_bytes"], reverse=True)
         return {
             "status": "success",
             "refreshed_at": datetime.now().isoformat(),
+            # Fizyczny dysk hosta WSL (lub katalog projektu, gdy brak)
             "disk": {
-                "total_bytes": total,
-                "used_bytes": used,
-                "free_bytes": free,
+                "total_bytes": total_physical,
+                "used_bytes": used_physical,
+                "free_bytes": free_physical,
+                "mount": str(disk_physical_mount),
+            },
+            # WSL root filesystem (VHDX) – zajętość wewnętrznej partycji
+            "disk_root": {
+                "total_bytes": total_root,
+                "used_bytes": used_root,
+                "free_bytes": free_root,
+                "mount": str(disk_root_mount),
             },
             "items": items,
         }
@@ -1329,6 +1397,57 @@ def _dir_size_bytes(path: Path) -> int:
     total = 0
     for root, _, files in os.walk(path, followlinks=False):
         for name in files:
+            file_path = os.path.join(root, name)
+            try:
+                if os.path.islink(file_path):
+                    continue
+                total += os.path.getsize(file_path)
+            except OSError:
+                continue
+    return total
+
+
+def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int:
+    """
+    Szybki rozmiar katalogu przy użyciu `du -sb` z timeoutem.
+    """
+    if not path.exists():
+        return 0
+    try:
+        proc = subprocess.run(
+            ["du", "-sb", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            # Format: "<size>\t<path>"
+            size_str = proc.stdout.split()[0]
+            return int(size_str)
+    except Exception as exc:
+        logger.warning(f"Szybkie liczenie rozmiaru dla {path} nie powiodło się: {exc}")
+    return 0
+
+
+def _dir_size_code(base: Path, skip_top: set[str] | None = None) -> int:
+    """
+    Rozmiar katalogu z pominięciem ciężkich zasobów (models, node_modules, build, logs, data).
+    Przybliża rozmiar samego repo/kodu.
+    """
+    if not base.exists():
+        return 0
+    skip = skip_top or set()
+    total = 0
+    for root, dirnames, filenames in os.walk(base, topdown=True, followlinks=False):
+        rel_root = Path(root).relative_to(base)
+        # Jeśli jesteśmy w katalogu top-level który ma być pominięty – pomiń całą gałąź
+        if rel_root.parts and rel_root.parts[0] in skip:
+            dirnames[:] = []
+            continue
+        # Dla podkatalogów również filtruj pomijane nazwy
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for name in filenames:
             file_path = os.path.join(root, name)
             try:
                 if os.path.islink(file_path):

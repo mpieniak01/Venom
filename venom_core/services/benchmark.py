@@ -60,6 +60,7 @@ class ModelBenchmarkResult:
     peak_vram_mb: Optional[float] = None
     time_to_first_token_ms: Optional[float] = None
     total_duration_ms: Optional[float] = None
+    startup_latency_ms: Optional[float] = None  # czas restartu/healthchecku runtime
     questions_tested: int = 0
     error_message: Optional[str] = None
     started_at: Optional[str] = None
@@ -75,6 +76,7 @@ class ModelBenchmarkResult:
             "peak_vram_mb": self.peak_vram_mb,
             "time_to_first_token_ms": self.time_to_first_token_ms,
             "total_duration_ms": self.total_duration_ms,
+            "startup_latency_ms": self.startup_latency_ms,
             "questions_tested": self.questions_tested,
             "error_message": self.error_message,
             "started_at": self.started_at,
@@ -391,22 +393,48 @@ class BenchmarkService:
         result.status = "running"
 
         try:
+            # Ustal endpoint i runtime na podstawie manifestu / nazwy modelu
+            runtime = "vllm"
+            endpoint = SETTINGS.VLLM_ENDPOINT.rstrip("/")
+            if ":" in model_name:
+                runtime = "ollama"
+                endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+            meta = self.model_registry.manifest.get(model_name)
+            if meta:
+                if meta.runtime:
+                    runtime = meta.runtime
+                if meta.provider and meta.provider.value == "ollama":
+                    runtime = "ollama"
+            if runtime == "ollama":
+                endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
+            else:
+                endpoint = SETTINGS.VLLM_ENDPOINT.rstrip("/")
+
             # Aktywuj model przez ModelRegistry
             logger.info(f"Aktywacja modelu: {model_name}")
             # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
             try:
-                # ModelRegistry.activate_model jest obecnie stub
-                # TODO: Zaimplementować pełną aktywację modelu w ModelRegistry
-                logger.warning(
-                    f"ModelRegistry.activate_model() jest obecnie stub. "
-                    f"Benchmark użyje obecnego modelu zamiast {model_name}. "
-                    f"Aby w pełni przełączać modele, zaimplementuj aktywację w ModelRegistry."
-                )
+                t_startup = time.time()
+                await self.model_registry.activate_model(model_name, runtime)
+                # Jeśli mamy kontroler serwerów, zrestartuj runtime aby załadować model
+                if self.llm_controller:
+                    action = "restart"
+                    try:
+                        await self.llm_controller.run_action(runtime, action)
+                        logger.info(
+                            f"{runtime} zrestartowany dla modelu {model_name} (benchmark)"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Nie udało się wykonać {action} dla {runtime}: {e}"
+                        )
             except Exception as e:
                 logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
 
             # Czekaj na healthcheck
-            await self._wait_for_healthcheck(timeout=60)
+            await self._wait_for_healthcheck(endpoint=endpoint, timeout=60)
+            if "t_startup" in locals():
+                result.startup_latency_ms = round((time.time() - t_startup) * 1000, 2)
 
             # Testuj z pytaniami
             total_latency = 0.0
@@ -418,7 +446,11 @@ class BenchmarkService:
 
             for question in questions:
                 # Mierz metryki dla pojedynczego pytania
-                metrics = await self._query_model_with_metrics(question.question)
+                metrics = await self._query_model_with_metrics(
+                    question=question.question,
+                    model_name=model_name,
+                    endpoint=endpoint,
+                )
 
                 # Sumuj TTFT osobno od latencji
                 if metrics.get("time_to_first_token_ms") is not None:
@@ -476,19 +508,18 @@ class BenchmarkService:
             result.completed_at = datetime.now().isoformat()
             raise
 
-    async def _wait_for_healthcheck(self, timeout: int = 60):
+    async def _wait_for_healthcheck(self, endpoint: str, timeout: int = 60):
         """
         Czeka aż serwis LLM będzie gotowy (healthcheck).
 
         Args:
+            endpoint: Endpoint serwisu (bez trailing slash)
             timeout: Maksymalny czas oczekiwania w sekundach
 
         Raises:
             TimeoutError: Jeśli serwis nie odpowiada w czasie
         """
         start_time = time.time()
-        endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-
         logger.info(f"Oczekiwanie na healthcheck: {endpoint}")
 
         while time.time() - start_time < timeout:
@@ -508,7 +539,9 @@ class BenchmarkService:
             f"Serwis LLM nie odpowiada po {timeout}s - healthcheck failed"
         )
 
-    async def _query_model_with_metrics(self, question: str) -> Dict[str, Any]:
+    async def _query_model_with_metrics(
+        self, question: str, model_name: str, endpoint: str
+    ) -> Dict[str, Any]:
         """
         Wysyła pytanie do modelu i mierzy metryki.
 
@@ -523,8 +556,6 @@ class BenchmarkService:
         Returns:
             Słownik z metrykami: latency_ms, duration_ms, peak_vram_mb, tokens_generated
         """
-        endpoint = SETTINGS.LLM_LOCAL_ENDPOINT.rstrip("/")
-
         # Uruchom zadanie próbkowania VRAM w tle
         vram_samples = []
         sampling_task = asyncio.create_task(
@@ -539,18 +570,16 @@ class BenchmarkService:
                 # Wysyłamy request do modelu
                 # UWAGA: Obecnie używamy SETTINGS.LLM_MODEL_NAME jako fallback
                 # Po zaimplementowaniu activate_model(), model_name będzie dynamiczny
-                async with (
-                    client.stream(
-                        "POST",
-                        f"{endpoint}/chat/completions",
-                        json={
-                            "model": SETTINGS.LLM_MODEL_NAME,  # TODO: użyj model_name po pełnej implementacji activate_model
-                            "messages": [{"role": "user", "content": question}],
-                            "stream": True,
-                            "max_tokens": 200,
-                        },
-                    ) as response
-                ):
+                async with client.stream(
+                    "POST",
+                    f"{endpoint}/chat/completions",
+                    json={
+                        "model": model_name,
+                        "messages": [{"role": "user", "content": question}],
+                        "stream": True,
+                        "max_tokens": 200,
+                    },
+                ) as response:
                     response.raise_for_status()
 
                     tokens_generated = 0

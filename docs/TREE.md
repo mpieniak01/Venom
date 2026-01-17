@@ -24,6 +24,12 @@
 │       └── js/
 │           └── app.js           # logika frontendu
 │
+├── web-next/                    # [NOWY] Next.js Dashboard (VENOM 2.0)
+│   ├── app/                     # App Router
+│   ├── components/              # komponenty React/Shadcn UI
+│   ├── lib/                     # utils, types, api clients
+│   └── public/                  # static assets
+│
 ├── tests/                       # testy (API, core, itd.)
 │   ├── __init__.py
 │   └── test_healthz.py          # np. test endpointu /healthz
@@ -46,7 +52,9 @@
     │   ├── orchestrator.py      # cykl życia zadania
     │   ├── intent_manager.py    # klasyfikacja intencji (code/research/arch)
     │   ├── policy_engine.py     # etyka, autonomia, poziomy domen
-    │   └── state_manager.py     # stan organizmu, log zadań
+    │   ├── state_manager.py     # stan organizmu, log zadań
+    │   ├── model_registry.py    # rejestr modeli (ONNX + GGUF)
+    │   └── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
     │
     ├── agents/                  # [WARSTWA 2: AGENT SERVICES] – SPECJALIŚCI
     │   ├── __init__.py
@@ -54,7 +62,11 @@
     │   ├── librarian.py         # struktura repo / plików
     │   ├── coder.py             # generacja kodu
     │   ├── critic.py            # testy / review
-    │   └── writer.py            # dokumentacja, logi, opisy PR
+    │   ├── writer.py            # dokumentacja, logi, opisy PR
+    │   ├── ghost_agent.py       # wizualna automatyzacja GUI
+    │   ├── apprentice.py        # nauka przez obserwację
+    │   ├── professor.py         # system edukacji użytkownika
+    │   └── oracle.py            # analiza grafu wiedzy (GraphRAG)
     │
     ├── execution/               # [WARSTWA 3: RĘCE] – Semantic Kernel / tools
     │   ├── __init__.py
@@ -78,7 +90,7 @@
     │
     ├── infrastructure/          # [WARSTWA 4: METABOLIZM] – SILNIKI
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # wrapper na onnxruntime(-gpu)
+    │   ├── onnx_runtime.py      # Vision/Audio runtime
     │   ├── docker_habitat.py    # zarządzanie kontenerami / sandboxami
     │   └── hardware_pi.py       # most do Rider-Pi (API, heartbeat)
     │

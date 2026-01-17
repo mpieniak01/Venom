@@ -2,6 +2,8 @@
 
 ## Przegląd
 
+> **[English Version](en/AGENTS_INDEX.md)**
+
 System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialny za konkretny obszar funkcjonalności. Poniżej znajdziesz pełną listę z opisami i linkami do szczegółowej dokumentacji.
 
 ## Kategorie Agentów

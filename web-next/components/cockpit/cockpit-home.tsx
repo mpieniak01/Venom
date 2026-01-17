@@ -1991,13 +1991,6 @@ export function CockpitHome({
         sanitizedAssistantText.trim().length > 0
           ? sanitizedAssistantText
           : "Odpowiedź gotowa.";
-      const assistantSourceLabel = isPending
-        ? RESPONSE_SOURCE_LABELS.live
-        : isHiddenResponse(displayAssistantText)
-          ? RESPONSE_SOURCE_LABELS.hidden
-          : hasHistoryAssistant
-            ? RESPONSE_SOURCE_LABELS.history
-            : RESPONSE_SOURCE_LABELS.live;
       const assistantStatus = entry.simpleMode
         ? simpleStream?.status ?? "W toku"
         : stream?.status ??
@@ -2014,6 +2007,13 @@ export function CockpitHome({
       const inGraceWindow =
         terminal && Date.now() - entry.startedAt < pendingGraceMs;
       const isPending = !terminal || inGraceWindow;
+      const assistantSourceLabel = isPending
+        ? RESPONSE_SOURCE_LABELS.live
+        : isHiddenResponse(displayAssistantText)
+          ? RESPONSE_SOURCE_LABELS.hidden
+          : hasHistoryAssistant
+            ? RESPONSE_SOURCE_LABELS.history
+            : RESPONSE_SOURCE_LABELS.live;
       const hasUserInHistory = Boolean(
         entry.requestId &&
         historySnapshot.some(

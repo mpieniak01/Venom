@@ -916,6 +916,7 @@ class ModelRegistry:
                 try:
                     SETTINGS.VLLM_CHAT_TEMPLATE = template_value  # type: ignore[attr-defined]
                 except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass
             if runtime == "ollama":
                 updates["LAST_MODEL_OLLAMA"] = model_name
@@ -928,11 +929,13 @@ class ModelRegistry:
                 try:
                     SETTINGS.LAST_MODEL_OLLAMA = model_name  # type: ignore[attr-defined]
                 except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass
             if runtime == "vllm":
                 try:
                     SETTINGS.LAST_MODEL_VLLM = model_name  # type: ignore[attr-defined]
                 except Exception:
+                    # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass
 
             # Restart odpowiedniego runtime, jeśli mamy komendę

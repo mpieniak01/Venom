@@ -602,7 +602,7 @@ make run
 - [LLM model tuning](../../docs/_done/072_strojenie_modelu_llm_ui.md) *(Polish only)*
 - [Flow Inspector](FLOW_INSPECTOR_GUIDE.md)
 - [Dream Engine](../DREAM_ENGINE_GUIDE.md) *(translation in progress)*
-- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrievalnslation in progress)*
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrieval
 - [Google Search Grounding](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(translation in progress)*
 
 ### DevOps and Deployment

@@ -176,6 +176,7 @@ def ensure_vllm_running(endpoint: str, start_cmd: str) -> bool:
                 lines = f.readlines()[-20:]
                 tail = "".join(lines)
         except Exception:
+            # Ignorowanie błędów odczytu logów - nie krytyczne dla diagnostyki
             pass
     raise RuntimeError(
         f"vLLM nie odpowiada po uruchomieniu (timeout {max_wait}s). "

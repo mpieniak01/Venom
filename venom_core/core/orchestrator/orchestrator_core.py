@@ -1472,6 +1472,7 @@ class Orchestrator:
                 ):
                     error_details["raw_token_error"] = error_message_text
             except Exception:
+                # Ignorowanie błędów parsowania metadanych - nie krytyczne dla diagnostyki
                 pass
 
             if request and getattr(request, "content", None):

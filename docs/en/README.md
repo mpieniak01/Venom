@@ -608,7 +608,7 @@ make run
 ### DevOps and Deployment
 - [Deployment (Next.js)](DEPLOYMENT_NEXT.md)
 - [External integrations](EXTERNAL_INTEGRATIONS.md)
-- **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](../GUARDIAN_GUIDE.md) | Security, sandbox verification |in progress)*
+- [Guardian - Security](../GUARDIAN_GUIDE.md)
 - [QA Delivery](../QA_DELIVERY_GUIDE.md) *(translation in progress)*
 
 ### Collaboration

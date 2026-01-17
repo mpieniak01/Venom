@@ -2,6 +2,8 @@
 # VENOM – MASTER VISION v1 (ONNX Edition)
 ## Meta-inteligencja lokalna. Jeden runtime. Jeden organizm.
 
+> **[English Version](en/VENOM_MASTER_VISION_V1.md)**
+
 ## 0. Wprowadzenie – czym jest Venom?
 Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
 To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
@@ -36,14 +38,15 @@ Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkow
 - zarządzanie wiedzą lokalną i zewnętrzną,
 - mechanizmy samodoskonalenia.
 
-Venom działa w oparciu o jeden standard modeli lokalnych: **ONNX Runtime**.
+Venom dąży do unifikacji technologicznej w oparciu o standard **ONNX Runtime**.
+Jednak w aspekcie praktycznym, modele językowe (LLM) ewoluowały w kierunku architektury **Dual-Engine**, obsługując zarówno ONNX, jak i natywne formaty GGUF/vLLM dla maksymalnej wydajności.
 Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykach.
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
 <tr><th>Organ</th><th>Funkcja</th><th>Technologia</th><th>Rola w organizmie</th></tr>
 <tr><td>System nerwowy</td><td>Orkiestracja</td><td>AutoGen</td><td>Dialog, pętle decyzyjne</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Phi-3 ONNX</td><td>Generuje 90% kodu</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Phi-3 (ONNX/GGUF)</td><td>Generuje 90% kodu</td></tr>
 <tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>GPT-4o, Gemini Pro, Claude</td><td>Trudne problemy</td></tr>
 <tr><td>Antena</td><td>Zmysł zewnętrzny</td><td>Web-Agent</td><td>Wiedza z internetu</td></tr>
 <tr><td>Hipokamp</td><td>Pamięć</td><td>GraphRAG</td><td>Mapa wiedzy</td></tr>
@@ -51,12 +54,25 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 <tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Florence-2 ONNX</td><td>OCR, analiza UI</td></tr>
 <tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>YOLO ONNX</td><td>Obiekty, przeszkody</td></tr>
 <tr><td>Nogi</td><td>Ruch</td><td>Rider-Pi</td><td>Mobilność</td></tr>
-<tr><td>Metabolizm</td><td>Wydajność</td><td>ONNX Runtime</td><td>Wykonanie modeli</td></tr>
+<tr><td>Metabolizm</td><td>Wydajność</td><td>ONNX / GGUF</td><td>Wykonanie modeli</td></tr>
 <tr><td>Habitat</td><td>Środowisko</td><td>WSL2 + Dev Containers</td><td>Sandbox</td></tr>
 </table>
 
-## 2A. Warstwa modeli – jeden standard: ONNX Runtime
-Venom używa jednego standardu modeli lokalnych – **ONNX Runtime**.
+## 2A. Warstwa modeli – Strategia Dual-Engine
+Pierwotna wizja zakładała oparcie całego systemu wyłącznie o **ONNX Runtime**.
+W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
+
+### Architektura Silników:
+1.  **Vision & Audio & Small Models** -> Pozostają w domenie **ONNX Runtime** (pełna unifikacja, szybkość, przenośność).
+2.  **Large Language Models (LLM)** -> Działają w architekturze **Dual-Engine**:
+    *   **Silnik A (Vision/Portability):** ONNX (dla mniejszych modeli, edge devices, pełnej zgodności).
+    *   **Silnik B (Performance/Quality):** Native/GGUF (Ollama, vLLM, llama.cpp) – dla maksymalnej jakości kwantyzacji i wydajności dużych modeli.
+
+> [!NOTE]
+> **Decyzja Architektoniczna: Experimental Dual-Stack (Ollama vs vLLM)**
+> Utrzymywanie równoległego wsparcia dla obu technologii serwowania (Ollama i vLLM) jest na obecnym etapie **świadomym wyborem projektowym**.
+> Pozwala to na elastyczne testowanie różnych rodzin modeli i metod kwantyzacji w celu empirycznego wyłonienia najwydajniejszego rozwiązania docelowego dla specyficznych warunków sprzętowych.
+
 
 ### Kategorie modeli:
 1. **Worker Models (robotnicy)** – szybkie modele ONNX.
@@ -92,7 +108,9 @@ Semantic Kernel – pliki, shell, git, testy.
 - YOLO ONNX – physical vision
 
 ### 3.6. Warstwa metabolizmu (Performance Layer)
-ONNX Runtime – wykonanie modeli, optymalizacja GPU/CPU.
+Obsługa dwóch silników obliczeniowych:
+- **ONNX Runtime** – dla Vision, Audio i lekkich modeli.
+- **Native/GGUF Engine** – dla ciężkich modeli językowych (LLM).
 
 ## 4. Warstwa wiedzy zewnętrznej (External Knowledge Layer)
 Trzy źródła:
@@ -128,8 +146,8 @@ Ulepsza:
 4. (opcjonalnie) Oracle/Web
 5. planner.arch
 6. planner.repo
-7. AutoGen + ONNX
-8. Phi-3 ONNX
+7. AutoGen + Local Engine
+8. Phi-3 (ONNX/GGUF)
 9. Semantic Kernel
 10. Testy
 11. Git integrator
@@ -161,4 +179,4 @@ Venom to:
 - strażnik zasad,
 - AI tworząca AI.
 
-I wszystkie modele działają w jednym standardzie: **ONNX Runtime**.
+I wszystkie modele działają w zunifikowanej architekturze **Dual-Engine (ONNX + GGUF)**.

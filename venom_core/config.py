@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     LLM_WARMUP_PROMPT: str = "Ping."
     LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0
     LLM_WARMUP_MAX_TOKENS: int = 8
+    SIMPLE_MODE_SYSTEM_PROMPT: str = "Odpowiadaj po polsku."
 
     # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)
     AI_MODE: str = "LOCAL"  # Opcje: "LOCAL", "HYBRID", "CLOUD"
@@ -47,9 +48,14 @@ class Settings(BaseSettings):
     # Komendy sterujące lokalnymi serwerami LLM (opcjonalne, wykonywane w powłoce)
     VLLM_MODEL_PATH: str = "models/gemma-3-4b-it"
     VLLM_SERVED_MODEL_NAME: str = ""
+    VLLM_HOST: str = "0.0.0.0"
+    VLLM_PORT: int = 8001
     VLLM_GPU_MEMORY_UTILIZATION: float = 0.95
     VLLM_MAX_BATCHED_TOKENS: int = 2048
+    VLLM_MAX_MODEL_LEN: int = 0
+    VLLM_MAX_NUM_SEQS: int = 0
     VLLM_ENDPOINT: str = "http://localhost:8001/v1"
+    VLLM_CHAT_TEMPLATE: str = ""
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""

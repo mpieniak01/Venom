@@ -25,6 +25,8 @@ LONG_BLOCK_THRESHOLD = 1200
 DEFAULT_USER_ID = "user_default"
 SUMMARY_MODEL_MAX_TOKENS = 400
 SUMMARY_STRATEGY_DEFAULT = "llm_with_fallback"  # lub "heuristic_only"
+SEMANTIC_CACHE_THRESHOLD = 0.85
+SEMANTIC_CACHE_COLLECTION_NAME = "hidden_prompts"
 
 # Alias dla kompatybilności z testami i innymi modułami
 MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS

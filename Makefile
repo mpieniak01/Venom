@@ -41,7 +41,24 @@ format:
 	black . && isort .
 
 test:
-	pytest -q
+	pytest
+
+test-unit:
+	pytest -k "not performance and not smoke"
+
+test-smoke:
+	pytest -m smoke
+
+test-perf:
+	pytest -m performance
+
+test-web-unit:
+	$(NPM) --prefix $(WEB_DIR) run test:unit
+
+test-web-e2e:
+	$(NPM) --prefix $(WEB_DIR) run test:e2e
+
+test-all: test test-web-unit test-web-e2e
 
 install-hooks:
 	pre-commit install
@@ -74,6 +91,7 @@ _start:
 		exit 1; \
 	fi
 	@mkdir -p logs
+	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@if [ "$(START_MODE)" = "prod" ]; then \
 		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
@@ -87,6 +105,26 @@ _start:
 	setsid $(UVICORN) $(API_APP) $$UVICORN_FLAGS >> $(BACKEND_LOG) 2>&1 & \
 	echo $$! > $(PID_FILE); \
 	echo "✅ Venom backend wystartował z PID $$(cat $(PID_FILE))"
+	@echo "⏳ Czekam na backend (/api/v1/system/status)..."
+	@backend_ready=""; \
+	for attempt in {1..60}; do \
+		if [ -f "$(PID_FILE)" ]; then \
+			PID=$$(cat $(PID_FILE)); \
+			if ! kill -0 $$PID 2>/dev/null; then \
+				echo "❌ Backend nie wystartował (proces $$PID nie działa)"; \
+				break; \
+			fi; \
+		fi; \
+		if [ "$$(curl -s -o /dev/null -w \"%{http_code}\" http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status 2>/dev/null || true)" = "200" ]; then \
+			backend_ready="yes"; \
+			echo "✅ Backend gotowy"; \
+			break; \
+		fi; \
+		sleep 1; \
+	done; \
+	if [ -z "$$backend_ready" ]; then \
+		echo "⚠️  Backend jeszcze nie odpowiada, kontynuuję start UI"; \
+	fi
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
 	@if [ "$(START_MODE)" = "prod" ]; then \
@@ -125,6 +163,11 @@ stop:
 		echo "ℹ️  Brak aktywnego procesu (PID_FILE nie istnieje)"; \
 	fi
 	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
+	@# Zatrzymaj vLLM/Ollama (GPU) żeby zwolnić VRAM po make stop
+	@$(MAKE) --no-print-directory vllm-stop >/dev/null || true
+	@$(MAKE) --no-print-directory ollama-stop >/dev/null || true
+	@pkill -9 -f "VLLM::EngineCor" 2>/dev/null || true
+	@pkill -9 -f "vllm serve" 2>/dev/null || true
 	@if [ -f $(WEB_PID_FILE) ]; then \
 		WPID=$$(cat $(WEB_PID_FILE)); \
 		if kill -0 $$WPID 2>/dev/null; then \

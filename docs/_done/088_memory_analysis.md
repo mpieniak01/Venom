@@ -17,6 +17,7 @@ Wchodzi:
 - backend: SessionStore, StateManager, SessionHandler, MemorySkill/VectorStore, LessonsStore/LessonsManager, endpoints /api/v1/memory.
 - frontend: Cockpit/Brain (cache + odczyt snapshotow).
 - dokumentacja: aktualne opisy w docs.
+- **Tryby pracy:** Analiza i wdrożenie dotyczyły trybów **DIRECT** (szybka odpowiedź) oraz **NORMAL** (standardowy czat). Tryb **COMPLEX** (Planowanie/Architekt) nie był modyfikowany w ramach tego zadania.
 
 Nie wchodzi:
 - nowe feature'y, zmiany funkcjonalne; tylko analiza i plan ujednolicenia.
@@ -155,13 +156,13 @@ Miejsce na konfigurację systemową (gating, constants).
 | **Session History** | ✅ Pełne API (Clear/Get) | ✅ Przycisk "Reset sesji" (Clear) | ZARZĄDZANE |
 | **Global Long-term** | ✅ endpoint `/global` | ✅ Przycisk "Wyczyść pamięć globalną" | ZARZĄDZANE |
 | **Memory Entries** | ✅ Delete/Pin endpointy | ✅ Akcje na węzłach grafu (Pin/Delete) | ZARZĄDZANE |
-| **Lessons (Pruning)**| ✅ Bogate API (Range, TTL, Tag) | ❌ **BRAK UI** do pruningu | CZĘŚCIOWO (Tylko API) |
+| Lessons (Pruning)| ✅ Bogate API (Range, TTL, Tag) | ✅ Tab "Hygiene" w Brain (Pruning) | ZARZĄDZANE |
 | **Wizualizacja** | ✅ Endpoint `/graph` | ✅ Graf w Brain | ZARZĄDZANE |
 
 **Wnioski:**
 1. System posiada bardzo rozbudowane API do higieny pamięci (`venom_core/api/routes/memory.py`), szczególnie dla lekcji.
 2. UI (Cockpit/Brain) eksponuje podstawowe czyszczenie (sesja/global) i zarządzanie pojedynczymi wpisami (graf).
-3. **Główna luka**: Brak interfejsu "Admin / Memory Hygiene" w UI, który pozwalałby na uruchomienie zaawansowanych strategii czyszczenia lekcji (np. "usuń lekcje starsze niż 30 dni" lub "usuń wszystkie lekcje z tagiem X").
+3. **Solved Luki**: Zaimplementowano panel "Hygiene" w Brain, który pozwala na masowe usuwanie lekcji.
 
 ## Luki / ryzyka (zaktualizowane)
 - Brak jednej, spojnej dokumentacji "end-to-end" (stan + reguly wstrzykiwania).
@@ -170,7 +171,6 @@ Miejsce na konfigurację systemową (gating, constants).
 - Roznica "session history" w SessionStore vs StateManager moze rozjechac sie po awarii.
 - Czyszczenie pamieci globalnej usuwa wszystko po user_id (domyslnie user_default) bez osobnej whitelisty.
 - Oracle/GraphRAG to osobna sciezka; brak jasnej adnotacji w UI, ze to nie zasila czatu.
-- **Brak UI do zarządzania retencją lekcji (Lessons Pruning).**
 
 ## Zadania (PR Scope - Analysis & Specs)
 1. **Dokumentacja i Procesy:**_DONE_

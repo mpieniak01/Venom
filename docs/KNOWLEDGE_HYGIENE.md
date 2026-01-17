@@ -334,6 +334,6 @@ class LessonsStore:
 
 ## Zobacz także
 
-- [LessonsStore Documentation](./lessons_store.md)
-- [API Documentation](./api.md)
-- [Testing Guidelines](./testing.md)
+- [AGENTS_INDEX.md](./AGENTS_INDEX.md) - Główny indeks dokumentacji
+- [THE_ACADEMY.md](./THE_ACADEMY.md) - Dokumentacja Akademii
+- [MEMORY_LAYER_GUIDE.md](./MEMORY_LAYER_GUIDE.md) - Przewodnik po warstwie pamięci

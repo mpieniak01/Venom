@@ -123,6 +123,11 @@ class BaseAgent(ABC):
         runtime_info = get_active_llm_runtime()
         provider = runtime_info.provider
 
+        # Lokalny endpoint (vLLM/Ollama) nie obsługuje stabilnie tools/function-calling – wyłącz.
+        if provider in ("vllm", "ollama", "local"):
+            if "function_choice_behavior" in kwargs:
+                kwargs.pop("function_choice_behavior", None)
+
         # Uwzględnij override parametrów per runtime/model
         overrides = GenerationParamsAdapter.get_overrides(
             runtime_info.provider, runtime_info.model_name
@@ -264,6 +269,19 @@ class BaseAgent(ABC):
                         except Exception:
                             logger.debug(
                                 "Nie udało się wyłączyć function_choice_behavior w settings."
+                            )
+                    handled = True
+                if functions_enabled and (
+                    'auto" tool choice requires' in error_text
+                    or "auto tool choice requires" in error_text
+                ):
+                    functions_enabled = False
+                    if hasattr(settings, "function_choice_behavior"):
+                        try:
+                            settings.function_choice_behavior = None
+                        except Exception:
+                            logger.debug(
+                                "Nie udało się wyłączyć function_choice_behavior po błędzie auto tool choice."
                             )
                     handled = True
 

@@ -1,4 +1,4 @@
-"""Minimalny bypass do bezpośredniego streamingu z Ollama (tryb prosty)."""
+"""Minimalny bypass do bezpośredniego streamingu LLM (tryb prosty)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from venom_core.config import SETTINGS
 from venom_core.core.tracer import TraceStatus
 from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
@@ -38,11 +39,6 @@ class SimpleChatRequest(BaseModel):
 @router.post("/simple/stream")
 async def stream_simple_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
-    if runtime.provider != "ollama":
-        raise HTTPException(
-            status_code=409,
-            detail="Tryb prosty wspiera tylko lokalny runtime Ollama.",
-        )
     model_name = request.model or runtime.model_name
     if not model_name:
         raise HTTPException(status_code=400, detail="Brak nazwy modelu LLM.")
@@ -79,15 +75,75 @@ async def stream_simple_chat(request: SimpleChatRequest):
             details=f"session_id={request.session_id or '-'} prompt={prompt_preview}",
         )
 
+    messages = [{"role": "user", "content": request.content}]
+    system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    if system_prompt:
+        messages.insert(0, {"role": "system", "content": system_prompt})
     payload = {
         "model": model_name,
-        "messages": [{"role": "user", "content": request.content}],
+        "messages": messages,
         "stream": True,
     }
     if request.max_tokens is not None:
         payload["max_tokens"] = request.max_tokens
     if request.temperature is not None:
         payload["temperature"] = request.temperature
+    if _request_tracer:
+        preview_parts = []
+        for message in messages:
+            role = (message.get("role") or "").upper()
+            content = message.get("content") or ""
+            preview_parts.append(f"{role}:\n{content}")
+        full_context = "\n\n".join(preview_parts).strip()
+        max_len = 2000
+        truncated = len(full_context) > max_len
+        context_preview = (
+            full_context[:max_len] + "...(truncated)" if truncated else full_context
+        )
+        _request_tracer.add_step(
+            request_id,
+            "SimpleMode",
+            "context_preview",
+            status="ok",
+            details=json.dumps(
+                {
+                    "mode": "direct",
+                    "prompt_context_preview": context_preview,
+                    "prompt_context_truncated": truncated,
+                    "hidden_prompts_count": 0,
+                }
+            ),
+        )
+
+    def _record_simple_error(
+        *,
+        error_code: str,
+        error_message: str,
+        error_details: dict,
+        error_class: Optional[str] = None,
+        retryable: bool = True,
+    ) -> None:
+        if not _request_tracer:
+            return
+        _request_tracer.add_step(
+            request_id,
+            "SimpleMode",
+            "error",
+            status="error",
+            details=error_message,
+        )
+        _request_tracer.set_error_metadata(
+            request_id,
+            {
+                "error_code": error_code,
+                "error_class": error_class or error_code,
+                "error_message": error_message,
+                "error_details": error_details,
+                "stage": "simple_mode",
+                "retryable": retryable,
+            },
+        )
+        _request_tracer.update_status(request_id, TraceStatus.FAILED)
 
     async def _stream_chunks() -> AsyncIterator[str]:
         full_text = ""
@@ -97,7 +153,38 @@ async def stream_simple_chat(request: SimpleChatRequest):
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", completions_url, json=payload) as resp:
-                    resp.raise_for_status()
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        response_text = (
+                            (exc.response.text or "") if exc.response else ""
+                        )
+                        _record_simple_error(
+                            error_code="llm_http_error",
+                            error_message=(
+                                f"LLM HTTP {exc.response.status_code} dla {runtime.provider}"
+                                if exc.response
+                                else f"LLM HTTP error dla {runtime.provider}"
+                            ),
+                            error_details={
+                                "status_code": (
+                                    exc.response.status_code if exc.response else None
+                                ),
+                                "response": response_text[:2000],
+                                "provider": runtime.provider,
+                                "endpoint": runtime.endpoint,
+                                "model": model_name,
+                            },
+                            error_class=exc.__class__.__name__,
+                            retryable=False,
+                        )
+                        raise HTTPException(
+                            status_code=502,
+                            detail=(
+                                f"Błąd LLM ({runtime.provider}): "
+                                f"{exc.response.status_code if exc.response else 'HTTP'}"
+                            ),
+                        ) from exc
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data:"):
                             continue
@@ -139,21 +226,42 @@ async def stream_simple_chat(request: SimpleChatRequest):
                                 yield content
             if _request_tracer:
                 total_ms = int((time.perf_counter() - stream_start) * 1000)
-                preview = (
-                    (full_text[:200] + "...") if len(full_text) > 200 else full_text
-                )
+                max_chars = 4000
+                response_text = full_text
+                truncated = False
+                if len(response_text) > max_chars:
+                    response_text = response_text[:max_chars] + "...(truncated)"
+                    truncated = True
                 _request_tracer.add_step(
                     request_id,
                     "SimpleMode",
                     "response",
-                    details=f"chunks={chunk_count} total_ms={total_ms} chars={len(full_text)} preview={preview}",
+                    details=json.dumps(
+                        {
+                            "chunks": chunk_count,
+                            "total_ms": total_ms,
+                            "chars": len(full_text),
+                            "response": response_text,
+                            "truncated": truncated,
+                        }
+                    ),
                 )
                 _request_tracer.update_status(request_id, TraceStatus.COMPLETED)
         except httpx.HTTPError as exc:
-            if _request_tracer:
-                _request_tracer.update_status(request_id, TraceStatus.FAILED)
+            _record_simple_error(
+                error_code="llm_connection_error",
+                error_message=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+                error_details={
+                    "provider": runtime.provider,
+                    "endpoint": runtime.endpoint,
+                    "model": model_name,
+                },
+                error_class=exc.__class__.__name__,
+                retryable=True,
+            )
             raise HTTPException(
-                status_code=502, detail=f"Błąd połączenia z Ollama: {exc}"
+                status_code=502,
+                detail=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
             ) from exc
 
     headers = {

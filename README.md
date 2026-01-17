@@ -1,6 +1,6 @@
 # Venom v1.0 🐍
 
-> **[English Documentation Available](README_EN.md)** | **[Dokumentacja w języku polskim](#-venom-v10-)**
+> **[English Documentation Available](docs/en/README.md)** | **[Dokumentacja w języku polskim](#-venom-v10-)**
 
 **Venom wersja dekstop – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
@@ -343,7 +343,34 @@ HYBRID_CLOUD_PROVIDER=google        # google lub openai
 HYBRID_LOCAL_MODEL=llama3
 HYBRID_CLOUD_MODEL=gemini-1.5-pro
 SENSITIVE_DATA_LOCAL_ONLY=true     # Wrażliwe dane ZAWSZE lokalnie
+
+# vLLM (lokalny runtime OpenAI-compatible)
+VLLM_MODEL_PATH=models/gemma-3-4b-it
+VLLM_SERVED_MODEL_NAME=gemma-3-4b-it
+VLLM_HOST=0.0.0.0
+VLLM_PORT=8001
+VLLM_GPU_MEMORY_UTILIZATION=0.85
+VLLM_MAX_BATCHED_TOKENS=128
+VLLM_MAX_MODEL_LEN=1024
+VLLM_MAX_NUM_SEQS=2
+VLLM_START_COMMAND="bash ./scripts/llm/vllm_service.sh start"
+VLLM_STOP_COMMAND="bash ./scripts/llm/vllm_service.sh stop"
+VLLM_RESTART_COMMAND="bash ./scripts/llm/vllm_service.sh restart"
+
+# Spójny profil generacji dla Gemma 3 (vLLM + Ollama)
+MODEL_GENERATION_OVERRIDES={"vllm":{"gemma-3-4b-it":{"temperature":0.3,"top_p":0.9,"max_tokens":800}},"ollama":{"gemma3:4b":{"temperature":0.3,"top_p":0.9,"num_predict":800,"num_ctx":1024}}}
 ```
+
+### Test szybkości LLM (vLLM vs Ollama)
+- Skrypt: `scripts/bench/compare_llm.py` (porównuje TTFT/czas/tokeny na 3 promptach). Startuje vLLM, wykonuje test, zatrzymuje vLLM, następnie (jeśli Ollama nie działa) uruchamia Ollamę, testuje i ją wyłącza – tak by środowisko wróciło do stanu wyjściowego. Domyślnie `BENCH_FORCE_CLEANUP=1`, więc po teście oba serwery są zatrzymywane.
+- Uwaga: uruchamiaj na czystym środowisku (bez równoległego Venoma); do dodatkowej kontroli możesz ustawić `OLLAMA_START_COMMAND`, `OLLAMA_STOP_COMMAND`, `VLLM_START_COMMAND`, `VLLM_STOP_COMMAND`, `BENCH_FORCE_CLEANUP`.
+- Wywołanie:
+  ```bash
+  cd /home/ubuntu/venom
+  source .venv/bin/activate
+  python3 scripts/bench/compare_llm.py
+  ```
+  Wyniki są drukowane w dwóch tabelach (vLLM i Ollama) oraz w formacie JSON.
 
 **Sieć i wykrywanie (lokalnie najpierw):**
 ```bash

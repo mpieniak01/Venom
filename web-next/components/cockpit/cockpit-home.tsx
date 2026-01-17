@@ -76,6 +76,7 @@ import type { KeyboardEvent } from "react";
 import type {
   GenerationParams,
   HistoryRequestDetail,
+  HistoryStep,
   HiddenPromptEntry,
   ServiceStatus,
   Task,
@@ -121,6 +122,69 @@ import {
   formatUsd,
   formatVramMetric,
 } from "@/lib/formatters";
+
+const SESSION_CONTEXT_MARKERS = [
+  "[KONTEKST SESJI]",
+  "[HISTORIA SESJI]",
+  "[STRESZCZENIE SESJI]",
+  "[PAMIĘĆ]",
+];
+
+const CONTEXT_SECTION_REGEX =
+  /\[(KONTEKST SESJI|HISTORIA SESJI|STRESZCZENIE SESJI|PAMIĘĆ)\][\s\S]*?(?=\n\n\[|$)/gi;
+const PLAN_STEP_REGEX = /^---\s*Krok[\s\S]*?(?=\n\n|$)/gim;
+const PLAN_DONE_REGEX = /^===\s*PLAN ZAKOŃCZONY\s*===/gim;
+const MATH_BLOCK_TOKEN_REGEX = /\bMATH_BLOCK_\d+\b\s*/g;
+
+const RESPONSE_SOURCE_LABELS = {
+  live: "na zywo",
+  history: "historia",
+  hidden: "hidden",
+} as const;
+
+const normalizeMatchValue = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+function extractContextPreviewMeta(steps?: HistoryStep[]) {
+  if (!steps || steps.length === 0) return null;
+  const step = steps.find((entry) => entry.action === "context_preview");
+  const details = step?.details;
+  if (!details || typeof details !== "string") return null;
+  try {
+    const parsed = JSON.parse(details) as {
+      prompt_context_preview?: string;
+      prompt_context_truncated?: boolean;
+      hidden_prompts_count?: number;
+      mode?: string;
+    };
+    return {
+      preview: parsed.prompt_context_preview ?? null,
+      truncated: parsed.prompt_context_truncated ?? null,
+      hiddenPrompts: parsed.hidden_prompts_count ?? null,
+      mode: parsed.mode ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeAssistantText(raw: string) {
+  if (!raw) return raw;
+  const hasMarkers = SESSION_CONTEXT_MARKERS.some((marker) => raw.includes(marker));
+  if (!hasMarkers) return raw;
+  let text = raw.replace(MATH_BLOCK_TOKEN_REGEX, "").trim();
+  const lower = text.toLowerCase();
+  const wynikIndex = lower.lastIndexOf("wynik:");
+  if (wynikIndex !== -1) {
+    text = text.slice(wynikIndex + "wynik:".length).trim();
+  }
+  text = text.replace(CONTEXT_SECTION_REGEX, "");
+  text = text.replace(PLAN_STEP_REGEX, "");
+  text = text.replace(PLAN_DONE_REGEX, "");
+  text = text.replace(/^\s*cel:\s*/gim, "");
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+  return text;
+}
 
 const TELEMETRY_REFRESH_EVENTS = new Set([
   "AGENT_ACTION",
@@ -889,6 +953,27 @@ export function CockpitHome({
     });
     return map;
   }, [activeHiddenPrompts]);
+  const hiddenResponseCandidates = useMemo(
+    () =>
+      (activeHiddenPrompts?.items ?? [])
+        .map((entry) => entry.approved_response ?? "")
+        .map(normalizeMatchValue)
+        .filter(Boolean),
+    [activeHiddenPrompts],
+  );
+  const isHiddenResponse = useCallback(
+    (text: string) => {
+      if (!text) return false;
+      const normalized = normalizeMatchValue(text);
+      if (!normalized) return false;
+      return hiddenResponseCandidates.some(
+        (candidate) =>
+          candidate.length > 0 &&
+          (normalized.includes(candidate) || candidate.includes(normalized)),
+      );
+    },
+    [hiddenResponseCandidates],
+  );
 
   const hiddenIntentOptions = useMemo(() => {
     const intents = new Set<string>();
@@ -938,12 +1023,26 @@ export function CockpitHome({
   ) => {
     setSimpleStreams((prev) => {
       const existing = prev[clientId] ?? { text: "", status: "W toku", done: false };
-      return {
+      const mappedId = uiTimingKeyMapRef.current.get(clientId);
+      const mappedExisting =
+        mappedId && mappedId !== clientId
+          ? prev[mappedId] ?? { text: "", status: "W toku", done: false }
+          : null;
+      const next = {
         ...prev,
         [clientId]: {
           ...existing,
           ...patch,
         },
+      };
+      if (mappedId && mappedId !== clientId) {
+        next[mappedId] = {
+          ...mappedExisting,
+          ...patch,
+        };
+      }
+      return {
+        ...next,
       };
     });
   }, []);
@@ -1119,6 +1218,28 @@ export function CockpitHome({
       typeof errorObj.error_details === "object" && errorObj.error_details
         ? (errorObj.error_details as Record<string, unknown>)
         : {};
+    const tokenInfo: { max?: number; input?: number; requested?: number } = {};
+    if (typeof errorDetails.max_context_tokens === "number") {
+      tokenInfo.max = errorDetails.max_context_tokens;
+    }
+    if (typeof errorDetails.input_tokens === "number") {
+      tokenInfo.input = errorDetails.input_tokens;
+    }
+    if (typeof errorDetails.requested_max_tokens === "number") {
+      tokenInfo.requested = errorDetails.requested_max_tokens;
+    }
+    const promptPreview =
+      typeof errorDetails.prompt_preview === "string"
+        ? errorDetails.prompt_preview
+        : null;
+    const promptContext =
+      typeof errorDetails.prompt_context === "string"
+        ? errorDetails.prompt_context
+        : null;
+    const promptContextTruncated =
+      typeof errorDetails.prompt_context_truncated === "boolean"
+        ? errorDetails.prompt_context_truncated
+        : false;
     const missing = errorDetails["missing"];
     if (Array.isArray(missing) && missing.length > 0) {
       details.push(`missing: ${missing[0]}`);
@@ -1143,8 +1264,89 @@ export function CockpitHome({
     if (typeof stage === "string") {
       details.push(`stage: ${stage}`);
     }
-    return { errorClass, details };
+    if (tokenInfo.max || tokenInfo.input || tokenInfo.requested) {
+      const parts = [];
+      if (tokenInfo.max) parts.push(`max_ctx=${tokenInfo.max}`);
+      if (tokenInfo.input) parts.push(`input=${tokenInfo.input}`);
+      if (tokenInfo.requested) parts.push(`requested=${tokenInfo.requested}`);
+      details.push(`tokens: ${parts.join(" / ")}`);
+    }
+    return {
+      errorClass,
+      details,
+      promptPreview,
+      promptContext,
+      promptContextTruncated,
+      tokenInfo,
+    };
   }, [selectedTaskRuntime?.error]);
+  const simpleResponse = useMemo(() => {
+    if (!historyDetail?.steps || historyDetail.steps.length === 0) return null;
+    const responseStep = [...historyDetail.steps]
+      .reverse()
+      .find((step) => step.component === "SimpleMode" && step.action === "response");
+    if (!responseStep?.details) return null;
+    const raw = responseStep.details.trim();
+    if (raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw) as { response?: string; truncated?: boolean };
+        if (typeof parsed.response === "string") {
+          return { text: parsed.response, truncated: !!parsed.truncated };
+        }
+      } catch {
+        return null;
+      }
+    }
+    const responseMatch = raw.match(/response=(.*)$/s);
+    if (responseMatch?.[1]) {
+      return { text: responseMatch[1].trim(), truncated: false };
+    }
+    const previewMatch = raw.match(/preview=(.*)$/s);
+    if (previewMatch?.[1]) {
+      return { text: previewMatch[1].trim(), truncated: true };
+    }
+    return null;
+  }, [historyDetail?.steps]);
+  const requestContextMeta = useMemo(() => {
+    if (!historyDetail?.steps || historyDetail.steps.length === 0) return null;
+    const contextStep = [...historyDetail.steps]
+      .reverse()
+      .find((step) => step.action === "context_preview");
+    if (!contextStep?.details) return null;
+    const raw = contextStep.details.trim();
+    if (!raw.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(raw) as {
+        mode?: string;
+        prompt_context_preview?: string;
+        prompt_context_truncated?: boolean;
+        hidden_prompts_count?: number;
+      };
+      return {
+        mode: parsed.mode ?? null,
+        promptContextPreview:
+          typeof parsed.prompt_context_preview === "string"
+            ? parsed.prompt_context_preview
+            : null,
+        promptContextTruncated: Boolean(parsed.prompt_context_truncated),
+        hiddenPromptsCount:
+          typeof parsed.hidden_prompts_count === "number"
+            ? parsed.hidden_prompts_count
+            : null,
+      };
+    } catch {
+      return null;
+    }
+  }, [historyDetail?.steps]);
+  const requestModeLabel = useMemo(() => {
+    if (requestContextMeta?.mode === "direct") return "direct";
+    if (requestContextMeta?.mode === "normal") return "normal";
+    const hasSimple = historyDetail?.steps?.some(
+      (step) => step.component === "SimpleMode",
+    );
+    if (hasSimple) return "direct";
+    return "normal";
+  }, [historyDetail?.steps, requestContextMeta?.mode]);
   const findTaskMatch = useCallback(
     (requestId?: string, prompt?: string | null) => {
       if (requestId) {
@@ -1176,7 +1378,11 @@ export function CockpitHome({
         targetModel &&
         activeServerInfo?.active_server === targetServer
       ) {
-        await switchModel(targetModel);
+        if (targetServer === "vllm" || targetServer === "ollama") {
+          await activateRegistryModel({ name: targetModel, runtime: targetServer });
+        } else {
+          await switchModel(targetModel);
+        }
         setMessage(
           `Aktywowano model ${targetModel} na serwerze ${targetServer}.`,
         );
@@ -1195,7 +1401,11 @@ export function CockpitHome({
           response.active_model &&
           response.active_model !== targetModel
         ) {
-          await switchModel(targetModel);
+          if (targetServer === "vllm" || targetServer === "ollama") {
+            await activateRegistryModel({ name: targetModel, runtime: targetServer });
+          } else {
+            await switchModel(targetModel);
+          }
           setMessage(
             `Aktywowano serwer ${targetServer} i model ${targetModel}.`,
           );
@@ -1613,15 +1823,58 @@ export function CockpitHome({
         const role = entry.role === "assistant" ? "assistant" : "user";
         const requestId = entry.request_id ?? null;
         const timestamp = entry.timestamp ?? new Date().toISOString();
+        const optimisticEntry = requestId
+          ? optimisticRequests.find(
+              (item) => item.requestId === requestId || item.clientId === requestId,
+            )
+          : null;
+        const liveSimple = requestId ? simpleStreams[requestId] : null;
+        const liveTask = requestId ? taskStreams[requestId] : null;
+        const optimisticSimple =
+          optimisticEntry?.simpleMode
+            ? simpleStreams[optimisticEntry.clientId] ??
+              (optimisticEntry.requestId
+                ? simpleStreams[optimisticEntry.requestId]
+                : null)
+            : null;
+        const optimisticTask = optimisticEntry?.requestId
+          ? taskStreams[optimisticEntry.requestId]
+          : null;
+        const terminalStatuses = new Set(["COMPLETED", "FAILED", "LOST"]);
+        const liveStatus =
+          optimisticSimple?.status ??
+          liveSimple?.status ??
+          optimisticTask?.status ??
+          liveTask?.status ??
+          "COMPLETED";
+        const livePending = optimisticSimple
+          ? !optimisticSimple.done
+          : optimisticTask?.status
+            ? !terminalStatuses.has(optimisticTask.status)
+            : liveSimple
+              ? !liveSimple.done
+              : liveTask?.status
+                ? !terminalStatuses.has(liveTask.status)
+                : false;
+        const liveText =
+          role === "assistant" && optimisticSimple?.text
+            ? optimisticSimple.text
+            : role === "assistant" && liveSimple?.text
+              ? liveSimple.text
+              : role === "assistant" && optimisticTask?.result
+                ? optimisticTask.result
+                : role === "assistant" && liveTask?.result
+                  ? liveTask.result
+                  : entry.content || "Brak treści.";
         return {
           bubbleId: `session-${index}-${role}`,
           requestId,
           role,
-          text: entry.content || "Brak treści.",
-          status: "COMPLETED",
+          text: liveText,
+          status: liveStatus,
           timestamp,
           prompt: entry.content || "",
-          pending: false,
+          pending: role === "assistant" ? livePending : false,
           forcedTool: null,
           forcedProvider: null,
         };
@@ -1641,6 +1894,13 @@ export function CockpitHome({
         (item.status === "COMPLETED"
           ? "Brak zapisanej odpowiedzi – sprawdź szczegóły zadania."
           : "Odpowiedź w trakcie generowania");
+      const sanitizedAssistantText = sanitizeAssistantText(assistantText);
+      const displayAssistantText = sanitizedAssistantText.trim().length > 0
+        ? sanitizedAssistantText
+        : "Odpowiedź gotowa – sprawdź szczegóły zadania.";
+      const assistantSourceLabel = isHiddenResponse(displayAssistantText)
+        ? RESPONSE_SOURCE_LABELS.hidden
+        : RESPONSE_SOURCE_LABELS.history;
       const assistantStatus = matchedTask?.status ?? item.status;
       const assistantTimestamp =
         matchedTask?.updated_at ||
@@ -1666,14 +1926,15 @@ export function CockpitHome({
           bubbleId: `${item.request_id}-response`,
           requestId: item.request_id,
           role: "assistant",
-          text: assistantText,
+          text: displayAssistantText,
           status: assistantStatus,
           timestamp: assistantTimestamp ?? item.created_at,
           prompt,
-          pending: false,
+          pending: !terminalStatuses.has(item.status),
           forcedTool: item.forced_tool ?? null,
           forcedProvider: item.forced_provider ?? null,
           modeLabel,
+          sourceLabel: assistantSourceLabel,
           contextUsed: null, // History summary doesn't have context info yet
         },
       ];
@@ -1685,6 +1946,7 @@ export function CockpitHome({
     findTaskMatch,
     sessionEntryKey,
     requestModeById,
+    isHiddenResponse,
   ]);
 
   const optimisticMessages = useMemo<ChatMessage[]>(() => {
@@ -1694,20 +1956,57 @@ export function CockpitHome({
       const baseId = entry.requestId ?? entry.clientId;
       const simpleStream = entry.simpleMode ? simpleStreams[entry.clientId] : null;
       const stream = entry.requestId ? taskStreams[entry.requestId] : null;
+      const historyAssistant = entry.requestId
+        ? historySnapshot.find(
+            (item) =>
+              item.request_id === entry.requestId &&
+              item.role === "assistant" &&
+              (item.content || "").trim().length > 0,
+          )
+        : null;
+      const historyAssistantText = (historyAssistant?.content || "").trim();
+      const hasHistoryAssistant = historyAssistantText.length > 0;
+      const lastVisibleLog =
+        stream?.logs
+          ?.slice()
+          .reverse()
+          .find((log) => {
+            const trimmed = (log || "").trim();
+            if (!trimmed) return false;
+            const normalized = trimmed.toLowerCase();
+            if (normalized.startsWith("sesja:")) return false;
+            return true;
+          }) ?? null;
       const assistantText = entry.simpleMode
         ? simpleStream?.text ?? ""
         : stream?.result && stream.result.trim().length > 0
           ? stream.result
-          : stream?.logs && stream.logs.length > 0
-            ? stream.logs[stream.logs.length - 1] ?? "Generuję odpowiedź"
-            : "Generuję odpowiedź";
+          : lastVisibleLog
+            ? lastVisibleLog
+            : hasHistoryAssistant
+              ? historyAssistantText
+              : "Generuję odpowiedź";
+      const sanitizedAssistantText = sanitizeAssistantText(assistantText);
+      const displayAssistantText =
+        sanitizedAssistantText.trim().length > 0
+          ? sanitizedAssistantText
+          : "Odpowiedź gotowa.";
+      const assistantSourceLabel = isPending
+        ? RESPONSE_SOURCE_LABELS.live
+        : isHiddenResponse(displayAssistantText)
+          ? RESPONSE_SOURCE_LABELS.hidden
+          : hasHistoryAssistant
+            ? RESPONSE_SOURCE_LABELS.history
+            : RESPONSE_SOURCE_LABELS.live;
       const assistantStatus = entry.simpleMode
         ? simpleStream?.status ?? "W toku"
         : stream?.status ??
         (stream?.error ? "Błąd strumienia" : stream ? "W toku" : "W kolejce");
       const terminal = entry.simpleMode
         ? Boolean(simpleStream?.done)
-        : stream?.status === "COMPLETED" || stream?.status === "FAILED";
+        : stream?.status === "COMPLETED" ||
+          stream?.status === "FAILED" ||
+          hasHistoryAssistant;
       const pendingGraceMs = Math.min(
         1200,
         Math.max(300, Math.floor(assistantText.length * 4)),
@@ -1728,9 +2027,11 @@ export function CockpitHome({
             item.request_id === entry.requestId && item.role === "assistant",
         ),
       );
+      // Jeśli mamy już requestId (zadanie w historii), nie pokazujemy optymistycznej odpowiedzi,
+      // żeby uniknąć podwójnego mignięcia (optimistic + final).
       const showOptimisticAssistant = entry.simpleMode
-        ? !hasAssistantInHistory
-        : !(hasAssistantInHistory && !isPending);
+        ? isPending || (!hasAssistantInHistory && !entry.requestId)
+        : isPending || !hasAssistantInHistory;
       const modeLabel = entry.simpleMode
         ? "Direct"
         : entry.chatMode === "complex"
@@ -1763,7 +2064,7 @@ export function CockpitHome({
           bubbleId: `${baseId}-optimistic-response`,
           requestId: entry.requestId,
           role: "assistant",
-          text: assistantText,
+          text: displayAssistantText,
           status: assistantStatus,
           timestamp: entry.createdAt,
           prompt: entry.prompt,
@@ -1771,6 +2072,7 @@ export function CockpitHome({
           forcedTool: entry.forcedTool ?? null,
           forcedProvider: entry.forcedProvider ?? null,
           modeLabel,
+          sourceLabel: assistantSourceLabel,
           contextUsed,
         });
       }
@@ -1782,12 +2084,27 @@ export function CockpitHome({
     simpleStreams,
     localSessionHistory,
     sessionHistory,
+    isHiddenResponse,
   ]);
 
-  const chatMessages = useMemo(
-    () => [...historyMessages, ...optimisticMessages],
-    [historyMessages, optimisticMessages],
-  );
+  const chatMessages = useMemo(() => {
+    const pendingOptimisticIds = new Set(
+      optimisticMessages
+        .filter((msg) => msg.role === "assistant" && msg.pending && msg.requestId)
+        .map((msg) => msg.requestId as string),
+    );
+    const filteredHistory = pendingOptimisticIds.size
+      ? historyMessages.filter(
+          (msg) =>
+            !(
+              msg.role === "assistant" &&
+              msg.requestId &&
+              pendingOptimisticIds.has(msg.requestId)
+            ),
+        )
+      : historyMessages;
+    return [...filteredHistory, ...optimisticMessages];
+  }, [historyMessages, optimisticMessages]);
   const lastChatScrollTop = useRef(0);
   const didInitialChatScroll = useRef(false);
   const programmaticChatScroll = useRef(false);
@@ -2123,6 +2440,24 @@ export function CockpitHome({
     void (async () => {
       if (shouldUseSimple) {
         try {
+          const createdTimestamp = new Date().toISOString();
+          setLocalSessionHistory((prev) => {
+            const next = [...prev];
+            const exists = next.some(
+              (entry) =>
+                entry.request_id === clientId && entry.role === "user",
+            );
+            if (!exists) {
+              next.push({
+                role: "user",
+                content: trimmed,
+                request_id: clientId,
+                timestamp: createdTimestamp,
+                session_id: resolvedSession ?? undefined,
+              });
+            }
+            return next;
+          });
           updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
           const maxTokens =
             typeof generationParams?.max_tokens === "number"
@@ -2142,7 +2477,6 @@ export function CockpitHome({
           const headerRequestId = response.headers.get("x-request-id");
           const simpleRequestId = headerRequestId || `simple-${clientId}`;
           linkOptimisticRequest(clientId, simpleRequestId);
-          const createdTimestamp = new Date().toISOString();
           let lastHistoryUpdate = 0;
           const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
@@ -2257,6 +2591,8 @@ export function CockpitHome({
               }
               : null,
           ].filter(Boolean) as HistoryRequestDetail["steps"];
+          const simpleProvider =
+            activeServerInfo?.active_server ?? activeServerInfo?.runtime_id?.split("@")[0] ?? "local";
           setSimpleRequestDetails((prev) => ({
             ...prev,
             [simpleRequestId]: {
@@ -2264,7 +2600,7 @@ export function CockpitHome({
               prompt: trimmed,
               status: "COMPLETED",
               model: simpleModelName,
-              llm_provider: "ollama",
+              llm_provider: simpleProvider,
               llm_model: simpleModelName ?? null,
               llm_endpoint: simpleEndpoint ?? null,
               llm_config_hash: activeServerInfo?.config_hash ?? null,
@@ -2319,6 +2655,24 @@ export function CockpitHome({
           setMessage(
             err instanceof Error ? err.message : "Nie udało się wysłać zadania",
           );
+          setLocalSessionHistory((prev) => {
+            const next = [...prev];
+            const exists = next.some(
+              (entry) =>
+                entry.request_id === clientId && entry.role === "assistant",
+            );
+            if (!exists) {
+              next.push({
+                role: "assistant",
+                content:
+                  err instanceof Error ? err.message : "Błąd trybu prostego.",
+                request_id: clientId,
+                timestamp: new Date().toISOString(),
+                session_id: resolvedSession ?? undefined,
+              });
+            }
+            return next;
+          });
         } finally {
           setSending(false);
         }
@@ -2764,6 +3118,7 @@ export function CockpitHome({
               footerExtra={feedbackExtra}
               forcedLabel={forcedLabel}
               modeLabel={msg.modeLabel}
+              sourceLabel={msg.sourceLabel}
             />
           </div>
         );
@@ -2792,6 +3147,27 @@ export function CockpitHome({
     [historyDetail?.steps],
   );
   const llmStartAt = llmStartStep?.timestamp ?? null;
+  const contextPreviewMeta = useMemo(
+    () => extractContextPreviewMeta(historyDetail?.steps),
+    [historyDetail?.steps],
+  );
+  const payloadContext = selectedTask?.context_history ?? null;
+  const payloadGenerationParams =
+    payloadContext && typeof payloadContext === "object"
+      ? (payloadContext["generation_params"] as Record<string, unknown> | undefined)
+      : undefined;
+  const payloadSessionMeta =
+    payloadContext && typeof payloadContext === "object"
+      ? (payloadContext["session"] as Record<string, unknown> | undefined)
+      : undefined;
+  const payloadForcedRoute =
+    payloadContext && typeof payloadContext === "object"
+      ? (payloadContext["forced_route"] as Record<string, unknown> | undefined)
+      : undefined;
+  const payloadContextUsed =
+    payloadContext && typeof payloadContext === "object"
+      ? (payloadContext["context_used"] as Record<string, unknown> | undefined)
+      : undefined;
 
   const handleGitSync = async () => {
     if (gitAction) return;
@@ -4150,6 +4526,9 @@ export function CockpitHome({
                 <Badge tone={statusTone(historyDetail.status)}>
                   {historyDetail.status}
                 </Badge>
+                <Badge tone="neutral">
+                  {t(`cockpit.requestDetails.mode.${requestModeLabel}`)}
+                </Badge>
                 <span>Start: {formatDateTime(historyDetail.created_at)}</span>
                 <span>Stop: {formatDateTime(historyDetail.finished_at)}</span>
                 <span>Czas: {formatDurationSeconds(historyDetail.duration_seconds)}</span>
@@ -4189,6 +4568,19 @@ export function CockpitHome({
                         ))}
                       </div>
                     ) : null}
+                    {(runtimeErrorMeta?.promptContext || runtimeErrorMeta?.promptPreview) && (
+                      <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-50">
+                        <p className="mb-1 font-semibold text-amber-100">Podgląd promptu</p>
+                        <pre className="whitespace-pre-wrap break-words text-amber-50/90">
+                          {runtimeErrorMeta.promptContext ?? runtimeErrorMeta.promptPreview}
+                        </pre>
+                        {runtimeErrorMeta?.promptContextTruncated && (
+                          <p className="mt-2 text-[11px] text-amber-100/70">
+                            Podgląd skrócony (limit logowania).
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-2 text-xs text-rose-100">
                       {formatRuntimeError(selectedTaskRuntime.error)}
                     </p>
@@ -4206,6 +4598,80 @@ export function CockpitHome({
                   />
                 </div>
               </div>
+              {(contextPreviewMeta ||
+                payloadGenerationParams ||
+                payloadSessionMeta ||
+                payloadForcedRoute ||
+                payloadContextUsed) && (
+                <div className="mt-4 rounded-2xl box-muted p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    Payload do modelu
+                  </p>
+                  <div className="mt-3 grid gap-3 text-xs text-zinc-300">
+                    {payloadSessionMeta && (
+                      <div>
+                        <p className="text-zinc-500">Kontekst sesji</p>
+                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                          {JSON.stringify(payloadSessionMeta, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {payloadForcedRoute && (
+                      <div>
+                        <p className="text-zinc-500">Routing wymuszony</p>
+                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                          {JSON.stringify(payloadForcedRoute, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {payloadGenerationParams && (
+                      <div>
+                        <p className="text-zinc-500">Parametry generacji</p>
+                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                          {JSON.stringify(payloadGenerationParams, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {payloadContextUsed && (
+                      <div>
+                        <p className="text-zinc-500">Uzyty kontekst</p>
+                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                          {JSON.stringify(payloadContextUsed, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {contextPreviewMeta && (
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 text-zinc-400">
+                          <span>Podglad kontekstu</span>
+                          {contextPreviewMeta.hiddenPrompts !== null && (
+                            <Badge tone="neutral">
+                              hidden: {contextPreviewMeta.hiddenPrompts}
+                            </Badge>
+                          )}
+                          {contextPreviewMeta.mode && (
+                            <Badge tone="neutral">
+                              tryb: {contextPreviewMeta.mode}
+                            </Badge>
+                          )}
+                        </div>
+                        {contextPreviewMeta.preview ? (
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-zinc-100">
+                            {contextPreviewMeta.preview}
+                          </pre>
+                        ) : (
+                          <p className="mt-2 text-zinc-500">Brak podgladu kontekstu.</p>
+                        )}
+                        {contextPreviewMeta.truncated && (
+                          <p className="mt-2 text-[11px] text-zinc-500">
+                            Podglad skrócony (limit logowania).
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {uiTimingEntry && (
                 <div className="mt-4 rounded-2xl box-muted p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
@@ -4234,23 +4700,29 @@ export function CockpitHome({
               {(historyDetail.first_token || historyDetail.streaming || llmStartAt) && (
                 <div className="mt-4 rounded-2xl box-muted p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    Backend timings
+                    {t("cockpit.requestDetails.backendTimingsTitle")}
                   </p>
                   <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
                     <div>
-                      <span className="text-zinc-400">accepted (request)</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsAccepted")}
+                      </span>
                       <div className="text-sm text-white">
                         {formatDateTime(historyDetail.created_at)}
                       </div>
                     </div>
                     <div>
-                      <span className="text-zinc-400">LLM start</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsLlmStart")}
+                      </span>
                       <div className="text-sm text-white">
                         {llmStartAt ? formatDateTime(llmStartAt) : "—"}
                       </div>
                     </div>
                     <div>
-                      <span className="text-zinc-400">first token (ms)</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsFirstToken")}
+                      </span>
                       <div className="text-sm text-white">
                         {historyDetail.first_token?.elapsed_ms != null
                           ? `${Math.round(historyDetail.first_token.elapsed_ms)} ms`
@@ -4258,7 +4730,9 @@ export function CockpitHome({
                       </div>
                     </div>
                     <div>
-                      <span className="text-zinc-400">first chunk (ms)</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsFirstChunk")}
+                      </span>
                       <div className="text-sm text-white">
                         {historyDetail.streaming?.first_chunk_ms != null
                           ? `${Math.round(historyDetail.streaming.first_chunk_ms)} ms`
@@ -4266,13 +4740,17 @@ export function CockpitHome({
                       </div>
                     </div>
                     <div>
-                      <span className="text-zinc-400">chunks</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsChunks")}
+                      </span>
                       <div className="text-sm text-white">
                         {historyDetail.streaming?.chunk_count ?? "—"}
                       </div>
                     </div>
                     <div>
-                      <span className="text-zinc-400">last emit (ms)</span>
+                      <span className="text-zinc-400">
+                        {t("cockpit.requestDetails.backendTimingsLastEmit")}
+                      </span>
                       <div className="text-sm text-white">
                         {historyDetail.streaming?.last_emit_ms != null
                           ? `${Math.round(historyDetail.streaming.last_emit_ms)} ms`
@@ -4282,7 +4760,73 @@ export function CockpitHome({
                   </div>
                 </div>
               )}
-              {selectedTask && (
+              {(runtimeErrorMeta?.tokenInfo ||
+                requestContextMeta?.hiddenPromptsCount !== null ||
+                requestContextMeta?.promptContextPreview) && (
+                <div className="mt-4 rounded-2xl box-muted p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                    {t("cockpit.requestDetails.tokensTitle")}
+                  </p>
+                  <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                    {runtimeErrorMeta?.tokenInfo?.input !== undefined && (
+                      <div>
+                        <span className="text-zinc-400">
+                          {t("cockpit.requestDetails.tokensInput")}
+                        </span>
+                        <div className="text-sm text-white">
+                          {runtimeErrorMeta.tokenInfo.input}
+                        </div>
+                      </div>
+                    )}
+                    {runtimeErrorMeta?.tokenInfo?.requested !== undefined && (
+                      <div>
+                        <span className="text-zinc-400">
+                          {t("cockpit.requestDetails.tokensRequested")}
+                        </span>
+                        <div className="text-sm text-white">
+                          {runtimeErrorMeta.tokenInfo.requested}
+                        </div>
+                      </div>
+                    )}
+                    {runtimeErrorMeta?.tokenInfo?.max !== undefined && (
+                      <div>
+                        <span className="text-zinc-400">
+                          {t("cockpit.requestDetails.tokensMaxContext")}
+                        </span>
+                        <div className="text-sm text-white">
+                          {runtimeErrorMeta.tokenInfo.max}
+                        </div>
+                      </div>
+                    )}
+                    {requestContextMeta?.hiddenPromptsCount !== null && (
+                      <div>
+                        <span className="text-zinc-400">
+                          {t("cockpit.requestDetails.hiddenPromptsCount")}
+                        </span>
+                        <div className="text-sm text-white">
+                          {requestContextMeta.hiddenPromptsCount ?? "—"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {requestContextMeta?.promptContextPreview && (
+                    <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-50">
+                      <p className="mb-1 font-semibold text-amber-100">
+                        {t("cockpit.requestDetails.promptContextTitle")}
+                      </p>
+                      <pre className="whitespace-pre-wrap break-words text-amber-50/90">
+                        {requestContextMeta.promptContextPreview}
+                      </pre>
+                      {requestContextMeta.promptContextTruncated && (
+                        <p className="mt-2 text-[11px] text-amber-100/70">
+                          {t("cockpit.requestDetails.promptContextTruncated")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {(selectedTask || simpleResponse) && (
                 <div className="mt-4 rounded-2xl border border-emerald-400/10 bg-emerald-400/5 p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">
                     Odpowiedź / wynik
@@ -4290,13 +4834,20 @@ export function CockpitHome({
                   <div className="mt-2 text-sm text-white">
                     <MarkdownPreview
                       content={
-                        selectedTask.result && selectedTask.result.trim().length > 0
+                        selectedTask?.result && selectedTask.result.trim().length > 0
                           ? selectedTask.result
-                          : "Brak odpowiedzi. Zadanie mogło zakończyć się niepowodzeniem lub jeszcze trwa."
+                          : simpleResponse?.text
+                            ? simpleResponse.text
+                            : "Brak odpowiedzi. Zadanie mogło zakończyć się niepowodzeniem lub jeszcze trwa."
                       }
                       emptyState="Brak danych wyjściowych."
                     />
                   </div>
+                  {simpleResponse?.truncated && (
+                    <p className="mt-2 text-xs text-emerald-200/70">
+                      Odpowiedź skrócona w szczegółach (limit podglądu).
+                    </p>
+                  )}
                 </div>
               )}
               {selectedRequestId && (
@@ -4631,6 +5182,7 @@ type ChatMessage = {
   forcedTool?: string | null;
   forcedProvider?: string | null;
   modeLabel?: string | null;
+  sourceLabel?: string | null;
   contextUsed?: {
     lessons?: string[];
     memory_entries?: string[];

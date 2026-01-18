@@ -28,4 +28,4 @@ def ensure_learning_log_boot_id() -> None:
             encoding="utf-8",
         )
     except Exception as exc:
-        logger.warning("Nie udalo sie sprawdzic boot_id logu uczenia: %s", exc)
+        logger.warning("Nie udało się sprawdzić boot_id logu uczenia: %s", exc)

@@ -15,6 +15,7 @@ data/memory/
 data/user_lexicon/
 data/feedback/
 data/learning/
+data/benchmarks/
 
 # Chronos timelines and snapshots
 data/timelines/

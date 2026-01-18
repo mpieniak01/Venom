@@ -630,7 +630,6 @@ make run
 - [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
 - [Dream Engine](docs/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
 - [Process Engine](docs/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
-- [Process Engine](docs/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
 - [Warstwa pamięci](docs/MEMORY_LAYER_GUIDE.md)
 - [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 

@@ -103,7 +103,6 @@ GraphRAG – repository structure, dependencies, project knowledge.
 - test.smoke
 - git.integrator
 - docs.writer
-- docs.writer
 
 ### 3.4. Execution layer (Execution Layer)
 Semantic Kernel – files, shell, git, tests.

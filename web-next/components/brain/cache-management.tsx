@@ -2,7 +2,7 @@
 
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
-import { Loader2, Trash2, Database, Eraser } from "lucide-react";
+import { Loader2, Database, Eraser } from "lucide-react";
 import { useState } from "react";
 import { flushSemanticCache, clearGlobalMemory } from "@/hooks/use-api";
 import {

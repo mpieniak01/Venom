@@ -20,7 +20,7 @@ Wrapper for external platform APIs:
 - `send_notification(message, channel="discord")` - Sends notification to Discord/Slack
 - `check_connection()` - Checks connection status with platforms
 
-### 2. IntegratorAgent 2.0 (`venom_core/agents/integrator.py`)
+### 2. IntegratorAgent 1.0 (`venom_core/agents/integrator.py`)
 
 Extended DevOps agent with functions:
 
@@ -247,7 +247,7 @@ Repository doesn't exist or no access:
 
 ### Implemented (v1.0)
 - ✅ PlatformSkill (GitHub + Discord/Slack)
-- ✅ IntegratorAgent 2.0 (Issue handling)
+- ✅ IntegratorAgent 1.0 (Issue handling)
 - ✅ Orchestrator pipeline (Issue-to-PR)
 - ✅ Configuration and secret masking
 

@@ -1183,6 +1183,17 @@ async def get_storage_snapshot():
                     size = 0
             sizes.append(size)
 
+        # Specjalna logika dla Dream Timelines (katalogi dream_* w data/timelines)
+        dreams_size = 0
+        timelines_path = PROJECT_ROOT / "data/timelines"
+        if timelines_path.exists():
+            try:
+                for child in timelines_path.iterdir():
+                    if child.is_dir() and child.name.startswith("dream_"):
+                        dreams_size += _dir_size_bytes_fast(child)
+            except Exception as e:
+                logger.warning(f"Błąd podczas liczenia rozmiaru snów: {e}")
+
         items = []
         total_items_size = 0
         for entry, size in zip(entries, sizes):
@@ -1193,6 +1204,15 @@ async def get_storage_snapshot():
                 size_bytes = 0
             else:
                 size_bytes = size
+
+            # Korekta dla timelines (odejmij sny, aby nie dublować)
+            if entry["name"] == "Dane: timelines" and dreams_size > 0:
+                size_bytes = max(0, size_bytes - dreams_size)
+                entry["name"] = "Dane: timelines (user/core)"
+
+            # Pomiń wpisy 0B (opcjonalnie, lub zostaw dla informacji)
+            # if size_bytes == 0 and entry["kind"] == "data": continue
+
             total_items_size += size_bytes
             items.append(
                 {
@@ -1202,6 +1222,19 @@ async def get_storage_snapshot():
                     "kind": entry["kind"],
                 }
             )
+
+        # Dodaj wpis o snach (timelines)
+        if dreams_size > 0:
+            total_items_size += dreams_size
+            items.append(
+                {
+                    "name": "Dane: dreaming (timelines)",
+                    "path": str(timelines_path / "dream_*"),
+                    "size_bytes": dreams_size,
+                    "kind": "data",
+                }
+            )
+
         # Sumaryczny wpis repo (przybliżenie: suma sekcji)
         items.insert(
             0,

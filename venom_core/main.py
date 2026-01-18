@@ -575,6 +575,80 @@ async def lifespan(app: FastAPI):
         runtime = get_active_llm_runtime()
         if runtime.service_type != "local":
             return
+        if model_manager:
+            try:
+                from venom_core.services.config_manager import config_manager
+                from venom_core.utils.llm_runtime import compute_llm_config_hash
+
+                server_name = (
+                    SETTINGS.ACTIVE_LLM_SERVER or runtime.provider or ""
+                ).lower()
+                models = await model_manager.list_local_models()
+                available = {
+                    m["name"]
+                    for m in models
+                    if m.get("provider") == server_name and m.get("name")
+                }
+                if available and SETTINGS.LLM_MODEL_NAME not in available:
+                    config = config_manager.get_config(mask_secrets=False)
+                    last_model_key = (
+                        "LAST_MODEL_OLLAMA"
+                        if server_name == "ollama"
+                        else "LAST_MODEL_VLLM"
+                    )
+                    prev_model_key = (
+                        "PREVIOUS_MODEL_OLLAMA"
+                        if server_name == "ollama"
+                        else "PREVIOUS_MODEL_VLLM"
+                    )
+                    desired_model = (
+                        config.get(last_model_key)
+                        or config.get("HYBRID_LOCAL_MODEL")
+                        or config.get("LLM_MODEL_NAME", "")
+                    )
+                    previous_model = config.get(prev_model_key) or ""
+                    selected_model = None
+                    if desired_model in available:
+                        selected_model = desired_model
+                    elif previous_model in available:
+                        selected_model = previous_model
+                    else:
+                        selected_model = next(iter(available))
+                    updates = {
+                        "LLM_MODEL_NAME": selected_model,
+                        "HYBRID_LOCAL_MODEL": selected_model,
+                        last_model_key: selected_model,
+                    }
+                    old_last = config.get(last_model_key) or ""
+                    if old_last and old_last != selected_model:
+                        updates[prev_model_key] = old_last
+                    config_manager.update_config(updates)
+                    try:
+                        SETTINGS.LLM_MODEL_NAME = selected_model
+                        SETTINGS.HYBRID_LOCAL_MODEL = selected_model
+                    except Exception:
+                        logger.warning(
+                            "Nie udało się zaktualizować SETTINGS dla modelu LLM."
+                        )
+                    endpoint = runtime.endpoint
+                    config_hash = compute_llm_config_hash(
+                        server_name, endpoint, selected_model
+                    )
+                    config_manager.update_config({"LLM_CONFIG_HASH": config_hash})
+                    try:
+                        SETTINGS.LLM_CONFIG_HASH = config_hash
+                        SETTINGS.ACTIVE_LLM_SERVER = server_name
+                    except Exception:
+                        logger.warning(
+                            "Nie udało się zaktualizować SETTINGS dla hash LLM."
+                        )
+                    logger.warning(
+                        "Skorygowano model LLM na starcie: %s -> %s",
+                        config.get("LLM_MODEL_NAME", ""),
+                        selected_model,
+                    )
+            except Exception as exc:
+                logger.warning("Nie udało się zweryfikować modelu LLM: %s", exc)
         status, _ = await probe_runtime_status(runtime)
         if status != "online":
             active_server = (

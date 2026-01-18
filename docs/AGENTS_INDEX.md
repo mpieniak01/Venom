@@ -13,7 +13,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 | Agent | Plik | Dokumentacja | Opis |
 |-------|------|--------------|------|
 | **Architect** | `architect.py` | [THE_ARCHITECT.md](THE_ARCHITECT.md) | Planowanie strategiczne, dekompozycja złożonych zadań |
-| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | Ocena złożoności, zarządzanie budżetem API |
+| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | [v2.0] Ocena złożoności, zarządzanie budżetem API |
 | **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) | Orkiestracja na wysokim poziomie, decision-making |
 
 ### 💻 Implementacja i Kod
@@ -47,7 +47,6 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 |-------|------|--------------|------|
 | **Creative Director** | `creative_director.py` | - | Branding, marketing, prompty do AI art |
 | **Designer** | `designer.py` | - | Design UI/UX, prototypy |
-| **Writer** | `writer.py` | - | Copywriting, treści marketingowe |
 | **UX Analyst** | `ux_analyst.py` | - | Analiza doświadczenia użytkownika |
 
 ### 🔧 DevOps i Infrastruktura
@@ -76,6 +75,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 | **Gardener** | `gardener.py` | - | Refaktoryzacja, clean-up kodu |
 | **Foreman** | `foreman.py` | - | Zarządzanie zadaniami budowlanymi projektu |
 | **Publisher** | `publisher.py` | - | Publikacja artefaktów, release notes |
+| **Writer** | - | - | *[Wycofany/Zintegrowany z CreativeDirector]* |
 
 ### 🤝 Integracje Zewnętrzne
 
@@ -102,7 +102,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 
 ## Agenci bez Dedykowanej Dokumentacji
 
-Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (15 z 34):
+Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (13 z 34):
 
 - **Analyst** (`analyst.py`) - Analiza wydajności i kosztów
 - **Creative Director** (`creative_director.py`) - Branding i marketing
@@ -118,7 +118,6 @@ Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików do
 - **System Engineer** (`system_engineer.py`) - Konfiguracja systemowa
 - **Tester** (`tester.py`) - Generowanie testów
 - **UX Analyst** (`ux_analyst.py`) - Analiza UX
-- **Writer** (`writer.py`) - Copywriting
 
 ## Jak Wybrać Odpowiedniego Agenta?
 

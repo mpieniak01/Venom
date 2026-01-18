@@ -169,6 +169,17 @@ class Orchestrator:
             state_manager=state_manager, event_broadcaster=event_broadcaster
         )
 
+    def _get_runtime_context_char_limit(self, runtime_info) -> int:
+        """Wyznacza przybliżony limit znaków dla promptu na podstawie runtime."""
+        if runtime_info.provider != "vllm":
+            return MAX_CONTEXT_CHARS
+        max_ctx = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0) or 0
+        if max_ctx <= 0:
+            return MAX_CONTEXT_CHARS
+        reserve = max(64, max_ctx // 4)
+        input_tokens = max(32, max_ctx - reserve)
+        return min(MAX_CONTEXT_CHARS, input_tokens * 4)
+
     def _refresh_kernel(self, runtime_info=None) -> None:
         """Odtwarza kernel i agentów po zmianie konfiguracji LLM (delegacja do KernelManager)."""
         self.task_dispatcher = self.kernel_manager.refresh_kernel(runtime_info)
@@ -873,6 +884,15 @@ class Orchestrator:
                     task_id,
                     f"Obcięto kontekst do {MAX_CONTEXT_CHARS} znaków (historia/przygotowanie promptu).",
                 )
+            runtime_info = get_active_llm_runtime()
+            runtime_limit = self._get_runtime_context_char_limit(runtime_info)
+            if runtime_limit < MAX_CONTEXT_CHARS:
+                context, trimmed = trim_to_char_limit(context, runtime_limit)
+                if trimmed:
+                    self.state_manager.add_log(
+                        task_id,
+                        f"Obcięto kontekst do {runtime_limit} znaków (limit runtime).",
+                    )
             dispatch_context = context
 
             # Zapisz generation_params w kontekście zadania jeśli zostały przekazane
@@ -1102,15 +1122,37 @@ class Orchestrator:
                 context = await self.lessons_manager.add_lessons_to_context(
                     task_id, context
                 )
-                hidden_context = build_hidden_prompts_context(
-                    intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
+                runtime_info = get_active_llm_runtime()
+                runtime_limit = self._get_runtime_context_char_limit(runtime_info)
+                include_hidden = True
+                if (
+                    runtime_info.provider == "vllm"
+                    and getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0)
+                    and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
+                ):
+                    include_hidden = False
+                hidden_context = (
+                    build_hidden_prompts_context(
+                        intent=intent, limit=MAX_HIDDEN_PROMPTS_IN_CONTEXT
+                    )
+                    if include_hidden
+                    else ""
                 )
                 if hidden_context:
                     context = hidden_context + "\n\n" + context
                 self.state_manager.add_log(
                     task_id,
-                    "Dołączono hidden prompts do kontekstu",
+                    "Dołączono hidden prompts do kontekstu"
+                    if hidden_context
+                    else "Pominięto hidden prompts (mały kontekst vLLM)",
                 )
+                if runtime_limit < MAX_CONTEXT_CHARS:
+                    context, trimmed = trim_to_char_limit(context, runtime_limit)
+                    if trimmed:
+                        self.state_manager.add_log(
+                            task_id,
+                            f"Obcięto kontekst do {runtime_limit} znaków (limit runtime).",
+                        )
                 if self.request_tracer:
                     self.request_tracer.add_step(
                         task_id,

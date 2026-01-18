@@ -43,6 +43,7 @@ def benchmark_service(model_registry, service_monitor, tmp_path):
         model_registry=model_registry,
         service_monitor=service_monitor,
         questions_path=str(questions_file),
+        storage_dir=str(tmp_path / "benchmarks"),
     )
 
 

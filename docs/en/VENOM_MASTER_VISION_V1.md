@@ -1,9 +1,11 @@
-# VENOM – MASTER VISION v1 (ONNX Edition)
+# VENOM – MASTER VISION v1
 ## Local meta-intelligence. One runtime. One organism.
 
 > **[Polska Wersja](../VENOM_MASTER_VISION_V1.md)**
 
-## 0. Introduction – what is Venom?
+## 0. Introduction – Target Vision (Venom v2.0)
+> [!NOTE]
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.0) serves as the foundation (Foundation Layer) implementing key orchestration and memory functions.
 Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
 It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
 Venom can in the future encompass any other module in your ecosystem.
@@ -27,6 +29,9 @@ Venom treats:
 
 Venom is a meta-brain, artificial intelligence organism, code architect, agent orchestrator, knowledge manager, policy guardian, and AI that creates AI.
 
+> [!NOTE]
+> **Process Evolution:** In v1.0, the organism operates based on *built-in* autonomous processes (Internal Processes). In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
+
 ## 1. Technical definition – what is Venom as a system
 Venom is a local meta-intelligence layer that takes user intent and transforms it into a working solution through:
 - project context analysis,
@@ -43,18 +48,19 @@ Oracle Models (cloud) are optional and work only in selected policies.
 
 ## 2. Venom's biological model – artificial intelligence organism
 <table>
-<tr><th>Organ</th><th>Function</th><th>Technology</th><th>Role in organism</th></tr>
-<tr><td>Nervous system</td><td>Orchestration</td><td>AutoGen</td><td>Dialog, decision loops</td></tr>
-<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td></tr>
-<tr><td>Oracle</td><td>Deep thinking</td><td>GPT-4o, Gemini Pro, Claude</td><td>Difficult problems</td></tr>
-<tr><td>Antenna</td><td>External sense</td><td>Web-Agent</td><td>Internet knowledge</td></tr>
-<tr><td>Hippocampus</td><td>Memory</td><td>GraphRAG</td><td>Knowledge map</td></tr>
-<tr><td>Hands</td><td>Action</td><td>Semantic Kernel</td><td>Files, shell, git</td></tr>
-<tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>OCR, UI analysis</td></tr>
-<tr><td>Eyes (physical)</td><td>World perception</td><td>YOLO ONNX</td><td>Objects, obstacles</td></tr>
-<tr><td>Legs</td><td>Movement</td><td>Rider-Pi</td><td>Mobility</td></tr>
-<tr><td>Metabolism</td><td>Performance</td><td>ONNX / GGUF</td><td>Model execution</td></tr>
-<tr><td>Habitat</td><td>Environment</td><td>WSL2 + Dev Containers</td><td>Sandbox</td></tr>
+<tr><th>Organ</th><th>Function</th><th>Technology</th><th>Role in organism</th><th>Version</th></tr>
+<tr><td>Nervous system</td><td>Orchestration</td><td>AutoGen</td><td>Dialog, decision loops</td><td>v1.0</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td><td>v1.0</td></tr>
+<tr><td>Oracle</td><td>Deep thinking</td><td>GPT-4o, Gemini Pro, Claude</td><td>Difficult problems</td><td>v1.0</td></tr>
+<tr><td>Antenna</td><td>External sense</td><td>Researcher Agent</td><td>Internet knowledge</td><td>v1.0</td></tr>
+<tr><td>Hippocampus</td><td>Memory</td><td>GraphRAG</td><td>Knowledge map</td><td>v1.0</td></tr>
+<tr><td>Hands</td><td>Action</td><td>Semantic Kernel</td><td>Files, shell, git</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>OCR, UI analysis</td><td>v1.0</td></tr>
+<tr><td>Eyes (physical)</td><td>World perception</td><td>YOLO ONNX</td><td>Objects, obstacles</td><td>v2.0</td></tr>
+<tr><td>Legs</td><td>Movement</td><td>Rider-Pi</td><td>Mobility</td><td>v1.0</td></tr>
+<tr><td>Metabolism</td><td>Performance</td><td>ONNX / GGUF</td><td>Model execution</td><td>v1.0</td></tr>
+<tr><td>Communication</td><td>Thought serving</td><td>Ollama / vLLM</td><td>Inference engine</td><td>v1.0</td></tr>
+<tr><td>Habitat</td><td>Environment</td><td>WSL2 + Dev Containers</td><td>Sandbox</td><td>v1.0</td></tr>
 </table>
 
 ## 2A. Model layer – Dual-Engine Strategy
@@ -105,7 +111,6 @@ Semantic Kernel – files, shell, git, tests.
 - Florence-2 ONNX – UI vision
 - YOLO ONNX – physical vision
 
-### 3.6. Metabolism layer (Performance Layer)
 ### 3.6. Metabolism layer (Performance Layer)
 Support for two computational engines:
 - **ONNX Runtime** – for Vision, Audio, and lightweight models.
@@ -161,21 +166,6 @@ Improves:
 - testing policies
 - security
 
-## 8. Integration with Rider-PC and Rider-Pi
-Rider-PC – logical center.
+## 8. Integration of Rider-Pi and Google Home (IoT) - Venom 2.0
 Rider-Pi – physical body.
-
-Venom coordinates the entire ecosystem.
-
-## 9. Final definition
-Venom is:
-- meta-brain,
-- AI organism,
-- system architect,
-- agent orchestrator,
-- knowledge manager,
-- learning system,
-- policy guardian,
-- AI creating AI.
-
-And all models work in a unified **Dual-Engine Architecture (ONNX + GGUF)**.
+Google Home - Internet of Things

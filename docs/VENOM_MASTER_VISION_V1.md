@@ -1,10 +1,12 @@
 
-# VENOM – MASTER VISION v1 (ONNX Edition)
+# VENOM – MASTER VISION v1
 ## Meta-inteligencja lokalna. Jeden runtime. Jeden organizm.
 
 > **[English Version](en/VENOM_MASTER_VISION_V1.md)**
 
-## 0. Wprowadzenie – czym jest Venom?
+## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
+> [!NOTE]
+> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji i pamięci.
 Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
 To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
 Venom może w przyszłości objąć każdym innym modułem Twojego ekosystemu.
@@ -28,6 +30,9 @@ Venom traktuje:
 
 Venom to meta-mózg, organizm sztucznej inteligencji, architekt kodu, orkiestrator agentów, menedżer wiedzy, strażnik zasad oraz AI, która tworzy AI.
 
+> [!NOTE]
+> **Ewolucja Procesowa:** W v1.0 organizm działa w oparciu o *wbudowane* autonomiczne procesy (Internal Processes). W v2.0 użytkownik uzyska narzędzia do *jawnego modelowania* tych procesów (User-Configurable Processes), przejmując rolę inżyniera przepływu.
+
 ## 1. Definicja techniczna – czym jest Venom jako system
 Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkownika i przekształca ją w działające rozwiązanie poprzez:
 - analizę kontekstu projektu,
@@ -44,18 +49,19 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
-<tr><th>Organ</th><th>Funkcja</th><th>Technologia</th><th>Rola w organizmie</th></tr>
-<tr><td>System nerwowy</td><td>Orkiestracja</td><td>AutoGen</td><td>Dialog, pętle decyzyjne</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Phi-3 (ONNX/GGUF)</td><td>Generuje 90% kodu</td></tr>
-<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>GPT-4o, Gemini Pro, Claude</td><td>Trudne problemy</td></tr>
-<tr><td>Antena</td><td>Zmysł zewnętrzny</td><td>Web-Agent</td><td>Wiedza z internetu</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>GraphRAG</td><td>Mapa wiedzy</td></tr>
-<tr><td>Ręce</td><td>Działanie</td><td>Semantic Kernel</td><td>Pliki, shell, git</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Florence-2 ONNX</td><td>OCR, analiza UI</td></tr>
-<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>YOLO ONNX</td><td>Obiekty, przeszkody</td></tr>
-<tr><td>Nogi</td><td>Ruch</td><td>Rider-Pi</td><td>Mobilność</td></tr>
-<tr><td>Metabolizm</td><td>Wydajność</td><td>ONNX / GGUF</td><td>Wykonanie modeli</td></tr>
-<tr><td>Habitat</td><td>Środowisko</td><td>WSL2 + Dev Containers</td><td>Sandbox</td></tr>
+<tr><th>Organ</th><th>Funkcja</th><th>Technologia</th><th>Rola w organizmie</th><th>Wersja</th></tr>
+<tr><td>System nerwowy</td><td>Orkiestracja</td><td>AutoGen</td><td>Dialog, pętle decyzyjne</td><td>v1.0</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Phi-3 (ONNX/GGUF)</td><td>Generuje 90% kodu</td><td>v1.0</td></tr>
+<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>GPT-4o, Gemini Pro, Claude</td><td>Trudne problemy</td><td>v1.0</td></tr>
+<tr><td>Antena</td><td>Zmysł zewnętrzny</td><td>Researcher Agent</td><td>Wiedza z internetu</td><td>v1.0</td></tr>
+<tr><td>Hipokamp</td><td>Pamięć</td><td>GraphRAG</td><td>Mapa wiedzy</td><td>v1.0</td></tr>
+<tr><td>Ręce</td><td>Działanie</td><td>Semantic Kernel</td><td>Pliki, shell, git</td><td>v1.0</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Florence-2 ONNX</td><td>OCR, analiza UI</td><td>v1.0</td></tr>
+<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>YOLO ONNX</td><td>Obiekty, przeszkody</td><td>v2.0</td></tr>
+<tr><td>Nogi</td><td>Ruch</td><td>Rider-Pi</td><td>Mobilność</td><td>v1.0</td></tr>
+<tr><td>Metabolizm</td><td>Wydajność</td><td>ONNX / GGUF</td><td>Wykonanie modeli</td><td>v1.0</td></tr>
+<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Ollama / vLLM</td><td>Silnik inferencji</td><td>v1.0</td></tr>
+<tr><td>Habitat</td><td>Środowisko</td><td>WSL2 + Dev Containers</td><td>Sandbox</td><td>v1.0</td></tr>
 </table>
 
 ## 2A. Warstwa modeli – Strategia Dual-Engine
@@ -162,9 +168,9 @@ Ulepsza:
 - polityki testów
 - bezpieczeństwo
 
-## 8. Integracja z Rider-PC i Rider-Pi
-Rider-PC – centrum logiczne.
+## 8. Integracja Rider-Pi i Google Home (IoT)- Venom 2.0
 Rider-Pi – ciało fizyczne.
+Google Home - internet rzeczy
 
 Venom koordynuje cały ekosystem.
 

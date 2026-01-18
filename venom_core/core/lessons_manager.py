@@ -8,6 +8,7 @@ from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
+from venom_core.core.learning_log import ensure_learning_log_boot_id
 from venom_core.core.models import TaskRequest
 from venom_core.utils.logger import get_logger
 
@@ -283,6 +284,7 @@ class LessonsManager:
         }
 
         try:
+            ensure_learning_log_boot_id()
             LEARNING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
             with LEARNING_LOG_PATH.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry, ensure_ascii=False) + "\n")

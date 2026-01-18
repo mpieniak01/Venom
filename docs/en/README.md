@@ -586,7 +586,7 @@ make run
 - [The Coder - Code generation](THE_CODER.md) *(translation in progress)*
 - [The Researcher - Knowledge search](THE_RESEARCHER.md) *(translation in progress)*
 - [The Chat - Conversational assistant](THE_CHAT.md) *(translation in progress)*
-- [The Strategist - Complexity analysis](THE_STRATEGIST.md) *(translation in progress)*
+- [The Strategist - Complexity analysis](THE_STRATEGIST.md) *(Postponed to v2.0)*
 - [The Critic - Code verification](THE_CRITIC.md) *(translation in progress)*
 - [The Librarian - File management](THE_LIBRARIAN.md) *(translation in progress)*
 - [The Integrator - Git & DevOps](THE_INTEGRATOR.md) *(translation in progress)*
@@ -601,7 +601,8 @@ make run
 - [Model management](../MODEL_MANAGEMENT.md) *(translation in progress)*
 - [LLM model tuning](../../docs/_done/072_strojenie_modelu_llm_ui.md) *(Polish only)*
 - [Flow Inspector](FLOW_INSPECTOR_GUIDE.md)
-- [Dream Engine](../DREAM_ENGINE_GUIDE.md) *(translation in progress)*
+- [Dream Engine](DREAM_ENGINE_GUIDE.md) *(Postponed to v2.0)*
+- [Process Engine](PROCESS_ENGINE_CONCEPT.md) *(Planned for v2.0)*
 - [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrieval
 - [Google Search Grounding](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) *(translation in progress)*
 

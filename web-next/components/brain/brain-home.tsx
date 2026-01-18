@@ -41,7 +41,7 @@ import { useProjectionTrigger } from "@/hooks/use-projection";
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
 
-import { LessonPruningPanel } from "@/components/brain/lesson-pruning";
+import { HygienePanel } from "@/components/brain/hygiene-panel";
 
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
@@ -829,27 +829,27 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-full border border-white/10 bg-black/40 p-1 text-xs text-white">
+        <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 p-1.5">
           <Button
-            size="xs"
+            size="sm"
             variant={activeTab === "memory" ? "secondary" : "ghost"}
-            className="px-3"
+            className="rounded-full px-4"
             onClick={() => setActiveTab("memory")}
           >
             Pamięć / Lessons
           </Button>
           <Button
-            size="xs"
+            size="sm"
             variant={activeTab === "repo" ? "secondary" : "ghost"}
-            className="px-3"
+            className="rounded-full px-4"
             onClick={() => setActiveTab("repo")}
           >
             Repo / Knowledge
           </Button>
           <Button
-            size="xs"
+            size="sm"
             variant={activeTab === "hygiene" ? "secondary" : "ghost"}
-            className="px-3"
+            className="rounded-full px-4"
             onClick={() => setActiveTab("hygiene")}
             data-testid="hygiene-tab"
           >
@@ -869,8 +869,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         </Badge>
       </div>
 
+
       {activeTab === "hygiene" ? (
-        <LessonPruningPanel />
+        <HygienePanel />
       ) : (
         <>
           <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-br from-zinc-950/70 to-zinc-900/30 shadow-card">
@@ -1040,45 +1041,37 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                     </Button>
                     <Button
                       size="xs"
-                      variant="danger"
+                      variant="outline"
                       className="border-white/20 text-white"
-                      disabled={memoryWipePending}
-                      onClick={handleClearGlobalMemory}
+                      onClick={() => {
+                        memoryGraphPoll.refresh();
+                      }}
                     >
-                      Wyczyść całą pamięć
+                      Odśwież pamięć
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      disabled={projection.pending}
+                      onClick={async () => {
+                        try {
+                          const res = await projection.trigger(memoryLimit);
+                          pushToast(`Zaktualizowano projekcję (records: ${res.updated})`, "success");
+                          memoryGraphPoll.refresh();
+                        } catch {
+                          pushToast("Nie udało się zaktualizować projekcji embeddingów.", "error");
+                        }
+                      }}
+                    >
+                      Odśwież projekcję
                     </Button>
                   </div>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    className="border-white/20 text-white"
-                    onClick={() => {
-                      memoryGraphPoll.refresh();
-                    }}
-                  >
-                    Odśwież pamięć
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    className="border-white/20 text-white"
-                    disabled={projection.pending}
-                    onClick={async () => {
-                      try {
-                        const res = await projection.trigger(memoryLimit);
-                        pushToast(`Zaktualizowano projekcję (records: ${res.updated})`, "success");
-                        memoryGraphPoll.refresh();
-                      } catch {
-                        pushToast("Nie udało się zaktualizować projekcji embeddingów.", "error");
-                      }
-                    }}
-                  >
-                    Odśwież projekcję
-                  </Button>
                 </div>
               </div>
             ) : null}
           </div>
+
 
           <div className="flex flex-wrap gap-3 text-xs text-white">
             <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">

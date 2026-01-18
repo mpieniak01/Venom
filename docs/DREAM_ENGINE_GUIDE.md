@@ -1,4 +1,8 @@
-# THE DREAMER - Przewodnik Silnika Snów
+# THE DREAMER - Przewodnik Silnika Snów (v2.0)
+
+> [!IMPORTANT]
+> **Status Implementacji:** Rozwój koncepcji "Snu" (Dream Engine) został oficjalnie przesunięty do wersji **Venom 2.0**.
+> W obecnej wersji (v1.0) system ten jest domyślnie wyłączony (`ENABLE_DREAMING=False`), a jego dokumentacja służy jako referencja dla przyszłych prac.
 
 ## Wprowadzenie
 

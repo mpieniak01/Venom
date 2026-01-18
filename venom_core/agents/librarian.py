@@ -4,14 +4,15 @@ from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
 )
-from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
+from venom_core.config import SETTINGS
 from venom_core.execution.skills.file_skill import FileSkill
 from venom_core.memory.memory_skill import MemorySkill
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +53,8 @@ Akcja: Użyj read_file("config.json"), pokaż zawartość i rozważ zapisanie do
 
 Żądanie: "co to jest trójkąt?"
 Akcja: Odpowiedz wprost, nie używaj żadnych narzędzi."""
+    LOCAL_SYSTEM_PROMPT = """Jesteś bibliotekarzem projektu. Używaj narzędzi tylko gdy pytanie dotyczy plików w repo.
+Gdy pytanie jest ogólne, odpowiedz krótko po polsku bez narzędzi."""
 
     def __init__(self, kernel: Kernel):
         """
@@ -84,10 +87,18 @@ Akcja: Odpowiedz wprost, nie używaj żadnych narzędzi."""
         """
         logger.info(f"LibrarianAgent przetwarza żądanie: {input_text[:100]}...")
 
+        runtime = get_active_llm_runtime()
+        use_compact = (
+            runtime.provider in ("vllm", "ollama", "local")
+            and SETTINGS.VLLM_MAX_MODEL_LEN
+            and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
+        )
+        system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
+
         # Przygotuj historię rozmowy
         chat_history = ChatHistory()
         chat_history.add_message(
-            ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+            ChatMessageContent(role=AuthorRole.SYSTEM, content=system_prompt)
         )
         chat_history.add_message(
             ChatMessageContent(role=AuthorRole.USER, content=input_text)
@@ -97,17 +108,19 @@ Akcja: Odpowiedz wprost, nie używaj żadnych narzędzi."""
             # Pobierz serwis chat completion
             chat_service = self.kernel.get_service()
 
-            # Włącz automatyczne wywoływanie funkcji
-            settings = OpenAIChatPromptExecutionSettings(
-                function_choice_behavior=FunctionChoiceBehavior.Auto()
-            )
+            # Włącz funkcje tylko gdy runtime to nie jest lokalny vLLM/Ollama.
+            enable_functions = runtime.provider not in ("vllm", "ollama", "local")
+            kwargs = {}
+            if enable_functions:
+                kwargs["function_choice_behavior"] = FunctionChoiceBehavior.Auto()
+            settings = self._create_execution_settings(**kwargs)
 
             # Wywołaj model z możliwością auto-wywołania funkcji
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
                 chat_history=chat_history,
                 settings=settings,
-                enable_functions=True,
+                enable_functions=enable_functions,
             )
 
             result = str(response).strip()

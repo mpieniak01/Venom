@@ -613,7 +613,7 @@ make run
 - [The Coder - Generowanie kodu](docs/THE_CODER.md)
 - [The Researcher - Wyszukiwanie wiedzy](docs/THE_RESEARCHER.md)
 - [The Chat - Asystent konwersacyjny](docs/THE_CHAT.md)
-- [The Strategist - Analiza złożoności](docs/THE_STRATEGIST.md)
+- [The Strategist - Analiza złożoności](docs/THE_STRATEGIST.md) *(Przesunięte do v2.0)*
 - [The Critic - Weryfikacja kodu](docs/THE_CRITIC.md)
 - [The Librarian - Zarządzanie plikami](docs/THE_LIBRARIAN.md)
 - [The Integrator - Git & DevOps](docs/THE_INTEGRATOR.md)
@@ -628,7 +628,8 @@ make run
 - [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
 - [Strojenie modelu LLM](docs/_done/072_strojenie_modelu_llm_ui.md)
 - [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
-- [Dream Engine](docs/DREAM_ENGINE_GUIDE.md)
+- [Dream Engine](docs/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
+- [Process Engine](docs/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
 - [Warstwa pamięci](docs/MEMORY_LAYER_GUIDE.md)
 - [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 

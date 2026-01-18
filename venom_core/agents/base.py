@@ -1,5 +1,6 @@
 """Moduł: base - abstrakcyjna klasa bazowa dla agentów Venom."""
 
+import re
 from abc import ABC, abstractmethod
 from contextvars import ContextVar, Token
 from typing import Any, Callable, Dict, Optional
@@ -10,6 +11,7 @@ from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
+from venom_core.config import SETTINGS
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
@@ -141,6 +143,15 @@ class BaseAgent(ABC):
             generation_params, defaults_with_overrides
         )
 
+        # Ogranicz max_tokens dla vLLM, aby nie przekraczać małego kontekstu.
+        if provider == "vllm":
+            max_ctx = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0) or 0
+            if max_ctx > 0:
+                safe_cap = max(64, max_ctx // 4)
+                current = merged_params.get("max_tokens")
+                if current is None or current > safe_cap:
+                    merged_params["max_tokens"] = safe_cap
+
         # Adaptuj parametry do formatu providera
         adapted_params = GenerationParamsAdapter.adapt_params(merged_params, provider)
 
@@ -249,6 +260,31 @@ class BaseAgent(ABC):
                     error_text += f" {str(inner).lower()}"
 
                 handled = False
+                token_match = re.search(
+                    r"maximum context length is (\d+) tokens.*request has (\d+) input tokens",
+                    error_text,
+                )
+                if token_match:
+                    try:
+                        max_ctx = int(token_match.group(1))
+                        input_tokens = int(token_match.group(2))
+                        safe_max = max(16, max_ctx - input_tokens - 8)
+                        if safe_max > 0:
+                            try:
+                                settings.max_tokens = safe_max
+                                logger.warning(
+                                    "Zmniejszam max_tokens do %s (max_ctx=%s, input=%s).",
+                                    safe_max,
+                                    max_ctx,
+                                    input_tokens,
+                                )
+                                handled = True
+                            except Exception:
+                                logger.debug(
+                                    "Nie udało się ustawić max_tokens w settings po błędzie kontekstu."
+                                )
+                    except Exception:
+                        pass
 
                 if (
                     "system role not supported" in error_text

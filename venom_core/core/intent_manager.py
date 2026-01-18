@@ -16,6 +16,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.config import SETTINGS
 from venom_core.execution.kernel_builder import KernelBuilder
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -385,7 +386,12 @@ Przykłady:
 - "Wygeneruj dokumentację projektu" → DOCUMENTATION
 - "Wydaj nową wersję" → RELEASE_PROJECT
 - "Rozpocznij kampanię" → START_CAMPAIGN
-- "Jaki jest status projektu?" → STATUS_REPORT"""
+- "Jaki jest status projektu?" → STATUS_REPORT
+"""
+    LOCAL_SYSTEM_PROMPT = """Klasyfikuj intencję użytkownika. Zwróć TYLKO jedną etykietę:
+CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING,
+VERSION_CONTROL, E2E_TESTING, DOCUMENTATION, RELEASE_PROJECT, START_CAMPAIGN,
+STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
 
     def __init__(self, kernel: Kernel = None):
         """
@@ -530,10 +536,20 @@ Przykłady:
             self._append_user_phrase("INFRA_STATUS", user_input, language)
             return "INFRA_STATUS"
 
+        runtime = get_active_llm_runtime()
+        use_compact = (
+            runtime.provider in ("vllm", "ollama", "local")
+            and SETTINGS.VLLM_MAX_MODEL_LEN
+            and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
+        )
+        system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
+
         def _build_chat_history(system_as_user: bool) -> ChatHistory:
             chat_history = ChatHistory()
             if system_as_user:
-                combined_prompt = f"{self.SYSTEM_PROMPT.strip()}\n\n[Klasyfikuj intencję]\n{user_input}"
+                combined_prompt = (
+                    f"{system_prompt.strip()}\n\n[Klasyfikuj intencję]\n{user_input}"
+                )
                 chat_history.add_message(
                     ChatMessageContent(
                         role=AuthorRole.USER,
@@ -544,7 +560,7 @@ Przykłady:
                 chat_history.add_message(
                     ChatMessageContent(
                         role=AuthorRole.SYSTEM,
-                        content=self.SYSTEM_PROMPT,
+                        content=system_prompt,
                     )
                 )
                 chat_history.add_message(
@@ -608,7 +624,11 @@ Przykłady:
                         )
                         return "GENERAL_CHAT"
                 else:
-                    raise
+                    logger.warning(
+                        "Błąd podczas klasyfikacji intencji (%s) - używam GENERAL_CHAT",
+                        api_error,
+                    )
+                    return "GENERAL_CHAT"
 
             # Wyciągnij czystą odpowiedź (usuń whitespace)
             intent = str(response).strip().upper()
@@ -649,6 +669,13 @@ Przykłady:
             if intent in valid_intents and intent != "UNSUPPORTED_TASK":
                 self._append_user_phrase(intent, user_input, language)
             return intent
+        except Exception as exc:
+            logger.warning(
+                "Błąd LLM przy klasyfikacji intencji (%s) - używam GENERAL_CHAT",
+                exc,
+            )
+            self.last_intent_debug["source"] = "fallback"
+            return "GENERAL_CHAT"
 
         except Exception as e:
             logger.error(f"Błąd podczas klasyfikacji intencji: {e}")

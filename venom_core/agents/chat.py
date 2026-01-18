@@ -17,6 +17,7 @@ from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.model_router import ServiceId
 from venom_core.execution.skills.google_calendar_skill import GoogleCalendarSkill
 from venom_core.memory.memory_skill import MemorySkill
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - unittest.mock zawsze dostępny, ale zabezpieczenie
@@ -61,6 +62,12 @@ Odpowiedź: [użyj read_agenda aby sprawdzić kalendarz użytkownika]
 
 Pytanie: "Zaplanuj mi kodowanie na 16:00 przez godzinę"
 Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
+"""
+    LOCAL_SYSTEM_PROMPT = """Jesteś asystentem AI o imieniu Venom.
+
+Zasady:
+- Odpowiadaj krótko i rzeczowo po polsku.
+- Jeśli nie wiesz, przyznaj to.
 """
     # Fallback: modele, które nie wspierają roli system, używane gdy ModelRegistry
     # nie jest dostępny lub model nie jest opisany w manifeście.
@@ -164,12 +171,20 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
                 return f"Przetworzono: {input_text}"
 
         # Przygotuj historię rozmowy
+        runtime = get_active_llm_runtime()
+        use_compact = (
+            runtime.provider in ("vllm", "ollama", "local")
+            and SETTINGS.VLLM_MAX_MODEL_LEN
+            and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
+        )
+        system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
+
         chat_service = self.kernel.get_service()
         system_supported = self._supports_system_prompt(chat_service)
         chat_history = ChatHistory()
         if system_supported:
             chat_history.add_message(
-                ChatMessageContent(role=AuthorRole.SYSTEM, content=self.SYSTEM_PROMPT)
+                ChatMessageContent(role=AuthorRole.SYSTEM, content=system_prompt)
             )
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=input_text)
@@ -180,7 +195,7 @@ Odpowiedź: [użyj schedule_task aby utworzyć wydarzenie w kalendarzu Venoma]
                 getattr(chat_service, "ai_model_id", "unknown"),
             )
             combined_prompt = (
-                f"{self.SYSTEM_PROMPT.strip()}\n\n[Pytanie użytkownika]\n{input_text}"
+                f"{system_prompt.strip()}\n\n[Pytanie użytkownika]\n{input_text}"
             )
             chat_history.add_message(
                 ChatMessageContent(role=AuthorRole.USER, content=combined_prompt)

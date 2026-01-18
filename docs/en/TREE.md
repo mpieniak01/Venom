@@ -7,6 +7,7 @@
 ├── docs/                        # vision, diagrams, notes
 │   ├── _done/                   # Documentation of completed development tasks
 │   ├── _to_do/                  # Documentation of development tasks to do
+│   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] Process Engine (concept)
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 │
@@ -24,7 +25,7 @@
 │       └── js/
 │           └── app.js           # frontend logic
 │
-├── web-next/                    # [NEW] Next.js Dashboard (VENOM 2.0)
+├── web-next/                    # [NEW] Next.js Dashboard (VENOM 1.0)
 │   ├── app/                     # App Router
 │   ├── components/              # React/Shadcn UI components
 │   ├── lib/                     # utils, types, api clients
@@ -45,22 +46,23 @@
 └── venom_core/                  # Python package – Venom organism
     ├── __init__.py
     ├── main.py                  # FastAPI, /healthz, / (UI), layer binding
-    ├── config.py                # Settings (Pydantic): paths, models, ENV
-    │
     ├── core/                    # [LAYER 1: META] – BRAIN
     │   ├── __init__.py
     │   ├── orchestrator.py      # task lifecycle
     │   ├── intent_manager.py    # intent classification (code/research/arch)
+    │   ├── config.py            # Settings (Pydantic): paths, models, ENV
     │   ├── policy_engine.py     # ethics, autonomy, domain levels
     │   ├── state_manager.py     # organism state, task log
     │   ├── model_registry.py    # model registry (ONNX + GGUF)
-    │   └── llm_server_controller.py # LLM server management (Ollama/vLLM)
+    │   ├── llm_server_controller.py # LLM server management (Ollama/vLLM)
+    │   └── dream_engine.py      # [v2.0] Active dreaming system (postponed)
     │
     ├── agents/                  # [LAYER 2: AGENT SERVICES] – SPECIALISTS
     │   ├── __init__.py
     │   ├── architect.py         # architecture planning
     │   ├── librarian.py         # repo / file structure
     │   ├── coder.py             # code generation
+    │   ├── strategist.py        # [v2.0] Strategy Supervisor (Roadmap, KPI)
     │   ├── critic.py            # tests / review
     │   ├── writer.py            # documentation, logs, PR descriptions
     │   ├── ghost_agent.py       # visual GUI automation

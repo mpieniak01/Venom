@@ -13,7 +13,8 @@
     "test:unit": "tsx tests/*.test.ts",
     "test:e2e:latency": "PLAYWRIGHT_REUSE_SERVER=true PLAYWRIGHT_MODE=dev playwright test tests/perf/chat-latency.spec.ts --workers=1",
     "test:e2e:functional": "PLAYWRIGHT_REUSE_SERVER=true PLAYWRIGHT_MODE=dev playwright test tests/streaming.spec.ts tests/smoke.spec.ts tests/chat-mode-routing.spec.ts",
-    "test:e2e": "npm run test:e2e:latency && npm run test:e2e:functional",
+    "test:e2e:preflight": "node scripts/check-e2e-env.mjs",
+    "test:e2e": "npm run test:e2e:preflight && npm run test:e2e:latency && npm run test:e2e:functional",
     "test:e2e:prod": "npm run build && PLAYWRIGHT_MODE=prod playwright test",
     "test:perf": "playwright test --config playwright.perf.config.ts",
     "lint:locales": "tsx scripts/check-locales.ts"

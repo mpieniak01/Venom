@@ -22,6 +22,7 @@ SERVE_LEGACY_DEV ?= True
 SERVE_LEGACY_PROD ?= True
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
+VLLM_ENDPOINT ?= http://127.0.0.1:8001
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -92,6 +93,55 @@ _start:
 	fi
 	@mkdir -p logs
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
+	@active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]'); \
+	if [ -z "$$active_server" ]; then active_server="vllm"; fi; \
+	if [ "$$active_server" = "ollama" ]; then \
+		echo "▶️  Uruchamiam Ollama..."; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
+		echo "⏳ Czekam na Ollama (/api/tags)..."; \
+		ollama_ready=""; \
+		for attempt in {1..90}; do \
+			if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then \
+				ollama_ready="yes"; \
+				echo "✅ Ollama gotowy"; \
+				break; \
+			fi; \
+			sleep 1; \
+		done; \
+		if [ -z "$$ollama_ready" ]; then \
+			echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; \
+			if [ -f "logs/ollama.log" ]; then \
+				echo "ℹ️  Ostatnie logi Ollama:"; \
+				tail -n 40 "logs/ollama.log" || true; \
+			fi; \
+			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+			exit 1; \
+		fi; \
+	else \
+		echo "▶️  Uruchamiam vLLM..."; \
+		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
+		echo "⏳ Czekam na vLLM (/v1/models)..."; \
+		vllm_ready=""; \
+		for attempt in {1..90}; do \
+			if curl -fsS "$(VLLM_ENDPOINT)/v1/models" >/dev/null 2>&1; then \
+				vllm_ready="yes"; \
+				echo "✅ vLLM gotowy"; \
+				break; \
+			fi; \
+			sleep 1; \
+		done; \
+		if [ -z "$$vllm_ready" ]; then \
+			echo "❌ vLLM nie wystartował w czasie (brak odpowiedzi z /v1/models)"; \
+			if [ -f "logs/vllm.log" ]; then \
+				echo "ℹ️  Ostatnie logi vLLM:"; \
+				tail -n 40 "logs/vllm.log" || true; \
+			fi; \
+			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			exit 1; \
+		fi; \
+	fi
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@if [ "$(START_MODE)" = "prod" ]; then \
 		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
@@ -115,7 +165,7 @@ _start:
 				break; \
 			fi; \
 		fi; \
-		if [ "$$(curl -s -o /dev/null -w \"%{http_code}\" http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status 2>/dev/null || true)" = "200" ]; then \
+		if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
 			backend_ready="yes"; \
 			echo "✅ Backend gotowy"; \
 			break; \
@@ -123,22 +173,71 @@ _start:
 		sleep 1; \
 	done; \
 	if [ -z "$$backend_ready" ]; then \
-		echo "⚠️  Backend jeszcze nie odpowiada, kontynuuję start UI"; \
+		echo "❌ Backend nie wystartował w czasie (brak 200 z /api/v1/system/status)"; \
+		if [ -f "$(BACKEND_LOG)" ]; then \
+			echo "ℹ️  Ostatnie logi backendu:"; \
+			tail -n 40 "$(BACKEND_LOG)" || true; \
+		fi; \
+		if [ -f "$(PID_FILE)" ]; then \
+			BPID=$$(cat "$(PID_FILE)"); \
+			kill $$BPID 2>/dev/null || true; \
+			rm -f "$(PID_FILE)"; \
+		fi; \
+		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+		exit 1; \
 	fi
-	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
-	: > $(WEB_LOG)
-	@if [ "$(START_MODE)" = "prod" ]; then \
-		echo "🛠  Buduję Next.js (npm run build)"; \
-		$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
-		echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"; \
-		$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-		echo $$! > $(WEB_PID_FILE); \
-	else \
-		echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
-		$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
-		echo $$! > $(WEB_PID_FILE); \
+	@ui_skip=""; \
+	if [ -f $(WEB_PID_FILE) ]; then \
+		WPID=$$(cat $(WEB_PID_FILE)); \
+		if kill -0 $$WPID 2>/dev/null; then \
+			echo "⚠️  UI (Next.js) już działa (PID $$WPID). Pomijam start UI."; \
+			ui_skip="yes"; \
+		else \
+			rm -f $(WEB_PID_FILE); \
+		fi; \
+	fi; \
+	if [ -z "$$ui_skip" ]; then \
+		: > $(WEB_LOG); \
+		if [ "$(START_MODE)" = "prod" ]; then \
+			echo "🛠  Buduję Next.js (npm run build)"; \
+			$(NEXT_PROD_ENV) $(NPM) --prefix $(WEB_DIR) run build >/dev/null 2>&1; \
+			echo "▶️  Uruchamiam UI (Next.js start, host $(WEB_HOST), port $(WEB_PORT))"; \
+			$(NEXT_PROD_ENV) setsid $(NPM) --prefix $(WEB_DIR) run start -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+			echo $$! > $(WEB_PID_FILE); \
+		else \
+			echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
+			$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
+			echo $$! > $(WEB_PID_FILE); \
+		fi; \
+		WPID=$$(cat $(WEB_PID_FILE)); \
+		ui_ready=""; \
+		for attempt in {1..40}; do \
+			if kill -0 $$WPID 2>/dev/null; then \
+				if curl -fsS http://$(WEB_DISPLAY):$(WEB_PORT) >/dev/null 2>&1; then \
+					ui_ready="yes"; \
+					break; \
+				fi; \
+			else \
+				echo "❌ UI (Next.js) proces $$WPID zakończył się przed startem"; \
+				break; \
+			fi; \
+			sleep 1; \
+		done; \
+		if [ -z "$$ui_ready" ]; then \
+			echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+			kill $$WPID 2>/dev/null || true; \
+			rm -f $(WEB_PID_FILE); \
+			# zatrzymaj backend, aby nie zostawiać pół-startu \
+			if [ -f $(PID_FILE) ]; then \
+				BPID=$$(cat $(PID_FILE)); \
+				kill $$BPID 2>/dev/null || true; \
+				rm -f $(PID_FILE); \
+			fi; \
+			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			exit 1; \
+		fi; \
+		echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"; \
 	fi
-	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 stop:

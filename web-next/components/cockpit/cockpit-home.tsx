@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   emergencyStop,
+  activateRegistryModel,
   fetchHistoryDetail,
   fetchModelConfig,
   fetchTaskDetail,
@@ -198,6 +199,8 @@ const TELEMETRY_REFRESH_EVENTS = new Set([
   "QUEUE_PURGED",
   "EMERGENCY_STOP",
 ]);
+
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "LOST"]);
 
 type TelemetryEventPayload = {
   type?: string;
@@ -1105,27 +1108,11 @@ export function CockpitHome({
         fallbackNames.push(activeServerInfo.active_model);
       }
     }
-    const lastModels = activeServerInfo?.last_models ?? {};
-    const lastForServer =
-      selectedLlmServer === "ollama"
-        ? lastModels.ollama || lastModels.previous_ollama
-        : selectedLlmServer === "vllm"
-          ? lastModels.vllm || lastModels.previous_vllm
-          : "";
-    if (lastForServer && inferProvider(lastForServer) === selectedLlmServer) {
-      fallbackNames.push(lastForServer);
-    }
-    fallbackNames.forEach((name) => {
-      if (!name || names.has(name)) return;
-      base = [{ name, provider: selectedLlmServer, source: "cached" }, ...base];
-      names.add(name);
-    });
     return base;
   }, [
     models,
     selectedLlmServer,
     activeServerInfo?.active_model,
-    activeServerInfo?.last_models,
   ]);
   const llmServerOptions = useMemo(
     () =>
@@ -1140,9 +1127,7 @@ export function CockpitHome({
       availableModelsForServer.map((model) => ({
         value: model.name,
         label:
-          model.source === "cached"
-            ? `${model.name} (ostatni znany)`
-            : model.name,
+          model.name,
       })),
     [availableModelsForServer],
   );
@@ -1544,6 +1529,25 @@ export function CockpitHome({
   ]);
   useEffect(() => {
     if (!selectedLlmServer) return;
+    if (availableModelsForServer.length !== 1) return;
+    const soleModel = availableModelsForServer[0]?.name;
+    if (!soleModel) return;
+    if (
+      activeServerInfo?.active_server === selectedLlmServer &&
+      activeServerInfo?.active_model === soleModel
+    ) {
+      return;
+    }
+    handleLlmServerActivate({ server: selectedLlmServer, model: soleModel });
+  }, [
+    selectedLlmServer,
+    availableModelsForServer,
+    activeServerInfo?.active_server,
+    activeServerInfo?.active_model,
+    handleLlmServerActivate,
+  ]);
+  useEffect(() => {
+    if (!selectedLlmServer) return;
     refreshModels();
     refreshActiveServer();
   }, [selectedLlmServer, refreshModels, refreshActiveServer]);
@@ -1579,12 +1583,11 @@ export function CockpitHome({
     let latestDuration: number | null = null;
     setOptimisticRequests((prev) => {
       if (prev.length === 0) return prev;
-      const terminalStatuses = new Set(["COMPLETED", "FAILED", "LOST"]);
       let mutated = false;
       const next = prev.filter((entry) => {
         if (!entry.requestId) return true;
         const match = history.find((item) => item.request_id === entry.requestId);
-        if (match && terminalStatuses.has(match.status)) {
+        if (match && TERMINAL_STATUSES.has(match.status)) {
           mutated = true;
           const finishTs = match.finished_at ?? match.created_at ?? entry.createdAt;
           if (finishTs) {
@@ -1652,11 +1655,10 @@ export function CockpitHome({
     const entries = Object.entries(taskStreams);
     if (entries.length === 0) return;
 
-    const terminalStatuses = new Set(["COMPLETED", "FAILED", "LOST"]);
     let shouldRefresh = false;
     for (const [taskId, state] of entries) {
       if (!state?.status) continue;
-      if (!terminalStatuses.has(state.status)) continue;
+      if (!TERMINAL_STATUSES.has(state.status)) continue;
       if (streamCompletionRef.current.has(taskId)) continue;
       streamCompletionRef.current.add(taskId);
       const optimisticEntry = optimisticRequests.find((entry) => entry.requestId === taskId);
@@ -1825,22 +1827,21 @@ export function CockpitHome({
         const timestamp = entry.timestamp ?? new Date().toISOString();
         const optimisticEntry = requestId
           ? optimisticRequests.find(
-              (item) => item.requestId === requestId || item.clientId === requestId,
-            )
+            (item) => item.requestId === requestId || item.clientId === requestId,
+          )
           : null;
         const liveSimple = requestId ? simpleStreams[requestId] : null;
         const liveTask = requestId ? taskStreams[requestId] : null;
         const optimisticSimple =
           optimisticEntry?.simpleMode
             ? simpleStreams[optimisticEntry.clientId] ??
-              (optimisticEntry.requestId
-                ? simpleStreams[optimisticEntry.requestId]
-                : null)
+            (optimisticEntry.requestId
+              ? simpleStreams[optimisticEntry.requestId]
+              : null)
             : null;
         const optimisticTask = optimisticEntry?.requestId
           ? taskStreams[optimisticEntry.requestId]
           : null;
-        const terminalStatuses = new Set(["COMPLETED", "FAILED", "LOST"]);
         const liveStatus =
           optimisticSimple?.status ??
           liveSimple?.status ??
@@ -1850,11 +1851,11 @@ export function CockpitHome({
         const livePending = optimisticSimple
           ? !optimisticSimple.done
           : optimisticTask?.status
-            ? !terminalStatuses.has(optimisticTask.status)
+            ? !TERMINAL_STATUSES.has(optimisticTask.status)
             : liveSimple
               ? !liveSimple.done
               : liveTask?.status
-                ? !terminalStatuses.has(liveTask.status)
+                ? !TERMINAL_STATUSES.has(liveTask.status)
                 : false;
         const liveText =
           role === "assistant" && optimisticSimple?.text
@@ -1930,7 +1931,7 @@ export function CockpitHome({
           status: assistantStatus,
           timestamp: assistantTimestamp ?? item.created_at,
           prompt,
-          pending: !terminalStatuses.has(item.status),
+          pending: !TERMINAL_STATUSES.has(item.status),
           forcedTool: item.forced_tool ?? null,
           forcedProvider: item.forced_provider ?? null,
           modeLabel,
@@ -1958,11 +1959,11 @@ export function CockpitHome({
       const stream = entry.requestId ? taskStreams[entry.requestId] : null;
       const historyAssistant = entry.requestId
         ? historySnapshot.find(
-            (item) =>
-              item.request_id === entry.requestId &&
-              item.role === "assistant" &&
-              (item.content || "").trim().length > 0,
-          )
+          (item) =>
+            item.request_id === entry.requestId &&
+            item.role === "assistant" &&
+            (item.content || "").trim().length > 0,
+        )
         : null;
       const historyAssistantText = (historyAssistant?.content || "").trim();
       const hasHistoryAssistant = historyAssistantText.length > 0;
@@ -1998,8 +1999,8 @@ export function CockpitHome({
       const terminal = entry.simpleMode
         ? Boolean(simpleStream?.done)
         : stream?.status === "COMPLETED" ||
-          stream?.status === "FAILED" ||
-          hasHistoryAssistant;
+        stream?.status === "FAILED" ||
+        hasHistoryAssistant;
       const pendingGraceMs = Math.min(
         1200,
         Math.max(300, Math.floor(assistantText.length * 4)),
@@ -2095,13 +2096,13 @@ export function CockpitHome({
     );
     const filteredHistory = pendingOptimisticIds.size
       ? historyMessages.filter(
-          (msg) =>
-            !(
-              msg.role === "assistant" &&
-              msg.requestId &&
-              pendingOptimisticIds.has(msg.requestId)
-            ),
-        )
+        (msg) =>
+          !(
+            msg.role === "assistant" &&
+            msg.requestId &&
+            pendingOptimisticIds.has(msg.requestId)
+          ),
+      )
       : historyMessages;
     return [...filteredHistory, ...optimisticMessages];
   }, [historyMessages, optimisticMessages]);
@@ -4603,75 +4604,75 @@ export function CockpitHome({
                 payloadSessionMeta ||
                 payloadForcedRoute ||
                 payloadContextUsed) && (
-                <div className="mt-4 rounded-2xl box-muted p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    Payload do modelu
-                  </p>
-                  <div className="mt-3 grid gap-3 text-xs text-zinc-300">
-                    {payloadSessionMeta && (
-                      <div>
-                        <p className="text-zinc-500">Kontekst sesji</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
-                          {JSON.stringify(payloadSessionMeta, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {payloadForcedRoute && (
-                      <div>
-                        <p className="text-zinc-500">Routing wymuszony</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
-                          {JSON.stringify(payloadForcedRoute, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {payloadGenerationParams && (
-                      <div>
-                        <p className="text-zinc-500">Parametry generacji</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
-                          {JSON.stringify(payloadGenerationParams, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {payloadContextUsed && (
-                      <div>
-                        <p className="text-zinc-500">Uzyty kontekst</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
-                          {JSON.stringify(payloadContextUsed, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {contextPreviewMeta && (
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 text-zinc-400">
-                          <span>Podglad kontekstu</span>
-                          {contextPreviewMeta.hiddenPrompts !== null && (
-                            <Badge tone="neutral">
-                              hidden: {contextPreviewMeta.hiddenPrompts}
-                            </Badge>
+                  <div className="mt-4 rounded-2xl box-muted p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                      Payload do modelu
+                    </p>
+                    <div className="mt-3 grid gap-3 text-xs text-zinc-300">
+                      {payloadSessionMeta && (
+                        <div>
+                          <p className="text-zinc-500">Kontekst sesji</p>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                            {JSON.stringify(payloadSessionMeta, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {payloadForcedRoute && (
+                        <div>
+                          <p className="text-zinc-500">Routing wymuszony</p>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                            {JSON.stringify(payloadForcedRoute, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {payloadGenerationParams && (
+                        <div>
+                          <p className="text-zinc-500">Parametry generacji</p>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                            {JSON.stringify(payloadGenerationParams, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {payloadContextUsed && (
+                        <div>
+                          <p className="text-zinc-500">Uzyty kontekst</p>
+                          <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
+                            {JSON.stringify(payloadContextUsed, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {contextPreviewMeta && (
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 text-zinc-400">
+                            <span>Podglad kontekstu</span>
+                            {contextPreviewMeta.hiddenPrompts !== null && (
+                              <Badge tone="neutral">
+                                hidden: {contextPreviewMeta.hiddenPrompts}
+                              </Badge>
+                            )}
+                            {contextPreviewMeta.mode && (
+                              <Badge tone="neutral">
+                                tryb: {contextPreviewMeta.mode}
+                              </Badge>
+                            )}
+                          </div>
+                          {contextPreviewMeta.preview ? (
+                            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-zinc-100">
+                              {contextPreviewMeta.preview}
+                            </pre>
+                          ) : (
+                            <p className="mt-2 text-zinc-500">Brak podgladu kontekstu.</p>
                           )}
-                          {contextPreviewMeta.mode && (
-                            <Badge tone="neutral">
-                              tryb: {contextPreviewMeta.mode}
-                            </Badge>
+                          {contextPreviewMeta.truncated && (
+                            <p className="mt-2 text-[11px] text-zinc-500">
+                              Podglad skrócony (limit logowania).
+                            </p>
                           )}
                         </div>
-                        {contextPreviewMeta.preview ? (
-                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-zinc-100">
-                            {contextPreviewMeta.preview}
-                          </pre>
-                        ) : (
-                          <p className="mt-2 text-zinc-500">Brak podgladu kontekstu.</p>
-                        )}
-                        {contextPreviewMeta.truncated && (
-                          <p className="mt-2 text-[11px] text-zinc-500">
-                            Podglad skrócony (limit logowania).
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
               {uiTimingEntry && (
                 <div className="mt-4 rounded-2xl box-muted p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
@@ -4763,69 +4764,69 @@ export function CockpitHome({
               {(runtimeErrorMeta?.tokenInfo ||
                 requestContextMeta?.hiddenPromptsCount !== null ||
                 requestContextMeta?.promptContextPreview) && (
-                <div className="mt-4 rounded-2xl box-muted p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    {t("cockpit.requestDetails.tokensTitle")}
-                  </p>
-                  <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-                    {runtimeErrorMeta?.tokenInfo?.input !== undefined && (
-                      <div>
-                        <span className="text-zinc-400">
-                          {t("cockpit.requestDetails.tokensInput")}
-                        </span>
-                        <div className="text-sm text-white">
-                          {runtimeErrorMeta.tokenInfo.input}
+                  <div className="mt-4 rounded-2xl box-muted p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                      {t("cockpit.requestDetails.tokensTitle")}
+                    </p>
+                    <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                      {runtimeErrorMeta?.tokenInfo?.input !== undefined && (
+                        <div>
+                          <span className="text-zinc-400">
+                            {t("cockpit.requestDetails.tokensInput")}
+                          </span>
+                          <div className="text-sm text-white">
+                            {runtimeErrorMeta.tokenInfo.input}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {runtimeErrorMeta?.tokenInfo?.requested !== undefined && (
-                      <div>
-                        <span className="text-zinc-400">
-                          {t("cockpit.requestDetails.tokensRequested")}
-                        </span>
-                        <div className="text-sm text-white">
-                          {runtimeErrorMeta.tokenInfo.requested}
+                      )}
+                      {runtimeErrorMeta?.tokenInfo?.requested !== undefined && (
+                        <div>
+                          <span className="text-zinc-400">
+                            {t("cockpit.requestDetails.tokensRequested")}
+                          </span>
+                          <div className="text-sm text-white">
+                            {runtimeErrorMeta.tokenInfo.requested}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {runtimeErrorMeta?.tokenInfo?.max !== undefined && (
-                      <div>
-                        <span className="text-zinc-400">
-                          {t("cockpit.requestDetails.tokensMaxContext")}
-                        </span>
-                        <div className="text-sm text-white">
-                          {runtimeErrorMeta.tokenInfo.max}
+                      )}
+                      {runtimeErrorMeta?.tokenInfo?.max !== undefined && (
+                        <div>
+                          <span className="text-zinc-400">
+                            {t("cockpit.requestDetails.tokensMaxContext")}
+                          </span>
+                          <div className="text-sm text-white">
+                            {runtimeErrorMeta.tokenInfo.max}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {requestContextMeta?.hiddenPromptsCount !== null && (
-                      <div>
-                        <span className="text-zinc-400">
-                          {t("cockpit.requestDetails.hiddenPromptsCount")}
-                        </span>
-                        <div className="text-sm text-white">
-                          {requestContextMeta.hiddenPromptsCount ?? "—"}
+                      )}
+                      {requestContextMeta?.hiddenPromptsCount !== null && (
+                        <div>
+                          <span className="text-zinc-400">
+                            {t("cockpit.requestDetails.hiddenPromptsCount")}
+                          </span>
+                          <div className="text-sm text-white">
+                            {requestContextMeta.hiddenPromptsCount ?? "—"}
+                          </div>
                         </div>
+                      )}
+                    </div>
+                    {requestContextMeta?.promptContextPreview && (
+                      <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-50">
+                        <p className="mb-1 font-semibold text-amber-100">
+                          {t("cockpit.requestDetails.promptContextTitle")}
+                        </p>
+                        <pre className="whitespace-pre-wrap break-words text-amber-50/90">
+                          {requestContextMeta.promptContextPreview}
+                        </pre>
+                        {requestContextMeta.promptContextTruncated && (
+                          <p className="mt-2 text-[11px] text-amber-100/70">
+                            {t("cockpit.requestDetails.promptContextTruncated")}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
-                  {requestContextMeta?.promptContextPreview && (
-                    <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-50">
-                      <p className="mb-1 font-semibold text-amber-100">
-                        {t("cockpit.requestDetails.promptContextTitle")}
-                      </p>
-                      <pre className="whitespace-pre-wrap break-words text-amber-50/90">
-                        {requestContextMeta.promptContextPreview}
-                      </pre>
-                      {requestContextMeta.promptContextTruncated && (
-                        <p className="mt-2 text-[11px] text-amber-100/70">
-                          {t("cockpit.requestDetails.promptContextTruncated")}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
               {(selectedTask || simpleResponse) && (
                 <div className="mt-4 rounded-2xl border border-emerald-400/10 bg-emerald-400/5 p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">

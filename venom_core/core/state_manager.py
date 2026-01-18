@@ -8,12 +8,14 @@ from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskStatus, VenomTask
+from venom_core.utils.boot_id import BOOT_ID
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # Maksymalny rozmiar pliku stanu w bajtach (10 MB)
 MAX_STATE_FILE_SIZE = 10 * 1024 * 1024
+STATE_META_PATH = Path("./data/memory/state_meta.json")
 
 
 class StateManager:
@@ -43,8 +45,27 @@ class StateManager:
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)
 
+        self._ensure_boot_id()
         # Załaduj stan z pliku jeśli istnieje
         self._load_state()
+
+    def _ensure_boot_id(self) -> None:
+        """Czyści stan po restarcie backendu (zmiana boot_id)."""
+        try:
+            if STATE_META_PATH.exists():
+                payload = json.loads(STATE_META_PATH.read_text(encoding="utf-8"))
+                stored_boot = payload.get("boot_id")
+                if stored_boot and stored_boot != BOOT_ID:
+                    if self._state_file_path.exists():
+                        self._state_file_path.unlink(missing_ok=True)
+            else:
+                STATE_META_PATH.parent.mkdir(parents=True, exist_ok=True)
+            STATE_META_PATH.write_text(
+                json.dumps({"boot_id": BOOT_ID}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.warning("Nie udało się sprawdzić boot_id stanu: %s", exc)
 
     def _load_state(self) -> None:
         """Ładuje stan z pliku JSON."""

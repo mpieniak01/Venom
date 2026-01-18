@@ -23,13 +23,14 @@ import {
   useCostMode,
 } from "@/hooks/use-api";
 import { SystemStatusPanel } from "./system-status-panel";
+import { AuthorSignature } from "./author-signature";
 import { useTranslation } from "@/lib/i18n";
 
 export const navItems = [
   { href: "/", label: "Kokpit", labelKey: "sidebar.nav.cockpit", icon: Command },
   { href: "/inspector", label: "Inspektor", labelKey: "sidebar.nav.inspector", icon: BugPlay },
   { href: "/brain", label: "Graf wiedzy", labelKey: "sidebar.nav.brain", icon: Brain },
-  { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target },
+  // { href: "/strategy", label: "Strategia", labelKey: "sidebar.nav.strategy", icon: Target }, // Postponed to v2.0
   { href: "/models", label: "Przeglad modeli", labelKey: "sidebar.nav.models", icon: Layers },
   { href: "/calendar", label: "Kalendarz", labelKey: "sidebar.nav.calendar", icon: Calendar },
   { href: "/benchmark", label: "Benchmark", labelKey: "sidebar.nav.benchmark", icon: Gauge },
@@ -315,11 +316,14 @@ export function Sidebar() {
           <p className="mt-3 text-xs text-zinc-400">{autonomyInfo.description}</p>
         </section>
 
+
         {statusMessage && (
           <p className="text-xs text-emerald-300" data-testid="sidebar-status-message">
             {statusMessage}
           </p>
         )}
+
+        <AuthorSignature />
       </div>
     </aside>
   );

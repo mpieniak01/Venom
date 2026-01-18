@@ -5,12 +5,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from venom_core.utils.boot_id import BOOT_ID
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 HIDDEN_PROMPTS_PATH = Path("./data/learning/hidden_prompts.jsonl")
 ACTIVE_HIDDEN_PROMPTS_PATH = Path("./data/learning/active_hidden_prompts.json")
+HIDDEN_PROMPTS_META_PATH = Path("./data/learning/hidden_prompts_meta.json")
 _cache_mtime: Optional[float] = None
 _cache_entries: List[Dict[str, Any]] = []
 
@@ -21,6 +23,7 @@ def _normalize(text: str) -> str:
 
 def _load_hidden_prompts() -> List[Dict[str, Any]]:
     global _cache_mtime, _cache_entries
+    _ensure_boot_id()
     if not HIDDEN_PROMPTS_PATH.exists():
         _cache_entries = []
         _cache_mtime = None
@@ -49,6 +52,7 @@ def _load_hidden_prompts() -> List[Dict[str, Any]]:
 
 
 def _load_active_hidden_prompts() -> List[Dict[str, Any]]:
+    _ensure_boot_id()
     if not ACTIVE_HIDDEN_PROMPTS_PATH.exists():
         return []
     try:
@@ -58,6 +62,31 @@ def _load_active_hidden_prompts() -> List[Dict[str, Any]]:
     except Exception as exc:
         logger.warning("Nie udało się wczytać aktywnych hidden prompts: %s", exc)
         return []
+
+
+def _ensure_boot_id() -> None:
+    """Czyści hidden prompts po restarcie backendu (zmiana boot_id)."""
+    try:
+        meta_path = HIDDEN_PROMPTS_PATH.parent / "hidden_prompts_meta.json"
+        if meta_path.exists():
+            payload = json.loads(meta_path.read_text(encoding="utf-8"))
+            stored_boot = payload.get("boot_id")
+            if stored_boot and stored_boot != BOOT_ID:
+                if HIDDEN_PROMPTS_PATH.exists():
+                    HIDDEN_PROMPTS_PATH.unlink(missing_ok=True)
+                if ACTIVE_HIDDEN_PROMPTS_PATH.exists():
+                    ACTIVE_HIDDEN_PROMPTS_PATH.unlink(missing_ok=True)
+                global _cache_entries, _cache_mtime
+                _cache_entries = []
+                _cache_mtime = None
+        else:
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(
+            json.dumps({"boot_id": BOOT_ID}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning("Nie udało się sprawdzić boot_id hidden prompts: %s", exc)
 
 
 def _save_active_hidden_prompts(items: List[Dict[str, Any]]) -> None:

@@ -289,6 +289,6 @@ Rezultat: Coder generuje -> Critic sprawdza -> iteracje -> akceptacja
 
 ---
 
-**Wersja:** 2.0
+**Wersja:** 1.0
 **Data:** 2024-12-10
 **Autor:** Venom Team

@@ -251,7 +251,9 @@ class Settings(BaseSettings):
     GHOST_VISION_CONFIDENCE: float = 0.7  # Próg pewności dla vision grounding
 
     # Konfiguracja THE_DREAMER (Synthetic Experience Replay & Active Learning)
-    ENABLE_DREAMING: bool = False  # Włącz system aktywnego śnienia
+    ENABLE_DREAMING: bool = (
+        False  # [v2.0] System aktywnego śnienia (przesunięty do wersji 2.0)
+    )
     DREAMING_IDLE_THRESHOLD_MINUTES: int = (
         30  # Czas bezczynności przed rozpoczęciem śnienia
     )

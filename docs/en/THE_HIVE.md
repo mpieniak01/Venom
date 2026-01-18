@@ -1,5 +1,9 @@
 # THE HIVE - Distributed Processing Architecture
 
+> [!NOTE]
+> **Hive Definition in v1.0:** This document describes the **Internal Hive**, a local cluster of Spore nodes.
+> The concept of **Global Hive**, where Venom acts as a single IoT device connected to a cloud registry, is planned for **Venom 2.0**.
+
 ## Overview
 
 THE HIVE is a distributed processing architecture that transforms loosely connected Spore nodes into one synchronized compute cluster. The system enables parallel task execution, dynamic load distribution, and code synchronization across nodes.

@@ -18,9 +18,21 @@ from venom_core.utils.llm_runtime import (
     _build_chat_completions_url,
     get_active_llm_runtime,
 )
+from venom_core.utils.text import trim_to_char_limit
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
 _request_tracer = None
+
+
+def _get_simple_context_char_limit(runtime) -> Optional[int]:
+    if runtime.provider != "vllm":
+        return None
+    max_ctx = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0) or 0
+    if max_ctx <= 0:
+        return None
+    reserve = max(64, max_ctx // 4)
+    input_tokens = max(32, max_ctx - reserve)
+    return input_tokens * 4
 
 
 def set_dependencies(request_tracer):
@@ -75,8 +87,25 @@ async def stream_simple_chat(request: SimpleChatRequest):
             details=f"session_id={request.session_id or '-'} prompt={prompt_preview}",
         )
 
-    messages = [{"role": "user", "content": request.content}]
+    user_content = request.content
     system_prompt = (SETTINGS.SIMPLE_MODE_SYSTEM_PROMPT or "").strip()
+    char_limit = _get_simple_context_char_limit(runtime)
+    if char_limit:
+        overhead = len(system_prompt) + 32 if system_prompt else 0
+        available = max(0, char_limit - overhead)
+        trimmed_content, was_trimmed = trim_to_char_limit(user_content, available)
+        if was_trimmed:
+            user_content = trimmed_content
+            if _request_tracer:
+                _request_tracer.add_step(
+                    request_id,
+                    "SimpleMode",
+                    "prompt_trim",
+                    status="ok",
+                    details=f"Trimmed prompt to {available} chars for vLLM limit",
+                )
+
+    messages = [{"role": "user", "content": user_content}]
     if system_prompt:
         messages.insert(0, {"role": "system", "content": system_prompt})
     payload = {

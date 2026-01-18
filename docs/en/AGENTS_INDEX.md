@@ -15,7 +15,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 | Agent | File | Documentation | Description |
 |-------|------|--------------|------|
 | **Architect** | `architect.py` | [THE_ARCHITECT.md](THE_ARCHITECT.md) | Strategic planning, complex task decomposition |
-| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | Complexity assessment, API budget management |
+| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | [v2.0] Complexity assessment, API budget management |
 | **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) | High-level orchestration, decision-making |
 
 ### 💻 Implementation and Code
@@ -49,7 +49,6 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 |-------|------|--------------|------|
 | **Creative Director** | `creative_director.py` | - | Branding, marketing, AI art prompts |
 | **Designer** | `designer.py` | - | UI/UX design, prototypes |
-| **Writer** | `writer.py` | - | Copywriting, marketing content |
 | **UX Analyst** | `ux_analyst.py` | - | User experience analysis |
 
 ### 🔧 DevOps and Infrastructure
@@ -104,7 +103,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 ## Agents Without Dedicated Documentation
 
-The following agents exist in code but don't yet have dedicated documentation files (15 of 34):
+The following agents exist in code but don't yet have dedicated documentation files (13 of 34):
 
 - **Analyst** (`analyst.py`) - Performance and cost analysis
 - **Creative Director** (`creative_director.py`) - Branding and marketing
@@ -120,7 +119,6 @@ The following agents exist in code but don't yet have dedicated documentation fi
 - **System Engineer** (`system_engineer.py`) - System configuration
 - **Tester** (`tester.py`) - Test generation
 - **UX Analyst** (`ux_analyst.py`) - UX analysis
-- **Writer** (`writer.py`) - Copywriting
 
 ## How to Choose the Right Agent?
 

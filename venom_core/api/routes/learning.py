@@ -12,6 +12,7 @@ from venom_core.core.hidden_prompts import (
     get_active_hidden_prompts,
     set_active_hidden_prompt,
 )
+from venom_core.core.learning_log import ensure_learning_log_boot_id
 
 router = APIRouter(prefix="/api/v1/learning", tags=["learning"])
 
@@ -26,6 +27,7 @@ async def get_learning_logs(
     tag: Optional[str] = None,
 ) -> dict:
     """Zwraca ostatnie wpisy procesu nauki (JSONL) z opcjonalnym filtrowaniem."""
+    ensure_learning_log_boot_id()
     if limit < 1:
         limit = 1
     if limit > 500:

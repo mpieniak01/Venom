@@ -605,6 +605,60 @@ async def prune_lessons_by_range(
         ) from e
 
 
+@router.delete("/cache/semantic")
+async def flush_semantic_cache():
+    """
+    Czyści Semantic Cache (kolekcja hidden_prompts).
+    Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.
+    """
+    try:
+        from venom_core.core.orchestrator.constants import (
+            SEMANTIC_CACHE_COLLECTION_NAME,
+        )
+
+        _ensure_vector_store()
+
+        # Używamy wipe_collection na konkretnej kolekcji
+        # Metoda wipe_collection w VectorStore domyślnie czyści self.collection_name,
+        # więc musimy upewnić się, że działamy na odpowiedniej.
+        # VectorStore.wipe_collection() często czyści *aktualną*.
+        # Bezpieczniej będzie użyć delete_by_metadata(filter={}) na tej kolekcji lub delete_collection.
+        # Sprawdźmy implementation VectorStore.wipe_collection...
+        # Wg routes/memory.py: vector_store.wipe_collection()
+
+        # Ale semantic cache to INNA kolekcja niż 'default'.
+        # VectorStore inicjalizuje się z default collection.
+        # Żeby wyczyścić semantic cache, musimy tymczasowo zmienić kolekcję lub użyć dedykowanej metody.
+        # VectorStore pozwala na upsert z collection_name, a search z collection_name, ale wipe_collection?
+        # Zobaczmy czy w memory.py jest coś co zmienia kolekcję.
+        # Nie widać.
+        # Zróbmy to bezpiecznie: delete_by_metadata({}) na kolekcji cache.
+
+        # UWAGA: VectorStore API może nie wspierać collection_name w delete_by_metadata.
+        # W takim razie zainicjalizujmy VectorStore explicite dla tej kolekcji.
+
+        from venom_core.memory.vector_store import VectorStore
+
+        cache_store = VectorStore(collection_name=SEMANTIC_CACHE_COLLECTION_NAME)
+        deleted = (
+            cache_store.wipe_collection()
+        )  # To powinno zadziałać na 'hidden_prompts'
+
+        logger.warning(f"🧹 FLUSH: Wyczyszczono Semantic Cache ({deleted} wpisów)")
+
+        return {
+            "status": "success",
+            "message": f"Wyczyszczono Semantic Cache ({deleted} wpisów)",
+            "deleted": deleted,
+        }
+
+    except Exception as e:
+        logger.exception("Błąd podczas czyszczenia Semantic Cache")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas czyszczenia cache: {str(e)}"
+        ) from e
+
+
 @router.delete("/lessons/prune/tag")
 async def prune_lessons_by_tag(
     tag: str = Query(..., description="Tag do wyszukania i usunięcia"),

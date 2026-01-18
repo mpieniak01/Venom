@@ -42,6 +42,9 @@ export const de = {
       switchToPro: "Wechsel zu Pro",
       switchToEco: "Wechsel zu Eco",
     },
+    author: {
+      createdBy: "Erstellt von",
+    },
     autonomy: {
       title: "Autonomie",
       selectLabel: "Autonomiestufe wählen",

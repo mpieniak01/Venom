@@ -104,7 +104,9 @@ async def test_orchestrator_with_file_operations(temp_state_file, temp_workspace
         state_manager = StateManager(state_file_path=temp_state_file)
 
         # Mock IntentManager
-        with patch("venom_core.core.orchestrator.IntentManager") as mock_intent_cls:
+        with patch(
+            "venom_core.core.orchestrator.orchestrator_core.IntentManager"
+        ) as mock_intent_cls:
             mock_intent_manager = MagicMock()
             mock_intent_manager.classify_intent = AsyncMock(
                 return_value="FILE_OPERATION"
@@ -112,7 +114,9 @@ async def test_orchestrator_with_file_operations(temp_state_file, temp_workspace
             mock_intent_cls.return_value = mock_intent_manager
 
             # Mock TaskDispatcher - symuluj operację zapisu pliku
-            with patch("venom_core.core.orchestrator.TaskDispatcher") as mock_disp_cls:
+            with patch(
+                "venom_core.core.orchestrator.orchestrator_core.TaskDispatcher"
+            ) as mock_disp_cls:
                 mock_dispatcher = MagicMock()
                 # Symuluj odpowiedź agenta po zapisie pliku
                 mock_dispatcher.dispatch = AsyncMock(

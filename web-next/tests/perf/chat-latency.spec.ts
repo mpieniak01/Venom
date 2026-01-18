@@ -47,7 +47,27 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
 
-  await page.fill(target.promptSelector, prompt, { timeout: 30_000 });
+  try {
+    // Attempt to fill with a shorter timeout (5s) to allow for error diagnosis within the test limit
+    await page.fill(target.promptSelector, prompt, { timeout: 5_000 });
+  } catch (error) {
+    // 1. Check for application crash (Error Boundary)
+    const errorBoundary = page.locator('[data-testid="app-error"]');
+    if (await errorBoundary.count() > 0) {
+      const errorText = await errorBoundary.innerText();
+      throw new Error(`Aplikacja uległa awarii:\n${errorText}`);
+    }
+
+    // 2. Check for stuck loading state
+    const loadingEl = page.locator("text=Ładowanie kokpitu");
+    if (await loadingEl.count() > 0) {
+      // Dump console logs if possible?
+      throw new Error("Aplikacja utknęła na ekranie ładowania (isClientReady=false lub hydration error).");
+    }
+
+    // 3. Re-throw original error if we can't identify the cause
+    throw error;
+  }
   const sendButton = page.locator(target.sendSelector);
   await expect(sendButton).toBeEnabled({ timeout: 15000 });
   await sendButton.click();

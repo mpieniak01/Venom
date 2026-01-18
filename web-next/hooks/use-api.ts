@@ -1048,3 +1048,10 @@ export function useLessonPruning() {
     purgeLessons,
   };
 }
+
+export async function flushSemanticCache() {
+  return apiFetch<{ status: string; message: string; deleted: number }>(
+    "/api/v1/memory/cache/semantic",
+    { method: "DELETE" },
+  );
+}

@@ -6,6 +6,8 @@ import pytest
 from semantic_kernel import Kernel
 
 from venom_core.agents.researcher import ResearcherAgent
+from venom_core.config import SETTINGS
+from venom_core.utils.llm_runtime import get_active_llm_runtime
 
 
 @pytest.fixture
@@ -105,5 +107,21 @@ class TestResearcherAgent:
         settings = call_args.kwargs.get("settings")
 
         assert settings is not None
-        assert hasattr(settings, "max_tokens")
-        assert settings.max_tokens == 800
+        runtime = get_active_llm_runtime()
+        max_tokens = getattr(settings, "max_tokens", None)
+        num_predict = getattr(settings, "num_predict", None)
+        extension_data = getattr(settings, "extension_data", {}) or {}
+        if num_predict is None:
+            num_predict = extension_data.get("num_predict")
+        if max_tokens is None:
+            max_tokens = extension_data.get("max_tokens")
+
+        assert max_tokens is not None or num_predict is not None
+        if runtime.provider == "vllm" and SETTINGS.VLLM_MAX_MODEL_LEN:
+            safe_cap = max(64, SETTINGS.VLLM_MAX_MODEL_LEN // 4)
+            assert max_tokens is not None
+            assert max_tokens <= safe_cap
+        elif runtime.provider == "ollama":
+            assert num_predict == 800
+        else:
+            assert max_tokens == 800

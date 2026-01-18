@@ -262,6 +262,7 @@ class BenchmarkService:
             try:
                 file_path.unlink()
             except Exception:
+                # Ignorujemy błędy przy usuwaniu plików (np. brak uprawnień)
                 pass
         return count
 

@@ -284,6 +284,7 @@ class BaseAgent(ABC):
                                     "Nie udało się ustawić max_tokens w settings po błędzie kontekstu."
                                 )
                     except Exception:
+                        # Ignorujemy błędy przy próbie parsowania max_tokens z wiadomości błędu
                         pass
 
                 if (

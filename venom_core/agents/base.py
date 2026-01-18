@@ -285,6 +285,7 @@ class BaseAgent(ABC):
                                 )
                     except Exception:
                         # Ignorowanie innych błędów podczas retry - agent powtórzy próbę z innymi parametrami
+                        # Ignorujemy błędy przy próbie parsowania max_tokens z wiadomości błędu
                         pass
 
                 if (

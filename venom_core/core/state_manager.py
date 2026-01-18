@@ -65,7 +65,7 @@ class StateManager:
                 encoding="utf-8",
             )
         except Exception as exc:
-            logger.warning("Nie udalo sie sprawdzic boot_id stanu: %s", exc)
+            logger.warning("Nie udało się sprawdzić boot_id stanu: %s", exc)
 
     def _load_state(self) -> None:
         """Ładuje stan z pliku JSON."""

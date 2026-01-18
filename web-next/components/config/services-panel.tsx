@@ -33,6 +33,11 @@ interface StorageSnapshot {
     used_bytes?: number;
     free_bytes?: number;
   };
+  disk_root?: {
+    total_bytes?: number;
+    used_bytes?: number;
+    free_bytes?: number;
+  };
   items?: Array<{
     name: string;
     path: string;
@@ -487,10 +492,10 @@ export function ServicesPanel() {
             {storageSnapshot?.disk_root ? (
               <div className="flex flex-col gap-1">
                 {(() => {
-                  const total = storageSnapshot.disk_root.total_bytes ?? 0;
-                  const free = storageSnapshot.disk_root.free_bytes ?? 0;
+                  const total = storageSnapshot.disk_root!.total_bytes ?? 0;
+                  const free = storageSnapshot.disk_root!.free_bytes ?? 0;
                   const used =
-                    storageSnapshot.disk_root.used_bytes ?? Math.max(total - free, 0);
+                    storageSnapshot.disk_root!.used_bytes ?? Math.max(total - free, 0);
                   return (
                     <span>
                       Użycie (WSL root):{" "}
@@ -501,38 +506,29 @@ export function ServicesPanel() {
                   );
                 })()}
                 {storageSnapshot.disk ? (
-                  <span className="text-xs text-zinc-400">
+                  <div className="mt-1 pt-1 border-t border-white/5 text-xs text-zinc-400">
                     Dysk fizyczny:{" "}
                     <span className="font-semibold text-white">
-                      {formatBytes(
-                        storageSnapshot.disk.used_bytes ??
-                          Math.max(
-                            (storageSnapshot.disk.total_bytes ?? 0) -
-                              (storageSnapshot.disk.free_bytes ?? 0),
-                            0
-                          )
-                      )}
+                      {formatBytes(storageSnapshot.disk.total_bytes)}
                     </span>
-                  </span>
+                    <span className="mx-2 opacity-40">|</span>
+                    Użycie: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                    <span className="mx-2 opacity-40">|</span>
+                    Wolne: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                  </div>
                 ) : null}
               </div>
             ) : storageSnapshot?.disk ? (
-              <span>
-                {(() => {
-                  const total = storageSnapshot.disk.total_bytes ?? 0;
-                  const free = storageSnapshot.disk.free_bytes ?? 0;
-                  const used =
-                    storageSnapshot.disk.used_bytes ?? Math.max(total - free, 0);
-                  return (
-                    <>
-                      Użycie:{" "}
-                      <span className="font-semibold text-white">
-                        {formatBytes(used)} / {formatBytes(total)}
-                      </span>{" "}
-                      (wolne: {formatBytes(free)})
-                    </>
-                  );
-                })()}
+              <span className="text-sm">
+                Dysk fizyczny:{" "}
+                <span className="font-semibold text-white">
+                  {formatBytes(storageSnapshot.disk.total_bytes)}
+                </span>
+                <span className="mx-2 text-zinc-600">|</span>
+                <span className="text-xs text-zinc-400">
+                  Użycie: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                  {" "}/ Wolne: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                </span>
               </span>
             ) : (
               <span>Brak danych o dysku.</span>
@@ -597,9 +593,8 @@ export function ServicesPanel() {
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      entry.success ? "bg-emerald-400" : "bg-red-400"
-                    }`}
+                    className={`inline-block h-2 w-2 rounded-full ${entry.success ? "bg-emerald-400" : "bg-red-400"
+                      }`}
                   />
                   <div>
                     <p className="text-sm font-medium text-white">

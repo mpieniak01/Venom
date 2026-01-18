@@ -7,6 +7,7 @@
 ├── docs/                        # wizja, diagramy, notatki
 │   ├── _done/                   # Dokumentacja zadan programistycznych zrealizowanych
 │   ├── _to_do/                  # Dokumentacja zadan programistycznych do realizacji
+│   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] System procesowy (koncepcja)
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 │
@@ -24,7 +25,7 @@
 │       └── js/
 │           └── app.js           # logika frontendu
 │
-├── web-next/                    # [NOWY] Next.js Dashboard (VENOM 2.0)
+├── web-next/                    # [NOWY] Next.js Dashboard (VENOM 1.0)
 │   ├── app/                     # App Router
 │   ├── components/              # komponenty React/Shadcn UI
 │   ├── lib/                     # utils, types, api clients
@@ -54,13 +55,15 @@
     │   ├── policy_engine.py     # etyka, autonomia, poziomy domen
     │   ├── state_manager.py     # stan organizmu, log zadań
     │   ├── model_registry.py    # rejestr modeli (ONNX + GGUF)
-    │   └── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
+    │   ├── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
+    │   └── dream_engine.py      # [v2.0] System aktywnego śnienia (przesunięty)
     │
     ├── agents/                  # [WARSTWA 2: AGENT SERVICES] – SPECJALIŚCI
     │   ├── __init__.py
     │   ├── architect.py         # planowanie architektury
     │   ├── librarian.py         # struktura repo / plików
     │   ├── coder.py             # generacja kodu
+    │   ├── strategist.py        # [v2.0] Strategy Supervisor (Roadmap, KPI)
     │   ├── critic.py            # testy / review
     │   ├── writer.py            # dokumentacja, logi, opisy PR
     │   ├── ghost_agent.py       # wizualna automatyzacja GUI

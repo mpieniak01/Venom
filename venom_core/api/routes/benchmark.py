@@ -186,3 +186,66 @@ async def list_benchmarks(limit: int = Query(default=10, ge=1, le=100)):
             status_code=500,
             detail="Nie udało się pobrać listy benchmarków. Sprawdź logi serwera.",
         ) from e
+
+
+@router.delete("/all", status_code=200)
+async def clear_all_benchmarks():
+    """
+    Usuwa wszystkie wyniki benchmarków.
+
+    Returns:
+        Informacja o liczbie usuniętych benchmarków
+
+    Raises:
+        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+    """
+    if _benchmark_service is None:
+        raise HTTPException(
+            status_code=503, detail="BenchmarkService nie jest dostępny"
+        )
+
+    try:
+        count = _benchmark_service.clear_all_benchmarks()
+        return {"message": f"Usunięto {count} benchmarków", "count": count}
+
+    except Exception as e:
+        logger.exception("Błąd podczas czyszczenia benchmarków")
+        raise HTTPException(
+            status_code=500,
+            detail="Nie udało się wyczyścić benchmarków",
+        ) from e
+
+
+@router.delete("/{benchmark_id}", status_code=200)
+async def delete_benchmark(benchmark_id: str):
+    """
+    Usuwa pojedynczy benchmark.
+
+    Args:
+        benchmark_id: ID benchmarku do usunięcia
+
+    Raises:
+        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 404 jeśli benchmark nie został znaleziony
+    """
+    if _benchmark_service is None:
+        raise HTTPException(
+            status_code=503, detail="BenchmarkService nie jest dostępny"
+        )
+
+    try:
+        success = _benchmark_service.delete_benchmark(benchmark_id)
+        if not success:
+            raise HTTPException(
+                status_code=404, detail=f"Benchmark {benchmark_id} nie znaleziony"
+            )
+        return {"message": f"Benchmark {benchmark_id} został usunięty"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd podczas usuwania benchmarku {benchmark_id}")
+        raise HTTPException(
+            status_code=500,
+            detail="Nie udało się usunąć benchmarku",
+        ) from e

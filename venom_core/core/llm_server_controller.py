@@ -173,7 +173,18 @@ class LlmServerController:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout_bytes, stderr_bytes = await process.communicate()
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(), timeout=300.0
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            logger.error(
+                "Komenda %s dla %s przekroczyła timeout (300s). Zabijanie procesu.",
+                action,
+                server.name,
+            )
+            raise
 
         stdout = stdout_bytes.decode().strip()
         stderr = stderr_bytes.decode().strip()

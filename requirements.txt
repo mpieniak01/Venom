@@ -14,8 +14,9 @@ uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
-semantic-kernel>=1.9.0  # Microsoft Semantic Kernel (Wersja 1.x stabilna)
-aiohttp                 # Async HTTP (wymagane przez wiele pluginów SK)
+semantic-kernel>=1.39.1 # Microsoft Semantic Kernel (v1.39.1+; działa z Pydantic 2.12+ przy shimsie Url)
+aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
+urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
 httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)
 aiofiles                # Async file I/O (zapobiega blokowaniu event loopa FastAPI)
 
@@ -45,7 +46,7 @@ python-docx             # Obsługa plików DOCX (fallback dla markitdown)
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
 
-transformers            # Obsługa modeli HF / Tokenizacja
+transformers>=4.57.6    # Obsługa modeli HF / Tokenizacja – aktualizacja pod CVE dot. deserializacji
 sentence-transformers   # Embeddingi do RAG
 pillow                  # Przetwarzanie obrazów
 timm                    # Modele wizyjne (zależność dla Florence-2)
@@ -73,13 +74,14 @@ google-api-python-client>=2.100.0  # Google Calendar API client
 openai                  # SDK OpenAI (Obsługuje też lokalne serwery zgodne z OpenAI API np. vLLM/Llama.cpp)
 google-generativeai     # Gemini API
 anthropic               # Claude API
+azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji
 tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT)
 
 
 # --- VENOM INFRASTRUCTURE & UTILS ---
 
 python-dotenv           # Zmienne środowiskowe (.env)
-pydantic>=2.7,<3.0      # Walidacja (Kluczowe: v2 jest wymagane przez SK 1.x)
+pydantic>=2.12,<3.0     # Walidacja (podbijamy do 2.12+ dla zgodności z vLLM 0.12.x; SK 1.x wspiera 2.x)
 numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
 pandas                  # Analiza danych
 colorama                # Kolory w terminalu

@@ -1,5 +1,9 @@
 # THE HIVE - Architektura Rozproszonego Przetwarzania
 
+> [!NOTE]
+> **Definicja Ula w v1.0:** W obecnej wersji dokument ten opisuje **Wewnętrzny Klaster (Internal Hive)**, czyli lokalną sieć węzłów Spore.
+> Koncepcja **Zewnętrznego Ula (Global Hive)**, gdzie Venom działa jako pojedyncze urządzenie IoT połączone z chmurą, jest planowana dla wersji **Venom 2.0**.
+
 ## Przegląd
 
 THE HIVE to architektura rozproszonego przetwarzania, która przekształca luźno połączone węzły Spore w jeden zsynchronizowany klaster obliczeniowy. System umożliwia równoległe wykonywanie zadań, dynamiczną dystrybucję obciążenia oraz synchronizację kodu między węzłami.

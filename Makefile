@@ -123,7 +123,17 @@ _start:
 		sleep 1; \
 	done; \
 	if [ -z "$$backend_ready" ]; then \
-		echo "⚠️  Backend jeszcze nie odpowiada, kontynuuję start UI"; \
+		echo "❌ Backend nie wystartował w czasie (brak 200 z /api/v1/system/status)"; \
+		if [ -f "$(BACKEND_LOG)" ]; then \
+			echo "ℹ️  Ostatnie logi backendu:"; \
+			tail -n 40 "$(BACKEND_LOG)" || true; \
+		fi; \
+		if [ -f "$(PID_FILE)" ]; then \
+			BPID=$$(cat "$(PID_FILE)"); \
+			kill $$BPID 2>/dev/null || true; \
+			rm -f "$(PID_FILE)"; \
+		fi; \
+		exit 1; \
 	fi
 	$(call ensure_process_not_running,UI (Next.js),$(WEB_PID_FILE))
 	: > $(WEB_LOG)
@@ -137,6 +147,30 @@ _start:
 		echo "▶️  Uruchamiam UI (Next.js dev, host $(WEB_HOST), port $(WEB_PORT))"; \
 		$(NEXT_DEV_ENV) setsid $(NPM) --prefix $(WEB_DIR) run dev -- --hostname $(WEB_HOST) --port $(WEB_PORT) >> $(WEB_LOG) 2>&1 & \
 		echo $$! > $(WEB_PID_FILE); \
+	fi
+	@WPID=$$(cat $(WEB_PID_FILE)); \
+	ui_ready=""; \
+	for attempt in {1..40}; do \
+		if kill -0 $$WPID 2>/dev/null; then \
+			code=$$(curl -s -o /dev/null -w "%{http_code}" http://$(WEB_DISPLAY):$(WEB_PORT) 2>/dev/null || true); \
+			if [ "$$code" = "200" ]; then ui_ready="yes"; break; fi; \
+		else \
+			echo "❌ UI (Next.js) proces $$WPID zakończył się przed startem"; \
+			break; \
+		fi; \
+		sleep 1; \
+	done; \
+	if [ -z "$$ui_ready" ]; then \
+		echo "❌ UI (Next.js) nie wystartował poprawnie na porcie $(WEB_PORT)"; \
+		kill $$WPID 2>/dev/null || true; \
+		rm -f $(WEB_PID_FILE); \
+		# zatrzymaj backend, aby nie zostawiać pół-startu \
+		if [ -f $(PID_FILE) ]; then \
+			BPID=$$(cat $(PID_FILE)); \
+			kill $$BPID 2>/dev/null || true; \
+			rm -f $(PID_FILE); \
+		fi; \
+		exit 1; \
 	fi
 	@echo "✅ UI (Next.js) wystartował z PID $$(cat $(WEB_PID_FILE))"
 	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"

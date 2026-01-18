@@ -18,7 +18,7 @@ web-next/
 │   ├── chat/page.tsx       # Cockpit reference (pełny układ)
 │   ├── brain/page.tsx      # Widok Brain
 │   ├── inspector/page.tsx  # Flow Inspector
-│   ├── strategy/page.tsx   # Strategy / KPI
+│   ├── strategy/page.tsx   # Strategy / KPI (v2.0 - Ukryty)
 │   └── config/page.tsx     # Configuration Panel (Zadanie 060)
 ├── components/             # Wspólne komponenty (layout, UI, overlaye)
 ├── hooks/                  # Hooki danych (`use-api.ts`, `use-telemetry.ts`)
@@ -70,6 +70,11 @@ web-next/
 | **Brain** – Mind Mesh            | `useKnowledgeGraph` → `/api/v1/graph/summary`, `/api/v1/graph/scan`, `/api/v1/graph/file`, `/api/v1/graph/impact` | W przypadku błędu HTTP renderuje `OverlayFallback` i blokuje akcje (scan/upload).                          |
 | **Brain** – Lessons & stats      | `useLessons`, `useLessonsStats`, `LessonActions` (tagi), `FileAnalysisForm`                                     | Brak danych wyświetla `EmptyState` z CTA „Odśwież lekcje”.                                                  |
 | **Brain** – Kontrolki grafu      | `GraphFilterButtons`, `GraphActionButtons` + `useGraphSummary`                                                 | Wersje offline (np. brak `/api/v1/graph/summary`) pokazują badge `offline` w kartach BrainMetricCard.      |
+### Strategy (Przesunięte do v2.0)
+
+> [!NOTE]
+> **Przesunięte do v2.0:** Ekran Strategii i powiązane funkcje (Wizja, KPI, Roadmapa) zostały przesunięte do wersji Venom v2.0. Kod pozostaje w `app/strategy`, ale jest ukryty z nawigacji w v1.0.
+
 | **Strategy** – KPI / Vision      | `useRoadmap` (`/api/v1/roadmap`), `requestRoadmapStatus`, `createRoadmap`, `startCampaign`                      | Wszystkie akcje owinięte w `useToast`; w razie 4xx/5xx panel wyświetla `OverlayFallback`.                   |
 | **Strategy** – Milestones/Tasks  | `RoadmapKpiCard`, `TaskStatusBreakdown` (wykorzystuje `/api/v1/roadmap` oraz `/api/v1/tasks` dla statusów)      | Brak zadań → komunikat „Brak zdefiniowanych milestone’ów” (EmptyState).                                     |
 | **Strategy** – Kampanie          | `handleStartCampaign` pyta `window.confirm` (jak legacy), po czym wysyła `/api/campaign/start`.                 | W razie braku API informuje użytkownika toastem i nie zmienia lokalnego stanu.                              |

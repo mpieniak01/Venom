@@ -1,4 +1,7 @@
-# THE STRATEGIST - Task Planning & Complexity Management
+# THE STRATEGIST - Task Planning & Complexity Management (v2.0)
+
+> [!NOTE]
+> **Status Implementacji:** Ekran Strategii został przesunięty do wersji **Venom 2.0**. W obecnej wersji (v1.0) jest ukryty w interfejsie użytkownika, a agent działa w tle jako komponent systemowy.
 
 ## Rola
 

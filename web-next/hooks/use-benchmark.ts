@@ -18,6 +18,8 @@ interface UseBenchmarkReturn {
     error: string | null;
     startBenchmark: (config: BenchmarkConfig) => Promise<void>;
     reset: () => void;
+    deleteBenchmark: (id: string) => Promise<boolean>;
+    clearAllBenchmarks: () => Promise<boolean>;
 }
 
 export function useBenchmark(): UseBenchmarkReturn {
@@ -143,6 +145,36 @@ export function useBenchmark(): UseBenchmarkReturn {
     // Clean up on unmount
     // useEffect(() => () => stopPolling(), [stopPolling]); // Commented out to avoid double mounting issues in strict mode canceling too early, manual reset handles most.
 
+    const deleteBenchmark = useCallback(async (benchmarkId: string) => {
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/${benchmarkId}`, {
+                method: "DELETE",
+            });
+            if (!response.ok) throw new Error("Failed to delete benchmark");
+            addLog(`Usunięto benchmark: ${benchmarkId}`, "info");
+            return true;
+        } catch (err) {
+            console.error(err);
+            addLog("Błąd usuwania benchmarku", "error");
+            return false;
+        }
+    }, [addLog]);
+
+    const clearAllBenchmarks = useCallback(async () => {
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/all`, {
+                method: "DELETE",
+            });
+            if (!response.ok) throw new Error("Failed to clear benchmarks");
+            addLog("Wyczyszczono historię benchmarków", "info");
+            return true;
+        } catch (err) {
+            console.error(err);
+            addLog("Błąd czyszczenia historii", "error");
+            return false;
+        }
+    }, [addLog]);
+
     return {
         status,
         logs,
@@ -150,5 +182,7 @@ export function useBenchmark(): UseBenchmarkReturn {
         error,
         startBenchmark,
         reset,
+        deleteBenchmark,
+        clearAllBenchmarks,
     };
 }

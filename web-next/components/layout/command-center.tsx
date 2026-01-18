@@ -72,11 +72,11 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
         description: t("commandCenter.shortcuts.links.brain.description"),
         href: "/brain",
       },
-      {
-        label: t("commandCenter.shortcuts.links.strategy.label"),
-        description: t("commandCenter.shortcuts.links.strategy.description"),
-        href: "/strategy",
-      },
+      // {
+      //   label: t("commandCenter.shortcuts.links.strategy.label"),
+      //   description: t("commandCenter.shortcuts.links.strategy.description"),
+      //   href: "/strategy",
+      // },
     ],
     [t],
   );

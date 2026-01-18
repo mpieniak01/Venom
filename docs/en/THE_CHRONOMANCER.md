@@ -202,7 +202,7 @@ CHRONOS_CHECKPOINT_RETENTION_DAYS: int = 30
 CHRONOS_COMPRESS_SNAPSHOTS: bool = True
 ```
 
-## 🔗 DreamEngine Integration
+## 🔗 DreamEngine Integration [v2.0]
 
 DreamEngine integrated with Chronos for safe experimentation:
 

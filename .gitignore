@@ -81,3 +81,10 @@ next-dev.log
 # Local runtime artifacts
 :memory:
 models_cache/
+
+# Drafts documentation (to be removed from gitignore after completion)
+docs/OPERATOR_MANUAL.md
+docs/en/OPERATOR_MANUAL.md
+
+# Local benchmark outputs
+data/benchmarks/

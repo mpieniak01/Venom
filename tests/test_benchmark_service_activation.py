@@ -1,4 +1,5 @@
 import types
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -75,9 +76,16 @@ async def test_benchmark_restarts_runtime_on_activate(monkeypatch):
     )
     questions = [types.SimpleNamespace(id="q1", question="hi", category="general")]
 
-    await service._test_model("gemma-3-4b-it", questions, result)
+    # Mock httpx to simulate connection refused (model not running)
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = Exception("Connection refused")
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
 
-    assert registry_calls["called"] == ("gemma-3-4b-it", "vllm")
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        await service._test_model("gemma-3-4b-it", questions, result)
+
+    assert registry_calls.get("called") == ("gemma-3-4b-it", "vllm")
     assert ("vllm", "restart") in controller.calls
     # startup_latency_ms powinna uwzględniać healthcheck (0.5s)
     assert result.startup_latency_ms == pytest.approx(500.0, rel=0.01)

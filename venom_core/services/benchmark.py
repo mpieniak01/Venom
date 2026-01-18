@@ -148,6 +148,7 @@ class BenchmarkService:
         service_monitor: ServiceHealthMonitor,
         llm_controller: Optional[LlmServerController] = None,
         questions_path: Optional[str] = None,
+        storage_dir: str = "./data/benchmarks",
     ):
         """
         Inicjalizacja BenchmarkService.
@@ -157,6 +158,7 @@ class BenchmarkService:
             service_monitor: Monitor do sprawdzania healthcheck i VRAM
             llm_controller: Kontroler serwerów LLM (opcjonalny)
             questions_path: Ścieżka do pliku z pytaniami testowymi
+            storage_dir: Katalog zapisu wyników
         """
         self.model_registry = model_registry
         self.service_monitor = service_monitor
@@ -164,16 +166,104 @@ class BenchmarkService:
         self.questions_path = Path(
             questions_path or "./data/datasets/eval_questions.json"
         )
+        self.storage_dir = Path(storage_dir)
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
 
         # Aktywne joby benchmarkowe (z limitem pamięci)
         self.jobs: Dict[str, BenchmarkJob] = {}
         self._max_jobs = 1000  # Maksymalna liczba przechowywanych jobów
-        self._job_ttl_hours = 24  # Czas życia joba w godzinach
+
+        # Ładowanie historii
+        self._load_jobs_from_disk()
 
         # Lock dla sekwencyjnego wykonywania benchmarków
         self._benchmark_lock = asyncio.Lock()
 
-        logger.info("BenchmarkService zainicjalizowany")
+        logger.info(
+            f"BenchmarkService zainicjalizowany. Załadowano {len(self.jobs)} testów."
+        )
+
+    def _save_job(self, job: BenchmarkJob):
+        """Zapisuje job do pliku JSON."""
+        try:
+            file_path = self.storage_dir / f"{job.benchmark_id}.json"
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(job.to_dict(), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Nie udało się zapisać benchmarku {job.benchmark_id}: {e}")
+
+    def _load_jobs_from_disk(self):
+        """Ładuje joby z plików JSON."""
+        if not self.storage_dir.exists():
+            return
+
+        for file_path in self.storage_dir.glob("*.json"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # Rekonstrukcja obiektów (uproszczona)
+                results = []
+                for r_data in data.get("results", []):
+                    results.append(
+                        ModelBenchmarkResult(
+                            model_name=r_data["model_name"],
+                            status=r_data.get("status", "pending"),
+                            latency_ms=r_data.get("latency_ms"),
+                            tokens_per_second=r_data.get("tokens_per_second"),
+                            peak_vram_mb=r_data.get("peak_vram_mb"),
+                            time_to_first_token_ms=r_data.get("time_to_first_token_ms"),
+                            total_duration_ms=r_data.get("total_duration_ms"),
+                            startup_latency_ms=r_data.get("startup_latency_ms"),
+                            questions_tested=r_data.get("questions_tested", 0),
+                            error_message=r_data.get("error_message"),
+                            started_at=r_data.get("started_at"),
+                            completed_at=r_data.get("completed_at"),
+                        )
+                    )
+
+                job = BenchmarkJob(
+                    benchmark_id=data["benchmark_id"],
+                    models=data.get("models", []),
+                    num_questions=data.get("num_questions", 0),
+                    status=BenchmarkStatus(data.get("status", "pending")),
+                    current_model_index=0,  # Reset indexu, bo po restarcie i tak jest completed
+                    results=results,
+                    created_at=data.get("created_at"),
+                    started_at=data.get("started_at"),
+                    completed_at=data.get("completed_at"),
+                    error_message=data.get("error_message"),
+                )
+                self.jobs[job.benchmark_id] = job
+            except Exception as e:
+                logger.warning(f"Nie udało się załadować benchmarku z {file_path}: {e}")
+
+    def delete_benchmark(self, benchmark_id: str) -> bool:
+        """Usuwa benchmark z pamięci i dysku."""
+        if benchmark_id in self.jobs:
+            del self.jobs[benchmark_id]
+
+        file_path = self.storage_dir / f"{benchmark_id}.json"
+        if file_path.exists():
+            try:
+                file_path.unlink()
+                return True
+            except Exception as e:
+                logger.error(f"Nie udało się usunąć pliku {file_path}: {e}")
+                return False
+        return False
+
+    def clear_all_benchmarks(self) -> int:
+        """Usuwa wszystkie benchmarki. Zwraca liczbę usuniętych."""
+        count = len(self.jobs)
+        self.jobs.clear()
+
+        for file_path in self.storage_dir.glob("*.json"):
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+        return count
 
     def _load_questions(self) -> List[BenchmarkQuestion]:
         """
@@ -242,10 +332,9 @@ class BenchmarkService:
             results=[ModelBenchmarkResult(model_name=m) for m in models],
         )
 
-        # Wyczyść stare joby przed dodaniem nowego
-        self._cleanup_old_jobs()
-
+        # Zapisz początkowy stan
         self.jobs[benchmark_id] = job
+        self._save_job(job)
 
         # Uruchom benchmark w tle i zachowaj referencję do zadania
         task = asyncio.create_task(self._run_benchmark_task(benchmark_id))
@@ -253,7 +342,7 @@ class BenchmarkService:
 
         logger.info(
             f"Rozpoczęto benchmark {benchmark_id}: {len(models)} modeli, "
-            f"{num_questions} pytań"
+            f"pytań: {num_questions}"
         )
         return benchmark_id
 
@@ -289,34 +378,12 @@ class BenchmarkService:
 
     def _cleanup_old_jobs(self):
         """
-        Usuwa stare joby aby zapobiec wyciekowi pamięci.
-
-        Strategia czyszczenia:
-        1. Jeśli przekroczono max_jobs, usuń najstarsze joby
-        2. Usuń joby starsze niż TTL
+        Usuwa stare joby z pamięci (nie z dysku, chyba że chcemy autodelete).
+        Na razie zostawiamy na dysku, czyścimy tylko RAM jeśli za dużo.
         """
-        from datetime import datetime, timedelta
-
-        # Usuń joby starsze niż TTL
-        cutoff_time = datetime.now() - timedelta(hours=self._job_ttl_hours)
-        jobs_to_remove = [
-            job_id
-            for job_id, job in self.jobs.items()
-            if datetime.fromisoformat(job.created_at) < cutoff_time
-        ]
-
-        for job_id in jobs_to_remove:
-            del self.jobs[job_id]
-            logger.debug(f"Usunięto stary job: {job_id}")
-
-        # Jeśli nadal za dużo jobów, usuń najstarsze
-        if len(self.jobs) >= self._max_jobs:
-            sorted_jobs = sorted(self.jobs.items(), key=lambda x: x[1].created_at)
-            # Usuń 10% najstarszych
-            to_remove = int(self._max_jobs * 0.1)
-            for job_id, _ in sorted_jobs[:to_remove]:
-                del self.jobs[job_id]
-                logger.debug(f"Usunięto job z powodu limitu: {job_id}")
+        if len(self.jobs) > self._max_jobs:
+            # Proste czyszczenie pamięci
+            pass
 
     async def _run_benchmark_task(self, benchmark_id: str):
         """
@@ -334,6 +401,7 @@ class BenchmarkService:
             try:
                 job.status = BenchmarkStatus.RUNNING
                 job.started_at = datetime.now().isoformat()
+                self._save_job(job)  # Aktualizacja statusu
 
                 # Załaduj pytania testowe
                 all_questions = self._load_questions()
@@ -356,6 +424,9 @@ class BenchmarkService:
                         f"[{benchmark_id}] Testowanie modelu {idx + 1}/{len(job.models)}: {model_name}"
                     )
 
+                    # Zapisz postęp przed każdym modelem
+                    self._save_job(job)
+
                     try:
                         await self._test_model(model_name, questions, result)
                     except Exception as e:
@@ -365,8 +436,12 @@ class BenchmarkService:
                         result.status = "failed"
                         result.error_message = str(e)
 
+                # Zapisz wynik ostatniego modelu
+                self._save_job(job)
+
                 job.status = BenchmarkStatus.COMPLETED
                 job.completed_at = datetime.now().isoformat()
+                self._save_job(job)  # Finalny zapis
                 logger.info(f"Benchmark {benchmark_id} zakończony pomyślnie")
 
             except Exception as e:
@@ -374,6 +449,7 @@ class BenchmarkService:
                 job.status = BenchmarkStatus.FAILED
                 job.error_message = str(e)
                 job.completed_at = datetime.now().isoformat()
+                self._save_job(job)
 
     async def _test_model(
         self,
@@ -410,26 +486,58 @@ class BenchmarkService:
             else:
                 endpoint = SETTINGS.VLLM_ENDPOINT.rstrip("/")
 
-            # Aktywuj model przez ModelRegistry
-            logger.info(f"Aktywacja modelu: {model_name}")
-            # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
+            # Sprawdź czy model jest już załadowany aby uniknąć restartu
+            model_already_loaded = False
             try:
-                t_startup = time.time()
-                await self.model_registry.activate_model(model_name, runtime)
-                # Jeśli mamy kontroler serwerów, zrestartuj runtime aby załadować model
-                if self.llm_controller:
-                    action = "restart"
-                    try:
-                        await self.llm_controller.run_action(runtime, action)
-                        logger.info(
-                            f"{runtime} zrestartowany dla modelu {model_name} (benchmark)"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Nie udało się wykonać {action} dla {runtime}: {e}"
-                        )
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    resp = await client.get(f"{endpoint}/models")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        running_models = []
+                        # Obsługa formatu OpenAI (vLLM)
+                        if "data" in data and isinstance(data["data"], list):
+                            running_models = [m.get("id") for m in data["data"]]
+                        # Obsługa formatu Ollama
+                        elif "models" in data and isinstance(data["models"], list):
+                            running_models = [m.get("name") for m in data["models"]]
+
+                        if model_name in running_models:
+                            model_already_loaded = True
+                            # Symulujemy czas startu jako 0, skoro model jest gotowy
+                            t_startup = time.time()
+                            logger.info(
+                                f"Model {model_name} jest już aktywny - pomijam restart serwera."
+                            )
             except Exception as e:
-                logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
+                logger.debug(
+                    f"Nie udało się sprawdzić aktywnych modeli (to normalne przy starcie): {e}"
+                )
+
+            if not model_already_loaded:
+                # Aktywuj model przez ModelRegistry
+                logger.info(f"Aktywacja modelu: {model_name}")
+                # Próba aktywacji modelu - jeśli nie powiedzie się, kontynuuj z obecnym modelem
+                try:
+                    t_startup = time.time()
+                    await self.model_registry.activate_model(model_name, runtime)
+                    # Jeśli mamy kontroler serwerów, zrestartuj runtime aby załadować model
+                    if self.llm_controller:
+                        action = "restart"
+                        try:
+                            await self.llm_controller.run_action(runtime, action)
+                            logger.info(
+                                f"{runtime} zrestartowany dla modelu {model_name} (benchmark)"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Nie udało się wykonać {action} dla {runtime}: {e}"
+                            )
+                except Exception as e:
+                    logger.warning(f"Nie można aktywować modelu {model_name}: {e}")
+            else:
+                # Jeśli model był załadowany, upewnij się że t_startup jest zdefiniowane dla metryk
+                if "t_startup" not in locals():
+                    t_startup = time.time()
 
             # Czekaj na healthcheck
             await self._wait_for_healthcheck(endpoint=endpoint, timeout=60)

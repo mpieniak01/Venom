@@ -881,8 +881,28 @@ class ModelRegistry:
         logger.info(f"Aktywacja modelu {model_name} dla runtime {runtime}")
 
         if model_name not in self.manifest:
-            logger.error(f"Model {model_name} nie znaleziony w manifeście")
-            return False
+            if runtime == "ollama":
+                provider = self.providers.get(ModelProvider.OLLAMA)
+                if provider:
+                    try:
+                        metadata = await provider.get_model_info(model_name)
+                        if metadata:
+                            self.manifest[model_name] = metadata
+                            self._save_manifest()
+                        else:
+                            logger.error(f"Model {model_name} nie znaleziony w Ollama")
+                            return False
+                    except Exception as exc:
+                        logger.warning(
+                            f"Nie udało się pobrać metadanych modelu Ollama {model_name}: {exc}"
+                        )
+                        return False
+                else:
+                    logger.error("Provider Ollama niedostępny")
+                    return False
+            else:
+                logger.error(f"Model {model_name} nie znaleziony w manifeście")
+                return False
 
         meta = self.manifest.get(model_name)
 

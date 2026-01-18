@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import {
   emergencyStop,
+  activateRegistryModel,
   fetchHistoryDetail,
   fetchModelConfig,
   fetchTaskDetail,
@@ -1525,6 +1526,25 @@ export function CockpitHome({
     activeServerInfo?.active_model,
     activeServerInfo?.last_models,
     selectedLlmModel,
+  ]);
+  useEffect(() => {
+    if (!selectedLlmServer) return;
+    if (availableModelsForServer.length !== 1) return;
+    const soleModel = availableModelsForServer[0]?.name;
+    if (!soleModel) return;
+    if (
+      activeServerInfo?.active_server === selectedLlmServer &&
+      activeServerInfo?.active_model === soleModel
+    ) {
+      return;
+    }
+    handleLlmServerActivate({ server: selectedLlmServer, model: soleModel });
+  }, [
+    selectedLlmServer,
+    availableModelsForServer,
+    activeServerInfo?.active_server,
+    activeServerInfo?.active_model,
+    handleLlmServerActivate,
   ]);
   useEffect(() => {
     if (!selectedLlmServer) return;

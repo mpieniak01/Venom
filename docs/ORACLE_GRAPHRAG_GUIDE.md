@@ -13,7 +13,7 @@ Silnik przetwarzania wieloformatowych danych.
 **Obsługiwane formaty:**
 - 📄 **PDF** - używa `markitdown` lub `pypdf`
 - 📝 **DOCX** - używa `markitdown` lub `python-docx`
-- 🖼️ **Obrazy** (PNG, JPG, GIF, etc.) - używa Florence-2 do opisu
+- 🖼️ **Obrazy** (PNG, JPG, GIF, etc.) - używa Vision Engine (OpenAI/Ollama) do opisu
 - 🎵 **Audio** (MP3, WAV, OGG) - używa Whisper do transkrypcji
 - 🎬 **Video** (MP4, AVI, MKV) - ekstrahuje audio i transkrybuje
 - 📋 **Tekst** (TXT, MD, kod źródłowy)
@@ -182,7 +182,7 @@ pip install pypdf markitdown python-docx
 pip install trafilatura beautifulsoup4
 
 # Vision (opcjonalne)
-# Florence-2 jest już w projekcie
+# Vision Engine jest już w projekcie
 
 # Audio (opcjonalne)
 pip install faster-whisper
@@ -231,7 +231,7 @@ result = await oracle.process(
 # Oracle odpowie np.:
 # "1. Agent Ghost używa Input Skill
 #  2. Input Skill korzysta z Vision Grounding
-#  3. Vision Grounding jest powered by Florence-2
+#  3. Vision Grounding jest powered by Vision Engine
 #  [Źródła: ...]"
 ```
 
@@ -283,7 +283,7 @@ graph TD
   - Po klauzulach (`, `)
 
 ### Lazy Loading
-- Vision Engine (Florence-2) ładowany tylko gdy potrzebny
+- Vision Engine (OpenAI/Ollama) ładowany tylko gdy potrzebny
 - Audio Engine (Whisper) ładowany tylko gdy potrzebny
 
 ### Cache
@@ -306,7 +306,7 @@ pip install pypdf  # fallback
 ```
 
 ### "Vision Engine niedostępny"
-- Florence-2 wymaga GPU lub może być wolny na CPU
+- Lokalne modele vision wymagają GPU lub mogą być wolne na CPU
 - Można pominąć obrazy lub użyć tylko opisu nazwy pliku
 
 ### "Audio Engine niedostępny"

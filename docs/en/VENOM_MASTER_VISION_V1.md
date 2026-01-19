@@ -50,12 +50,15 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <table>
 <tr><th>Organ</th><th>Function</th><th>Technology</th><th>Role in organism</th><th>Version</th></tr>
 <tr><td>Nervous system</td><td>Orchestration</td><td>AutoGen</td><td>Dialog, decision loops</td><td>v1.0</td></tr>
-<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td><td>v1.0</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td><td>v2.0</td></tr>
 <tr><td>Oracle</td><td>Deep thinking</td><td>GPT-4o, Gemini Pro, Claude</td><td>Difficult problems</td><td>v1.0</td></tr>
 <tr><td>Antenna</td><td>External sense</td><td>Researcher Agent</td><td>Internet knowledge</td><td>v1.0</td></tr>
 <tr><td>Hippocampus</td><td>Memory</td><td>GraphRAG</td><td>Knowledge map</td><td>v1.0</td></tr>
 <tr><td>Hands</td><td>Action</td><td>Semantic Kernel</td><td>Files, shell, git</td><td>v1.0</td></tr>
-<tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>OCR, UI analysis</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Ollama (GGUF) / OpenAI</td><td>Screenshot analysis (eyes.py)</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>Target local engine</td><td>v2.0</td></tr>
+<tr><td>Ears</td><td>Hearing (STT)</td><td>faster-whisper (CTranslate2)</td><td>Audio transcription (WhisperSkill)</td><td>v1.0</td></tr>
+<tr><td>Mouth</td><td>Speech (TTS)</td><td>Piper TTS (ONNX)</td><td>Voice synthesis (VoiceSkill)</td><td>v1.0</td></tr>
 <tr><td>Eyes (physical)</td><td>World perception</td><td>YOLO ONNX</td><td>Objects, obstacles</td><td>v2.0</td></tr>
 <tr><td>Legs</td><td>Movement</td><td>Rider-Pi</td><td>Mobility</td><td>v1.0</td></tr>
 <tr><td>Metabolism</td><td>Performance</td><td>ONNX / GGUF</td><td>Model execution</td><td>v1.0</td></tr>

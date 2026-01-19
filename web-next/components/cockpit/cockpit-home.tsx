@@ -1031,7 +1031,7 @@ export function CockpitHome({
         mappedId && mappedId !== clientId
           ? prev[mappedId] ?? { text: "", status: "W toku", done: false }
           : null;
-      const next = {
+      const next: Record<string, { text: string; status: string; done: boolean }> = {
         ...prev,
         [clientId]: {
           ...existing,
@@ -1040,8 +1040,9 @@ export function CockpitHome({
       };
       if (mappedId && mappedId !== clientId) {
         next[mappedId] = {
-          ...mappedExisting,
-          ...patch,
+          text: patch.text ?? mappedExisting?.text ?? "",
+          status: patch.status ?? mappedExisting?.status ?? "W toku",
+          done: patch.done ?? mappedExisting?.done ?? false,
         };
       }
       return {
@@ -1282,11 +1283,11 @@ export function CockpitHome({
         return null;
       }
     }
-    const responseMatch = raw.match(/response=(.*)$/s);
+    const responseMatch = raw.match(/response=([\s\S]*)$/);
     if (responseMatch?.[1]) {
       return { text: responseMatch[1].trim(), truncated: false };
     }
-    const previewMatch = raw.match(/preview=(.*)$/s);
+    const previewMatch = raw.match(/preview=([\s\S]*)$/);
     if (previewMatch?.[1]) {
       return { text: previewMatch[1].trim(), truncated: true };
     }
@@ -4799,7 +4800,7 @@ export function CockpitHome({
                           </div>
                         </div>
                       )}
-                      {requestContextMeta?.hiddenPromptsCount !== null && (
+                      {requestContextMeta?.hiddenPromptsCount != null && (
                         <div>
                           <span className="text-zinc-400">
                             {t("cockpit.requestDetails.hiddenPromptsCount")}

@@ -3,10 +3,9 @@
 ## Summary
 This document tracks the progress of translating Venom documentation from Polish to English.
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-19
 **Total Files:** 55 markdown files in `docs/`
-**Completed:** 42 files (76%)
-**Remaining:** 13 files (24%)
+
 
 ## Completed Files (30)
 
@@ -61,6 +60,7 @@ This document tracks the progress of translating Venom documentation from Polish
 40. MODEL_TUNING_GUIDE.md
 41. FLOW_INSPECTOR_GUIDE.md
 42. HYBRID_AI_ENGINE.md
+43. ORACLE_GRAPHRAG_GUIDE.md
 
 ## Remaining Files (13)
 
@@ -71,7 +71,6 @@ This document tracks the progress of translating Venom documentation from Polish
 - KNOWLEDGE_HYGIENE.md
 - MEMORY_LAYER_GUIDE.md
 - MODEL_MANAGEMENT.md
-- ORACLE_GRAPHRAG_GUIDE.md
 - QA_DELIVERY_GUIDE.md
 - REQUEST_TRACING_GUIDE.md
 

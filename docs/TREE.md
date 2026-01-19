@@ -82,7 +82,8 @@
     │
     ├── perception/              # [WARSTWA 3: ZMYSŁY] – OCZY + ANTENA
     │   ├── __init__.py
-    │   ├── eyes.py              # modele vision (Florence-2 / YOLO ONNX)
+    │   ├── eyes.py              # modele vision (Ollama / OpenAI) [Florence-2 v2.0]
+    │   ├── audio_engine.py      # silnik audio (Whisper STT + Piper TTS)
     │   └── antenna.py           # web search, scraping
     │
     ├── memory/                  # [WARSTWA 5: HIPOKAMP] – PAMIĘĆ
@@ -93,7 +94,7 @@
     │
     ├── infrastructure/          # [WARSTWA 4: METABOLIZM] – SILNIKI
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # Vision/Audio runtime
+    │   ├── onnx_runtime.py      # Vision/Audio runtime (Placeholder)
     │   ├── docker_habitat.py    # zarządzanie kontenerami / sandboxami
     │   └── hardware_pi.py       # most do Rider-Pi (API, heartbeat)
     │

@@ -81,7 +81,8 @@
     │
     ├── perception/              # [LAYER 3: SENSES] – EYES + ANTENNA
     │   ├── __init__.py
-    │   ├── eyes.py              # vision models (Florence-2 / YOLO ONNX)
+    │   ├── eyes.py              # vision models (Ollama / OpenAI) [Florence-2 v2.0]
+    │   ├── audio_engine.py      # audio engine (Whisper STT + Piper TTS)
     │   └── antenna.py           # web search, scraping
     │
     ├── memory/                  # [LAYER 5: HIPPOCAMPUS] – MEMORY
@@ -92,7 +93,7 @@
     │
     ├── infrastructure/          # [LAYER 4: METABOLISM] – ENGINES
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # Vision/Audio runtime
+    │   ├── onnx_runtime.py      # Vision/Audio runtime (Placeholder)
     │   ├── docker_habitat.py    # container / sandbox management
     │   └── hardware_pi.py       # bridge to Rider-Pi (API, heartbeat)
     │

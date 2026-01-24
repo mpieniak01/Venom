@@ -1,6 +1,11 @@
 """Moduł: integrator - agent zarządzający wersjonowaniem i DevOps."""
 
+from typing import Any
+
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.function_choice_behavior import (
+    FunctionChoiceBehavior,
+)
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
@@ -141,7 +146,7 @@ Akcja: get_current_branch()"""
             logger.info(f"IntegratorAgent przetwarza żądanie: {input_text[:100]}...")
 
             # Utwórz chat service
-            chat_service = self.kernel.get_service(type="chat")
+            chat_service: Any = self.kernel.get_service(service_id="chat")
 
             # Utwórz historię czatu
             history = ChatHistory()
@@ -156,7 +161,7 @@ Akcja: get_current_branch()"""
             settings = OpenAIChatPromptExecutionSettings(
                 temperature=0.3,  # Niska temperatura - precyzyjne operacje Git
                 max_tokens=2000,
-                function_choice_behavior="auto",  # Automatyczne wywoływanie funkcji
+                function_choice_behavior=FunctionChoiceBehavior.Auto(),  # Automatyczne wywoływanie funkcji
             )
 
             # Wykonaj request do LLM z włączoną obsługą funkcji
@@ -202,7 +207,7 @@ Przykład: "feat(git): add GitSkill implementation"
 """
 
             # Utwórz chat service
-            chat_service = self.kernel.get_service(type="chat")
+            chat_service: Any = self.kernel.get_service(service_id="chat")
 
             # Utwórz historię czatu
             history = ChatHistory()

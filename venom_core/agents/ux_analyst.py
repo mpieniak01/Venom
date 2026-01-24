@@ -3,7 +3,7 @@
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Optional
+from typing import Any, DefaultDict, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -151,8 +151,10 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
         rage_quits = 0
         total_frustration = 0
         frustration_reasons = []
-        emotional_states_count = Counter()
-        personas_performance = defaultdict(lambda: {"success": 0, "total": 0})
+        emotional_states_count: Counter[str] = Counter()
+        personas_performance: DefaultDict[str, dict[str, int]] = defaultdict(
+            lambda: {"success": 0, "total": 0}
+        )
 
         # Analiza per sesja
         for session_id, session_events in sessions.items():
@@ -204,7 +206,13 @@ Pamiętaj: Twoim celem jest pomóc stworzyć aplikację użyteczną dla WSZYSTKI
             )
 
         # Sortuj po failure rate
-        frustration_heatmap.sort(key=lambda x: x["failure_rate"], reverse=True)
+        def _failure_rate(item: dict[str, object]) -> float:
+            value = item.get("failure_rate", 0)
+            if isinstance(value, (int, float, str)):
+                return float(value)
+            return 0.0
+
+        frustration_heatmap.sort(key=_failure_rate, reverse=True)
 
         return {
             "summary": {
@@ -268,7 +276,7 @@ Format odpowiedzi: Markdown z jasno wydzielonymi sekcjami."""
             temperature=0.3,  # Niższa temperatura dla bardziej precyzyjnych rekomendacji
         )
 
-        chat_service = self.kernel.get_service()
+        chat_service: Any = self.kernel.get_service()
         result = await self._invoke_chat_with_fallbacks(
             chat_service=chat_service,
             chat_history=self.chat_history,
@@ -332,7 +340,7 @@ Format odpowiedzi: Markdown z jasno wydzielonymi sekcjami."""
                     temperature=0.3,
                 )
 
-                chat_service = self.kernel.get_service()
+                chat_service: Any = self.kernel.get_service()
                 result = await self._invoke_chat_with_fallbacks(
                     chat_service=chat_service,
                     chat_history=self.chat_history,

@@ -1,12 +1,23 @@
 """Moduł: base - Bazowa klasa dla wszystkich Flow."""
 
-from typing import Callable, Optional
+from typing import Optional, Protocol
+
+
+class EventBroadcaster(Protocol):
+    async def broadcast_event(
+        self,
+        *,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
+    ) -> None: ...
 
 
 class BaseFlow:
     """Bazowa klasa dla wszystkich Flow - zawiera wspólną logikę."""
 
-    def __init__(self, event_broadcaster: Optional[Callable] = None):
+    def __init__(self, event_broadcaster: Optional[EventBroadcaster] = None):
         """
         Inicjalizacja BaseFlow.
 
@@ -16,7 +27,11 @@ class BaseFlow:
         self.event_broadcaster = event_broadcaster
 
     async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
+        self,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
     ):
         """
         Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).

@@ -1,7 +1,7 @@
 """Moduł: system_engineer - agent odpowiedzialny za modyfikację kodu źródłowego Venom."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -175,7 +175,7 @@ Ty:
             )
 
             # Wywołaj LLM z auto-function-calling
-            chat_service = self.kernel.get_service("default")
+            chat_service: Any = self.kernel.get_service(service_id="default")
 
             result = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,

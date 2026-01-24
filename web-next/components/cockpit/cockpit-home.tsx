@@ -281,14 +281,15 @@ const ChatComposer = memo(
     },
     ref,
   ) {
+    const t = useTranslation();
     const [draft, setDraft] = useState("");
     const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
     const [slashIndex, setSlashIndex] = useState(0);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const chatModeOptions: SelectMenuOption[] = [
-      { value: "direct", label: "Direct (LLM bezpośrednio)" },
-      { value: "normal", label: "Normal (standard)" },
-      { value: "complex", label: "Complex (planowanie)" },
+      { value: "direct", label: t("cockpit.modes.directLabel") },
+      { value: "normal", label: t("cockpit.modes.normalLabel") },
+      { value: "complex", label: t("cockpit.modes.complexLabel") },
     ];
 
     useImperativeHandle(ref, () => ({
@@ -393,7 +394,7 @@ const ChatComposer = memo(
             ref={textareaRef}
             rows={2}
             className="min-h-[64px] w-full rounded-xl box-base p-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
-            placeholder="Opisz zadanie dla Venoma..."
+            placeholder={t("cockpit.inputPlaceholder", "Opisz zadanie dla Venoma...")}
             value={draft}
             onChange={(event) => handleDraftChange(event.target.value)}
             onKeyDown={handleTextareaKeyDown}
@@ -3805,6 +3806,7 @@ export function CockpitHome({
                       type="button"
                       onClick={() => handleSuggestionClick(preset.prompt)}
                       title={preset.description}
+                      data-testid={`cockpit-preset-${preset.id}`}
                       variant="ghost"
                       size="sm"
                       className="w-full items-center gap-3 rounded-2xl box-muted px-4 py-3 text-left transition hover:border-violet-400/50 hover:bg-black/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500/60"

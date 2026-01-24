@@ -8,7 +8,7 @@ ani metody `process()`.
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.memory.graph_store import CodeGraphStore
@@ -27,11 +27,11 @@ class GardenerAgent:
 
     def __init__(
         self,
-        graph_store: CodeGraphStore = None,
-        workspace_root: str = None,
+        graph_store: Optional[CodeGraphStore] = None,
+        workspace_root: Optional[str] = None,
         scan_interval: int = 300,  # 5 minut
-        orchestrator=None,  # Referencja do orchestratora dla idle mode
-        event_broadcaster=None,  # Broadcaster zdarzeń
+        orchestrator: Optional[Any] = None,  # Referencja do orchestratora dla idle mode
+        event_broadcaster: Optional[Any] = None,  # Broadcaster zdarzeń
     ):
         """
         Inicjalizacja GardenerAgent.
@@ -52,7 +52,7 @@ class GardenerAgent:
         self.is_running = False
         self._task: Optional[asyncio.Task] = None
         self._last_scan_time: Optional[datetime] = None
-        self._last_file_mtimes: dict = {}
+        self._last_file_mtimes: dict[str, float] = {}
         self._last_idle_check: Optional[datetime] = None
         self._idle_refactoring_in_progress = False
 
@@ -344,7 +344,7 @@ class GardenerAgent:
             Lista plików z metrykami złożoności
         """
         try:
-            from radon.visitors import ComplexityVisitor
+            from radon.visitors import ComplexityVisitor  # type: ignore[import-untyped]
 
             complex_files = []
 

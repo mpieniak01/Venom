@@ -1,6 +1,6 @@
 """Moduł: system_status - Agent raportujący stan infrastruktury Venom."""
 
-from typing import List
+from typing import List, Optional
 
 import httpx
 from semantic_kernel import Kernel
@@ -25,7 +25,7 @@ class SystemStatusAgent(BaseAgent):
     def __init__(
         self,
         kernel: Kernel,
-        status_endpoint: str = None,
+        status_endpoint: Optional[str] = None,
     ):
         super().__init__(kernel)
         self.status_endpoint = (

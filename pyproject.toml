@@ -1,0 +1,58 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+extend-exclude = [
+  "models",
+  "models_cache",
+  "node_modules",
+  "web",
+  "web-next",
+  ".venv",
+  "venv",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".git",
+]
+
+[tool.isort]
+profile = "black"
+skip = [
+  "models",
+  "models_cache",
+  "node_modules",
+  "web",
+  "web-next",
+  ".venv",
+  "venv",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".git",
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["venom_core"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+exclude = "(^|/)(models|models_cache|node_modules|web|web-next|\\.venv|venv|\\.mypy_cache|\\.ruff_cache|\\.git)(/|$)"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+extend-exclude = '''
+(
+  ^/(
+    models
+    |models_cache
+    |node_modules
+    |web
+    |web-next
+    |\.venv
+    |venv
+    |\.mypy_cache
+    |\.ruff_cache
+    |\.git
+  )/
+)
+'''

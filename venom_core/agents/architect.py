@@ -1,7 +1,7 @@
 """Moduł: architect - agent architekta, planowanie złożonych projektów."""
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -163,8 +163,8 @@ WAŻNE:
     def __init__(
         self,
         kernel: Kernel,
-        task_dispatcher: "TaskDispatcher" = None,
-        event_broadcaster=None,
+        task_dispatcher: Optional["TaskDispatcher"] = None,
+        event_broadcaster: Optional[Any] = None,
     ):
         """
         Inicjalizacja ArchitectAgent.
@@ -214,7 +214,7 @@ WAŻNE:
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Ustawienia dla LLM
             settings = OpenAIChatPromptExecutionSettings(
@@ -328,7 +328,7 @@ WAŻNE:
 
         logger.info(f"ArchitectAgent wykonuje plan z {len(plan.steps)} krokami")
 
-        context_history = {}
+        context_history: dict[int, str] = {}
         final_result = f"=== WYKONANIE PLANU ===\nCel: {plan.goal}\n\n"
 
         for step in plan.steps:

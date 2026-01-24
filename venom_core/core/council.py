@@ -4,7 +4,7 @@ The Council to "Rada" agentów, którzy wspólnie rozwiązują złożone problem
 poprzez swobodną konwersację (Swarm Intelligence).
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from venom_core.agents.architect import ArchitectAgent
 from venom_core.agents.coder import CoderAgent
@@ -17,7 +17,11 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 try:
-    from autogen import GroupChat, GroupChatManager, UserProxyAgent
+    from autogen import (  # type: ignore[import-not-found]
+        GroupChat,
+        GroupChatManager,
+        UserProxyAgent,
+    )
 except ImportError:  # pragma: no cover - fallback for environments bez AutoGen
     logger.warning(
         "Pakiet 'autogen' nie jest dostępny - używam lekkich stubów na potrzeby testów."
@@ -37,7 +41,7 @@ except ImportError:  # pragma: no cover - fallback for environments bez AutoGen
             self.code_execution_config = code_execution_config
             self.human_input_mode = human_input_mode
             self.llm_config = llm_config
-            self._history = []
+            self._history: List[Dict[str, str]] = []
 
         def initiate_chat(self, manager, message: str):
             """Prosta implementacja - dodaje wiadomość użytkownika."""
@@ -333,8 +337,8 @@ class CouncilSession:
 
 
 def create_local_llm_config(
-    base_url: str = None,
-    model: str = None,
+    base_url: Optional[str] = None,
+    model: Optional[str] = None,
     temperature: float = 0.7,
 ) -> Dict:
     """

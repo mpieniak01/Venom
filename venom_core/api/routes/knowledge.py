@@ -1,5 +1,7 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
 
 from venom_core.utils.logger import get_logger
@@ -383,7 +385,7 @@ async def trigger_graph_scan():
 
 
 @router.get("/lessons")
-async def get_lessons(limit: int = 10, tags: str = None):
+async def get_lessons(limit: int = 10, tags: Optional[str] = None):
     """
     Pobiera listę lekcji.
 

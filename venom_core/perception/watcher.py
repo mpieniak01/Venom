@@ -3,7 +3,7 @@
 import asyncio
 import time
 from pathlib import Path
-from typing import Optional, Set
+from typing import Any, Awaitable, Callable, Optional, Protocol, Set
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -11,6 +11,19 @@ from watchdog.observers import Observer
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+
+
+class ObserverType(Protocol):
+    """Minimalny protokół dla watchdog Observer."""
+
+    def schedule(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def join(self, timeout: float | None = None) -> None: ...
+
 
 logger = get_logger(__name__)
 
@@ -22,7 +35,10 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
     """
 
     def __init__(
-        self, callback, debounce_seconds: int = 5, ignored_patterns: Set[str] = None
+        self,
+        callback: Callable[[str], Awaitable[None]],
+        debounce_seconds: int = 5,
+        ignored_patterns: Optional[Set[str]] = None,
     ):
         """
         Inicjalizacja handlera.
@@ -55,8 +71,8 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
         # Debouncing: ścieżka -> timestamp ostatniej zmiany
         # Note: podstawowe operacje na dict są thread-safe w CPython
         self._pending_changes: dict[str, float] = {}
-        self._debounce_task: Optional[asyncio.Task] = None
-        self._loop = None
+        self._debounce_task: Optional[asyncio.Task[None]] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def _should_ignore(self, path: str) -> bool:
         """
@@ -83,6 +99,12 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
 
         return False
 
+    def _normalize_path(self, src_path: str | bytes) -> str:
+        """Normalizuje ścieżkę z watchdog do postaci str."""
+        if isinstance(src_path, bytes):
+            return src_path.decode(errors="ignore")
+        return src_path
+
     def on_modified(self, event: FileSystemEvent) -> None:
         """
         Callback wywoływany gdy plik jest modyfikowany.
@@ -94,17 +116,18 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
             return
 
         # Ignoruj pliki niebędące Pythonem lub markdown
-        if not (event.src_path.endswith(".py") or event.src_path.endswith(".md")):
+        src_path = self._normalize_path(event.src_path)
+        if not (src_path.endswith(".py") or src_path.endswith(".md")):
             return
 
         # Sprawdź czy ścieżka powinna być ignorowana
-        if self._should_ignore(event.src_path):
-            logger.debug(f"Ignorowanie zmiany w: {event.src_path}")
+        if self._should_ignore(src_path):
+            logger.debug(f"Ignorowanie zmiany w: {src_path}")
             return
 
         # Użyj thread-safe metody do dodania zmiany
         # Dodaj do pending changes z aktualnym timestampem (thread-safe dict access)
-        self._pending_changes[event.src_path] = time.time()
+        self._pending_changes[src_path] = time.time()
 
         # Uruchom debounce task jeśli nie działa
         if self._debounce_task is None or self._debounce_task.done():
@@ -162,8 +185,8 @@ class FileWatcher:
 
     def __init__(
         self,
-        workspace_root: str = None,
-        on_change_callback=None,
+        workspace_root: Optional[str] = None,
+        on_change_callback: Optional[Callable[[str], Awaitable[None]]] = None,
         event_broadcaster=None,
     ):
         """
@@ -178,7 +201,7 @@ class FileWatcher:
         self.on_change_callback = on_change_callback
         self.event_broadcaster = event_broadcaster
 
-        self.observer: Optional[Observer] = None
+        self.observer: Optional[ObserverType] = None
         self.is_running = False
 
         # Utwórz event handler z debouncing

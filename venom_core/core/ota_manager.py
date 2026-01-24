@@ -1,17 +1,22 @@
 """Moduł: ota_manager - Over-The-Air Updates dla węzłów Spore."""
 
 import hashlib
+import importlib
 import subprocess
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import aiofiles
-
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
+
+aiofiles: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    aiofiles = importlib.import_module("aiofiles")
+except Exception:  # pragma: no cover
+    aiofiles = None
 
 logger = get_logger(__name__)
 
@@ -172,6 +177,8 @@ class OTAManager:
         Returns:
             Suma kontrolna SHA256 (hex)
         """
+        if aiofiles is None:
+            raise RuntimeError("aiofiles nie jest zainstalowane")
         sha256_hash = hashlib.sha256()
         async with aiofiles.open(file_path, "rb") as f:
             while True:
@@ -304,6 +311,8 @@ class OTAManager:
                 response = await client.get(package_url, timeout=60.0)
                 response.raise_for_status()
 
+                if aiofiles is None:
+                    raise RuntimeError("aiofiles nie jest zainstalowane")
                 async with aiofiles.open(download_path, "wb") as f:
                     await f.write(response.content)
 

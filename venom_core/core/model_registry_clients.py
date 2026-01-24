@@ -42,6 +42,9 @@ class OllamaClient:
             )
 
             try:
+                if process.stdout is None or process.stderr is None:
+                    logger.error("Nie udało się zainicjalizować strumieni Ollama")
+                    return False
                 while True:
                     line = await process.stdout.readline()
                     if not line:

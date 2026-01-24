@@ -3,13 +3,29 @@
 import pickle
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
+
+from semantic_kernel.functions import kernel_function
+
+from venom_core.config import SETTINGS
+from venom_core.utils.logger import get_logger
+
+Request: Any
+InstalledAppFlow: Any
+build: Any
+HttpError: type[Exception]
 
 try:
-    from google.auth.transport.requests import Request
-    from google_auth_oauthlib.flow import InstalledAppFlow
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
+    from google.auth.transport.requests import Request as _Request
+    from google_auth_oauthlib.flow import (
+        InstalledAppFlow as _InstalledAppFlow,  # type: ignore[import-untyped]
+    )
+    from googleapiclient.discovery import (
+        build as _build,  # type: ignore[import-untyped]
+    )
+    from googleapiclient.errors import (
+        HttpError as _HttpError,  # type: ignore[import-untyped]
+    )
 
     _GOOGLE_CALENDAR_AVAILABLE = True
     _GOOGLE_CALENDAR_IMPORT_ERROR = None
@@ -17,16 +33,14 @@ except ModuleNotFoundError as exc:
     Request = None
     InstalledAppFlow = None
     build = None
-
-    class HttpError(Exception):
-        """Fallback HttpError when Google API dependencies are missing."""
-
+    HttpError = Exception
     _GOOGLE_CALENDAR_AVAILABLE = False
     _GOOGLE_CALENDAR_IMPORT_ERROR = exc
-from semantic_kernel.functions import kernel_function
-
-from venom_core.config import SETTINGS
-from venom_core.utils.logger import get_logger
+else:
+    Request = _Request
+    InstalledAppFlow = _InstalledAppFlow
+    build = _build
+    HttpError = _HttpError
 
 logger = get_logger(__name__)
 
@@ -190,6 +204,8 @@ class GoogleCalendarSkill:
         """
         if not self.credentials_available:
             return "❌ Google Calendar nie jest skonfigurowany. Brak dostępu do kalendarza."
+        if not self.service:
+            return "❌ Google Calendar nie jest skonfigurowany (brak serwisu)"
 
         logger.info(
             f"GoogleCalendarSkill: read_agenda (time_min={time_min}, hours={hours})"
@@ -284,6 +300,8 @@ class GoogleCalendarSkill:
         """
         if not self.credentials_available:
             return "❌ Google Calendar nie jest skonfigurowany. Nie można zaplanować zadania."
+        if not self.service:
+            return "❌ Google Calendar nie jest skonfigurowany (brak serwisu)"
 
         logger.info(
             f"GoogleCalendarSkill: schedule_task (title='{title}', start={start_time}, duration={duration_minutes}min)"

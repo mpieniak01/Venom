@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -156,7 +157,7 @@ WAŻNE:
 - Używaj async/await gdy robisz operacje I/O (HTTP requests)
 - Zwracaj zawsze string (nie dict, nie list)"""
 
-    def __init__(self, kernel: Kernel, file_skill: FileSkill = None):
+    def __init__(self, kernel: Kernel, file_skill: Optional[FileSkill] = None):
         """
         Inicjalizacja ToolmakerAgent.
 
@@ -178,7 +179,7 @@ WAŻNE:
         )
 
         # Service do chat completion
-        self.chat_service = self.kernel.get_service(service_id="default")
+        self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("ToolmakerAgent zainicjalizowany")
 
@@ -245,7 +246,7 @@ WAŻNE:
             return error_msg
 
     async def create_tool(
-        self, specification: str, tool_name: str, output_dir: str = None
+        self, specification: str, tool_name: str, output_dir: Optional[str] = None
     ) -> tuple[bool, str]:
         """
         Tworzy nowe narzędzie i zapisuje je do pliku.
@@ -365,7 +366,7 @@ WYMAGANIA:
         return card_config
 
     async def create_test(
-        self, tool_name: str, tool_code: str, output_dir: str = None
+        self, tool_name: str, tool_code: str, output_dir: Optional[str] = None
     ) -> tuple[bool, str]:
         """
         Generuje test jednostkowy dla narzędzia.

@@ -316,6 +316,7 @@ export const de = {
     },
   },
   cockpit: {
+    inputPlaceholder: "Beschreibe eine Aufgabe für Venom...",
     chatStatus: {
       completed: "Abgeschlossen",
       failed: "Fehler",
@@ -351,6 +352,45 @@ export const de = {
         direct: "Modus: Direct",
         normal: "Modus: Normal",
       },
+    },
+    modes: {
+      directLabel: "Direct (LLM direkt)",
+      normalLabel: "Normal (Standard)",
+      complexLabel: "Complex (Planung)",
+    },
+  },
+  brain: {
+    title: "Wissensgraph",
+    description: "Visualisierung von Abhängigkeiten in Speicher und Repository",
+    stats: {
+      lessons: "Lektionen",
+      uniqueTags: "Eindeutige Tags",
+      topTags: "Top Tags",
+      totalHint: "LessonsStore",
+      topTagsHint: "Häufigste Tags in LessonsStore",
+      nodes: "Knoten",
+      edges: "Kanten",
+    },
+    filters: {
+      all: "Alle",
+      memory: "Speicher",
+      agent: "Agent",
+      repo: "Repo",
+      lesson: "Lektion",
+    },
+    actions: {
+      scan: "Scannen",
+      scanning: "Scannen...",
+      clearSession: "Sitzung löschen",
+      clearGlobal: "Global löschen",
+      pin: "Anpinnen",
+      unpin: "Lösen",
+      delete: "Löschen",
+    },
+    tabs: {
+      memory: "Speicher (RAG)",
+      repo: "Repository",
+      hygiene: "Hygiene",
     },
   },
 };

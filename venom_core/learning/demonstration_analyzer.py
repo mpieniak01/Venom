@@ -60,8 +60,10 @@ class DemonstrationAnalyzer:
         """
         logger.info(f"Rozpoczynam analizę sesji: {session.session_id}")
 
-        actions = []
-        screenshots_dir = Path(session.screenshots_dir)
+        actions: List[ActionIntent] = []
+        screenshots_dir = (
+            Path(session.screenshots_dir) if session.screenshots_dir else None
+        )
 
         # Filtruj tylko istotne zdarzenia (kliknięcia, wpisywanie tekstu)
         click_events = [
@@ -93,7 +95,7 @@ class DemonstrationAnalyzer:
         return actions
 
     async def _analyze_click_event(
-        self, event: InputEvent, screenshots_dir: Path
+        self, event: InputEvent, screenshots_dir: Optional[Path]
     ) -> Optional[ActionIntent]:
         """
         Analizuje zdarzenie kliknięcia i rozpoznaje element UI.
@@ -171,10 +173,12 @@ class DemonstrationAnalyzer:
         Returns:
             Lista sekwencji klawiszy (grupowanie po czasie)
         """
-        key_events = [e for e in events if e.event_type == "key_press"]
+        key_events: List[InputEvent] = [
+            e for e in events if e.event_type == "key_press"
+        ]
 
-        sequences = []
-        current_seq = []
+        sequences: List[List[InputEvent]] = []
+        current_seq: List[InputEvent] = []
         last_time = 0.0
         max_gap = 2.0  # Maksymalna przerwa między klawiszami w sekwencji
 
@@ -366,7 +370,10 @@ class DemonstrationAnalyzer:
         return image.crop((left, top, right, bottom))
 
     def _find_nearest_screenshot(
-        self, timestamp: float, screenshots_dir: Path, before: bool = True
+        self,
+        timestamp: float,
+        screenshots_dir: Optional[Path],
+        before: bool = True,
     ) -> Optional[Path]:
         """
         Znajduje najbliższy zrzut ekranu do danego czasu.
@@ -379,7 +386,7 @@ class DemonstrationAnalyzer:
         Returns:
             Ścieżka do zrzutu lub None
         """
-        if not screenshots_dir.exists():
+        if not screenshots_dir or not screenshots_dir.exists():
             return None
 
         # Parsuj nazwy plików (screenshot_<timestamp>.png)

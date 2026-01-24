@@ -154,7 +154,7 @@ class ParallelSkill:
         Returns:
             Lista wyników zadań
         """
-        results = []
+        results: List[Dict[str, Any]] = []
         start_time = asyncio.get_event_loop().time()
 
         # Czekaj na wyniki z pollingiem

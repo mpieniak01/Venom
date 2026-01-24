@@ -1,7 +1,7 @@
 """Moduł: guardian - agent QA odpowiedzialny za jakość kodu."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -68,7 +68,7 @@ ACTION: Popraw logikę dzielenia - upewnij się że zwracasz a/b zamiast 0
 Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
 """
 
-    def __init__(self, kernel: Kernel, test_skill: TestSkill = None):
+    def __init__(self, kernel: Kernel, test_skill: Optional[TestSkill] = None):
         """
         Inicjalizacja GuardianAgent.
 
@@ -97,7 +97,7 @@ Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
         )
 
         # Service do chat completion
-        self.chat_service = self.kernel.get_service(service_id="default")
+        self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("GuardianAgent zainicjalizowany")
 
@@ -144,7 +144,7 @@ Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
             return error_msg
 
     async def analyze_test_failure(
-        self, test_output: str, file_context: dict = None
+        self, test_output: str, file_context: Optional[dict] = None
     ) -> RepairTicket:
         """
         Analizuje wynik testu i tworzy ticket naprawczy.

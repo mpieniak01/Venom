@@ -1,3 +1,4 @@
+
 # VENOM – MASTER VISION v1
 ## Local meta-intelligence. One runtime. One organism.
 
@@ -48,22 +49,22 @@ Oracle Models (cloud) are optional and work only in selected policies.
 
 ## 2. Venom's biological model – artificial intelligence organism
 <table>
-<tr><th>Organ</th><th>Function</th><th>Technology</th><th>Role in organism</th><th>Version</th></tr>
-<tr><td>Nervous system</td><td>Orchestration</td><td>AutoGen</td><td>Dialog, decision loops</td><td>v1.0</td></tr>
-<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Phi-3 (ONNX/GGUF)</td><td>Generates 90% of code</td><td>v2.0</td></tr>
-<tr><td>Oracle</td><td>Deep thinking</td><td>GPT-4o, Gemini Pro, Claude</td><td>Difficult problems</td><td>v1.0</td></tr>
-<tr><td>Antenna</td><td>External sense</td><td>Researcher Agent</td><td>Internet knowledge</td><td>v1.0</td></tr>
-<tr><td>Hippocampus</td><td>Memory</td><td>GraphRAG</td><td>Knowledge map</td><td>v1.0</td></tr>
-<tr><td>Hands</td><td>Action</td><td>Semantic Kernel</td><td>Files, shell, git</td><td>v1.0</td></tr>
-<tr><td>Eyes (digital)</td><td>UI perception</td><td>Ollama (GGUF) / OpenAI</td><td>Screenshot analysis (eyes.py)</td><td>v1.0</td></tr>
-<tr><td>Eyes (digital)</td><td>UI perception</td><td>Florence-2 ONNX</td><td>Target local engine</td><td>v2.0</td></tr>
-<tr><td>Ears</td><td>Hearing (STT)</td><td>faster-whisper (CTranslate2)</td><td>Audio transcription (WhisperSkill)</td><td>v1.0</td></tr>
-<tr><td>Mouth</td><td>Speech (TTS)</td><td>Piper TTS (ONNX)</td><td>Voice synthesis (VoiceSkill)</td><td>v1.0</td></tr>
-<tr><td>Eyes (physical)</td><td>World perception</td><td>YOLO ONNX</td><td>Objects, obstacles</td><td>v2.0</td></tr>
-<tr><td>Legs</td><td>Movement</td><td>Rider-Pi</td><td>Mobility</td><td>v1.0</td></tr>
-<tr><td>Metabolism</td><td>Performance</td><td>ONNX / GGUF</td><td>Model execution</td><td>v1.0</td></tr>
-<tr><td>Communication</td><td>Thought serving</td><td>Ollama / vLLM</td><td>Inference engine</td><td>v1.0</td></tr>
-<tr><td>Habitat</td><td>Environment</td><td>WSL2 + Dev Containers</td><td>Sandbox</td><td>v1.0</td></tr>
+<tr><th>Organ</th><th>Function</th><th>Role in organism</th><th>Technology</th><th>Version</th></tr>
+<tr><td>Nervous system</td><td>Orchestration</td><td>Dialog, decision loops</td><td>AutoGen</td><td>v1.0</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Generates 90% of code</td><td>Phi-3 (ONNX/GGUF)</td><td>v2.0</td></tr>
+<tr><td>Oracle</td><td>Deep thinking</td><td>Difficult problems</td><td>GPT-4o, Gemini Pro, Claude</td><td>v1.0</td></tr>
+<tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent</td><td>v2.0</td></tr>
+<tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG</td><td>v1.0</td></tr>
+<tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Screenshot analysis (eyes.py)</td><td>Ollama (GGUF) / OpenAI</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Target local engine</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
+<tr><td>Ears</td><td>Hearing (STT)</td><td>Audio transcription (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
+<tr><td>Mouth</td><td>Speech (TTS)</td><td>Voice synthesis (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
+<tr><td>Eyes (physical)</td><td>World perception</td><td>Objects, obstacles</td><td>YOLO ONNX</td><td>v2.0</td></tr>
+<tr><td>Legs</td><td>Movement</td><td>Mobility</td><td>Rider-Pi</td><td>v1.0</td></tr>
+<tr><td>Metabolism</td><td>Performance</td><td>Model execution</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
+<tr><td>Communication</td><td>Thought exchange</td><td>Inference engine</td><td>Ollama / vLLM<br>Nest<br>API</td><td>v1.0</td></tr>
+<tr><td>Habitat</td><td>Environment</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
 </table>
 
 ## 2A. Model layer – Dual-Engine Strategy
@@ -80,6 +81,7 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
 > **Architectural Decision: Experimental Dual-Stack (Ollama vs vLLM)**
 > Maintaining parallel support for both serving technologies (Ollama and vLLM) is currently a **conscious design choice**.
 > It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
+
 
 ### Model categories:
 1. **Worker Models (workers)** – fast ONNX models.
@@ -172,3 +174,18 @@ Improves:
 ## 8. Integration of Rider-Pi and Google Home (IoT) - Venom 2.0
 Rider-Pi – physical body.
 Google Home - Internet of Things
+
+Venom coordinates the entire ecosystem.
+
+## 9. Final definition
+Venom is:
+- meta-brain,
+- AI organism,
+- systems architect,
+- agent orchestrator,
+- knowledge manager,
+- learning system,
+- policy guardian,
+- AI creating AI.
+
+And all models operate in a unified **Dual-Engine (ONNX + GGUF)** architecture.

@@ -3,9 +3,9 @@
 import ast
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-import networkx as nx
+import networkx as nx  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -19,7 +19,9 @@ class CodeGraphStore:
     Używa AST (Abstract Syntax Tree) do analizy zależności między plikami, klasami i funkcjami.
     """
 
-    def __init__(self, workspace_root: str = None, graph_file: str = None):
+    def __init__(
+        self, workspace_root: Optional[str] = None, graph_file: Optional[str] = None
+    ):
         """
         Inicjalizacja CodeGraphStore.
 
@@ -291,8 +293,8 @@ class CodeGraphStore:
         Returns:
             Statystyki grafu
         """
-        node_types = {}
-        edge_types = {}
+        node_types: dict[str, int] = {}
+        edge_types: dict[str, int] = {}
 
         for node, data in self.graph.nodes(data=True):
             node_type = data.get("type", "unknown")
@@ -325,7 +327,7 @@ class CodeVisitor(ast.NodeVisitor):
         self.file_node = file_node
         self.graph = graph
         self.file_path = file_path
-        self.current_class = None  # Śledzimy aktualną klasę
+        self.current_class: Optional[str] = None  # Śledzimy aktualną klasę
 
     def visit_Import(self, node: ast.Import) -> None:
         """Odwiedza instrukcję import."""
@@ -370,6 +372,18 @@ class CodeVisitor(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         """Odwiedza definicję funkcji."""
+        self._visit_function_like(node)
+        self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Odwiedza definicję funkcji asynchronicznej."""
+        self._visit_function_like(node)
+        self.generic_visit(node)
+
+    def _visit_function_like(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> None:
+        """Obsługuje definicję funkcji (sync/async)."""
         if self.current_class:
             # Metoda w klasie
             func_node = f"{self.current_class}::method:{node.name}"
@@ -391,13 +405,6 @@ class CodeVisitor(ast.NodeVisitor):
 
         # Analizuj wywołania funkcji w ciele
         self._analyze_function_calls(node, func_node)
-
-        self.generic_visit(node)
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """Odwiedza definicję funkcji asynchronicznej."""
-        # Traktuj podobnie jak zwykłą funkcję
-        self.visit_FunctionDef(node)
 
     def _analyze_function_calls(
         self, func_node: ast.FunctionDef | ast.AsyncFunctionDef, node_id: str

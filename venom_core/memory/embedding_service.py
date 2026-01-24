@@ -1,7 +1,7 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
 from functools import lru_cache
-from typing import List
+from typing import Any, List, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -15,7 +15,7 @@ class EmbeddingService:
     Obsługuje tryb lokalny (sentence-transformers) oraz OpenAI API.
     """
 
-    def __init__(self, service_type: str = None):
+    def __init__(self, service_type: Optional[str] = None):
         """
         Inicjalizacja serwisu embeddingów.
 
@@ -27,15 +27,15 @@ class EmbeddingService:
             SETTINGS.FORCE_LOCAL_MODEL or SETTINGS.AI_MODE == "LOCAL"
         ):
             self.service_type = "local"
-        self._model = None
-        self._client = None
+        self._model: Optional[Any] = None
+        self._client: Optional[Any] = None
         logger.info(f"EmbeddingService inicjalizowany z typem: {self.service_type}")
         # Zachowaj kompatybilność z testami: expose cached getter z cache_info/cache_clear.
         self._get_embedding_cached = lru_cache(maxsize=1000)(
             self._get_embedding_impl_wrapper
         )
 
-    def _ensure_model_loaded(self):
+    def _ensure_model_loaded(self) -> None:
         """Lazy loading modelu embeddingów."""
         if self._model is not None or self._client is not None:
             return
@@ -88,9 +88,13 @@ class EmbeddingService:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
+            if self._model is None:
+                raise RuntimeError("Model embeddingów nie został załadowany")
             embedding = self._model.encode(text, convert_to_numpy=True)
             return embedding.tolist()
         elif self.service_type == "openai":
+            if self._client is None:
+                raise RuntimeError("Klient OpenAI nie został zainicjalizowany")
             response = self._client.embeddings.create(
                 model="text-embedding-3-small", input=text
             )
@@ -144,15 +148,21 @@ class EmbeddingService:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
+            if self._model is None:
+                raise RuntimeError("Model embeddingów nie został załadowany")
             # Batch encoding dla lepszej wydajności
             embeddings = self._model.encode(texts, convert_to_numpy=True)
             return [emb.tolist() for emb in embeddings]
         elif self.service_type == "openai":
+            if self._client is None:
+                raise RuntimeError("Klient OpenAI nie został zainicjalizowany")
             # OpenAI też wspiera batch
             response = self._client.embeddings.create(
                 model="text-embedding-3-small", input=texts
             )
             return [item.embedding for item in response.data]
+        else:  # pragma: no cover - nieobsługiwane typy
+            raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")
 
     def clear_cache(self):
         """Czyści cache embeddingów."""
@@ -170,8 +180,11 @@ class EmbeddingService:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
+            if self._model is None:
+                raise RuntimeError("Model embeddingów nie został załadowany")
             # all-MiniLM-L6-v2 ma 384 wymiary
             return self._model.get_sentence_embedding_dimension()
         elif self.service_type == "openai":
             # text-embedding-3-small ma 1536 wymiarów
             return 1536
+        raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")

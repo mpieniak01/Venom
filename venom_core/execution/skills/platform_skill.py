@@ -449,7 +449,7 @@ class PlatformSkill:
         Returns:
             Dict ze statusem każdej platformy
         """
-        status = {
+        status: dict[str, dict[str, object]] = {
             "github": {
                 "configured": bool(self.github_token and self.github_repo_name),
                 "connected": False,

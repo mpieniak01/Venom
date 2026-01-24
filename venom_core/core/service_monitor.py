@@ -16,15 +16,15 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - zależne od środowiska testowego
-    import chromadb  # type: ignore
+    import chromadb  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
-    chromadb = None  # type: ignore
+    chromadb = None
 
 logger = get_logger(__name__)
 
@@ -169,9 +169,9 @@ class ServiceHealthMonitor:
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
 
         # Cache ChromaDB availability
-        self._chromadb_available = None
-        self._chromadb_module = None
-        self._chromadb_client = None
+        self._chromadb_available: Optional[bool] = None
+        self._chromadb_module: Optional[object] = None
+        self._chromadb_client: Optional[object] = None
 
     def get_all_services(self) -> List[ServiceInfo]:
         """
@@ -208,14 +208,17 @@ class ServiceHealthMonitor:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Zaktualizuj statusy w rejestrze
-        updated_services = []
+        updated_services: List[ServiceInfo] = []
         for service, result in zip(services, results):
             if isinstance(result, Exception):
                 logger.error(f"Błąd sprawdzania usługi {service.name}: {result}")
                 service.status = ServiceStatus.OFFLINE
                 service.error_message = str(result)
-            else:
+                updated_services.append(service)
+            elif isinstance(result, ServiceInfo):
                 updated_services.append(result)
+            else:
+                updated_services.append(service)
             self.registry.services[service.name] = service
 
         return updated_services
@@ -344,7 +347,7 @@ class ServiceHealthMonitor:
 
         if "redis" in name:
             try:
-                import redis.asyncio as redis  # type: ignore
+                import redis.asyncio as redis
 
                 client = redis.from_url(
                     service.endpoint or "", socket_connect_timeout=1
@@ -362,7 +365,7 @@ class ServiceHealthMonitor:
 
         # LanceDB (lokalna pamięć embed)
         try:
-            import lancedb  # type: ignore
+            import lancedb  # type: ignore[import-untyped]
 
             db_path = getattr(SETTINGS, "VECTOR_DB_PATH", "data/vector_store")
             conn = lancedb.connect(db_path)

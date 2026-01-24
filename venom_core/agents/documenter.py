@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
@@ -23,10 +23,10 @@ class DocumenterAgent:
 
     def __init__(
         self,
-        workspace_root: str = None,
-        git_skill: GitSkill = None,
-        file_skill: FileSkill = None,
-        event_broadcaster=None,
+        workspace_root: Optional[str] = None,
+        git_skill: Optional[GitSkill] = None,
+        file_skill: Optional[FileSkill] = None,
+        event_broadcaster: Optional[Any] = None,
     ):
         """
         Inicjalizacja DocumenterAgent.

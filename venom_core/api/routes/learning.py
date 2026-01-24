@@ -1,10 +1,10 @@
 """Moduł: routes/learning - Endpointy API dla logów nauki."""
 
+import importlib
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
-import aiofiles
 from fastapi import APIRouter
 
 from venom_core.core.hidden_prompts import (
@@ -13,6 +13,12 @@ from venom_core.core.hidden_prompts import (
     set_active_hidden_prompt,
 )
 from venom_core.core.learning_log import ensure_learning_log_boot_id
+
+aiofiles: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    aiofiles = importlib.import_module("aiofiles")
+except Exception:  # pragma: no cover
+    aiofiles = None
 
 router = APIRouter(prefix="/api/v1/learning", tags=["learning"])
 
@@ -34,6 +40,8 @@ async def get_learning_logs(
         limit = 500
 
     if not LEARNING_LOG_PATH.exists():
+        return {"count": 0, "items": []}
+    if aiofiles is None:
         return {"count": 0, "items": []}
 
     items: List[dict] = []

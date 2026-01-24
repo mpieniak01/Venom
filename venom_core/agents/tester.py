@@ -1,7 +1,7 @@
 """Moduł: tester - agent QA do testów E2E."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -100,7 +100,7 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
         )
 
         # Service do chat completion
-        self.chat_service = self.kernel.get_service(service_id="default")
+        self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("TesterAgent zainicjalizowany")
 
@@ -210,7 +210,7 @@ Bądź systematyczny i dokładny. Każdy test powinien być powtarzalny.
 
         try:
             for i, step in enumerate(scenario_steps, 1):
-                action = step.get("action")
+                action = step.get("action") or ""
                 report_lines.append(f"{i}. {action.upper()}")
 
                 if action == "visit":

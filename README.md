@@ -700,11 +700,14 @@ ruff check . --fix
 ruff format .
 
 # isort (sortowanie importów)
-isort . --profile black
+isort .
 
 # mypy (type checking)
 mypy venom_core
 ```
+
+Narzędzia korzystają z konfiguracji repo (`pyproject.toml`) i pomijają katalogi danych
+takie jak `models/` i `models_cache/`.
 
 ## 📊 Statystyki projektu
 

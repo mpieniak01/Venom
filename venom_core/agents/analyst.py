@@ -40,6 +40,7 @@ class TaskMetrics:
         self.task_id = task_id
         self.complexity = complexity
         # Normalize to ServiceId if string provided
+        self.selected_service: ServiceId | str
         if isinstance(selected_service, str):
             try:
                 self.selected_service = ServiceId(selected_service)

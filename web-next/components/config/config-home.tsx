@@ -5,18 +5,20 @@ import { Settings, Server, FileCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import { ServicesPanel } from "./services-panel";
 import { ParametersPanel } from "./parameters-panel";
 
 export function ConfigHome() {
+  const t = useTranslation();
   const [activeTab, setActiveTab] = useState<"services" | "parameters">("services");
 
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Konfiguracja"
-        title="Konfiguracja"
-        description="Panel sterowania stosem Venom: uruchamianie/zatrzymywanie usług i konfiguracja parametrów."
+        eyebrow={t("config.title")}
+        title={t("config.title")}
+        description={t("config.description")}
         as="h1"
         size="lg"
         rightSlot={<Settings className="page-heading-icon" />}
@@ -36,7 +38,7 @@ export function ConfigHome() {
           )}
         >
           <Server className="h-4 w-4" />
-          Usługi
+          {t("config.tabs.services")}
         </Button>
         <Button
           onClick={() => setActiveTab("parameters")}
@@ -50,7 +52,7 @@ export function ConfigHome() {
           )}
         >
           <FileCode className="h-4 w-4" />
-          Parametry
+          {t("config.tabs.parameters")}
         </Button>
       </div>
 

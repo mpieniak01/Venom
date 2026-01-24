@@ -264,7 +264,7 @@ class ConfigUpdateRequest(BaseModel):
             raise ValueError(
                 f"Znaleziono {len(invalid_keys)} nieprawidłowych kluczy konfiguracji"
             )
-        
+
         # 2. Walidacja zakresów wartości
         errors = []
 

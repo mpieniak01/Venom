@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from venom_core.utils.logger import get_logger
 
@@ -253,20 +253,19 @@ class ConfigUpdateRequest(BaseModel):
         ..., description="Mapa klucz->wartość do aktualizacji"
     )
 
-    @validator("updates")
-    def validate_whitelist(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Sprawdź czy wszystkie klucze są na whiteliście."""
+    @field_validator("updates", mode="before")
+    @classmethod
+    def validate_updates(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Sprawdź whitelist i zakresy wartości dla konfiguracji."""
+        # 1. Sprawdź whitelist
         invalid_keys = set(v.keys()) - CONFIG_WHITELIST
         if invalid_keys:
             # Nie ujawniamy które klucze są nieprawidłowe ze względów bezpieczeństwa
             raise ValueError(
                 f"Znaleziono {len(invalid_keys)} nieprawidłowych kluczy konfiguracji"
             )
-        return v
 
-    @validator("updates")
-    def validate_ranges(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Walidacja zakresów wartości dla specyficznych parametrów."""
+        # 2. Walidacja zakresów wartości
         errors = []
 
         # Walidacja portów (1-65535)

@@ -255,20 +255,17 @@ class ConfigUpdateRequest(BaseModel):
 
     @field_validator("updates")
     @classmethod
-    def validate_whitelist(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Sprawdź czy wszystkie klucze są na whiteliście."""
+    def validate_updates(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Sprawdź whitelist i zakresy wartości dla konfiguracji."""
+        # 1. Sprawdź whitelist
         invalid_keys = set(v.keys()) - CONFIG_WHITELIST
         if invalid_keys:
             # Nie ujawniamy które klucze są nieprawidłowe ze względów bezpieczeństwa
             raise ValueError(
                 f"Znaleziono {len(invalid_keys)} nieprawidłowych kluczy konfiguracji"
             )
-        return v
-
-    @field_validator("updates")
-    @classmethod
-    def validate_ranges(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        """Walidacja zakresów wartości dla specyficznych parametrów."""
+        
+        # 2. Walidacja zakresów wartości
         errors = []
 
         # Walidacja portów (1-65535)

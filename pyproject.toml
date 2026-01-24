@@ -39,7 +39,7 @@ exclude = "(^|/)(models|models_cache|node_modules|web|web-next|\\.venv|venv|\\.m
 
 [tool.black]
 line-length = 88
-target-version = ["py312"]
+target-version = ["py311"]
 extend-exclude = '''
 (
   ^/(

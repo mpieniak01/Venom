@@ -21,6 +21,11 @@ import psutil  # type: ignore[import-untyped]
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
+try:  # pragma: no cover - optional dependency
+    import chromadb  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover
+    chromadb = None
+
 logger = get_logger(__name__)
 
 
@@ -334,6 +339,7 @@ class ServiceHealthMonitor:
             service: Usługa do sprawdzenia
         """
         name = service.name.lower()
+        description = service.description.lower()
 
         if "redis" in name:
             try:
@@ -348,6 +354,21 @@ class ServiceHealthMonitor:
             except ModuleNotFoundError:
                 service.status = ServiceStatus.OFFLINE
                 service.error_message = "redis nie jest zainstalowany"
+            except Exception as e:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = str(e)[:100]
+            return
+
+        if "chroma" in name or "chroma" in description:
+            if chromadb is None:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = "chromadb nie jest zainstalowane"
+                return
+            try:
+                client = chromadb.Client()
+                _ = client.list_collections()
+                service.status = ServiceStatus.ONLINE
+                service.error_message = None
             except Exception as e:
                 service.status = ServiceStatus.OFFLINE
                 service.error_message = str(e)[:100]

@@ -253,7 +253,7 @@ class ConfigUpdateRequest(BaseModel):
         ..., description="Mapa klucz->wartość do aktualizacji"
     )
 
-    @field_validator("updates")
+    @field_validator("updates", mode="before")
     @classmethod
     def validate_updates(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Sprawdź whitelist i zakresy wartości dla konfiguracji."""

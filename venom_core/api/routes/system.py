@@ -697,7 +697,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                         # Serwer jeszcze nie odpowiada - kontynuujemy próby
                         pass
                     await asyncio.sleep(0.5)
-            
+
             # Jeśli serwer nie stał się zdrowy po timeoucie, oznacz niepowodzenie
             if not health_ok:
                 logger.error(

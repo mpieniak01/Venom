@@ -694,7 +694,9 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                             health_ok = True
                             break
                     except Exception:
-                        # Serwer jeszcze nie odpowiada - kontynuujemy próby
+                        # Serwer jeszcze nie odpowiada - kontynuujemy próby.
+                        # Pomijamy wszystkie wyjątki (connection refused, timeout, itp.)
+                        # ponieważ są one oczekiwane podczas startu serwera.
                         pass
                     await asyncio.sleep(0.5)
 

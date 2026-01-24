@@ -1,6 +1,6 @@
 """Koordynacja i routing przepływów pracy (flows/workflows)."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, Protocol, Tuple
 from uuid import UUID
 
 from venom_core.agents.guardian import GuardianAgent
@@ -10,12 +10,14 @@ from venom_core.core.council import (
     create_local_llm_config,
 )
 from venom_core.core.flow_router import FlowRouter
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import CodeReviewLoop
 from venom_core.core.flows.council import CouncilFlow
 from venom_core.core.flows.forge import ForgeFlow
 from venom_core.core.flows.healing import HealingFlow
 from venom_core.core.flows.issue_handler import IssueHandlerFlow
+from venom_core.core.models import TaskRequest, TaskResponse
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -25,6 +27,17 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class MiddlewareLike(Protocol):
+    async def broadcast_event(
+        self,
+        *,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
+    ) -> None: ...
+
+
 class FlowCoordinator:
     """Koordynuje i zarządza różnymi przepływami pracy."""
 
@@ -32,8 +45,10 @@ class FlowCoordinator:
         self,
         state_manager: "StateManager",
         task_dispatcher: "TaskDispatcher",
-        event_broadcaster=None,
-        orchestrator_submit_task=None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
+        orchestrator_submit_task: Optional[
+            Callable[[TaskRequest], Awaitable[TaskResponse]]
+        ] = None,
     ):
         """
         Inicjalizacja FlowCoordinator.
@@ -50,18 +65,18 @@ class FlowCoordinator:
         self.orchestrator_submit_task = orchestrator_submit_task
 
         # Lazy-initialized flows
-        self._code_review_loop = None
-        self._council_flow = None
-        self._council_config = None
-        self._forge_flow = None
-        self._campaign_flow = None
-        self._healing_flow = None
-        self._issue_handler_flow = None
+        self._code_review_loop: Optional[CodeReviewLoop] = None
+        self._council_flow: Optional[CouncilFlow] = None
+        self._council_config: Optional[CouncilConfig] = None
+        self._forge_flow: Optional[ForgeFlow] = None
+        self._campaign_flow: Optional[CampaignFlow] = None
+        self._healing_flow: Optional[HealingFlow] = None
+        self._issue_handler_flow: Optional[IssueHandlerFlow] = None
 
         # Flow router
         self.flow_router = FlowRouter()
 
-    def reset_flows(self):
+    def reset_flows(self) -> None:
         """Resetuje flowy zależne od dispatcherów (używane po odświeżeniu kernela)."""
         self._code_review_loop = None
         self._council_flow = None
@@ -94,7 +109,9 @@ class FlowCoordinator:
         # Deleguj decyzję do FlowRouter
         return self.flow_router.should_use_council(content, intent)
 
-    async def run_council(self, task_id: UUID, context: str, middleware) -> str:
+    async def run_council(
+        self, task_id: UUID, context: str, middleware: MiddlewareLike
+    ) -> str:
         """
         Uruchamia tryb Council (AutoGen Group Chat) dla złożonych zadań.
 
@@ -124,6 +141,11 @@ class FlowCoordinator:
 
                 guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
                 llm_config = create_local_llm_config()
+
+                if coder is None or critic is None or architect is None:
+                    raise RuntimeError(
+                        "Brak wymaganych agentów Council (coder/critic/architect)"
+                    )
 
                 self._council_config = CouncilConfig(
                     coder_agent=coder,
@@ -193,7 +215,9 @@ class FlowCoordinator:
             logger.warning("Council zawiódł - powrót do standardowego flow")
             return f"Council mode nie powiódł się: {e}"
 
-    def _normalize_council_tuple(self, council_result):
+    def _normalize_council_tuple(
+        self, council_result: Any
+    ) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
         """Zapewnia że create_council zwraca krotkę (user_proxy, group_chat, manager)."""
 
         if isinstance(council_result, tuple):
@@ -321,6 +345,8 @@ class FlowCoordinator:
         Returns:
             Dict z wynikami kampanii
         """
+        if self.orchestrator_submit_task is None:
+            raise RuntimeError("Brak orchestrator_submit_task dla CampaignFlow")
         if self._campaign_flow is None:
             self._campaign_flow = CampaignFlow(
                 state_manager=self.state_manager,

@@ -14,32 +14,35 @@ logger = get_logger(__name__)
 
 
 class UpsertResult(str):
-    """Kompatybilny z dict + string wynik operacji upsert."""
+    """Wynik operacji upsert: zachowuje się jak string + dict-like access."""
 
+    _chunks_count: int
     __slots__ = ("_chunks_count",)
 
     def __new__(cls, message: str, chunks_count: int):
-        obj = super().__new__(cls, message)
+        obj = str.__new__(cls, message)
         obj._chunks_count = chunks_count
         return obj
 
-    def __getitem__(self, key: str):
-        if key == "message":
-            return str(self)
-        if key == "chunks_count":
-            return self._chunks_count
-        raise KeyError(key)
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, str):
+            if key == "message":
+                return str(self)
+            if key == "chunks_count":
+                return self._chunks_count
+            raise KeyError(key)
+        return str.__getitem__(self, key)
 
-    def get(self, key: str, default=None):
+    def get(self, key: str, default: Any = None) -> Any:
         try:
             return self[key]
         except KeyError:
             return default
 
-    def keys(self):
+    def keys(self) -> tuple[str, str]:
         return ("message", "chunks_count")
 
-    def items(self):
+    def items(self) -> tuple[tuple[str, str], tuple[str, int]]:
         return (("message", str(self)), ("chunks_count", self._chunks_count))
 
     @property
@@ -65,8 +68,8 @@ class VectorStore:
 
     def __init__(
         self,
-        db_path: str = None,
-        embedding_service: EmbeddingService = None,
+        db_path: Optional[str] = None,
+        embedding_service: Optional[EmbeddingService] = None,
         collection_name: str = "default",
     ):
         """
@@ -84,18 +87,18 @@ class VectorStore:
         self.collection_name = collection_name
 
         # Lazy loading bazy danych
-        self._db = None
-        self._table = None
+        self._db: Any = None
+        self._table: Any = None
 
         logger.info(f"VectorStore zainicjalizowany: db_path={self.db_path}")
 
-    def _ensure_db_connected(self):
+    def _ensure_db_connected(self) -> None:
         """Lazy loading połączenia z bazą danych."""
         if self._db is not None:
             return
 
         try:
-            import lancedb
+            import lancedb  # type: ignore[import-untyped]
 
             logger.info(f"Łączenie z bazą LanceDB: {self.db_path}")
             self._db = lancedb.connect(str(self.db_path))
@@ -106,7 +109,7 @@ class VectorStore:
             )
             raise
 
-    def _get_or_create_table(self, collection_name: str = None):
+    def _get_or_create_table(self, collection_name: Optional[str] = None):
         """
         Pobiera lub tworzy tabelę w bazie.
 
@@ -120,6 +123,8 @@ class VectorStore:
         col_name = collection_name or self.collection_name
 
         # Sprawdź czy tabela już istnieje
+        if self._db is None:
+            raise RuntimeError("LanceDB connection not initialized")
         if col_name in self._db.table_names():
             logger.debug(f"Używanie istniejącej tabeli: {col_name}")
             return self._db.open_table(col_name)
@@ -219,10 +224,10 @@ class VectorStore:
         self,
         text: str,
         metadata: Optional[Dict[str, Any]] = None,
-        collection_name: str = None,
+        collection_name: Optional[str] = None,
         chunk_text: bool = True,
         id_override: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> UpsertResult:
         """
         Zapisuje lub aktualizuje tekst w bazie wektorowej.
 
@@ -258,7 +263,7 @@ class VectorStore:
         # Przygotuj dane do zapisu
         table = self._get_or_create_table(col_name)
 
-        records = []
+        records: list[dict[str, Any]] = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             record = {
                 "id": id_override if id_override and i == 0 else str(uuid.uuid4()),
@@ -276,7 +281,7 @@ class VectorStore:
         return UpsertResult(message=message, chunks_count=len(records))
 
     def search(
-        self, query: str, limit: int = 3, collection_name: str = None
+        self, query: str, limit: int = 3, collection_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Wyszukuje najbardziej podobne fragmenty do zapytania.
@@ -299,6 +304,8 @@ class VectorStore:
 
         # Sprawdź czy tabela istnieje
         self._ensure_db_connected()
+        if self._db is None:
+            raise RuntimeError("LanceDB connection not initialized")
         if col_name not in self._db.table_names():
             logger.warning(f"Kolekcja '{col_name}' nie istnieje, zwracam pustą listę")
             return []
@@ -313,7 +320,7 @@ class VectorStore:
         results = table.search(query_embedding).limit(limit).to_list()
 
         # Przetwórz wyniki
-        processed_results = []
+        processed_results: list[dict[str, object]] = []
         for result in results:
             # Pomiń rekord inicjalizacyjny
             if result.get("id") == "init":
@@ -323,7 +330,7 @@ class VectorStore:
                 {
                     "text": result["text"],
                     "metadata": json.loads(result.get("metadata", "{}")),
-                    "score": result.get("_distance", None),
+                    "score": result.get("_distance"),
                 }
             )
 
@@ -338,6 +345,8 @@ class VectorStore:
             Lista nazw kolekcji
         """
         self._ensure_db_connected()
+        if self._db is None:
+            return []
         return self._db.table_names()
 
     def delete_collection(self, collection_name: str) -> str:
@@ -354,7 +363,8 @@ class VectorStore:
             ValueError: Jeśli kolekcja nie istnieje
         """
         self._ensure_db_connected()
-
+        if self._db is None:
+            raise RuntimeError("LanceDB connection not initialized")
         if collection_name not in self._db.table_names():
             raise ValueError(f"Kolekcja '{collection_name}' nie istnieje")
 

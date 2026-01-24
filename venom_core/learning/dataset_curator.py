@@ -25,7 +25,7 @@ class TrainingExample:
         self,
         instruction: str,
         input_text: str,
-        output: str,
+        output: str | bytes,
         metadata: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -39,7 +39,9 @@ class TrainingExample:
         """
         self.instruction = instruction
         self.input_text = input_text
-        self.output = output
+        self.output = (
+            output.decode("utf-8", "ignore") if isinstance(output, bytes) else output
+        )
         self.metadata = metadata or {}
 
     def to_alpaca_format(self) -> Dict[str, str]:
@@ -95,10 +97,10 @@ class DatasetCurator:
 
     def __init__(
         self,
-        output_dir: str = None,
-        lessons_store=None,
-        git_skill=None,
-        state_manager=None,
+        output_dir: Optional[str] = None,
+        lessons_store: Optional[Any] = None,
+        git_skill: Optional[Any] = None,
+        state_manager: Optional[Any] = None,
         min_quality_score: float = DEFAULT_MIN_QUALITY_SCORE,
         max_diff_length: int = DEFAULT_MAX_DIFF_LENGTH,
     ):
@@ -416,7 +418,7 @@ class DatasetCurator:
             return {"total_examples": 0}
 
         # Zlicz źródła
-        sources = {}
+        sources: Dict[str, int] = {}
         for ex in self.examples:
             source = ex.metadata.get("source", "unknown")
             sources[source] = sources.get(source, 0) + 1

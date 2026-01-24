@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, TypedDict
 
 import httpx
 
@@ -26,9 +26,13 @@ _LANG_LABELS = {
 class TranslationService:
     """Lekki serwis tłumaczeń używający aktywnego runtime."""
 
+    class _CacheEntry(TypedDict):
+        value: str
+        timestamp: float
+
     def __init__(self, cache_ttl_seconds: int = 86400, max_concurrency: int = 3):
-        self._cache: Dict[str, Dict[str, str]] = {}
-        self._cache_ttl_seconds = cache_ttl_seconds
+        self._cache: Dict[str, TranslationService._CacheEntry] = {}
+        self._cache_ttl_seconds = float(cache_ttl_seconds)
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
     def _build_cache_key(
@@ -84,11 +88,8 @@ class TranslationService:
             now = time.time()
             if use_cache:
                 cached = self._cache.get(cache_key)
-                if (
-                    cached
-                    and now - cached.get("timestamp", 0) < self._cache_ttl_seconds
-                ):
-                    return cached.get("value", text)
+                if cached and now - cached["timestamp"] < self._cache_ttl_seconds:
+                    return cached["value"]
 
             runtime = get_active_llm_runtime()
             chat_endpoint = self._resolve_chat_endpoint()
@@ -124,16 +125,16 @@ class TranslationService:
                     )
                     response.raise_for_status()
                     data = response.json()
-            message = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
-            result = message or text
-            if use_cache:
-                self._cache[cache_key] = {"value": result, "timestamp": now}
-            return result
+                message = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+                result = message or text
+                if use_cache:
+                    self._cache[cache_key] = {"value": result, "timestamp": now}
+                return result
         except Exception as exc:
             logger.warning(f"Tłumaczenie nie powiodło się: {exc}")
             if allow_fallback:

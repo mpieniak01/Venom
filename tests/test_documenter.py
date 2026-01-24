@@ -44,14 +44,12 @@ async def test_documenter_handles_code_change(temp_workspace):
 
     # Utwórz plik Python
     test_file = temp_workspace / "test_module.py"
-    test_file.write_text(
-        '''"""Test module."""
+    test_file.write_text('''"""Test module."""
 
 def hello():
     """Say hello."""
     return "hello"
-'''
-    )
+''')
 
     # Wywołaj handle_code_change (bez GitSkill, nie będzie commitował)
     await agent.handle_code_change(str(test_file))

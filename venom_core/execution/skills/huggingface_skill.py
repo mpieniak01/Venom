@@ -186,7 +186,9 @@ class HuggingFaceSkill:
             # Pobierz README (Model Card)
             try:
                 # Używamy card_data do pobrania treści
-                card_content = model_info.card_data if model_info.card_data else None
+                card_content: str = (
+                    str(model_info.card_data) if model_info.card_data else ""
+                )
 
                 # Jeśli card_data jest puste, spróbuj pobrać bezpośrednio
                 if not card_content:
@@ -203,7 +205,7 @@ class HuggingFaceSkill:
                         logger.debug(f"Nie można pobrać README dla {model_id}: {e}")
                         card_content = "Brak dostępnego Model Card"
                 else:
-                    # Konwertuj card_data na string
+                    # card_content już jest stringiem
                     card_content = str(card_content)
 
             except Exception as e:

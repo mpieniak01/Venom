@@ -1,6 +1,6 @@
 """Moduł: memory_skill - Plugin Semantic Kernel do obsługi pamięci wektorowej."""
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -16,7 +16,7 @@ class MemorySkill:
     Pozwala agentom zapisywać i przypominać sobie informacje.
     """
 
-    def __init__(self, vector_store: VectorStore = None):
+    def __init__(self, vector_store: Optional[VectorStore] = None):
         """
         Inicjalizacja MemorySkill.
 

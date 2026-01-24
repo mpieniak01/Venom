@@ -1,9 +1,12 @@
 """Moduł: token_economist - optymalizacja kontekstu i kalkulacja kosztów."""
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
-import yaml
+try:  # pragma: no cover - zależne od środowiska
+    import yaml  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover
+    yaml = None
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -18,8 +21,8 @@ class TokenEconomist:
     """Optymalizator kontekstu i kalkulator kosztów tokenów."""
 
     # Cennik tokenów (USD za 1M tokenów) - aktualizowany 2025-12-07
-    PRICING = {
-        "_updated": "2025-12-07",  # Data ostatniej aktualizacji cennika
+    PRICING_UPDATED = "2025-12-07"
+    PRICING: dict[str, dict[str, float]] = {
         "gpt-4o": {"input": 5.0, "output": 15.0},
         "gpt-4-turbo": {"input": 10.0, "output": 30.0},
         "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
@@ -29,7 +32,9 @@ class TokenEconomist:
         "local": {"input": 0.0, "output": 0.0},  # Lokalny model jest darmowy
     }
 
-    def __init__(self, enable_compression: bool = True, pricing_file: str = None):
+    def __init__(
+        self, enable_compression: bool = True, pricing_file: Optional[str] = None
+    ):
         """
         Inicjalizacja Token Economist.
 
@@ -39,7 +44,7 @@ class TokenEconomist:
         """
         self.enable_compression = enable_compression
         self.pricing_file = pricing_file
-        self.external_pricing = None
+        self.external_pricing: Optional[Dict[str, Any]] = None
 
         # Wczytaj cennik z pliku YAML jeśli podano
         if pricing_file:
@@ -68,7 +73,10 @@ class TokenEconomist:
         return max(1, len(text) // 4)
 
     def compress_context(
-        self, history: ChatHistory, max_tokens: int = 4000, reserve_tokens: int = None
+        self,
+        history: ChatHistory,
+        max_tokens: int = 4000,
+        reserve_tokens: Optional[int] = None,
     ) -> ChatHistory:
         """
         Kompresuje historię czatu jeśli przekracza limit tokenów.
@@ -127,7 +135,7 @@ class TokenEconomist:
         available_tokens = max_tokens - system_tokens - reserve_tokens
 
         # Zachowaj ostatnie N wiadomości
-        messages_to_keep = []
+        messages_to_keep: list[ChatMessageContent] = []
         tokens_count = 0
 
         for msg in reversed(remaining_messages):
@@ -180,10 +188,10 @@ class TokenEconomist:
             Podsumowanie w formie tekstu
         """
         # Uproszczone podsumowanie - w produkcji użyj LLM do sumaryzacji
-        summary_parts = []
+        summary_parts: list[str] = []
 
-        user_questions = []
-        assistant_responses = []
+        user_questions: list[str] = []
+        assistant_responses: list[str] = []
 
         for msg in messages:
             content = str(msg.content)[:200]  # Ogranicz długość
@@ -242,7 +250,7 @@ class TokenEconomist:
             "model": model_name,
         }
 
-    def _get_pricing(self, model_name: str) -> dict:
+    def _get_pricing(self, model_name: str) -> dict[str, float]:
         """
         Pobiera cennik dla modelu.
 
@@ -328,7 +336,7 @@ class TokenEconomist:
             "compression_needed": total_tokens > 4000,
         }
 
-    def load_pricing(self, pricing_file: str = None) -> Dict:
+    def load_pricing(self, pricing_file: Optional[str] = None) -> Optional[Dict]:
         """
         Wczytuje cennik z pliku YAML.
 
@@ -341,20 +349,24 @@ class TokenEconomist:
         if pricing_file is None:
             # Domyślna ścieżka do pricing.yaml
             project_root = Path(__file__).parent.parent.parent
-            pricing_file = project_root / "data" / "config" / "pricing.yaml"
+            pricing_path = project_root / "data" / "config" / "pricing.yaml"
         else:
-            pricing_file = Path(pricing_file)
+            pricing_path = Path(pricing_file)
 
-        if not pricing_file.exists():
-            logger.warning(f"Plik cennika nie istnieje: {pricing_file}")
+        if not pricing_path.exists():
+            logger.warning(f"Plik cennika nie istnieje: {pricing_path}")
+            return None
+
+        if yaml is None:
+            logger.error("Brak zależności PyYAML (pip install PyYAML)")
             return None
 
         try:
-            with open(pricing_file, "r", encoding="utf-8") as f:
+            with open(pricing_path, "r", encoding="utf-8") as f:
                 pricing_data = yaml.safe_load(f)
 
             self.external_pricing = pricing_data
-            logger.info(f"Wczytano cennik z pliku: {pricing_file}")
+            logger.info(f"Wczytano cennik z pliku: {pricing_path}")
             return pricing_data
         except Exception as e:
             logger.error(f"Błąd podczas wczytywania cennika: {e}")
@@ -408,7 +420,9 @@ class TokenEconomist:
             "is_free": is_free,
         }
 
-    def compare_providers(self, prompt: str, providers: List[str] = None) -> List[Dict]:
+    def compare_providers(
+        self, prompt: str, providers: Optional[List[str]] = None
+    ) -> List[Dict]:
         """
         Porównuje koszty wykonania zadania między różnymi providerami.
 
@@ -427,7 +441,7 @@ class TokenEconomist:
         if providers is None:
             providers = ["local", "gpt-4o-mini", "gpt-4o", "gemini-1.5-flash"]
 
-        results = []
+        results: list[dict[str, float | int | str | bool]] = []
         prompt_length = len(prompt)
 
         for provider in providers:
@@ -443,7 +457,7 @@ class TokenEconomist:
             )
 
         # Sortuj od najtańszego do najdroższego
-        results.sort(key=lambda x: x["cost"])
+        results.sort(key=lambda x: float(x["cost"]))
 
         if results:
             logger.info(
@@ -475,8 +489,8 @@ class TokenEconomist:
                 yaml_pricing = models_pricing[service_id_lower]
                 # YAML ma ceny per 1K tokenów, zwracamy bezpośrednio
                 return {
-                    "input": yaml_pricing.get("input_cost_per_1k", 0.0),
-                    "output": yaml_pricing.get("output_cost_per_1k", 0.0),
+                    "input": float(yaml_pricing.get("input_cost_per_1k", 0.0)),
+                    "output": float(yaml_pricing.get("output_cost_per_1k", 0.0)),
                 }
 
         # Fallback do statycznego cennika PRICING (ceny per 1M)

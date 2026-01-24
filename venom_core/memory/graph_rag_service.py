@@ -5,9 +5,9 @@ import json
 import re
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Protocol, Set
 
-import networkx as nx
+import networkx as nx  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.memory.embedding_service import EmbeddingService
@@ -15,6 +15,10 @@ from venom_core.memory.vector_store import VectorStore
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class LLMService(Protocol):
+    async def get_chat_message_content(self, *args: Any, **kwargs: Any) -> Any: ...
 
 
 class GraphRAGService:
@@ -25,9 +29,9 @@ class GraphRAGService:
 
     def __init__(
         self,
-        graph_file: str = None,
-        vector_store: VectorStore = None,
-        embedding_service: EmbeddingService = None,
+        graph_file: Optional[str] = None,
+        vector_store: Optional[VectorStore] = None,
+        embedding_service: Optional[EmbeddingService] = None,
     ):
         """
         Inicjalizacja GraphRAGService.
@@ -97,7 +101,7 @@ class GraphRAGService:
         logger.debug(f"Dodano relację: {source_id} -{relationship_type}-> {target_id}")
 
     async def extract_knowledge_from_text(
-        self, text: str, source_id: str, llm_service=None
+        self, text: str, source_id: str, llm_service: Optional[LLMService] = None
     ) -> Dict[str, Any]:
         """
         Ekstrahuje wiedzę z tekstu używając LLM (trójki: podmiot-relacja-dopełnienie).
@@ -266,7 +270,7 @@ Odpowiedź (JSON):"""
             undirected = self.graph.to_undirected()
 
             # Użyj algorytmu Louvain
-            import networkx.algorithms.community as nx_community
+            import networkx.algorithms.community as nx_community  # type: ignore[import-untyped]
 
             communities = list(nx_community.greedy_modularity_communities(undirected))
 
@@ -303,7 +307,7 @@ Odpowiedź (JSON):"""
             )
 
         # Zbierz relacje wewnątrz społeczności (z limitem wczesnego przerwania)
-        relationships = []
+        relationships: list[str] = []
         max_relationships = 100  # Limit przed obcięciem do 5
         for source in community:
             if source not in self.graph:
@@ -331,7 +335,9 @@ Odpowiedź (JSON):"""
 
         return summary
 
-    async def global_search(self, query: str, llm_service=None) -> str:
+    async def global_search(
+        self, query: str, llm_service: Optional[LLMService] = None
+    ) -> str:
         """
         Wyszukiwanie globalne oparte na podsumowaniach społeczności.
         Dobre do pytań typu "O czym jest ten projekt?".
@@ -352,7 +358,7 @@ Odpowiedź (JSON):"""
             return "Graf wiedzy jest pusty lub nie zawiera społeczności."
 
         # Stwórz podsumowania społeczności
-        summaries = []
+        summaries: list[str] = []
         for i, community in enumerate(communities, 1):
             summary = self.get_community_summary(community)
             summaries.append(f"## Społeczność {i}\n{summary}")
@@ -392,7 +398,7 @@ Odpowiedź (JSON):"""
             return f"Wystąpił błąd: {str(e)}\n\nDostępny kontekst:\n{context}"
 
     async def local_search(
-        self, query: str, max_hops: int = 2, llm_service=None
+        self, query: str, max_hops: int = 2, llm_service: Optional[LLMService] = None
     ) -> str:
         """
         Wyszukiwanie lokalne oparte na sąsiedztwie węzłów (multi-hop reasoning).
@@ -425,8 +431,8 @@ Odpowiedź (JSON):"""
                 return "Nie znaleziono węzłów w grafie pasujących do zapytania."
 
             # Eksploruj sąsiedztwo (multi-hop)
-            explored_nodes = set()
-            explored_edges = []
+            explored_nodes: Set[str] = set()
+            explored_edges: list[tuple[str, str, str]] = []
 
             for start_node in starting_nodes[:3]:  # Ogranicz do 3 węzłów startowych
                 # BFS do max_hops kroków
@@ -573,8 +579,8 @@ Odpowiedź (JSON):"""
         Returns:
             Dict ze statystykami
         """
-        entity_types = {}
-        relationship_types = {}
+        entity_types: Dict[str, int] = {}
+        relationship_types: Dict[str, int] = {}
 
         for node, data in self.graph.nodes(data=True):
             entity_type = data.get("entity_type", "Unknown")

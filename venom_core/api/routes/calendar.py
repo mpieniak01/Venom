@@ -1,7 +1,7 @@
 """Moduł: routes/calendar - Endpointy API dla kalendarza i synchronizacji Google."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -120,7 +120,7 @@ async def get_calendar_events(
         end_time = start_time + timedelta(hours=hours)
 
         # Parse result - obecnie skill zwraca sformatowany string
-        events = []
+        events: List[CalendarEvent] = []
         if "Brak wydarzeń" not in result_text and "❌" not in result_text:
             # Zwróć informację tekstową - UI może wyświetlić jako opis
             # W przyszłości: skill zwróci strukturalne dane i parsujemy je tutaj

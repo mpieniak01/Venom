@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
 from venom_core.agents.base import reset_llm_stream_callback, set_llm_stream_callback
@@ -13,6 +13,7 @@ from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
 from venom_core.core.dispatcher import TaskDispatcher
 from venom_core.core.flow_router import FlowRouter
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.flows.campaign import CampaignFlow
 from venom_core.core.flows.code_review import CodeReviewLoop
 from venom_core.core.flows.council import CouncilFlow
@@ -64,6 +65,9 @@ from .session_handler import SessionHandler
 
 logger = get_logger(__name__)
 
+if TYPE_CHECKING:
+    from venom_core.core.council import CouncilConfig
+
 
 class Orchestrator:
     """Orkiestrator zadań - zarządzanie wykonywaniem zadań w tle."""
@@ -71,13 +75,13 @@ class Orchestrator:
     def __init__(
         self,
         state_manager: StateManager,
-        intent_manager: IntentManager = None,
-        task_dispatcher: TaskDispatcher = None,
-        event_broadcaster=None,
-        lessons_store=None,
-        node_manager=None,
-        session_store=None,
-        request_tracer: RequestTracer = None,
+        intent_manager: Optional[IntentManager] = None,
+        task_dispatcher: Optional[TaskDispatcher] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
+        lessons_store: Optional[Any] = None,
+        node_manager: Optional[Any] = None,
+        session_store: Optional[Any] = None,
+        request_tracer: Optional[RequestTracer] = None,
     ):
         """
         Inicjalizacja Orchestrator.
@@ -93,11 +97,11 @@ class Orchestrator:
             request_tracer: Opcjonalny tracer do śledzenia przepływu zadań
         """
         self.state_manager = state_manager
-        self.intent_manager = intent_manager or IntentManager()
-        self.event_broadcaster = event_broadcaster
-        self.lessons_store = lessons_store
-        self.node_manager = node_manager
-        self.request_tracer = request_tracer
+        self.intent_manager: IntentManager = intent_manager or IntentManager()
+        self.event_broadcaster: Optional[EventBroadcaster] = event_broadcaster
+        self.lessons_store: Optional[Any] = lessons_store
+        self.node_manager: Optional[Any] = node_manager
+        self.request_tracer: Optional[RequestTracer] = request_tracer
         self._testing_mode = bool(os.getenv("PYTEST_CURRENT_TEST"))
 
         # Inicjalizuj dispatcher jeśli nie został przekazany
@@ -108,7 +112,7 @@ class Orchestrator:
                 kernel, event_broadcaster=event_broadcaster, node_manager=node_manager
             )
 
-        self.task_dispatcher = task_dispatcher
+        self.task_dispatcher: TaskDispatcher = task_dispatcher
 
         # Inicjalizuj Eyes dla obsługi obrazów
         self.eyes = Eyes()
@@ -153,13 +157,13 @@ class Orchestrator:
         )
 
         # Inicjalizuj flows (delegowane logiki biznesowe)
-        self._code_review_loop = None
-        self._council_flow = None
-        self._council_config = None
-        self._forge_flow = None
-        self._campaign_flow = None
-        self._healing_flow = None
-        self._issue_handler_flow = None
+        self._code_review_loop: Optional[CodeReviewLoop] = None
+        self._council_flow: Optional[CouncilFlow] = None
+        self._council_config: Optional["CouncilConfig"] = None
+        self._forge_flow: Optional[ForgeFlow] = None
+        self._campaign_flow: Optional[CampaignFlow] = None
+        self._healing_flow: Optional[HealingFlow] = None
+        self._issue_handler_flow: Optional[IssueHandlerFlow] = None
 
         # Tracking ostatniej aktywności dla idle mode
         self.last_activity: Optional[datetime] = None
@@ -173,7 +177,8 @@ class Orchestrator:
         """Wyznacza przybliżony limit znaków dla promptu na podstawie runtime."""
         if runtime_info.provider != "vllm":
             return MAX_CONTEXT_CHARS
-        max_ctx = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0) or 0
+        max_ctx_raw = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", None)
+        max_ctx = int(max_ctx_raw) if isinstance(max_ctx_raw, int) else 0
         if max_ctx <= 0:
             return MAX_CONTEXT_CHARS
         reserve = max(64, max_ctx // 4)
@@ -206,8 +211,12 @@ class Orchestrator:
         return self.queue_manager.active_tasks
 
     async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
-    ):
+        self,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, Any]] = None,
+    ) -> None:
         """
         Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
 
@@ -1125,11 +1134,9 @@ class Orchestrator:
                 runtime_info = get_active_llm_runtime()
                 runtime_limit = self._get_runtime_context_char_limit(runtime_info)
                 include_hidden = True
-                if (
-                    runtime_info.provider == "vllm"
-                    and getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", 0)
-                    and SETTINGS.VLLM_MAX_MODEL_LEN <= 512
-                ):
+                max_ctx_raw = getattr(SETTINGS, "VLLM_MAX_MODEL_LEN", None)
+                max_ctx = int(max_ctx_raw) if isinstance(max_ctx_raw, int) else 0
+                if runtime_info.provider == "vllm" and max_ctx and max_ctx <= 512:
                     include_hidden = False
                 hidden_context = (
                     build_hidden_prompts_context(
@@ -1142,9 +1149,11 @@ class Orchestrator:
                     context = hidden_context + "\n\n" + context
                 self.state_manager.add_log(
                     task_id,
-                    "Dołączono hidden prompts do kontekstu"
-                    if hidden_context
-                    else "Pominięto hidden prompts (mały kontekst vLLM)",
+                    (
+                        "Dołączono hidden prompts do kontekstu"
+                        if hidden_context
+                        else "Pominięto hidden prompts (mały kontekst vLLM)"
+                    ),
                 )
                 if runtime_limit < MAX_CONTEXT_CHARS:
                     context, trimmed = trim_to_char_limit(context, runtime_limit)
@@ -1487,7 +1496,7 @@ class Orchestrator:
                 if isinstance(runtime_ctx, dict):
                     existing_error = runtime_ctx.get("error")
             # Zbuduj bogatsze metadane błędu (np. input/max tokens)
-            error_details = {"exception": e.__class__.__name__}
+            error_details: dict[str, object] = {"exception": e.__class__.__name__}
             error_message_text = str(e) or ""
             try:
                 import re
@@ -1820,6 +1829,11 @@ class Orchestrator:
 
                 guardian = GuardianAgent(kernel=self.task_dispatcher.kernel)
                 llm_config = create_local_llm_config()
+
+                if coder is None or critic is None or architect is None:
+                    raise RuntimeError(
+                        "Brak wymaganych agentów Council (coder/critic/architect)"
+                    )
 
                 self._council_config = CouncilConfig(
                     coder_agent=coder,

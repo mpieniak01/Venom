@@ -672,11 +672,14 @@ ruff check . --fix
 ruff format .
 
 # isort (import sorting)
-isort . --profile black
+isort .
 
 # mypy (type checking)
 mypy venom_core
 ```
+
+Tools use the repo configuration (`pyproject.toml`) and skip data directories
+such as `models/` and `models_cache/`.
 
 ## 📊 Project Statistics
 

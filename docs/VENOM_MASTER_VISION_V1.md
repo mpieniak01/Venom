@@ -49,22 +49,22 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
-<tr><th>Organ</th><th>Funkcja</th><th>Technologia</th><th>Rola w organizmie</th><th>Wersja</th></tr>
-<tr><td>System nerwowy</td><td>Orkiestracja</td><td>AutoGen</td><td>Dialog, pętle decyzyjne</td><td>v1.0</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Phi-3 (ONNX/GGUF)</td><td>Generuje 90% kodu</td><td>v2.0</td></tr>
-<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>GPT-4o, Gemini Pro, Claude</td><td>Trudne problemy</td><td>v1.0</td></tr>
-<tr><td>Antena</td><td>Zmysł zewnętrzny</td><td>Researcher Agent</td><td>Wiedza z internetu</td><td>v1.0</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>GraphRAG</td><td>Mapa wiedzy</td><td>v1.0</td></tr>
-<tr><td>Ręce</td><td>Działanie</td><td>Semantic Kernel</td><td>Pliki, shell, git</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Ollama (GGUF) / OpenAI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Florence-2 ONNX</td><td>Docelowy engine lokalny</td><td>v2.0</td></tr>
-<tr><td>Uszy</td><td>Słuch (STT)</td><td>faster-whisper (CTranslate2)</td><td>Transkrypcja audio (WhisperSkill)</td><td>v1.0</td></tr>
-<tr><td>Usta</td><td>Mowa (TTS)</td><td>Piper TTS (ONNX)</td><td>Synteza głosu (VoiceSkill)</td><td>v1.0</td></tr>
-<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>YOLO ONNX</td><td>Obiekty, przeszkody</td><td>v2.0</td></tr>
-<tr><td>Nogi</td><td>Ruch</td><td>Rider-Pi</td><td>Mobilność</td><td>v1.0</td></tr>
-<tr><td>Metabolizm</td><td>Wydajność</td><td>ONNX / GGUF</td><td>Wykonanie modeli</td><td>v1.0</td></tr>
-<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Ollama / vLLM</td><td>Silnik inferencji</td><td>v1.0</td></tr>
-<tr><td>Habitat</td><td>Środowisko</td><td>WSL2 + Dev Containers</td><td>Sandbox</td><td>v1.0</td></tr>
+<tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja</th></tr>
+<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen</td><td>v1.0</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF)</td><td>v2.0</td></tr>
+<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>GPT-4o, Gemini Pro, Claude</td><td>v1.0</td></tr>
+<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent</td><td>v2.0</td></tr>
+<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG</td><td>v1.0</td></tr>
+<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel</td><td>v1.0</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (GGUF) / OpenAI</td><td>v1.0</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
+<tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
+<tr><td>Usta</td><td>Mowa (TTS)</td><td>Synteza głosu (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
+<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>Obiekty, przeszkody</td><td>YOLO ONNX</td><td>v2.0</td></tr>
+<tr><td>Nogi</td><td>Ruch</td><td>Mobilność</td><td>Rider-Pi</td><td>v1.0</td></tr>
+<tr><td>Metabolizm</td><td>Wydajność</td><td>Wykonanie modeli</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
+<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM<br>Nest<br>API</td><td>v1.0</td></tr>
+<tr><td>Habitat</td><td>Środowisko</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
 </table>
 
 ## 2A. Warstwa modeli – Strategia Dual-Engine

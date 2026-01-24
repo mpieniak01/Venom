@@ -316,6 +316,7 @@ export const pl = {
     },
   },
   cockpit: {
+    inputPlaceholder: "Opisz zadanie dla Venoma...",
     chatStatus: {
       completed: "Zakończono",
       failed: "Błąd",
@@ -351,6 +352,45 @@ export const pl = {
         direct: "Tryb: Direct",
         normal: "Tryb: Normal",
       },
+    },
+    modes: {
+      directLabel: "Direct (LLM bezpośrednio)",
+      normalLabel: "Normal (standard)",
+      complexLabel: "Complex (planowanie)",
+    },
+  },
+  brain: {
+    title: "Graf Wiedzy",
+    description: "Wizualizacja zależności w pamięci i repozytorium",
+    stats: {
+      lessons: "Lekcje",
+      uniqueTags: "Unikalne tagi",
+      topTags: "Top tagi",
+      totalHint: "LessonsStore",
+      topTagsHint: "Najczęstsze tagi LessonsStore",
+      nodes: "Węzły",
+      edges: "Krawędzie",
+    },
+    filters: {
+      all: "Wszystkie",
+      memory: "Pamięć",
+      agent: "Agent",
+      repo: "Repo",
+      lesson: "Lekcja",
+    },
+    actions: {
+      scan: "Skanuj",
+      scanning: "Skanowanie...",
+      clearSession: "Wyczyść sesję",
+      clearGlobal: "Wyczyść globalną",
+      pin: "Przypnij",
+      unpin: "Odepnij",
+      delete: "Usuń",
+    },
+    tabs: {
+      memory: "Pamięć (RAG)",
+      repo: "Repozytorium",
+      hygiene: "Higiena",
     },
   },
 };

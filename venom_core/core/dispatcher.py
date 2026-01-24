@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Protocol, Sequence
 
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
@@ -25,6 +25,7 @@ from venom_core.agents.tester import TesterAgent
 from venom_core.agents.time_assistant import TimeAssistantAgent
 from venom_core.agents.toolmaker import ToolmakerAgent
 from venom_core.agents.unsupported import UnsupportedAgent
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.goal_store import GoalStore
 from venom_core.core.models import Intent
 from venom_core.execution.skill_manager import SkillManager
@@ -32,6 +33,34 @@ from venom_core.execution.skills.assistant_skill import AssistantSkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class NodeInfo(Protocol):
+    node_id: str
+    node_name: str
+
+
+class NodeExecutionResult(Protocol):
+    success: bool
+    result: str
+    error: Optional[str]
+    execution_time: float
+
+
+class NodeManagerLike(Protocol):
+    def find_nodes_by_tag(self, tag: str) -> Sequence[NodeInfo]: ...
+
+    def select_best_node(self, skill_name: str) -> Optional[NodeInfo]: ...
+
+    async def execute_skill_on_node(
+        self,
+        *,
+        node_id: str,
+        skill_name: str,
+        method_name: str,
+        parameters: dict[str, object],
+        timeout: int,
+    ) -> NodeExecutionResult: ...
 
 
 class TaskDispatcher:
@@ -54,8 +83,8 @@ class TaskDispatcher:
     def __init__(
         self,
         kernel: Kernel,
-        event_broadcaster=None,
-        node_manager=None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
+        node_manager: Optional[NodeManagerLike] = None,
         goal_store: Optional[GoalStore] = None,
     ):
         """
@@ -221,7 +250,7 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wywołaj model
             response = await chat_service.get_chat_message_content(
@@ -248,8 +277,8 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         self,
         intent: str,
         content: str,
-        node_preference: dict = None,
-        generation_params: dict = None,
+        node_preference: Optional[dict[str, object]] = None,
+        generation_params: Optional[dict[str, object]] = None,
     ) -> str:
         """
         Kieruje zadanie do odpowiedniego agenta na podstawie intencji.
@@ -312,8 +341,8 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             raise
 
     async def _dispatch_to_node(
-        self, intent: str, content: str, node_preference: dict
-    ) -> str:
+        self, intent: str, content: str, node_preference: dict[str, object]
+    ) -> Optional[str]:
         """
         Próbuje wykonać zadanie na zdalnym węźle.
 
@@ -326,15 +355,22 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             Wynik wykonania lub None jeśli nie udało się
         """
         # Parsuj preferencje
-        tag = node_preference.get("tag")
-        skill_name = node_preference.get("skill")
-        method_name = node_preference.get("method", "run")
+        if self.node_manager is None:
+            return None
+
+        tag_raw = node_preference.get("tag")
+        skill_raw = node_preference.get("skill")
+        method_raw = node_preference.get("method")
+
+        tag = tag_raw if isinstance(tag_raw, str) else None
+        skill_name = skill_raw if isinstance(skill_raw, str) else None
+        method_name = method_raw if isinstance(method_raw, str) else "run"
 
         if not skill_name:
             return None
 
         # Znajdź odpowiedni węzeł
-        node = None
+        node: Optional[NodeInfo] = None
         if tag:
             nodes = self.node_manager.find_nodes_by_tag(tag)
             if nodes:
@@ -371,7 +407,9 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             logger.error(f"Błąd wykonania na węźle {node.node_name}: {response.error}")
             raise RuntimeError(f"Remote execution failed: {response.error}")
 
-    def _prepare_skill_parameters(self, skill_name: str, content: str) -> dict:
+    def _prepare_skill_parameters(
+        self, skill_name: str, content: str
+    ) -> dict[str, object]:
         """
         Przygotowuje parametry dla konkretnego skilla.
 

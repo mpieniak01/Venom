@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 from github import Auth, Github, GithubException
 from semantic_kernel.functions import kernel_function
@@ -79,12 +79,14 @@ class GitHubSkill:
                 search_query += f" language:{language}"
 
             # Wyszukaj repozytoria
-            repos = self.github.search_repositories(
-                query=search_query, sort=sort, order="desc"
+            repos: list[Any] = list(
+                self.github.search_repositories(
+                    query=search_query, sort=sort, order="desc"
+                )
             )
 
             # Ogranicz do TOP 5
-            results = []
+            results: list[dict[str, Any]] = []
             for i, repo in enumerate(repos[:MAX_REPOS_RESULTS], 1):
                 results.append(
                     {
@@ -200,12 +202,14 @@ class GitHubSkill:
             date_filter = one_year_ago.strftime("%Y-%m-%d")
             search_query = f"{topic} created:>{date_filter}"
 
-            repos = self.github.search_repositories(
-                query=search_query, sort="stars", order="desc"
+            repos: list[Any] = list(
+                self.github.search_repositories(
+                    query=search_query, sort="stars", order="desc"
+                )
             )
 
             # Ogranicz do TOP 5
-            results = []
+            results: list[dict[str, Any]] = []
             for i, repo in enumerate(repos[:MAX_REPOS_RESULTS], 1):
                 results.append(
                     {

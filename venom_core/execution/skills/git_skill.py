@@ -21,7 +21,7 @@ class GitSkill:
     kluczy SSH użytkownika. Operacje są wykonywane na WORKSPACE_ROOT.
     """
 
-    def __init__(self, workspace_root: str = None):
+    def __init__(self, workspace_root: Optional[str] = None):
         """
         Inicjalizacja GitSkill.
 
@@ -252,7 +252,8 @@ class GitSkill:
     async def add_files(
         self,
         files: Annotated[
-            List[str], "Lista plików do stage'owania (użyj ['.'] dla wszystkich)"
+            Optional[List[str]],
+            "Lista plików do stage'owania (użyj ['.'] dla wszystkich)",
         ] = None,
     ) -> str:
         """
@@ -392,8 +393,13 @@ class GitSkill:
 
             log_lines = []
             for commit in commits:
+                message = (
+                    commit.message.decode("utf-8", "ignore")
+                    if isinstance(commit.message, bytes)
+                    else commit.message
+                )
                 log_lines.append(
-                    f"{commit.hexsha[:7]} - {commit.author.name} - {commit.committed_datetime.strftime('%Y-%m-%d %H:%M')} - {commit.message.strip()}"
+                    f"{commit.hexsha[:7]} - {commit.author.name} - {commit.committed_datetime.strftime('%Y-%m-%d %H:%M')} - {message.strip()}"
                 )
 
             log = "\n".join(log_lines)

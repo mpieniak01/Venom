@@ -93,8 +93,7 @@ async def example_handle_issue_workflow():
     print("\nTen przykład wymaga pełnego setupu Venoma z wszystkimi agentami.")
     print("Poniżej pseudokod workflow:")
 
-    print(
-        """
+    print("""
     # 1. Inicjalizuj Orchestrator
     state_manager = StateManager()
     orchestrator = Orchestrator(state_manager)
@@ -108,8 +107,7 @@ async def example_handle_issue_workflow():
         print(f"Pull Request utworzony: {result['message']}")
     else:
         print(f"❌ Błąd: {result['message']}")
-    """
-    )
+    """)
 
 
 async def example_manual_pr_creation():

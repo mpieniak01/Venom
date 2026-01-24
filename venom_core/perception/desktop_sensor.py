@@ -20,7 +20,7 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
-import pyperclip
+import pyperclip  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -140,6 +140,10 @@ class DesktopSensor:
         self._last_clipboard_content = ""
         self._last_active_window = ""
         self._monitor_task: Optional[asyncio.Task] = None
+        self._recorded_actions: List[Dict[str, Any]] = []
+        self._recording_mode = False
+        self._mouse_listener: Optional[Any] = None
+        self._keyboard_listener: Optional[Any] = None
 
         self.system = platform.system()
         logger.info(f"DesktopSensor zainicjalizowany na {self.system}")
@@ -300,7 +304,11 @@ class DesktopSensor:
             import ctypes
 
             # GetForegroundWindow i GetWindowText z user32.dll
-            user32 = ctypes.windll.user32
+            windll = getattr(ctypes, "windll", None)
+            if windll is None:
+                logger.warning("ctypes.windll niedostępny na tym systemie")
+                return ""
+            user32 = windll.user32
             hwnd = user32.GetForegroundWindow()
 
             length = user32.GetWindowTextLengthW(hwnd)
@@ -402,7 +410,7 @@ class DesktopSensor:
         )  # Lock dla thread-safe dostępu do licznika
 
         try:
-            from pynput import keyboard, mouse
+            from pynput import keyboard, mouse  # type: ignore[import-untyped]
 
             # Callback dla myszy
             def on_click(x, y, button, pressed):
@@ -547,7 +555,7 @@ class DesktopSensor:
         """
         return getattr(self, "_recording_mode", False)
 
-    def get_status(self) -> dict[str, any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Zwraca status sensora.
 

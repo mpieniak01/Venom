@@ -1,7 +1,7 @@
 """Moduł: research_skill - Skill badawczy z ingestią danych."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -18,7 +18,7 @@ class ResearchSkill:
     Współpracuje z WebSearchSkill i MemorySkill.
     """
 
-    def __init__(self, graph_rag_service: GraphRAGService = None):
+    def __init__(self, graph_rag_service: Optional[GraphRAGService] = None):
         """
         Inicjalizacja ResearchSkill.
 

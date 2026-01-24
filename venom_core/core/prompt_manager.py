@@ -4,7 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-import yaml
+try:  # pragma: no cover - zależne od środowiska
+    import yaml  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover
+    yaml = None
 
 from venom_core.utils.logger import get_logger
 
@@ -64,6 +67,9 @@ class PromptManager:
         ):
             logger.debug(f"Używam cache dla promptu: {agent_name}")
             return self.prompts_cache[agent_name]
+
+        if yaml is None:
+            raise RuntimeError("Brak zależności PyYAML (pip install PyYAML)")
 
         # Załaduj plik YAML
         try:

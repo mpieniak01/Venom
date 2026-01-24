@@ -1,7 +1,7 @@
 """Moduł: test_skill - wrapper na narzędzia testowe w DockerHabitat."""
 
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -45,29 +45,42 @@ class TestSkill:
 
     __test__ = False
 
-    def __init__(self, habitat: DockerHabitat = None):
+    def __init__(
+        self,
+        habitat: Optional[DockerHabitat] = None,
+        allow_local_execution: bool = False,
+    ):
         """
         Inicjalizacja TestSkill.
 
         Args:
             habitat: Instancja DockerHabitat (jeśli None, zostanie utworzona)
+            allow_local_execution: Czy zezwolić na uruchamianie testów lokalnie (bez sandboxa)
         """
+        self.allow_local_execution = allow_local_execution
+
+        # Próbuj użyć habitat jeśli dostępny
+        self.habitat: Optional[DockerHabitat] = None
         try:
             self.habitat = habitat or DockerHabitat()
             self.docker_available = True
             logger.info("TestSkill zainicjalizowany (Docker sandbox)")
         except RuntimeError as e:
-            # Środowisko docelowe (np. CI) może nie mieć Dockera – dopuszczamy tryb degradowany
+            # Środowisko docelowe (np. CI) może nie mieć Dockera
             self.habitat = None
             self.docker_available = False
+            mode_msg = (
+                "w trybie LOKALNYM (niebezpiecznym)"
+                if self.allow_local_execution
+                else "w trybie tylko-raportującym"
+            )
             logger.warning(
-                "DockerHabitat niedostępny (%s). TestSkill działa w trybie tylko-raportującym.",
-                e,
+                "DockerHabitat niedostępny (%s). TestSkill działa %s.", e, mode_msg
             )
 
     @kernel_function(
         name="run_pytest",
-        description="Uruchamia testy pytest w kontenerze Docker i parsuje wyniki.",
+        description="Uruchamia testy pytest w kontenerze Docker (lub lokalnie) i parsuje wyniki.",
     )
     async def run_pytest(
         self,
@@ -87,28 +100,66 @@ class TestSkill:
             Sformatowany raport z wyników testów
         """
         try:
-            if not self.docker_available or not self.habitat:
-                return "⚠️ Docker sandbox jest niedostępny - nie mogę uruchomić pytest."
-
-            logger.info(f"Uruchamiam pytest dla: {test_path}")
-
-            # Walidacja test_path - zapobieganie command injection
+            # Walidacja test_path - zapobieganie command injection (nawet lokalnie to dobra praktyka)
             import re
 
             if not re.match(r"^[a-zA-Z0-9_./\-]+$", test_path):
                 return f"❌ Błąd: Nieprawidłowa ścieżka testów: {test_path}"
 
-            # Przygotuj komendę pytest z odpowiednimi flagami
-            # Używamy shlex.quote dla bezpieczeństwa
             import shlex
 
             safe_path = shlex.quote(test_path)
-            command = f"python -m pytest {safe_path} -v --tb=short --color=no"
 
-            # Wykonaj w kontenerze
-            exit_code, output = self.habitat.execute(command, timeout=timeout)
+            # --- Tryb Docker Sandbox ---
+            if self.docker_available and self.habitat:
+                logger.info(f"Uruchamiam pytest w Dockerze dla: {test_path}")
+                command = f"python -m pytest {safe_path} -v --tb=short --color=no"
+                exit_code, output = self.habitat.execute(command, timeout=timeout)
 
-            # Sparsuj wyniki
+            # --- Tryb Lokalny (Fallback) ---
+            elif self.allow_local_execution:
+                logger.warning(f"⚠️ Uruchamiam pytest LOKALNIE dla: {test_path}")
+                import asyncio
+                import subprocess
+                import sys
+
+                # Używamy sys.executable aby mieć pewność że to ten sam venv
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    test_path,
+                    "-v",
+                    "--tb=short",
+                    "--color=no",
+                ]
+
+                try:
+                    # Uruchomienie lokalne
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                    )
+
+                    try:
+                        stdout, _ = await asyncio.wait_for(
+                            process.communicate(), timeout=timeout
+                        )
+                        output = stdout.decode("utf-8", errors="replace")
+                        exit_code = (
+                            process.returncode if process.returncode is not None else 1
+                        )
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        return f"❌ Przekroczono limit czasu ({timeout}s) podczas uruchamiania testów lokalnie."
+
+                except Exception as e:
+                    return f"❌ Błąd uruchamiania lokalnego procesu: {str(e)}"
+
+            # --- Tryb Niedostępny ---
+            else:
+                return "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone."
+
+            # Sparsuj wyniki (wspólne dla obu trybów)
             report = self._parse_pytest_output(exit_code, output)
 
             # Sformatuj raport do zwrócenia
@@ -127,7 +178,7 @@ class TestSkill:
 
     @kernel_function(
         name="run_linter",
-        description="Uruchamia linter (ruff) w kontenerze Docker.",
+        description="Uruchamia linter (ruff) w kontenerze Docker (lub lokalnie).",
     )
     async def run_linter(
         self,
@@ -145,29 +196,66 @@ class TestSkill:
             Sformatowany raport z lintera
         """
         try:
-            if not self.docker_available or not self.habitat:
-                return "⚠️ Docker sandbox jest niedostępny - nie mogę uruchomić lintera."
-
-            logger.info(f"Uruchamiam linter dla: {path}")
-
-            # Walidacja path - zapobieganie command injection
+            # Walidacja path
             import re
 
             if not re.match(r"^[a-zA-Z0-9_./\-]+$", path):
                 return f"❌ Błąd: Nieprawidłowa ścieżka: {path}"
 
-            # Używamy shlex.quote dla bezpieczeństwa
             import shlex
 
             safe_path = shlex.quote(path)
 
-            # Spróbuj najpierw ruff, jeśli nie ma, użyj flake8
-            command = (
-                f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
-            )
+            # --- Tryb Docker Sandbox ---
+            if self.docker_available and self.habitat:
+                logger.info(f"Uruchamiam linter w Dockerze dla: {path}")
+                command = (
+                    f"python -m ruff check {safe_path} || python -m flake8 {safe_path}"
+                )
+                exit_code, output = self.habitat.execute(command, timeout=timeout)
 
-            # Wykonaj w kontenerze
-            exit_code, output = self.habitat.execute(command, timeout=timeout)
+            # --- Tryb Lokalny (Fallback) ---
+            elif self.allow_local_execution:
+                logger.warning(f"⚠️ Uruchamiam linter LOKALNIE dla: {path}")
+                import asyncio
+                import subprocess
+                import sys
+
+                # Złożona komenda z || jest trudna dla subprocess.exec,
+                # więc spróbujmy po prostu ruff, a jak fail to flake8 w python logic
+                # Próba 1: Ruff
+                cmd = [sys.executable, "-m", "ruff", "check", path]
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                    )
+                    stdout, _ = await asyncio.wait_for(
+                        process.communicate(), timeout=timeout
+                    )
+                    output = stdout.decode()
+                    exit_code = (
+                        process.returncode if process.returncode is not None else 1
+                    )
+                except (FileNotFoundError, ImportError, Exception):
+                    # Fallback do flake8 jeśli ruff nie zadziałał (np. nie zainstalowany)
+                    cmd = [sys.executable, "-m", "flake8", path]
+                    try:
+                        process = await asyncio.create_subprocess_exec(
+                            *cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                        )
+                        stdout, _ = await asyncio.wait_for(
+                            process.communicate(), timeout=timeout
+                        )
+                        output = stdout.decode()
+                        exit_code = (
+                            process.returncode if process.returncode is not None else 1
+                        )
+                    except Exception as e:
+                        return f"❌ Błąd uruchamiania lintera lokalnie: {str(e)}"
+
+            # --- Tryb Niedostępny ---
+            else:
+                return "⚠️ Docker sandbox jest niedostępny, a uruchamianie lokalne jest wyłączone."
 
             # Sparsuj wyniki
             report = self._parse_linter_output(exit_code, output)

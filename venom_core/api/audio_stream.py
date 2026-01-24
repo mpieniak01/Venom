@@ -2,7 +2,7 @@
 
 import asyncio
 import base64
-from typing import Optional
+from typing import Dict, List, Optional, TypedDict
 
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
@@ -36,8 +36,13 @@ class AudioStreamHandler:
         self.audio_engine = audio_engine
         self.vad_threshold = vad_threshold
         self.silence_duration = silence_duration
-        self.active_connections = {}
+        self.active_connections: Dict[int, AudioStreamHandler._ConnectionState] = {}
         logger.info("AudioStreamHandler zainicjalizowany")
+
+    class _ConnectionState(TypedDict):
+        websocket: WebSocket
+        audio_buffer: List[np.ndarray]
+        is_speaking: bool
 
     async def handle_websocket(
         self,
@@ -202,7 +207,7 @@ class AudioStreamHandler:
             return False
 
     async def _process_audio_buffer(
-        self, connection_id: int, audio_buffer: list, operator_agent
+        self, connection_id: int, audio_buffer: List[np.ndarray], operator_agent
     ):
         """
         Przetwarza bufor audio (STT -> Agent -> TTS).

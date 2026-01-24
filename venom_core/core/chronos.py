@@ -6,7 +6,7 @@ import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -25,7 +25,7 @@ class Checkpoint:
         name: str,
         timestamp: str,
         description: str = "",
-        metadata: Dict[str, Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Inicjalizacja checkpointu.
@@ -215,13 +215,13 @@ class ChronosEngine:
         if not timeline_path.exists():
             return []
 
-        checkpoints = []
+        checkpoints: List[Tuple[Checkpoint, int]] = []
         for checkpoint_dir in timeline_path.iterdir():
             if checkpoint_dir.is_dir():
                 metadata_file = checkpoint_dir / "checkpoint.json"
                 if metadata_file.exists():
                     try:
-                        with open(metadata_file, "r") as f:
+                        with open(metadata_file, "r", encoding="utf-8") as f:
                             data = json.load(f)
                             checkpoint = Checkpoint.from_dict(data)
                             try:
@@ -322,7 +322,7 @@ class ChronosEngine:
             )
 
             diff_file = checkpoint_dir / "fs_diff.patch"
-            with open(diff_file, "w") as f:
+            with open(diff_file, "w", encoding="utf-8") as f:
                 f.write(result.stdout)
 
             # Zapisz też info o uncommitted files
@@ -335,7 +335,7 @@ class ChronosEngine:
             )
 
             status_file = checkpoint_dir / "git_status.txt"
-            with open(status_file, "w") as f:
+            with open(status_file, "w", encoding="utf-8") as f:
                 f.write(status_result.stdout)
 
             logger.debug(f"Diff zapisany: {diff_file}")
@@ -508,7 +508,7 @@ class ChronosEngine:
             }
 
             config_file = checkpoint_dir / "env_config.json"
-            with open(config_file, "w") as f:
+            with open(config_file, "w", encoding="utf-8") as f:
                 json.dump(env_config, f, indent=2)
 
             logger.debug(f"Konfiguracja środowiska zapisana: {config_file}")
@@ -524,7 +524,7 @@ class ChronosEngine:
             return
 
         try:
-            with open(config_file, "r") as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 env_config = json.load(f)
 
             logger.info("Konfiguracja środowiska z checkpointu:")
@@ -536,8 +536,10 @@ class ChronosEngine:
         except Exception as e:
             logger.warning(f"Błąd podczas odczytu konfiguracji: {e}")
 
-    def _save_checkpoint_metadata(self, checkpoint_dir: Path, checkpoint: Checkpoint):
+    def _save_checkpoint_metadata(
+        self, checkpoint_dir: Path, checkpoint: Checkpoint
+    ) -> None:
         """Zapisuje metadane checkpointu."""
         metadata_file = checkpoint_dir / "checkpoint.json"
-        with open(metadata_file, "w") as f:
+        with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(checkpoint.to_dict(), f, indent=2)

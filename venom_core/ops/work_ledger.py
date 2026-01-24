@@ -401,13 +401,14 @@ class WorkLedger:
             Słownik z metrykami
         """
         total_tasks = len(self.tasks)
+        complexity_breakdown: dict[str, dict[str, float | int]] = {}
         if total_tasks == 0:
             # Zwracamy spójną strukturę nawet dla pustego ledgera
             complexity_breakdown = {
                 complexity.value: {
                     "count": 0,
                     "completed": 0,
-                    "avg_estimated_minutes": 0,
+                    "avg_estimated_minutes": 0.0,
                 }
                 for complexity in TaskComplexity
             }
@@ -457,7 +458,9 @@ class WorkLedger:
                     [t for t in tasks if t.status == TaskStatus.COMPLETED]
                 ),
                 "avg_estimated_minutes": (
-                    sum(t.estimated_minutes for t in tasks) / len(tasks) if tasks else 0
+                    sum(t.estimated_minutes for t in tasks) / len(tasks)
+                    if tasks
+                    else 0.0
                 ),
             }
 

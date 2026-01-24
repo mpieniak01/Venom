@@ -905,6 +905,9 @@ class ModelRegistry:
                 return False
 
         meta = self.manifest.get(model_name)
+        if not meta:
+            logger.error("Brak metadanych modelu %s po aktywacji", model_name)
+            return False
 
         # Aktualizuj SETTINGS i .env przez config_manager
         try:
@@ -934,7 +937,7 @@ class ModelRegistry:
                 SETTINGS.VLLM_MODEL_PATH = local_path
                 SETTINGS.VLLM_SERVED_MODEL_NAME = model_name
                 try:
-                    SETTINGS.VLLM_CHAT_TEMPLATE = template_value  # type: ignore[attr-defined]
+                    SETTINGS.VLLM_CHAT_TEMPLATE = template_value
                 except Exception:
                     # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass
@@ -947,13 +950,13 @@ class ModelRegistry:
             SETTINGS.ACTIVE_LLM_SERVER = runtime
             if runtime == "ollama":
                 try:
-                    SETTINGS.LAST_MODEL_OLLAMA = model_name  # type: ignore[attr-defined]
+                    SETTINGS.LAST_MODEL_OLLAMA = model_name
                 except Exception:
                     # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass
             if runtime == "vllm":
                 try:
-                    SETTINGS.LAST_MODEL_VLLM = model_name  # type: ignore[attr-defined]
+                    SETTINGS.LAST_MODEL_VLLM = model_name
                 except Exception:
                     # Atrybut dynamiczny - może nie istnieć w starszych wersjach Settings
                     pass

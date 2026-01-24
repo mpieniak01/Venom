@@ -16,15 +16,15 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
-try:  # pragma: no cover - zależne od środowiska testowego
-    import chromadb  # type: ignore
-except ImportError:  # pragma: no cover
-    chromadb = None  # type: ignore
+try:  # pragma: no cover - optional dependency
+    import chromadb  # type: ignore[import-untyped]
+except Exception:  # pragma: no cover
+    chromadb = None
 
 logger = get_logger(__name__)
 
@@ -168,11 +168,6 @@ class ServiceHealthMonitor:
         self.registry = registry
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
 
-        # Cache ChromaDB availability
-        self._chromadb_available = None
-        self._chromadb_module = None
-        self._chromadb_client = None
-
     def get_all_services(self) -> List[ServiceInfo]:
         """
         Zwraca wszystkie zarejestrowane usługi wraz z ostatnim znanym statusem.
@@ -208,14 +203,17 @@ class ServiceHealthMonitor:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Zaktualizuj statusy w rejestrze
-        updated_services = []
+        updated_services: List[ServiceInfo] = []
         for service, result in zip(services, results):
             if isinstance(result, Exception):
                 logger.error(f"Błąd sprawdzania usługi {service.name}: {result}")
                 service.status = ServiceStatus.OFFLINE
                 service.error_message = str(result)
-            else:
+                updated_services.append(service)
+            elif isinstance(result, ServiceInfo):
                 updated_services.append(result)
+            else:
+                updated_services.append(service)
             self.registry.services[service.name] = service
 
         return updated_services
@@ -341,10 +339,11 @@ class ServiceHealthMonitor:
             service: Usługa do sprawdzenia
         """
         name = service.name.lower()
+        description = service.description.lower()
 
         if "redis" in name:
             try:
-                import redis.asyncio as redis  # type: ignore
+                import redis.asyncio as redis
 
                 client = redis.from_url(
                     service.endpoint or "", socket_connect_timeout=1
@@ -360,9 +359,24 @@ class ServiceHealthMonitor:
                 service.error_message = str(e)[:100]
             return
 
+        if "chroma" in name or "chroma" in description:
+            if chromadb is None:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = "chromadb nie jest zainstalowane"
+                return
+            try:
+                client = chromadb.Client()
+                _ = client.list_collections()
+                service.status = ServiceStatus.ONLINE
+                service.error_message = None
+            except Exception as e:
+                service.status = ServiceStatus.OFFLINE
+                service.error_message = str(e)[:100]
+            return
+
         # LanceDB (lokalna pamięć embed)
         try:
-            import lancedb  # type: ignore
+            import lancedb  # type: ignore[import-untyped]
 
             db_path = getattr(SETTINGS, "VECTOR_DB_PATH", "data/vector_store")
             conn = lancedb.connect(db_path)

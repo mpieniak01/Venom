@@ -1,11 +1,11 @@
 """Moduł: queue_manager - Zarządzanie kolejką zadań."""
 
 import asyncio
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 from uuid import UUID
 
 from venom_core.config import SETTINGS
-from venom_core.core.flows.base import BaseFlow
+from venom_core.core.flows.base import BaseFlow, EventBroadcaster
 from venom_core.core.models import TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
@@ -19,7 +19,7 @@ class QueueManager(BaseFlow):
     def __init__(
         self,
         state_manager: StateManager,
-        event_broadcaster: Optional[Callable] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja QueueManager.

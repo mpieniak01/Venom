@@ -2,12 +2,29 @@
 
 import os
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING, STATE_STOPPED
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
+try:  # pragma: no cover - zależne od środowiska
+    import importlib
+
+    apscheduler_asyncio = importlib.import_module("apscheduler.schedulers.asyncio")
+    apscheduler_base = importlib.import_module("apscheduler.schedulers.base")
+    apscheduler_cron = importlib.import_module("apscheduler.triggers.cron")
+    apscheduler_interval = importlib.import_module("apscheduler.triggers.interval")
+
+    AsyncIOScheduler = apscheduler_asyncio.AsyncIOScheduler
+    STATE_PAUSED = apscheduler_base.STATE_PAUSED
+    STATE_RUNNING = apscheduler_base.STATE_RUNNING
+    STATE_STOPPED = apscheduler_base.STATE_STOPPED
+    CronTrigger = apscheduler_cron.CronTrigger
+    IntervalTrigger = apscheduler_interval.IntervalTrigger
+except Exception:  # pragma: no cover
+    AsyncIOScheduler = None
+    CronTrigger = None
+    IntervalTrigger = None
+    STATE_PAUSED = 0
+    STATE_RUNNING = 1
+    STATE_STOPPED = 2
 
 from venom_core.api.stream import EventType
 from venom_core.config import SETTINGS
@@ -32,10 +49,12 @@ class BackgroundScheduler:
         Args:
             event_broadcaster: Broadcaster zdarzeń do WebSocket
         """
+        if AsyncIOScheduler is None:
+            raise RuntimeError("APScheduler nie jest zainstalowany")
         self.scheduler = AsyncIOScheduler()
         self.event_broadcaster = event_broadcaster
         self.is_running = False
-        self._jobs_registry = {}  # Rejestr zadań: job_id -> metadata
+        self._jobs_registry: Dict[str, Dict[str, Any]] = {}
         self._allow_test_override = (
             allow_test_override
             if allow_test_override is not None
@@ -99,7 +118,7 @@ class BackgroundScheduler:
         func: Callable,
         minutes: Optional[int] = None,
         seconds: Optional[int] = None,
-        job_id: str = None,
+        job_id: Optional[str] = None,
         description: str = "",
         **kwargs,
     ) -> str:
@@ -141,7 +160,7 @@ class BackgroundScheduler:
         self,
         func: Callable,
         cron_expression: str,
-        job_id: str = None,
+        job_id: Optional[str] = None,
         description: str = "",
         **kwargs,
     ) -> str:
@@ -201,25 +220,23 @@ class BackgroundScheduler:
         Returns:
             Lista zadań z metadanymi
         """
-        jobs = []
+        jobs: list[dict[str, Any]] = []
         for job in self.scheduler.get_jobs():
             next_run_attr = getattr(job, "next_run_time", None)
-            next_run_time = None
+            next_run_time: Optional[datetime] = None
             if callable(next_run_attr):
                 try:
                     next_run_time = next_run_attr()
                 except Exception:
                     next_run_time = None
             else:
-                next_run_time = next_run_attr
+                next_run_time = (
+                    next_run_attr if isinstance(next_run_attr, datetime) else None
+                )
 
             job_info = {
                 "id": job.id,
-                "next_run_time": (
-                    next_run_time.isoformat()
-                    if hasattr(next_run_time, "isoformat")
-                    else None
-                ),
+                "next_run_time": next_run_time.isoformat() if next_run_time else None,
                 "name": job.name,
             }
 
@@ -231,7 +248,7 @@ class BackgroundScheduler:
 
         return jobs
 
-    def get_job_status(self, job_id: str) -> Optional[dict]:
+    def get_job_status(self, job_id: str) -> Optional[dict[str, Any]]:
         """
         Zwraca status konkretnego zadania.
 
@@ -246,23 +263,21 @@ class BackgroundScheduler:
             return None
 
         next_run_attr = getattr(job, "next_run_time", None)
-        next_run_time = None
+        next_run_time: Optional[datetime] = None
         if callable(next_run_attr):
             try:
                 next_run_time = next_run_attr()
             except Exception:
                 next_run_time = None
         else:
-            next_run_time = next_run_attr
+            next_run_time = (
+                next_run_attr if isinstance(next_run_attr, datetime) else None
+            )
 
         status = {
             "id": job.id,
             "name": job.name,
-            "next_run_time": (
-                next_run_time.isoformat()
-                if hasattr(next_run_time, "isoformat")
-                else None
-            ),
+            "next_run_time": next_run_time.isoformat() if next_run_time else None,
         }
 
         if job_id in self._jobs_registry:

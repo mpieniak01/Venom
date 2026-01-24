@@ -14,9 +14,9 @@ from semantic_kernel.functions import kernel_function
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - zależne od środowiska testowego
-    import pyautogui  # type: ignore
+    import pyautogui  # type: ignore[import-untyped]
 except Exception:  # pragma: no cover
-    pyautogui = None  # type: ignore
+    pyautogui = None
 
 logger = get_logger(__name__)
 

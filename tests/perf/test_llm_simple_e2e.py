@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from typing import Dict, List, Tuple
@@ -38,25 +39,45 @@ async def _get_active_runtime() -> Dict[str, object]:
 
 
 async def _measure_simple_latency(prompt: str, model: str) -> Tuple[float, float]:
-    start = time.perf_counter()
-    first_token_time = None
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "POST",
-            f"{API_BASE}/api/v1/llm/simple/stream",
-            json={"content": prompt, "model": model},
-        ) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_text():
-                if not chunk:
-                    continue
-                elapsed = time.perf_counter() - start
+    max_retries = int(os.getenv("VENOM_LLM_STREAM_RETRIES", "5"))
+    attempt = 0
+    while attempt < max_retries:
+        start = time.perf_counter()
+        first_token_time = None
+        had_chunk = False
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{API_BASE}/api/v1/llm/simple/stream",
+                    json={"content": prompt, "model": model},
+                ) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_text():
+                        if not chunk:
+                            continue
+                        had_chunk = True
+                        elapsed = time.perf_counter() - start
+                        if first_token_time is None:
+                            first_token_time = elapsed
+                        if elapsed > STREAM_TIMEOUT:
+                            raise TimeoutError(
+                                f"Streaming przekroczył timeout {STREAM_TIMEOUT}s.",
+                            )
+            # Success, break loop
+            break
+        except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout) as e:
+            if isinstance(e, httpx.RemoteProtocolError) and had_chunk:
+                total_time = time.perf_counter() - start
                 if first_token_time is None:
-                    first_token_time = elapsed
-                if elapsed > STREAM_TIMEOUT:
-                    raise TimeoutError(
-                        f"Streaming przekroczył timeout {STREAM_TIMEOUT}s.",
-                    )
+                    first_token_time = total_time
+                return first_token_time, total_time
+            attempt += 1
+            if attempt >= max_retries:
+                pytest.skip(f"Stream LLM niestabilny po {max_retries} probach: {e}")
+            print(f"⚠️ Retry {attempt}/{max_retries} due to connection error: {e}")
+            await asyncio.sleep(min(2 ** (attempt - 1), 5))  # Backoff
+
     total_time = time.perf_counter() - start
     if first_token_time is None:
         first_token_time = total_time

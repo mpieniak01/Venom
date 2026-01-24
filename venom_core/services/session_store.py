@@ -39,7 +39,11 @@ class SessionStore:
                 self._sessions = {}
                 self._save()
                 return
-            self._sessions = data.get("sessions", {}) or {}
+            sessions = data.get("sessions", {}) or {}
+            if isinstance(sessions, dict):
+                self._sessions = sessions
+            else:
+                self._sessions = {}
         except Exception as exc:
             logger.warning(f"Nie udało się wczytać SessionStore: {exc}")
             self._sessions = {}
@@ -58,7 +62,10 @@ class SessionStore:
             return
         with self._lock:
             session = self._sessions.setdefault(session_id, {})
-            history: List[Dict[str, object]] = session.get("history", []) or []
+            history: List[Dict[str, object]] = []
+            history_raw = session.get("history")
+            if isinstance(history_raw, list):
+                history = [item for item in history_raw if isinstance(item, dict)]
             history.append(entry)
             if self._max_entries and len(history) > self._max_entries:
                 history = history[-self._max_entries :]
@@ -74,8 +81,11 @@ class SessionStore:
             return []
         with self._lock:
             session = self._sessions.get(session_id, {})
-            history = list(session.get("history", []) or [])
-        if limit:
+            history: List[Dict[str, object]] = []
+            history_raw = session.get("history")
+            if isinstance(history_raw, list):
+                history = [item for item in history_raw if isinstance(item, dict)]
+        if limit is not None:
             return history[-limit:]
         return history
 

@@ -686,8 +686,8 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                 for attempt in range(60):  # Max 30 seconds
                     try:
                         resp = await client.get(health_url)
-                        # Sprawdzamy czy serwer odpowiada kodem 200 (sukces)
-                        if resp.status_code == 200:
+                        # Sprawdzamy czy serwer odpowiada kodem 2xx (sukces)
+                        if 200 <= resp.status_code < 300:
                             logger.info(
                                 f"Serwer {server_name} gotowy po {attempt * 0.5}s"
                             )

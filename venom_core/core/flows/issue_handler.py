@@ -1,14 +1,29 @@
 """Moduł: issue_handler - Logika obsługi Issue z GitHub (Issue-to-PR Pipeline)."""
 
-from typing import Callable, Optional
+from typing import Optional, Protocol, cast
 
 from venom_core.core.dispatcher import TaskDispatcher
-from venom_core.core.flows.base import BaseFlow
+from venom_core.core.flows.base import BaseFlow, EventBroadcaster
 from venom_core.core.models import TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class IssueIntegrator(Protocol):
+    async def handle_issue(self, issue_number: int) -> str: ...
+
+    async def process(self, context: str) -> str: ...
+
+    async def finalize_issue(
+        self,
+        *,
+        issue_number: int,
+        branch_name: str,
+        pr_title: str,
+        pr_body: str,
+    ) -> str: ...
 
 
 class IssueHandlerFlow(BaseFlow):
@@ -18,7 +33,7 @@ class IssueHandlerFlow(BaseFlow):
         self,
         state_manager: StateManager,
         task_dispatcher: TaskDispatcher,
-        event_broadcaster: Optional[Callable] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja IssueHandlerFlow.
@@ -76,9 +91,10 @@ class IssueHandlerFlow(BaseFlow):
                 error_msg = "❌ IntegratorAgent nie jest dostępny"
                 logger.error(error_msg)
                 return {"success": False, "message": error_msg}
+            integrator_agent = cast(IssueIntegrator, integrator)
 
             self.state_manager.add_log(task_id, "Pobieranie szczegółów Issue...")
-            issue_details = await integrator.handle_issue(issue_number)
+            issue_details = await integrator_agent.handle_issue(issue_number)
 
             if issue_details.startswith("❌"):
                 self.state_manager.add_log(task_id, issue_details)
@@ -150,7 +166,7 @@ Plan naprawy:
 
             # Commitnij zmiany
             commit_context = f"Commitnij zmiany dla Issue #{issue_number}"
-            commit_result = await integrator.process(commit_context)
+            commit_result = await integrator_agent.process(commit_context)
             self.state_manager.add_log(task_id, f"Commit: {commit_result}")
 
             # Finalizuj Issue (PR + komentarz + powiadomienie)
@@ -160,7 +176,7 @@ Plan naprawy:
                 f"Automatyczna naprawa Issue #{issue_number}\n\n{fix_result[:500]}"
             )
 
-            finalize_result = await integrator.finalize_issue(
+            finalize_result = await integrator_agent.finalize_issue(
                 issue_number=issue_number,
                 branch_name=branch_name,
                 pr_title=pr_title,

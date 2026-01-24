@@ -34,8 +34,8 @@ class CodeReviewLoop:
         state_manager: StateManager,
         coder_agent: CoderAgent,
         critic_agent: CriticAgent,
-        token_economist: TokenEconomist = None,
-        file_skill: FileSkill = None,
+        token_economist: TokenEconomist | None = None,
+        file_skill: FileSkill | None = None,
     ):
         """
         Inicjalizacja CodeReviewLoop.
@@ -62,7 +62,7 @@ class CodeReviewLoop:
 
         # Tracking kosztów i błędów dla danej sesji
         self.session_cost = 0.0
-        self.previous_errors = []
+        self.previous_errors: list[int] = []
 
     async def execute(self, task_id: UUID, user_request: str) -> str:
         """
@@ -84,10 +84,10 @@ class CodeReviewLoop:
         self.session_cost = 0.0
         self.previous_errors = []
 
-        generated_code = None
-        critic_feedback = None
+        generated_code = ""
+        critic_feedback = ""
         attempt = 0
-        current_file = None  # Aktualny plik w trakcie naprawy
+        current_file: str | None = None  # Aktualny plik w trakcie naprawy
 
         while attempt <= MAX_REPAIR_ATTEMPTS:
             attempt += 1

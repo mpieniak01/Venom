@@ -4,7 +4,7 @@ import json
 import random
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, TypedDict
 
 from semantic_kernel import Kernel
 
@@ -66,7 +66,15 @@ class PersonaFactory:
     """Fabryka do generowania profili użytkowników za pomocą LLM."""
 
     # Szablony podstawowych person
-    PERSONA_TEMPLATES = [
+    class PersonaTemplate(TypedDict):
+        archetype: str
+        description: str
+        tech_literacy: TechLiteracy
+        patience: float
+        age_range: tuple[int, int]
+        traits: list[str]
+
+    PERSONA_TEMPLATES: list[PersonaTemplate] = [
         {
             "archetype": "senior",
             "description": "Osoba starsza, mało techniczna, łatwo się frustruje",

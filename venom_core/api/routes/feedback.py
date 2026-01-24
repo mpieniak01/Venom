@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -50,7 +50,8 @@ async def submit_feedback(payload: FeedbackRequest):
     """Zapisuje feedback użytkownika i opcjonalnie uruchamia rundę doprecyzowania."""
     if payload.rating not in ("up", "down"):
         raise HTTPException(status_code=400, detail="rating musi być 'up' albo 'down'")
-    if payload.rating == "down" and not (payload.comment or "").strip():
+    comment = payload.comment or ""
+    if payload.rating == "down" and not comment.strip():
         raise HTTPException(status_code=400, detail="comment wymagany dla oceny 'down'")
 
     if _state_manager is None:
@@ -96,7 +97,7 @@ async def submit_feedback(payload: FeedbackRequest):
 
     follow_up_task_id = None
     if payload.rating == "down" and _orchestrator is not None:
-        refinement = payload.comment.strip()
+        refinement = comment.strip()
         follow_up_prompt = (
             "Poprzednia odpowiedź była niepoprawna lub nie spełniła celu.\n"
             f"Uwagi użytkownika: {refinement}\n\n"

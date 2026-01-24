@@ -3,13 +3,15 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core import metrics as metrics_module
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.learning_log import ensure_learning_log_boot_id
 from venom_core.core.models import TaskRequest
+from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,14 +28,29 @@ NON_LEARNING_INTENTS = {
 }
 
 
+class LessonLike(Protocol):
+    lesson_id: str
+    situation: str
+    result: str
+    feedback: str
+
+
+class LessonsStoreLike(Protocol):
+    def search_lessons(
+        self, query: str, limit: int, tags: Optional[list[str]] = None
+    ) -> list[LessonLike]: ...
+
+    def add_lesson(self, **kwargs: object) -> LessonLike: ...
+
+
 class LessonsManager:
     """Manager do zarządzania lekcjami meta-uczenia."""
 
     def __init__(
         self,
-        state_manager,
-        lessons_store=None,
-        event_broadcaster=None,
+        state_manager: StateManager,
+        lessons_store: Optional["LessonsStoreLike"] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja LessonsManager.
@@ -51,7 +68,7 @@ class LessonsManager:
         self,
         request: TaskRequest,
         intent: str = "",
-        agent=None,
+        agent: Optional[object] = None,
     ) -> bool:
         """
         Sprawdza czy należy zapisać lekcję dla danego zadania.
@@ -80,7 +97,7 @@ class LessonsManager:
         request: TaskRequest,
         intent: str,
         tool_required: bool,
-        agent=None,
+        agent: Optional[object] = None,
     ) -> bool:
         """
         Zwraca True jeśli należy zapisać wpis procesu nauki dla LLM-only.
@@ -163,7 +180,7 @@ class LessonsManager:
         intent: str,
         result: str,
         success: bool,
-        error: str = None,
+        error: Optional[str] = None,
         agent: Optional[object] = None,
         request: Optional[TaskRequest] = None,
     ) -> None:

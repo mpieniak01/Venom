@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from venom_core.utils.logger import get_logger
 
@@ -31,7 +31,7 @@ class ProcessMonitor:
         """
         self.project_root = project_root
 
-    def get_process_info(self, pid: int) -> Optional[Dict]:
+    def get_process_info(self, pid: int) -> Optional[Dict[str, float | int]]:
         """
         Pobiera informacje o procesie.
 

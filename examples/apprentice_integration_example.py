@@ -223,8 +223,7 @@ async def example_parametrization():
 
     logger.info("\nWygenerowany kod:")
     logger.info("=" * 50)
-    logger.info(
-        """
+    logger.info("""
 async def login_workflow(ghost_agent: GhostAgent, **kwargs):
     # Parametry
     email = kwargs.get("email", "john@example.com")  # Domyślna wartość
@@ -245,8 +244,7 @@ async def login_workflow(ghost_agent: GhostAgent, **kwargs):
     await ghost_agent.input_skill.keyboard_type(text=password)
 
     await ghost_agent.vision_click(description="login button")
-"""
-    )
+""")
     logger.info("=" * 50)
 
     logger.info("\nUżycie:")

@@ -1,8 +1,15 @@
 """Endpoint projekcji embeddingów do 2D."""
 
+import importlib
+
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
-from sklearn.decomposition import PCA
+
+try:  # pragma: no cover - zależne od środowiska
+    sklearn_decomposition = importlib.import_module("sklearn.decomposition")
+    PCA = sklearn_decomposition.PCA
+except Exception:  # pragma: no cover
+    PCA = None
 
 from venom_core.utils.logger import get_logger
 
@@ -29,6 +36,10 @@ async def project_embeddings(limit: int = Query(200, ge=2, le=1000)):
     if _vector_store is None or _embedding_service is None:
         raise HTTPException(
             status_code=503, detail="VectorStore lub embedding service niedostępny"
+        )
+    if PCA is None:
+        raise HTTPException(
+            status_code=503, detail="scikit-learn nie jest zainstalowany"
         )
 
     entries = _vector_store.list_entries(limit=limit)

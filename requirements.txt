@@ -131,3 +131,9 @@ pytest-cov              # Raporty pokrycia testami
 locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie
+types-PyYAML            # Typy dla PyYAML
+types-psutil            # Typy dla psutil
+types-docker            # Typy dla docker SDK
+types-bleach            # Typy dla bleach
+types-aiofiles          # Typy dla aiofiles
+types-APScheduler       # Typy dla APScheduler

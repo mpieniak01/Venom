@@ -1,5 +1,7 @@
 """Moduł: designer - agent projektant interfejsu użytkownika."""
 
+from typing import Any
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
@@ -122,7 +124,7 @@ i wygeneruj odpowiednią konfigurację."""
             kernel: Skonfigurowane jądro Semantic Kernel
         """
         super().__init__(kernel)
-        self.chat_service = kernel.get_service()
+        self.chat_service: Any = kernel.get_service()
         logger.info("DesignerAgent zainicjalizowany")
 
     async def process(self, input_text: str) -> str:

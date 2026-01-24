@@ -115,7 +115,7 @@ async def ingest_to_memory(request: MemoryIngestRequest):
         vector_store = _ensure_vector_store()
 
         # Zapisz do pamięci
-        metadata = {"category": request.category}
+        metadata: dict[str, object] = {"category": request.category}
         if request.session_id:
             metadata["session_id"] = request.session_id
         if request.user_id:
@@ -307,7 +307,7 @@ async def memory_graph(
             "elements": {"nodes": [], "edges": []},
             "stats": {"nodes": 0, "edges": 0},
         }
-    filters = {}
+    filters: dict[str, object] = {}
     if session_id:
         filters["session_id"] = session_id
     if only_pinned:
@@ -437,10 +437,13 @@ async def memory_graph(
     if mode == "flow":
         # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
         try:
-            entries_for_flow = sorted(
-                nodes,
-                key=lambda n: (n["data"].get("meta") or {}).get("timestamp", ""),
-            )
+
+            def _flow_timestamp(node: dict) -> str:
+                meta_value = node.get("data", {}).get("meta")
+                meta = meta_value if isinstance(meta_value, dict) else {}
+                return str(meta.get("timestamp", ""))
+
+            entries_for_flow = sorted(nodes, key=_flow_timestamp)
         except Exception:
             entries_for_flow = nodes
         for idx in range(len(entries_for_flow) - 1):

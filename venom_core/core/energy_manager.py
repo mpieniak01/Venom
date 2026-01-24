@@ -1,15 +1,20 @@
 """Moduł: energy_manager - Zarządca Energii dla Systemu Śnienia."""
 
 import asyncio
+import importlib
 import os
 import time
 from dataclasses import dataclass
-from typing import Callable, List, Optional
-
-import psutil
+from typing import Awaitable, Callable, List, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+
+psutil = None
+try:  # pragma: no cover - zależne od środowiska
+    psutil = importlib.import_module("psutil")
+except Exception:  # pragma: no cover
+    psutil = None
 
 logger = get_logger(__name__)
 
@@ -41,8 +46,8 @@ class EnergyManager:
 
     def __init__(
         self,
-        cpu_threshold: float = None,
-        memory_threshold: float = None,
+        cpu_threshold: Optional[float] = None,
+        memory_threshold: Optional[float] = None,
         check_interval: int = 5,
     ):
         """
@@ -65,8 +70,8 @@ class EnergyManager:
 
         self.is_monitoring = False
         self.last_activity_time = time.time()
-        self._monitor_task: Optional[asyncio.Task] = None
-        self._alert_callbacks: List[Callable] = []
+        self._monitor_task: Optional[asyncio.Task[None]] = None
+        self._alert_callbacks: List[Callable[[], Awaitable[None] | None]] = []
         self.sensors_active = True  # Flaga aktywności sensorów sprzętowych
 
         logger.info(
@@ -81,6 +86,10 @@ class EnergyManager:
         Returns:
             SystemMetrics z danymi o użyciu zasobów
         """
+        if psutil is None:
+            logger.warning("psutil nie jest dostępny - zwracam zerowe metryki")
+            return SystemMetrics(cpu_percent=0.0, memory_percent=0.0)
+
         cpu_percent = psutil.cpu_percent(interval=1)
         memory_percent = psutil.virtual_memory().percent
 
@@ -136,6 +145,9 @@ class EnergyManager:
             True jeśli udało się ustawić priorytet
         """
         try:
+            if psutil is None:
+                logger.warning("psutil nie jest dostępny - nie ustawiam priorytetu")
+                return False
             process = psutil.Process(pid) if pid else psutil.Process()
 
             # Na Linux/Unix używamy nice value (19 = najniższy priorytet)
@@ -161,7 +173,9 @@ class EnergyManager:
             )
             return False
 
-    def register_alert_callback(self, callback: Callable) -> None:
+    def register_alert_callback(
+        self, callback: Callable[[], Awaitable[None] | None]
+    ) -> None:
         """
         Rejestruje callback wywoływany gdy system staje się zajęty.
 

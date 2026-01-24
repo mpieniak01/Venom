@@ -1,10 +1,10 @@
 """Moduł: healing - Logika pętli samonaprawy (Healing Cycle)."""
 
-from typing import Callable, Optional
+from typing import Optional
 from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
-from venom_core.core.flows.base import BaseFlow
+from venom_core.core.flows.base import BaseFlow, EventBroadcaster
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
@@ -21,7 +21,7 @@ class HealingFlow(BaseFlow):
         self,
         state_manager: StateManager,
         task_dispatcher: TaskDispatcher,
-        event_broadcaster: Optional[Callable] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja HealingFlow.

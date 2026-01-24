@@ -16,7 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor
@@ -94,7 +94,7 @@ class RuntimeController:
         # Inicjalizuj ProcessMonitor
         self.process_monitor = ProcessMonitor(self.project_root)
 
-    def _get_process_info(self, pid: int) -> Optional[Dict]:
+    def _get_process_info(self, pid: int) -> Optional[Dict[str, float | int]]:
         """Pobiera informacje o procesie. Deleguje do ProcessMonitor."""
         return self.process_monitor.get_process_info(pid)
 
@@ -102,7 +102,9 @@ class RuntimeController:
         """Czyta ostatnie linie z logu. Deleguje do ProcessMonitor."""
         return self.process_monitor.read_last_log_line(log_file, max_lines)
 
-    def _add_to_history(self, service: str, action: str, success: bool, message: str):
+    def _add_to_history(
+        self, service: str, action: str, success: bool, message: str
+    ) -> None:
         """Dodaje wpis do historii."""
         entry = ActionHistory(
             timestamp=datetime.now().isoformat(),
@@ -148,7 +150,9 @@ class RuntimeController:
                             info.status = ServiceStatus.RUNNING
                             info.cpu_percent = process_info["cpu_percent"]
                             info.memory_mb = process_info["memory_mb"]
-                            info.uptime_seconds = process_info["uptime_seconds"]
+                            uptime_seconds = process_info.get("uptime_seconds")
+                            if uptime_seconds is not None:
+                                info.uptime_seconds = int(uptime_seconds)
 
                             # Ustaw porty
                             if service_type == ServiceType.BACKEND:
@@ -175,13 +179,16 @@ class RuntimeController:
                 # Spróbuj znaleźć PID procesu ollama
                 for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                     try:
-                        if "ollama" in proc.info["name"].lower():
+                        proc_name = (proc.info.get("name") or "").lower()
+                        if "ollama" in proc_name:
                             info.pid = proc.info["pid"]
                             process_info = self._get_process_info(proc.info["pid"])
                             if process_info:
                                 info.cpu_percent = process_info["cpu_percent"]
                                 info.memory_mb = process_info["memory_mb"]
-                                info.uptime_seconds = process_info["uptime_seconds"]
+                                uptime_seconds = process_info.get("uptime_seconds")
+                                if uptime_seconds is not None:
+                                    info.uptime_seconds = int(uptime_seconds)
                             break
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
@@ -196,14 +203,16 @@ class RuntimeController:
                 # Spróbuj znaleźć PID procesu vllm
                 for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                     try:
-                        cmdline = " ".join(proc.info["cmdline"] or [])
+                        cmdline = " ".join(proc.info.get("cmdline") or [])
                         if "vllm" in cmdline.lower():
                             info.pid = proc.info["pid"]
                             process_info = self._get_process_info(proc.info["pid"])
                             if process_info:
                                 info.cpu_percent = process_info["cpu_percent"]
                                 info.memory_mb = process_info["memory_mb"]
-                                info.uptime_seconds = process_info["uptime_seconds"]
+                                uptime_seconds = process_info.get("uptime_seconds")
+                                if uptime_seconds is not None:
+                                    info.uptime_seconds = int(uptime_seconds)
                             break
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue

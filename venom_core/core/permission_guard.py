@@ -3,7 +3,10 @@
 from pathlib import Path
 from typing import Dict, Optional
 
-import yaml
+try:  # pragma: no cover - zależne od środowiska
+    import yaml  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover
+    yaml = None
 
 from venom_core.utils.logger import get_logger
 
@@ -116,6 +119,9 @@ class PermissionGuard:
         """Ładuje macierz autonomii z pliku YAML."""
         config_path = Path("data/config/autonomy_matrix.yaml")
 
+        if yaml is None:
+            raise RuntimeError("Brak zależności PyYAML (pip install PyYAML)")
+
         if not config_path.exists():
             logger.error(f"Brak pliku konfiguracji: {config_path}")
             # Załaduj domyślną konfigurację bezpieczeństwa (tylko ISOLATED)
@@ -160,6 +166,9 @@ class PermissionGuard:
     def _load_skill_permissions(self):
         """Ładuje mapowanie skillów na poziomy uprawnień z pliku YAML."""
         config_path = Path("data/config/skill_permissions.yaml")
+
+        if yaml is None:
+            raise RuntimeError("Brak zależności PyYAML (pip install PyYAML)")
 
         if not config_path.exists():
             logger.warning(f"Brak pliku konfiguracji: {config_path}")

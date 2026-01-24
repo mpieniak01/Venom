@@ -6,10 +6,10 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import httpx
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from venom_core.utils.logger import get_logger
 
@@ -32,7 +32,7 @@ class ModelVersion:
         base_model: str,
         adapter_path: Optional[str] = None,
         created_at: Optional[str] = None,
-        performance_metrics: Optional[Dict] = None,
+        performance_metrics: Optional[Dict[str, Any]] = None,
         is_active: bool = False,
     ):
         """
@@ -53,7 +53,7 @@ class ModelVersion:
         self.performance_metrics = performance_metrics or {}
         self.is_active = is_active
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Konwertuje do słownika."""
         return {
             "version_id": self.version_id,
@@ -77,7 +77,7 @@ class ModelManager:
     - Integracja z Ollama (tworzenie Modelfile z adapterem)
     """
 
-    def __init__(self, models_dir: str = None):
+    def __init__(self, models_dir: Optional[str] = None):
         """
         Inicjalizacja ModelManager.
 
@@ -102,7 +102,7 @@ class ModelManager:
         version_id: str,
         base_model: str,
         adapter_path: Optional[str] = None,
-        performance_metrics: Optional[Dict] = None,
+        performance_metrics: Optional[Dict[str, Any]] = None,
     ) -> ModelVersion:
         """
         Rejestruje nową wersję modelu.
@@ -264,7 +264,7 @@ PARAMETER top_k 40
 
     def load_adapter_for_kernel(
         self, version_id: str, kernel_builder
-    ) -> Union[bool, Tuple]:
+    ) -> Union[bool, Tuple[Any, Any]]:
         """
         Ładuje adapter LoRA do KernelBuilder (dla integracji z PEFT).
 
@@ -294,7 +294,7 @@ PARAMETER top_k 40
 
             # Próbuj załadować adapter używając PEFT
             try:
-                from peft import PeftConfig, PeftModel
+                from peft import PeftConfig, PeftModel  # type: ignore[import-not-found]
                 from transformers import AutoModelForCausalLM, AutoTokenizer
 
                 logger.info(f"Ładowanie adaptera LoRA z {version.adapter_path}...")
@@ -307,7 +307,7 @@ PARAMETER top_k 40
 
                 # Sprawdź dostępność bitsandbytes i ustaw load_in_4bit jeśli możliwe
                 try:
-                    import bitsandbytes  # noqa: F401
+                    import bitsandbytes  # type: ignore[import-not-found] # noqa: F401
 
                     quantization_config = {"load_in_4bit": True}
                 except ImportError:
@@ -371,7 +371,7 @@ PARAMETER top_k 40
 
         return has_config and has_model
 
-    def get_genealogy(self) -> Dict:
+    def get_genealogy(self) -> Dict[str, Any]:
         """
         Zwraca "Genealogię Inteligencji" - historię wersji modeli.
 
@@ -386,7 +386,9 @@ PARAMETER top_k 40
             "versions": versions_data,
         }
 
-    def compare_versions(self, version_id_1: str, version_id_2: str) -> Optional[Dict]:
+    def compare_versions(
+        self, version_id_1: str, version_id_2: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Porównuje dwie wersje modeli.
 
@@ -612,10 +614,12 @@ PARAMETER top_k 40
             return entries
 
         # 2. Pobieranie modeli z Ollama API
+        live_query_success = False
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get("http://localhost:11434/api/tags")
                 if response.status_code == 200:
+                    live_query_success = True
                     ollama_data = response.json()
                     cached_entries: List[Dict[str, Any]] = []
                     for model in ollama_data.get("models", []):
@@ -670,17 +674,20 @@ PARAMETER top_k 40
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
 
-        for base_dir in search_dirs:
-            manifest_root = base_dir / "manifests"
-            for entry in _load_ollama_manifest_entries(manifest_root):
-                entry_name = entry.get("name")
-                if entry_name:
-                    models.setdefault(f"ollama::{entry_name}", entry)
+        # 3. Jeśli Ollama jest dostępna (live_query_success), to ufamy jej w 100%.
+        # Jeśli nie (live_query_success=False), to ładujemy fallbacki z manifestów.
+        if not live_query_success:
+            for base_dir in search_dirs:
+                manifest_root = base_dir / "manifests"
+                for entry in _load_ollama_manifest_entries(manifest_root):
+                    entry_name = entry.get("name")
+                    if entry_name:
+                        models.setdefault(f"ollama::{entry_name}", entry)
 
         return list(models.values())
 
     async def pull_model(
-        self, model_name: str, progress_callback: Optional[callable] = None
+        self, model_name: str, progress_callback: Optional[Callable[[str], None]] = None
     ) -> bool:
         """
         Pobiera model z Ollama lub HuggingFace.
@@ -717,10 +724,11 @@ PARAMETER top_k 40
 
             try:
                 # Streamuj output
-                for line in process.stdout:
-                    logger.info(f"Ollama: {line.strip()}")
-                    if progress_callback:
-                        progress_callback(line.strip())
+                if process.stdout:
+                    for line in process.stdout:
+                        logger.info(f"Ollama: {line.strip()}")
+                        if progress_callback:
+                            progress_callback(line.strip())
 
                 return_code = process.wait()
 
@@ -728,7 +736,7 @@ PARAMETER top_k 40
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
                     return True
                 else:
-                    stderr = process.stderr.read()
+                    stderr = process.stderr.read() if process.stderr else ""
                     logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
                     return False
             finally:

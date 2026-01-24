@@ -1,6 +1,6 @@
 """Moduł: publisher - agent do publikowania dokumentacji."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -96,7 +96,7 @@ Bądź pomocny i dokładny w raportowaniu.
         )
 
         # Service do chat completion
-        self.chat_service = self.kernel.get_service(service_id="default")
+        self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info("PublisherAgent zainicjalizowany")
 

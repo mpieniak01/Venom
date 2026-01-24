@@ -12,7 +12,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 try:
-    from autogen import ConversableAgent
+    from autogen import ConversableAgent  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     logger.warning(
         "Pakiet 'autogen' nie jest dostępny - używam stubu ConversableAgent."
@@ -233,7 +233,7 @@ def extract_venom_tools(agent: BaseAgent) -> List[Dict[str, Any]]:
     Returns:
         Lista definicji narzędzi w formacie JSON Schema dla AutoGen function calling
     """
-    tools = []
+    tools: List[Dict[str, Any]] = []
 
     if not hasattr(agent, "kernel"):
         return tools

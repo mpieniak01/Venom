@@ -667,7 +667,7 @@ class BenchmarkService:
             Słownik z metrykami: latency_ms, duration_ms, peak_vram_mb, tokens_generated
         """
         # Uruchom zadanie próbkowania VRAM w tle
-        vram_samples = []
+        vram_samples: List[float] = []
         sampling_task = asyncio.create_task(
             self._sample_vram_during_generation(vram_samples)
         )

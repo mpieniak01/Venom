@@ -1,6 +1,7 @@
 """Moduł: dependencies - Wstrzykiwanie zależności dla FastAPI."""
 
 from functools import lru_cache
+from typing import Optional
 
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -9,11 +10,11 @@ from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
 
 # Globalne referencje do serwisów (inicjalizowane w lifespan)
-_orchestrator: Orchestrator = None
-_state_manager: StateManager = None
-_vector_store: VectorStore = None
-_graph_store: CodeGraphStore = None
-_lessons_store: LessonsStore = None
+_orchestrator: Optional[Orchestrator] = None
+_state_manager: Optional[StateManager] = None
+_vector_store: Optional[VectorStore] = None
+_graph_store: Optional[CodeGraphStore] = None
+_lessons_store: Optional[LessonsStore] = None
 
 
 def set_orchestrator(orchestrator: Orchestrator):

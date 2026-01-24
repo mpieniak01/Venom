@@ -1,5 +1,7 @@
 """Moduł: critic - agent oceniający jakość i bezpieczeństwo kodu."""
 
+from typing import Any
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
@@ -138,7 +140,7 @@ PAMIĘTAJ: Twoim celem jest POMOC programiście, nie krytykowanie. Bądź konstr
             ChatMessageContent(role=AuthorRole.USER, content=input_text)
         )
 
-        chat_service = self.kernel.get_service()
+        chat_service: Any = self.kernel.get_service()
         settings = OpenAIChatPromptExecutionSettings(temperature=CRITIC_TEMPERATURE)
 
         response = await self._invoke_chat_with_fallbacks(

@@ -60,8 +60,7 @@ async def demo_browser_skill_screenshots():
 
     # Przykładowe wywołanie (wymaga działającej przeglądarki)
     print("\n💡 Przykład użycia:")
-    print(
-        """
+    print("""
     # Kliknięcie w przycisk
     result = await skill.click_element("#submit-button")
     # Zwróci: "✅ Kliknięto w element: #submit-button"
@@ -71,8 +70,7 @@ async def demo_browser_skill_screenshots():
     result = await skill.fill_form("#email", "user@example.com")
     # Zwróci: "✅ Wypełniono pole: #email"
     #         "Zrzut ekranu weryfikacyjny: /path/to/fill_verification_1234567890.png"
-    """
-    )
+    """)
 
 
 def demo_platform_skill_config_status():
@@ -116,8 +114,7 @@ def demo_web_skill_tavily():
         print("   - Aby włączyć Tavily: dodaj TAVILY_API_KEY do .env")
 
     print("\n💡 Przykład użycia:")
-    print(
-        """
+    print("""
     # Z Tavily (gdy skonfigurowany):
     result = skill.search("What is Python?")
     # Zwróci:
@@ -127,8 +124,7 @@ def demo_web_skill_tavily():
     # Z DuckDuckGo (fallback):
     result = skill.search("What is Python?")
     # Zwróci: tradycyjne wyniki wyszukiwania z tytułami i snippetami
-    """
-    )
+    """)
 
     print("\n🎯 Konfiguracja:")
     print("   1. Utwórz konto na https://tavily.com")

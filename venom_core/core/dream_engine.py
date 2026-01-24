@@ -229,6 +229,11 @@ class DreamEngine:
             session_end = datetime.now()
             duration = (session_end - session_start).total_seconds()
 
+            success_rate = (
+                sum(1 for r in results if r.get("success")) / len(results)
+                if results
+                else 0.0
+            )
             report = {
                 "session_id": self.current_session_id,
                 "status": (
@@ -240,11 +245,7 @@ class DreamEngine:
                 "dreams_attempted": len(results),
                 "dreams_successful": sum(1 for r in results if r.get("success")),
                 "scenarios": [r.get("scenario", "unknown") for r in results],
-                "success_rate": (
-                    sum(1 for r in results if r.get("success")) / len(results)
-                    if results
-                    else 0.0
-                ),
+                "success_rate": success_rate,
             }
 
             logger.info(
@@ -253,7 +254,7 @@ class DreamEngine:
             )
 
             # Jeśli sesja była pomyślna, merge wiedzy do głównej linii
-            if report["success_rate"] > 0.5 and self.current_checkpoint_id:
+            if success_rate > 0.5 and self.current_checkpoint_id:
                 logger.info(
                     "✅ Sesja śnienia pomyślna - wiedza zostanie zachowana w głównej linii"
                 )
@@ -304,7 +305,8 @@ class DreamEngine:
 
             # Pobierz losowe węzły z grafu (communities/entities)
             # Preferujemy węzły z dużą liczbą połączeń (ważne koncepty)
-            graph = self.graph_rag.graph_store.graph
+            graph_store = getattr(self.graph_rag, "graph_store", None)
+            graph = graph_store.graph if graph_store else self.graph_rag.graph
 
             # Sortuj węzły po degree (liczba połączeń)
             nodes_by_degree = sorted(graph.degree(), key=lambda x: x[1], reverse=True)

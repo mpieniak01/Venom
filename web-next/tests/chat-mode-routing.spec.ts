@@ -20,7 +20,7 @@ async function selectChatMode(page: Page, label: string) {
   await expect(trigger).toContainText(new RegExp(label.split(" ")[0], "i"));
 }
 
-async function waitForSessionReady(page) {
+async function waitForSessionReady(page: Page) {
   await page.waitForFunction(
     () => Boolean(window.localStorage.getItem("venom-session-id")),
     undefined,
@@ -28,7 +28,7 @@ async function waitForSessionReady(page) {
   );
 }
 
-async function waitForCockpitReady(page) {
+async function waitForCockpitReady(page: Page) {
   await page.getByTestId("cockpit-send-button").waitFor({ state: "visible", timeout: 10000 });
 }
 
@@ -163,18 +163,18 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Direct");
-    await page.getByPlaceholder("Opisz zadanie dla Venoma...").fill("Test direct");
+    await page.getByTestId("cockpit-prompt-input").fill("Test direct");
     const simpleRequest = page.waitForRequest(
       (req) =>
         req.url().includes("/api/v1/llm/simple/stream") && req.method() === "POST",
       { timeout: 10000 },
     );
-    await page.getByRole("button", { name: /^Wyślij$/i }).click();
+    await page.getByTestId("cockpit-send-button").click();
 
     await simpleRequest;
     await expect.poll(() => simpleCalls, { timeout: 10000 }).toBeGreaterThan(0);
     expect(taskCalls).toBe(0);
-    expect(simpleBody?.session_id).toBeTruthy();
+    expect((simpleBody as any)?.session_id).toBeTruthy();
   });
 
   test("Normal mode routes through tasks without forced intent", async ({ page }) => {
@@ -235,16 +235,16 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Normal");
-    await page.getByPlaceholder("Opisz zadanie dla Venoma...").fill("Test normal");
+    await page.getByTestId("cockpit-prompt-input").fill("Test normal");
     const taskRequest = page.waitForRequest(
       (req) => req.url().includes("/api/v1/tasks") && req.method() === "POST",
       { timeout: 10000 },
     );
-    await page.getByRole("button", { name: /^Wyślij$/i }).click();
+    await page.getByTestId("cockpit-send-button").click();
 
     await taskRequest;
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
-    expect(taskBody?.forced_intent).toBeUndefined();
+    expect((taskBody as any)?.forced_intent).toBeUndefined();
   });
 
   test("Complex mode forces COMPLEX_PLANNING intent and routes to Architect", async ({ page }) => {
@@ -323,16 +323,16 @@ test.describe("Chat mode routing", () => {
     await waitForSessionReady(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Complex");
-    await page.getByPlaceholder("Opisz zadanie dla Venoma...").fill("Test complex");
+    await page.getByTestId("cockpit-prompt-input").fill("Test complex");
     const taskRequest = page.waitForRequest(
       (req) => req.url().includes("/api/v1/tasks") && req.method() === "POST",
       { timeout: 10000 },
     );
-    await page.getByRole("button", { name: /^Wyślij$/i }).click();
+    await page.getByTestId("cockpit-send-button").click();
 
     await taskRequest;
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
-    expect(taskBody?.forced_intent).toBe("COMPLEX_PLANNING");
+    expect((taskBody as any)?.forced_intent).toBe("COMPLEX_PLANNING");
   });
 
   test("Streaming TTFT shows partial before final result", async ({ page }) => {
@@ -410,7 +410,7 @@ test.describe("Chat mode routing", () => {
     await selectChatMode(page, "Normal");
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
-    await page.getByPlaceholder("Opisz zadanie dla Venoma...").fill("Test streaming");
+    await page.getByTestId("cockpit-prompt-input").fill("Test streaming");
     await page.evaluate(() => {
       // @ts-expect-error - attach timing markers in test runtime
       window.__ttftStart = performance.now();
@@ -419,7 +419,7 @@ test.describe("Chat mode routing", () => {
       (req) => req.url().includes("/api/v1/tasks") && req.method() === "POST",
       { timeout: 10000 },
     );
-    await page.getByRole("button", { name: /^Wyślij$/i }).click();
+    await page.getByTestId("cockpit-send-button").click();
 
     await taskRequest;
     await page.waitForFunction(

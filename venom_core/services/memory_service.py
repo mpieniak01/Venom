@@ -1,7 +1,7 @@
 """Moduł: memory_service - serwis konsolidacji pamięci."""
 
 import re
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.contents import ChatHistory
@@ -108,7 +108,7 @@ LEKCJE:
             )
 
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wywołaj model
             response = await chat_service.get_chat_message_content(

@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { useTranslation } from "@/lib/i18n";
 
 interface Config {
   [key: string]: string;
@@ -37,16 +38,14 @@ function ConfigSection({
           <p className="mt-1 text-hint">{description}</p>
         </div>
         <ChevronDown
-          className={`mt-1 h-5 w-5 text-zinc-500 transition-transform duration-300 ${
-            open ? "rotate-180" : ""
-          }`}
+          className={`mt-1 h-5 w-5 text-zinc-500 transition-transform duration-300 ${open ? "rotate-180" : ""
+            }`}
         />
       </Button>
       <div
         id={contentId}
-        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${
-          open ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1"
-        }`}
+        className={`overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-out ${open ? "max-h-[1200px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1"
+          }`}
       >
         <div className="pt-4 space-y-4">{children}</div>
       </div>
@@ -55,6 +54,7 @@ function ConfigSection({
 }
 
 export function ParametersPanel() {
+  const t = useTranslation();
   const [config, setConfig] = useState<Config>({});
   const [originalConfig, setOriginalConfig] = useState<Config>({});
   const [loading, setLoading] = useState(false);
@@ -229,11 +229,10 @@ export function ParametersPanel() {
       {/* Message */}
       {message && (
         <div
-          className={`rounded-xl border p-4 ${
-            message.type === "success"
+          className={`rounded-xl border p-4 ${message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : "border-red-500/30 bg-red-500/10 text-red-300"
-          }`}
+            }`}
         >
           {message.text}
         </div>
@@ -245,14 +244,12 @@ export function ParametersPanel() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 text-yellow-400" />
             <div>
-              <p className="font-semibold text-yellow-300">Restart wymagany</p>
+              <p className="font-semibold text-yellow-300">{t("config.parameters.restartRequired.title")}</p>
               <p className="mt-1 text-sm text-yellow-200">
-                Następujące usługi wymagają restartu:{" "}
-                <span className="font-mono">{restartRequired.join(", ")}</span>
+                {t("config.parameters.restartRequired.message", { services: restartRequired.join(", ") })}
               </p>
               <p className="mt-2 text-xs text-yellow-200/80">
-                Przejdź do zakładki &quot;Usługi&quot; aby zrestartować odpowiednie
-                komponenty.
+                {t("config.parameters.restartRequired.hint")}
               </p>
             </div>
           </div>
@@ -264,25 +261,18 @@ export function ParametersPanel() {
         <div className="flex items-start gap-3">
           <Info className="mt-0.5 h-5 w-5 text-cyan-400" />
           <div>
-            <h3 className="heading-h3">Runtime LLM: Ollama vs vLLM</h3>
+            <h3 className="heading-h3">{t("config.parameters.runtimeInfo.title")}</h3>
             <p className="mt-2 text-sm text-zinc-300">
-              <strong className="text-emerald-300">Ollama (Light):</strong> Priorytet na
-              najkrótszy czas pytanie→odpowiedź, niski footprint (single user). Idealny do
-              codziennej pracy.
+              {t("config.parameters.runtimeInfo.ollama")}
             </p>
             <p className="mt-2 text-sm text-zinc-300">
-              <strong className="text-cyan-300">vLLM (Full):</strong> Pipeline benchmarkowy,
-              dłuższy start, rezerwuje cały VRAM, ale pozwala na testy wydajności i większą
-              przepustowość.
+              {t("config.parameters.runtimeInfo.vllm")}
             </p>
             <p className="mt-3 text-hint">
-              💡 Domyślnie uruchamiamy tylko jeden runtime naraz. Druga opcja ma sens jedynie,
-              gdy rozdzielamy role (np. UI vs. kodowanie). Pełna strategia wyboru runtime
-              będzie oparta na wynikach testów —{" "}
+              {t("config.parameters.runtimeInfo.hint")}{" "}
               <a href="/benchmark" className="text-emerald-400 hover:underline">
-                przejdź do benchmarków
+                {t("config.parameters.runtimeInfo.benchmark")}
               </a>{" "}
-              aby porównać modele.
             </p>
           </div>
         </div>
@@ -295,17 +285,17 @@ export function ParametersPanel() {
         [
           "AI_MODE",
           "LLM_SERVICE_TYPE",
-        "LLM_LOCAL_ENDPOINT",
-        "LLM_MODEL_NAME",
-        "LLM_LOCAL_API_KEY",
-        "OPENAI_API_KEY",
-        "GOOGLE_API_KEY",
-        "SUMMARY_STRATEGY",
-        "HYBRID_CLOUD_PROVIDER",
-        "HYBRID_LOCAL_MODEL",
-        "HYBRID_CLOUD_MODEL",
-        "SENSITIVE_DATA_LOCAL_ONLY",
-        "ENABLE_MODEL_ROUTING",
+          "LLM_LOCAL_ENDPOINT",
+          "LLM_MODEL_NAME",
+          "LLM_LOCAL_API_KEY",
+          "OPENAI_API_KEY",
+          "GOOGLE_API_KEY",
+          "SUMMARY_STRATEGY",
+          "HYBRID_CLOUD_PROVIDER",
+          "HYBRID_LOCAL_MODEL",
+          "HYBRID_CLOUD_MODEL",
+          "SENSITIVE_DATA_LOCAL_ONLY",
+          "ENABLE_MODEL_ROUTING",
           "FORCE_LOCAL_MODEL",
           "ENABLE_MULTI_SERVICE",
         ]

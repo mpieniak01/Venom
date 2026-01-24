@@ -49,7 +49,7 @@ class ActionStep:
         self.description = description
         self.params = params or {}
         self.status = "pending"  # pending, running, success, failed
-        self.result = None
+        self.result: Optional[str] = None
 
 
 class GhostAgent(BaseAgent):
@@ -255,7 +255,7 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                 ChatMessageContent(role=AuthorRole.USER, content=planning_prompt)
             )
 
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
             settings = OpenAIChatPromptExecutionSettings()
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
@@ -293,7 +293,7 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                     logger.warning(f"Pomijam niepoprawny krok: {step_data}")
                     continue
                 step = ActionStep(
-                    action_type=step_data.get("action_type"),
+                    action_type=str(step_data.get("action_type") or "unknown"),
                     description=step_data.get("description", ""),
                     params=step_data.get("params", {}),
                 )
@@ -418,8 +418,8 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
         """
         logger.info(f"Rozpoczynam wykonywanie planu ({len(plan)} kroków)")
 
-        last_screenshot = None
-        located_coords = None
+        last_screenshot: Optional[Any] = None
+        located_coords: Optional[tuple[int, int]] = None
 
         for i, step in enumerate(plan):
             if self.emergency_stop:
@@ -505,7 +505,7 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                     if not verification_result:
                         logger.warning(f"Weryfikacja kroku {i + 1} nie powiodła się")
                         step.status = "failed"
-                        step.result += " (weryfikacja nieudana)"
+                        step.result = (step.result or "") + " (weryfikacja nieudana)"
 
                 # Czekaj między krokami
                 if step.action_type != "wait":

@@ -189,7 +189,7 @@ Gdy otrzymujesz dane z sensora:
             )
 
             # Pobierz serwis chat
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wywołaj LLM
             settings = OpenAIChatPromptExecutionSettings()
@@ -467,7 +467,7 @@ ODPOWIEDŹ:"""
                 ChatMessageContent(role=AuthorRole.USER, content=prompt)
             )
 
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
             settings = OpenAIChatPromptExecutionSettings()
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
@@ -606,7 +606,9 @@ ODPOWIEDŹ:"""
             return []
 
     def record_rejection(
-        self, suggestion: Suggestion = None, suggestion_type: str = None
+        self,
+        suggestion: Optional[Suggestion] = None,
+        suggestion_type: Optional[str] = None,
     ) -> None:
         """
         Rejestruje odrzuconą sugestię dla uczenia się.

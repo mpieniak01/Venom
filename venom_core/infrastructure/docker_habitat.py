@@ -1,12 +1,24 @@
 """Moduł: docker_habitat - Zarządca bezpiecznego środowiska wykonawczego (Docker Sandbox)."""
 
+import importlib
 from pathlib import Path
-
-import docker
-from docker.errors import APIError, ImageNotFound, NotFound
+from typing import Any
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+
+docker: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    docker = importlib.import_module("docker")
+    docker_errors = importlib.import_module("docker.errors")
+    APIError = docker_errors.APIError
+    ImageNotFound = docker_errors.ImageNotFound
+    NotFound = docker_errors.NotFound
+except Exception:  # pragma: no cover
+    docker = None
+    APIError = Exception
+    ImageNotFound = Exception
+    NotFound = Exception
 
 logger = get_logger(__name__)
 
@@ -32,6 +44,10 @@ class DockerHabitat:
         Raises:
             RuntimeError: Jeśli Docker nie jest dostępny lub nie można uruchomić kontenera
         """
+        if docker is None:
+            error_msg = "Docker SDK nie jest dostępny"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         try:
             self.client = docker.from_env()
             logger.info("Połączono z Docker daemon")

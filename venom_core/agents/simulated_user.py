@@ -5,9 +5,12 @@ import json
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.function_choice_behavior import (
+    FunctionChoiceBehavior,
+)
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 
@@ -261,11 +264,11 @@ Pamiętaj: Jesteś {name} i zachowujesz się zgodnie ze swoją personą!"""
             execution_settings = OpenAIChatPromptExecutionSettings(
                 max_tokens=1500,
                 temperature=0.7,  # Wyższa temperatura dla bardziej ludzkiego zachowania
-                function_choice_behavior="auto",
+                function_choice_behavior=FunctionChoiceBehavior.Auto(),
             )
 
             # Pobierz usługę czatu z kernela
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wykonaj chat completion z function calling
             result = await self._invoke_chat_with_fallbacks(

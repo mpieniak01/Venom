@@ -107,7 +107,11 @@ class CloudProvisioner:
             CloudProvisionerError: Jeśli połączenie nie powiedzie się
         """
         user = user or self.default_user
-        connect_kwargs = {"host": host, "username": user, "known_hosts": None}
+        connect_kwargs: dict[str, object] = {
+            "host": host,
+            "username": user,
+            "known_hosts": None,
+        }
 
         # Preferuj klucz SSH
         if self.ssh_key_path and Path(self.ssh_key_path).exists():
@@ -123,8 +127,18 @@ class CloudProvisioner:
             async with asyncio.timeout(self.timeout):
                 async with asyncssh.connect(**connect_kwargs) as conn:
                     result = await conn.run(command, check=False)
-                    stdout = result.stdout if result.stdout else ""
-                    stderr = result.stderr if result.stderr else ""
+                    raw_stdout = result.stdout if result.stdout else ""
+                    raw_stderr = result.stderr if result.stderr else ""
+                    stdout = (
+                        raw_stdout.decode()
+                        if isinstance(raw_stdout, bytes)
+                        else raw_stdout
+                    )
+                    stderr = (
+                        raw_stderr.decode()
+                        if isinstance(raw_stderr, bytes)
+                        else raw_stderr
+                    )
                     exit_code = result.exit_status or 0
 
                     logger.debug(
@@ -242,7 +256,11 @@ class CloudProvisioner:
         remote_compose = f"{remote_dir}/docker-compose.yml"
 
         user = user or self.default_user
-        connect_kwargs = {"host": host, "username": user, "known_hosts": None}
+        connect_kwargs: dict[str, object] = {
+            "host": host,
+            "username": user,
+            "known_hosts": None,
+        }
 
         if self.ssh_key_path and Path(self.ssh_key_path).exists():
             connect_kwargs["client_keys"] = [self.ssh_key_path]
@@ -270,8 +288,13 @@ class CloudProvisioner:
                     )
 
                     if result.exit_status != 0:
+                        stderr_output = (
+                            result.stderr.decode()
+                            if isinstance(result.stderr, bytes)
+                            else result.stderr
+                        )
                         raise CloudProvisionerError(
-                            f"docker-compose up failed: {result.stderr}"
+                            f"docker-compose up failed: {stderr_output}"
                         )
 
                     logger.info(f"✓ Stack '{stack_name}' uruchomiony pomyślnie")

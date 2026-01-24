@@ -1,7 +1,7 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
 import httpx
@@ -31,6 +31,17 @@ if TYPE_CHECKING:
     from venom_core.core.tracer import RequestTracer
 
 logger = get_logger(__name__)
+
+
+class MemoryStoreLike(Protocol):
+    def search(
+        self,
+        query: str,
+        limit: int = 3,
+        collection_name: Optional[str] = None,
+    ): ...
+
+    def upsert(self, text: str, metadata: Dict[str, Any], **kwargs: Any) -> Any: ...
 
 
 class SessionHandler:
@@ -99,10 +110,14 @@ class SessionHandler:
             short_content = content
             was_trimmed = False  # pełny tekst w historii (bez placeholdera)
 
-            history = (task.context_history.get("session_history") or [])[:]
-            full_history = task.context_history.get("session_history_full") or []
+            history: List[Dict[str, Any]] = (
+                task.context_history.get("session_history") or []
+            )[:]
+            full_history: List[Dict[str, Any]] = (
+                task.context_history.get("session_history_full") or []
+            )
 
-            entry = {
+            entry: Dict[str, object] = {
                 "role": role,
                 "content": short_content,
                 "session_id": session_id,
@@ -137,14 +152,14 @@ class SessionHandler:
         include_memory: bool = True,
     ) -> str:
         """Buduje blok kontekstu sesji (metadane + historia)."""
-        parts = []
+        parts: List[str] = []
         session_id = request.session_id
         scope = request.preference_scope or "default"
         tone = request.tone
         style_notes = request.style_notes
         preferred_language = request.preferred_language
 
-        meta_lines = []
+        meta_lines: List[str] = []
         if session_id:
             meta_lines.append(f"ID sesji: {session_id}")
         meta_lines.append(f"Zakres preferencji: {scope}")
@@ -159,7 +174,7 @@ class SessionHandler:
 
         try:
             task = self.state_manager.get_task(task_id)
-            history = []
+            history: List[Dict[str, Any]] = []
             if task and isinstance(getattr(task, "context_history", {}), dict):
                 if not self._testing_mode:
                     self._ensure_session_summary(task_id, task)
@@ -365,15 +380,17 @@ class SessionHandler:
             model_name = runtime.model_name or SETTINGS.LLM_MODEL_NAME
             if not model_name:
                 return ""
-            endpoint = runtime.endpoint
+            endpoint = runtime.endpoint or ""
             if runtime.provider == "openai":
                 endpoint = SETTINGS.OPENAI_CHAT_COMPLETIONS_ENDPOINT
+            if not endpoint:
+                return ""
             if endpoint.endswith("/v1"):
                 endpoint = endpoint + "/chat/completions"
             elif not endpoint.endswith("/chat/completions"):
                 endpoint = endpoint.rstrip("/") + "/v1/chat/completions"
 
-            headers = {}
+            headers: Dict[str, str] = {}
             if runtime.provider == "openai" and SETTINGS.OPENAI_API_KEY:
                 headers["Authorization"] = f"Bearer {SETTINGS.OPENAI_API_KEY}"
             if runtime.service_type == "local" and getattr(
@@ -412,11 +429,16 @@ class SessionHandler:
             logger.warning(f"Streszczenie LLM nieudane: {exc}")
             return ""
 
-    def _memory_upsert(self, text: str, metadata: dict) -> None:
+    def _memory_upsert(self, text: str, metadata: Dict[str, Any]) -> None:
         if not text:
             return
         try:
-            self.memory_skill.vector_store.upsert(text=text, metadata=metadata)
+            store: Optional[MemoryStoreLike] = getattr(
+                self.memory_skill, "vector_store", None
+            )
+            if store is None:
+                return
+            store.upsert(text=text, metadata=metadata)
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się zapisać do pamięci: {exc}")
 

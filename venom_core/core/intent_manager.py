@@ -7,6 +7,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -97,7 +98,7 @@ class IntentManager:
     }
     LEXICON_FALLBACK_SCORE = 0.9
     TIE_BREAK_DELTA = 0.02
-    _lexicon_cache = {}
+    _lexicon_cache: Dict[str, Dict[str, Any]] = {}
 
     @staticmethod
     def _normalize_text(text: str) -> str:
@@ -127,7 +128,7 @@ class IntentManager:
             return "pl"
         return ""
 
-    def _load_lexicon(self, language: str) -> dict:
+    def _load_lexicon(self, language: str) -> Dict[str, Any]:
         if language in self._lexicon_cache:
             return self._lexicon_cache[language]
         filename = self.LEXICON_FILES.get(language)
@@ -141,7 +142,7 @@ class IntentManager:
         self._lexicon_cache[language] = data
         return data
 
-    def _load_user_lexicon(self, language: str) -> dict:
+    def _load_user_lexicon(self, language: str) -> Dict[str, Any]:
         filename = f"intent_lexicon_user_{language}.json"
         path = self.USER_LEXICON_DIR / filename
         if not path.exists():
@@ -154,12 +155,14 @@ class IntentManager:
             return {}
 
     @staticmethod
-    def _merge_lexicons(base: dict, override: dict) -> dict:
+    def _merge_lexicons(
+        base: Dict[str, Any], override: Dict[str, Any]
+    ) -> Dict[str, Any]:
         if not base:
             return override or {}
         if not override:
             return base
-        merged = {"intents": {}}
+        merged: Dict[str, Any] = {"intents": {}}
         base_intents = base.get("intents", {}) or {}
         override_intents = override.get("intents", {}) or {}
         all_intents = set(base_intents) | set(override_intents)
@@ -190,7 +193,7 @@ class IntentManager:
             return False
         return True
 
-    def _phrase_exists(self, intent: str, phrase: str, lexicon: dict) -> bool:
+    def _phrase_exists(self, intent: str, phrase: str, lexicon: Dict[str, Any]) -> bool:
         intents = lexicon.get("intents", {}) or {}
         cfg = intents.get(intent, {}) or {}
         phrases = cfg.get("phrases", []) or []
@@ -229,8 +232,8 @@ class IntentManager:
 
     @staticmethod
     def _match_intent_lexicon(
-        normalized: str, lexicon: dict
-    ) -> tuple[str, float, list[tuple[str, float]]]:
+        normalized: str, lexicon: Dict[str, Any]
+    ) -> Tuple[str, float, List[Tuple[str, float]]]:
         if not normalized or not lexicon:
             return ("", 0.0, [])
         intents = lexicon.get("intents", {})
@@ -393,7 +396,7 @@ CODE_GENERATION, KNOWLEDGE_SEARCH, GENERAL_CHAT, RESEARCH, COMPLEX_PLANNING,
 VERSION_CONTROL, E2E_TESTING, DOCUMENTATION, RELEASE_PROJECT, START_CAMPAIGN,
 STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
 
-    def __init__(self, kernel: Kernel = None):
+    def __init__(self, kernel: Optional[Kernel] = None):
         """
         Inicjalizacja IntentManager.
 
@@ -402,6 +405,8 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         """
         self._test_mode = bool(os.environ.get("PYTEST_CURRENT_TEST"))
         self._llm_disabled = False
+        self.kernel: Optional[Kernel] = None
+        self.last_intent_debug: Dict[str, Any] = {}
 
         if kernel is None:
             builder = KernelBuilder()
@@ -459,7 +464,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
         lexicon_languages = [language] if language else list(self.LEXICON_FILES.keys())
         best_intent = ""
         best_score = 0.0
-        best_top2 = []
+        best_top2: List[Tuple[str, float]] = []
         for lang in lexicon_languages:
             lexicon = self._load_lexicon(lang)
             user_lexicon = self._load_user_lexicon(lang)
@@ -471,7 +476,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
                 best_top2 = top2
 
         if language and best_score < self.LEXICON_FALLBACK_SCORE:
-            fallback_best = ("", 0.0, [])
+            fallback_best: Tuple[str, float, List[Tuple[str, float]]] = ("", 0.0, [])
             for lang in self.LEXICON_FILES.keys():
                 lexicon = self._load_lexicon(lang)
                 user_lexicon = self._load_user_lexicon(lang)
@@ -581,7 +586,7 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wywołaj model
             settings = OpenAIChatPromptExecutionSettings()

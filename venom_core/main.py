@@ -51,6 +51,7 @@ from venom_core.memory.vector_store import VectorStore
 from venom_core.perception.audio_engine import AudioEngine
 from venom_core.perception.watcher import FileWatcher
 from venom_core.services.session_store import SessionStore
+from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.llm_runtime import (
     get_active_llm_runtime,
     probe_runtime_status,
@@ -184,6 +185,8 @@ async def lifespan(app: FastAPI):
         from venom_core.core.model_registry import ModelRegistry
         from venom_core.services.benchmark import BenchmarkService
 
+        if not service_monitor:
+            raise RuntimeError("Service monitor niedostępny - pomijam BenchmarkService")
         model_registry = ModelRegistry()
         benchmark_service = BenchmarkService(
             model_registry=model_registry,
@@ -408,11 +411,12 @@ async def lifespan(app: FastAPI):
     # Inicjalizuj Hardware Bridge (Rider-Pi)
     if SETTINGS.ENABLE_IOT_BRIDGE:
         try:
+            password_value = extract_secret_value(SETTINGS.RIDER_PI_PASSWORD)
             hardware_bridge = HardwareBridge(
                 host=SETTINGS.RIDER_PI_HOST,
                 port=SETTINGS.RIDER_PI_PORT,
                 username=SETTINGS.RIDER_PI_USERNAME,
-                password=SETTINGS.RIDER_PI_PASSWORD,
+                password=password_value,
                 protocol=SETTINGS.RIDER_PI_PROTOCOL,
             )
             # Połącz w tle
@@ -428,9 +432,9 @@ async def lifespan(app: FastAPI):
     # Inicjalizuj Operator Agent
     if SETTINGS.ENABLE_AUDIO_INTERFACE and audio_engine:
         try:
-            from venom_core.execution.kernel_builder import build_kernel
+            from venom_core.execution.kernel_builder import KernelBuilder
 
-            operator_kernel = build_kernel()
+            operator_kernel = KernelBuilder().build_kernel()
             operator_agent = OperatorAgent(
                 kernel=operator_kernel,
                 hardware_bridge=hardware_bridge,
@@ -457,7 +461,7 @@ async def lifespan(app: FastAPI):
     if SETTINGS.ENABLE_PROACTIVE_MODE:
         try:
             from venom_core.agents.shadow import ShadowAgent
-            from venom_core.execution.kernel_builder import build_kernel
+            from venom_core.execution.kernel_builder import KernelBuilder
             from venom_core.perception.desktop_sensor import DesktopSensor
             from venom_core.ui.notifier import Notifier
 
@@ -506,7 +510,7 @@ async def lifespan(app: FastAPI):
             logger.info("Notifier zainicjalizowany")
 
             # Inicjalizuj Shadow Agent
-            shadow_kernel = build_kernel()
+            shadow_kernel = KernelBuilder().build_kernel()
             shadow_agent = ShadowAgent(
                 kernel=shadow_kernel,
                 goal_store=(
@@ -519,6 +523,10 @@ async def lifespan(app: FastAPI):
             )
             await shadow_agent.start()
             logger.info("ShadowAgent uruchomiony")
+            shadow = shadow_agent
+            note = notifier
+            assert shadow is not None
+            assert note is not None
 
             # Callback dla desktop sensor
             async def handle_sensor_data(sensor_data: dict):
@@ -526,13 +534,13 @@ async def lifespan(app: FastAPI):
                 logger.debug(f"Desktop Sensor data: {sensor_data.get('type')}")
 
                 # Przekaż do Shadow Agent do analizy
-                suggestion = await shadow_agent.analyze_sensor_data(sensor_data)
+                suggestion = await shadow.analyze_sensor_data(sensor_data)
 
                 if suggestion:
                     logger.info(f"Shadow Agent suggestion: {suggestion.title}")
 
                     # Wyślij powiadomienie
-                    await notifier.send_toast(
+                    await note.send_toast(
                         title=suggestion.title,
                         message=suggestion.message,
                         action_payload=suggestion.action_payload,

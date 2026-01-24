@@ -2,7 +2,7 @@
 
 import re
 import subprocess
-from typing import Annotated
+from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
@@ -30,6 +30,7 @@ class ShellSkill:
                         Jeśli False, komendy wykonywane są lokalnie.
         """
         self.use_sandbox = use_sandbox and SETTINGS.ENABLE_SANDBOX
+        self.habitat: Optional[DockerHabitat] = None
 
         if self.use_sandbox:
             try:
@@ -39,9 +40,7 @@ class ShellSkill:
                 logger.warning(f"Nie można zainicjalizować Docker Sandbox: {e}")
                 logger.warning("Przełączanie na tryb lokalny")
                 self.use_sandbox = False
-                self.habitat = None
         else:
-            self.habitat = None
             logger.info("ShellSkill zainicjalizowany w trybie lokalnym")
 
     @kernel_function(
@@ -85,6 +84,8 @@ class ShellSkill:
             Wynik wykonania (stdout + stderr) z informacją o exit_code
         """
         try:
+            if not self.habitat:
+                raise RuntimeError("DockerHabitat nie jest dostępny dla sandbox")
             logger.info(f"Wykonywanie w sandbox: {command[:100]}")
             exit_code, output = self.habitat.execute(command, timeout)
 

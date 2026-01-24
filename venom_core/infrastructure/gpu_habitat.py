@@ -1,14 +1,23 @@
 """Moduł: gpu_habitat - Siedlisko Treningowe z obsługą GPU."""
 
+import importlib
 from pathlib import Path
-from typing import Dict, Optional
-
-import docker
-from docker.errors import APIError, ImageNotFound
+from typing import Any, Dict, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.docker_habitat import DockerHabitat
 from venom_core.utils.logger import get_logger
+
+docker: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    docker = importlib.import_module("docker")
+    docker_errors = importlib.import_module("docker.errors")
+    APIError = docker_errors.APIError
+    ImageNotFound = docker_errors.ImageNotFound
+except Exception:  # pragma: no cover
+    docker = None
+    APIError = Exception
+    ImageNotFound = Exception
 
 logger = get_logger(__name__)
 
@@ -26,7 +35,7 @@ class GPUHabitat(DockerHabitat):
     # Domyślny obraz treningowy (Unsloth - bardzo szybki fine-tuning)
     DEFAULT_TRAINING_IMAGE = "unsloth/unsloth:latest"
 
-    def __init__(self, enable_gpu: bool = True, training_image: str = None):
+    def __init__(self, enable_gpu: bool = True, training_image: Optional[str] = None):
         """
         Inicjalizacja GPUHabitat.
 
@@ -44,6 +53,10 @@ class GPUHabitat(DockerHabitat):
             marker typologiczny, a nie dla dziedziczenia funkcjonalności.
         """
         # Inicjalizacja klienta Docker (bez tworzenia standardowego kontenera)
+        if docker is None:
+            error_msg = "Docker SDK nie jest dostępny"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
         try:
             self.client = docker.from_env()
             logger.info("Połączono z Docker daemon (GPU mode)")
@@ -54,7 +67,7 @@ class GPUHabitat(DockerHabitat):
 
         self.enable_gpu = enable_gpu
         self.training_image = training_image or self.DEFAULT_TRAINING_IMAGE
-        self.training_containers = {}  # Rejestr aktywnych kontenerów treningowych
+        self.training_containers: dict[str, Any] = {}
 
         # Sprawdź dostępność GPU
         if self.enable_gpu:
@@ -149,18 +162,18 @@ class GPUHabitat(DockerHabitat):
             RuntimeError: Jeśli nie można uruchomić kontenera
         """
         # Walidacja parametrów
-        dataset_path = Path(dataset_path)
-        if not dataset_path.exists():
-            raise ValueError(f"Dataset nie istnieje: {dataset_path}")
+        dataset_path_obj = Path(dataset_path)
+        if not dataset_path_obj.exists():
+            raise ValueError(f"Dataset nie istnieje: {dataset_path_obj}")
 
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir_obj = Path(output_dir)
+        output_dir_obj.mkdir(parents=True, exist_ok=True)
 
-        job_name = job_name or f"training_{dataset_path.stem}"
+        job_name = job_name or f"training_{dataset_path_obj.stem}"
 
         logger.info(
             f"Uruchamianie treningu: job={job_name}, model={base_model}, "
-            f"dataset={dataset_path.name}"
+            f"dataset={dataset_path_obj.name}"
         )
 
         try:
@@ -185,17 +198,20 @@ class GPUHabitat(DockerHabitat):
             )
 
             # Zapisz skrypt w output_dir
-            script_path = output_dir / "train_script.py"
+            script_path = output_dir_obj / "train_script.py"
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(training_script)
 
             # Przygotuj volumes
             volumes = {
-                str(dataset_path.resolve()): {
+                str(dataset_path_obj.resolve()): {
                     "bind": "/workspace/dataset.jsonl",
                     "mode": "ro",
                 },
-                str(output_dir.resolve()): {"bind": "/workspace/output", "mode": "rw"},
+                str(output_dir_obj.resolve()): {
+                    "bind": "/workspace/output",
+                    "mode": "rw",
+                },
             }
 
             # Przygotuj device requests (GPU)
@@ -228,8 +244,8 @@ class GPUHabitat(DockerHabitat):
             self.training_containers[job_name] = {
                 "container_id": container.id,
                 "container": container,
-                "dataset_path": str(dataset_path),
-                "output_dir": str(output_dir),
+                "dataset_path": str(dataset_path_obj),
+                "output_dir": str(output_dir_obj),
                 "status": "running",
             }
 
@@ -241,7 +257,7 @@ class GPUHabitat(DockerHabitat):
                 "container_id": container.id,
                 "job_name": job_name,
                 "status": "running",
-                "adapter_path": str(output_dir / "adapter"),
+                "adapter_path": str(output_dir_obj / "adapter"),
             }
 
         except Exception as e:
@@ -249,7 +265,7 @@ class GPUHabitat(DockerHabitat):
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
-    def get_training_status(self, job_name: str) -> Dict[str, str]:
+    def get_training_status(self, job_name: str) -> Dict[str, str | None]:
         """
         Pobiera status zadania treningowego.
 

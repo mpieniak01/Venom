@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 
 interface ServiceInfo {
   name: string;
@@ -47,6 +48,7 @@ interface StorageSnapshot {
 }
 
 export function ServicesPanel() {
+  const t = useTranslation();
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [history, setHistory] = useState<ActionHistory[]>([]);
   const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(null);
@@ -333,7 +335,7 @@ export function ServicesPanel() {
 
       {/* Profiles */}
       <div className="glass-panel rounded-2xl box-subtle p-6">
-        <h2 className="mb-4 heading-h2">Profile szybkie</h2>
+        <h2 className="mb-4 heading-h2">{t("config.services.profiles.title")}</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Button
             onClick={() => applyProfile("full")}
@@ -342,7 +344,7 @@ export function ServicesPanel() {
             className="w-full"
           >
             <Zap className="mr-2 h-4 w-4" />
-            Full Stack
+            {t("config.services.profiles.full")}
           </Button>
           <Button
             onClick={() => applyProfile("light")}
@@ -351,7 +353,7 @@ export function ServicesPanel() {
             className="w-full"
           >
             <Activity className="mr-2 h-4 w-4" />
-            Light (bez LLM)
+            {t("config.services.profiles.light")}
           </Button>
           <Button
             onClick={() => applyProfile("llm_off")}
@@ -360,12 +362,11 @@ export function ServicesPanel() {
             className="w-full"
           >
             <Square className="mr-2 h-4 w-4" />
-            LLM OFF
+            {t("config.services.profiles.llmOff")}
           </Button>
         </div>
         <p className="mt-3 text-xs text-zinc-500">
-          Profile szybko ustawiają zestaw usług: Full uruchamia wszystko, Light tylko backend i UI,
-          LLM OFF wyłącza modele językowe.
+          {t("config.services.profiles.description")}
         </p>
       </div>
 
@@ -447,7 +448,7 @@ export function ServicesPanel() {
                     className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
                   >
                     <Play className="mr-1 h-3 w-3" />
-                    Start
+                    {t("config.services.actions.start")}
                   </Button>
                   <Button
                     onClick={() => executeAction(service.service_type, "stop")}
@@ -459,7 +460,7 @@ export function ServicesPanel() {
                     className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
                   >
                     <Square className="mr-1 h-3 w-3" />
-                    Stop
+                    {t("config.services.actions.stop")}
                   </Button>
                   <Button
                     onClick={() => executeAction(service.service_type, "restart")}
@@ -469,7 +470,7 @@ export function ServicesPanel() {
                     className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
                   >
                     <RotateCw className="mr-1 h-3 w-3" />
-                    Restart
+                    {t("config.services.actions.restart")}
                   </Button>
                 </div>
               ) : (

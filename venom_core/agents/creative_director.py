@@ -1,5 +1,7 @@
 """Moduł: creative_director - agent do brandingu i marketingu."""
 
+from typing import Any
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
@@ -132,7 +134,7 @@ Pamiętaj: Zawsze proponuj konkretne rozwiązania, nie tylko ogólne rady."""
 
         try:
             # Pobierz service z kernel
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Wykonaj chat completion
             settings = OpenAIChatPromptExecutionSettings(

@@ -21,11 +21,6 @@ import psutil  # type: ignore[import-untyped]
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
-try:  # pragma: no cover - zależne od środowiska testowego
-    import chromadb  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    chromadb = None
-
 logger = get_logger(__name__)
 
 
@@ -167,11 +162,6 @@ class ServiceHealthMonitor:
         """
         self.registry = registry
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
-
-        # Cache ChromaDB availability
-        self._chromadb_available: Optional[bool] = None
-        self._chromadb_module: Optional[object] = None
-        self._chromadb_client: Optional[object] = None
 
     def get_all_services(self) -> List[ServiceInfo]:
         """

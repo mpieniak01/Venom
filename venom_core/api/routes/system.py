@@ -681,18 +681,32 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         health_url = target.get("health_url")
         if health_url:
             logger.info(f"Oczekiwanie na start serwera {server_name} ({health_url})...")
+            health_ok = False
             async with httpx.AsyncClient(timeout=2.0) as client:
                 for attempt in range(60):  # Max 30 seconds
                     try:
                         resp = await client.get(health_url)
-                        if resp.status_code < 500:
+                        # Sprawdzamy czy serwer odpowiada kodem 200 (sukces)
+                        if resp.status_code == 200:
                             logger.info(
                                 f"Serwer {server_name} gotowy po {attempt * 0.5}s"
                             )
+                            health_ok = True
                             break
                     except Exception:
+                        # Serwer jeszcze nie odpowiada - kontynuujemy próby
                         pass
                     await asyncio.sleep(0.5)
+            
+            # Jeśli serwer nie stał się zdrowy po timeoucie, oznacz niepowodzenie
+            if not health_ok:
+                logger.error(
+                    f"Serwer {server_name} nie odpowiedział prawidłowo po 30s"
+                )
+                start_result = {
+                    "ok": False,
+                    "error": "Health check timeout - serwer nie odpowiada",
+                }
 
     # Aktualizuj endpoint i tryb lokalny
     endpoint = target.get("endpoint")

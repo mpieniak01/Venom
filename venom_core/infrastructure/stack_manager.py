@@ -1,14 +1,19 @@
 """Moduł: stack_manager - zarządzanie środowiskami Docker Compose."""
 
+import importlib
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
-
-import docker
+from typing import Any, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+
+docker: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    docker = importlib.import_module("docker")
+except Exception:  # pragma: no cover
+    docker = None
 
 logger = get_logger(__name__)
 
@@ -63,11 +68,18 @@ class StackManager:
         self._check_docker_compose()
 
         # Inicjalizuj klienta Docker (do sprawdzania statusu)
-        try:
-            self.docker_client = docker.from_env()
-        except Exception as e:
-            logger.warning(f"Nie można połączyć się z Docker daemon: {e}")
+        self.docker_client: Optional[Any]
+        if docker is None:
+            logger.warning(
+                "Docker SDK nie jest dostępny - pomijam inicjalizację klienta"
+            )
             self.docker_client = None
+        else:
+            try:
+                self.docker_client = docker.from_env()
+            except Exception as e:
+                logger.warning(f"Nie można połączyć się z Docker daemon: {e}")
+                self.docker_client = None
 
         logger.info(f"StackManager zainicjalizowany z workspace: {self.workspace_root}")
 

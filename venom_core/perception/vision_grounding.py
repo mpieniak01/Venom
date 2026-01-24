@@ -205,7 +205,7 @@ Przykład odpowiedzi:
 
             # Bardzo prosty fallback: szukamy tekstu przez pytesseract (jeśli dostępny)
             try:
-                import pytesseract
+                import pytesseract  # type: ignore[import-not-found]
 
                 # OCR na obrazie
                 ocr_data = pytesseract.image_to_data(

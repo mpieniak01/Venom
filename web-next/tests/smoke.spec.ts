@@ -195,10 +195,11 @@ test.describe("Venom Next Cockpit Smoke", () => {
     });
 
     await page.goto("/");
-    const presetButton = page.getByRole("button", { name: /Kreacja/i }).first();
+    const presetButton = page.getByTestId("cockpit-preset-preset-creative");
+    await expect(presetButton).toBeVisible();
     await presetButton.click();
 
-    const textarea = page.getByPlaceholder("Opisz zadanie dla Venoma...");
+    const textarea = page.getByTestId("cockpit-prompt-input");
     await expect(textarea).toHaveValue(/Stwórz logo/i);
     await textarea.focus();
     await page.keyboard.press("Control+Enter");
@@ -230,6 +231,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
 
     await page.goto("/chat");
     const panicButton = page.getByRole("button", { name: /Awaryjne zatrzymanie/i });
+    await expect(panicButton).toBeVisible();
     await panicButton.click();
     await expect(page.getByText(/Zatrzymano zadania/i)).toBeVisible();
   });
@@ -332,7 +334,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await page.goto("/chat");
     await page.waitForResponse("**/api/v1/system/llm-servers/active");
 
-    const textarea = page.getByPlaceholder("Opisz zadanie dla Venoma...");
+    const textarea = page.getByTestId("cockpit-prompt-input");
     await textarea.fill("/gpt Test zadania");
 
     const [runtimeReq, taskReq] = await Promise.all([

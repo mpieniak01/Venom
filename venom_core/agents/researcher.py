@@ -3,7 +3,7 @@
 import asyncio
 import os
 import re
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -24,7 +24,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def format_grounding_sources(response_metadata: dict) -> str:
+def format_grounding_sources(response_metadata: dict[str, Any]) -> str:
     """
     Formatuje źródła z Google Grounding do czytelnej formy.
 
@@ -200,7 +200,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Lokalny endpoint (vLLM/Ollama) nie wspiera jeszcze narzędzi w naszej konfiguracji.
             from venom_core.utils.llm_runtime import get_active_llm_runtime
@@ -226,7 +226,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
             result = str(response).strip()
 
             # Sprawdź czy odpowiedź zawiera metadane Google Grounding
-            response_metadata = {}
+            response_metadata: dict[str, Any] = {}
             if hasattr(response, "metadata"):
                 response_metadata = response.metadata or {}
 
@@ -292,7 +292,7 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
     async def _summarize_sources(
         self, query: str, sources: List[Tuple[str, str]]
     ) -> str:
-        chat_service = self.kernel.get_service()
+        chat_service: Any = self.kernel.get_service()
         trimmed_sources = []
         for url, content in sources:
             snippet = content.strip()

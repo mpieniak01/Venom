@@ -254,7 +254,7 @@ class ConfigUpdateRequest(BaseModel):
     )
 
     @validator("updates")
-    def validate_whitelist(cls, v):
+    def validate_whitelist(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Sprawdź czy wszystkie klucze są na whiteliście."""
         invalid_keys = set(v.keys()) - CONFIG_WHITELIST
         if invalid_keys:
@@ -265,7 +265,7 @@ class ConfigUpdateRequest(BaseModel):
         return v
 
     @validator("updates")
-    def validate_ranges(cls, v):
+    def validate_ranges(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Walidacja zakresów wartości dla specyficznych parametrów."""
         errors = []
 
@@ -387,7 +387,7 @@ class ConfigManager:
         Returns:
             Słownik z konfiguracją
         """
-        config = {}
+        config: Dict[str, Any] = {}
 
         # Wczytaj .env
         env_values = self._read_env_file()
@@ -439,12 +439,38 @@ class ConfigManager:
         env_values = self._read_env_file()
 
         # Zastosuj zmiany
-        changed_keys = []
+        changed_keys: List[str] = []
         for key, value in updates.items():
             old_value = env_values.get(key, "")
             if str(value) != str(old_value):
                 env_values[key] = str(value)
                 changed_keys.append(key)
+
+        # [AUTO-SYNC LOGIC] Automatyczna aktualizacja endpointu przy zmianie serwera
+        if "ACTIVE_LLM_SERVER" in updates and "LLM_LOCAL_ENDPOINT" not in updates:
+            new_server = str(updates["ACTIVE_LLM_SERVER"]).lower()
+            if new_server == "vllm":
+                # Pobierz endpoint vLLM z updates (jeśli zmieniany) lub z obecnych wartości
+                vllm_endpoint = updates.get("VLLM_ENDPOINT")
+                if not vllm_endpoint:
+                    vllm_endpoint = env_values.get(
+                        "VLLM_ENDPOINT", "http://localhost:8001/v1"
+                    )
+
+                env_values["LLM_LOCAL_ENDPOINT"] = str(vllm_endpoint)
+                changed_keys.append("LLM_LOCAL_ENDPOINT")
+                logger.info(
+                    f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {vllm_endpoint} (vLLM)"
+                )
+
+            elif new_server == "ollama":
+                # Domyślny endpoint Ollama
+                ollama_endpoint = "http://localhost:11434/v1"
+                env_values["LLM_LOCAL_ENDPOINT"] = ollama_endpoint
+                changed_keys.append("LLM_LOCAL_ENDPOINT")
+                logger.info(
+                    f"Auto-Sync: Ustawiono LLM_LOCAL_ENDPOINT na {ollama_endpoint} (Ollama)"
+                )
 
         # Zapisz .env
         try:
@@ -475,7 +501,7 @@ class ConfigManager:
 
     def _read_env_file(self) -> Dict[str, str]:
         """Wczytuje .env do słownika."""
-        env_values = {}
+        env_values: Dict[str, str] = {}
 
         if not self.env_file.exists():
             logger.warning(f".env nie istnieje: {self.env_file}")
@@ -501,17 +527,17 @@ class ConfigManager:
 
         return env_values
 
-    def _write_env_file(self, env_values: Dict[str, str]):
+    def _write_env_file(self, env_values: Dict[str, str]) -> None:
         """Zapisuje słownik do .env."""
         # Wczytaj oryginał aby zachować komentarze i strukturę
-        original_lines = []
+        original_lines: List[str] = []
         if self.env_file.exists():
             with open(self.env_file, "r", encoding="utf-8") as f:
                 original_lines = f.readlines()
 
         # Zbuduj nowy plik
-        new_lines = []
-        processed_keys = set()
+        new_lines: List[str] = []
+        processed_keys: Set[str] = set()
 
         for line in original_lines:
             stripped = line.strip()
@@ -567,7 +593,7 @@ class ConfigManager:
             logger.exception("Błąd tworzenia backupu .env")
             return None
 
-    def _cleanup_old_backups(self, max_keep: int = 50):
+    def _cleanup_old_backups(self, max_keep: int = 50) -> None:
         """Usuwa stare backupy .env."""
         try:
             backups = sorted(
@@ -586,7 +612,7 @@ class ConfigManager:
 
     def _determine_restart_services(self, changed_keys: List[str]) -> Set[str]:
         """Określa które usługi wymagają restartu."""
-        restart_services = set()
+        restart_services: Set[str] = set()
 
         for key in changed_keys:
             services = RESTART_REQUIREMENTS.get(key, [])
@@ -614,7 +640,7 @@ class ConfigManager:
                 reverse=True,
             )
 
-            result = []
+            result: List[Dict[str, Any]] = []
             for backup in backups[:limit]:
                 stat = backup.stat()
                 result.append(

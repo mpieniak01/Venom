@@ -1,7 +1,7 @@
 """Moduł: operator - agent interfejsu głosowo-sprzętowego."""
 
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
@@ -217,7 +217,7 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
             )
 
             # Pobierz usługę czatu
-            chat_service = self.kernel.get_service(type="chat")
+            chat_service: Any = self.kernel.get_service(service_id="chat")
 
             # Wygeneruj odpowiedź
             response = await self._invoke_chat_with_fallbacks(
@@ -279,7 +279,7 @@ Streszczenie:"""
                 temperature=0.5,
             )
 
-            chat_service = self.kernel.get_service(type="chat")
+            chat_service: Any = self.kernel.get_service(service_id="chat")
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
                 chat_history=temp_history,

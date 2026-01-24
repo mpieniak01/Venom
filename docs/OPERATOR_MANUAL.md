@@ -69,4 +69,27 @@ W panelu konfiguracji możesz też przełączać tryby pracy Venoma (Profile):
 
 ---
 
+## 4. Rekomendacje Sprzętowe (Hardware)
+
+Wybór odpowiedniego silnika AI (Runtime) ma kluczowe znaczenie dla stabilności systemu, zwłaszcza na słabszym sprzęcie.
+
+### 🐢 Ollama (Zalecane dla "Low-Spec")
+Jeśli Twój komputer ma:
+*   Mniej niż 16GB RAM.
+*   Słabą kartę graficzną (poniżej 8GB VRAM) lub zintegrowaną grafikę.
+*   Problemy ze stabilnością działania vLLM (błędy OOM, crashe).
+
+**ZALECENIE: Wybierz OLLAMA.**
+Jest to silnik zoptymalizowany pod kątem niskiego zużycia zasobów. Działa nieco wolniej, ale jest znacznie stabilniejszy i zużywa mniej pamięci VRAM/RAM niż vLLM. Idealny do pracy na laptopach i starszych stacjach roboczych.
+
+### 🚀 vLLM (Zalecane dla "High-Performance")
+Jeśli dysponujesz:
+*   Mocną kartą graficzną NVIDIA (np. RTX 3090/4090, A100).
+*   Dużą ilością pamięci VRAM (>12GB).
+
+**ZALECENIE: Wybierz vLLM.**
+Oferuje on bezkonkurencyjną szybkość (tokeny na sekundę), ale jest bardzo wymagający („chciwy”) na pamięć. Na słabszych konfiguracjach może powodować niestabilność systemu.
+
+---
+
 *Dokument ten będzie rozwijany wraz z nowymi funkcjami systemu.*

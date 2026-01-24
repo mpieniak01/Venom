@@ -248,9 +248,9 @@ class ComponentEngine:
         Returns:
             Widget karty
         """
-        data = {"title": title, "content": content, "icon": icon}
+        data: Dict[str, Any] = {"title": title, "content": content, "icon": icon}
 
-        events = {}
+        events: Dict[str, str] = {}
         if actions:
             data["actions"] = actions
             for action in actions:

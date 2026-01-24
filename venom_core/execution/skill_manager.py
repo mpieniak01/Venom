@@ -81,7 +81,7 @@ class SkillManager:
             SkillValidationError: Jeśli skill nie przechodzi walidacji
         """
         target_dir = Path(path) if path else self.custom_skills_dir
-        loaded_skills = []
+        loaded_skills: List[str] = []
 
         logger.info(f"Szukam skills w katalogu: {target_dir}")
 

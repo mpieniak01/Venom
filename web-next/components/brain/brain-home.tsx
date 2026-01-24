@@ -37,6 +37,7 @@ import { clearGlobalMemory, clearSessionMemory, deleteMemoryEntry, pinMemoryEntr
 import { useToast } from "@/components/ui/toast";
 import { KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
 import { useProjectionTrigger } from "@/hooks/use-projection";
+import { useTranslation } from "@/lib/i18n";
 
 type SpecificFilter = Exclude<GraphFilterType, "all">;
 import { GraphActionButtons } from "@/components/brain/graph-actions";
@@ -44,6 +45,7 @@ import { GraphActionButtons } from "@/components/brain/graph-actions";
 import { HygienePanel } from "@/components/brain/hygiene-panel";
 
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
+  const t = useTranslation();
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
   const summary = liveSummary ?? initialData.summary ?? null;
   const initialKnowledge = initialData.knowledgeGraph;
@@ -437,10 +439,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     const total = raw.total_lessons ?? raw.total;
     const uniqueTags = raw.unique_tags ?? raw.tags_count;
     if (typeof total === "number") {
-      entries.push({ label: "Lekcje", value: total, hint: "LessonsStore" });
+      entries.push({ label: t("brain.stats.lessons"), value: total, hint: t("brain.stats.totalHint") });
     }
     if (typeof uniqueTags === "number") {
-      entries.push({ label: "Unikalne tagi", value: uniqueTags, hint: "LessonsStore" });
+      entries.push({ label: t("brain.stats.uniqueTags"), value: uniqueTags, hint: t("brain.stats.totalHint") });
     }
     const tagDistribution = raw.tag_distribution as Record<string, number> | undefined;
     if (tagDistribution && typeof tagDistribution === "object") {
@@ -450,13 +452,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         .map(([tag, count]) => `${tag} (${count})`)
         .join(", ");
       entries.push({
-        label: "Top tagi",
+        label: t("brain.stats.topTags"),
         value: topTags || "—",
-        hint: "Najczęstsze tagi LessonsStore",
+        hint: t("brain.stats.topTagsHint"),
       });
     }
     return entries;
-  }, [lessonsStats?.stats]);
+  }, [lessonsStats?.stats, t]);
   const applyFiltersToGraph = useCallback(
     (nextFilters: GraphFilterType[]) => {
       const cy = cyInstanceRef.current;
@@ -836,7 +838,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             className="rounded-full px-4"
             onClick={() => setActiveTab("memory")}
           >
-            Pamięć / Lessons
+            {t("brain.tabs.memory")}
           </Button>
           <Button
             size="sm"
@@ -844,7 +846,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             className="rounded-full px-4"
             onClick={() => setActiveTab("repo")}
           >
-            Repo / Knowledge
+            {t("brain.tabs.repo")}
           </Button>
           <Button
             size="sm"
@@ -853,14 +855,14 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             onClick={() => setActiveTab("hygiene")}
             data-testid="hygiene-tab"
           >
-            Hygiene / Clean
+            {t("brain.tabs.hygiene")}
           </Button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone="neutral">Węzły: {summaryNodes}</Badge>
-        <Badge tone="neutral">Krawędzie: {summaryEdges}</Badge>
+        <Badge tone="neutral">{t("brain.stats.nodes")}: {summaryNodes}</Badge>
+        <Badge tone="neutral">{t("brain.stats.edges")}: {summaryEdges}</Badge>
         <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
         <Badge tone="neutral">Źródło: {activeTab === "repo" ? "Knowledge" : "Pamięć"}</Badge>
         {activeTab === "memory" ? <Badge tone="neutral">Limit: {memoryLimit}</Badge> : null}
@@ -900,7 +902,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                     Odśwież status
                   </Button>
                   <Button size="sm" onClick={handleScanGraph} disabled={scanning}>
-                    {scanning ? "Skanuję..." : "Skanuj graf"}
+                    {scanning ? t("brain.actions.scanning") : t("brain.actions.scan")}
                   </Button>
                 </div>
               </div>
@@ -1037,7 +1039,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       disabled={memoryWipePending}
                       onClick={handleClearSessionMemory}
                     >
-                      Wyczyść tok sesji
+                      {t("brain.actions.clearSession")}
                     </Button>
                     <Button
                       size="xs"
@@ -1315,7 +1317,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                           )
                         }
                       >
-                        {selected.pinned ? "Odepnij" : "Przypnij"}
+                        {selected.pinned ? t("brain.actions.unpin") : t("brain.actions.pin")}
                       </Button>
                       <Button
                         size="sm"
@@ -1323,7 +1325,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                         disabled={memoryActionPending === selected.id}
                         onClick={() => handleDeleteMemory(String(selected.id))}
                       >
-                        Usuń wpis
+                        {t("brain.actions.delete")}
                       </Button>
                     </div>
                   ) : null}

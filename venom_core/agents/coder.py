@@ -1,6 +1,11 @@
 """Moduł: coder - agent generujący kod."""
 
+from typing import Any, Optional
+
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.function_choice_behavior import (
+    FunctionChoiceBehavior,
+)
 from semantic_kernel.connectors.ai.open_ai import OpenAIChatPromptExecutionSettings
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
@@ -97,7 +102,7 @@ def hello_world():
         )
 
     async def process_with_params(
-        self, input_text: str, generation_params: dict
+        self, input_text: str, generation_params: dict[str, Any]
     ) -> str:
         """
         Generuje kod z niestandardowymi parametrami generacji.
@@ -132,7 +137,7 @@ def hello_world():
         return await self._process_internal(input_text, None)
 
     async def _process_internal(
-        self, input_text: str, generation_params: dict = None
+        self, input_text: str, generation_params: Optional[dict[str, Any]] = None
     ) -> str:
         """
         Wewnętrzna metoda generowania kodu z opcjonalnymi parametrami.
@@ -155,11 +160,12 @@ def hello_world():
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Włącz automatyczne wywoływanie funkcji i użyj parametrów generacji
             settings = self._create_execution_settings(
-                generation_params=generation_params, function_choice_behavior="auto"
+                generation_params=generation_params,
+                function_choice_behavior=FunctionChoiceBehavior.Auto(),
             )
 
             # Wywołaj model z możliwością auto-wywołania funkcji
@@ -227,9 +233,9 @@ def hello_world():
 
             try:
                 # Pobierz serwis chat completion
-                chat_service = self.kernel.get_service()
+                chat_service: Any = self.kernel.get_service()
                 settings = OpenAIChatPromptExecutionSettings(
-                    function_choice_behavior="auto"
+                    function_choice_behavior=FunctionChoiceBehavior.Auto()
                 )
 
                 # Wywołaj model

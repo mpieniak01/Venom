@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 from semantic_kernel.functions import kernel_function
@@ -42,6 +42,7 @@ class MediaSkill:
 
         # Sprawdź czy OpenAI jest dostępny
         self.openai_available = False
+        self.openai_client: Any = None
         if self.service in ("openai", "hybrid") or SETTINGS.AI_MODE in (
             "HYBRID",
             "CLOUD",
@@ -211,7 +212,7 @@ class MediaSkill:
 
     async def _generate_with_dalle(
         self, prompt: str, size: str, style: str, filename: str
-    ) -> str:
+    ) -> Optional[str]:
         """
         Generuje obraz przez OpenAI DALL-E.
 
@@ -292,6 +293,7 @@ class MediaSkill:
         draw = ImageDraw.Draw(img)
 
         # Dodaj tekst
+        font: Any = ImageFont.load_default()
         try:
             # Spróbuj użyć domyślnej czcionki
             font_size = min(w, h) // 20

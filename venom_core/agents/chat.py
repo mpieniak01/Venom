@@ -1,7 +1,7 @@
 """Moduł: chat - agent do rozmów ogólnych."""
 
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -21,9 +21,12 @@ from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - unittest.mock zawsze dostępny, ale zabezpieczenie
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock as MagicMockType
 except Exception:  # pragma: no cover
-    MagicMock = None
+
+    class MagicMockType:  # type: ignore[no-redef]
+        pass
+
 
 logger = get_logger(__name__)
 
@@ -110,7 +113,7 @@ Zasady:
         logger.info("ChatAgent zainicjalizowany z MemorySkill")
 
     async def process_with_params(
-        self, input_text: str, generation_params: dict
+        self, input_text: str, generation_params: dict[str, Any]
     ) -> str:
         """
         Odpowiada z niestandardowymi parametrami generacji.
@@ -144,7 +147,7 @@ Zasady:
         return await self._process_internal(input_text, None)
 
     async def _process_internal(
-        self, input_text: str, generation_params: dict = None
+        self, input_text: str, generation_params: Optional[dict[str, Any]] = None
     ) -> str:
         """
         Wewnętrzna metoda przetwarzania z opcjonalnymi parametrami generacji.
@@ -158,9 +161,7 @@ Zasady:
         """
 
         if self._test_mode:
-            kernel_is_mock = MagicMock is not None and isinstance(
-                self.kernel, MagicMock
-            )
+            kernel_is_mock = isinstance(self.kernel, MagicMockType)
             kernel_module = getattr(
                 self.kernel, "__class__", type(self.kernel)
             ).__module__
@@ -179,7 +180,7 @@ Zasady:
         )
         system_prompt = self.LOCAL_SYSTEM_PROMPT if use_compact else self.SYSTEM_PROMPT
 
-        chat_service = self.kernel.get_service()
+        chat_service: Any = self.kernel.get_service()
         system_supported = self._supports_system_prompt(chat_service)
         chat_history = ChatHistory()
         if system_supported:
@@ -296,8 +297,9 @@ Zasady:
         model_id = raw_model_id.lower()
 
         # Jeśli mamy ModelRegistry, sprawdź capabilities
-        if self.model_registry:
-            manifest = self.model_registry.manifest or {}
+        model_registry = self.model_registry
+        if model_registry:
+            manifest = model_registry.manifest or {}
             # Oblicz base name raz na początku
             model_base = model_id.split("/")[-1]
 
@@ -307,9 +309,7 @@ Zasady:
                     return None
                 # Najpierw spróbuj użyć oficjalnej metody registry (łatwiej mockować w testach)
                 try:
-                    capabilities = self.model_registry.get_model_capabilities(
-                        manifest_key
-                    )
+                    capabilities = model_registry.get_model_capabilities(manifest_key)
                     if capabilities:
                         return capabilities.supports_system_role
                 except Exception as exc:  # pragma: no cover - defensywne logowanie
@@ -378,8 +378,9 @@ Zasady:
         raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
         model_id = raw_model_id.lower()
 
-        if self.model_registry:
-            manifest = self.model_registry.manifest or {}
+        model_registry = self.model_registry
+        if model_registry:
+            manifest = model_registry.manifest or {}
             model_base = model_id.split("/")[-1]
 
             def _resolve_support(manifest_key: str):
@@ -387,9 +388,7 @@ Zasady:
                 if not entry:
                     return None
                 try:
-                    capabilities = self.model_registry.get_model_capabilities(
-                        manifest_key
-                    )
+                    capabilities = model_registry.get_model_capabilities(manifest_key)
                     if capabilities:
                         return capabilities.supports_function_calling
                 except Exception as exc:  # pragma: no cover - defensywne logowanie
@@ -430,7 +429,7 @@ Zasady:
         chat_service,
         chat_history: ChatHistory,
         enable_functions: bool,
-        generation_params: dict = None,
+        generation_params: Optional[dict[str, Any]] = None,
     ) -> ChatMessageContent:
         """
         Wykonuje połączenie z serwisem czatu z odpowiednią konfiguracją funkcji.
@@ -455,7 +454,7 @@ Zasady:
         )
 
     def _build_execution_settings(
-        self, enable_functions: bool, generation_params: dict = None
+        self, enable_functions: bool, generation_params: Optional[dict[str, Any]] = None
     ):
         """
         Tworzy ustawienia wykonania promptu zależnie od wsparcia funkcji i parametrów generacji.
@@ -464,7 +463,7 @@ Zasady:
             enable_functions: Czy włączyć function calling
             generation_params: Opcjonalne parametry generacji
         """
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if enable_functions:
             behavior = FunctionChoiceBehavior.Auto()
             kwargs["function_choice_behavior"] = behavior

@@ -4,7 +4,7 @@ import asyncio
 import queue
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -36,14 +36,14 @@ class WhisperSkill:
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
-        self.model = None
+        self.model: Optional[Any] = None
         logger.info(f"Inicjalizacja WhisperSkill: model={model_size}, device={device}")
 
     def _load_model(self):
         """Lazy loading modelu (tylko gdy potrzebny)."""
         if self.model is None:
             try:
-                from faster_whisper import WhisperModel
+                from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
                 self.model = WhisperModel(
                     self.model_size,
@@ -76,9 +76,12 @@ class WhisperSkill:
         try:
             # Wykonaj transkrypcję w osobnym wątku aby nie blokować event loop
             loop = asyncio.get_event_loop()
+            model = self.model
+            if model is None:
+                raise RuntimeError("Model Whisper nie został zainicjalizowany.")
             segments, info = await loop.run_in_executor(
                 None,
-                lambda: self.model.transcribe(
+                lambda: model.transcribe(
                     audio_buffer,
                     language=language,
                     beam_size=5,
@@ -116,9 +119,9 @@ class VoiceSkill:
         """
         self.model_path = model_path
         self.speaker_id = speaker_id
-        self.voice = None
-        self.audio_queue = queue.Queue()
-        self._playback_thread = None
+        self.voice: Optional[Any] = None
+        self.audio_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue()
+        self._playback_thread: Optional[threading.Thread] = None
         self._stop_playback = threading.Event()
 
         # Walidacja modelu i ustawienie trybu fallback
@@ -183,7 +186,8 @@ class VoiceSkill:
         try:
             self._load_model()
 
-            if self.voice is None or self.is_fallback_mode:
+            voice = self.voice
+            if voice is None or self.is_fallback_mode:
                 # Mock mode - zwróć ciszę
                 logger.warning("TTS w trybie mock (fallback) - zwracam ciszę")
                 return np.zeros(16000, dtype=np.int16)  # 1 sekunda ciszy
@@ -192,7 +196,7 @@ class VoiceSkill:
             loop = asyncio.get_event_loop()
             audio_stream = await loop.run_in_executor(
                 None,
-                lambda: self.voice.synthesize(text, speaker_id=self.speaker_id),
+                lambda: voice.synthesize(text, speaker_id=self.speaker_id),
             )
 
             logger.info(f"Syntetyzowano mowę: {text[:50]}...")
@@ -242,7 +246,7 @@ class VoiceSkill:
     def _playback_worker(self):
         """Worker do odtwarzania audio z kolejki."""
         try:
-            import sounddevice as sd
+            import sounddevice as sd  # type: ignore[import-untyped]
 
             while not self._stop_playback.is_set():
                 try:

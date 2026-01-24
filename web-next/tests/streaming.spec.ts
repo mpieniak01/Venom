@@ -172,9 +172,9 @@ test.describe("Cockpit streaming SSE", () => {
     await page.goto("/");
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
-    const textarea = page.getByPlaceholder("Opisz zadanie dla Venoma...");
+    const textarea = page.getByTestId("cockpit-prompt-input");
     await textarea.fill("Przetestuj strumień SSE");
-    await page.getByRole("button", { name: /^Wyślij$/i }).click();
+    await page.getByTestId("cockpit-send-button").click();
     await page.waitForFunction(
       () =>
         Array.isArray((window as any).__taskStreamEvents) &&

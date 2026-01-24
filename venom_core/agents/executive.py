@@ -1,6 +1,7 @@
 """Moduł: executive - Agent Wykonawczy (CEO/Product Manager)."""
 
 import os
+from typing import Any
 from uuid import UUID
 
 from semantic_kernel import Kernel
@@ -14,9 +15,12 @@ from venom_core.core.goal_store import KPI, GoalStatus, GoalStore, GoalType
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock as MagicMockType
 except Exception:  # pragma: no cover
-    MagicMock = None
+
+    class MagicMockType:  # type: ignore[no-redef]
+        pass
+
 
 logger = get_logger(__name__)
 
@@ -96,9 +100,7 @@ Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie t
         logger.info(f"ExecutiveAgent przetwarza: {input_text[:100]}...")
 
         if os.environ.get("PYTEST_CURRENT_TEST"):
-            kernel_is_mock = MagicMock is not None and isinstance(
-                self.kernel, MagicMock
-            )
+            kernel_is_mock = isinstance(self.kernel, MagicMockType)
             kernel_module = getattr(
                 self.kernel, "__class__", type(self.kernel)
             ).__module__
@@ -119,7 +121,7 @@ Jesteś doradcą strategicznym - pomagasz użytkownikowi osiągnąć cele, nie t
             )
 
             # Użyj domyślnego serwisu czatu z kernela
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
             response = await self._invoke_chat_with_fallbacks(
                 chat_service=chat_service,
                 chat_history=chat_history,

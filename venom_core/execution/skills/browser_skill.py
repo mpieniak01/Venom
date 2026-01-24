@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from urllib.parse import urlparse
 
 from playwright.async_api import Browser, Page, async_playwright
@@ -84,6 +84,12 @@ class BrowserSkill:
 
         logger.info("Przeglądarka zamknięta")
 
+    def _require_page(self) -> Page:
+        """Zwraca aktywną stronę lub podnosi błąd, gdy przeglądarka nie jest gotowa."""
+        if not self._page:
+            raise RuntimeError("Przeglądarka nie jest zainicjalizowana")
+        return self._page
+
     async def _capture_verification_screenshot(self, action_type: str) -> Path:
         """
         Wykonuje zrzut ekranu weryfikacyjny po akcji.
@@ -99,9 +105,9 @@ class BrowserSkill:
         screenshot_path = self.screenshots_dir / screenshot_name
 
         # Poczekaj chwilę na zmianę DOM (React, Vue, itp.)
-        await self._page.wait_for_timeout(DOM_STABILIZATION_DELAY_MS)
-
-        await self._page.screenshot(path=str(screenshot_path))
+        page = self._require_page()
+        await page.wait_for_timeout(DOM_STABILIZATION_DELAY_MS)
+        await page.screenshot(path=str(screenshot_path))
 
         return screenshot_path
 
@@ -114,7 +120,7 @@ class BrowserSkill:
         self,
         url: Annotated[str, "URL strony do odwiedzenia (np. 'http://localhost:3000')"],
         wait_until: Annotated[
-            str,
+            Literal["commit", "domcontentloaded", "load", "networkidle"],
             "Stan oczekiwania: 'load', 'domcontentloaded', 'networkidle' (domyślnie 'load')",
         ] = "load",
     ) -> str:
@@ -133,10 +139,11 @@ class BrowserSkill:
 
             normalized_url = self._ensure_url_scheme(url)
             logger.info(f"Odwiedzanie strony: {normalized_url}")
-            await self._page.goto(normalized_url, wait_until=wait_until, timeout=30000)
+            page = self._require_page()
+            await page.goto(normalized_url, wait_until=wait_until, timeout=30000)
 
             # Pobierz tytuł strony
-            title = await self._page.title()
+            title = await page.title()
             logger.info(f"Strona załadowana: {title}")
 
             return (
@@ -219,7 +226,8 @@ class BrowserSkill:
             screenshot_path = self.screenshots_dir / filename
             logger.info(f"Wykonywanie zrzutu ekranu: {screenshot_path}")
 
-            await self._page.screenshot(path=str(screenshot_path), full_page=full_page)
+            page = self._require_page()
+            await page.screenshot(path=str(screenshot_path), full_page=full_page)
 
             logger.info(f"Zrzut ekranu zapisany: {screenshot_path}")
             return f"✅ Zrzut ekranu zapisany: {screenshot_path}"
@@ -245,7 +253,8 @@ class BrowserSkill:
             await self._ensure_browser()
 
             logger.info("Pobieranie zawartości HTML")
-            html = await self._page.content()
+            page = self._require_page()
+            html = await page.content()
 
             logger.debug(f"Pobrano HTML ({len(html)} znaków)")
             return html
@@ -281,7 +290,8 @@ class BrowserSkill:
             await self._ensure_browser()
 
             logger.info(f"Klikanie w element: {selector}")
-            await self._page.click(selector, timeout=timeout)
+            page = self._require_page()
+            await page.click(selector, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
             screenshot_path = await self._capture_verification_screenshot("click")
@@ -324,7 +334,8 @@ class BrowserSkill:
             await self._ensure_browser()
 
             logger.info(f"Wypełnianie pola: {selector}")
-            await self._page.fill(selector, value, timeout=timeout)
+            page = self._require_page()
+            await page.fill(selector, value, timeout=timeout)
 
             # Wykonaj automatyczny zrzut ekranu weryfikacyjny
             screenshot_path = await self._capture_verification_screenshot("fill")
@@ -361,7 +372,8 @@ class BrowserSkill:
             await self._ensure_browser()
 
             logger.info(f"Pobieranie tekstu z elementu: {selector}")
-            text = await self._page.text_content(selector, timeout=timeout)
+            page = self._require_page()
+            text = await page.text_content(selector, timeout=timeout)
 
             logger.info(f"Pobrano tekst z elementu: {selector}")
             return text or ""
@@ -380,7 +392,7 @@ class BrowserSkill:
         self,
         selector: Annotated[str, "Selektor CSS elementu do oczekiwania"],
         state: Annotated[
-            str,
+            Literal["attached", "detached", "visible", "hidden"],
             "Stan elementu: 'attached', 'detached', 'visible', 'hidden' (domyślnie 'visible')",
         ] = "visible",
         timeout: Annotated[int, "Timeout w milisekundach (domyślnie 30000)"] = 30000,
@@ -400,7 +412,8 @@ class BrowserSkill:
             await self._ensure_browser()
 
             logger.info(f"Oczekiwanie na element: {selector} (stan: {state})")
-            await self._page.wait_for_selector(selector, state=state, timeout=timeout)
+            page = self._require_page()
+            await page.wait_for_selector(selector, state=state, timeout=timeout)
 
             logger.info(f"Element znaleziony: {selector}")
             return f"✅ Element znaleziony: {selector}"

@@ -37,10 +37,10 @@ class HardwareBridge:
         self.host = host
         self.port = port
         self.username = username
-        self.password = password
+        self.password: Optional[Any] = password
         self.key_file = key_file
         self.protocol = protocol
-        self.ssh_client = None
+        self.ssh_client: Optional[Any] = None
         self.connected = False
         logger.info(f"Inicjalizacja HardwareBridge: host={host}, protocol={protocol}")
 
@@ -66,14 +66,14 @@ class HardwareBridge:
     async def _connect_ssh(self) -> bool:
         """Łączy przez SSH."""
         try:
-            import paramiko
+            import paramiko  # type: ignore[import-untyped]
 
-            self.ssh_client = paramiko.SSHClient()
+            client = paramiko.SSHClient()
 
             # SECURITY: Use WarningPolicy instead of AutoAddPolicy for better security.
             # In production, consider using RejectPolicy and managing known_hosts explicitly.
             # For trusted local networks (like Rider-Pi), WarningPolicy provides a balance.
-            self.ssh_client.set_missing_host_key_policy(paramiko.WarningPolicy())
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
 
             # Alternatively, load known hosts from file for stricter security:
             # self.ssh_client.load_system_host_keys()
@@ -81,21 +81,26 @@ class HardwareBridge:
 
             # Połącz w osobnym wątku (paramiko jest blokujący)
             loop = asyncio.get_event_loop()
+            password_value = None
+            if self.password is not None:
+                if hasattr(self.password, "get_secret_value"):
+                    password_value = self.password.get_secret_value()
+                else:
+                    password_value = self.password
+
             await loop.run_in_executor(
                 None,
-                lambda: self.ssh_client.connect(
+                lambda: client.connect(
                     hostname=self.host,
                     port=self.port,
                     username=self.username,
-                    password=(
-                        self.password.get_secret_value()
-                        if hasattr(self.password, "get_secret_value")
-                        else self.password
-                    ),
+                    password=password_value,
                     key_filename=self.key_file,
                     timeout=10,
                 ),
             )
+
+            self.ssh_client = client
 
             self.connected = True
             logger.info(f"Połączono z Raspberry Pi przez SSH: {self.host}")

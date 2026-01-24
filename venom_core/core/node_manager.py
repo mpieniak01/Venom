@@ -237,7 +237,7 @@ class NodeManager:
         )
 
         # Utwórz Future dla odpowiedzi (z lockiem dla _pending_requests)
-        future = asyncio.Future()
+        future: asyncio.Future[NodeResponse] = asyncio.Future()
         async with self._lock:
             self._pending_requests[request.request_id] = future
 

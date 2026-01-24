@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Annotated
+from typing import Annotated, List
 
 from semantic_kernel.functions import kernel_function
 
@@ -296,7 +296,7 @@ class ComplexitySkill:
         Returns:
             Lista zidentyfikowanych ryzyk
         """
-        risks = []
+        risks: List[tuple[str, str]] = []
         desc_lower = description.lower()
 
         # Sprawdź wzorce ryzyk

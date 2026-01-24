@@ -25,8 +25,7 @@ def demo_graph_store():
 
     # Utwórz przykładowy plik
     sample_file = workspace / "example.py"
-    sample_file.write_text(
-        """
+    sample_file.write_text("""
 import os
 from typing import List
 
@@ -44,8 +43,7 @@ def main():
     processor = DataProcessor()
     result = processor.process(["hello", "world"])
     print(result)
-"""
-    )
+""")
 
     # Inicjalizuj GraphStore
     print("\n1. Inicjalizacja CodeGraphStore...")
@@ -178,12 +176,10 @@ async def demo_gardener_agent():
     # Symulacja zmiany - dodaj nowy plik
     print("\n3. Symulacja zmiany - dodawanie nowego pliku...")
     new_file = workspace / "new_module.py"
-    new_file.write_text(
-        """
+    new_file.write_text("""
 def helper_function(x):
     return x * 2
-"""
-    )
+""")
     print("   ✓ Plik new_module.py utworzony")
 
     # Poczekaj chwilę na wykrycie zmian

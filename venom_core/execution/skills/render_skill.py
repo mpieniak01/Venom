@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, Dict, List, Optional
 
-import bleach
+import bleach  # type: ignore[import-untyped]
 from semantic_kernel.functions import kernel_function
 
 from venom_core.ui.component_engine import ComponentEngine, WidgetType

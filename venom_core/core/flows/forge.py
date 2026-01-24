@@ -1,10 +1,11 @@
 """Moduł: forge - The Forge workflow (tworzenie nowych narzędzi)."""
 
-from typing import Callable, Optional
+from typing import Optional
 from uuid import UUID
 
 from venom_core.agents.guardian import GuardianAgent
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
@@ -26,7 +27,7 @@ class ForgeFlow:
         self,
         state_manager: StateManager,
         task_dispatcher: TaskDispatcher,
-        event_broadcaster: Optional[Callable] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja ForgeFlow.
@@ -41,7 +42,11 @@ class ForgeFlow:
         self.event_broadcaster = event_broadcaster
 
     async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
+        self,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
     ):
         """
         Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).

@@ -1,9 +1,9 @@
-from pydantic import ConfigDict, SecretStr
-from pydantic_settings import BaseSettings
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = ConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env")
 
     APP_NAME: str = "Venom Meta-Intelligence"
     ENV: str = "development"
@@ -50,12 +50,15 @@ class Settings(BaseSettings):
     VLLM_SERVED_MODEL_NAME: str = ""
     VLLM_HOST: str = "0.0.0.0"
     VLLM_PORT: int = 8001
-    VLLM_GPU_MEMORY_UTILIZATION: float = 0.95
+    VLLM_GPU_MEMORY_UTILIZATION: float = (
+        0.90  # Fit within available free memory (10.97GB)
+    )
     VLLM_MAX_BATCHED_TOKENS: int = 2048
-    VLLM_MAX_MODEL_LEN: int = 0
+    VLLM_MAX_MODEL_LEN: int = 2048
     VLLM_MAX_NUM_SEQS: int = 0
     VLLM_ENDPOINT: str = "http://localhost:8001/v1"
     VLLM_CHAT_TEMPLATE: str = ""
+    VLLM_ENFORCE_EAGER: bool = True  # Disable CUDA Graphs to save VRAM
     VLLM_START_COMMAND: str = ""
     VLLM_STOP_COMMAND: str = ""
     VLLM_RESTART_COMMAND: str = ""

@@ -1,5 +1,7 @@
 """Moduł: oracle - Agent Wyrocznia (Deep Research & Multi-Hop Reasoning)."""
 
+from typing import Any, Optional
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
@@ -73,7 +75,9 @@ interakcji z interfejsami graficznymi."
 
 PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na faktach z grafu wiedzy."""
 
-    def __init__(self, kernel: Kernel, graph_rag_service: GraphRAGService = None):
+    def __init__(
+        self, kernel: Kernel, graph_rag_service: Optional[GraphRAGService] = None
+    ):
         """
         Inicjalizacja OracleAgent.
 
@@ -275,7 +279,7 @@ PAMIĘTAJ: Jesteś WYROCZNIĄ - dostarczasz głębokiej analizy opartej na fakta
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Włącz automatyczne wywoływanie funkcji
             settings = OpenAIChatPromptExecutionSettings(

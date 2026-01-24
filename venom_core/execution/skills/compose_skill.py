@@ -319,7 +319,7 @@ class ComposeSkill:
             return compose_content
 
         # Śledź przypisane porty aby uniknąć duplikatów
-        assigned_ports = set()
+        assigned_ports: set[int] = set()
 
         # Dla każdego placeholdera znajdź wolny port
         processed = compose_content
@@ -421,7 +421,7 @@ class ComposeSkill:
             True jeśli YAML jest poprawny, False w przeciwnym razie
         """
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             yaml.safe_load(compose_content)
             return True
@@ -432,7 +432,7 @@ class ComposeSkill:
             logger.error(f"Nieoczekiwany błąd podczas walidacji YAML: {e}")
             return False
 
-    def _find_unique_free_port(self, start: int, assigned_ports: set) -> int:
+    def _find_unique_free_port(self, start: int, assigned_ports: set[int]) -> int:
         """
         Znajduje wolny port który nie jest jeszcze przypisany.
 

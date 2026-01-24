@@ -596,7 +596,7 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
         SETTINGS.ACTIVE_LLM_SERVER = provider_raw
 
         runtime = get_active_llm_runtime()
-        config_hash = runtime.config_hash
+        config_hash = runtime.config_hash or ""
         SETTINGS.LLM_CONFIG_HASH = config_hash
 
         updates = {
@@ -675,6 +675,24 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             start_result = {"ok": result.ok, "exit_code": result.exit_code}
         except Exception as exc:
             start_result = {"ok": False, "error": str(exc)}
+
+    # [FIX] Wait for server to be healthy before proceeding
+    if start_result and start_result.get("ok"):
+        health_url = target.get("health_url")
+        if health_url:
+            logger.info(f"Oczekiwanie na start serwera {server_name} ({health_url})...")
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                for attempt in range(60):  # Max 30 seconds
+                    try:
+                        resp = await client.get(health_url)
+                        if resp.status_code < 500:
+                            logger.info(
+                                f"Serwer {server_name} gotowy po {attempt * 0.5}s"
+                            )
+                            break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
 
     # Aktualizuj endpoint i tryb lokalny
     endpoint = target.get("endpoint")

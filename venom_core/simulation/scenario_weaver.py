@@ -135,7 +135,7 @@ Output:
         )
 
         # Service do chat completion
-        self.chat_service = self.kernel.get_service(service_id="default")
+        self.chat_service: Any = self.kernel.get_service(service_id="default")
 
         logger.info(f"ScenarioWeaver zainicjalizowany (complexity={self.complexity})")
 

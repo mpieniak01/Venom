@@ -1,5 +1,7 @@
 """Moduł: librarian - agent zarządzający wiedzą o strukturze projektu."""
 
+from typing import Any
+
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
@@ -106,11 +108,11 @@ Gdy pytanie jest ogólne, odpowiedz krótko po polsku bez narzędzi."""
 
         try:
             # Pobierz serwis chat completion
-            chat_service = self.kernel.get_service()
+            chat_service: Any = self.kernel.get_service()
 
             # Włącz funkcje tylko gdy runtime to nie jest lokalny vLLM/Ollama.
             enable_functions = runtime.provider not in ("vllm", "ollama", "local")
-            kwargs = {}
+            kwargs: dict[str, Any] = {}
             if enable_functions:
                 kwargs["function_choice_behavior"] = FunctionChoiceBehavior.Auto()
             settings = self._create_execution_settings(**kwargs)

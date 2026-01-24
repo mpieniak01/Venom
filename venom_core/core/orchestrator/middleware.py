@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -19,7 +20,7 @@ class Middleware:
     def __init__(
         self,
         state_manager: "StateManager",
-        event_broadcaster=None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
         request_tracer: Optional["RequestTracer"] = None,
     ):
         """
@@ -35,7 +36,11 @@ class Middleware:
         self.request_tracer = request_tracer
 
     async def broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
+        self,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
     ):
         """
         Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).
@@ -56,7 +61,7 @@ class Middleware:
         *,
         error_code: str,
         error_message: str,
-        error_details: Optional[dict] = None,
+        error_details: Optional[dict[str, object]] = None,
         stage: Optional[str] = None,
         retryable: bool = False,
         error_class: Optional[str] = None,

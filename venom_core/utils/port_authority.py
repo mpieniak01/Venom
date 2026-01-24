@@ -96,7 +96,7 @@ def get_free_ports(
     if count < 1:
         raise ValueError("Liczba portów musi być większa od 0")
 
-    free_ports = []
+    free_ports: list[int] = []
     current_port = start
 
     while len(free_ports) < count and current_port <= end:

@@ -1,13 +1,17 @@
 """Moduł: council - Logika The Council (AutoGen Group Chat)."""
 
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from venom_core.core.dispatcher import TaskDispatcher
+from venom_core.core.flows.base import EventBroadcaster
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from venom_core.core.council import CouncilConfig
 
 # Ustawienia dla The Council (AutoGen Group Chat)
 ENABLE_COUNCIL_MODE = True  # Flaga do włączania/wyłączania trybu Council
@@ -36,7 +40,7 @@ class CouncilFlow:
         self,
         state_manager: StateManager,
         task_dispatcher: TaskDispatcher,
-        event_broadcaster: Optional[Callable] = None,
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja CouncilFlow.
@@ -49,10 +53,14 @@ class CouncilFlow:
         self.state_manager = state_manager
         self.task_dispatcher = task_dispatcher
         self.event_broadcaster = event_broadcaster
-        self._council_config = None
+        self._council_config: Optional["CouncilConfig"] = None
 
     async def _broadcast_event(
-        self, event_type: str, message: str, agent: str = None, data: dict = None
+        self,
+        event_type: str,
+        message: str,
+        agent: Optional[str] = None,
+        data: Optional[dict[str, object]] = None,
     ):
         """
         Wysyła zdarzenie do WebSocket (jeśli broadcaster jest dostępny).

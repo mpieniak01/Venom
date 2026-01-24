@@ -6,7 +6,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from semantic_kernel import Kernel
 
@@ -52,8 +52,8 @@ class SimulationDirector:
         self.persona_factory = PersonaFactory(kernel=kernel)
 
         # Tracking aktywnych symulacji
-        self.active_simulations = {}
-        self.simulation_results = []
+        self.active_simulations: dict[str, SimulatedUserAgent] = {}
+        self.simulation_results: list[dict[str, Any]] = []
 
         logger.info(f"SimulationDirector zainicjalizowany (chaos={enable_chaos})")
 

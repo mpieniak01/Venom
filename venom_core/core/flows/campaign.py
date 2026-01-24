@@ -1,15 +1,40 @@
 """Moduł: campaign - Logika trybu kampanii (Campaign Mode)."""
 
 import asyncio
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional, Protocol
+from uuid import UUID
 
-from venom_core.core.flows.base import BaseFlow
+from venom_core.core.flows.base import BaseFlow, EventBroadcaster
 from venom_core.core.goal_store import GoalStatus
-from venom_core.core.models import TaskRequest, TaskStatus
+from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
 from venom_core.core.state_manager import StateManager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class GoalLike(Protocol):
+    goal_id: UUID
+    title: str
+    description: str
+
+    def get_progress(self) -> float: ...
+
+
+class GoalStoreLike(Protocol):
+    def get_next_task(self) -> Optional[GoalLike]: ...
+
+    def get_next_milestone(self) -> Optional[GoalLike]: ...
+
+    def update_progress(
+        self,
+        goal_id: UUID,
+        *,
+        status: Optional[GoalStatus] = None,
+        task_id: Optional[UUID] = None,
+    ) -> object: ...
+
+    def generate_roadmap_report(self) -> str: ...
 
 
 class CampaignFlow(BaseFlow):
@@ -18,8 +43,8 @@ class CampaignFlow(BaseFlow):
     def __init__(
         self,
         state_manager: StateManager,
-        orchestrator_submit_task: Callable,
-        event_broadcaster: Optional[Callable] = None,
+        orchestrator_submit_task: Callable[[TaskRequest], Awaitable[TaskResponse]],
+        event_broadcaster: Optional[EventBroadcaster] = None,
     ):
         """
         Inicjalizacja CampaignFlow.
@@ -33,7 +58,9 @@ class CampaignFlow(BaseFlow):
         self.state_manager = state_manager
         self.orchestrator_submit_task = orchestrator_submit_task
 
-    async def execute(self, goal_store=None, max_iterations: int = 10) -> dict:
+    async def execute(
+        self, goal_store: Optional[GoalStoreLike] = None, max_iterations: int = 10
+    ) -> dict:
         """
         Tryb Kampanii - autonomiczna realizacja roadmapy.
 
@@ -154,12 +181,26 @@ class CampaignFlow(BaseFlow):
                 max_wait = 300  # 5 minut
                 while wait_time < max_wait:
                     sub_task = self.state_manager.get_task(task_response.task_id)
+                    if sub_task is None:
+                        break
                     if sub_task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
                         break
                     await asyncio.sleep(5)
                     wait_time += 5
 
                 sub_task = self.state_manager.get_task(task_response.task_id)
+                if sub_task is None:
+                    error_msg = (
+                        "❌ Nie znaleziono sub-task w StateManager "
+                        f"(task_id={task_response.task_id})"
+                    )
+                    logger.error(error_msg)
+                    self.state_manager.add_log(task_id, error_msg)
+                    goal_store.update_progress(
+                        next_task.goal_id, status=GoalStatus.BLOCKED
+                    )
+                    tasks_failed += 1
+                    break
 
                 # 4. Zaktualizuj postęp w GoalStore
                 if sub_task.status == TaskStatus.COMPLETED:

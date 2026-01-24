@@ -316,6 +316,7 @@ export const en = {
     },
   },
   cockpit: {
+    inputPlaceholder: "Describe a task for Venom...",
     chatStatus: {
       completed: "Completed",
       failed: "Failed",
@@ -351,6 +352,45 @@ export const en = {
         direct: "Mode: Direct",
         normal: "Mode: Normal",
       },
+    },
+    modes: {
+      directLabel: "Direct (raw LLM)",
+      normalLabel: "Normal (standard)",
+      complexLabel: "Complex (planning)",
+    },
+  },
+  brain: {
+    title: "Knowledge Graph",
+    description: "Visualization of memory and repository dependencies",
+    stats: {
+      lessons: "Lessons",
+      uniqueTags: "Unique tags",
+      topTags: "Top tags",
+      totalHint: "LessonsStore",
+      topTagsHint: "Most frequent tags in LessonsStore",
+      nodes: "Nodes",
+      edges: "Edges",
+    },
+    filters: {
+      all: "All",
+      memory: "Memory",
+      agent: "Agent",
+      repo: "Repo",
+      lesson: "Lesson",
+    },
+    actions: {
+      scan: "Scan",
+      scanning: "Scanning...",
+      clearSession: "Clear session",
+      clearGlobal: "Clear global",
+      pin: "Pin",
+      unpin: "Unpin",
+      delete: "Delete",
+    },
+    tabs: {
+      memory: "Memory (RAG)",
+      repo: "Repository",
+      hygiene: "Hygiene",
     },
   },
 };

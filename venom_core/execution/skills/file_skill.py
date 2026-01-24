@@ -2,9 +2,9 @@
 
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
@@ -24,7 +24,7 @@ class FileSkill:
     race conditions. W przyszłości można dodać file locking używając fcntl/msvcrt.
     """
 
-    def __init__(self, workspace_root: str = None):
+    def __init__(self, workspace_root: Optional[str] = None):
         """
         Inicjalizacja FileSkill.
 
@@ -255,7 +255,7 @@ class FileSkill:
                         file_path = Path(root) / file_name
                         try:
                             stat_result = file_path.stat()
-                            size = stat_result.st_size
+                            size = str(stat_result.st_size)
                             rel_path = file_path.relative_to(self.workspace_root)
                             items.append(f"{indent}[plik] {rel_path} ({size} bajtów)")
                         except Exception:
@@ -276,7 +276,7 @@ class FileSkill:
                     stat_result = item.stat()
                     item_type = "katalog" if item.is_dir() else "plik"
                     relative_path = item.relative_to(self.workspace_root)
-                    size = stat_result.st_size if item.is_file() else "-"
+                    size = str(stat_result.st_size) if item.is_file() else "-"
                     items.append(f"  [{item_type}] {relative_path} ({size} bajtów)")
 
                 if not items:

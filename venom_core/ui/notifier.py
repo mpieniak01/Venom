@@ -8,7 +8,7 @@ z możliwością interakcji (przyciski, akcje).
 import asyncio
 import platform
 import subprocess
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from venom_core.utils.logger import get_logger
 
@@ -135,7 +135,7 @@ class Notifier:
         try:
             # Użyj win10toast jeśli dostępne
             try:
-                from win10toast import ToastNotifier
+                from win10toast import ToastNotifier  # type: ignore[import-not-found]
 
                 toaster = ToastNotifier()
 
@@ -339,7 +339,7 @@ class Notifier:
         except Exception as e:
             logger.error(f"Błąd przy obsłudze akcji: {e}")
 
-    def get_status(self) -> dict[str, any]:
+    def get_status(self) -> dict[str, Any]:
         """
         Zwraca status Notifier.
 

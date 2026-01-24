@@ -29,8 +29,11 @@ class StateManager:
             state_file_path: Ścieżka do pliku z zapisem stanu
         """
         self._tasks: Dict[UUID, VenomTask] = {}
-        resolved_path = state_file_path or getattr(
-            SETTINGS, "STATE_FILE_PATH", "data/memory/state_dump.json"
+        settings_path = getattr(SETTINGS, "STATE_FILE_PATH", None)
+        resolved_path = state_file_path or (
+            settings_path
+            if isinstance(settings_path, str) and settings_path
+            else "data/memory/state_dump.json"
         )
         self._state_file_path = Path(resolved_path)
         self._save_lock = asyncio.Lock()

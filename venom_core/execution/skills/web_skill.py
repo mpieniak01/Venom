@@ -1,27 +1,38 @@
 """Moduł: web_skill - Plugin Semantic Kernel do wyszukiwania w Internecie."""
 
 from importlib import import_module
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import httpx
 import trafilatura
 from bs4 import BeautifulSoup
-
-try:  # pragma: no cover - zależne od środowiska
-    from ddgs import DDGS
-except Exception:  # pragma: no cover
-    from duckduckgo_search import DDGS
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
 from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.logger import get_logger
 
+_DDGS: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    from ddgs import DDGS as _DDGS
+except Exception:  # pragma: no cover
+    _DDGS = None
+
+if _DDGS is None:  # pragma: no cover - fallback zależny od środowiska
+    try:
+        from duckduckgo_search import DDGS as _DDGS
+    except Exception:
+        _DDGS = None
+
+DDGS: Any = _DDGS
+
 logger = get_logger(__name__)
 
 # Staramy się opcjonalnie załadować TavilyClient aby testy mogły go mockować
 try:  # pragma: no cover - zależne od środowiska
-    from tavily import TavilyClient as _ImportedTavilyClient
+    from tavily import (
+        TavilyClient as _ImportedTavilyClient,  # type: ignore[import-untyped]
+    )
 except Exception:  # pragma: no cover
     _ImportedTavilyClient = None
 

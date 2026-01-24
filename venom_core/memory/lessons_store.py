@@ -4,12 +4,20 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class VectorStoreLike(Protocol):
+    def upsert(
+        self, *, text: str, metadata: Dict[str, Any], chunk_text: bool
+    ) -> object: ...
+
+    def search(self, query: str, limit: int) -> List[Dict[str, Any]]: ...
 
 
 class Lesson:
@@ -23,10 +31,10 @@ class Lesson:
         action: str,
         result: str,
         feedback: str,
-        lesson_id: str = None,
-        timestamp: str = None,
-        tags: List[str] = None,
-        metadata: Dict[str, Any] = None,
+        lesson_id: Optional[str] = None,
+        timestamp: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Inicjalizacja lekcji.
@@ -113,8 +121,8 @@ class LessonsStore:
 
     def __init__(
         self,
-        storage_path: str = None,
-        vector_store=None,
+        storage_path: Optional[str] = None,
+        vector_store: Optional["VectorStoreLike"] = None,
         auto_save: bool = True,
     ):
         """
@@ -139,12 +147,12 @@ class LessonsStore:
 
     def add_lesson(
         self,
-        situation: Any,
-        action: str = None,
-        result: str = None,
-        feedback: str = None,
-        tags: List[str] = None,
-        metadata: Dict[str, Any] = None,
+        situation: Lesson | str,
+        action: Optional[str] = None,
+        result: Optional[str] = None,
+        feedback: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Lesson:
         """
         Dodaje nową lekcję.
@@ -217,7 +225,7 @@ class LessonsStore:
         return self.lessons.get(lesson_id)
 
     def search_lessons(
-        self, query: str, limit: int = 3, tags: List[str] = None
+        self, query: str, limit: int = 3, tags: Optional[List[str]] = None
     ) -> List[Lesson]:
         """
         Wyszukuje lekcje semantycznie.
@@ -268,7 +276,7 @@ class LessonsStore:
         """Alias kompatybilności ze starszym API."""
         return self.get_all_lessons(limit=limit)
 
-    def get_all_lessons(self, limit: int = None) -> List[Lesson]:
+    def get_all_lessons(self, limit: Optional[int] = None) -> List[Lesson]:
         """
         Pobiera wszystkie lekcje.
 
@@ -282,7 +290,7 @@ class LessonsStore:
             self.lessons.values(), key=lambda lesson: lesson.timestamp, reverse=True
         )
 
-        if limit:
+        if limit is not None:
             return all_lessons[:limit]
 
         return all_lessons
@@ -558,11 +566,11 @@ class LessonsStore:
         Returns:
             Słownik ze statystykami
         """
-        all_tags = []
+        all_tags: list[str] = []
         for lesson in self.lessons.values():
             all_tags.extend(lesson.tags)
 
-        tag_counts = {}
+        tag_counts: dict[str, int] = {}
         for tag in all_tags:
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
 

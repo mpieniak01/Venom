@@ -5,6 +5,7 @@ Odpowiedzialny za nagrywanie demonstracji użytkownika - synchroniczne
 rejestrowanie zrzutów ekranu i zdarzeń wejścia (mysz/klawiatura).
 """
 
+import importlib
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -13,14 +14,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
-from pynput import keyboard, mouse
+
+try:  # pragma: no cover - zależne od środowiska testowego
+    pynput_module = importlib.import_module("pynput")
+    keyboard = pynput_module.keyboard
+    mouse = pynput_module.mouse
+except Exception:  # pragma: no cover
+    keyboard = None
+    mouse = None
 
 from venom_core.config import SETTINGS
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - zależne od środowiska testowego
-    import mss as _mss_module  # type: ignore
+    import mss as _mss_module
 
     MSS_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -29,14 +37,18 @@ except ImportError:  # pragma: no cover
     class _MSSModuleStub:
         """Minimalny stub zapewniający atrybut mss dla patchowania w testach."""
 
-        class mss:  # type: ignore
+        class mss:
             def __init__(self, *_, **__):
                 raise RuntimeError("Biblioteka mss nie jest zainstalowana")
 
-    _mss_module = _MSSModuleStub()
+    _mss_module_stub = _MSSModuleStub()
 
 # Utrzymujemy referencję modułową (nawet jeśli to stub) aby testy mogły patchować
-mss = _mss_module  # type: ignore
+mss: Any
+if MSS_AVAILABLE:
+    mss = _mss_module
+else:
+    mss = _mss_module_stub
 
 logger = get_logger(__name__)
 
@@ -90,8 +102,8 @@ class DemonstrationRecorder:
         self.screenshot_cooldown = 0.5  # Minimalne opóźnienie między zrzutami
 
         # Listenery
-        self.mouse_listener: Optional[mouse.Listener] = None
-        self.keyboard_listener: Optional[keyboard.Listener] = None
+        self.mouse_listener: Optional[Any] = None
+        self.keyboard_listener: Optional[Any] = None
 
         # Bufor do przechowywania zrzutów ekranu w pamięci
         self.screenshot_buffer: List[Tuple[float, Image.Image]] = []
@@ -134,8 +146,11 @@ class DemonstrationRecorder:
             ID sesji
         """
         if self.is_recording:
-            logger.warning("Nagrywanie już trwa")
-            return self.current_session.session_id
+            if self.current_session:
+                logger.warning("Nagrywanie już trwa")
+                return self.current_session.session_id
+            logger.warning("Nagrywanie oznaczone jako aktywne, ale brak sesji")
+            self.is_recording = False
 
         # Generuj ID sesji
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -172,7 +187,7 @@ class DemonstrationRecorder:
         Returns:
             Ścieżka do zapisanej sesji (JSON)
         """
-        if not self.is_recording:
+        if not self.is_recording or not self.current_session:
             logger.warning("Nagrywanie nie jest aktywne")
             return None
 
@@ -200,6 +215,9 @@ class DemonstrationRecorder:
 
     def _start_listeners(self):
         """Uruchamia listenery myszy i klawiatury."""
+        if mouse is None or keyboard is None:
+            logger.error("pynput nie jest dostępny - pomijam start listenerów")
+            return
         # Listener myszy
         self.mouse_listener = mouse.Listener(
             on_click=self._on_mouse_click, on_move=self._on_mouse_move
@@ -226,7 +244,7 @@ class DemonstrationRecorder:
 
         logger.debug("Listenery wejścia zatrzymane")
 
-    def _on_mouse_click(self, x: int, y: int, button: mouse.Button, pressed: bool):
+    def _on_mouse_click(self, x: int, y: int, button: object, pressed: bool):
         """
         Callback dla kliknięcia myszy.
 
@@ -236,19 +254,20 @@ class DemonstrationRecorder:
             button: Przycisk myszy
             pressed: True jeśli wciśnięty, False jeśli zwolniony
         """
-        if not self.is_recording:
+        if not self.is_recording or not self.current_session:
             return
 
         current_time = time.time()
 
         # Zdarzenie kliknięcia
+        button_name = getattr(button, "name", str(button))
         event = InputEvent(
             timestamp=current_time,
             event_type="mouse_click",
             data={
                 "x": x,
                 "y": y,
-                "button": button.name,
+                "button": button_name,
                 "pressed": pressed,
             },
         )
@@ -261,7 +280,7 @@ class DemonstrationRecorder:
         ):
             self._capture_screenshot(current_time, f"click_{x}_{y}")
 
-        logger.debug(f"Mouse click: {button.name} at ({x}, {y}) pressed={pressed}")
+        logger.debug(f"Mouse click: {button_name} at ({x}, {y}) pressed={pressed}")
 
     def _on_mouse_move(self, x: int, y: int):
         """
@@ -278,23 +297,20 @@ class DemonstrationRecorder:
         # dla oszczędności miejsca
         # Możemy to włączyć w przyszłości jeśli będzie potrzebne
 
-    def _on_key_press(self, key):
+    def _on_key_press(self, key: object):
         """
         Callback dla wciśnięcia klawisza.
 
         Args:
             key: Klawisz (pynput.keyboard.Key lub pynput.keyboard.KeyCode)
         """
-        if not self.is_recording:
+        if not self.is_recording or not self.current_session:
             return
 
         current_time = time.time()
 
         # Konwersja klawisza na string
-        try:
-            key_name = key.char if hasattr(key, "char") else key.name
-        except AttributeError:
-            key_name = str(key)
+        key_name = key.char if hasattr(key, "char") else getattr(key, "name", str(key))
 
         event = InputEvent(
             timestamp=current_time,
@@ -305,22 +321,19 @@ class DemonstrationRecorder:
 
         logger.debug(f"Key press: {key_name}")
 
-    def _on_key_release(self, key):
+    def _on_key_release(self, key: object):
         """
         Callback dla zwolnienia klawisza.
 
         Args:
             key: Klawisz
         """
-        if not self.is_recording:
+        if not self.is_recording or not self.current_session:
             return
 
         current_time = time.time()
 
-        try:
-            key_name = key.char if hasattr(key, "char") else key.name
-        except AttributeError:
-            key_name = str(key)
+        key_name = key.char if hasattr(key, "char") else getattr(key, "name", str(key))
 
         event = InputEvent(
             timestamp=current_time,
@@ -344,7 +357,13 @@ class DemonstrationRecorder:
                 )
                 return
 
-            with mss.mss() as sct:  # type: ignore[attr-defined]
+            mss_factory = getattr(mss, "mss", None)
+            if mss_factory is None:
+                logger.warning(
+                    "Biblioteka mss nie udostępnia mss() - pomijam zrzut ekranu"
+                )
+                return
+            with mss_factory() as sct:
                 # Zrób zrzut głównego monitora
                 monitor = sct.monitors[1]
                 screenshot = sct.grab(monitor)
@@ -369,6 +388,9 @@ class DemonstrationRecorder:
         if not self.screenshot_buffer or not self.current_session:
             return
 
+        if not self.current_session.screenshots_dir:
+            logger.warning("Brak katalogu na zrzuty ekranu - pomijam zapis")
+            return
         screenshots_dir = Path(self.current_session.screenshots_dir)
 
         for timestamp, img in self.screenshot_buffer:
@@ -391,6 +413,9 @@ class DemonstrationRecorder:
         Returns:
             Ścieżka do pliku JSON, lub None jeśli wystąpił błąd
         """
+        if not self.current_session:
+            logger.error("Brak aktywnej sesji do zapisu")
+            return None
         session_dir = self.sessions_dir / self.current_session.session_id
         session_file = session_dir / "session.json"
 
@@ -439,12 +464,17 @@ class DemonstrationRecorder:
         try:
             # Odczytaj JSON używając helpers (Venom Standard Library)
             session_dict = helpers.read_json(session_file, raise_on_error=True)
+            if not isinstance(session_dict, dict):
+                logger.error(f"Nieprawidłowy format sesji: {session_id}")
+                return None
 
             # Konwertuj events z dict do InputEvent
-            events = [
-                InputEvent(**event_dict)
-                for event_dict in session_dict.get("events", [])
-            ]
+            raw_events = session_dict.get("events", [])
+            events: List[InputEvent] = []
+            if isinstance(raw_events, list):
+                for event_dict in raw_events:
+                    if isinstance(event_dict, dict):
+                        events.append(InputEvent(**event_dict))
             session_dict["events"] = events
 
             session = DemonstrationSession(**session_dict)

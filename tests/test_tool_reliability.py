@@ -47,39 +47,43 @@ def test_add():
 
         # 2. ShellSkill: Run the script
         # We need to run it in the temp dir context
+        import shlex
         import sys
 
         # Use sys.executable to ensure we use the correct python interpreter (with pytest installed)
-        cmd = f"cd {tmpdir} && {sys.executable} script.py"
+        # Quote paths to handle spaces properly
+        safe_tmpdir = shlex.quote(str(tmpdir))
+        cmd = f"cd {safe_tmpdir} && {sys.executable} script.py"
         shell_result = shell_skill.run_shell(cmd)
 
         assert "5" in shell_result
         assert "pomyślnie" in shell_result.lower() or "exit_code=0" in shell_result
 
         # 3. TestSkill: Run the test
-        # We pass absolute path or ensure pytest runs in tmpdir
         # TestSkill.run_pytest uses 'python -m pytest path'
-        # Since 'script.py' is in tmpdir, we need to make sure pytest finds it.
-        # Simplest way: execute pytest on the absolute path of the test file.
-
-        test_path = str(workspace / "test_script.py")
-
-        # NOTE: For pytest to import 'script', the directory must be in PYTHONPATH
-        # or we rely on pytest's automatic path addition.
-        # Let's set PYTHONPATH for the subprocess in TestSkill?
-        # TestSkill currently uses the env of the parent process.
-        # We might need to modify sys.path temporarily or trust pytest.
-
-        # Hack: ensure PYTHONPATH includes the tmpdir for this test execution?
-        # Actually, python -m pytest adds the current dir to sys.path if run from there.
-        # But TestSkill runs from CWD.
-        # Let's see if it works naturally due to pytest magic.
-
-        # If imports fail, this reliability test correctly identifies a gap in Toolchain
-        # (Handling PYTHONPATH for generated code).
-
-        # Workaround for test reliability: use --rootdir or rely on python modules
-        pass_test_result = await test_skill.run_pytest(test_path=test_path)
+        # For pytest to import 'script', we need to set PYTHONPATH to include tmpdir.
+        # Since TestSkill runs pytest as a subprocess, we'll set PYTHONPATH env var.
+        
+        import os
+        
+        # Save original PYTHONPATH
+        original_pythonpath = os.environ.get("PYTHONPATH", "")
+        
+        try:
+            # Add tmpdir to PYTHONPATH so pytest can import 'script'
+            if original_pythonpath:
+                os.environ["PYTHONPATH"] = f"{tmpdir}{os.pathsep}{original_pythonpath}"
+            else:
+                os.environ["PYTHONPATH"] = str(tmpdir)
+            
+            test_path = str(workspace / "test_script.py")
+            pass_test_result = await test_skill.run_pytest(test_path=test_path)
+        finally:
+            # Restore original PYTHONPATH
+            if original_pythonpath:
+                os.environ["PYTHONPATH"] = original_pythonpath
+            else:
+                os.environ.pop("PYTHONPATH", None)
 
         # Check results
         if "ModuleNotFoundError" in pass_test_result:

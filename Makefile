@@ -267,6 +267,9 @@ stop:
 	@$(MAKE) --no-print-directory vllm-stop >/dev/null || true
 	@$(MAKE) --no-print-directory ollama-stop >/dev/null || true
 	@# Aggressive cleanup of potential zombies
+	@# UWAGA: Te pkill -9 mogą wpłynąć na inne procesy w systemie.
+	@# Używane tylko gdy standardowe zatrzymanie nie działa (vLLM często pozostawia zombie).
+	@# W przyszłości: śledzenie PID-ów przez ProcessMonitor dla bezpieczniejszego kill.
 	@pkill -9 -f "VLLM::EngineCor" 2>/dev/null || true
 	@pkill -9 -f "vllm serve" 2>/dev/null || true
 	@pkill -9 -f "vllm.entrypoints" 2>/dev/null || true

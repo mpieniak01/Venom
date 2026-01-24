@@ -289,7 +289,7 @@ stop:
 				fi; \
 			done; \
 		else \
-			echo "⚠️  Proces UI ($$WPID) już nie działa - czyszczę WEB_PID_FILE"; \
+			echo "⚠️  Proces Interfejsu Web ($$WPID) już nie działa - czyszczę WEB_PID_FILE"; \
 		fi; \
 		rm -f $(WEB_PID_FILE); \
 	else \

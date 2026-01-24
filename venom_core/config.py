@@ -50,11 +50,9 @@ class Settings(BaseSettings):
     VLLM_SERVED_MODEL_NAME: str = ""
     VLLM_HOST: str = "0.0.0.0"
     VLLM_PORT: int = 8001
-    VLLM_GPU_MEMORY_UTILIZATION: float = (
-        0.90  # Fit within available free memory (10.97GB)
-    )
+    VLLM_GPU_MEMORY_UTILIZATION: float = 0.90
     VLLM_MAX_BATCHED_TOKENS: int = 2048
-    VLLM_MAX_MODEL_LEN: int = 2048
+    VLLM_MAX_MODEL_LEN: int = 0  # 0 = auto-detect from model
     VLLM_MAX_NUM_SEQS: int = 0
     VLLM_ENDPOINT: str = "http://localhost:8001/v1"
     VLLM_CHAT_TEMPLATE: str = ""

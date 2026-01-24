@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from venom_core.utils.logger import get_logger
 
@@ -253,7 +253,8 @@ class ConfigUpdateRequest(BaseModel):
         ..., description="Mapa klucz->wartość do aktualizacji"
     )
 
-    @validator("updates")
+    @field_validator("updates")
+    @classmethod
     def validate_whitelist(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Sprawdź czy wszystkie klucze są na whiteliście."""
         invalid_keys = set(v.keys()) - CONFIG_WHITELIST
@@ -264,7 +265,8 @@ class ConfigUpdateRequest(BaseModel):
             )
         return v
 
-    @validator("updates")
+    @field_validator("updates")
+    @classmethod
     def validate_ranges(cls, v: Dict[str, Any]) -> Dict[str, Any]:
         """Walidacja zakresów wartości dla specyficznych parametrów."""
         errors = []

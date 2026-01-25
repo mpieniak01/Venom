@@ -82,6 +82,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 | Agent | File | Documentation | Description |
 |-------|------|--------------|------|
+| **Integrator** | `integrator.py` | [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) | External integrations (GitHub, Discord/Slack, Tavily, HF, Calendar) |
 | **Simulated User** | `simulated_user.py` | - | User simulation for E2E tests |
 | **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) | GUI automation (RPA) |
 | **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) | Desktop awareness, proactive help |
@@ -103,7 +104,7 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 ## Agents Without Dedicated Documentation
 
-The following agents exist in code but don't yet have dedicated documentation files (13 of 34):
+The following agents exist in code but don't yet have dedicated documentation files (15 of 33):
 
 - **Analyst** (`analyst.py`) - Performance and cost analysis
 - **Creative Director** (`creative_director.py`) - Branding and marketing
@@ -113,6 +114,7 @@ The following agents exist in code but don't yet have dedicated documentation fi
 - **Foreman** (`foreman.py`) - Build task management
 - **Gardener** (`gardener.py`) - Refactoring and cleanup
 - **Historian** (`historian.py`) - Project history
+- **Integrator** (`integrator.py`) - External integrations (GitHub/Discord/Slack/Tavily/HF/Calendar)
 - **Operator** (`operator.py`) - Runtime operations
 - **Publisher** (`publisher.py`) - Artifact publication
 - **Simulated User** (`simulated_user.py`) - User simulation

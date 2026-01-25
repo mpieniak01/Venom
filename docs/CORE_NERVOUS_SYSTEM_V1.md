@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Core Nervous System V1 to MVP systemu zarządzania zadaniami asynchronicznymi dla projektu Venom. System umożliwia przyjmowanie zadań przez API, przetwarzanie ich w tle oraz zarządzanie ich stanem z persystencją do pliku.
+Core Nervous System V1 to system zarządzania zadaniami asynchronicznymi dla Venoma. Umożliwia przyjmowanie zadań przez API, kolejkowanie i przetwarzanie w tle, strumieniowanie zdarzeń oraz zarządzanie stanem z persystencją do pliku. Opcjonalnie obsługuje architekturę rozproszoną (Hive) opartą o Redis + ARQ.
 
 ## Architektura
 
@@ -20,15 +20,23 @@ Core Nervous System V1 to MVP systemu zarządzania zadaniami asynchronicznymi dl
    - Ładowanie stanu przy starcie
    - Obsługa błędów I/O
 
-3. **Orchestrator** (`venom_core/core/orchestrator.py`)
-   - Przyjmowanie zadań do przetwarzania
-   - Asynchroniczne wykonywanie zadań w tle
-   - Logowanie wszystkich etapów
-   - Obsługa błędów z automatycznym ustawianiem statusu FAILED
+3. **QueueManager** (`venom_core/core/queue_manager.py`)
+   - Pauza/wznowienie kolejki, purge, emergency stop
+   - Limity wspolbieznosci i status kolejki
+   - Operacje abort dla pojedynczych zadan
 
-4. **API** (`venom_core/main.py`)
+4. **Orchestrator** (`venom_core/core/orchestrator.py`)
+   - Przyjmowanie zadan do przetwarzania
+   - Asynchroniczne wykonywanie zadan w tle
+   - Logowanie etapow i update statusu
+   - Obsloga bledow z automatycznym ustawieniem statusu FAILED
+
+5. **API** (`venom_core/main.py`)
    - REST API oparte na FastAPI
-   - Trzy główne endpointy do zarządzania zadaniami
+   - Endpointy zadan + kolejki + strumieni zdarzen
+
+6. **Event Stream** (`venom_core/api/stream.py`)
+   - WebSocket dla statusow i zdarzen systemowych
 
 ## API Endpoints
 
@@ -88,11 +96,30 @@ GET /api/v1/tasks
 ]
 ```
 
+### 4. Status i kontrola kolejki
+```bash
+GET /api/v1/queue/status
+POST /api/v1/queue/pause
+POST /api/v1/queue/resume
+POST /api/v1/queue/purge
+POST /api/v1/queue/emergency-stop
+POST /api/v1/queue/task/{task_id}/abort
+```
+
+### 5. Strumien zdarzen
+```bash
+WS /ws/events
+```
+
 ## Uruchomienie
 
 ### Instalacja zależności
 ```bash
 pip install fastapi uvicorn pydantic pydantic-settings loguru
+```
+Opcjonalnie dla trybu Hive (kolejki rozproszone):
+```bash
+pip install redis arq
 ```
 
 ### Uruchomienie serwera
@@ -161,17 +188,16 @@ System obsługuje następujące przypadki:
 
 ## Ograniczenia MVP
 
-- Mono-procesowy / mono-instancyjny
-- Zadania wykonywane lokalnie (symulacja z delay 2s)
-- Brak kolejki produkcyjnej
-- Brak bazy danych
-- Brak mechanizmów retry
-- Brak priorytetów zadań
+- Domyslnie single-instance (bez rozproszenia)
+- Zadania wykonywane lokalnie, bez zewnetrznego brokera
+- Brak bazy danych (persystencja do pliku)
+- Retry i priorytety pelne dostepne tylko w Hive (Redis + ARQ)
+- Brak autentykacji i kontroli dostepu na poziomie API
 
 ## Przyszłe rozszerzenia
 
 - Migracja do bazy danych (PostgreSQL/MongoDB)
-- Implementacja kolejki zadań (Redis/RabbitMQ)
+- Rozszerzenie kolejek o pelny tryb klastra (Hive/Nexus)
 - Rozproszone workery
 - Mechanizmy retry i priorytety
 - Monitoring i metryki

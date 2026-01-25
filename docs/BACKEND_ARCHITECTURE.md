@@ -31,6 +31,12 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `models_config.py` - /models/{model_name}/capabilities, /models/{model_name}/config
 - `models_translation.py` - /translate
 
+## Runtime i routing modeli
+- `venom_core/execution/model_router.py` i `venom_core/core/model_router.py` – routing pomiedzy lokalnym LLM i chmura (LOCAL/HYBRID/CLOUD).
+- `venom_core/core/llm_server_controller.py` – kontrola serwerow LLM (Ollama/vLLM) i healthcheck.
+- `venom_core/core/generation_params_adapter.py` – mapowanie parametrow generacji na format OpenAI/vLLM/Ollama.
+- Konfiguracja runtime znajduje sie w `venom_core/config.py` oraz `.env` (np. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
+
 ## Kontrakty API
 Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
 

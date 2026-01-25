@@ -3,7 +3,7 @@
 Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak sesje sa resetowane.
 
 ## Przeglad
-- Chat dziala w UI `web-next` (Cockpit AI) i wysyla zadania do backendu FastAPI.
+- Chat dziala w UI `web-next` (Cockpit AI) i wysyla zadania do backendu FastAPI (QueueManager).
 - Kontekst rozmowy jest budowany po stronie backendu na podstawie historii sesji i metadanych.
 - Ciaglosc rozmowy jest utrzymywana w ramach `session_id`.
 - Restart backendu wymusza nowa sesje (UI generuje nowe `session_id`).
@@ -31,6 +31,11 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
 - Zawartosc: prompt (skrocony), status, kroki, metadane LLM.
 - Nietrwaly (znika po restarcie).
 
+### Event Stream (WebSocket)
+- API: `/ws/events`
+- Zawartosc: zdarzenia i statusy systemowe (np. stream odpowiedzi, metryki).
+- Nietrwaly (po restarcie restartuje strumien).
+
 ### Pamiec wektorowa (globalna)
 - Trwala wiedza cross-session (np. LanceDB).
 - Zapisy: odpowiedzi, streszczenia, lekcje, fakty.
@@ -50,6 +55,7 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
 
 ## Logika routingu w chat (dlaczego i co wywolywane)
 - Domyslna zasada: **jesli intencja nie wymaga narzedzia i nie jest wymuszona, idzie do LLM** (GENERAL_CHAT).
+- Model Router wybiera runtime LLM (LOCAL/HYBRID/CLOUD) zgodnie z `AI_MODE` i politykami.
 - Narzedzia/skills uruchamiane sa tylko gdy:
   - intencja wymaga narzedzia (np. STATUS_REPORT, VERSION_CONTROL, RESEARCH), lub
   - uzytkownik wymusi to przez slash command (`/git`, `/web`, itp.).

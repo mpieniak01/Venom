@@ -107,8 +107,8 @@ venom_core/
 - **LanceDB** – local vector memory (embedded); **Redis** – optional broker/locks (can be disabled).
 - **Nexus**, **Background Tasks** – optional places for future processes (disabled by default, no start/stop actions; can be hidden/ignored if unused).
 
-**Note about vision/image:** currently perception (OCR/object recognition) uses local ONNX models or optional external endpoints. Ollama/vLLM can handle multimodal models, but in this repo they are not yet connected as runtime for vision — they require separate integration.
-**We already use ONNX:** currently in perception layer (vision) — OCR/object recognition — via local ONNX Runtime models. LLMs remain on Ollama/vLLM (or cloud), and ONNX covers the vision scope.
+**Note about vision/image:** image perception currently uses local vision models in Ollama or OpenAI GPT-4o; Florence-2 ONNX is planned. Ollama/vLLM can handle multimodal models, but this repo does not yet wire a dedicated ONNX runtime for vision.
+**We already use ONNX:** currently mainly in TTS (Piper). LLMs remain on Ollama/vLLM (or cloud), and ONNX for vision is a future direction.
 
 ### Data Flow
 
@@ -371,6 +371,12 @@ NEXUS_PORT=8765
 GITHUB_TOKEN=ghp_your_token         # Personal access token
 GITHUB_REPO_NAME=username/repo      # Repository name
 DISCORD_WEBHOOK_URL=https://...     # Optional
+SLACK_WEBHOOK_URL=https://...       # Optional
+HF_TOKEN=                           # Optional (Hugging Face)
+TAVILY_API_KEY=                     # Optional (Tavily Search)
+ENABLE_GOOGLE_CALENDAR=false        # Optional
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
 ENABLE_ISSUE_POLLING=false          # Enable automatic Issue polling
 ```
 

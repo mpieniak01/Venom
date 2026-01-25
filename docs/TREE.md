@@ -54,7 +54,7 @@
     │   ├── intent_manager.py    # klasyfikacja intencji (code/research/arch)
     │   ├── policy_engine.py     # etyka, autonomia, poziomy domen
     │   ├── state_manager.py     # stan organizmu, log zadań
-    │   ├── model_registry.py    # rejestr modeli (ONNX + GGUF)
+    │   ├── model_registry.py    # rejestr modeli (Ollama + HF Hub)
     │   ├── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
     │   └── dream_engine.py      # [v2.0] System aktywnego śnienia (przesunięty)
     │
@@ -94,8 +94,8 @@
     │
     ├── infrastructure/          # [WARSTWA 4: METABOLIZM] – SILNIKI
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # Vision/Audio runtime (Placeholder)
     │   ├── docker_habitat.py    # zarządzanie kontenerami / sandboxami
+    │   ├── message_broker.py    # Redis + ARQ (Hive)
     │   └── hardware_pi.py       # most do Rider-Pi (API, heartbeat)
     │
     └── utils/                   # NARZĘDZIA WSPÓLNE

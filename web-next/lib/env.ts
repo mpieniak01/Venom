@@ -23,6 +23,7 @@ const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 const isLocalhost = (hostname: string): boolean =>
   hostname === "localhost" ||
   hostname === "127.0.0.1" ||
+  hostname === "0.0.0.0" ||
   hostname === "[::1]" ||
   hostname === "wsl.localhost" ||
   hostname.endsWith(".localhost");

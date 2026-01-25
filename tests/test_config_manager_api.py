@@ -6,14 +6,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import system
+from venom_core.api.routes import system_config
 
 
 @pytest.fixture
 def test_app():
     """Fixture dla testowej aplikacji FastAPI."""
     app = FastAPI()
-    app.include_router(system.router)
+    app.include_router(system_config.router)
     return app
 
 
@@ -28,7 +28,9 @@ class TestConfigRuntimeAPI:
 
     def test_get_config_success(self, client):
         """Test poprawnego pobrania konfiguracji."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.get_config.return_value = {
                 "AI_MODE": "LOCAL",
                 "LLM_SERVICE_TYPE": "local",
@@ -46,7 +48,9 @@ class TestConfigRuntimeAPI:
 
     def test_get_config_no_mask(self, client):
         """Test pobrania konfiguracji bez maskowania."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.get_config.return_value = {
                 "AI_MODE": "LOCAL",
                 "OPENAI_API_KEY": "sk-test1234567890",
@@ -62,7 +66,9 @@ class TestConfigRuntimeAPI:
 
     def test_update_config_success(self, client):
         """Test pomyślnej aktualizacji konfiguracji."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.update_config.return_value = {
                 "success": True,
                 "message": "Zaktualizowano 2 parametrów",
@@ -84,7 +90,9 @@ class TestConfigRuntimeAPI:
 
     def test_update_config_validation_error(self, client):
         """Test błędu walidacji."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.update_config.return_value = {
                 "success": False,
                 "message": "Błąd walidacji: invalid_key nie jest dozwolony",
@@ -103,7 +111,9 @@ class TestConfigRuntimeAPI:
 
     def test_update_config_error(self, client):
         """Test błędu podczas aktualizacji."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.update_config.side_effect = Exception("Test error")
 
             response = client.post(
@@ -120,7 +130,9 @@ class TestConfigBackupsAPI:
 
     def test_get_backups_success(self, client):
         """Test poprawnego pobrania listy backupów."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.get_backup_list.return_value = [
                 {
                     "filename": ".env-20240101-120000",
@@ -140,7 +152,9 @@ class TestConfigBackupsAPI:
 
     def test_get_backups_empty(self, client):
         """Test pustej listy backupów."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.get_backup_list.return_value = []
 
             response = client.get("/api/v1/config/backups")
@@ -156,7 +170,9 @@ class TestConfigRestoreAPI:
 
     def test_restore_backup_success(self, client):
         """Test pomyślnego przywrócenia backupu."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.restore_backup.return_value = {
                 "success": True,
                 "message": "Przywrócono .env z backupu",
@@ -175,7 +191,9 @@ class TestConfigRestoreAPI:
 
     def test_restore_backup_not_found(self, client):
         """Test przywrócenia nieistniejącego backupu."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.restore_backup.return_value = {
                 "success": False,
                 "message": "Backup nie istnieje",
@@ -193,7 +211,9 @@ class TestConfigRestoreAPI:
 
     def test_restore_backup_error(self, client):
         """Test błędu podczas przywracania."""
-        with patch("venom_core.api.routes.system.config_manager") as mock_manager:
+        with patch(
+            "venom_core.api.routes.system_config.config_manager"
+        ) as mock_manager:
             mock_manager.restore_backup.side_effect = Exception("Test error")
 
             response = client.post(

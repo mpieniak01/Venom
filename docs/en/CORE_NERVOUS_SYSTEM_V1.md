@@ -2,7 +2,7 @@
 
 ## Overview
 
-Core Nervous System V1 is an MVP asynchronous task management system for the Venom project. The system enables task acceptance via API, background processing, and state management with file persistence.
+Core Nervous System V1 is Venom's asynchronous task management system. It accepts tasks via API, queues and processes them in the background, streams events, and manages state with file persistence. It also supports an optional distributed mode (Hive) based on Redis + ARQ.
 
 ## Architecture
 
@@ -20,15 +20,23 @@ Core Nervous System V1 is an MVP asynchronous task management system for the Ven
    - State loading on startup
    - I/O error handling
 
-3. **Orchestrator** (`venom_core/core/orchestrator.py`)
+3. **QueueManager** (`venom_core/core/queue_manager.py`)
+   - Queue pause/resume, purge, emergency stop
+   - Concurrency limits and queue status
+   - Abort operations for individual tasks
+
+4. **Orchestrator** (`venom_core/core/orchestrator.py`)
    - Accepting tasks for processing
    - Asynchronous background task execution
-   - Logging all stages
+   - Stage logging and status updates
    - Error handling with automatic FAILED status setting
 
-4. **API** (`venom_core/main.py`)
+5. **API** (`venom_core/main.py`)
    - FastAPI-based REST API
-   - Three main endpoints for task management
+   - Task + queue + event endpoints
+
+6. **Event Stream** (`venom_core/api/stream.py`)
+   - WebSocket for status and system events
 
 ## API Endpoints
 
@@ -88,11 +96,30 @@ GET /api/v1/tasks
 ]
 ```
 
+### 4. Queue status and control
+```bash
+GET /api/v1/queue/status
+POST /api/v1/queue/pause
+POST /api/v1/queue/resume
+POST /api/v1/queue/purge
+POST /api/v1/queue/emergency-stop
+POST /api/v1/queue/task/{task_id}/abort
+```
+
+### 5. Event stream
+```bash
+WS /ws/events
+```
+
 ## Running
 
 ### Install dependencies
 ```bash
 pip install fastapi uvicorn pydantic pydantic-settings loguru
+```
+Optional for Hive mode (distributed queues):
+```bash
+pip install redis arq
 ```
 
 ### Start server
@@ -161,17 +188,16 @@ The system handles the following cases:
 
 ## MVP Limitations
 
-- Single-process / single-instance
-- Tasks executed locally (simulation with 2s delay)
-- No production queue
-- No database
-- No retry mechanisms
-- No task priorities
+- Single-instance by default (no distribution)
+- Tasks executed locally without external broker
+- No database (file-based persistence)
+- Retry and priority available only in Hive (Redis + ARQ)
+- No API-level authentication/authorization
 
 ## Future Enhancements
 
 - Migration to database (PostgreSQL/MongoDB)
-- Task queue implementation (Redis/RabbitMQ)
+- Full cluster mode expansion (Hive/Nexus)
 - Distributed workers
 - Retry mechanisms and priorities
 - Monitoring and metrics

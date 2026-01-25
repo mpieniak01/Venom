@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from venom_core.api.routes import system as system_routes
+from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
 
 
@@ -69,9 +69,13 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
         {"name": "vllm", "supports": {"start": True, "stop": True}, "endpoint": ""},
     ]
     models = [{"name": "phi3:mini", "provider": "ollama"}]
-    monkeypatch.setattr(system_routes, "_llm_controller", DummyController(servers))
-    monkeypatch.setattr(system_routes, "_model_manager", DummyModelManager(models))
-    monkeypatch.setattr(system_routes, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_llm_controller", DummyController(servers)
+    )
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
@@ -104,9 +108,13 @@ async def test_set_active_llm_server_fallbacks_to_previous(monkeypatch):
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""}
     ]
     models = [{"name": "phi3:old", "provider": "ollama"}]
-    monkeypatch.setattr(system_routes, "_llm_controller", DummyController(servers))
-    monkeypatch.setattr(system_routes, "_model_manager", DummyModelManager(models))
-    monkeypatch.setattr(system_routes, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_llm_controller", DummyController(servers)
+    )
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
@@ -138,9 +146,13 @@ async def test_set_active_llm_server_raises_without_models(monkeypatch):
         {"name": "ollama", "supports": {"start": True, "stop": True}, "endpoint": ""}
     ]
     models = [{"name": "phi3:mini", "provider": "vllm"}]
-    monkeypatch.setattr(system_routes, "_llm_controller", DummyController(servers))
-    monkeypatch.setattr(system_routes, "_model_manager", DummyModelManager(models))
-    monkeypatch.setattr(system_routes, "_request_tracer", None)
+    monkeypatch.setattr(
+        system_routes.system_deps, "_llm_controller", DummyController(servers)
+    )
+    monkeypatch.setattr(
+        system_routes.system_deps, "_model_manager", DummyModelManager(models)
+    )
+    monkeypatch.setattr(system_routes.system_deps, "_request_tracer", None)
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"

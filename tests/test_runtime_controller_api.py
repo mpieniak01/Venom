@@ -6,14 +6,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import system
+from venom_core.api.routes import system_runtime
 
 
 @pytest.fixture
 def test_app():
     """Fixture dla testowej aplikacji FastAPI."""
     app = FastAPI()
-    app.include_router(system.router)
+    app.include_router(system_runtime.router)
     return app
 
 
@@ -29,8 +29,10 @@ class TestRuntimeStatusAPI:
     def test_runtime_status_success(self, client):
         """Test poprawnego pobrania statusu runtime."""
         with (
-            patch("venom_core.api.routes.system.runtime_controller") as mock_controller,
-            patch("venom_core.api.routes.system._service_monitor", None),
+            patch(
+                "venom_core.api.routes.system_runtime.runtime_controller"
+            ) as mock_controller,
+            patch("venom_core.api.routes.system_deps._service_monitor", None),
         ):
             # Mock service info
             mock_service = MagicMock()
@@ -62,8 +64,10 @@ class TestRuntimeStatusAPI:
     def test_runtime_status_with_non_actionable_services(self, client):
         """Test statusu runtime z usługami non-actionable (Hive/Nexus/BackgroundTasks)."""
         with (
-            patch("venom_core.api.routes.system.runtime_controller") as mock_controller,
-            patch("venom_core.api.routes.system._service_monitor", None),
+            patch(
+                "venom_core.api.routes.system_runtime.runtime_controller"
+            ) as mock_controller,
+            patch("venom_core.api.routes.system_deps._service_monitor", None),
         ):
             # Mock actionable service (backend)
             mock_backend = MagicMock()
@@ -118,7 +122,7 @@ class TestRuntimeStatusAPI:
     def test_runtime_status_error(self, client):
         """Test błędu podczas pobierania statusu runtime."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.get_all_services_status.side_effect = Exception(
                 "Test error"
@@ -136,7 +140,7 @@ class TestRuntimeActionAPI:
     def test_start_service_success(self, client):
         """Test pomyślnego uruchomienia usługi."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.start_service.return_value = {
                 "success": True,
@@ -153,7 +157,7 @@ class TestRuntimeActionAPI:
     def test_stop_service_success(self, client):
         """Test pomyślnego zatrzymania usługi."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.stop_service.return_value = {
                 "success": True,
@@ -169,7 +173,7 @@ class TestRuntimeActionAPI:
     def test_restart_service_success(self, client):
         """Test pomyślnego restartu usługi."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.restart_service.return_value = {
                 "success": True,
@@ -203,7 +207,7 @@ class TestRuntimeHistoryAPI:
     def test_get_history_success(self, client):
         """Test poprawnego pobrania historii."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.get_history.return_value = [
                 {
@@ -230,7 +234,7 @@ class TestRuntimeProfileAPI:
     def test_apply_profile_success(self, client):
         """Test pomyślnej aplikacji profilu."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.apply_profile.return_value = {
                 "success": True,
@@ -248,7 +252,7 @@ class TestRuntimeProfileAPI:
     def test_apply_profile_unknown(self, client):
         """Test aplikacji nieznanego profilu."""
         with patch(
-            "venom_core.api.routes.system.runtime_controller"
+            "venom_core.api.routes.system_runtime.runtime_controller"
         ) as mock_controller:
             mock_controller.apply_profile.return_value = {
                 "success": False,

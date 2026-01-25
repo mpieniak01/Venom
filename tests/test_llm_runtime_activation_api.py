@@ -6,13 +6,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import system
+from venom_core.api.routes import system_llm
 
 
 @pytest.fixture
 def test_app():
     app = FastAPI()
-    app.include_router(system.router)
+    app.include_router(system_llm.router)
     return app
 
 
@@ -24,9 +24,9 @@ def client(test_app):
 class TestLlmRuntimeActivationAPI:
     def test_activate_openai_runtime(self, client):
         with (
-            patch.object(system, "SETTINGS") as settings,
-            patch.object(system, "config_manager") as mock_manager,
-            patch.object(system, "get_active_llm_runtime") as mock_runtime,
+            patch.object(system_llm, "SETTINGS") as settings,
+            patch.object(system_llm, "config_manager") as mock_manager,
+            patch.object(system_llm, "get_active_llm_runtime") as mock_runtime,
         ):
             settings.OPENAI_API_KEY = "sk-test"
             settings.GOOGLE_API_KEY = ""
@@ -65,7 +65,7 @@ class TestLlmRuntimeActivationAPI:
             mock_manager.update_config.assert_called_once()
 
     def test_activate_google_missing_key(self, client):
-        with patch.object(system, "SETTINGS") as settings:
+        with patch.object(system_llm, "SETTINGS") as settings:
             settings.GOOGLE_API_KEY = ""
             response = client.post(
                 "/api/v1/system/llm-runtime/active",

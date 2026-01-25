@@ -81,6 +81,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 
 | Agent | Plik | Dokumentacja | Opis |
 |-------|------|--------------|------|
+| **Integrator** | `integrator.py` | [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) | Integracje zewnętrzne (GitHub, Discord/Slack, Tavily, HF, Calendar) |
 | **Simulated User** | `simulated_user.py` | - | Symulacja użytkownika dla testów E2E |
 | **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) | Automatyzacja GUI (RPA) |
 | **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) | Desktop awareness, proaktywna pomoc |
@@ -102,7 +103,7 @@ System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialn
 
 ## Agenci bez Dedykowanej Dokumentacji
 
-Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (13 z 34):
+Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (15 z 33):
 
 - **Analyst** (`analyst.py`) - Analiza wydajności i kosztów
 - **Creative Director** (`creative_director.py`) - Branding i marketing
@@ -112,6 +113,7 @@ Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików do
 - **Foreman** (`foreman.py`) - Zarządzanie zadaniami budowlanymi
 - **Gardener** (`gardener.py`) - Refaktoryzacja i clean-up
 - **Historian** (`historian.py`) - Historia projektu
+- **Integrator** (`integrator.py`) - Integracje zewnętrzne (GitHub/Discord/Slack/Tavily/HF/Calendar)
 - **Operator** (`operator.py`) - Operacje runtime
 - **Publisher** (`publisher.py`) - Publikacja artefaktów
 - **Simulated User** (`simulated_user.py`) - Symulacja użytkownika

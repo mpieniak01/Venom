@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchTaskDetail } from "@/hooks/use-api";
 import { POLLING } from "@/lib/ui-config";
-import type { TaskStatus } from "@/lib/types";
+import type { TaskStatus, Task } from "@/lib/types";
 
 export type TaskStreamEventName = "task_update" | "task_finished" | "task_missing" | "heartbeat";
 
@@ -76,22 +76,64 @@ const defaultState: TaskStreamState = {
 
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
 
+function extractRuntime(payload: Record<string, any>) {
+  const runtime = (payload.active_runtime || payload.runtime || {}) as Record<string, any>;
+  return {
+    provider: (payload.llm_provider || runtime.provider || null) as string | null,
+    model: (payload.llm_model || runtime.model || null) as string | null,
+    endpoint: (payload.llm_endpoint || runtime.endpoint || null) as string | null,
+    status: (payload.llm_status || runtime.status || null) as string | null,
+    error: (payload.llm_error || runtime.error || null) as string | null,
+    context: (payload.context || runtime.context || null) as Record<string, any> | null,
+  };
+}
+
+function normalizeStatus(status: any): TaskStatus | null {
+  if (!status) return null;
+  const s = String(status).toUpperCase();
+  if (TERMINAL_STATUSES.includes(s as TaskStatus)) return s as TaskStatus;
+  if (s === "PENDING" || s === "PROCESSING") return s as TaskStatus;
+  return null;
+}
+
+function mergeLogs(existing: string[], incoming: string[]): string[] {
+  const seen = new Set(existing);
+  const result = [...existing];
+  incoming.forEach((log) => {
+    if (!seen.has(log)) {
+      seen.add(log);
+      result.push(log);
+    }
+  });
+  return result;
+}
+
+function safeParse(data: string): Record<string, any> {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
 export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions): UseTaskStreamResult {
   const {
     enabled = true,
     autoCloseOnFinish = true,
     onEvent,
-    throttleMs = 0,
+    throttleMs = 250,
   } = options ?? {};
+
   const [streams, setStreams] = useState<Record<string, TaskStreamState>>({});
   const [lastEvent, setLastEvent] = useState<TaskStreamEvent | undefined>(undefined);
+
   const onEventRef = useRef<UseTaskStreamOptions["onEvent"]>(onEvent);
   const sourcesRef = useRef<Map<string, EventSource>>(new Map());
   const pendingUpdatesRef = useRef<Map<string, Partial<TaskStreamState>>>(new Map());
   const throttleTimersRef = useRef<Map<string, number>>(new Map());
   const pollTimersRef = useRef<Map<string, number>>(new Map());
-  const pollInFlightRef = useRef<Set<string>>(new Set());
   const firstResultSeenRef = useRef<Map<string, boolean>>(new Map());
+
   const dedupedTaskIds = useMemo(() => {
     const seen = new Set<string>();
     const filtered: string[] = [];
@@ -108,428 +150,258 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
     onEventRef.current = onEvent;
   }, [onEvent]);
 
+  const updateStateById = useCallback((taskId: string, patch: Partial<TaskStreamState>) => {
+    setStreams((prev) => {
+      const existing = prev[taskId] ?? defaultState;
+      const mergedLogs = patch.logs === undefined ? existing.logs : mergeLogs(existing.logs, patch.logs);
+      return {
+        ...prev,
+        [taskId]: {
+          ...existing,
+          ...patch,
+          logs: mergedLogs,
+        },
+      };
+    });
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const sources = sourcesRef.current;
     if (!enabled) {
-      // Zamknij wszystkie istniejące źródła jeśli streaming wyłączony
-      sources.forEach((source) => source.close());
-      sources.clear();
-      setStreams((prev) => {
-        if (Object.keys(prev).length === 0) {
-          return prev;
-        }
-        return {};
-      });
+      sourcesRef.current.forEach((s) => s.close());
+      sourcesRef.current.clear();
+      pollTimersRef.current.forEach((t) => window.clearTimeout(t));
+      pollTimersRef.current.clear();
+      setStreams({});
       return undefined;
     }
 
     const targetIds = new Set(dedupedTaskIds);
+    const sources = sourcesRef.current;
+    const pollIntervalMs = POLLING.TASK_INTERVAL_MS || 2000;
+
+    const emitEvent = (event: TaskStreamEvent) => {
+      setLastEvent(event);
+      onEventRef.current?.(event);
+      if (typeof window !== "undefined") {
+        const win = window as any;
+        win.__lastTaskStreamEvent = event;
+        win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
+      }
+    };
 
     const stopPolling = (taskId: string) => {
       const timer = pollTimersRef.current.get(taskId);
       if (timer) {
-        window.clearInterval(timer);
+        window.clearTimeout(timer);
         pollTimersRef.current.delete(taskId);
       }
-      pollInFlightRef.current.delete(taskId);
     };
 
     const pollTask = async (taskId: string) => {
-      if (pollInFlightRef.current.has(taskId)) return;
-      pollInFlightRef.current.add(taskId);
       try {
         const task = await fetchTaskDetail(taskId);
         const status = normalizeStatus(task.status);
-        const logs = Array.isArray(task.logs) ? task.logs.map(String) : [];
-        const result = typeof task.result === "string" ? task.result : null;
+        const logs = task.logs as string[] | undefined;
+        const result = task.result as string | undefined;
+
         updateStateById(taskId, {
           status: status ?? null,
           logs,
           result,
           lastEventAt: task.updated_at ?? new Date().toISOString(),
           connected: false,
-          error: "Połączenie SSE przerwane – używam pollingu.",
+          error: "SSE connection lost, using polling.",
         });
-        if (status && TERMINAL_STATUSES.includes(status)) {
-          stopPolling(taskId);
-        }
-      } catch {
-        // Ignoruj pojedyncze błędy, polling spróbuje ponownie.
-      } finally {
-        pollInFlightRef.current.delete(taskId);
-      }
-    };
 
-    const ensurePolling = (taskId: string) => {
-      if (pollTimersRef.current.has(taskId)) return;
-      const source = sources.get(taskId);
-      if (source && source.readyState === EventSource.OPEN) return;
-      pollTask(taskId);
-      const timer = window.setInterval(() => pollTask(taskId), POLLING.TASK_INTERVAL_MS);
-      pollTimersRef.current.set(taskId, timer);
-    };
-
-    const updateStateById = (taskId: string, patch: Partial<TaskStreamState>) => {
-      setStreams((prev) => {
-        const existing = prev[taskId] ?? defaultState;
-        const mergedLogs =
-          patch.logs === undefined
-            ? existing.logs
-            : mergeLogs(existing.logs, patch.logs);
-        return {
-          ...prev,
-          [taskId]: {
-            ...existing,
-            ...patch,
-            logs: mergedLogs,
-          },
-        };
-      });
-    };
-
-    // Dodaj nowe strumienie
-    for (const taskId of targetIds) {
-      if (sources.has(taskId)) continue;
-      const source = new EventSource(`/api/v1/tasks/${taskId}/stream`);
-
-      const updateState = (patch: Partial<TaskStreamState>) => {
-        updateStateById(taskId, patch);
-      };
-
-      const scheduleUpdate = (patch: Partial<TaskStreamState>) => {
-        if (throttleMs <= 0) {
-          updateState(patch);
-          return;
-        }
-        const pending = pendingUpdatesRef.current.get(taskId) ?? {};
-        // Merge logs zamiast nadpisywania, z deduplikacją jak w updateState
-        const mergedLogs = mergeLogs(pending.logs ?? [], patch.logs ?? []);
-        pendingUpdatesRef.current.set(taskId, {
-          ...pending,
-          ...patch,
-          logs: mergedLogs,
-        });
-        if (throttleTimersRef.current.has(taskId)) return;
-        const timer = window.setTimeout(() => {
-          throttleTimersRef.current.delete(taskId);
-          const queued = pendingUpdatesRef.current.get(taskId);
-          pendingUpdatesRef.current.delete(taskId);
-          if (queued) {
-            updateState(queued);
-          }
-        }, throttleMs);
-        throttleTimersRef.current.set(taskId, timer);
-      };
-
-      const flushPending = () => {
-        const timer = throttleTimersRef.current.get(taskId);
-        if (timer) {
-          window.clearTimeout(timer);
-          throttleTimersRef.current.delete(taskId);
-        }
-        const queued = pendingUpdatesRef.current.get(taskId);
-        pendingUpdatesRef.current.delete(taskId);
-        if (queued) {
-          updateState(queued);
-        }
-      };
-
-      const emitEvent = (event: TaskStreamEvent) => {
-        setLastEvent(event);
-        onEventRef.current?.(event);
-        if (typeof window !== "undefined") {
-          const win = window as typeof window & {
-            __lastTaskStreamEvent?: TaskStreamEvent;
-            __taskStreamEvents?: TaskStreamEvent[];
-          };
-          win.__lastTaskStreamEvent = event;
-          win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
-        }
-      };
-
-      const handlePayload = (eventName: TaskStreamEventName, payload: Record<string, unknown>) => {
-        const status = normalizeStatus(payload.status);
-        const logs = Array.isArray(payload.logs)
-          ? payload.logs.map((entry) => String(entry))
-          : undefined;
-        const result =
-          typeof payload.result === "string" || payload.result === null
-            ? (payload.result as string | null)
-            : undefined;
-        const timestamp =
-          typeof payload.timestamp === "string" ? payload.timestamp : null;
-        const derivedTaskId = typeof payload.task_id === "string" ? payload.task_id : taskId;
-        const runtime = extractRuntime(payload);
-        const contextUsed =
-          (payload.context_used as {
-            lessons?: string[];
-            memory_entries?: string[];
-          } | null) ?? null;
-
-        const entry: TaskStreamEvent = {
-          taskId: derivedTaskId,
-          event: eventName,
+        const runtime = extractRuntime(task as any);
+        emitEvent({
+          taskId,
+          event: status === "COMPLETED" ? "task_finished" : "task_update",
           status,
           logs,
           result,
-          timestamp,
+          timestamp: task.updated_at,
           llmProvider: runtime.provider,
           llmModel: runtime.model,
           llmEndpoint: runtime.endpoint,
           llmStatus: runtime.status,
           llmRuntimeError: runtime.error,
           context: runtime.context,
-          contextUsed,
-        };
+        });
 
-        if (eventName === "heartbeat") {
-          scheduleUpdate({
-            heartbeatAt: timestamp ?? new Date().toISOString(),
-            connected: true,
-            error: null,
-            llmProvider: runtime.provider,
-            llmModel: runtime.model,
-            llmEndpoint: runtime.endpoint,
-            llmStatus: runtime.status ?? null,
-            context: runtime.context,
-          });
-          emitEvent(entry);
-          return;
+        if (status && TERMINAL_STATUSES.includes(status)) {
+          stopPolling(taskId);
+        } else {
+          const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs);
+          pollTimersRef.current.set(taskId, timer);
         }
+      } catch (err) {
+        const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs * 2);
+        pollTimersRef.current.set(taskId, timer);
+      }
+    };
 
-        const patch = {
-          status: status ?? null,
-          logs,
-          result: result ?? null,
-          lastEventAt: timestamp ?? new Date().toISOString(),
+    const scheduleUpdate = (taskId: string, patch: Partial<TaskStreamState>) => {
+      if (throttleMs <= 0) {
+        updateStateById(taskId, patch);
+        return;
+      }
+      const pending = pendingUpdatesRef.current.get(taskId) ?? {};
+      const mergedLogs = mergeLogs(pending.logs ?? [], patch.logs ?? []);
+      pendingUpdatesRef.current.set(taskId, { ...pending, ...patch, logs: mergedLogs });
+
+      if (throttleTimersRef.current.has(taskId)) return;
+
+      const timer = window.setTimeout(() => {
+        throttleTimersRef.current.delete(taskId);
+        const queued = pendingUpdatesRef.current.get(taskId);
+        pendingUpdatesRef.current.delete(taskId);
+        if (queued) updateStateById(taskId, queued);
+      }, throttleMs);
+      throttleTimersRef.current.set(taskId, timer);
+    };
+
+    const flushPending = (taskId: string) => {
+      const timer = throttleTimersRef.current.get(taskId);
+      if (timer) {
+        window.clearTimeout(timer);
+        throttleTimersRef.current.delete(taskId);
+      }
+      const queued = pendingUpdatesRef.current.get(taskId);
+      pendingUpdatesRef.current.delete(taskId);
+      if (queued) updateStateById(taskId, queued);
+    };
+
+    const handlePayload = (taskId: string, eventName: TaskStreamEventName, payload: Record<string, any>) => {
+      const status = normalizeStatus(payload.status);
+      const logs = Array.isArray(payload.logs) ? payload.logs.map(String) : undefined;
+      const result = typeof payload.result === "string" || payload.result === null ? payload.result : undefined;
+      const timestamp = typeof payload.timestamp === "string" ? payload.timestamp : null;
+      const derivedTaskId = payload.task_id || taskId;
+      const runtime = extractRuntime(payload);
+      const contextUsed = payload.context_used || null;
+
+      const entry: TaskStreamEvent = {
+        taskId: derivedTaskId,
+        event: eventName,
+        status,
+        logs,
+        result,
+        timestamp,
+        llmProvider: runtime.provider,
+        llmModel: runtime.model,
+        llmEndpoint: runtime.endpoint,
+        llmStatus: runtime.status,
+        llmRuntimeError: runtime.error,
+        context: runtime.context,
+        contextUsed,
+      };
+
+      if (eventName === "heartbeat") {
+        scheduleUpdate(taskId, {
+          heartbeatAt: timestamp ?? new Date().toISOString(),
           connected: true,
           error: null,
           llmProvider: runtime.provider,
           llmModel: runtime.model,
           llmEndpoint: runtime.endpoint,
-          llmStatus: runtime.status ?? null,
+          llmStatus: runtime.status,
           context: runtime.context,
-          // contextUsed bywa wysyłane tylko raz; nie nadpisujemy istniejącej wartości nullem.
-          ...(contextUsed !== undefined && contextUsed !== null
-            ? { contextUsed }
-            : {}),
-        };
-        const isTerminal =
-          eventName === "task_finished" ||
-          eventName === "task_missing" ||
-          (status && TERMINAL_STATUSES.includes(status));
-        const hasResult =
-          typeof result === "string" && result.trim().length > 0;
-        const firstResultSeen = firstResultSeenRef.current.get(taskId) ?? false;
-        const firstResultNow = hasResult && !firstResultSeen;
-        if (firstResultNow) {
-          firstResultSeenRef.current.set(taskId, true);
-        }
-
-        if (isTerminal) {
-          flushPending();
-          updateState(patch);
-          stopPolling(taskId);
-        } else if (firstResultNow) {
-          flushPending();
-          updateState(patch);
-        } else {
-          scheduleUpdate(patch);
-        }
+        });
         emitEvent(entry);
+        return;
+      }
 
-        if (
-          autoCloseOnFinish &&
-          (eventName === "task_finished" ||
-            eventName === "task_missing" ||
-            (status && TERMINAL_STATUSES.includes(status)))
-        ) {
-          const currentSource = sources.get(taskId);
-          currentSource?.close();
-          sources.delete(taskId);
-          flushPending();
-          updateState({
-            connected: false,
-          });
-        }
+      const patch = {
+        status: status ?? null,
+        logs,
+        result: result ?? null,
+        lastEventAt: timestamp ?? new Date().toISOString(),
+        connected: true,
+        error: null,
+        llmProvider: runtime.provider,
+        llmModel: runtime.model,
+        llmEndpoint: runtime.endpoint,
+        llmStatus: runtime.status,
+        context: runtime.context,
+        ...(contextUsed ? { contextUsed } : {}),
       };
 
-      source.addEventListener("task_update", (event) => {
-        const payload = safeParse(event.data);
-        handlePayload("task_update", payload);
-      });
+      const isTerminal = eventName === "task_finished" || eventName === "task_missing" || (status && TERMINAL_STATUSES.includes(status));
+      const hasResult = typeof result === "string" && result.trim().length > 0;
+      const firstResultSeen = firstResultSeenRef.current.get(taskId) ?? false;
+      const firstResultNow = hasResult && !firstResultSeen;
 
-      source.addEventListener("task_finished", (event) => {
-        const payload = safeParse(event.data);
-        handlePayload("task_finished", payload);
-      });
+      if (firstResultNow) firstResultSeenRef.current.set(taskId, true);
 
-      source.addEventListener("task_missing", (event) => {
-        const payload = safeParse(event.data);
-        handlePayload("task_missing", payload);
-      });
-
-      source.addEventListener("heartbeat", (event) => {
-        const payload = safeParse(event.data);
-        handlePayload("heartbeat", payload);
-      });
-
-      source.onopen = () => {
+      if (isTerminal) {
+        flushPending(taskId);
+        updateStateById(taskId, patch);
         stopPolling(taskId);
-        updateState({
-          connected: true,
-          error: null,
-        });
-      };
+      } else if (firstResultNow) {
+        flushPending(taskId);
+        updateStateById(taskId, patch);
+      } else {
+        scheduleUpdate(taskId, patch);
+      }
+      emitEvent(entry);
 
-      source.onerror = () => {
-        updateState({
-          connected: false,
-          error: "Połączenie SSE przerwane – używam pollingu.",
-        });
-        ensurePolling(taskId);
-      };
+      if (autoCloseOnFinish && isTerminal) {
+        const currentSource = sources.get(taskId);
+        currentSource?.close();
+        sources.delete(taskId);
+        updateStateById(taskId, { connected: false });
+      }
+    };
 
-      sources.set(taskId, source);
-      // zapewnij stan startowy
-      setStreams((prev) => ({
-        ...prev,
-        [taskId]: {
-          ...(prev[taskId] ?? defaultState),
-          connected: true,
-          error: null,
-        },
-      }));
-    }
-
-    // Usuń strumienie dla ID, które nie są już śledzone
-    sources.forEach((source, sourceTaskId) => {
-      if (!targetIds.has(sourceTaskId)) {
+    // Incremental update
+    sources.forEach((source, id) => {
+      if (!targetIds.has(id)) {
         source.close();
-        sources.delete(sourceTaskId);
-        stopPolling(sourceTaskId);
-        firstResultSeenRef.current.delete(sourceTaskId);
-        const timer = throttleTimersRef.current.get(sourceTaskId);
-        if (timer) {
-          window.clearTimeout(timer);
-          throttleTimersRef.current.delete(sourceTaskId);
-        }
-        pendingUpdatesRef.current.delete(sourceTaskId);
+        sources.delete(id);
+        stopPolling(id);
+        const timer = throttleTimersRef.current.get(id);
+        if (timer) window.clearTimeout(timer);
+        throttleTimersRef.current.delete(id);
+        pendingUpdatesRef.current.delete(id);
         setStreams((prev) => {
           const next = { ...prev };
-          delete next[sourceTaskId];
+          delete next[id];
           return next;
         });
       }
     });
 
-    const timersSnapshot = throttleTimersRef.current;
-    const pollTimersSnapshot = pollTimersRef.current;
-    const pendingSnapshot = pendingUpdatesRef.current;
-    return () => {
-      sources.forEach((source) => source.close());
-      sources.clear();
-      setStreams((prev) => {
-        if (Object.keys(prev).length === 0) {
-          return prev;
+    for (const taskId of targetIds) {
+      if (sources.has(taskId)) continue;
+
+      const source = new EventSource(`/api/v1/tasks/${taskId}/stream`);
+
+      source.addEventListener("task_update", (e) => handlePayload(taskId, "task_update", safeParse(e.data)));
+      source.addEventListener("task_finished", (e) => handlePayload(taskId, "task_finished", safeParse(e.data)));
+      source.addEventListener("task_missing", (e) => handlePayload(taskId, "task_missing", safeParse(e.data)));
+      source.addEventListener("heartbeat", (e) => handlePayload(taskId, "heartbeat", safeParse(e.data)));
+
+      source.onopen = () => {
+        stopPolling(taskId);
+        updateStateById(taskId, { connected: true, error: null });
+      };
+      source.onerror = () => {
+        updateStateById(taskId, { connected: false, error: "SSE failure, polling..." });
+        if (!pollTimersRef.current.has(taskId)) {
+          pollTask(taskId);
         }
-        return {};
-      });
-      timersSnapshot.forEach((timer) => window.clearTimeout(timer));
-      timersSnapshot.clear();
-      pollTimersSnapshot.forEach((timer) => window.clearInterval(timer));
-      pollTimersSnapshot.clear();
-      pollInFlightRef.current.clear();
-      pendingSnapshot.clear();
-      firstResultSeenRef.current.clear();
-    };
-  }, [dedupedTaskIds, enabled, autoCloseOnFinish, throttleMs]);
+      };
 
-  const connectedIds = useMemo(
-    () => Object.entries(streams).filter(([, entry]) => entry.connected).map(([id]) => id),
-    [streams],
-  );
-
-  return { streams, connectedIds, lastEvent };
-}
-
-function safeParse(data: unknown): Record<string, unknown> {
-  if (typeof data !== "string") return {};
-  try {
-    return JSON.parse(data) as Record<string, unknown>;
-  } catch (err) {
-    console.warn("Nie udało się sparsować zdarzenia SSE:", err);
-    return {};
-  }
-}
-
-function mergeLogs(existing: string[], incoming?: string[]): string[] {
-  if (!incoming || incoming.length === 0) return existing;
-  const next = [...existing];
-  for (const entry of incoming) {
-    if (entry && !next.includes(entry)) {
-      next.push(entry);
+      sources.set(taskId, source);
+      pollTask(taskId);
     }
-  }
-  return next;
-}
-
-function normalizeStatus(status: unknown): TaskStatus | null {
-  if (typeof status !== "string") return null;
-  switch (status) {
-    case "PENDING":
-    case "PROCESSING":
-    case "COMPLETED":
-    case "FAILED":
-    case "LOST":
-      return status;
-    default:
-      return null;
-  }
-}
-
-function extractRuntime(payload: Record<string, unknown>) {
-  const provider =
-    typeof payload.llm_provider === "string" ? payload.llm_provider : null;
-  const model = typeof payload.llm_model === "string" ? payload.llm_model : null;
-  const endpoint =
-    typeof payload.llm_endpoint === "string" ? payload.llm_endpoint : null;
-  const status =
-    typeof payload.llm_status === "string" ? payload.llm_status : null;
-  const context = isRecord(payload.context_history)
-    ? (payload.context_history as Record<string, unknown>)
-    : null;
-  const runtimeContext =
-    context && isRecord(context.llm_runtime)
-      ? (context.llm_runtime as Record<string, unknown>)
-      : null;
-  let error: string | null = null;
-  if (runtimeContext) {
-    const rawError = runtimeContext.error;
-    if (typeof rawError === "string") {
-      error = rawError;
-    } else if (isRecord(rawError)) {
-      const message = rawError.error_message;
-      const code = rawError.error_code;
-      if (typeof message === "string") {
-        error = message;
-      } else if (typeof code === "string") {
-        error = code;
-      }
-    }
-  }
+  }, [dedupedTaskIds, enabled, autoCloseOnFinish, throttleMs, updateStateById]);
 
   return {
-    provider,
-    model,
-    endpoint,
-    status,
-    error,
-    context,
+    streams,
+    connectedIds: Array.from(sourcesRef.current.keys()),
+    lastEvent,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

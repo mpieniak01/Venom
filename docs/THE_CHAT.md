@@ -145,6 +145,7 @@ MEMORY_ROOT=./data/memory
 - Google Calendar wymaga OAuth2 setup (credentials.json)
 - Pamięć jest wektorowa (semantyczna), nie zawsze precyzyjna dla dat/liczb
 - Brak zarządzania wieloma kontekstami rozmów jednocześnie
+- **Optimistic UI:** Wiadomości są wyświetlane natychmiast po wysłaniu (optimistic update), a następnie aktualizowane o status z serwera. Mechanizm ten zapewnia płynność konwersacji, ale wymaga poprawnej synchronizacji ID (co zostało naprawione w fix-095b).
 
 ## Zobacz też
 

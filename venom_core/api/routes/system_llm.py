@@ -359,6 +359,13 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
         "HYBRID_LOCAL_MODEL": selected_model,
         last_model_key: selected_model,
     }
+    if server_name == "vllm":
+        # Znajdź fizyczną ścieżkę do modelu dla skryptów startu vLLM
+        model_info = next((m for m in models if m["name"] == selected_model), None)
+        if model_info and model_info.get("path"):
+            updates["VLLM_MODEL_PATH"] = model_info["path"]
+            logger.info(f"Persisting VLLM_MODEL_PATH: {model_info['path']}")
+
     if old_last_model and old_last_model != selected_model:
         updates[prev_model_key] = old_last_model
     config_manager.update_config(updates)

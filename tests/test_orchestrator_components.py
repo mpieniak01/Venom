@@ -5,10 +5,12 @@ import pytest
 from venom_core.core.models import TaskExtraContext, TaskRequest
 from venom_core.core.orchestrator.event_broadcaster import EventBroadcasterClient
 from venom_core.core.orchestrator.kernel_lifecycle import KernelLifecycleManager
-from venom_core.core.orchestrator.orchestrator_dispatch import format_extra_context
 from venom_core.core.orchestrator.orchestrator_events import build_error_envelope
 from venom_core.core.orchestrator.orchestrator_submit import should_use_fast_path
 from venom_core.core.orchestrator.task_manager import TaskManager
+from venom_core.core.orchestrator.task_pipeline.context_builder import (
+    format_extra_context,
+)
 
 
 class DummyQueueManager:

@@ -80,10 +80,10 @@ In practice, Large Language Model (LLM) engineering necessitated a hybrid approa
     *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + cloud (OpenAI/Gemini/Claude).
     *   **ONNX LLM:** future direction for smaller models and edge devices.
 
-> [!NOTE]
 > **Architectural Decision: Experimental Dual-Stack (Ollama vs vLLM)**
 > Maintaining parallel support for both serving technologies (Ollama and vLLM) is currently a **conscious design choice**.
 > It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
+> **Stabilization (v1.0.x):** Introduced hybrid orchestration enabling seamless switching between the active server and model directly from the Cockpit (Hybrid Model Orchestration).
 
 
 ### Model categories:

@@ -145,6 +145,7 @@ MEMORY_ROOT=./data/memory
 - Google Calendar requires OAuth2 setup (credentials.json)
 - Memory is vector-based (semantic), not always precise for dates/numbers
 - No management of multiple conversation contexts simultaneously
+- **Optimistic UI:** Messages are displayed immediately upon sending (optimistic update) and then reconciled with server status. This ensures conversation fluidity but requires correct ID synchronization (addressed in fix-095b).
 
 ## See also
 

@@ -64,14 +64,20 @@ def mock_dispatcher():
 @pytest.fixture(autouse=True)
 def patch_runtime(mock_runtime_info):
     """Automatycznie patchuje runtime dla wszystkich testów."""
-    with patch(
-        "venom_core.core.orchestrator.orchestrator_core.get_active_llm_runtime",
-        return_value=mock_runtime_info,
+    with (
+        patch(
+            "venom_core.utils.llm_runtime.get_active_llm_runtime",
+            return_value=mock_runtime_info,
+        ),
     ):
         # Patchujemy SETTINGS w module orchestrator_core, bo tam jest używany
-        with patch(
-            "venom_core.core.orchestrator.orchestrator_core.SETTINGS"
-        ) as mock_settings:
+        with (
+            patch("venom_core.config.SETTINGS") as mock_settings,
+            patch(
+                "venom_core.core.orchestrator.orchestrator_dispatch.SETTINGS",
+                new=mock_settings,
+            ),
+        ):
             mock_settings.LLM_CONFIG_HASH = "abc123456789"
             yield
 

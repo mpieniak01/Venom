@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from venom_core.api.routes import metrics as metrics_routes
+from venom_core.api.routes import system_metrics as metrics_routes
 from venom_core.core import metrics as metrics_module
 
 

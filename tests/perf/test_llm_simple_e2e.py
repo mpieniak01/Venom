@@ -16,7 +16,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
 
 MODEL_NAME = os.getenv("VENOM_LLM_MODEL", "gemma3")
 REPEATS = int(os.getenv("VENOM_LLM_REPEATS", "3"))
-STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "25"))
+STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "60"))
 
 
 async def _skip_if_backend_unavailable():

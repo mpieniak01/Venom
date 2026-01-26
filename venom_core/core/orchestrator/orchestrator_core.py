@@ -31,18 +31,6 @@ from .flow_coordinator import FlowCoordinator
 from .kernel_lifecycle import KernelLifecycleManager
 from .learning_handler import LearningHandler
 from .middleware import Middleware
-from .orchestrator_dispatch import append_learning_log as append_learning_log_operation
-from .orchestrator_dispatch import (
-    complete_perf_test_task as complete_perf_test_task_operation,
-)
-from .orchestrator_dispatch import (
-    ensure_session_summary as ensure_session_summary_operation,
-)
-from .orchestrator_dispatch import (
-    format_extra_context as format_extra_context_operation,
-)
-from .orchestrator_dispatch import is_perf_test_prompt as is_perf_test_prompt_operation
-from .orchestrator_dispatch import prepare_context as prepare_context_operation
 from .orchestrator_dispatch import run_task as run_task_operation
 from .orchestrator_events import broadcast_event as broadcast_event_operation
 from .orchestrator_events import build_error_envelope as build_error_envelope_operation
@@ -200,6 +188,15 @@ class Orchestrator:
                 state_manager=state_manager, event_broadcaster=event_broadcaster
             )
         )
+
+        # Pipeline components
+        from .task_pipeline.context_builder import ContextBuilder
+        from .task_pipeline.result_processor import ResultProcessor
+        from .task_pipeline.task_validator import TaskValidator
+
+        self.context_builder = ContextBuilder(self)
+        self.result_processor = ResultProcessor(self)
+        self.validator = TaskValidator(self)
 
     def _get_runtime_context_char_limit(self, runtime_info) -> int:
         """Wyznacza przybliżony limit znaków dla promptu na podstawie runtime."""
@@ -425,9 +422,9 @@ class Orchestrator:
         error: str = "",
     ) -> None:
         """Zapisuje wpis procesu nauki do JSONL (delegacja)."""
-        append_learning_log_operation(
-            self, task_id, intent, prompt, result, success, error
-        )
+        from .orchestrator_dispatch import append_learning_log
+
+        append_learning_log(self, task_id, intent, prompt, result, success, error)
 
     def _heuristic_summary(self, full_history: list) -> str:
         """Delegacja do SessionHandler (kompatybilność z testami)."""
@@ -439,7 +436,9 @@ class Orchestrator:
 
     def _ensure_session_summary(self, task_id: UUID, task: VenomTask) -> None:
         """Tworzy streszczenie historii sesji (delegacja)."""
-        ensure_session_summary_operation(self, task_id, task)
+        from .orchestrator_dispatch import ensure_session_summary
+
+        ensure_session_summary(self, task_id, task)
 
     def _persist_session_context(self, task_id: UUID, request: TaskRequest) -> None:
         """Delegacja do session_handler."""
@@ -490,19 +489,22 @@ class Orchestrator:
 
     def _is_perf_test_prompt(self, content: str) -> bool:
         """Sprawdź, czy treść zadania pochodzi z testów wydajności (delegacja)."""
-        return is_perf_test_prompt_operation(self, content)
+        return self.context_builder.is_perf_test_prompt(content)
 
     async def _complete_perf_test_task(self, task_id: UUID) -> None:
         """Zakończ zadanie testu wydajności (delegacja)."""
-        await complete_perf_test_task_operation(self, task_id)
+        await self.context_builder.complete_perf_test_task(task_id)
 
     async def _prepare_context(self, task_id: UUID, request: TaskRequest) -> str:
         """Przygotowuje kontekst zadania (delegacja)."""
-        return await prepare_context_operation(self, task_id, request)
+        return await self.context_builder.prepare_context(task_id, request)
 
     @staticmethod
     def _format_extra_context(extra_context: "TaskExtraContext") -> str:
-        return format_extra_context_operation(extra_context)
+        """Formatuje dodatkowy kontekst do czytelnego bloku tekstu (delegacja)."""
+        from .task_pipeline.context_builder import format_extra_context as format_fn
+
+        return format_fn(extra_context)
 
     async def _code_generation_with_review(
         self, task_id: UUID, user_request: str

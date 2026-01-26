@@ -3,7 +3,7 @@
 import { createElement, useMemo } from "react";
 import type { ComponentProps, RefObject } from "react";
 import type { LogEntryType } from "@/lib/logs";
-import type { HistoryRequestDetail, ServiceStatus, Task } from "@/lib/types";
+import type { HistoryRequestDetail, ServiceStatus, Task, LlmServerInfo, HiddenPromptEntry, HiddenPromptsResponse, LearningLogsResponse, FeedbackLogsResponse } from "@/lib/types";
 import type { GenerationParams } from "@/lib/types";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
@@ -23,7 +23,7 @@ type CockpitSectionPropsInput = {
   showReferenceSections: boolean;
   showSharedSections: boolean;
   labMode: boolean;
-  responseBadgeTone: string;
+  responseBadgeTone: "success" | "warning" | "danger" | "neutral" | string;
   responseBadgeTitle: string;
   responseBadgeText: string;
   chatMessages: PrimarySectionProps["chatThreadProps"]["chatMessages"];
@@ -59,12 +59,12 @@ type CockpitSectionPropsInput = {
   promptPresets: ReadonlyArray<{ id: string; category: string; description: string; prompt: string; icon: string }>;
   onSuggestionClick: (prompt: string) => void;
   llmServersLoading: boolean;
-  llmServers: Array<{ name: string }>;
+  llmServers: LlmServerInfo[];
   llmServerOptionsPanel: PrimarySectionProps["llmOpsPanelProps"]["llmServerOptions"];
   llmModelOptionsPanel: PrimarySectionProps["llmOpsPanelProps"]["llmModelOptions"];
-  availableModelsForServer: Array<{ name: string }>;
+  availableModelsForServer: Array<{ name?: string }>;
   selectedServerEntry: PrimarySectionProps["llmOpsPanelProps"]["selectedServerEntry"];
-  resolveServerStatus: (serverName: string, fallback?: string | null) => string;
+  resolveServerStatus: (displayName?: string, status?: string | null) => string;
   sessionId: string | null;
   memoryAction: null | "session" | "global";
   onSessionReset: () => void;
@@ -90,16 +90,23 @@ type CockpitSectionPropsInput = {
   onHiddenIntentFilterChange: (value: string) => void;
   onHiddenScoreFilterChange: (value: number) => void;
   hiddenIntentOptions: string[];
-  selectableHiddenPrompts: Array<{ id: string; label: string; score: number }>;
-  activeHiddenKeys: string[];
-  activeHiddenMap: Record<string, string | null>;
-  activeForIntent: string | null;
-  hiddenPrompts: Array<{ id: string; label: string; score: number }>;
+  selectableHiddenPrompts: HiddenPromptEntry[];
+  activeHiddenKeys: Set<string>;
+  activeHiddenMap: Map<string, HiddenPromptEntry>;
+  activeForIntent: HiddenPromptEntry | null;
+  hiddenPrompts: HiddenPromptsResponse | null;
   hiddenLoading: boolean;
   hiddenError: string | null;
   activeHiddenLoading: boolean;
   activeHiddenError: string | null;
-  onSetActiveHiddenPrompt: (promptId: string | null, intent: string) => void;
+  onSetActiveHiddenPrompt: (payload: {
+    intent?: string;
+    prompt?: string;
+    approved_response?: string;
+    prompt_hash?: string;
+    active: boolean;
+    actor: string;
+  }) => Promise<void>;
   history: Array<SessionHistoryEntry>;
   loadingHistory: boolean;
   historyError: string | null;
@@ -133,12 +140,12 @@ type CockpitSectionPropsInput = {
   queueAction: string | null;
   queueActionMessage: string | null;
   onToggleQueue: () => void;
-  onExecuteQueueMutation: () => Promise<void>;
+  onExecuteQueueMutation: (action: "purge" | "emergency") => Promise<void>;
   historyStatusEntries: Array<{ label: string; value: number }>;
-  learningLogs: Array<{ id: string; title: string; timestamp: string }>;
+  learningLogs: LearningLogsResponse | null;
   learningLoading: boolean;
   learningError: string | null;
-  feedbackLogs: Array<{ id: string; title: string; timestamp: string }>;
+  feedbackLogs: FeedbackLogsResponse | null;
   feedbackLoading: boolean;
   feedbackError: string | null;
   services: Array<{ name: string; status: ServiceStatus }>;
@@ -147,7 +154,7 @@ type CockpitSectionPropsInput = {
   setNewMacro: (value: string) => void;
   customMacros: Array<{ id: string; label: string; content: string }>;
   setCustomMacros: (value: Array<{ id: string; label: string; content: string }>) => void;
-  allMacros: Array<{ id: string; label: string; description: string; content: string }>;
+  allMacros: Array<{ id: string; label: string; content: string }>;
   macroSending: boolean;
   onRunMacro: (macroId: string) => void;
   detailOpen: boolean;
@@ -559,15 +566,15 @@ export function useCockpitSectionProps({
       showReferenceSections,
       showSharedSections,
       usageMetrics,
-      cpuUsageValue,
-      gpuUsageValue,
-      ramValue,
-      vramValue,
-      diskValue,
-      diskPercent,
-      sessionCostValue,
-      graphNodes,
-      graphEdges,
+      cpuUsageValue: (cpuUsageValue ?? 0).toString(),
+      gpuUsageValue: (gpuUsageValue ?? 0).toString(),
+      ramValue: (ramValue ?? 0).toString(),
+      vramValue: (vramValue ?? 0).toString(),
+      diskValue: (diskValue ?? 0).toString(),
+      diskPercent: (diskPercent ?? 0).toString(),
+      sessionCostValue: (sessionCostValue ?? 0).toString(),
+      graphNodes: (graphNodes ?? 0).toString(),
+      graphEdges: (graphEdges ?? 0).toString(),
       agentDeck,
       queue,
       queueLoading,
@@ -619,8 +626,8 @@ export function useCockpitSectionProps({
       onCopyDetailSteps,
       feedbackByRequest: detailFeedbackByRequest,
       feedbackSubmittingId: detailFeedbackSubmittingId,
-      onFeedbackSubmit: onFeedbackSubmitDetail,
-      onUpdateFeedbackState: onUpdateFeedbackStateDetail,
+      onFeedbackSubmit: onFeedbackSubmitDetail as any,
+      onUpdateFeedbackState: onUpdateFeedbackStateDetail as any,
       t,
     },
     tuningDrawerProps: {
@@ -643,7 +650,7 @@ export function useCockpitSectionProps({
     showReferenceSections,
     showSharedSections,
     labMode,
-    responseBadgeTone,
+    responseBadgeTone: responseBadgeTone as "success" | "warning" | "neutral" | "danger",
     responseBadgeTitle,
     responseBadgeText,
     chatThreadProps,

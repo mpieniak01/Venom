@@ -11,6 +11,7 @@ export type OptimisticRequestState = {
   confirmed: boolean;
   forcedTool?: string | null;
   forcedProvider?: string | null;
+  forcedIntent?: string | null;
   simpleMode?: boolean;
   chatMode?: "normal" | "direct" | "complex";
 };
@@ -37,7 +38,12 @@ export function useOptimisticRequests<TDetail = unknown>(
   const enqueueOptimisticRequest = useCallback(
     (
       prompt: string,
-      forced?: { tool?: string; provider?: string; simpleMode?: boolean },
+      forced?: {
+        tool?: string;
+        provider?: string;
+        intent?: string;
+        simpleMode?: boolean;
+      },
     ) => {
       const entry: OptimisticRequestState = {
         clientId: createOptimisticId(),
@@ -48,6 +54,7 @@ export function useOptimisticRequests<TDetail = unknown>(
         confirmed: false,
         forcedTool: forced?.tool ?? null,
         forcedProvider: forced?.provider ?? null,
+        forcedIntent: forced?.intent ?? null,
         simpleMode: forced?.simpleMode ?? false,
         chatMode,
       };
@@ -64,10 +71,10 @@ export function useOptimisticRequests<TDetail = unknown>(
       prev.map((entry) =>
         entry.clientId === clientId
           ? {
-              ...entry,
-              requestId: requestId ?? entry.requestId ?? entry.clientId,
-              confirmed: true,
-            }
+            ...entry,
+            requestId: requestId ?? entry.requestId ?? entry.clientId,
+            confirmed: true,
+          }
           : entry,
       ),
     );

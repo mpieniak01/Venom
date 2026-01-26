@@ -81,14 +81,15 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await expect(servicesButton).toBeVisible();
     await servicesButton.click();
     await expect(page.getByTestId("service-status-drawer")).toBeVisible();
-    const offline = page.getByTestId("service-status-offline");
-    if ((await offline.count()) > 0) {
-      await expect(offline).toBeVisible();
-    } else {
-      // Gdy API zwraca dane, upewnij się, że lista usług jest widoczna.
-      const anyService = page.getByText(/LLM|Docker|Memory|unknown/i).first();
-      await expect(anyService).toBeVisible();
-    }
+    await expect
+      .poll(async () => {
+        if (await page.getByTestId("service-status-offline").isVisible()) return "offline";
+        // Check for any service card title or generic service names
+        const anyService = page.getByText(/LLM|Docker|Memory|unknown/i).first();
+        if (await anyService.isVisible()) return "online";
+        return "none";
+      })
+      .not.toBe("none");
   });
 
   test("Alert Center shows offline message without WebSocket", async ({ page }) => {
@@ -140,18 +141,21 @@ test.describe("Venom Next Cockpit Smoke", () => {
     await commandCenterButton.click();
     await expect(page.getByTestId("command-center-drawer")).toBeVisible();
     await expect(page.getByTestId("command-center-services-section")).toBeVisible();
-    const queueOffline = page.getByTestId("command-center-queue-offline");
-    if ((await queueOffline.count()) > 0) {
-      await expect(queueOffline).toBeVisible();
-    } else {
-      await expect(page.getByText(/Kolejka/i).first()).toBeVisible();
-    }
-    const servicesOffline = page.getByTestId("command-center-services-offline");
-    if ((await servicesOffline.count()) > 0) {
-      await expect(servicesOffline).toBeVisible();
-    } else {
-      await expect(page.getByTestId("command-center-services-list")).toBeVisible();
-    }
+    await expect
+      .poll(async () => {
+        const offline = await page.getByTestId("command-center-queue-offline").isVisible();
+        const online = await page.getByText(/Kolejka/i).first().isVisible();
+        return offline || online ? "ok" : "none";
+      })
+      .toBe("ok");
+
+    await expect
+      .poll(async () => {
+        const offline = await page.getByTestId("command-center-services-offline").isVisible();
+        const online = await page.getByTestId("command-center-services-list").isVisible();
+        return offline || online ? "ok" : "none";
+      })
+      .toBe("ok");
   });
 
   test("Quick actions sheet shows fallback when API is offline", async ({ page }) => {

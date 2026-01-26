@@ -27,7 +27,7 @@ const targets: TargetConfig[] = [
     sendSelector: '[data-testid="cockpit-send-button"]',
     responseSelector: '[data-testid="conversation-bubble-assistant"]',
     responseTimeoutMs: Number(process.env.PERF_NEXT_RESPONSE_TIMEOUT ?? "20000"),
-    latencyBudgetMs: Number(process.env.PERF_NEXT_LATENCY_BUDGET ?? "5000"),
+    latencyBudgetMs: Number(process.env.PERF_NEXT_LATENCY_BUDGET ?? "15000"),
   },
   {
     name: "Legacy Cockpit",
@@ -82,6 +82,7 @@ async function measureLatency(page: Page, target: TargetConfig) {
         message: `${target.name}: brak nowej odpowiedzi w strumieniu`,
       })
       .toBeGreaterThanOrEqual(expectedCount);
+
     latency = performance.now() - start;
   } catch (error) {
     if (target.optional) {

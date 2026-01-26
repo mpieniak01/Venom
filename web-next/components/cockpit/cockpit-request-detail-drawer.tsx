@@ -185,6 +185,9 @@ export function CockpitRequestDetailDrawer({
     };
   }, [selectedTaskRuntime?.error]);
   const simpleResponse = useMemo(() => {
+    if (historyDetail?.result) {
+      return { text: historyDetail.result, truncated: false };
+    }
     if (!historyDetail?.steps || historyDetail.steps.length === 0) return null;
     const responseStep = [...historyDetail.steps]
       .reverse()
@@ -396,6 +399,47 @@ export function CockpitRequestDetailDrawer({
                 </div>
               </div>
             )}
+            {(historyDetail.model || historyDetail.llm_provider || historyDetail.llm_endpoint) && (
+              <div className="mt-4 rounded-2xl box-muted p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
+                  Model Info
+                </p>
+                <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                  {(historyDetail.model || historyDetail.llm_model) && (
+                    <div className="overflow-hidden">
+                      <span className="block truncate text-zinc-500">Model</span>
+                      <div className="text-sm text-zinc-100 truncate" title={historyDetail.model || historyDetail.llm_model || ""}>
+                        {historyDetail.model || historyDetail.llm_model}
+                      </div>
+                    </div>
+                  )}
+                  {historyDetail.llm_provider && (
+                    <div className="overflow-hidden">
+                      <span className="block truncate text-zinc-500">Serwer / Provider</span>
+                      <div className="text-sm text-zinc-100 truncate" title={historyDetail.llm_provider}>
+                        {historyDetail.llm_provider}
+                      </div>
+                    </div>
+                  )}
+                  {historyDetail.llm_endpoint && (
+                    <div className="overflow-hidden">
+                      <span className="block truncate text-zinc-500">Endpoint</span>
+                      <div className="text-sm text-zinc-100 truncate" title={historyDetail.llm_endpoint}>
+                        {historyDetail.llm_endpoint}
+                      </div>
+                    </div>
+                  )}
+                  {historyDetail.llm_runtime_id && (
+                    <div className="overflow-hidden">
+                      <span className="block truncate text-zinc-500">Runtime ID</span>
+                      <div className="text-sm text-zinc-100 truncate font-mono" title={historyDetail.llm_runtime_id}>
+                        {historyDetail.llm_runtime_id.slice(0, 8)}...
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {uiTimingEntry && (
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
@@ -427,24 +471,24 @@ export function CockpitRequestDetailDrawer({
                   {t("cockpit.requestDetails.backendTimingsTitle")}
                 </p>
                 <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsAccepted")}>
                       {t("cockpit.requestDetails.backendTimingsAccepted")}
                     </span>
                     <div className="text-sm text-white">
                       {formatDateTime(historyDetail.created_at)}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsLlmStart")}>
                       {t("cockpit.requestDetails.backendTimingsLlmStart")}
                     </span>
                     <div className="text-sm text-white">
                       {llmStartAt ? formatDateTime(llmStartAt) : "—"}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsFirstToken")}>
                       {t("cockpit.requestDetails.backendTimingsFirstToken")}
                     </span>
                     <div className="text-sm text-white">
@@ -453,8 +497,8 @@ export function CockpitRequestDetailDrawer({
                         : "—"}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsFirstChunk")}>
                       {t("cockpit.requestDetails.backendTimingsFirstChunk")}
                     </span>
                     <div className="text-sm text-white">
@@ -463,8 +507,8 @@ export function CockpitRequestDetailDrawer({
                         : "—"}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsChunks")}>
                       {t("cockpit.requestDetails.backendTimingsChunks")}
                     </span>
                     <div className="text-sm text-white">
@@ -473,8 +517,8 @@ export function CockpitRequestDetailDrawer({
                         : "—"}
                     </div>
                   </div>
-                  <div>
-                    <span className="text-zinc-400">
+                  <div className="overflow-hidden">
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsTotal")}>
                       {t("cockpit.requestDetails.backendTimingsTotal")}
                     </span>
                     <div className="text-sm text-white">
@@ -495,9 +539,10 @@ export function CockpitRequestDetailDrawer({
                       size="xs"
                       variant={
                         feedbackByRequest[selectedRequestId]?.rating === "up"
-                          ? "success"
+                          ? "primary"
                           : "outline"
                       }
+                      className={feedbackByRequest[selectedRequestId]?.rating === "up" ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-100" : ""}
                       onClick={() => {
                         onUpdateFeedbackState(selectedRequestId, {
                           rating: "up",

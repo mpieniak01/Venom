@@ -437,7 +437,7 @@ export async function setActiveLlmServer(serverName: string) {
   });
 }
 
-export async function setActiveLlmRuntime(provider: "openai" | "google", model?: string) {
+export async function setActiveLlmRuntime(provider: string, model?: string) {
   return apiFetch<ActiveLlmServerResponse>("/api/v1/system/llm-runtime/active", {
     method: "POST",
     body: JSON.stringify({ provider, model }),

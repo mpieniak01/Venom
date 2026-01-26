@@ -27,7 +27,7 @@ type CockpitPrimarySectionProps = {
   showReferenceSections: boolean;
   showSharedSections: boolean;
   labMode: boolean;
-  responseBadgeTone: string;
+  responseBadgeTone: "success" | "warning" | "neutral" | "danger";
   responseBadgeTitle: string;
   responseBadgeText: string;
   chatThreadProps: ChatThreadProps;
@@ -37,7 +37,7 @@ type CockpitPrimarySectionProps = {
   quickActionsOpen: boolean;
   setQuickActionsOpen: (value: boolean) => void;
   message: string | null;
-  promptPresets: string[];
+  promptPresets: ReadonlyArray<{ id: string; category: string; description: string; prompt: string; icon: string }>;
   onSuggestionClick: (prompt: string) => void;
   llmOpsPanelProps: LlmOpsPanelProps;
   hiddenPromptsPanelProps: HiddenPromptsPanelProps;

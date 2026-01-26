@@ -24,13 +24,15 @@ HIDDEN_PROMPT_LOG_PATH = Path("./data/learning/hidden_prompts.jsonl")
 
 _orchestrator = None
 _state_manager = None
+_request_tracer = None
 
 
-def set_dependencies(orchestrator, state_manager):
+def set_dependencies(orchestrator, state_manager, request_tracer=None):
     """Ustaw zależności dla routera."""
-    global _orchestrator, _state_manager
+    global _orchestrator, _state_manager, _request_tracer
     _orchestrator = orchestrator
     _state_manager = state_manager
+    _request_tracer = request_tracer
 
 
 class FeedbackRequest(BaseModel):
@@ -57,17 +59,46 @@ async def submit_feedback(payload: FeedbackRequest):
     if _state_manager is None:
         raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
 
+    prompt = ""
+    result = ""
+    intent = None
+    tool_required = None
+
     task = _state_manager.get_task(payload.task_id)
-    if task is None:
+    if task:
+        context = getattr(task, "context_history", {}) or {}
+        intent_debug = context.get("intent_debug") or {}
+        tool_requirement = context.get("tool_requirement") or {}
+        prompt = getattr(task, "content", "") or ""
+        result = getattr(task, "result", "") or ""
+        intent = intent_debug.get("intent") or tool_requirement.get("intent")
+        tool_required = tool_requirement.get("required")
+    elif _request_tracer:
+        # Fallback do tracera (SimpleMode)
+        trace = _request_tracer.get_trace(payload.task_id)
+        if trace:
+            prompt = trace.prompt
+            # Spróbuj wyciągnąć odpowiedź z kroków
+            for step in reversed(trace.steps):
+                if (
+                    step.component == "SimpleMode"
+                    and step.action == "response"
+                    and step.details
+                ):
+                    try:
+                        details_json = json.loads(step.details)
+                        result = details_json.get("response", "")
+                        break
+                    except Exception:
+                        pass
+        else:
+            raise HTTPException(
+                status_code=404, detail=f"Zadanie {payload.task_id} nie istnieje"
+            )
+    else:
         raise HTTPException(
             status_code=404, detail=f"Zadanie {payload.task_id} nie istnieje"
         )
-
-    context = getattr(task, "context_history", {}) or {}
-    intent_debug = context.get("intent_debug") or {}
-    tool_requirement = context.get("tool_requirement") or {}
-    prompt = getattr(task, "content", "") or ""
-    result = getattr(task, "result", "") or ""
 
     entry = {
         "task_id": str(payload.task_id),
@@ -76,8 +107,8 @@ async def submit_feedback(payload: FeedbackRequest):
         "comment": payload.comment,
         "prompt": prompt,
         "result": result,
-        "intent": intent_debug.get("intent") or tool_requirement.get("intent"),
-        "tool_required": tool_requirement.get("required"),
+        "intent": intent,
+        "tool_required": tool_required,
     }
 
     try:
@@ -87,6 +118,9 @@ async def submit_feedback(payload: FeedbackRequest):
     except Exception as exc:
         logger.warning("Nie udało się zapisać feedbacku: %s", exc)
         raise HTTPException(status_code=500, detail="Nie udało się zapisać feedbacku")
+
+    if _request_tracer:
+        _request_tracer.set_feedback(payload.task_id, entry)
 
     collector = metrics_module.metrics_collector
     if collector:

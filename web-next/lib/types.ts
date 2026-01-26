@@ -72,6 +72,7 @@ export interface HistoryRequest {
   llm_runtime_id?: string | null;
   forced_tool?: string | null;
   forced_provider?: string | null;
+  forced_intent?: string | null;
   error_code?: string | null;
   error_class?: string | null;
   error_message?: string | null;
@@ -81,6 +82,10 @@ export interface HistoryRequest {
   created_at: string;
   finished_at?: string | null;
   duration_seconds?: number | null;
+  feedback?: {
+    rating: "up" | "down";
+    comment?: string | null;
+  } | null;
 }
 
 export interface HistoryRequestDetail extends HistoryRequest {
@@ -98,6 +103,11 @@ export interface HistoryRequestDetail extends HistoryRequest {
   context_used?: {
     lessons?: string[];
     memory_entries?: string[];
+  } | null;
+  result?: string | null;
+  feedback?: {
+    rating: "up" | "down";
+    comment?: string | null;
   } | null;
 }
 
@@ -131,8 +141,14 @@ export interface FlowTrace {
 
 export interface ServiceStatus {
   name: string;
+  type?: string;
   status: "healthy" | "degraded" | "down" | string;
   detail?: string;
+  latency_ms?: number;
+  last_check?: string;
+  is_critical?: boolean;
+  error_message?: string | null;
+  description?: string;
 }
 
 export interface LlmServerInfo {

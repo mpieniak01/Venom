@@ -61,7 +61,12 @@ type ChatSendParams = {
   refreshSessionHistory: () => Promise<unknown>;
   enqueueOptimisticRequest: (
     prompt: string,
-    forced?: { tool?: string; provider?: string; simpleMode?: boolean },
+    forced?: {
+      tool?: string;
+      provider?: string;
+      intent?: string;
+      simpleMode?: boolean;
+    },
   ) => string;
   linkOptimisticRequest: (clientId: string, requestId: string | null) => void;
   dropOptimisticRequest: (clientId: string) => void;
@@ -180,6 +185,7 @@ export function useChatSend({
     const clientId = enqueueOptimisticRequest(trimmed, {
       tool: parsed.forcedTool,
       provider: parsed.forcedProvider,
+      intent: forcedIntent ?? undefined,
       simpleMode: shouldUseSimple,
     });
     if (!shouldUseSimple) {
@@ -340,21 +346,21 @@ export function useChatSend({
           const steps = [
             timing?.historyMs !== undefined
               ? {
-                  component: "UI",
-                  action: "submit_to_history",
-                  status: "OK",
-                  timestamp,
-                  details: `history_ms=${Math.round(timing.historyMs)}`,
-                }
+                component: "UI",
+                action: "submit_to_history",
+                status: "OK",
+                timestamp,
+                details: `history_ms=${Math.round(timing.historyMs)}`,
+              }
               : null,
             timing?.ttftMs !== undefined
               ? {
-                  component: "UI",
-                  action: "ttft",
-                  status: "OK",
-                  timestamp,
-                  details: `ttft_ms=${Math.round(timing.ttftMs)}`,
-                }
+                component: "UI",
+                action: "ttft",
+                status: "OK",
+                timestamp,
+                details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+              }
               : null,
           ].filter(Boolean) as HistoryRequestDetail["steps"];
           const simpleProvider =
@@ -461,6 +467,19 @@ export function useChatSend({
         );
         const resolvedId = res.task_id ?? null;
         linkOptimisticRequest(clientId, resolvedId);
+
+        // Reconcile user message ID in local history to avoid duplication
+        if (resolvedId) {
+          setLocalSessionHistory((prev) => {
+            return prev.map(entry => {
+              if (entry.request_id === clientId && entry.role === 'user') {
+                return { ...entry, request_id: resolvedId };
+              }
+              return entry;
+            });
+          });
+        }
+
         setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
         await Promise.all([
           refreshTasks(),

@@ -80,10 +80,10 @@ W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
     *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + chmura (OpenAI/Gemini/Claude).
     *   **ONNX LLM:** kierunek rozwojowy dla mniejszych modeli i edge devices.
 
-> [!NOTE]
 > **Decyzja Architektoniczna: Experimental Dual-Stack (Ollama vs vLLM)**
 > Utrzymywanie równoległego wsparcia dla obu technologii serwowania (Ollama i vLLM) jest na obecnym etapie **świadomym wyborem projektowym**.
 > Pozwala to na elastyczne testowanie różnych rodzin modeli i metod kwantyzacji w celu empirycznego wyłonienia najwydajniejszego rozwiązania docelowego dla specyficznych warunków sprzętowych.
+> **Stabilizacja (v1.0.x):** Wprowadzono hybrydową orkiestrację umożliwiającą płynne przełączanie między aktywnym serwerem a modelem bezpośrednio z poziomu Cockpitu (Hybrid Model Orchestration).
 
 
 ### Kategorie modeli:

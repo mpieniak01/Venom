@@ -50,12 +50,17 @@
     │
     ├── core/                    # [WARSTWA 1: META] – MÓZG
     │   ├── __init__.py
-    │   ├── orchestrator.py      # cykl życia zadania
+    │   ├── orchestrator.py      # cykl życia zadania (Orchestrator pipeline)
     │   ├── intent_manager.py    # klasyfikacja intencji (code/research/arch)
     │   ├── policy_engine.py     # etyka, autonomia, poziomy domen
     │   ├── state_manager.py     # stan organizmu, log zadań
     │   ├── model_registry.py    # rejestr modeli (Ollama + HF Hub)
+    │   ├── model_manager.py     # lifecycle, wersjonowanie i aktywacja modeli lokalnych
+    │   ├── model_router.py      # routing między LLM lokalnym a chmurą
     │   ├── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
+    │   ├── prompt_manager.py    # zarządzanie template'ami promptów
+    │   ├── service_monitor.py   # monitorowanie usług systemowych (status, CPU/RAM)
+    │   ├── tracer.py            # RequestTracer (śledzenie kroków i mermaid)
     │   └── dream_engine.py      # [v2.0] System aktywnego śnienia (przesunięty)
     │
     ├── agents/                  # [WARSTWA 2: AGENT SERVICES] – SPECJALIŚCI

@@ -340,7 +340,7 @@ export const en = {
       backendTimingsFirstToken: "first token (ms)",
       backendTimingsFirstChunk: "first chunk (ms)",
       backendTimingsChunks: "chunks",
-      backendTimingsTotal: "total time",
+      backendTimingsTotalDuration: "total time",
       backendTimingsLastEmit: "last emit (ms)",
       tokensTitle: "Tokens & limits",
       tokensInput: "input tokens",

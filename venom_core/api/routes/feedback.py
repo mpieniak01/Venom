@@ -89,9 +89,12 @@ async def submit_feedback(payload: FeedbackRequest):
                         details_json = json.loads(step.details)
                         result = details_json.get("response", "")
                         break
-                    except Exception:
+                    except Exception as exc:
                         # Ignorujemy błędy parsowania JSON - przechodzimy do kolejnego kroku
-                        pass
+                        logger.debug(
+                            "Nieudane parsowanie JSON w kroku feedbacku: %s",
+                            exc,
+                        )
         else:
             raise HTTPException(
                 status_code=404, detail=f"Zadanie {payload.task_id} nie istnieje"

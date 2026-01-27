@@ -39,8 +39,7 @@ export function useCockpitMetricsDisplay(data: Data) {
         if (total === undefined || total === null) return;
 
         setTokenHistory((prev) => {
-            // Prevent duplicate timestamps if updates are too fast, or just accept them?
-            // Original logic just appended.
+            // Keep duplicate timestamps to preserve a simple sample history.
             const next = [
                 ...prev,
                 {

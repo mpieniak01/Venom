@@ -36,8 +36,8 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
   }, []);
 
   return (
-    <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-white/5 bg-black/40 px-4 py-4 backdrop-blur-2xl sm:px-6">
-      <div className="mr-auto flex w-full max-w-[1320px] items-center justify-between gap-6 2xl:max-w-[68vw]">
+    <div className="glass-panel allow-overflow sticky top-0 z-30 border-b border-white/5 bg-black/40 px-4 py-4 backdrop-blur-2xl sm:px-5 lg:px-6 xl:px-8">
+      <div className="flex w-full items-center justify-between gap-6">
         <div className="flex items-center gap-3">
           <MobileNav />
         </div>

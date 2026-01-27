@@ -24,6 +24,8 @@ export const en = {
       title: "Command Center",
     },
     modulesTitle: "Modules",
+    collapse: "Collapse menu",
+    expand: "Expand menu",
     nav: {
       cockpit: "Cockpit",
       brain: "Knowledge Graph",

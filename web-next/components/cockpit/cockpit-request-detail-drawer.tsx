@@ -518,8 +518,8 @@ export function CockpitRequestDetailDrawer({
                     </div>
                   </div>
                   <div className="overflow-hidden">
-                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsTotal")}>
-                      {t("cockpit.requestDetails.backendTimingsTotal")}
+                    <span className="block truncate text-zinc-400" title={t("cockpit.requestDetails.backendTimingsTotalDuration")}>
+                      {t("cockpit.requestDetails.backendTimingsTotalDuration")}
                     </span>
                     <div className="text-sm text-white">
                       {formatDurationSeconds(historyDetail.duration_seconds)}

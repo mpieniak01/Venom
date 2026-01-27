@@ -39,7 +39,6 @@ async def run_task(
     fast_path: bool = False,
 ) -> None:
     context = request.content
-    intent = "UNKNOWN"
     tool_required = False
 
     try:

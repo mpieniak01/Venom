@@ -87,14 +87,12 @@ export function useCockpitData(initialData: CockpitInitialData) {
     const {
         data: learningLogs,
         loading: learningLoading,
-        error: learningError,
     } = useLearningLogs(6);
 
     // Feedback Logs
     const {
         data: feedbackLogs,
         loading: feedbackLoading,
-        error: feedbackError,
     } = useFeedbackLogs(6);
 
     // Models Usage

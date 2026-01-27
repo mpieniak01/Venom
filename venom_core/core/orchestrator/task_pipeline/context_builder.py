@@ -50,15 +50,13 @@ class ContextBuilder:
 
     async def preprocess_request(self, task_id: UUID, request: TaskRequest) -> None:
         """Parsuje slash commands i aktualizuje request/context."""
-        context = request.content
         forced_tool = request.forced_tool
         forced_provider = request.forced_provider
         forced_intent = request.forced_intent
 
         if not forced_tool and not forced_provider:
-            parsed = parse_slash_command(context)
-            if parsed and parsed.cleaned != context:
-                context = parsed.cleaned
+            parsed = parse_slash_command(request.content)
+            if parsed and parsed.cleaned != request.content:
                 request.content = parsed.cleaned
                 forced_tool = parsed.forced_tool
                 forced_provider = parsed.forced_provider

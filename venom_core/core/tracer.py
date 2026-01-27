@@ -145,6 +145,7 @@ class RequestTracer:
                                         "comment": entry.get("comment"),
                                     }
                             except Exception:
+                                # Ignorujemy błędy parsowania linii JSON - kontynuujemy z kolejnymi
                                 pass
 
                     if feedback_map:
@@ -159,6 +160,7 @@ class RequestTracer:
                                         self._traces[u_id].feedback = fb_data
                                         updated_count += 1
                                 except Exception:
+                                    # Ignorujemy błędy UUID/dostępu - przeskakujemy nieprawidłowy wpis
                                     pass
                         logger.info(
                             f"Zaktualizowano feedback dla {updated_count} śladów"

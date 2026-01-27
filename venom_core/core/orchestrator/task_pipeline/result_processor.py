@@ -251,6 +251,7 @@ class ResultProcessor:
             ):
                 error_details["raw_token_error"] = error_message_text
         except Exception:
+            # Ignorujemy błędy parsowania - dane token mogą być niepełne
             pass
 
         if request and getattr(request, "content", None):

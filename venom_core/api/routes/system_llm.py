@@ -297,6 +297,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
                             health_ok = True
                             break
                     except Exception:
+                        # Ignorujemy błędy health check - próbujemy ponownie
                         pass
                     await asyncio.sleep(0.5)
 

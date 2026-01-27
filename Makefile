@@ -31,6 +31,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
+	pytest e2e test-optimal \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor
@@ -60,6 +61,14 @@ test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
 
 test-all: test test-web-unit test-web-e2e
+
+pytest:
+	bash scripts/run-pytest-optimal.sh
+
+e2e:
+	bash scripts/run-e2e-optimal.sh
+
+test-optimal: pytest e2e
 
 install-hooks:
 	pre-commit install
@@ -241,65 +250,7 @@ _start:
 	@echo "🚀 Gotowe: backend http://$(HOST_DISPLAY):$(PORT), dashboard http://$(WEB_DISPLAY):$(WEB_PORT)"
 
 stop:
-	@echo "🛑 Inicjuję procedurę zatrzymania..."
-	@if [ -f $(PID_FILE) ]; then \
-		PID=$$(cat $(PID_FILE)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję Venom Backend (PID $$PID)..."; \
-			kill $$PID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$PID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces Backend ($$PID) już nie działa - czyszczę PID_FILE"; \
-		fi; \
-		rm -f $(PID_FILE); \
-	else \
-		echo "ℹ️  Venom Backend nie był aktywny (brak PID_FILE)"; \
-	fi
-	@echo "🧹 Czyszczenie procesów pomocniczych..."
-	@pkill -f "uvicorn[[:space:]]+$(API_APP)" 2>/dev/null || true
-	@# Zatrzymaj vLLM/Ollama (GPU) żeby zwolnić VRAM po make stop
-	@$(MAKE) --no-print-directory vllm-stop >/dev/null || true
-	@$(MAKE) --no-print-directory ollama-stop >/dev/null || true
-	@# Aggressive cleanup of potential zombies
-	@# UWAGA: Te pkill -9 mogą wpłynąć na inne procesy w systemie.
-	@# Używane tylko gdy standardowe zatrzymanie nie działa (vLLM często pozostawia zombie).
-	@# W przyszłości: śledzenie PID-ów przez ProcessMonitor dla bezpieczniejszego kill.
-	@pkill -9 -f "VLLM::EngineCor" 2>/dev/null || true
-	@pkill -9 -f "vllm serve" 2>/dev/null || true
-	@pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
-	@pkill -9 -f "multiprocessing.resource_tracker" 2>/dev/null || true
-	@# Cleanup Ray processes (often used by vLLM)
-	@pkill -9 -f "ray::" 2>/dev/null || true
-	@if [ -f $(WEB_PID_FILE) ]; then \
-		WPID=$$(cat $(WEB_PID_FILE)); \
-		if kill -0 $$WPID 2>/dev/null; then \
-			echo "⏹️  Zatrzymuję Interfejs Web (PID $$WPID)..."; \
-			kill $$WPID 2>/dev/null || true; \
-			for attempt in {1..20}; do \
-				if kill -0 $$WPID 2>/dev/null; then \
-					sleep 0.2; \
-				else \
-					break; \
-				fi; \
-			done; \
-		else \
-			echo "⚠️  Proces Interfejsu Web ($$WPID) już nie działa - czyszczę WEB_PID_FILE"; \
-		fi; \
-		rm -f $(WEB_PID_FILE); \
-	else \
-		echo "ℹ️  Interfejs Web nie był aktywny (brak WEB_PID_FILE)"; \
-	fi
-	@pkill -f "next dev" 2>/dev/null || true
-	@pkill -f "next start" 2>/dev/null || true
-	@pkill -f "next-server" 2>/dev/null || true
-	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
-	@echo "✅ System Venom został bezpiecznie zatrzymany. Zasoby zwolnione."
+	@bash scripts/stop_venom.sh
 
 restart: stop start
 

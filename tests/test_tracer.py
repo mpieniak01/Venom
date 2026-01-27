@@ -38,10 +38,11 @@ def test_create_trace(tracer, sample_request_id):
 
 def test_create_trace_truncates_long_prompt(tracer, sample_request_id):
     """Test skracania długiego promptu."""
-    long_prompt = "a" * 250
+    # 550 znaków, aby potwierdzić limit 500 + "..." dla skróconego promptu.
+    long_prompt = "a" * 550
     trace = tracer.create_trace(sample_request_id, long_prompt)
 
-    assert len(trace.prompt) == 203  # 200 + "..."
+    assert len(trace.prompt) == 503  # 500 + "..."
     assert trace.prompt.endswith("...")
 
 

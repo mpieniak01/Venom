@@ -48,7 +48,7 @@ web-next/
 ### 0.4 Configuration and proxy
 - Backend FastAPI listens on port 8000 by default – frontend connects via Next *rewrites* (see `next.config.mjs`) or via variables:
   - `NEXT_PUBLIC_API_BASE` – base `/api/v1/*` (when running dashboard in standalone mode)
-  - `NEXT_PUBLIC_WS_BASE` – WebSocket telemetry (`ws://localhost:8000/ws/events`)
+  - `NEXT_PUBLIC_WS_BASE` – WebSocket event stream (`ws://localhost:8000/ws/events`)
   - `API_PROXY_TARGET` – direct backend URL; Next builds rewriter, so no code modification needed in dev mode.
 - `scripts/generate-meta.mjs` saves `public/meta.json` with `version`, `commit`, `timestamp`. Data consumed by bottom status bar.
 
@@ -67,6 +67,8 @@ web-next/
 
 | View / module                     | Endpoints / hooks                                                                                              | Fallback / notes                                                                                           |
 |----------------------------------|----------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| **Cockpit** – Status & queue     | `useMetrics`, `useQueueStatus`, `useHistory` → `/api/v1/metrics`, `/api/v1/queue/status`, `/api/v1/history/requests` | Backend down → `OverlayFallback` or neutral pills with message.                                             |
+| **Cockpit** – Live events        | `useTelemetry`, `useTaskStream` → `WS /ws/events`                                                               | Without WS we disable realtime and fall back to polling.                                                    |
 | **Brain** – Mind Mesh            | `useKnowledgeGraph` → `/api/v1/graph/summary`, `/api/v1/graph/scan`, `/api/v1/graph/file`, `/api/v1/graph/impact` | On HTTP error renders `OverlayFallback` and blocks actions (scan/upload).                                  |
 | **Brain** – Lessons & stats      | `useLessons`, `useLessonsStats`, `LessonActions` (tags), `FileAnalysisForm`                                     | No data displays `EmptyState` with CTA "Refresh lessons".                                                  |
 | **Brain** – Graph controls       | `GraphFilterButtons`, `GraphActionButtons` + `useGraphSummary`                                                 | Offline versions (e.g. no `/api/v1/graph/summary`) show `offline` badge in BrainMetricCard cards.         |

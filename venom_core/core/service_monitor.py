@@ -22,7 +22,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 try:  # pragma: no cover - optional dependency
-    import chromadb  # type: ignore[import-untyped]
+    import chromadb  # type: ignore[import-not-found]
 except Exception:  # pragma: no cover
     chromadb = None
 

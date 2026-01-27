@@ -25,12 +25,22 @@ from venom_core.api.routes import learning as learning_routes
 from venom_core.api.routes import llm_simple as llm_simple_routes
 from venom_core.api.routes import memory as memory_routes
 from venom_core.api.routes import memory_projection as memory_projection_routes
-from venom_core.api.routes import metrics as metrics_routes
 from venom_core.api.routes import models as models_routes
 from venom_core.api.routes import nodes as nodes_routes
 from venom_core.api.routes import queue as queue_routes
 from venom_core.api.routes import strategy as strategy_routes
 from venom_core.api.routes import system as system_routes
+from venom_core.api.routes import system_config as system_config_routes
+from venom_core.api.routes import system_deps
+from venom_core.api.routes import system_governance as system_governance_routes
+from venom_core.api.routes import system_iot as system_iot_routes
+from venom_core.api.routes import system_llm as system_llm_routes
+from venom_core.api.routes import system_metrics as metrics_routes
+from venom_core.api.routes import system_runtime as system_runtime_routes
+from venom_core.api.routes import system_scheduler as system_scheduler_routes
+from venom_core.api.routes import system_services as system_services_routes
+from venom_core.api.routes import system_status as system_status_routes
+from venom_core.api.routes import system_storage as system_storage_routes
 from venom_core.api.routes import tasks as tasks_routes
 from venom_core.api.stream import EventType, connection_manager, event_broadcaster
 from venom_core.config import SETTINGS
@@ -146,9 +156,13 @@ async def lifespan(app: FastAPI):
 
     # Inicjalizuj RequestTracer
     try:
-        request_tracer = RequestTracer(watchdog_timeout_minutes=5)
+        # data/memory/request_traces.json - persystencja historii requestów
+        traces_path = str(Path(SETTINGS.MEMORY_ROOT) / "request_traces.json")
+        request_tracer = RequestTracer(
+            watchdog_timeout_minutes=5, trace_file_path=traces_path
+        )
         await request_tracer.start_watchdog()
-        logger.info("RequestTracer zainicjalizowany z watchdog")
+        logger.info(f"RequestTracer zainicjalizowany z historią w {traces_path}")
     except Exception as e:
         logger.warning(f"Nie udało się zainicjalizować RequestTracer: {e}")
         request_tracer = None
@@ -771,7 +785,7 @@ app.add_middleware(
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
-    feedback_routes.set_dependencies(orchestrator, state_manager)
+    feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)
     # TokenEconomist nie jest jeszcze zainicjalizowany — przekazujemy None.
     # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
@@ -786,7 +800,7 @@ def setup_router_dependencies():
     agents_routes.set_dependencies(
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
     )
-    system_routes.set_dependencies(
+    system_deps.set_dependencies(
         background_scheduler,
         service_monitor,
         state_manager,
@@ -837,6 +851,15 @@ app.include_router(learning_routes.router)
 app.include_router(llm_simple_routes.router)
 app.include_router(knowledge_routes.router)
 app.include_router(agents_routes.router)
+app.include_router(system_scheduler_routes.router)
+app.include_router(system_services_routes.router)
+app.include_router(system_llm_routes.router)
+app.include_router(system_runtime_routes.router)
+app.include_router(system_config_routes.router)
+app.include_router(system_governance_routes.router)
+app.include_router(system_iot_routes.router)
+app.include_router(system_status_routes.router)
+app.include_router(system_storage_routes.router)
 app.include_router(system_routes.router)
 app.include_router(nodes_routes.router)
 app.include_router(strategy_routes.router)
@@ -1051,7 +1074,7 @@ def healthz():
 # Memory endpoints moved to venom_core/api/routes/memory.py
 
 
-# Metrics endpoint moved to venom_core/api/routes/system.py
+# Metrics endpoint moved to venom_core/api/routes/system_metrics.py
 
 
 # --- Graph & Lessons API Endpoints ---
@@ -1064,7 +1087,7 @@ def healthz():
 
 # Gardener endpoint moved to venom_core/api/routes/agents.py
 
-# Scheduler endpoints moved to venom_core/api/routes/system.py
+# Scheduler endpoints moved to venom_core/api/routes/system_scheduler.py
 
 # Watcher and Documenter endpoints moved to venom_core/api/routes/agents.py
 

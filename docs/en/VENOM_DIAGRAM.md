@@ -25,8 +25,8 @@
 │   LAYER 3: EXECUTION & PERCEPTION  —  Hands and Senses                        │
 │                                                                               │
 │   ┌─────────────────────────────┐  ┌──────────────────────────┐  ┌──────────┐ │
-│   │ SEMANTIC KERNEL (Hands)    │  │ FLORENCE-2 ONNX (Eyes UI) │  │ ANTENNA  │ │
-│   │ File I/O, Shell, Git, Cmd  │  │ OCR, UI Analysis, Errors  │  │ Web-Agent│ │
+│   │ SEMANTIC KERNEL (Hands)    │  │ OLLAMA / OPENAI (Eyes UI) │  │ ANTENNA  │ │
+│   │ File I/O, Shell, Git, Cmd  │  │ Vision Analysis (v1.0)    │  │ Web-Agent│ │
 │   └─────────────────────────────┘  └──────────────────────────┘  └──────────┘ │
 │               (System calls / OS access / perception inputs)                  │
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -37,8 +37,8 @@
 │                                                                               │
 │   ┌─────────────────────────────────────────────────────────────────────────┐ │
 │   │ RIDER-PC (Host Body)                                                    │ │
-│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ ONNX / GGUF Engines ]                 │ │
-│   │                 (Dual-Engine Architecture: ONNX + Native LLM)           │ │
+│   │ [ WSL2 ] ↔ [ Docker Sandbox ] ↔ [ Ollama / vLLM / Cloud ]                │ │
+│   │                 (LLM Runtime: Local + Cloud, ONNX for audio)             │ │
 │   └─────────────────────────────────────────────────────────────────────────┘ │
 │                                       │ Network / IoT                           │
 │                                       ▼                                          │
@@ -61,3 +61,6 @@
                                 ▲
                                 │  (Feedback loops)
                                 ▼
+
+Legend:
+- Florence-2 ONNX — planned v2.0 (local vision engine)

@@ -107,8 +107,8 @@ venom_core/
 - **LanceDB** – lokalna pamięć wektorowa (embedded); **Redis** – opcjonalny broker/locki (może być wyłączony).
 - **Nexus**, **Background Tasks** – opcjonalne miejsca na przyszłe procesy (domyślnie disabled, bez akcji start/stop; można ukryć/ignorować jeśli niewykorzystane).
 
-**Uwaga o vision/obrazie:** obecnie percepcja (OCR/rozpoznawanie obiektów) korzysta z lokalnych modeli ONNX lub opcjonalnych endpointów zewnętrznych. Ollama/vLLM mogą obsługiwać modele multimodalne, ale w tym repo nie są jeszcze podłączone jako runtime dla vision — wymagają osobnej integracji.
-**ONNX już używamy:** obecnie w warstwie percepcji (vision) — OCR/rozpoznawanie obiektów — poprzez lokalne modele ONNX Runtime. LLM-y pozostają na Ollama/vLLM (lub chmurze), a ONNX pokrywa zakres vision.
+**Uwaga o vision/obrazie:** obecnie percepcja obrazu korzysta z lokalnych modeli vision w Ollama lub z OpenAI GPT-4o; Florence-2 ONNX jest planowany. Ollama/vLLM mogą obsługiwać modele multimodalne, ale w tym repo nie są jeszcze spinane jako osobny runtime ONNX dla vision.
+**ONNX już używamy:** obecnie głównie w TTS (Piper). LLM-y pozostają na Ollama/vLLM (lub chmurze), a ONNX dla vision to kierunek rozwojowy.
 
 ### Przepływ danych
 
@@ -398,6 +398,12 @@ NEXUS_PORT=8765
 GITHUB_TOKEN=ghp_your_token         # Token dostępu osobistego
 GITHUB_REPO_NAME=username/repo      # Nazwa repozytorium
 DISCORD_WEBHOOK_URL=https://...     # Opcjonalne
+SLACK_WEBHOOK_URL=https://...       # Opcjonalne
+HF_TOKEN=                           # Opcjonalne (Hugging Face)
+TAVILY_API_KEY=                     # Opcjonalne (Tavily Search)
+ENABLE_GOOGLE_CALENDAR=false        # Opcjonalne
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
 ENABLE_ISSUE_POLLING=false          # Włącz automatyczne odpytywanie zgłoszeń Issue
 ```
 
@@ -649,8 +655,37 @@ make run
 cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
-# Uruchom wszystkie testy
-pytest
+## Szybki pełny scenariusz (optymalne ustawienia dla naszego środowiska)
+# pytest: heavy (-n 1), long (-n 2), light (-n 6)
+pytest -n 1 $(cat config/pytest-groups/heavy.txt)
+pytest -n 2 $(cat config/pytest-groups/long.txt)
+pytest -n 6 $(cat config/pytest-groups/light.txt)
+
+# Alternatywnie (skrypt):
+./scripts/run-pytest-optimal.sh
+
+# Alternatywnie (make):
+make pytest
+
+# Playwright E2E: latency (1 worker) + functional (4 workers)
+npm --prefix web-next run test:e2e:preflight
+npm --prefix web-next run test:e2e:latency
+npm --prefix web-next run test:e2e:functional -- --workers=4
+
+# Alternatywnie (skrypt):
+./scripts/run-e2e-optimal.sh
+
+# Alternatywnie (make):
+make e2e
+
+## Tryb awaryjny (słabsze środowisko → wszystko seryjnie)
+pytest -n 1 $(cat config/pytest-groups/heavy.txt)
+pytest -n 1 $(cat config/pytest-groups/long.txt)
+pytest -n 1 $(cat config/pytest-groups/light.txt)
+npm --prefix web-next run test:e2e:preflight
+npm --prefix web-next run test:e2e:latency
+npm --prefix web-next run test:e2e:functional -- --workers=1
+```
 
 ## 🔬 Testy i benchmarki
 
@@ -666,6 +701,8 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/TESTING_CHAT_LATE
 - `npm --prefix web-next run lint`
 - `npm --prefix web-next run build`
 - `npm --prefix web-next run test:e2e` — Playwright na buildzie prod.
+- Optymalnie (nasze środowisko): `test:e2e:latency` działa na 1 workerze, `test:e2e:functional` na 4 workerach.
+- W razie problemów uruchamiaj testy seryjnie (patrz “Tryb awaryjny” powyżej).
 
 ### Czas reakcji i wydajność chatu
 - `npm --prefix web-next run test:perf` — Playwright porównujący Next Cockpit i stary panel (`PERF_NEXT_BASE_URL` / `PERF_LEGACY_BASE_URL`, raport HTML odkłada się do `test-results/perf-report`).

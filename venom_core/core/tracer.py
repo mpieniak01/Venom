@@ -1,8 +1,10 @@
 """Moduł: tracer - śledzenie przepływu zadań przez system."""
 
 import asyncio
+import json
 from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -57,34 +59,139 @@ class RequestTrace(BaseModel):
     llm_runtime_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
+    forced_intent: Optional[str] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
     error_details: Optional[dict] = None
     error_stage: Optional[str] = None
     error_retryable: Optional[bool] = None
+    feedback: Optional[dict] = None
 
 
 class RequestTracer:
     """
-    Centralny rejestr śladów zadań.
+    Centralny rejestr śladów zadań z persystencją.
 
     Przechowuje informacje o przepływie każdego zadania przez system,
     od momentu utworzenia do zakończenia.
     """
 
-    def __init__(self, watchdog_timeout_minutes: int = 5):
+    def __init__(
+        self,
+        watchdog_timeout_minutes: int = 5,
+        trace_file_path: Optional[str] = None,
+    ):
         """
         Inicjalizacja tracera.
 
         Args:
             watchdog_timeout_minutes: Czas w minutach po którym zadanie
                                      bez aktywności jest oznaczane jako LOST
+            trace_file_path: Ścieżka do pliku z zapisem śladów (opcjonalna)
         """
         self._traces: Dict[UUID, RequestTrace] = {}
         self._traces_lock = Lock()  # Thread safety
         self._watchdog_timeout = timedelta(minutes=watchdog_timeout_minutes)
         self._watchdog_task: Optional[asyncio.Task] = None
+
+        # Konfiguracja persystencji
+        self._trace_file_path = Path(trace_file_path) if trace_file_path else None
+        if self._trace_file_path:
+            self._trace_file_path.parent.mkdir(parents=True, exist_ok=True)
+            self._load_traces()
+
+    def _load_traces(self) -> None:
+        """Ładuje ślady z pliku JSON."""
+        if not self._trace_file_path or not self._trace_file_path.exists():
+            return
+
+        try:
+            content = self._trace_file_path.read_text(encoding="utf-8")
+            if not content:
+                return
+
+            data = json.loads(content)
+            loaded_count = 0
+
+            with self._traces_lock:
+                for trace_dict in data:
+                    try:
+                        trace = RequestTrace.model_validate(trace_dict)
+                        self._traces[trace.request_id] = trace
+                        loaded_count += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Pominięto uszkodzony trace podczas ładowania: {e}"
+                        )
+
+            logger.info(f"Załadowano {loaded_count} śladów z {self._trace_file_path}")
+
+            # Załaduj feedback z jsonl aby uzupełnić historię (dla spójności po restarcie)
+            feedback_path = Path("data/feedback/feedback.jsonl")
+            if feedback_path.exists():
+                try:
+                    feedback_map = {}
+                    with open(feedback_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if not line.strip():
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                t_id = entry.get("task_id")
+                                if t_id:
+                                    feedback_map[t_id] = {
+                                        "rating": entry.get("rating"),
+                                        "comment": entry.get("comment"),
+                                    }
+                            except Exception:
+                                # Ignorujemy błędy parsowania linii JSON - kontynuujemy z kolejnymi
+                                pass
+
+                    if feedback_map:
+                        updated_count = 0
+                        with self._traces_lock:
+                            for t_id_str, fb_data in feedback_map.items():
+                                try:
+                                    u_id = UUID(t_id_str)
+                                    if u_id in self._traces:
+                                        # Nadpisz tylko jeśli brak w trace (lub zaktualizuj)
+                                        # Przyjmujemy jsonl jako źródło prawdy dla feedbacku
+                                        self._traces[u_id].feedback = fb_data
+                                        updated_count += 1
+                                except Exception:
+                                    # Ignorujemy błędy UUID/dostępu - przeskakujemy nieprawidłowy wpis
+                                    pass
+                        logger.info(
+                            f"Zaktualizowano feedback dla {updated_count} śladów"
+                        )
+
+                except Exception as e:
+                    logger.warning(f"Błąd podczas ładowania feedbacku: {e}")
+
+        except Exception as e:
+            logger.error(f"Błąd podczas ładowania śladów: {e}")
+
+    def _save_traces(self) -> None:
+        """Zapisuje ślady do pliku JSON."""
+        if not self._trace_file_path:
+            return
+
+        try:
+            # Tworzymy snapshot pod lockiem
+            with self._traces_lock:
+                traces_list = [t.model_dump(mode="json") for t in self._traces.values()]
+
+            # Zapisz do pliku tymczasowego
+            temp_path = self._trace_file_path.with_suffix(".tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(traces_list, f, ensure_ascii=False, indent=2)
+
+            # Atomowa zamiana
+            temp_path.replace(self._trace_file_path)
+
+        except Exception as e:
+            logger.error(f"Błąd podczas zapisywania śladów: {e}")
 
     async def start_watchdog(self):
         """Uruchamia watchdog do monitorowania zagubionych zadań."""
@@ -99,7 +206,6 @@ class RequestTracer:
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania watchdog przy zatrzymywaniu
                 pass
             self._watchdog_task = None
             logger.info("RequestTracer watchdog zatrzymany")
@@ -118,6 +224,8 @@ class RequestTracer:
     async def _check_lost_requests(self):
         """Sprawdza i oznacza zadania, które przekroczyły timeout."""
         now = datetime.now()
+        updated = False
+
         # Create a snapshot of traces to avoid holding lock during iteration
         with self._traces_lock:
             traces_snapshot = list(self._traces.items())
@@ -147,6 +255,10 @@ class RequestTracer:
                                     details=f"Brak aktywności przez {time_since_activity.total_seconds():.0f}s",
                                 )
                             )
+                            updated = True
+
+        if updated:
+            self._save_traces()
 
     def create_trace(
         self,
@@ -160,12 +272,13 @@ class RequestTracer:
         Args:
             request_id: UUID zadania
             prompt: Treść polecenia użytkownika
+            session_id: ID sesji (opcjonalne)
 
         Returns:
             Utworzony ślad
         """
-        # Skróć prompt do 200 znaków
-        prompt_truncated = prompt[:200] + "..." if len(prompt) > 200 else prompt
+        # Skróć prompt do 500 znaków (zwiększono z 200)
+        prompt_truncated = prompt[:500] + "..." if len(prompt) > 500 else prompt
 
         trace = RequestTrace(
             request_id=request_id,
@@ -175,6 +288,8 @@ class RequestTracer:
         )
         with self._traces_lock:
             self._traces[request_id] = trace
+
+        self._save_traces()
         logger.debug(f"Utworzono trace dla zadania {request_id}")
         return trace
 
@@ -210,6 +325,10 @@ class RequestTracer:
             trace.steps.append(step)
             trace.last_activity = datetime.now()
 
+        # Zapisz asynchronicznie (tutaj uproszczenie do synchronicznego zapisu dla bezpieczeństwa danych)
+        # W środowisku produkcyjnym o dużym obciążeniu warto rozważyć kolejkowanie zapisu
+        self._save_traces()
+
         logger.debug(
             f"Dodano krok do trace {request_id}: {component}.{action} ({status})"
         )
@@ -237,6 +356,7 @@ class RequestTracer:
             if status in (TraceStatus.COMPLETED, TraceStatus.FAILED, TraceStatus.LOST):
                 trace.finished_at = datetime.now()
 
+        self._save_traces()
         logger.debug(f"Zaktualizowano status trace {request_id}: {status}")
 
     def set_forced_route(
@@ -244,6 +364,7 @@ class RequestTracer:
         request_id: UUID,
         forced_tool: Optional[str],
         forced_provider: Optional[str],
+        forced_intent: Optional[str] = None,
     ) -> None:
         """Zapisuje informacje o wymuszonej ścieżce."""
         with self._traces_lock:
@@ -255,7 +376,11 @@ class RequestTracer:
                 return
             trace.forced_tool = forced_tool
             trace.forced_provider = forced_provider
+            if forced_intent:
+                trace.forced_intent = forced_intent
             trace.last_activity = datetime.now()
+
+        self._save_traces()
 
     def set_llm_metadata(
         self,
@@ -288,6 +413,7 @@ class RequestTracer:
             trace.llm_config_hash = config_hash
             trace.llm_runtime_id = runtime_id
 
+        self._save_traces()
         logger.debug(
             f"Zaktualizowano informacje o LLM dla trace {request_id}: {provider}/{model}"
         )
@@ -309,11 +435,27 @@ class RequestTracer:
             trace.error_stage = error.get("stage")
             trace.error_retryable = error.get("retryable")
 
+        self._save_traces()
         logger.debug(
             "Zaktualizowano informacje o błędzie dla trace %s: %s",
             request_id,
             error.get("error_code"),
         )
+
+    def set_feedback(self, request_id: UUID, feedback: dict):
+        """Ustawia informacje o feedbacku użytkownika."""
+        with self._traces_lock:
+            trace = self._traces.get(request_id)
+            if trace is None:
+                logger.warning(
+                    f"Próba ustawienia feedbacku dla nieistniejącego trace {request_id}"
+                )
+                return
+            trace.feedback = feedback
+            trace.last_activity = datetime.now()
+
+        self._save_traces()
+        logger.debug(f"Zaktualizowano feedback dla trace {request_id}")
 
     def get_trace(self, request_id: UUID) -> Optional[RequestTrace]:
         """
@@ -373,6 +515,7 @@ class RequestTracer:
             days: Liczba dni - ślady starsze zostaną usunięte
         """
         cutoff = datetime.now() - timedelta(days=days)
+        updated = False
 
         with self._traces_lock:
             to_remove = []
@@ -383,5 +526,9 @@ class RequestTracer:
             for trace_id in to_remove:
                 del self._traces[trace_id]
 
-        if to_remove:
+            if to_remove:
+                updated = True
+
+        if updated:
+            self._save_traces()
             logger.info(f"Usunięto {len(to_remove)} starych śladów")

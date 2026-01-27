@@ -63,19 +63,19 @@ def test_add():
         # TestSkill.run_pytest uses 'python -m pytest path'
         # For pytest to import 'script', we need to set PYTHONPATH to include tmpdir.
         # Since TestSkill runs pytest as a subprocess, we'll set PYTHONPATH env var.
-        
+
         import os
-        
+
         # Save original PYTHONPATH
         original_pythonpath = os.environ.get("PYTHONPATH", "")
-        
+
         try:
             # Add tmpdir to PYTHONPATH so pytest can import 'script'
             if original_pythonpath:
                 os.environ["PYTHONPATH"] = f"{tmpdir}{os.pathsep}{original_pythonpath}"
             else:
                 os.environ["PYTHONPATH"] = str(tmpdir)
-            
+
             test_path = str(workspace / "test_script.py")
             pass_test_result = await test_skill.run_pytest(test_path=test_path)
         finally:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 export function useCockpitLayout(variant: "reference" | "home" = "reference") {
     const [showArtifacts, setShowArtifacts] = useState(true);

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { GenerationParams, HistoryRequestDetail } from "@/lib/types";
 import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
 import type { ChatComposerHandle } from "@/components/cockpit/cockpit-chat-thread";
-import { NOTIFICATIONS } from "@/lib/ui-config";
 import { useChatSend } from "@/components/cockpit/cockpit-chat-send";
 
 type ActiveServerInfo = {

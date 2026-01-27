@@ -90,6 +90,7 @@ async def submit_feedback(payload: FeedbackRequest):
                         result = details_json.get("response", "")
                         break
                     except Exception:
+                        # Ignorujemy błędy parsowania JSON - przechodzimy do kolejnego kroku
                         pass
         else:
             raise HTTPException(

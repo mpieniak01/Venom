@@ -204,11 +204,11 @@ export function CockpitRequestDetailDrawer({
         return null;
       }
     }
-    const responseMatch = raw.match(/response=([\\s\\S]*)$/);
+    const responseMatch = raw.match(/response=([\s\S]*)$/);
     if (responseMatch?.[1]) {
       return { text: responseMatch[1].trim(), truncated: false };
     }
-    const previewMatch = raw.match(/preview=([\\s\\S]*)$/);
+    const previewMatch = raw.match(/preview=([\s\S]*)$/);
     if (previewMatch?.[1]) {
       return { text: previewMatch[1].trim(), truncated: true };
     }

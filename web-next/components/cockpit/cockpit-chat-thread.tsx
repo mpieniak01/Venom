@@ -200,7 +200,7 @@ export const ChatComposer = memo(
             ref={textareaRef}
             rows={2}
             className="min-h-[64px] w-full rounded-xl box-base p-2 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/60 2xl:text-base"
-            placeholder={t("cockpit.inputPlaceholder", "Opisz zadanie dla Venoma...")}
+            placeholder={t("cockpit.inputPlaceholder")}
             value={draft}
             onChange={(event) => handleDraftChange(event.target.value)}
             onKeyDown={handleTextareaKeyDown}
@@ -243,10 +243,10 @@ export const ChatComposer = memo(
               style={
                 !compactControls
                   ? {
-                      width: `${modelMinWidthCh}ch`,
-                      minWidth: `${modelMinWidthCh}ch`,
-                      maxWidth: `${modelMinWidthCh}ch`,
-                    }
+                    width: `${modelMinWidthCh}ch`,
+                    minWidth: `${modelMinWidthCh}ch`,
+                    maxWidth: `${modelMinWidthCh}ch`,
+                  }
                   : undefined
               }
             >
@@ -450,9 +450,9 @@ export function CockpitChatThread({
             ) : null;
           const feedbackExtra =
             msg.role === "assistant" &&
-            requestId &&
-            !msg.pending &&
-            feedbackState?.rating === "down" ? (
+              requestId &&
+              !msg.pending &&
+              feedbackState?.rating === "down" ? (
               <>
                 <textarea
                   className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"

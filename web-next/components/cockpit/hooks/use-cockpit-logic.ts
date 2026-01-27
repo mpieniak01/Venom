@@ -39,10 +39,13 @@ import {
 import { useCockpitData } from "./use-cockpit-data";
 import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
 import { useCockpitLayout } from "./use-cockpit-layout";
+import { useCockpitMacros } from "./use-cockpit-macros";
+import { useCockpitMetricsDisplay } from "./use-cockpit-metrics-display";
 
 type Data = ReturnType<typeof useCockpitData>;
 type Interactive = ReturnType<typeof useCockpitInteractiveState>;
 type Layout = ReturnType<typeof useCockpitLayout>;
+
 
 export function useCockpitLogic(
     data: Data,
@@ -452,6 +455,9 @@ export function useCockpitLogic(
         setExportingPinned: layout.setExportingPinned, // Layout state!
     });
 
+    const macros = useCockpitMacros(chatUi.handleSend);
+    const metricsDisplay = useCockpitMetricsDisplay(data);
+
     // Request Detail Actions
     const requestDetail = useCockpitRequestDetailActions({
         findTaskMatch: data.findTaskMatch,
@@ -659,5 +665,7 @@ export function useCockpitLogic(
             ...requestDetail,
             contextPreviewMeta,
         },
+        macros,
+        metricsDisplay,
     };
 }

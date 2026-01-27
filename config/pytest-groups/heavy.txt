@@ -1,0 +1,7 @@
+tests/perf/test_chat_pipeline.py
+tests/perf/test_llm_latency_e2e.py
+tests/perf/test_llm_runtime_direct.py
+tests/perf/test_llm_simple_e2e.py
+tests/test_browser_skill.py
+tests/test_forge_integration.py
+tests/test_skills_enhancements.py

@@ -655,8 +655,37 @@ make run
 cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
-# Uruchom wszystkie testy
-pytest
+## Szybki pełny scenariusz (optymalne ustawienia dla naszego środowiska)
+# pytest: heavy (-n 1), long (-n 2), light (-n 6)
+pytest -n 1 $(cat config/pytest-groups/heavy.txt)
+pytest -n 2 $(cat config/pytest-groups/long.txt)
+pytest -n 6 $(cat config/pytest-groups/light.txt)
+
+# Alternatywnie (skrypt):
+./scripts/run-pytest-optimal.sh
+
+# Alternatywnie (make):
+make pytest
+
+# Playwright E2E: latency (1 worker) + functional (4 workers)
+npm --prefix web-next run test:e2e:preflight
+npm --prefix web-next run test:e2e:latency
+npm --prefix web-next run test:e2e:functional -- --workers=4
+
+# Alternatywnie (skrypt):
+./scripts/run-e2e-optimal.sh
+
+# Alternatywnie (make):
+make e2e
+
+## Tryb awaryjny (słabsze środowisko → wszystko seryjnie)
+pytest -n 1 $(cat config/pytest-groups/heavy.txt)
+pytest -n 1 $(cat config/pytest-groups/long.txt)
+pytest -n 1 $(cat config/pytest-groups/light.txt)
+npm --prefix web-next run test:e2e:preflight
+npm --prefix web-next run test:e2e:latency
+npm --prefix web-next run test:e2e:functional -- --workers=1
+```
 
 ## 🔬 Testy i benchmarki
 
@@ -672,6 +701,8 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/TESTING_CHAT_LATE
 - `npm --prefix web-next run lint`
 - `npm --prefix web-next run build`
 - `npm --prefix web-next run test:e2e` — Playwright na buildzie prod.
+- Optymalnie (nasze środowisko): `test:e2e:latency` działa na 1 workerze, `test:e2e:functional` na 4 workerach.
+- W razie problemów uruchamiaj testy seryjnie (patrz “Tryb awaryjny” powyżej).
 
 ### Czas reakcji i wydajność chatu
 - `npm --prefix web-next run test:perf` — Playwright porównujący Next Cockpit i stary panel (`PERF_NEXT_BASE_URL` / `PERF_LEGACY_BASE_URL`, raport HTML odkłada się do `test-results/perf-report`).

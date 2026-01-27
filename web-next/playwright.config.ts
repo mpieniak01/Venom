@@ -10,15 +10,16 @@ const isProdServer = process.env.PLAYWRIGHT_MODE === "prod";
 const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_SERVER === "true";
 const webServerCommand = isProdServer
   ? [
-      // Zapewnia dostępność zasobów statycznych dla standalone builda.
-      `mkdir -p .next/standalone/web-next/.next`,
-      `cp -r .next/static .next/standalone/web-next/.next/static`,
-      `PORT=${devPort} HOSTNAME=${devHost} node .next/standalone/web-next/server.js`,
-    ].join(" && ")
+    // Zapewnia dostępność zasobów statycznych dla standalone builda.
+    `mkdir -p .next/standalone/web-next/.next`,
+    `cp -r .next/static .next/standalone/web-next/.next/static`,
+    `PORT=${devPort} HOSTNAME=${devHost} node .next/standalone/web-next/server.js`,
+  ].join(" && ")
   : `npm run dev -- --hostname ${devHost} --port ${devPort}`;
 
 const config: PlaywrightTestConfig = {
   testDir: "./tests",
+  fullyParallel: true,
   timeout: 30_000,
   expect: {
     timeout: 5_000,
@@ -32,10 +33,10 @@ const config: PlaywrightTestConfig = {
   webServer: reuseExistingServer
     ? undefined
     : {
-        command: webServerCommand,
-        url: baseURL,
-        timeout: 120_000,
-      },
+      command: webServerCommand,
+      url: baseURL,
+      timeout: 120_000,
+    },
 };
 
 export default config;

@@ -28,7 +28,7 @@ type CockpitKpiSectionProps = {
   tokenHistory: TokenSample[];
   tokenTrendDelta: number | null;
   tokenTrendLabel: string;
-  totalTokens: number | string;
+  totalTokens: number;
   showReferenceSections: boolean;
 };
 
@@ -136,11 +136,10 @@ export function CockpitKpiSection({
                     : "Brak zadań"
                 }
                 progress={successRate}
-                footer={`Uptime: ${
-                  metrics?.uptime_seconds !== undefined
+                footer={`Uptime: ${metrics?.uptime_seconds !== undefined
                     ? formatUptime(metrics.uptime_seconds)
                     : "—"
-                }`}
+                  }`}
               />
             )}
           </Panel>

@@ -1,15 +1,13 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import type { ServiceStatus } from "@/lib/types";
+import type { ServiceStatus, ActiveLlmServerResponse } from "@/lib/types";
 
 type LlmServerEntry = {
   name: string;
 };
 
-type ActiveServerInfo = {
-  active_server?: string | null;
-} | null;
+type ActiveServerInfo = ActiveLlmServerResponse | null;
 
 type CockpitLlmServerActionsParams = {
   selectedLlmServer: string;

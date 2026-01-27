@@ -249,6 +249,16 @@ export function useChatSend({
           const headerRequestId = response.headers.get("x-request-id");
           const simpleRequestId = headerRequestId || `simple-${clientId}`;
           linkOptimisticRequest(clientId, simpleRequestId);
+
+          // Reconcile user message ID in local history to avoid duplication
+          setLocalSessionHistory((prev) => {
+            return prev.map((entry) => {
+              if (entry.request_id === clientId && entry.role === "user") {
+                return { ...entry, request_id: simpleRequestId };
+              }
+              return entry;
+            });
+          });
           let lastHistoryUpdate = 0;
           const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();

@@ -3,15 +3,12 @@
 import { Panel } from "@/components/ui/panel";
 import { HistoryList } from "@/components/history/history-list";
 
-type HistoryEntry = {
-  request_id: string;
-  prompt?: string | null;
-};
+import type { HistoryRequest } from "@/lib/types";
 
 type CockpitHistoryPanelProps = {
-  history: HistoryEntry[];
+  history: HistoryRequest[];
   selectedRequestId: string | null;
-  onSelect: (entry: HistoryEntry) => void;
+  onSelect: (entry: HistoryRequest) => void;
   loadingHistory: boolean;
   historyError: string | null;
 };

@@ -139,11 +139,7 @@ export function CockpitHome({
     // git: data.git, // not passed
     metricsLoading: data.loading.metrics,
     tokenMetricsLoading: data.loading.tokenMetrics,
-    tokenSplits: [],
-    tokenHistory: [],
-    tokenTrendDelta: 0,
-    tokenTrendLabel: "—",
-    totalTokens: data.tokenMetrics?.total_tokens ?? 0,
+
 
     history: (data.history || []) as any,
     learningLogs: (data.learningLogs || []) as any,
@@ -251,13 +247,16 @@ export function CockpitHome({
     onExecuteQueueMutation: logic.queue.onExecuteQueueMutation,
 
     // Macros
-    newMacro: "",
-    setNewMacro: () => { },
-    customMacros: [],
-    setCustomMacros: () => { },
-    allMacros: [],
-    macroSending: false,
-    onRunMacro: () => { },
+    newMacro: logic.macros.newMacro,
+    setNewMacro: logic.macros.setNewMacro,
+    customMacros: logic.macros.customMacros,
+    setCustomMacros: () => { }, // Handled by add/delete in hook
+    allMacros: logic.macros.allMacros,
+    macroSending: logic.macros.macroSending,
+    onRunMacro: logic.macros.onRunMacro,
+    onAddMacro: logic.macros.onAddMacro,
+    onDeleteMacro: logic.macros.onDeleteMacro,
+    onClearMacros: logic.macros.onClearMacros,
 
     // Usage / Metrics Values (Derived)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -275,6 +274,16 @@ export function CockpitHome({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     diskPercent: data.modelsUsageResponse?.usage?.disk_usage_percent || 0,
     sessionCostValue: data.tokenMetrics?.session_cost_usd || 0,
+
+    // Token
+    tokenSplits: logic.metricsDisplay.tokenSplits,
+    tokenHistory: logic.metricsDisplay.tokenHistory,
+    tokenTrendDelta: 0,
+    tokenTrendLabel: "vs 1h",
+    totalTokens: data.tokenMetrics?.total_tokens || 0,
+
+    // History Status
+    historyStatusEntries: logic.metricsDisplay.historyStatusEntries,
 
     llmServerOptions: data.llmServers?.map(s => ({ label: s.name, value: s.name })) || [],
     llmModelOptions: data.models?.models
@@ -296,7 +305,7 @@ export function CockpitHome({
 
     // ...
     // Fill remaining props with defaults/nulls for now to pass build
-    historyStatusEntries: [],
+
     entries: [],
     // Map services to agentDeck
     agentDeck: (data.services || []).map(s => ({

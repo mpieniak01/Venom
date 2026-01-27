@@ -3,7 +3,7 @@
 import { createElement, useMemo } from "react";
 import type { ComponentProps, RefObject } from "react";
 import type { LogEntryType } from "@/lib/logs";
-import type { HistoryRequestDetail, ServiceStatus, Task, LlmServerInfo, HiddenPromptEntry, HiddenPromptsResponse, LearningLogsResponse, FeedbackLogsResponse } from "@/lib/types";
+import type { HistoryRequest, HistoryRequestDetail, ServiceStatus, Task, LlmServerInfo, HiddenPromptEntry, HiddenPromptsResponse, LearningLogsResponse, FeedbackLogsResponse } from "@/lib/types";
 import type { GenerationParams } from "@/lib/types";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
@@ -65,7 +65,7 @@ type CockpitSectionPropsInput = {
   availableModelsForServer: Array<{ name?: string }>;
   selectedServerEntry: PrimarySectionProps["llmOpsPanelProps"]["selectedServerEntry"];
   resolveServerStatus: (displayName?: string, status?: string | null) => string;
-  sessionId: string | null;
+  sessionId: string;
   memoryAction: null | "session" | "global";
   onSessionReset: () => void;
   onServerSessionReset: () => void;
@@ -107,7 +107,7 @@ type CockpitSectionPropsInput = {
     active: boolean;
     actor: string;
   }) => Promise<void>;
-  history: Array<SessionHistoryEntry>;
+  history: Array<HistoryRequest>;
   loadingHistory: boolean;
   historyError: string | null;
   metrics: PrimarySectionProps["metricsProps"]["metrics"];
@@ -150,13 +150,16 @@ type CockpitSectionPropsInput = {
   feedbackError: string | null;
   services: Array<{ name: string; status: ServiceStatus }>;
   entries: Array<{ id: string; payload: unknown; timestamp: string }>;
-  newMacro: string;
-  setNewMacro: (value: string) => void;
-  customMacros: Array<{ id: string; label: string; content: string }>;
-  setCustomMacros: (value: Array<{ id: string; label: string; content: string }>) => void;
-  allMacros: Array<{ id: string; label: string; content: string }>;
-  macroSending: boolean;
-  onRunMacro: (macroId: string) => void;
+  newMacro: { label: string; description: string; content: string };
+  setNewMacro: (value: { label: string; description: string; content: string }) => void;
+  customMacros: Array<{ id: string; label: string; description: string; content: string; type?: "system" | "user" }>;
+  setCustomMacros: (value: Array<any>) => void;
+  allMacros: Array<{ id: string; label: string; description: string; content: string; type?: "system" | "user" }>;
+  macroSending: string | null;
+  onRunMacro: (macro: any) => void;
+  onAddMacro: () => void;
+  onDeleteMacro: (id: string) => void;
+  onClearMacros: () => void;
   detailOpen: boolean;
   setDetailOpen: (value: boolean) => void;
   onCloseDetail: () => void;
@@ -171,7 +174,7 @@ type CockpitSectionPropsInput = {
   contextPreviewMeta: { preview?: string | null; truncated?: boolean | null; hiddenPrompts?: number | null; mode?: string | null } | null;
   copyStepsMessage: string | null;
   onCopyDetailSteps: () => void;
-  t: (key: string) => string;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
   tuningOpen: boolean;
   setTuningOpen: (value: boolean) => void;
   loadingSchema: boolean;
@@ -345,6 +348,9 @@ export function useCockpitSectionProps({
   onResetGenerationParams,
   tuningSaving,
   onApplyTuning,
+  onAddMacro,
+  onDeleteMacro,
+  onClearMacros,
 }: CockpitSectionPropsInput) {
   const chatThreadProps = useMemo(() => ({
     chatMessages,
@@ -509,9 +515,9 @@ export function useCockpitSectionProps({
   ]);
 
   const historyPanelProps = useMemo(() => ({
-    history,
+    history: history as HistoryRequest[],
     selectedRequestId,
-    onSelect: (entry: SessionHistoryEntry) =>
+    onSelect: (entry: HistoryRequest) =>
       onOpenRequestDetail(entry.request_id, entry.prompt),
     loadingHistory,
     historyError,
@@ -573,10 +579,10 @@ export function useCockpitSectionProps({
       diskValue: (diskValue ?? 0).toString(),
       diskPercent: (diskPercent ?? 0).toString(),
       sessionCostValue: (sessionCostValue ?? 0).toString(),
-      graphNodes: (graphNodes ?? 0).toString(),
-      graphEdges: (graphEdges ?? 0).toString(),
-      agentDeck,
-      queue,
+      graphNodes: typeof graphNodes === 'string' ? parseInt(graphNodes, 10) || 0 : graphNodes,
+      graphEdges: typeof graphEdges === 'string' ? parseInt(graphEdges, 10) || 0 : graphEdges,
+      agentDeck: agentDeck.map(a => ({ name: a.label, status: a.value })),
+      queue: queue ? { active: queue.active ?? 0, pending: 0, limit: typeof queue.limit === 'number' ? queue.limit : undefined } : null,
       queueLoading,
       queueAction,
       queueActionMessage,
@@ -595,14 +601,15 @@ export function useCockpitSectionProps({
       feedbackLoading,
       feedbackError,
       hiddenPromptsPanel: createElement(CockpitHiddenPromptsPanel, hiddenPromptsPanelProps),
-      services,
-      entries,
+      services: services.map(s => typeof s.status === 'string' ? { name: s.name, status: s.status } as ServiceStatus : s.status),
+      entries: entries.map(e => ({ id: e.id, payload: e.payload, ts: new Date(e.timestamp).getTime() })),
       newMacro,
       setNewMacro,
       customMacros,
       setCustomMacros,
       allMacros,
       macroSending,
+
       onRunMacro,
       onOpenQuickActions: () => setQuickActionsOpen(true),
     },

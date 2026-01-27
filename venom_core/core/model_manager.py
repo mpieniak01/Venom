@@ -621,21 +621,47 @@ PARAMETER top_k 40
                 if response.status_code == 200:
                     live_query_success = True
                     ollama_data = response.json()
-                    cached_entries: List[Dict[str, Any]] = []
+                    # 3. Deduplikacja modeli Ollama po digest (ten sam model pod różnymi tagami)
+                    ollama_models_by_digest: Dict[str, Dict[str, Any]] = {}
+
                     for model in ollama_data.get("models", []):
-                        # Ollama zwraca rozmiar w bajtach
                         size_bytes = model.get("size", 0)
                         entry_name = model.get("name", "unknown")
+                        digest = model.get("digest", "")
+
                         entry = {
                             "name": entry_name,
                             "size_gb": size_bytes / (1024**3),
                             "type": "ollama",
-                            "quantization": model.get("quantization", "unknown"),
+                            "quantization": model.get("details", {}).get(
+                                "quantization_level", "unknown"
+                            ),
                             "path": "ollama://",
                             "source": "ollama",
                             "provider": "ollama",
                             "active": False,
+                            "digest": digest,
                         }
+
+                        if not digest:
+                            models[f"ollama::{entry_name}"] = entry
+                            continue
+
+                        # Jeśli mamy już ten digest, sprawdź czy nowy ma lepszy tag
+                        if digest in ollama_models_by_digest:
+                            existing = ollama_models_by_digest[digest]
+                            # Faworyzujemy tag :latest
+                            if entry_name.endswith(":latest") and not existing[
+                                "name"
+                            ].endswith(":latest"):
+                                ollama_models_by_digest[digest] = entry
+                        else:
+                            ollama_models_by_digest[digest] = entry
+
+                    # Zarejestruj wybrane (unikalne) modele
+                    cached_entries: List[Dict[str, Any]] = []
+                    for entry in ollama_models_by_digest.values():
+                        entry_name = entry["name"]
                         models[f"ollama::{entry_name}"] = entry
                         cached_entries.append(entry)
                     if cached_entries:

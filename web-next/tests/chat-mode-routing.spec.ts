@@ -11,13 +11,21 @@ async function selectChatMode(page: Page, label: string) {
   const modeValue = modeValueMap[label] ?? label.toLowerCase();
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const trigger = page.getByTestId("chat-mode-select");
-  await trigger.waitFor({ state: "visible", timeout: 10000 });
-  await trigger.click({ force: true });
-  await page.getByTestId("chat-mode-menu").waitFor({ state: "visible", timeout: 10000 });
-  const option = page.getByTestId(`chat-mode-option-${modeValue}`);
-  await option.waitFor({ state: "visible", timeout: 10000 });
-  await option.click({ force: true });
-  await expect(trigger).toContainText(new RegExp(label.split(" ")[0], "i"));
+  const expected = new RegExp(label.split(" ")[0], "i");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await trigger.waitFor({ state: "visible", timeout: 10000 });
+    await trigger.click({ force: true });
+    await page.getByTestId("chat-mode-menu").waitFor({ state: "visible", timeout: 10000 });
+    const option = page.getByTestId(`chat-mode-option-${modeValue}`);
+    await option.waitFor({ state: "visible", timeout: 10000 });
+    await option.click({ force: true });
+    try {
+      await expect(trigger).toContainText(expected, { timeout: 5000 });
+      return;
+    } catch (error) {
+      if (attempt === 1) throw error;
+    }
+  }
 }
 
 async function waitForSessionReady(page: Page) {
@@ -127,56 +135,6 @@ test.describe("Chat mode routing", () => {
     });
   });
 
-  test("Direct mode uses simple stream and skips tasks", async ({ page }) => {
-    let simpleCalls = 0;
-    let taskCalls = 0;
-    let simpleBody: Record<string, unknown> | null = null;
-
-    await page.route("**/api/v1/llm/simple/stream", async (route) => {
-      simpleCalls += 1;
-      simpleBody = route.request().postDataJSON() as Record<string, unknown>;
-      await route.fulfill({
-        status: 200,
-        contentType: "text/plain",
-        body: "OK",
-      });
-    });
-
-    await page.route("**/api/v1/tasks", async (route) => {
-      if (route.request().method() === "POST") {
-        taskCalls += 1;
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ task_id: "task-direct" }),
-        });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: emptyJson,
-      });
-    });
-
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await waitForSessionReady(page);
-    await waitForCockpitReady(page);
-    await selectChatMode(page, "Direct");
-    await page.getByTestId("cockpit-prompt-input").fill("Test direct");
-    const simpleRequest = page.waitForRequest(
-      (req) =>
-        req.url().includes("/api/v1/llm/simple/stream") && req.method() === "POST",
-      { timeout: 10000 },
-    );
-    await page.getByTestId("cockpit-send-button").click();
-
-    await simpleRequest;
-    await expect.poll(() => simpleCalls, { timeout: 10000 }).toBeGreaterThan(0);
-    expect(taskCalls).toBe(0);
-    expect((simpleBody as any)?.session_id).toBeTruthy();
-  });
-
   test("Normal mode routes through tasks without forced intent", async ({ page }) => {
     let taskBody: Record<string, unknown> | null = null;
 
@@ -245,70 +203,34 @@ test.describe("Chat mode routing", () => {
     await taskRequest;
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
     expect((taskBody as any)?.forced_intent).toBeUndefined();
+
+    // Verify exactly one user question and one assistant response (no duplicates)
+    await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
+    await expect(page.getByTestId("conversation-bubble-assistant")).toHaveCount(1);
   });
 
-  test("Complex mode forces COMPLEX_PLANNING intent and routes to Architect", async ({ page }) => {
-    let taskBody: Record<string, unknown> | null = null;
+  test("Direct mode uses simple stream and skips tasks", async ({ page }) => {
+    let simpleCalls = 0;
+    let taskCalls = 0;
+    let simpleBody: Record<string, unknown> | null = null;
 
-    await page.addInitScript(() => {
-      class MockEventSource {
-        url: string;
-        onopen: ((event: Event) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          setTimeout(() => {
-            this.onopen?.(new Event("open"));
-            const payloads = [
-              {
-                event: "task_update",
-                data: JSON.stringify({
-                  task_id: "task-complex",
-                  status: "PROCESSING",
-                  logs: ["Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta"],
-                }),
-              },
-              {
-                event: "task_finished",
-                data: JSON.stringify({
-                  task_id: "task-complex",
-                  status: "COMPLETED",
-                  result: "OK",
-                }),
-              },
-            ];
-            payloads.forEach((payload, index) => {
-              setTimeout(() => {
-                const event = new MessageEvent(payload.event, { data: payload.data });
-                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-              }, 80 * (index + 1));
-            });
-          }, 30);
-        }
-
-        addEventListener(event: string, handler: (event: MessageEvent) => void) {
-          this.listeners[event] = this.listeners[event] || [];
-          this.listeners[event].push(handler);
-        }
-
-        close() {
-          this.listeners = {};
-        }
-      }
-
-      // @ts-expect-error - mock EventSource in test runtime
-      window.EventSource = MockEventSource;
+    await page.route("**/api/v1/llm/simple/stream", async (route) => {
+      simpleCalls += 1;
+      simpleBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/plain",
+        body: "OK",
+      });
     });
 
     await page.route("**/api/v1/tasks", async (route) => {
       if (route.request().method() === "POST") {
-        taskBody = route.request().postDataJSON() as Record<string, unknown>;
+        taskCalls += 1;
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ task_id: "task-complex" }),
+          body: JSON.stringify({ task_id: "task-direct" }),
         });
         return;
       }
@@ -322,17 +244,23 @@ test.describe("Chat mode routing", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForSessionReady(page);
     await waitForCockpitReady(page);
-    await selectChatMode(page, "Complex");
-    await page.getByTestId("cockpit-prompt-input").fill("Test complex");
-    const taskRequest = page.waitForRequest(
-      (req) => req.url().includes("/api/v1/tasks") && req.method() === "POST",
+    await selectChatMode(page, "Direct");
+    await page.getByTestId("cockpit-prompt-input").fill("Test direct");
+    const simpleRequest = page.waitForRequest(
+      (req) =>
+        req.url().includes("/api/v1/llm/simple/stream") && req.method() === "POST",
       { timeout: 10000 },
     );
     await page.getByTestId("cockpit-send-button").click();
 
-    await taskRequest;
-    await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
-    expect((taskBody as any)?.forced_intent).toBe("COMPLEX_PLANNING");
+    await simpleRequest;
+    await expect.poll(() => simpleCalls, { timeout: 10000 }).toBeGreaterThan(0);
+    expect(taskCalls).toBe(0);
+    expect((simpleBody as any)?.session_id).toBeTruthy();
+
+    // Verify exactly one user question and one assistant response (no duplicates)
+    await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
+    await expect(page.getByTestId("conversation-bubble-assistant")).toHaveCount(1);
   });
 
   test("Streaming TTFT shows partial before final result", async ({ page }) => {
@@ -445,5 +373,93 @@ test.describe("Chat mode routing", () => {
       undefined,
       { timeout: 10000 },
     );
+  });
+
+  test("Complex mode forces COMPLEX_PLANNING intent and routes to Architect", async ({ page }) => {
+    let taskBody: Record<string, unknown> | null = null;
+
+    await page.addInitScript(() => {
+      class MockEventSource {
+        url: string;
+        onopen: ((event: Event) => void) | null = null;
+        onerror: ((event: Event) => void) | null = null;
+        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
+
+        constructor(url: string) {
+          this.url = url;
+          setTimeout(() => {
+            this.onopen?.(new Event("open"));
+            const payloads = [
+              {
+                event: "task_update",
+                data: JSON.stringify({
+                  task_id: "task-complex",
+                  status: "PROCESSING",
+                  logs: ["Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta"],
+                }),
+              },
+              {
+                event: "task_finished",
+                data: JSON.stringify({
+                  task_id: "task-complex",
+                  status: "COMPLETED",
+                  result: "OK",
+                }),
+              },
+            ];
+            payloads.forEach((payload, index) => {
+              setTimeout(() => {
+                const event = new MessageEvent(payload.event, { data: payload.data });
+                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
+              }, 80 * (index + 1));
+            });
+          }, 30);
+        }
+
+        addEventListener(event: string, handler: (event: MessageEvent) => void) {
+          this.listeners[event] = this.listeners[event] || [];
+          this.listeners[event].push(handler);
+        }
+
+        close() {
+          this.listeners = {};
+        }
+      }
+
+      // @ts-expect-error - mock EventSource in test runtime
+      window.EventSource = MockEventSource;
+    });
+
+    await page.route("**/api/v1/tasks", async (route) => {
+      if (route.request().method() === "POST") {
+        taskBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ task_id: "task-complex" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: emptyJson,
+      });
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await waitForSessionReady(page);
+    await waitForCockpitReady(page);
+    await selectChatMode(page, "Complex");
+    await page.getByTestId("cockpit-prompt-input").fill("Test complex");
+    const taskRequest = page.waitForRequest(
+      (req) => req.url().includes("/api/v1/tasks") && req.method() === "POST",
+      { timeout: 10000 },
+    );
+    await page.getByTestId("cockpit-send-button").click();
+
+    await taskRequest;
+    await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
+    expect((taskBody as any)?.forced_intent).toBe("COMPLEX_PLANNING");
   });
 });

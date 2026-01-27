@@ -229,6 +229,19 @@ GITHUB_REPO_NAME=username/repo
 ENABLE_ISSUE_POLLING=false
 ISSUE_POLLING_INTERVAL_MINUTES=5
 
+# Hugging Face (opcjonalne)
+HF_TOKEN=
+
+# Tavily (opcjonalne)
+TAVILY_API_KEY=
+
+# Google Calendar (opcjonalne)
+ENABLE_GOOGLE_CALENDAR=false
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+VENOM_CALENDAR_ID=venom_work_calendar
+VENOM_CALENDAR_NAME=Venom Work
+
 # Notifications
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
@@ -261,5 +274,5 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ## Zobacz też
 
 - [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) - Release workflow i deployment
-- [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) - GitHub/Discord/Slack
+- [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) - GitHub/Discord/Slack/Tavily/HF/Calendar
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Zasady commitów i PR

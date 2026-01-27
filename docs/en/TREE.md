@@ -48,13 +48,17 @@
     ├── main.py                  # FastAPI, /healthz, / (UI), layer binding
     ├── core/                    # [LAYER 1: META] – BRAIN
     │   ├── __init__.py
-    │   ├── orchestrator.py      # task lifecycle
+    │   ├── orchestrator.py      # task lifecycle (Orchestrator pipeline)
     │   ├── intent_manager.py    # intent classification (code/research/arch)
-    │   ├── config.py            # Settings (Pydantic): paths, models, ENV
     │   ├── policy_engine.py     # ethics, autonomy, domain levels
     │   ├── state_manager.py     # organism state, task log
-    │   ├── model_registry.py    # model registry (ONNX + GGUF)
+    │   ├── model_registry.py    # model registry (Ollama + HF Hub)
+    │   ├── model_manager.py     # lifecycle, versioning and activation of local models
+    │   ├── model_router.py      # routing between local LLM and cloud
     │   ├── llm_server_controller.py # LLM server management (Ollama/vLLM)
+    │   ├── prompt_manager.py    # prompt template management
+    │   ├── service_monitor.py   # system services monitoring (status, CPU/RAM)
+    │   ├── tracer.py            # RequestTracer (step tracking and mermaid)
     │   └── dream_engine.py      # [v2.0] Active dreaming system (postponed)
     │
     ├── agents/                  # [LAYER 2: AGENT SERVICES] – SPECIALISTS
@@ -93,8 +97,8 @@
     │
     ├── infrastructure/          # [LAYER 4: METABOLISM] – ENGINES
     │   ├── __init__.py
-    │   ├── onnx_runtime.py      # Vision/Audio runtime (Placeholder)
     │   ├── docker_habitat.py    # container / sandbox management
+    │   ├── message_broker.py    # Redis + ARQ (Hive)
     │   └── hardware_pi.py       # bridge to Rider-Pi (API, heartbeat)
     │
     └── utils/                   # COMMON TOOLS

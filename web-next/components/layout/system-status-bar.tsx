@@ -23,9 +23,9 @@ type SystemStatusInitialData = {
 };
 
 export function SystemStatusBar({ initialData }: { initialData?: SystemStatusInitialData }) {
-  const { data: usageResponse } = useModelsUsage(10000);
+  const { data: usageResponse } = useModelsUsage(30000);
   const usage = usageResponse?.usage ?? initialData?.modelsUsage?.usage;
-  const { data: liveTokenMetrics } = useTokenMetrics(15000);
+  const { data: liveTokenMetrics } = useTokenMetrics(30000);
   const {
     data: liveGitStatus,
     loading: gitLoadingLive,

@@ -1,1 +1,0 @@
-"""Moduł: onnx_runtime"""

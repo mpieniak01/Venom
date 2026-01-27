@@ -29,13 +29,19 @@ def mock_runtime_info():
 @pytest.fixture(autouse=True)
 def patch_runtime(mock_runtime_info):
     """Automatically patch runtime for all tests."""
-    with patch(
-        "venom_core.core.orchestrator.orchestrator_core.get_active_llm_runtime",
-        return_value=mock_runtime_info,
+    with (
+        patch(
+            "venom_core.utils.llm_runtime.get_active_llm_runtime",
+            return_value=mock_runtime_info,
+        ),
     ):
-        with patch(
-            "venom_core.core.orchestrator.orchestrator_core.SETTINGS"
-        ) as mock_settings:
+        with (
+            patch("venom_core.config.SETTINGS") as mock_settings,
+            patch(
+                "venom_core.core.orchestrator.orchestrator_dispatch.SETTINGS",
+                new=mock_settings,
+            ),
+        ):
             mock_settings.LLM_CONFIG_HASH = "initial_hash"
             yield
 
@@ -109,16 +115,16 @@ async def test_purge_queue(orchestrator_deps):
     state_manager.create_task("Task 1")
     state_manager.create_task("Task 2")
 
-    # Mock queue_manager behavior
-    orchestrator.queue_manager = MagicMock()
+    # Mock task_manager behavior
+    orchestrator.task_manager = MagicMock()
     # Mock return of async method
-    orchestrator.queue_manager.purge = AsyncMock(return_value={"purged": 2})
+    orchestrator.task_manager.purge = AsyncMock(return_value={"purged": 2})
 
     # purge_queue is async
     result = await orchestrator.purge_queue()
 
     assert result["purged"] == 2
-    orchestrator.queue_manager.purge.assert_called_once()
+    orchestrator.task_manager.purge.assert_called_once()
 
 
 # --- Emergency Procedures Tests ---
@@ -129,8 +135,8 @@ async def test_emergency_stop(orchestrator_deps):
     """Test emergency stop procedure."""
     orchestrator = Orchestrator(**orchestrator_deps)
 
-    orchestrator.queue_manager = MagicMock()
-    orchestrator.queue_manager.emergency_stop = AsyncMock(
+    orchestrator.task_manager = MagicMock()
+    orchestrator.task_manager.emergency_stop = AsyncMock(
         return_value={"status": "emergency_stopped"}
     )
 
@@ -138,7 +144,7 @@ async def test_emergency_stop(orchestrator_deps):
     result = await orchestrator.emergency_stop()
 
     assert result["status"] == "emergency_stopped"
-    orchestrator.queue_manager.emergency_stop.assert_called_once()
+    orchestrator.task_manager.emergency_stop.assert_called_once()
 
 
 # --- Kernel Management Tests ---

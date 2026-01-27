@@ -13,8 +13,21 @@ zidentyfikowanych jako podatne (CVE – high):
 - `urllib3>=2.6.3` – obsługa skompresowanych danych
 - `transformers>=4.57.6` – potencjalna deserializacja niezweryfikowanych danych
 - `azure-core>=1.38.0` – potencjalna deserializacja niezweryfikowanych danych
-- `pydantic` podniesiono do `>=2.12,<3.0` w celu zachowania zgodności z vLLM 0.12.x
-  oraz eliminacji konfliktu wersji (warning runtime).
+- `pydantic` podniesiono do `>=2.12,<3.0` zgodnie z polityką „nowszych wersji”.
+- `openai` podniesiono do `>=2.8.0` (wymaganie `litellm>=1.81.3`).
+- `openapi-core` podniesiono do `>=0.22.0`, aby odblokować `werkzeug>=3.1.5`.
+- `graphrag` i `lancedb` przypięte do stabilnych wersji w `requirements.txt`
+  (ograniczenie backtrackingu resolvera).
+
+## Status po ostatnim skanie (bieżące)
+
+- Podbicie `pypdf`, `filelock`, `litellm`, `marshmallow`, `pyasn1` i `werkzeug`
+  zmniejsza liczbę podatności, ale **łamie** zależności:
+  - `semantic-kernel` deklaruje `openai<2` i `pydantic<2.12` (wymaga weryfikacji
+    i ewentualnych patchy/override przy nowszych wersjach).
+  - `semantic-kernel` oczekuje `openapi-core<0.20`, podczas gdy projekt używa `>=0.22`.
+  Przyjęto decyzję: **idziemy w nowsze wersje mimo konfliktów** – wymagane testy
+  regresji oraz ewentualne poprawki runtime.
 
 ## Narzędzia i zakres kontroli
 
@@ -34,9 +47,11 @@ zidentyfikowanych jako podatne (CVE – high):
 
 ### Polityka wersji zależności (Python)
 
-- `semantic-kernel >= 1.39.1` – działa z `pydantic 2.12.x` przy shimsie `Url` (dodany w `venom_core/__init__.py`).
-- `pydantic 2.12.x` – wymagany przez vLLM 0.12.x (pip zgłasza warning, bo SK deklaruje `<2.12`, ale działa z shims).
-- Oczekiwane jest utrzymywanie zestawu: SK 1.39.1+, Pydantic 2.12.x, vLLM 0.12.x; w razie podbicia którejkolwiek paczki należy zweryfikować importy SK (Url) i uruchomić smoke testy.
+- `semantic-kernel >= 1.39.2` – deklaruje `pydantic <2.12` i `openai<2`, ale projekt
+  utrzymuje nowsze wersje wbrew metadanym. Wymaga walidacji runtime.
+- `pydantic >=2.12,<3.0` – docelowy zakres zgodny z polityką aktualizacji.
+- Oczekiwane jest utrzymywanie zestawu: SK 1.39.2+, Pydantic 2.12+ (z override),
+  OpenAI 2.x. Po każdej aktualizacji konieczne smoke testy.
 
 Projekt obecnie **nie posiada**:
 - SonarQube / SonarCloud,

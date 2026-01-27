@@ -44,26 +44,27 @@ Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkow
 - mechanizmy samodoskonalenia.
 
 Venom dąży do unifikacji technologicznej w oparciu o standard **ONNX Runtime**.
-Jednak w aspekcie praktycznym, modele językowe (LLM) ewoluowały w kierunku architektury **Dual-Engine**, obsługując zarówno ONNX, jak i natywne formaty GGUF/vLLM dla maksymalnej wydajności.
+W praktyce warstwa LLM działa dziś na serwerach zgodnych z OpenAI API (Ollama/vLLM) oraz chmurze (OpenAI/Gemini/Claude), a ONNX dla LLM pozostaje kierunkiem rozwojowym.
 Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykach.
 
 ## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
 <table>
 <tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja</th></tr>
-<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen</td><td>v1.0</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF)</td><td>v2.0</td></tr>
-<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>GPT-4o, Gemini Pro, Claude</td><td>v1.0</td></tr>
-<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent</td><td>v2.0</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG</td><td>v1.0</td></tr>
-<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (GGUF) / OpenAI</td><td>v1.0</td></tr>
+<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td></tr>
+<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td></tr>
+<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td></tr>
+<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
+<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
+<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
+<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
 <tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
 <tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
 <tr><td>Usta</td><td>Mowa (TTS)</td><td>Synteza głosu (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
 <tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>Obiekty, przeszkody</td><td>YOLO ONNX</td><td>v2.0</td></tr>
 <tr><td>Nogi</td><td>Ruch</td><td>Mobilność</td><td>Rider-Pi</td><td>v1.0</td></tr>
 <tr><td>Metabolizm</td><td>Wydajność</td><td>Wykonanie modeli</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
-<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM<br>Nest<br>API</td><td>v1.0</td></tr>
+<tr><td>Układ krążenia (Hive)</td><td>Kolejki i dystrybucja</td><td>Routing i statusy zadań</td><td>Redis + ARQ</td><td>v1.0</td></tr>
+<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
 <tr><td>Habitat</td><td>Środowisko</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
 </table>
 
@@ -71,21 +72,23 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 Pierwotna wizja zakładała oparcie całego systemu wyłącznie o **ONNX Runtime**.
 W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
 
-### Architektura Silników:
-1.  **Vision & Audio & Small Models** -> Pozostają w domenie **ONNX Runtime** (pełna unifikacja, szybkość, przenośność).
-2.  **Large Language Models (LLM)** -> Działają w architekturze **Dual-Engine**:
-    *   **Silnik A (Vision/Portability):** ONNX (dla mniejszych modeli, edge devices, pełnej zgodności).
-    *   **Silnik B (Performance/Quality):** Native/GGUF (Ollama, vLLM, llama.cpp) – dla maksymalnej jakości kwantyzacji i wydajności dużych modeli.
+### Architektura silników (stan v1.0 + cel v2.0):
+1.  **Vision & Audio** -> stan v1.0:
+    *   Vision: lokalne modele w Ollama (np. llava) lub OpenAI GPT-4o; Florence-2 ONNX planowany.
+    *   Audio: STT przez faster-whisper (CTranslate2), TTS przez Piper (ONNX) gdy model jest dostepny.
+2.  **Large Language Models (LLM)** -> stan v1.0:
+    *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + chmura (OpenAI/Gemini/Claude).
+    *   **ONNX LLM:** kierunek rozwojowy dla mniejszych modeli i edge devices.
 
-> [!NOTE]
 > **Decyzja Architektoniczna: Experimental Dual-Stack (Ollama vs vLLM)**
 > Utrzymywanie równoległego wsparcia dla obu technologii serwowania (Ollama i vLLM) jest na obecnym etapie **świadomym wyborem projektowym**.
 > Pozwala to na elastyczne testowanie różnych rodzin modeli i metod kwantyzacji w celu empirycznego wyłonienia najwydajniejszego rozwiązania docelowego dla specyficznych warunków sprzętowych.
+> **Stabilizacja (v1.0.x):** Wprowadzono hybrydową orkiestrację umożliwiającą płynne przełączanie między aktywnym serwerem a modelem bezpośrednio z poziomu Cockpitu (Hybrid Model Orchestration).
 
 
 ### Kategorie modeli:
-1. **Worker Models (robotnicy)** – szybkie modele ONNX.
-2. **Architect Models (architekci)** – duże modele ONNX, jeśli sprzęt pozwala.
+1. **Worker Models (robotnicy)** – szybkie modele lokalne (ONNX lub GGUF, w zaleznosci od runtime).
+2. **Architect Models (architekci)** – duze modele lokalne, jesli sprzet pozwala.
 3. **Oracle Models (zewnętrzne)** – gdy potrzebna wiedza ekspercka.
 
 ## 3. Warstwy Venoma (Architektura systemu)
@@ -97,7 +100,7 @@ W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
 - Task Log / State
 
 ### 3.2. Warstwa pamięci (Memory Layer)
-GraphRAG – struktura repo, zależności, wiedza projektowa.
+GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
 
 ### 3.3. Warstwa agentów (Agent Services Layer)
 - planner.arch
@@ -120,12 +123,16 @@ Semantic Kernel – pliki, shell, git, testy.
 Obsługa dwóch silników obliczeniowych:
 - **ONNX Runtime** – dla Vision, Audio i lekkich modeli.
 - **Native/GGUF Engine** – dla ciężkich modeli językowych (LLM).
+### 3.7. Warstwa infrastruktury i kolejek (Infrastructure Layer)
+- **FastAPI + WebSocket** – publiczne API i strumieniowanie zdarzeń.
+- **Redis + ARQ (Hive Message Broker)** – kolejki zadań, broadcast i kontrola węzłów.
+- **Nexus/Spore** – opcjonalna warstwa rozproszona (tryb klastra).
 
 ## 4. Warstwa wiedzy zewnętrznej (External Knowledge Layer)
 Trzy źródła:
 1. Wiedza lokalna – GraphRAG.
 2. Wiedza ekspercka lokalna – duże modele ONNX.
-3. Wiedza zewnętrzna – Web-Agent + Oracle.
+3. Wiedza zewnętrzna – Web-Agent + Oracle (OpenAI/Gemini/Claude), DDG/Tavily.
 
 Zasady:
 - local-first,
@@ -188,4 +195,4 @@ Venom to:
 - strażnik zasad,
 - AI tworząca AI.
 
-I wszystkie modele działają w zunifikowanej architekturze **Dual-Engine (ONNX + GGUF)**.
+Warstwa LLM dziala w podejsciu **Dual-Engine (Ollama/vLLM + chmura)**, a ONNX pokrywa wybrane obszary percepcji/audio; pelna unifikacja ONNX to cel v2.0.

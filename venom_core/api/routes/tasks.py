@@ -38,12 +38,15 @@ class HistoryRequestSummary(BaseModel):
     llm_runtime_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
+    forced_intent: Optional[str] = None
     error_code: Optional[str] = None
     error_class: Optional[str] = None
     error_message: Optional[str] = None
     error_details: Optional[dict] = None
     error_stage: Optional[str] = None
     error_retryable: Optional[bool] = None
+    feedback: Optional[dict] = None
+    result: Optional[str] = None
 
 
 class HistoryRequestDetail(BaseModel):
@@ -64,6 +67,7 @@ class HistoryRequestDetail(BaseModel):
     llm_runtime_id: Optional[str] = None
     forced_tool: Optional[str] = None
     forced_provider: Optional[str] = None
+    forced_intent: Optional[str] = None
     first_token: Optional[dict] = None
     streaming: Optional[dict] = None
     context_preview: Optional[dict] = None
@@ -76,6 +80,8 @@ class HistoryRequestDetail(BaseModel):
     error_details: Optional[dict] = None
     error_stage: Optional[str] = None
     error_retryable: Optional[bool] = None
+    result: Optional[str] = None
+    feedback: Optional[dict] = None
 
 
 # Dependency - będzie ustawione w main.py
@@ -383,12 +389,14 @@ async def get_request_history(
                 llm_runtime_id=trace.llm_runtime_id,
                 forced_tool=trace.forced_tool,
                 forced_provider=trace.forced_provider,
+                forced_intent=trace.forced_intent,
                 error_code=trace.error_code,
                 error_class=trace.error_class,
                 error_message=trace.error_message,
                 error_details=trace.error_details,
                 error_stage=trace.error_stage,
                 error_retryable=trace.error_retryable,
+                feedback=trace.feedback,
             )
         )
 
@@ -476,6 +484,7 @@ async def get_request_detail(request_id: UUID):
         llm_runtime_id=trace.llm_runtime_id,
         forced_tool=trace.forced_tool,
         forced_provider=trace.forced_provider,
+        forced_intent=trace.forced_intent,
         first_token=first_token,
         streaming=streaming,
         context_preview=context_preview,
@@ -488,4 +497,6 @@ async def get_request_detail(request_id: UUID):
         error_details=trace.error_details,
         error_stage=trace.error_stage,
         error_retryable=trace.error_retryable,
+        result=task.result if task else None,
+        feedback=trace.feedback,
     )

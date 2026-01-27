@@ -4,12 +4,13 @@ from fastapi import APIRouter, HTTPException
 
 from venom_core.core import metrics as metrics_module
 from venom_core.utils.logger import get_logger
+from venom_core.utils.ttl_cache import TTLCache
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
-# Dependency - będzie ustawione w main.py
+_metrics_cache = TTLCache[dict](ttl_seconds=1.0)
 _token_economist = None
 
 
@@ -123,3 +124,28 @@ async def get_system_metrics():
         raise HTTPException(
             status_code=500, detail="Błąd podczas pobierania metryk systemowych"
         ) from e
+
+
+@router.get("")
+async def get_metrics():
+    """
+    Zwraca metryki systemowe (root endpoint).
+    Tożsame z /system, ale z krótkim cache (1.0s) dla wysokiej wydajności dashboardu.
+
+    Returns:
+        Słownik z metrykami wydajności i użycia
+
+    Raises:
+        HTTPException: 503 jeśli MetricsCollector nie jest dostępny
+    """
+    collector = metrics_module.metrics_collector
+    if collector is None:
+        raise HTTPException(status_code=503, detail="Metrics collector not initialized")
+
+    cached = _metrics_cache.get()
+    if cached is not None:
+        return cached
+
+    metrics = collector.get_metrics()
+    _metrics_cache.set(metrics)
+    return metrics

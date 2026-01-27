@@ -7,14 +7,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # Import tylko potrzebnych rzeczy zamiast całego app
-from venom_core.api.routes import system
+from venom_core.api.routes import system_status
 
 
 @pytest.fixture
 def test_app():
     """Fixture dla testowej aplikacji FastAPI."""
     app = FastAPI()
-    app.include_router(system.router)
+    app.include_router(system_status.router)
     return app
 
 
@@ -30,7 +30,9 @@ class TestSystemStatusAPI:
     def test_system_status_success(self, client):
         """Test poprawnego pobrania statusu systemu z metrykami pamięci."""
         # Mock service monitor
-        with patch("venom_core.api.routes.system._service_monitor") as mock_monitor:
+        with patch(
+            "venom_core.api.routes.system_deps._service_monitor"
+        ) as mock_monitor:
             mock_monitor.get_memory_metrics.return_value = {
                 "memory_usage_mb": 8192.50,
                 "memory_total_mb": 16384.00,
@@ -61,7 +63,9 @@ class TestSystemStatusAPI:
 
     def test_system_status_without_gpu(self, client):
         """Test statusu systemu bez dostępnego GPU (VRAM = null)."""
-        with patch("venom_core.api.routes.system._service_monitor") as mock_monitor:
+        with patch(
+            "venom_core.api.routes.system_deps._service_monitor"
+        ) as mock_monitor:
             mock_monitor.get_memory_metrics.return_value = {
                 "memory_usage_mb": 4096.25,
                 "memory_total_mb": 8192.00,
@@ -89,7 +93,7 @@ class TestSystemStatusAPI:
 
     def test_system_status_service_monitor_unavailable(self, client):
         """Test błędu 503 gdy ServiceMonitor nie jest dostępny."""
-        with patch("venom_core.api.routes.system._service_monitor", None):
+        with patch("venom_core.api.routes.system_deps._service_monitor", None):
             response = client.get("/api/v1/system/status")
 
             assert response.status_code == 503
@@ -97,7 +101,9 @@ class TestSystemStatusAPI:
 
     def test_system_status_internal_error(self, client):
         """Test błędu 500 gdy get_memory_metrics rzuca wyjątek."""
-        with patch("venom_core.api.routes.system._service_monitor") as mock_monitor:
+        with patch(
+            "venom_core.api.routes.system_deps._service_monitor"
+        ) as mock_monitor:
             mock_monitor.get_memory_metrics.side_effect = Exception(
                 "Błąd pobierania metryk"
             )
@@ -109,7 +115,9 @@ class TestSystemStatusAPI:
 
     def test_system_status_unhealthy_system(self, client):
         """Test statusu dla systemu w złym stanie (critical service offline)."""
-        with patch("venom_core.api.routes.system._service_monitor") as mock_monitor:
+        with patch(
+            "venom_core.api.routes.system_deps._service_monitor"
+        ) as mock_monitor:
             mock_monitor.get_memory_metrics.return_value = {
                 "memory_usage_mb": 15000.00,
                 "memory_total_mb": 16384.00,

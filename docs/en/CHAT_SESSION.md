@@ -3,7 +3,7 @@
 This document describes how chat works, what data it collects, where it stores it, and how sessions are reset.
 
 ## Overview
-- Chat works in `web-next` UI (Cockpit AI) and sends tasks to FastAPI backend.
+- Chat works in `web-next` UI (Cockpit AI) and sends tasks to FastAPI backend (QueueManager).
 - Conversation context is built on backend side based on session history and metadata.
 - Conversation continuity is maintained within `session_id`.
 - Backend restart forces new session (UI generates new `session_id`).
@@ -31,6 +31,11 @@ This document describes how chat works, what data it collects, where it stores i
 - Content: prompt (shortened), status, steps, LLM metadata.
 - Non-persistent (disappears after restart).
 
+### Event Stream (WebSocket)
+- API: `/ws/events`
+- Content: system events and status updates (e.g. response stream, metrics).
+- Non-persistent (stream restarts after reboot).
+
 ### Vector Memory (global)
 - Persistent cross-session knowledge (e.g., LanceDB).
 - Records: responses, summaries, lessons, facts.
@@ -50,6 +55,7 @@ This document describes how chat works, what data it collects, where it stores i
 
 ## Chat Routing Logic (why and what is called)
 - Default rule: **if intent doesn't require tool and isn't forced, goes to LLM** (GENERAL_CHAT).
+- Model Router selects LLM runtime (LOCAL/HYBRID/CLOUD) based on `AI_MODE` and policies.
 - Tools/skills are triggered only when:
   - intent requires tool (e.g., STATUS_REPORT, VERSION_CONTROL, RESEARCH), or
   - user forces it via slash command (`/git`, `/web`, etc.).

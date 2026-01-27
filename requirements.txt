@@ -14,7 +14,7 @@ uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
-semantic-kernel>=1.39.1 # Microsoft Semantic Kernel (v1.39.1+; działa z Pydantic 2.12+ przy shimsie Url)
+semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (nowsza wersja; wymaga walidacji kompatybilności)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
 httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)
@@ -33,15 +33,21 @@ protobuf>=3.20.2        # Kluczowe: zapobiega konfliktom między ONNX a innymi l
 
 # --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
 
-graphrag                # Microsoft GraphRAG (Pamięć długotrwała)
+graphrag==2.7.0         # Microsoft GraphRAG (Pamięć długotrwała) - pin dla stabilnego resolvera
 networkx                # Analiza grafów
-lancedb                 # Baza wektorowa (Local-first)
+lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
 
 # Ingestion Engine dependencies
-pypdf                   # Ekstrakcja tekstu z PDF (fallback dla markitdown)
+pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
+filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
+litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
+marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
+pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
+werkzeug>=3.1.5         # Fix for locust transitive vulnerability
 markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
 python-docx             # Obsługa plików DOCX (fallback dla markitdown)
+openapi-core>=0.22.0    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5)
 
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
@@ -71,7 +77,7 @@ google-api-python-client>=2.100.0  # Google Calendar API client
 
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 
-openai                  # SDK OpenAI (Obsługuje też lokalne serwery zgodne z OpenAI API np. vLLM/Llama.cpp)
+openai>=2.8.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
 google-generativeai     # Gemini API
 anthropic               # Claude API
 azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji
@@ -81,7 +87,7 @@ tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT
 # --- VENOM INFRASTRUCTURE & UTILS ---
 
 python-dotenv           # Zmienne środowiskowe (.env)
-pydantic>=2.12,<3.0     # Walidacja (podbijamy do 2.12+ dla zgodności z vLLM 0.12.x; SK 1.x wspiera 2.x)
+pydantic>=2.12,<3.0     # Walidacja (nowsza wersja; wymaga walidacji kompatybilności z SK)
 numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
 pandas                  # Analiza danych
 colorama                # Kolory w terminalu
@@ -127,7 +133,8 @@ mss>=9.0.1              # Fast screenshot library
 
 pytest                  # Testy
 pytest-asyncio          # Obsługa testów asynchronicznych
-pytest-cov              # Raporty pokrycia testami
+pytest-cov>=7.0.0       # Raporty pokrycia testami
+pytest-xdist>=3.6.1
 locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie
@@ -136,4 +143,3 @@ types-psutil            # Typy dla psutil
 types-docker            # Typy dla docker SDK
 types-bleach            # Typy dla bleach
 types-aiofiles          # Typy dla aiofiles
-types-APScheduler       # Typy dla APScheduler

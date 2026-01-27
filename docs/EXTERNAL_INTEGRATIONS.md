@@ -2,7 +2,7 @@
 
 ## Przegląd
 
-Moduł integracji zewnętrznej umożliwia Venomowi automatyczną obsługę zadań z platform zewnętrznych (GitHub Issues) oraz wysyłanie powiadomień (Discord/Slack).
+Moduł integracji zewnętrznej umożliwia Venomowi automatyczną obsługę zadań z platform zewnętrznych (GitHub Issues), wysyłanie powiadomień (Discord/Slack), wyszukiwanie w sieci (Tavily), eksplorację modeli (Hugging Face) oraz integrację kalendarza (Google Calendar). Wszystkie integracje są opcjonalne i działają tylko po konfiguracji w `.env`.
 
 ## Komponenty
 
@@ -20,7 +20,26 @@ Wrapper dla API platform zewnętrznych:
 - `send_notification(message, channel="discord")` - Wysyła powiadomienie na Discord/Slack
 - `check_connection()` - Sprawdza status połączenia z platformami
 
-### 2. IntegratorAgent 1.0 (`venom_core/agents/integrator.py`)
+### 2. WebSearchSkill (`venom_core/execution/skills/web_skill.py`)
+
+Integracja wyszukiwania zewnętrznego:
+- **Tavily API** (jeśli `TAVILY_API_KEY` jest ustawiony) dla lepszej jakości wyników.
+- **DuckDuckGo (DDG)** jako fallback bez klucza.
+
+### 3. HuggingFaceSkill (`venom_core/execution/skills/huggingface_skill.py`)
+
+Eksploracja modeli i datasetów:
+- wyszukiwanie modeli/datasetów,
+- pobieranie metadanych,
+- wsparcie tokenem `HF_TOKEN` (opcjonalnie, prywatne modele).
+
+### 4. GoogleCalendarSkill (`venom_core/execution/skills/google_calendar_skill.py`)
+
+Integracja kalendarza:
+- odczyt i zapis zdarzeń (write-only do kalendarza Venoma),
+- OAuth2 credentials w `data/config/*`.
+
+### 5. IntegratorAgent 1.0 (`venom_core/agents/integrator.py`)
 
 Rozszerzony agent DevOps z funkcjami:
 
@@ -29,7 +48,7 @@ Rozszerzony agent DevOps z funkcjami:
 - `handle_issue(issue_number)` - Obsługuje Issue: pobiera szczegóły, tworzy branch
 - `finalize_issue(issue_number, branch_name, pr_title, pr_body)` - Finalizuje: tworzy PR, komentuje, wysyła powiadomienie
 
-### 3. Orchestrator Pipeline (`venom_core/core/orchestrator.py`)
+### 6. Orchestrator Pipeline (`venom_core/core/orchestrator.py`)
 
 **Nowa metoda:**
 - `handle_remote_issue(issue_number)` - Kompletny workflow "Issue-to-PR":
@@ -48,11 +67,24 @@ Dodaj do `.env`:
 GITHUB_TOKEN=ghp_your_personal_access_token
 GITHUB_REPO_NAME=username/repository
 
+# Hugging Face (opcjonalne)
+HF_TOKEN=
+
 # Discord Notifications (opcjonalne)
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 # Slack Notifications (opcjonalne)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Tavily AI Search (opcjonalne)
+TAVILY_API_KEY=
+
+# Google Calendar (opcjonalne)
+ENABLE_GOOGLE_CALENDAR=false
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+VENOM_CALENDAR_ID=venom_work_calendar
+VENOM_CALENDAR_NAME=Venom Work
 
 # Issue Polling (opcjonalne)
 ENABLE_ISSUE_POLLING=true
@@ -171,6 +203,11 @@ Implementacja używa **polling** (odpytywanie API co N minut) zamiast webhooków
 Rate limits GitHub API:
 - Authenticated: 5000 requests/hour
 - Polling co 5 minut = 12 requests/hour ✅
+
+### Limity i zależności dodatkowe
+
+- **Tavily** wymaga aktywnego klucza API; bez niego WebSearchSkill użyje DDG.
+- **Google Calendar** wymaga konfiguracji OAuth2 i pierwszego logowania w trybie lokalnym.
 
 ### Rate Limiting
 

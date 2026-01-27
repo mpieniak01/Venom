@@ -13,6 +13,8 @@ import {
   Settings,
   Calendar,
   Layers,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -69,6 +71,7 @@ export function Sidebar() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectedAutonomy, setSelectedAutonomy] = useState<string>("");
   const [localAutonomy, setLocalAutonomy] = useState<AutonomySnapshot | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
   const t = useTranslation();
 
   const resolveAutonomyDetails = (level: number | null) => {
@@ -128,6 +131,10 @@ export function Sidebar() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const storedCollapsed = window.localStorage.getItem("sidebar-collapsed");
+    if (storedCollapsed) {
+      setCollapsed(storedCollapsed === "true");
+    }
     const stored = window.localStorage.getItem("sidebar-autonomy");
     if (stored) {
       try {
@@ -139,6 +146,13 @@ export function Sidebar() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("sidebar-collapsed", String(collapsed));
+    const root = document.documentElement;
+    root.style.setProperty("--sidebar-width", collapsed ? "6rem" : "18rem");
+  }, [collapsed]);
 
   useEffect(() => {
     if (!autonomy) return;
@@ -182,29 +196,53 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="glass-panel fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-white/5 bg-black/25 px-6 py-6 text-zinc-100 shadow-card lg:flex">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <aside
+      className={cn(
+        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-[width] duration-300 lg:flex relative overflow-y-auto overflow-x-visible",
+        collapsed ? "w-24 min-w-24 px-3" : "w-72 min-w-72 px-6",
+      )}
+      data-testid="sidebar"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
             🐍
           </div>
-          <div>
-            <p className="eyebrow">
-              {t("sidebar.brand.caption")}
-            </p>
-            <p className="text-lg font-semibold tracking-[0.1em] text-white">
-              {t("sidebar.brand.title")}
-            </p>
-          </div>
+          {!collapsed && (
+            <div>
+              <p className="eyebrow">
+                {t("sidebar.brand.caption")}
+              </p>
+              <p className="text-lg font-semibold tracking-[0.1em] text-white">
+                {t("sidebar.brand.title")}
+              </p>
+            </div>
+          )}
         </div>
-        <span className="pill-badge">v1.0</span>
+        <div className={cn("flex items-center gap-2", collapsed && "flex-col")}>
+          <span className="pill-badge">v1.0</span>
+        </div>
       </div>
-      <nav className="mt-8 space-y-5">
+      <button
+        type="button"
+        aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+        className={cn(
+          "absolute top-2 -right-6 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-black/80 text-white shadow-card transition hover:border-white/40 hover:bg-white/10",
+          collapsed && "top-1",
+        )}
+        onClick={() => setCollapsed((prev) => !prev)}
+        data-testid="sidebar-toggle"
+      >
+        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+      </button>
+      <nav className={cn("mt-8 space-y-5", collapsed && "mt-6")}>
         <div>
-          <p className="eyebrow">
-            {t("sidebar.modulesTitle")}
-          </p>
-          <div className="mt-3 space-y-2">
+          {!collapsed && (
+            <p className="eyebrow">
+              {t("sidebar.modulesTitle")}
+            </p>
+          )}
+          <div className={cn("mt-3 space-y-2", collapsed && "mt-0")}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
@@ -213,8 +251,10 @@ export function Sidebar() {
                 <a
                   key={item.href}
                   href={item.href}
+                  title={label}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-sm font-medium transition pointer-events-auto",
+                    "flex w-full items-center gap-3 rounded-2xl border text-sm font-medium transition pointer-events-auto",
+                    collapsed ? "justify-center px-0 py-3" : "px-3 py-2",
                     active
                       ? "border-emerald-300/60 bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-200 shadow-neon"
                       : "border-white/10 bg-black/30 text-white hover:border-white/30 hover:bg-white/5",
@@ -223,14 +263,14 @@ export function Sidebar() {
                   aria-current={active ? "page" : undefined}
                 >
                   <Icon className={cn("h-4 w-4", active ? "text-emerald-300" : "text-zinc-400")} />
-                  <span>{label}</span>
+                  {!collapsed && <span>{label}</span>}
                 </a>
               );
             })}
           </div>
         </div>
       </nav>
-      <div className="mt-auto space-y-5">
+      <div className={cn("mt-8 space-y-5 transition-opacity duration-200", collapsed && "opacity-0 pointer-events-none")}>
         <SystemStatusPanel />
 
         <section

@@ -495,6 +495,7 @@ export function CockpitChatThread({
                 forcedLabel={forcedLabel}
                 modeLabel={msg.modeLabel}
                 sourceLabel={msg.sourceLabel}
+                contextUsed={msg.contextUsed ?? undefined}
               />
             </div>
           );

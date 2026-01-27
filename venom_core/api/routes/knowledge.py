@@ -1,5 +1,6 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -286,7 +287,31 @@ async def get_graph_summary():
 
     try:
         summary = _graph_store.get_graph_summary()
-        return {"status": "success", "summary": summary}
+        nodes = summary.get("total_nodes")
+        edges = summary.get("total_edges")
+        last_updated = None
+        try:
+            if _graph_store.graph_file.exists():
+                last_updated = datetime.fromtimestamp(
+                    _graph_store.graph_file.stat().st_mtime, tz=timezone.utc
+                ).isoformat()
+        except Exception:
+            last_updated = None
+
+        summary_payload = {
+            **summary,
+            "nodes": nodes,
+            "edges": edges,
+            "last_updated": last_updated,
+        }
+
+        return {
+            "status": "success",
+            "summary": summary_payload,
+            "nodes": nodes,
+            "edges": edges,
+            "lastUpdated": last_updated,
+        }
     except Exception as e:
         logger.exception("Błąd podczas pobierania podsumowania grafu")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

@@ -360,11 +360,17 @@ export function useCockpitLogic(
                         ...deduped[index],
                         content: content,
                         pending: isPending,
-                        status: stream.status
+                        status: stream.status,
+                        contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
                     };
                 } else if (isPending && !deduped[index].pending) {
                     // Revival of pending state if needed
-                    deduped[index] = { ...deduped[index], pending: true, status: stream.status };
+                    deduped[index] = {
+                        ...deduped[index],
+                        pending: true,
+                        status: stream.status,
+                        contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
+                    };
                 }
             } else if (content || isPending) {
                 deduped.push({
@@ -373,7 +379,8 @@ export function useCockpitLogic(
                     request_id: taskId,
                     timestamp: new Date().toISOString(), // pending
                     pending: isPending,
-                    status: stream.status
+                    status: stream.status,
+                    contextUsed: stream.contextUsed ?? undefined,
                 });
             }
         });
@@ -394,7 +401,8 @@ export function useCockpitLogic(
                 requestId: entry.request_id,
                 timestamp: entry.timestamp,
                 pending: entry.pending || false,
-                status: entry.status || null
+                status: entry.status || null,
+                contextUsed: entry.contextUsed ?? null,
             };
         });
 

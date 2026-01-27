@@ -133,7 +133,8 @@ mss>=9.0.1              # Fast screenshot library
 
 pytest                  # Testy
 pytest-asyncio          # Obsługa testów asynchronicznych
-pytest-cov              # Raporty pokrycia testami
+pytest-cov>=7.0.0       # Raporty pokrycia testami
+pytest-xdist>=3.6.1
 locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie

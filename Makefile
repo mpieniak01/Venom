@@ -31,6 +31,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
+	pytest e2e test-optimal \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor
@@ -60,6 +61,14 @@ test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
 
 test-all: test test-web-unit test-web-e2e
+
+pytest:
+	bash scripts/run-pytest-optimal.sh
+
+e2e:
+	bash scripts/run-e2e-optimal.sh
+
+test-optimal: pytest e2e
 
 install-hooks:
 	pre-commit install

@@ -24,7 +24,7 @@ type CockpitMetricsProps = {
   tokenHistory: TokenSample[];
   tokenTrendDelta: number | null;
   tokenTrendLabel: string;
-  totalTokens: number | string;
+  totalTokens: number;
   showReferenceSections: boolean;
   telemetryFeed: TelemetryFeedEntry[];
 };

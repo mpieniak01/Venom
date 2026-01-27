@@ -9,13 +9,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { DynamicParameterForm, type GenerationSchema } from "@/components/ui/dynamic-parameter-form";
+import type { GenerationParams } from "@/lib/types";
 
 type CockpitTuningDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   loadingSchema: boolean;
   modelSchema: GenerationSchema | null;
-  generationParams: Record<string, unknown> | null;
+  generationParams: GenerationParams | null;
   onChangeGenerationParams: (values: Record<string, unknown>) => void;
   onResetGenerationParams: () => void;
   tuningSaving: boolean;

@@ -84,7 +84,7 @@ export default function BenchmarkPage() {
         title="Wyniki porównawcze"
         description="Tabela z metrykami wydajności dla testowanych modeli"
       >
-        <BenchmarkResults results={results} />
+        <BenchmarkResults currentResults={results} />
       </Panel>
     </div>
   );

@@ -1,0 +1,14 @@
+tests/test_audio_stream_handler_roi.py
+tests/test_compose_integration.py
+tests/test_external_discovery_integration.py
+tests/test_file_operations_integration.py
+tests/test_generation_params_integration.py
+tests/test_history_payload_details.py
+tests/test_llm_simple_stream.py
+tests/test_motor_cortex_integration.py
+tests/test_orchestrator_council_integration.py
+tests/test_overmind_integration.py
+tests/test_planning_integration.py
+tests/test_rag_integration.py
+tests/test_state_and_orchestrator.py
+tests/test_tasks_stream.py

@@ -277,7 +277,13 @@ async def get_graph_summary():
     Zwraca podsumowanie grafu kodu.
 
     Returns:
-        Statystyki grafu
+        Statystyki grafu z następującą strukturą:
+        - summary: Główny obiekt zawierający pełne dane (nodes, edges, last_updated, total_nodes, total_edges)
+        - nodes, edges, lastUpdated: Pola na głównym poziomie dla kompatybilności wstecznej (camelCase)
+        
+        Uwaga: Pola na głównym poziomie (nodes, edges, lastUpdated) są duplikatami danych
+        z obiektu summary i służą wyłącznie dla kompatybilności wstecznej z istniejącymi klientami.
+        Nowy kod powinien używać danych z obiektu summary.
 
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny

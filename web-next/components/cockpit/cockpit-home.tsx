@@ -352,7 +352,7 @@ export function CockpitHome({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       {/* HEADER */}
       <CockpitHeader {...headerProps} />
 

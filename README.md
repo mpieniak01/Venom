@@ -671,6 +671,7 @@ make pytest
 npm --prefix web-next run test:e2e:preflight
 npm --prefix web-next run test:e2e:latency
 npm --prefix web-next run test:e2e:functional -- --workers=4
+## Skład grupy functional: smoke + chat-mode-routing + streaming + chat-context-icons
 
 # Alternatywnie (skrypt):
 ./scripts/run-e2e-optimal.sh

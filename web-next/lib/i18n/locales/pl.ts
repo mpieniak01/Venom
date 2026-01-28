@@ -24,6 +24,8 @@ export const pl = {
       title: "Centrum dowodzenia",
     },
     modulesTitle: "Moduły",
+    collapse: "Zwiń menu",
+    expand: "Rozwiń menu",
     nav: {
       cockpit: "Kokpit",
       brain: "Graf wiedzy",

@@ -210,9 +210,12 @@ export function Sidebar() {
           </div>
           {!collapsed && (
             <div>
-              <p className="eyebrow">
-                {t("sidebar.brand.caption")}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="eyebrow">
+                  {t("sidebar.brand.caption")}
+                </p>
+                <span className="pill-badge">v1.0</span>
+              </div>
               <p className="text-lg font-semibold tracking-[0.1em] text-white">
                 {t("sidebar.brand.title")}
               </p>
@@ -220,21 +223,18 @@ export function Sidebar() {
           )}
         </div>
         <div className={cn("flex items-center gap-2", collapsed && "flex-col")}>
-          <span className="pill-badge">v1.0</span>
+          {collapsed && <span className="pill-badge">v1.0</span>}
+          <button
+            type="button"
+            aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-black/80 text-white shadow-card transition hover:border-white/40 hover:bg-white/10"
+            onClick={() => setCollapsed((prev) => !prev)}
+            data-testid="sidebar-toggle"
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
       </div>
-      <button
-        type="button"
-        aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
-        className={cn(
-          "absolute top-2 -right-6 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-black/80 text-white shadow-card transition hover:border-white/40 hover:bg-white/10",
-          collapsed && "top-1",
-        )}
-        onClick={() => setCollapsed((prev) => !prev)}
-        data-testid="sidebar-toggle"
-      >
-        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-      </button>
       <nav className={cn("mt-8 space-y-5", collapsed && "mt-6")}>
         <div>
           {!collapsed && (

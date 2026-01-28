@@ -151,7 +151,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
       data-testid="bottom-status-bar"
       className="pointer-events-none absolute inset-x-0 bottom-6 z-30 px-4 sm:px-5 lg:px-6 lg:pl-[calc(var(--sidebar-width)+1rem)] xl:px-8 xl:pl-[calc(var(--sidebar-width)+1.5rem)]"
     >
-      <div className="pointer-events-auto mx-auto w-full max-w-[1600px] 2xl:max-w-[75vw] border border-white/15 bg-black/75 px-5 py-4 text-xs text-left shadow-2xl shadow-emerald-900/40 backdrop-blur-2xl">
+      <div className="pointer-events-auto mr-auto w-full max-w-[1320px] 2xl:max-w-[68vw] border border-white/15 bg-black/75 px-5 py-4 text-xs text-left shadow-2xl shadow-emerald-900/40 backdrop-blur-2xl">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div
             className="flex flex-wrap items-center gap-x-4 gap-y-1 text-hint"

@@ -151,6 +151,7 @@ export function Sidebar() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("sidebar-collapsed", String(collapsed));
     const root = document.documentElement;
+    if (!root) return;
     root.style.setProperty("--sidebar-width", collapsed ? "6rem" : "18rem");
   }, [collapsed]);
 
@@ -198,7 +199,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-[width] duration-300 lg:flex relative overflow-y-auto overflow-x-visible",
+        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-[width] duration-300 lg:flex overflow-y-auto overflow-x-visible",
         collapsed ? "w-24 min-w-24 px-3" : "w-72 min-w-72 px-6",
       )}
       data-testid="sidebar"

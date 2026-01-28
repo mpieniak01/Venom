@@ -55,7 +55,7 @@ export default async function RootLayout({
             </div>
             <div className="relative z-10 flex">
               <Sidebar />
-              <div className="relative flex flex-1 flex-col lg:pl-0">
+              <div className="relative flex flex-1 flex-col lg:pl-[var(--sidebar-width)]">
                 <TopBar initialStatusData={initialStatusData} />
                 <main className="flex-1 overflow-y-auto px-4 py-10 pb-24 sm:px-8 lg:px-10 xl:px-12">
                   <div className="mr-auto w-full max-w-[1320px] 2xl:max-w-[68vw] space-y-6">

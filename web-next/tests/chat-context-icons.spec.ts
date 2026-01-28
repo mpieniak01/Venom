@@ -148,6 +148,12 @@ test.describe("Chat context icons", () => {
           this.listeners[event].push(handler);
         }
 
+        removeEventListener(event: string, handler: (event: MessageEvent) => void) {
+          if (this.listeners[event]) {
+            this.listeners[event] = this.listeners[event].filter(h => h !== handler);
+          }
+        }
+
         close() {
           this.listeners = {};
         }
@@ -234,6 +240,12 @@ test.describe("Chat context icons", () => {
         addEventListener(event: string, handler: (event: MessageEvent) => void) {
           this.listeners[event] = this.listeners[event] || [];
           this.listeners[event].push(handler);
+        }
+
+        removeEventListener(event: string, handler: (event: MessageEvent) => void) {
+          if (this.listeners[event]) {
+            this.listeners[event] = this.listeners[event].filter(h => h !== handler);
+          }
         }
 
         close() {

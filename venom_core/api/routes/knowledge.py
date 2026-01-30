@@ -301,7 +301,8 @@ async def get_graph_summary():
                 last_updated = datetime.fromtimestamp(
                     _graph_store.graph_file.stat().st_mtime, tz=timezone.utc
                 ).isoformat()
-        except Exception:
+        except Exception as e:
+            logger.debug("Nie można odczytać statystyk pliku grafu: %s", e)
             last_updated = None
 
         summary_payload = {

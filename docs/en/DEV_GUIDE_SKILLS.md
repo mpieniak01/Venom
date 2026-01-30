@@ -105,7 +105,18 @@ await mcp_manager.import_mcp_tool_from_git(
 
 After this operation, a new skill (e.g., `SqliteMcpSkill`) appears in the system, exposing MCP server functions (e.g., `query`, `list_tables`) as native `@kernel_function`.
 
+### MCP Integration Standardization
+All MCP imports are handled by `McpManagerSkill` and follow a standardized structure:
+- repositories go to `venom_core/skills/mcp/_repos/`,
+- wrappers are generated in `venom_core/skills/custom/` as `mcp_*.py`,
+- do not edit these files manually (they are generated).
+
 ### MCP Structure in Venom
 *   `venom_core/skills/mcp/` - Manager and generator logic.
 *   `venom_core/skills/mcp/_repos/` - Cloned repositories (do not edit manually).
 *   `venom_core/skills/custom/mcp_*.py` - Generated wrappers (can be viewed, do not edit).
+
+### Related documentation (MCP)
+- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
+- `docs/en/BACKEND_ARCHITECTURE.md` – execution layer and MCP in architecture.
+- `docs/en/TREE.md` – repo structure and MCP directories.

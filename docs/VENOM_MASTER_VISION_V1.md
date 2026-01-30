@@ -56,6 +56,7 @@ Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykac
 <tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
 <tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
 <tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
+<tr><td>Synapsy narzędziowe (MCP)</td><td>Rozszerzenia narzędzi</td><td>Import narzędzi z Git, standaryzacja integracji</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
 <tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
 <tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
 <tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
@@ -114,6 +115,7 @@ GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
 
 ### 3.4. Warstwa wykonawcza (Execution Layer)
 Semantic Kernel – pliki, shell, git, testy.
+MCP Import – narzędzia z Git (generator proxy + wrappery w `venom_core/skills/custom`).
 
 ### 3.5. Warstwa percepcji (Vision Layer)
 - Florence-2 ONNX – UI vision

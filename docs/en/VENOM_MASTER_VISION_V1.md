@@ -56,6 +56,7 @@ Oracle Models (cloud) are optional and work only in selected policies.
 <tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
 <tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
 <tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
+<tr><td>Tool synapses (MCP)</td><td>Tool extensions</td><td>Git tool import, integration standardization</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
 <tr><td>Eyes (digital)</td><td>UI perception</td><td>Screenshot analysis (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
 <tr><td>Eyes (digital)</td><td>UI perception</td><td>Target local engine</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
 <tr><td>Ears</td><td>Hearing (STT)</td><td>Audio transcription (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
@@ -114,6 +115,7 @@ GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
 
 ### 3.4. Execution layer (Execution Layer)
 Semantic Kernel – files, shell, git, tests.
+MCP Import – tools from Git (proxy generator + wrappers in `venom_core/skills/custom`).
 
 ### 3.5. Perception layer (Vision Layer)
 - Florence-2 ONNX – UI vision

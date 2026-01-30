@@ -8,6 +8,7 @@ Venom is being transformed from a simple command executor into an **autonomous e
 
 ### ✨ Key Features
 - 🎨 Creating new tools and self-repair
+- 🔌 **MCP Tools Import** - Model Context Protocol integration (Git import)
 - 🌐 **Internet Access** - Searching for current information (prices, news, documentation)
 - 🧠 **Strategic Planning** - Automatic decomposition of complex projects into steps
 - 📚 **Knowledge Synthesis** - Collecting and analyzing documentation from multiple sources
@@ -139,6 +140,7 @@ Orchestrator (flow decision)
 > 🔎 **New web-next dashboard**
 > Detailed description of data sources for Brain/Strategy views and test checklist can be found in the `FRONTEND_NEXT_GUIDE.md` document (translation in progress).
 > Chat session documentation, Direct/Normal/Complex modes and memory behavior: `CHAT_SESSION.md`.
+> Skills standards and MCP import documentation: `DEV_GUIDE_SKILLS.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 

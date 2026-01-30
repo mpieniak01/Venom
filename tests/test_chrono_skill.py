@@ -125,7 +125,7 @@ class TestChronoSkill:
         """Test usuwania nieistniejącego checkpointu."""
         result = await chrono_skill.delete_checkpoint(checkpoint_id="nonexistent")
 
-        assert "✗" in result
+        assert "❌" in result
 
     @pytest.mark.asyncio
     async def test_branch_timeline(self, chrono_skill):
@@ -142,7 +142,7 @@ class TestChronoSkill:
         await chrono_skill.branch_timeline(name="test")
         result = await chrono_skill.branch_timeline(name="test")
 
-        assert "✗" in result
+        assert "❌" in result
 
     @pytest.mark.asyncio
     async def test_list_timelines_empty(self, chrono_skill):

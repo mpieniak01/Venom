@@ -11,12 +11,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.ttl_cache import TTLCache
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_storage_cache = TTLCache[dict](ttl_seconds=60.0)
 
 
 @router.get("/system/storage")
@@ -25,6 +27,10 @@ async def get_storage_snapshot():
     Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).
     """
     try:
+        cached = _storage_cache.get()
+        if cached is not None:
+            return cached
+
         disk_physical_mount = Path("/usr/lib/wsl/drivers")
         if not disk_physical_mount.exists():
             disk_physical_mount = PROJECT_ROOT
@@ -42,6 +48,16 @@ async def get_storage_snapshot():
             {"name": "Dane: memory", "path": "data/memory", "kind": "data"},
             {"name": "Dane: audio", "path": "data/audio", "kind": "data"},
             {"name": "Dane: learning", "path": "data/learning", "kind": "data"},
+            {
+                "name": "MCP: Repozytoria narzędzi",
+                "path": "workspace/venom_core/skills/mcp/_repos",
+                "kind": "mcp",
+            },
+            {
+                "name": "MCP: Wygenerowane skille",
+                "path": "workspace/venom_core/skills/custom",
+                "kind": "mcp",
+            },
             {
                 "name": "Build: web-next/.next",
                 "path": "web-next/.next",
@@ -145,7 +161,7 @@ async def get_storage_snapshot():
             },
         )
         items.sort(key=lambda item: item["size_bytes"], reverse=True)
-        return {
+        res = {
             "status": "success",
             "refreshed_at": datetime.now().isoformat(),
             "disk": {
@@ -162,6 +178,8 @@ async def get_storage_snapshot():
             },
             "items": items,
         }
+        _storage_cache.set(res)
+        return res
     except Exception as e:
         logger.exception("Błąd podczas pobierania snapshotu storage")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e

@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "dompurify": "^3.3.1",
+    "eventsource-parser": "^3.0.6",
     "framer-motion": "^12.23.26",
     "katex": "^0.16.27",
     "lucide-react": "^0.561.0",

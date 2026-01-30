@@ -39,7 +39,12 @@ async def get_runtime_status():
         service_monitor = system_deps.get_service_monitor()
         if service_monitor:
             try:
-                monitor_services = await service_monitor.check_health()
+                # Wyzwól odświeżenie w tle (fire-and-forget), aby nie blokować requestu
+                import asyncio
+
+                asyncio.create_task(service_monitor.check_health())
+                # Pobierz natychmiast ostatnie znane dane
+                monitor_services = service_monitor.get_all_services()
             except Exception as exc:  # pragma: no cover
                 logger.warning(f"Nie udało się sprawdzić ServiceMonitor: {exc}")
                 monitor_services = service_monitor.get_all_services()

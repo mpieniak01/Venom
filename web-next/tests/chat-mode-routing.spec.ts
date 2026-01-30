@@ -219,8 +219,8 @@ test.describe("Chat mode routing", () => {
       simpleBody = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({
         status: 200,
-        contentType: "text/plain",
-        body: "OK",
+        contentType: "text/event-stream",
+        body: 'event: content\ndata: {"text": "O"}\n\nevent: content\ndata: {"text": "K"}\n\nevent: done\ndata: {}\n\n',
       });
     });
 

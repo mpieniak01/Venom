@@ -20,6 +20,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 💬 **Ciągłość czatu** - spójna historia sesji per `session_id` (SessionStore) z resetem po restarcie backendu
 - 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
 - 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
+- 🔌 **Import Narzędzi MCP** - Możliwość importowania narzędzi w standardzie Model Context Protocol bezpośrednio z repozytoriów Git (izolacja w venv)
 
 ### 🎯 Przykłady użycia
 
@@ -678,6 +679,18 @@ npm --prefix web-next run test:e2e:functional -- --workers=4
 
 # Alternatywnie (make):
 make e2e
+
+## 🔌 Zarządzanie MCP (Model Context Protocol)
+
+Mechanizm MCP pozwala na dynamiczne rozszerzanie możliwości agentów o zewnętrzne narzędzia.
+
+```bash
+# Sprawdzenie statusu zaimportowanych narzędzi
+make mcp-status
+
+# Wyczyszczenie wszystkich narzędzi (cache i venv)
+make mcp-clean
+```
 
 ## Tryb awaryjny (słabsze środowisko → wszystko seryjnie)
 pytest -n 1 $(cat config/pytest-groups/heavy.txt)

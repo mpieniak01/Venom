@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import type { GenerationParams, HistoryRequestDetail } from "@/lib/types";
 import { parseSlashCommand } from "@/lib/slash-commands";
+import { createParser } from "eventsource-parser";
 
 type ActiveServerInfo = {
   active_server?: string | null;
@@ -300,25 +301,46 @@ export function useChatSend({
           if (!reader) {
             throw new Error("Brak strumienia odpowiedzi z API.");
           }
+
           const decoder = new TextDecoder();
-          let buffer = "";
+          let buffer = ""; // To store the full text for history/memory
           const startedAt = Date.now();
           let firstChunkLogged = false;
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            if (!chunk) continue;
-            buffer += chunk;
-            if (!firstChunkLogged) {
-              const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
-              if (ttftTiming && ttftTiming.ttftMs === undefined) {
-                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
+
+          const parser = createParser({
+            onEvent: (msg) => {
+              if (msg.event === "content") {
+                const data = JSON.parse(msg.data);
+                if (data.text) {
+                  buffer += data.text;
+                  if (!firstChunkLogged) {
+                    const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
+                    if (ttftTiming && ttftTiming.ttftMs === undefined) {
+                      recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
+                    }
+                    firstChunkLogged = true;
+                  }
+                  updateSimpleStream(clientId, { text: buffer, status: "W toku" });
+                  upsertLocalHistory("assistant", buffer);
+                }
+              } else if (msg.event === "error") {
+                const data = JSON.parse(msg.data);
+                throw new Error(data.error || "Wystąpił błąd strumieniowania.");
               }
-              firstChunkLogged = true;
+            },
+          });
+
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              const chunk = decoder.decode(value, { stream: true });
+              if (chunk) {
+                parser.feed(chunk);
+              }
             }
-            updateSimpleStream(clientId, { text: buffer, status: "W toku" });
-            upsertLocalHistory("assistant", buffer);
+          } finally {
+            reader.releaseLock();
           }
           updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
           const duration = Date.now() - startedAt;

@@ -11,6 +11,7 @@ _llm_controller: Any = None
 _model_manager: Any = None
 _request_tracer: Any = None
 _hardware_bridge: Any = None
+_orchestrator: Any = None
 
 
 def set_dependencies(
@@ -21,6 +22,7 @@ def set_dependencies(
     model_manager=None,
     request_tracer=None,
     hardware_bridge=None,
+    orchestrator=None,
 ) -> None:
     global \
         _background_scheduler, \
@@ -29,7 +31,8 @@ def set_dependencies(
         _llm_controller, \
         _model_manager, \
         _request_tracer, \
-        _hardware_bridge
+        _hardware_bridge, \
+        _orchestrator
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
     _state_manager = state_manager
@@ -37,6 +40,11 @@ def set_dependencies(
     _model_manager = model_manager
     _request_tracer = request_tracer
     _hardware_bridge = hardware_bridge
+    _orchestrator = orchestrator
+
+
+def get_orchestrator():
+    return _orchestrator
 
 
 def get_background_scheduler():

@@ -229,6 +229,7 @@ export const pl = {
         full: "Full Stack",
         light: "Light (bez LLM)",
         llmOff: "LLM OFF",
+        mcp: "Modele i Narzędzia MCP",
         description: "Profile szybko ustawiają zestaw usług",
       },
       status: {
@@ -236,6 +237,7 @@ export const pl = {
         stopped: "Zatrzymany",
         unknown: "Nieznany",
         error: "Błąd",
+        orchestrator: "Orkiestrator",
       },
       actions: {
         start: "Start",

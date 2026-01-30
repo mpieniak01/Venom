@@ -24,6 +24,8 @@ export const de = {
       title: "Leitstand",
     },
     modulesTitle: "Module",
+    collapse: "Menü einklappen",
+    expand: "Menü ausklappen",
     nav: {
       cockpit: "Cockpit",
       brain: "Wissensgraph",

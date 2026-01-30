@@ -453,7 +453,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 /* =========================================
    4. SIDEBAR (BEZPIECZNIK)
    ========================================= */
-.sidebar, aside, nav {
+.sidebar, aside {
   background-color: var(--bg-sidebar) !important;
   backdrop-filter: none !important;
   border-right: 1px solid rgba(255, 255, 255, 0.05) !important;

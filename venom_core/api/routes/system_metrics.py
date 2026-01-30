@@ -11,6 +11,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
 _metrics_cache = TTLCache[dict](ttl_seconds=1.0)
+_token_metrics_cache = TTLCache[dict](ttl_seconds=2.0)
 _token_economist = None
 
 
@@ -18,6 +19,7 @@ def set_dependencies(token_economist=None):
     """Ustaw zależności dla routera."""
     global _token_economist
     _token_economist = token_economist
+    _token_metrics_cache.clear()
 
 
 @router.get("/tokens")
@@ -34,6 +36,17 @@ async def get_token_metrics():
     Raises:
         HTTPException: 503 jeśli TokenEconomist nie jest dostępny
     """
+    cached = _token_metrics_cache.get()
+    if cached is not None:
+        return cached
+
+    res = await _get_token_metrics_impl()
+    _token_metrics_cache.set(res)
+    return res
+
+
+async def _get_token_metrics_impl():
+    """Implementacja pobierania metryk tokenów (bez cache)."""
     collector = metrics_module.metrics_collector
     if _token_economist is None:
         # Zwróć podstawowe metryki z metrics_collector
@@ -81,7 +94,8 @@ async def get_token_metrics():
         # TODO: W przyszłości dodać śledzenie per-model w TokenEconomist
         # Na razie zwracamy szacunkowe dane
         return {
-            "session_total_tokens": total_tokens,
+            "total_tokens": total_tokens,
+            "session_total_tokens": total_tokens,  # Dodajemy oba dla kompatybilności
             "session_cost_usd": estimated_cost.get("total_cost_usd", 0.0),
             "models_breakdown": {
                 "estimated": {

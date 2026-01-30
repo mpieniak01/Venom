@@ -1,9 +1,12 @@
-import { BrainHome } from "@/components/brain/brain-home";
-import { fetchBrainInitialData } from "@/lib/server-data";
+import { Suspense } from "react";
+import { BrainWrapper, BrainSkeleton } from "@/components/brain/brain-wrapper";
 
 export const dynamic = "force-dynamic";
 
-export default async function BrainPage() {
-  const initialData = await fetchBrainInitialData();
-  return <BrainHome initialData={initialData} />;
+export default function BrainPage() {
+  return (
+    <Suspense fallback={<BrainSkeleton />}>
+      <BrainWrapper />
+    </Suspense>
+  );
 }

@@ -74,6 +74,9 @@ class EventType:
     SKILL_COMPLETED = "SKILL_COMPLETED"
     SKILL_FAILED = "SKILL_FAILED"
 
+    # Monitorowanie usług
+    SERVICE_STATUS_UPDATE = "SERVICE_STATUS_UPDATE"
+
 
 class Event(BaseModel):
     """Model zdarzenia WebSocket."""

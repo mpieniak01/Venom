@@ -1,9 +1,12 @@
-import { CockpitHome } from "@/components/cockpit/cockpit-home";
-import { fetchCockpitInitialData } from "@/lib/server-data";
+import { Suspense } from "react";
+import { CockpitWrapper, CockpitSkeleton } from "@/components/cockpit/cockpit-wrapper";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const initialData = await fetchCockpitInitialData();
-  return <CockpitHome initialData={initialData} variant="home" />;
+export default function HomePage() {
+  return (
+    <Suspense fallback={<CockpitSkeleton />}>
+      <CockpitWrapper variant="home" />
+    </Suspense>
+  );
 }

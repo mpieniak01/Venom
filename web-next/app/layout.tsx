@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/layout/sidebar";
-import { TopBar } from "@/components/layout/top-bar";
-import { SystemStatusBar } from "@/components/layout/system-status-bar";
+import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
+import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
 import { fetchLayoutInitialData } from "@/lib/server-data";
 import "./globals.css";
 import { Providers } from "./providers";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -24,26 +25,14 @@ const jetBrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Venom Cockpit Next",
   description:
-    "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War Room.",
+    "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War War Room.",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const layoutData = await fetchLayoutInitialData();
-  const initialStatusData = {
-    queue: layoutData.queue,
-    metrics: layoutData.metrics,
-    tasks: layoutData.tasks,
-  };
-  const initialSystemStatus = {
-    modelsUsage: layoutData.modelsUsage,
-    tokenMetrics: layoutData.tokenMetrics,
-    gitStatus: layoutData.gitStatus,
-  };
-
   return (
     <html lang="pl" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${jetBrains.variable} antialiased`}>
@@ -56,13 +45,17 @@ export default async function RootLayout({
             <div className="relative z-10 flex">
               <Sidebar />
               <div className="relative flex flex-1 flex-col lg:pl-[var(--sidebar-width)]">
-                <TopBar initialStatusData={initialStatusData} />
+                <Suspense fallback={<TopBarSkeleton />}>
+                  <TopBarWrapper />
+                </Suspense>
                 <main className="flex-1 overflow-y-auto px-4 py-10 pb-24 sm:px-8 lg:px-10 xl:px-12">
                   <div className="mr-auto w-full max-w-[1320px] xl:max-w-[1536px] 2xl:max-w-[85vw] space-y-6">
                     {children}
                   </div>
                 </main>
-                <SystemStatusBar initialData={initialSystemStatus} />
+                <Suspense fallback={<SystemStatusBarSkeleton />}>
+                  <SystemStatusBarWrapper />
+                </Suspense>
               </div>
             </div>
           </div>

@@ -43,7 +43,7 @@ export default function RootLayout({
             </div>
             <div className="relative z-10 flex">
               <Sidebar />
-              <div className="relative flex flex-1 flex-col lg:pl-[var(--sidebar-width)]">
+              <div className="relative flex flex-1 flex-col transition-all duration-300 ease-in-out lg:pl-[var(--sidebar-width)]">
                 <Suspense fallback={<TopBarSkeleton />}>
                   <TopBarWrapper />
                 </Suspense>

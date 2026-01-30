@@ -21,7 +21,6 @@ export const pl = {
   sidebar: {
     brand: {
       caption: "Venom",
-      title: "Centrum dowodzenia",
     },
     modulesTitle: "Moduły",
     collapse: "Zwiń menu",

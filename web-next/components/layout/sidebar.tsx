@@ -206,50 +206,58 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-[width] duration-300 lg:flex overflow-y-auto overflow-x-visible",
-        collapsed ? "w-24 min-w-24 px-3" : "w-72 min-w-72 px-6",
+        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-all duration-300 ease-in-out lg:flex overflow-y-auto overflow-x-hidden",
+        collapsed ? "w-24 px-3" : "w-72 px-5",
       )}
       data-testid="sidebar"
     >
-      <div className={cn("flex items-center justify-between gap-3", collapsed && "flex-col justify-center gap-6")}>
-        <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
-            🐍
-          </div>
-          {!collapsed && (
-            <div>
-              <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-6">
+        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
+          <div className="flex items-center">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
+              🐍
+            </div>
+            <div className={cn("transition-all duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 overflow-hidden" : "max-w-[200px] opacity-100 ml-3")}>
+              <div className="flex items-center gap-2 whitespace-nowrap">
                 <p className="eyebrow">
                   {t("sidebar.brand.caption")}
                 </p>
                 <span className="pill-badge">v1.0</span>
               </div>
-              <p className="text-lg font-semibold tracking-[0.1em] text-white">
-                {t("sidebar.brand.title")}
-              </p>
             </div>
-          )}
+          </div>
+          <div className={cn("transition-all duration-300", collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100 w-auto")}>
+            <button
+              type="button"
+              aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-black/80 text-white shadow-card transition hover:border-white/40 hover:bg-white/10"
+              onClick={() => setCollapsed((prev) => !prev)}
+              data-testid="sidebar-toggle"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <div className={cn("flex items-center gap-2", collapsed && "justify-center")}>
+
+        <div className={cn("flex justify-center transition-all duration-300", collapsed ? "max-h-12 opacity-100" : "max-h-0 opacity-0 overflow-hidden")}>
           <button
             type="button"
-            aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+            aria-label={t("sidebar.expand")}
             className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-black/80 text-white shadow-card transition hover:border-white/40 hover:bg-white/10"
-            onClick={() => setCollapsed((prev) => !prev)}
-            data-testid="sidebar-toggle"
+            onClick={() => setCollapsed(false)}
           >
-            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            <PanelLeftOpen className="h-4 w-4" />
           </button>
         </div>
       </div>
-      <nav className={cn("mt-8 space-y-5", collapsed && "mt-6")}>
+      <nav className="mt-8 space-y-5">
         <div>
-          {!collapsed && (
+          <div className={cn("transition-all duration-300 ease-in-out", collapsed ? "opacity-0 max-h-0 overflow-hidden" : "opacity-100 max-h-12 mb-3")}>
             <p className="eyebrow">
               {t("sidebar.modulesTitle")}
             </p>
-          )}
-          <div className={cn("mt-3 space-y-2", collapsed && "mt-0")}>
+          </div>
+          <div className="mt-3 space-y-2">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href;
@@ -261,8 +269,8 @@ export function Sidebar() {
                   title={label}
                   aria-label={label}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-2xl border text-sm font-medium transition pointer-events-auto",
-                    collapsed ? "justify-center px-0 py-3" : "px-3 py-2",
+                    "flex w-full items-center rounded-2xl border text-sm font-medium transition-all duration-300 ease-in-out pointer-events-auto",
+                    collapsed ? "justify-center px-0 py-3" : "px-4 py-2",
                     active
                       ? "border-emerald-300/60 bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-200 shadow-neon"
                       : "border-white/10 bg-black/30 text-white hover:border-white/30 hover:bg-white/5",
@@ -270,111 +278,113 @@ export function Sidebar() {
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  <Icon className={cn("h-4 w-4", active ? "text-emerald-300" : "text-zinc-400")} />
-                  {!collapsed && <span>{label}</span>}
+                  <Icon className={cn("h-4 w-4 shrink-0 transition-colors", active ? "text-emerald-300" : "text-zinc-400")} />
+                  <span className={cn("transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden", collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[200px] opacity-100 ml-3")}>
+                    {label}
+                  </span>
                 </a>
               );
             })}
           </div>
         </div>
       </nav>
-      {!collapsed && (
-        <div className="mt-8 space-y-5">
+      <div className={cn("mt-auto transition-all duration-300 ease-in-out", collapsed ? "opacity-0 translate-y-4 pointer-events-none overflow-hidden max-h-0" : "opacity-100 translate-y-0 max-h-[1000px]")}>
+        <div className="space-y-5 pt-8">
           <SystemStatusPanel />
 
-        <section
-          className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm"
-          data-testid="sidebar-cost-mode"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="eyebrow">
-                {t("sidebar.cost.title")}
-              </p>
-              <p className="text-lg font-semibold text-white">
-                {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
-              </p>
-              <p className="text-xs text-zinc-400">
-                {t("common.provider")}: {costMode?.provider ?? "brak"}
-              </p>
-            </div>
-            <Sparkles className="h-5 w-5 text-emerald-200" />
-          </div>
-          <Button
-            className="mt-3 w-full justify-center"
-            size="sm"
-            variant={costMode?.enabled ? "warning" : "secondary"}
-            disabled={costLoading}
-            onClick={handleCostToggle}
+          <section
+            className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm"
+            data-testid="sidebar-cost-mode"
           >
-            {costLoading
-              ? t("sidebar.cost.switching")
-              : costMode?.enabled
-                ? t("sidebar.cost.switchToEco")
-                : t("sidebar.cost.switchToPro")}
-          </Button>
-        </section>
-
-        <section
-          className="rounded-2xl card-shell bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm"
-          data-testid="sidebar-autonomy"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="eyebrow">
-                {t("sidebar.autonomy.title")}
-              </p>
-              <p className="text-lg font-semibold text-white">{autonomyInfo.name}</p>
-              <p className="text-xs text-zinc-400">
-                Poziom {autonomyInfo.level ?? "brak"} • {autonomyInfo.risk}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="eyebrow">
+                  {t("sidebar.cost.title")}
+                </p>
+                <p className="text-lg font-semibold text-white">
+                  {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
+                </p>
+                <p className="text-xs text-zinc-400">
+                  {t("common.provider")}: {costMode?.provider ?? "brak"}
+                </p>
+              </div>
+              <Sparkles className="h-5 w-5 text-emerald-200" />
             </div>
-            <Shield className="h-5 w-5 text-violet-200" />
-          </div>
-          <div className="mt-3">
-            <label className="text-xs text-zinc-500" htmlFor="autonomy-select">
-              {t("sidebar.autonomy.selectLabel")}
-            </label>
-            <select
-              id="autonomy-select"
-              data-testid="sidebar-autonomy-select"
-              className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400 focus:ring-0"
-              value={selectedAutonomy}
-              onChange={async (event) => {
-                const value = event.target.value;
-                setSelectedAutonomy(value);
-                if (value) {
-                  await handleAutonomyChange(Number(value));
-                }
-              }}
-              disabled={autonomyLoading !== null}
+            <Button
+              className="mt-3 w-full justify-center"
+              size="sm"
+              variant={costMode?.enabled ? "warning" : "secondary"}
+              disabled={costLoading}
+              onClick={handleCostToggle}
             >
-              <option value="" disabled>
-                {autonomyInfo.level === null ? "Brak danych" : "Wybierz poziom"}
-              </option>
-              {AUTONOMY_LEVELS.map((level) => {
-                const label = AUTONOMY_LABELS[level] ?? `Poziom ${level}`;
-                return (
-                  <option key={level} value={level}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <p className="mt-3 text-xs text-zinc-400">{autonomyInfo.description}</p>
-        </section>
+              {costLoading
+                ? t("sidebar.cost.switching")
+                : costMode?.enabled
+                  ? t("sidebar.cost.switchToEco")
+                  : t("sidebar.cost.switchToPro")}
+            </Button>
+          </section>
+
+          <section
+            className="rounded-2xl card-shell bg-gradient-to-b from-violet-500/5 to-transparent p-4 text-sm"
+            data-testid="sidebar-autonomy"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="eyebrow">
+                  {t("sidebar.autonomy.title")}
+                </p>
+                <p className="text-lg font-semibold text-white">{autonomyInfo.name}</p>
+                <p className="text-xs text-zinc-400">
+                  Poziom {autonomyInfo.level ?? "brak"} • {autonomyInfo.risk}
+                </p>
+              </div>
+              <Shield className="h-5 w-5 text-violet-200" />
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-zinc-500" htmlFor="autonomy-select">
+                {t("sidebar.autonomy.selectLabel")}
+              </label>
+              <select
+                id="autonomy-select"
+                data-testid="sidebar-autonomy-select"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-violet-400 focus:ring-0"
+                value={selectedAutonomy}
+                onChange={async (event) => {
+                  const value = event.target.value;
+                  setSelectedAutonomy(value);
+                  if (value) {
+                    await handleAutonomyChange(Number(value));
+                  }
+                }}
+                disabled={autonomyLoading !== null}
+              >
+                <option value="" disabled>
+                  {autonomyInfo.level === null ? "Brak danych" : "Wybierz poziom"}
+                </option>
+                {AUTONOMY_LEVELS.map((level) => {
+                  const label = AUTONOMY_LABELS[level] ?? `Poziom ${level}`;
+                  return (
+                    <option key={level} value={level}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <p className="mt-3 text-xs text-zinc-400">{autonomyInfo.description}</p>
+          </section>
 
 
-        {statusMessage && (
-          <p className="text-xs text-emerald-300" data-testid="sidebar-status-message">
-            {statusMessage}
-          </p>
-        )}
+          {statusMessage && (
+            <p className="text-xs text-emerald-300" data-testid="sidebar-status-message">
+              {statusMessage}
+            </p>
+          )}
 
           <AuthorSignature />
         </div>
-      )}
+      </div>
     </aside>
   );
 }

@@ -74,7 +74,9 @@ export function CockpitPrimarySection({
 
   return (
     <section
-      className={`grid gap-6 ${chatFullscreen ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,420px)_1fr]"
+      className={`grid gap-6 ${chatFullscreen
+          ? "lg:grid-cols-1"
+          : "lg:grid-cols-[minmax(0,360px)_1fr] xl:grid-cols-[minmax(0,440px)_1fr] 2xl:grid-cols-[minmax(0,520px)_1fr]"
         }`}
     >
       <CockpitSidebar

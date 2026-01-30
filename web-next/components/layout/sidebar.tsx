@@ -6,7 +6,6 @@ import {
   Command,
   Brain,
   BugPlay,
-  Target,
   Sparkles,
   Shield,
   Gauge,
@@ -204,7 +203,7 @@ export function Sidebar() {
       )}
       data-testid="sidebar"
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className={cn("flex items-center justify-between gap-3", collapsed && "flex-col justify-center gap-6")}>
         <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
             🐍
@@ -223,8 +222,7 @@ export function Sidebar() {
             </div>
           )}
         </div>
-        <div className={cn("flex items-center gap-2", collapsed && "flex-col")}>
-          {collapsed && <span className="pill-badge">v1.0</span>}
+        <div className={cn("flex items-center gap-2", collapsed && "justify-center")}>
           <button
             type="button"
             aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}

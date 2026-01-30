@@ -151,7 +151,15 @@ export function Sidebar() {
     window.localStorage.setItem("sidebar-collapsed", String(collapsed));
     const root = document.documentElement;
     if (!root) return;
-    root.style.setProperty("--sidebar-width", collapsed ? "6rem" : "18rem");
+    const styles = getComputedStyle(root);
+    const expandedWidth =
+      styles.getPropertyValue("--sidebar-width-expanded").trim() || "18rem";
+    const collapsedWidth =
+      styles.getPropertyValue("--sidebar-width-collapsed").trim() || "6rem";
+    root.style.setProperty(
+      "--sidebar-width",
+      collapsed ? collapsedWidth : expandedWidth,
+    );
   }, [collapsed]);
 
   useEffect(() => {
@@ -251,6 +259,7 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   title={label}
+                  aria-label={label}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-2xl border text-sm font-medium transition pointer-events-auto",
                     collapsed ? "justify-center px-0 py-3" : "px-3 py-2",
@@ -269,8 +278,9 @@ export function Sidebar() {
           </div>
         </div>
       </nav>
-      <div className={cn("mt-8 space-y-5 transition-opacity duration-200", collapsed && "opacity-0 pointer-events-none")}>
-        <SystemStatusPanel />
+      {!collapsed && (
+        <div className="mt-8 space-y-5">
+          <SystemStatusPanel />
 
         <section
           className="rounded-2xl card-shell bg-gradient-to-b from-emerald-500/5 to-transparent p-4 text-sm"
@@ -362,8 +372,9 @@ export function Sidebar() {
           </p>
         )}
 
-        <AuthorSignature />
-      </div>
+          <AuthorSignature />
+        </div>
+      )}
     </aside>
   );
 }

@@ -88,12 +88,34 @@ def test_simple_stream_emits_chunks_and_traces(simple_client):
         json={"content": "Test", "session_id": "session-123"},
     ) as response:
         assert response.status_code == 200
-        payload = "".join(list(response.iter_text()))
+        # Parse SSE events
+        events = []
+        for line in response.iter_lines():
+            if line.startswith("event:"):
+                events.append({"event": line.split(": ", 1)[1]})
+            elif line.startswith("data:"):
+                import json
 
-    assert payload == "Witaj świecie"
+                data_str = line.split(": ", 1)[1]
+                if data_str:
+                    events[-1]["data"] = json.loads(data_str)
+
+    # Verify events
+    # Expected sequence: start -> content -> content -> done
+    assert events[0]["event"] == "start"
+
+    assert events[1]["event"] == "content"
+    assert events[1]["data"]["text"] == "Witaj "
+
+    assert events[2]["event"] == "content"
+    assert events[2]["data"]["text"] == "świecie"
+
+    assert events[3]["event"] == "done"
+
     request_id = response.headers.get("x-request-id")
     assert request_id
     assert response.headers.get("x-session-id") == "session-123"
+    assert "text/event-stream" in response.headers.get("content-type")
 
     trace = tracer.get_trace(UUID(request_id))
     assert trace is not None

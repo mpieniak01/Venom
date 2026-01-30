@@ -34,7 +34,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 	pytest e2e test-optimal \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
-	monitor
+	monitor mcp-clean mcp-status
 
 lint:
 	pre-commit run --all-files
@@ -441,3 +441,19 @@ monitor:
 		echo "❌ Skrypt scripts/diagnostics/system_snapshot.sh nie istnieje"; \
 		exit 1; \
 	fi
+
+# =============================================================================
+# Konserwacja MCP
+# =============================================================================
+
+mcp-clean:
+	@echo "🧹 Czyszczenie repozytoriów i venv MCP..."
+	@rm -rf venom_core/skills/mcp/_repos/*
+	@rm -f venom_core/skills/custom/mcp_*.py
+	@echo "✅ Wyczyszczono."
+
+mcp-status:
+	@echo "📋 Zaimportowane narzędzia MCP (katalogi _repos):"
+	@ls -1 venom_core/skills/mcp/_repos 2>/dev/null || echo "Brak."
+	@echo "📝 Wygenerowane wrappery (.py):"
+	@ls -1 venom_core/skills/custom/mcp_*.py 2>/dev/null || echo "Brak."

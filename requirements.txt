@@ -15,6 +15,7 @@ uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
 semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (nowsza wersja; wymaga walidacji kompatybilności)
+mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
 httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)

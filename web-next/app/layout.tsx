@@ -3,7 +3,6 @@ import { Geist, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
 import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
-import { fetchLayoutInitialData } from "@/lib/server-data";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Suspense } from "react";
@@ -25,7 +24,7 @@ const jetBrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Venom Cockpit Next",
   description:
-    "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War War Room.",
+    "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War Room.",
 };
 
 export default function RootLayout({

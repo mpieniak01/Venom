@@ -9,10 +9,14 @@ from pydantic import BaseModel
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+from venom_core.utils.ttl_cache import TTLCache
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/git", tags=["git"])
+
+# Cache dla statusu git (5 sekund TTL)
+_git_status_cache = TTLCache[dict](ttl_seconds=5.0)
 
 
 # Dependency - będzie ustawione w main.py
@@ -57,6 +61,17 @@ async def get_git_status():
     Raises:
         HTTPException: 503 jeśli GitSkill nie jest dostępny lub workspace nie jest repozytorium Git
     """
+    cached = _git_status_cache.get()
+    if cached is not None:
+        return cached
+
+    res = await _get_git_status_impl()
+    _git_status_cache.set(res)
+    return res
+
+
+async def _get_git_status_impl():
+    """Implementacja pobierania statusu git (bez cache)."""
     repo_root = Path(getattr(SETTINGS, "REPO_ROOT", SETTINGS.WORKSPACE_ROOT)).resolve()
     if (repo_root / ".git").exists():
         try:
@@ -319,6 +334,9 @@ async def init_repository(request: InitRepoRequest):
 
     result = await _git_skill.init_repo(url=request.url)
     status = "success" if result.startswith("✅") else "error"
+    if status == "success":
+        # Unieważnij cache, aby UI od razu pokazało nowe repozytorium
+        _git_status_cache.clear()
     return {"status": status, "message": result}
 
 

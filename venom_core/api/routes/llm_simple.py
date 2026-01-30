@@ -179,6 +179,10 @@ async def stream_simple_chat(request: SimpleChatRequest):
         chunk_count = 0
         stream_start = time.perf_counter()
         first_chunk_at: Optional[float] = None
+
+        # Send initial event
+        yield "event: start\ndata: {}\n\n"
+
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream("POST", completions_url, json=payload) as resp:
@@ -207,13 +211,14 @@ async def stream_simple_chat(request: SimpleChatRequest):
                             error_class=exc.__class__.__name__,
                             retryable=False,
                         )
-                        raise HTTPException(
-                            status_code=502,
-                            detail=(
-                                f"Błąd LLM ({runtime.provider}): "
-                                f"{exc.response.status_code if exc.response else 'HTTP'}"
-                            ),
-                        ) from exc
+                        # Instead of raising exception breaking the stream, yield error event
+                        error_payload = {
+                            "code": "llm_http_error",
+                            "message": f"Błąd LLM ({runtime.provider}): {exc.response.status_code if exc.response else 'HTTP'}",
+                        }
+                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                        return
+
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data:"):
                             continue
@@ -252,7 +257,11 @@ async def stream_simple_chat(request: SimpleChatRequest):
                                             "first_chunk",
                                             details=f"elapsed_ms={elapsed_ms} preview={preview}",
                                         )
-                                yield content
+
+                                # SSE format for content
+                                event_payload = {"text": content}
+                                yield f"event: content\ndata: {json.dumps(event_payload)}\n\n"
+
             if _request_tracer:
                 total_ms = int((time.perf_counter() - stream_start) * 1000)
                 max_chars = 4000
@@ -276,6 +285,10 @@ async def stream_simple_chat(request: SimpleChatRequest):
                     ),
                 )
                 _request_tracer.update_status(request_id, TraceStatus.COMPLETED)
+
+            # End of stream
+            yield "event: done\ndata: {}\n\n"
+
         except httpx.HTTPError as exc:
             _record_simple_error(
                 error_code="llm_connection_error",
@@ -288,10 +301,27 @@ async def stream_simple_chat(request: SimpleChatRequest):
                 error_class=exc.__class__.__name__,
                 retryable=True,
             )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
-            ) from exc
+            # Yield error event instead of raising
+            error_payload = {
+                "code": "llm_connection_error",
+                "message": f"Błąd połączenia z LLM ({runtime.provider}): {exc}",
+            }
+            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+        except Exception as exc:
+            # Catch-all for other errors
+            if _request_tracer:
+                _request_tracer.add_step(
+                    request_id,
+                    "SimpleMode",
+                    "error",
+                    status="error",
+                    details=str(exc),
+                )
+            error_payload = {
+                "code": "internal_error",
+                "message": f"Nieoczekiwany błąd: {exc}",
+            }
+            yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
 
     headers = {
         "Cache-Control": "no-cache",
@@ -299,4 +329,6 @@ async def stream_simple_chat(request: SimpleChatRequest):
         "X-Request-Id": str(request_id),
         "X-Session-Id": request.session_id or "",
     }
-    return StreamingResponse(_stream_chunks(), media_type="text/plain", headers=headers)
+    return StreamingResponse(
+        _stream_chunks(), media_type="text/event-stream", headers=headers
+    )

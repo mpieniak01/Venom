@@ -40,7 +40,7 @@ def test_setup_router_dependencies_wires_globals(monkeypatch):
     main_module.file_watcher = object()
     main_module.documenter_agent = object()
     main_module.background_scheduler = object()
-    main_module.service_monitor = object()
+    main_module.service_monitor = SimpleNamespace(set_orchestrator=lambda x: None)
     main_module.llm_controller = object()
     main_module.model_manager = object()
     main_module.node_manager = object()

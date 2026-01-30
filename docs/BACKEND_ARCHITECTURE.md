@@ -37,6 +37,13 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `venom_core/core/generation_params_adapter.py` – mapowanie parametrow generacji na format OpenAI/vLLM/Ollama.
 - Konfiguracja runtime znajduje sie w `venom_core/config.py` oraz `.env` (np. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
+## Warstwa Wykonawcza (Skills & MCP)
+Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości agentów:
+- `venom_core/execution/skills/base_skill.py` – Klasa bazowa dla wszystkich umiejętności.
+- `venom_core/skills/mcp_manager_skill.py` – Zarządzanie narzędziami MCP (import z Git, venv).
+- `venom_core/skills/mcp/proxy_generator.py` – Automatyczne generowanie kodu proxy dla serwerów MCP.
+- `venom_core/skills/custom/` – Katalog na dynamicznie generowane i użytkowe umiejętności.
+
 ## Kontrakty API
 Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
 

@@ -1,18 +1,14 @@
 """Moduł: git_skill - zarządzanie operacjami Git."""
 
-from pathlib import Path
 from typing import Annotated, List, Optional
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from semantic_kernel.functions import kernel_function
 
-from venom_core.config import SETTINGS
-from venom_core.utils.logger import get_logger
-
-logger = get_logger(__name__)
+from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
 
 
-class GitSkill:
+class GitSkill(BaseSkill):
     """
     Skill do operacji Git w workspace.
     Umożliwia zarządzanie repozytorium, branchami, commitami i synchronizacją.
@@ -24,15 +20,8 @@ class GitSkill:
     def __init__(self, workspace_root: Optional[str] = None):
         """
         Inicjalizacja GitSkill.
-
-        Args:
-            workspace_root: Katalog workspace (domyślnie z SETTINGS.WORKSPACE_ROOT)
         """
-        self.workspace_root = Path(workspace_root or SETTINGS.WORKSPACE_ROOT).resolve()
-        logger.info(f"GitSkill zainicjalizowany z workspace: {self.workspace_root}")
-
-        # Upewnij się, że katalog workspace istnieje
-        self.workspace_root.mkdir(parents=True, exist_ok=True)
+        super().__init__(workspace_root)
         self._missing_repo_reported = False
 
     def _has_git_repository(self) -> bool:
@@ -53,7 +42,7 @@ class GitSkill:
     def _notify_missing_repo_once(self):
         """Publikuje log o braku repo tylko raz."""
         if not self._missing_repo_reported:
-            logger.info(self._workspace_not_repo_message())
+            self.logger.info(self._workspace_not_repo_message())
             self._missing_repo_reported = True
 
     def _get_repo(self) -> Repo:
@@ -79,14 +68,6 @@ class GitSkill:
     ) -> str:
         """
         Formatuje komunikat o konflikcie merge.
-
-        Args:
-            repo: Instancja repozytorium
-            operation: Nazwa operacji (np. "pull", "merge")
-            details: Dodatkowe szczegóły (np. branch name)
-
-        Returns:
-            Sformatowany komunikat o konflikcie
         """
         if repo.index.unmerged_blobs():
             conflicts = list(repo.index.unmerged_blobs().keys())
@@ -105,6 +86,7 @@ class GitSkill:
         name="init_repo",
         description="Inicjalizuje nowe repozytorium Git w workspace lub klonuje istniejące.",
     )
+    @async_safe_action
     async def init_repo(
         self,
         url: Annotated[
@@ -113,43 +95,34 @@ class GitSkill:
     ) -> str:
         """
         Inicjalizuje lub klonuje repozytorium Git.
-
-        Args:
-            url: URL repozytorium do sklonowania (jeśli None, inicjalizuje puste repo)
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            if url:
-                # Klonuj repozytorium
-                logger.info(f"Klonowanie repozytorium z {url}")
-                # Usuń workspace jeśli istnieje
-                if self.workspace_root.exists():
-                    import shutil
+        if url:
+            # Klonuj repozytorium
+            self.logger.info(f"Klonowanie repozytorium z {url}")
+            # Usuń workspace jeśli istnieje (BaseSkill zapewnia, że root istnieje)
+            # Ale shutil.rmtree usunie sam root
+            if self.workspace_root.exists():
+                import shutil
 
-                    shutil.rmtree(self.workspace_root)
-                Repo.clone_from(url, self.workspace_root)
-                return f"✅ Sklonowano repozytorium z {url} do {self.workspace_root}"
-            else:
-                # Inicjalizuj nowe repozytorium
-                logger.info(
-                    f"Inicjalizacja nowego repozytorium w {self.workspace_root}"
-                )
-                Repo.init(self.workspace_root)
-                return (
-                    f"✅ Zainicjalizowano nowe repozytorium Git w {self.workspace_root}"
-                )
+                # Usuwamy zawartość, a nie sam katalog, żeby nie psuć referencji BaseSkill?
+                # Nie, rmtree usunie katalog. Odtwórzmy go.
+                shutil.rmtree(self.workspace_root)
 
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas inicjalizacji repozytorium: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+            Repo.clone_from(url, self.workspace_root)
+            return f"✅ Sklonowano repozytorium z {url} do {self.workspace_root}"
+        else:
+            # Inicjalizuj nowe repozytorium
+            self.logger.info(
+                f"Inicjalizacja nowego repozytorium w {self.workspace_root}"
+            )
+            Repo.init(self.workspace_root)
+            return f"✅ Zainicjalizowano nowe repozytorium Git w {self.workspace_root}"
 
     @kernel_function(
         name="checkout",
         description="Przełącza branch w repozytorium Git.",
     )
+    @async_safe_action
     async def checkout(
         self,
         branch_name: Annotated[str, "Nazwa brancha do przełączenia"],
@@ -159,96 +132,61 @@ class GitSkill:
     ) -> str:
         """
         Przełącza branch Git.
-
-        Args:
-            branch_name: Nazwa brancha
-            create_new: Czy utworzyć nowy branch
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            repo = self._get_repo()
+        repo = self._get_repo()
 
-            if create_new:
-                # Utwórz i przełącz na nowy branch
-                logger.info(f"Tworzenie nowego brancha: {branch_name}")
-                new_branch = repo.create_head(branch_name)
-                new_branch.checkout()
-                return f"✅ Utworzono i przełączono na nowy branch: {branch_name}"
-            else:
-                # Przełącz na istniejący branch
-                logger.info(f"Przełączanie na branch: {branch_name}")
-                repo.git.checkout(branch_name)
-                return f"✅ Przełączono na branch: {branch_name}"
-
-        except GitCommandError as e:
-            error_msg = f"❌ Błąd Git podczas checkout: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas checkout: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        if create_new:
+            # Utwórz i przełącz na nowy branch
+            self.logger.info(f"Tworzenie nowego brancha: {branch_name}")
+            new_branch = repo.create_head(branch_name)
+            new_branch.checkout()
+            return f"✅ Utworzono i przełączono na nowy branch: {branch_name}"
+        else:
+            # Przełącz na istniejący branch
+            self.logger.info(f"Przełączanie na branch: {branch_name}")
+            repo.git.checkout(branch_name)
+            return f"✅ Przełączono na branch: {branch_name}"
 
     @kernel_function(
         name="get_status",
         description="Zwraca status repozytorium Git (zmodyfikowane, dodane, usunięte pliki).",
     )
+    @async_safe_action
     async def get_status(self) -> str:
         """
         Pobiera status repozytorium Git.
-
-        Returns:
-            Status repozytorium jako string
         """
         try:
-            if not self._has_git_repository():
-                self._notify_missing_repo_once()
-                return self._workspace_not_repo_message()
-
             repo = self._get_repo()
             status = repo.git.status()
-            logger.debug(f"Status repozytorium: {status}")
+            self.logger.debug(f"Status repozytorium: {status}")
             return status
-
         except InvalidGitRepositoryError as e:
             return str(e)
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pobierania statusu: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
 
     @kernel_function(
         name="get_diff",
         description="Zwraca różnice (diff) między workspace a ostatnim commitem.",
     )
+    @async_safe_action
     async def get_diff(self) -> str:
         """
         Pobiera diff repozytorium Git.
-
-        Returns:
-            Diff jako string
         """
-        try:
-            repo = self._get_repo()
-            # Pobierz diff dla staged i unstaged changes
-            diff = repo.git.diff("HEAD")
-            if not diff:
-                # Jeśli brak zmian w HEAD, sprawdź unstaged
-                diff = repo.git.diff()
-            logger.debug(f"Diff repozytorium: {len(diff)} znaków")
-            return diff if diff else "Brak zmian do wyświetlenia."
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pobierania diff: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        repo = self._get_repo()
+        # Pobierz diff dla staged i unstaged changes
+        diff = repo.git.diff("HEAD")
+        if not diff:
+            # Jeśli brak zmian w HEAD, sprawdź unstaged
+            diff = repo.git.diff()
+        self.logger.debug(f"Diff repozytorium: {len(diff)} znaków")
+        return diff if diff else "Brak zmian do wyświetlenia."
 
     @kernel_function(
         name="add_files",
         description="Stage'uje pliki do commita (git add).",
     )
+    @async_safe_action
     async def add_files(
         self,
         files: Annotated[
@@ -258,35 +196,24 @@ class GitSkill:
     ) -> str:
         """
         Stage'uje pliki do commita.
-
-        Args:
-            files: Lista plików do dodania (domyślnie wszystkie zmiany)
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            repo = self._get_repo()
-            if files is None or files == ["."] or "." in files:
-                # Dodaj wszystkie zmiany
-                repo.git.add(A=True)
-                logger.info("Stage'owano wszystkie zmiany")
-                return "✅ Stage'owano wszystkie zmiany (git add .)"
-            else:
-                # Dodaj konkretne pliki
-                repo.index.add(files)
-                logger.info(f"Stage'owano pliki: {files}")
-                return f"✅ Stage'owano pliki: {', '.join(files)}"
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas stage'owania plików: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        repo = self._get_repo()
+        if files is None or files == ["."] or "." in files:
+            # Dodaj wszystkie zmiany
+            repo.git.add(A=True)
+            self.logger.info("Stage'owano wszystkie zmiany")
+            return "✅ Stage'owano wszystkie zmiany (git add .)"
+        else:
+            # Dodaj konkretne pliki
+            repo.index.add(files)
+            self.logger.info(f"Stage'owano pliki: {files}")
+            return f"✅ Stage'owano pliki: {', '.join(files)}"
 
     @kernel_function(
         name="commit",
         description="Tworzy commit Git z podaną wiadomością.",
     )
+    @async_safe_action
     async def commit(
         self,
         message: Annotated[
@@ -295,34 +222,23 @@ class GitSkill:
     ) -> str:
         """
         Tworzy commit Git.
-
-        Args:
-            message: Wiadomość commita
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            repo = self._get_repo()
+        repo = self._get_repo()
 
-            # Sprawdź czy są zmiany do commitowania
-            if not repo.is_dirty(untracked_files=True):
-                return "⚠️ Brak zmian do commitowania"
+        # Sprawdź czy są zmiany do commitowania
+        if not repo.is_dirty(untracked_files=True):
+            return "⚠️ Brak zmian do commitowania"
 
-            # Utwórz commit
-            commit = repo.index.commit(message)
-            logger.info(f"Utworzono commit: {commit.hexsha[:7]} - {message}")
-            return f"✅ Commit utworzony: {commit.hexsha[:7]} - {message}"
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas tworzenia commita: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        # Utwórz commit
+        commit = repo.index.commit(message)
+        self.logger.info(f"Utworzono commit: {commit.hexsha[:7]} - {message}")
+        return f"✅ Commit utworzony: {commit.hexsha[:7]} - {message}"
 
     @kernel_function(
         name="push",
         description="Wypycha zmiany do zdalnego repozytorium.",
     )
+    @async_safe_action
     async def push(
         self,
         remote: Annotated[str, "Nazwa remote (domyślnie 'origin')"] = "origin",
@@ -332,117 +248,78 @@ class GitSkill:
     ) -> str:
         """
         Wypycha zmiany do remote.
-
-        Args:
-            remote: Nazwa remote
-            branch: Nazwa brancha (jeśli None, używa aktualnego)
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            repo = self._get_repo()
+        repo = self._get_repo()
 
-            # Pobierz aktualny branch jeśli nie podano
-            if branch is None:
-                branch = repo.active_branch.name
+        # Pobierz aktualny branch jeśli nie podano
+        if branch is None:
+            branch = repo.active_branch.name
 
-            # BEZPIECZEŃSTWO: Sprawdź czy nie próbuje się użyć --force
-            # To zabezpieczenie przed przypadkowym nadpisaniem historii
-            logger.info(f"Wypychanie brancha {branch} do {remote}")
+        # BEZPIECZEŃSTWO: Sprawdź czy nie próbuje się użyć --force
+        self.logger.info(f"Wypychanie brancha {branch} do {remote}")
 
-            # Wypchnij zmiany
-            origin = repo.remote(name=remote)
-            origin.push(branch)
+        # Wypchnij zmiany
+        origin = repo.remote(name=remote)
+        origin.push(branch)
 
-            logger.info(f"Wypchano zmiany do {remote}/{branch}")
-            return f"✅ Wypchano zmiany do {remote}/{branch}"
-
-        except GitCommandError as e:
-            error_msg = f"❌ Błąd Git podczas push: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas push: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        self.logger.info(f"Wypchano zmiany do {remote}/{branch}")
+        return f"✅ Wypchano zmiany do {remote}/{branch}"
 
     @kernel_function(
         name="get_last_commit_log",
         description="Zwraca historię ostatnich commitów.",
     )
+    @async_safe_action
     async def get_last_commit_log(
         self,
         n: Annotated[int, "Liczba ostatnich commitów do wyświetlenia"] = 5,
     ) -> str:
         """
         Pobiera historię ostatnich commitów.
-
-        Args:
-            n: Liczba commitów do pobrania
-
-        Returns:
-            Historia commitów jako string
         """
-        try:
-            repo = self._get_repo()
-            commits = list(repo.iter_commits(max_count=n))
+        repo = self._get_repo()
+        commits = list(repo.iter_commits(max_count=n))
 
-            if not commits:
-                return "Brak commitów w repozytorium."
+        if not commits:
+            return "Brak commitów w repozytorium."
 
-            log_lines = []
-            for commit in commits:
-                message = (
-                    commit.message.decode("utf-8", "ignore")
-                    if isinstance(commit.message, bytes)
-                    else commit.message
-                )
-                log_lines.append(
-                    f"{commit.hexsha[:7]} - {commit.author.name} - {commit.committed_datetime.strftime('%Y-%m-%d %H:%M')} - {message.strip()}"
-                )
+        log_lines = []
+        for commit in commits:
+            message = (
+                commit.message.decode("utf-8", "ignore")
+                if isinstance(commit.message, bytes)
+                else commit.message
+            )
+            log_lines.append(
+                f"{commit.hexsha[:7]} - {commit.author.name} - {commit.committed_datetime.strftime('%Y-%m-%d %H:%M')} - {message.strip()}"
+            )
 
-            log = "\n".join(log_lines)
-            logger.debug(f"Historia commitów (ostatnie {n}): {len(log)} znaków")
-            return log
-
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pobierania historii: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        log = "\n".join(log_lines)
+        self.logger.debug(f"Historia commitów (ostatnie {n}): {len(log)} znaków")
+        return log
 
     @kernel_function(
         name="get_current_branch",
         description="Zwraca nazwę aktualnego brancha.",
     )
+    @async_safe_action
     async def get_current_branch(self) -> str:
         """
         Pobiera nazwę aktualnego brancha.
-
-        Returns:
-            Nazwa aktualnego brancha
         """
         try:
-            if not self._has_git_repository():
-                self._notify_missing_repo_once()
-                return self._workspace_not_repo_message()
-
             repo = self._get_repo()
             branch = repo.active_branch.name
-            logger.debug(f"Aktualny branch: {branch}")
+            self.logger.debug(f"Aktualny branch: {branch}")
             return branch
-
         except InvalidGitRepositoryError as e:
             return str(e)
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pobierania brancha: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
 
     @kernel_function(
         name="pull",
         description="Pobiera i scala zmiany ze zdalnego repozytorium (git pull).",
     )
+    @async_safe_action
     async def pull(
         self,
         remote: Annotated[str, "Nazwa remote (domyślnie 'origin')"] = "origin",
@@ -452,45 +329,32 @@ class GitSkill:
     ) -> str:
         """
         Pobiera i scala zmiany ze zdalnego repozytorium.
-
-        Args:
-            remote: Nazwa remote
-            branch: Nazwa brancha (jeśli None, używa aktualnego)
-
-        Returns:
-            Komunikat o wyniku operacji. W przypadku konfliktu zwraca
-            status CONFLICT wraz z listą plików w konflikcie.
         """
         try:
             repo = self._get_repo()
 
-            # Pobierz aktualny branch jeśli nie podano
             if branch is None:
                 branch = repo.active_branch.name
 
-            logger.info(f"Pulling z {remote}/{branch}")
+            self.logger.info(f"Pulling z {remote}/{branch}")
 
-            # Wykonaj pull
             origin = repo.remote(name=remote)
             pull_info = origin.pull(branch)
 
             # Sprawdź czy wystąpiły konflikty
             for info in pull_info:
                 if info.flags & info.ERROR:
-                    # Sprawdź czy to konflikt merge
                     conflict_msg = self._format_conflict_message(
                         repo, "pull", f"z {remote}/{branch}"
                     )
                     if conflict_msg:
-                        logger.warning(conflict_msg)
+                        self.logger.warning(conflict_msg)
                         return conflict_msg
 
-            # Sukces
-            logger.info(f"Pomyślnie zaktualizowano z {remote}/{branch}")
+            self.logger.info(f"Pomyślnie zaktualizowano z {remote}/{branch}")
             changed_files = []
             for info in pull_info:
                 if hasattr(info, "commit") and info.commit:
-                    # Pobierz zmienione pliki z commita
                     if info.old_commit:
                         changed_files.extend(
                             [
@@ -510,28 +374,21 @@ class GitSkill:
                 )
             else:
                 return f"✅ Zaktualizowano z {remote}/{branch} (już aktualne)"
-
         except GitCommandError as e:
-            # Sprawdź czy to konflikt
+            # Obsługa specyficzna dla błędów Gita (konflikty)
             if "CONFLICT" in str(e) or "conflict" in str(e).lower():
                 repo = self._get_repo()
                 conflict_msg = self._format_conflict_message(repo, "pull")
                 if conflict_msg:
-                    logger.warning(conflict_msg)
+                    self.logger.warning(conflict_msg)
                     return conflict_msg
-
-            error_msg = f"❌ Błąd Git podczas pull: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas pull: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+            raise  # Rzuć dalej, żeby safe_action to złapał jako błąd
 
     @kernel_function(
         name="reset",
         description="Cofa zmiany w repozytorium (git reset). UWAGA: Operacja destrukcyjna!",
     )
+    @async_safe_action
     async def reset(
         self,
         mode: Annotated[
@@ -547,153 +404,91 @@ class GitSkill:
     ) -> str:
         """
         Cofa zmiany w repozytorium Git.
-
-        UWAGA: To operacja destrukcyjna! Tryb 'hard' USUWA wszystkie
-        niezatwierdzone zmiany bez możliwości odzyskania.
-
-        Args:
-            mode: Tryb resetu ('soft', 'mixed', 'hard')
-            commit_hash: Hash commita lub referencja (np. 'HEAD', 'HEAD~1')
-            force: Czy wymusić reset mimo niezatwierdzonych zmian
-
-        Returns:
-            Komunikat o wyniku operacji
-
-        Raises:
-            Zwraca błąd jeśli są niezatwierdzone zmiany i force=False
         """
-        try:
-            # Walidacja mode
-            allowed_modes = {"soft", "mixed", "hard"}
-            if mode not in allowed_modes:
-                error_msg = f"❌ Błąd: Nieprawidłowy tryb resetu '{mode}'. Dozwolone wartości: {', '.join(sorted(allowed_modes))}"
-                logger.error(error_msg)
-                return error_msg
+        # Walidacja mode
+        allowed_modes = {"soft", "mixed", "hard"}
+        if mode not in allowed_modes:
+            return f"❌ Błąd: Nieprawidłowy tryb resetu '{mode}'. Dozwolone wartości: {', '.join(sorted(allowed_modes))}"
 
-            repo = self._get_repo()
+        repo = self._get_repo()
 
-            # SAFETY GUARD: Sprawdź czy są niezatwierdzone zmiany
-            # Nie sprawdzamy untracked files, bo reset ich nie usuwa
-            if not force and repo.is_dirty():
-                error_msg = (
-                    f"🛑 SafetyError: Nie można wykonać reset --{mode}.\n"
-                    f"Repozytorium zawiera niezatwierdzone zmiany, które zostałyby utracone.\n"
-                    f"Użyj force=True aby wymusić reset (UWAGA: utracisz zmiany!)\n"
-                    f"Lub użyj get_status() aby sprawdzić status i add_files()/commit() aby zapisać zmiany."
-                )
-                logger.error(error_msg)
-                return error_msg
+        # SAFETY GUARD
+        if not force and repo.is_dirty():
+            self.logger.error("SafetyError: Nie można wykonać reset (brak force)")
+            return (
+                f"🛑 SafetyError: Nie można wykonać reset --{mode}.\n"
+                f"Repozytorium zawiera niezatwierdzone zmiany, które zostałyby utracone.\n"
+                f"Użyj force=True aby wymusić reset (UWAGA: utracisz zmiany!)\n"
+                f"Lub użyj get_status() aby sprawdzić status i add_files()/commit() aby zapisać zmiany."
+            )
 
-            # Wykonaj reset
-            logger.warning(f"Wykonywanie reset --{mode} {commit_hash} (force={force})")
-            repo.git.reset(f"--{mode}", commit_hash)
+        # Wykonaj reset
+        self.logger.warning(f"Wykonywanie reset --{mode} {commit_hash} (force={force})")
+        repo.git.reset(f"--{mode}", commit_hash)
 
-            logger.info(f"Reset --{mode} {commit_hash} wykonany pomyślnie")
-            return f"✅ Reset --{mode} {commit_hash} wykonany pomyślnie"
-
-        except GitCommandError as e:
-            error_msg = f"❌ Błąd Git podczas reset: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas reset: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+        self.logger.info(f"Reset --{mode} {commit_hash} wykonany pomyślnie")
+        return f"✅ Reset --{mode} {commit_hash} wykonany pomyślnie"
 
     @kernel_function(
         name="merge",
         description="Scala zmiany z innego brancha do aktualnego brancha (git merge).",
     )
+    @async_safe_action
     async def merge(
         self,
         source_branch: Annotated[str, "Nazwa brancha źródłowego do scalenia"],
     ) -> str:
         """
         Scala zmiany z innego brancha do aktualnego brancha.
-
-        Args:
-            source_branch: Nazwa brancha źródłowego
-
-        Returns:
-            Komunikat o wyniku operacji. W przypadku konfliktu zwraca
-            listę plików wymagających rozwiązania.
         """
         try:
             repo = self._get_repo()
             current_branch = repo.active_branch.name
 
-            logger.info(f"Scalanie {source_branch} do {current_branch}")
+            self.logger.info(f"Scalanie {source_branch} do {current_branch}")
 
-            # Wykonaj merge
             repo.git.merge(source_branch)
 
-            # Sprawdź czy wystąpiły konflikty
-            # Notatka: W niektórych przypadkach merge może się powieść
-            # ale pozostawić unmerged blobs (np. przy auto-merge z konfliktami)
             conflict_msg = self._format_conflict_message(
                 repo, "merge", f"{source_branch} → {current_branch}"
             )
             if conflict_msg:
-                logger.warning(conflict_msg)
+                self.logger.warning(conflict_msg)
                 return conflict_msg
 
-            logger.info(f"Pomyślnie scalono {source_branch} do {current_branch}")
+            self.logger.info(f"Pomyślnie scalono {source_branch} do {current_branch}")
             return f"✅ Pomyślnie scalono {source_branch} do {current_branch}"
 
         except GitCommandError as e:
-            # Sprawdź czy to konflikt
             if "CONFLICT" in str(e) or "conflict" in str(e).lower():
                 repo = self._get_repo()
                 conflict_msg = self._format_conflict_message(repo, "merge")
                 if conflict_msg:
-                    logger.warning(conflict_msg)
+                    self.logger.warning(conflict_msg)
                     return conflict_msg
-
-            error_msg = f"❌ Błąd Git podczas merge: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas merge: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+            raise
 
     @kernel_function(
         name="create_branch",
         description="Tworzy nowy branch (bez przełączania się na niego).",
     )
+    @async_safe_action
     async def create_branch(
         self,
         branch_name: Annotated[str, "Nazwa nowego brancha"],
     ) -> str:
         """
         Tworzy nowy branch bez przełączania się na niego.
-
-        Args:
-            branch_name: Nazwa nowego brancha
-
-        Returns:
-            Komunikat o wyniku operacji
         """
-        try:
-            repo = self._get_repo()
+        repo = self._get_repo()
 
-            # Sprawdź czy branch już istnieje
-            if branch_name in [b.name for b in repo.branches]:
-                error_msg = f"❌ Branch '{branch_name}' już istnieje"
-                logger.error(error_msg)
-                return error_msg
-
-            logger.info(f"Tworzenie nowego brancha: {branch_name}")
-            repo.create_head(branch_name)
-
-            logger.info(f"Branch {branch_name} utworzony pomyślnie")
-            return f"✅ Branch {branch_name} utworzony pomyślnie"
-
-        except GitCommandError as e:
-            error_msg = f"❌ Błąd Git podczas tworzenia brancha: {str(e)}"
-            logger.error(error_msg)
+        if branch_name in [b.name for b in repo.branches]:
+            error_msg = f"❌ Branch '{branch_name}' już istnieje"
+            self.logger.error(error_msg)
             return error_msg
-        except Exception as e:
-            error_msg = f"❌ Błąd podczas tworzenia brancha: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+
+        self.logger.info(f"Tworzenie nowego brancha: {branch_name}")
+        repo.create_head(branch_name)
+
+        self.logger.info(f"Branch {branch_name} utworzony pomyślnie")
+        return f"✅ Branch {branch_name} utworzony pomyślnie"

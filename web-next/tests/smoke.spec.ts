@@ -381,6 +381,13 @@ test.describe("Venom Next Cockpit Smoke", () => {
   });
 
   test("Inspector list displays placeholders", async ({ page }) => {
+    await page.route("**/api/v1/history/requests*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
     await page.goto("/inspector");
     await expect(page.getByRole("heading", { name: /Analiza śladów/i })).toBeVisible();
     await expect(page.getByText(/Brak historii/i)).toBeVisible();

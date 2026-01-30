@@ -112,6 +112,28 @@ class ServiceRegistry:
             )
         )
 
+        # Semantic Kernel (Orchestrator)
+        self.register_service(
+            ServiceInfo(
+                name="Semantic Kernel",
+                service_type="orchestrator",
+                endpoint=None,
+                description="Jądro orkiestracji i zarządzania umiejętnościami",
+                is_critical=True,
+            )
+        )
+
+        # MCP Engine (Model Context Protocol)
+        self.register_service(
+            ServiceInfo(
+                name="MCP Engine",
+                service_type="mcp",
+                endpoint=None,
+                description="Obsługa narzędzi standardu Model Context Protocol",
+                is_critical=False,
+            )
+        )
+
         logger.info(f"Zarejestrowano {len(self.services)} usług do monitorowania")
 
     def register_service(self, service: ServiceInfo):
@@ -158,15 +180,22 @@ class ServiceRegistry:
 class ServiceHealthMonitor:
     """Monitor zdrowia usług."""
 
-    def __init__(self, registry: ServiceRegistry):
+    def __init__(self, registry: ServiceRegistry, event_broadcaster=None):
         """
         Inicjalizacja monitora.
 
         Args:
             registry: Rejestr usług
+            event_broadcaster: Transmiter zdarzeń WebSocket
         """
         self.registry = registry
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
+        self.orchestrator = None  # Referencja do Orchestrator (ustawiana przez main.py)
+        self.event_broadcaster = event_broadcaster
+
+    def set_orchestrator(self, orchestrator):
+        """Ustawia referencję do orkiestratora."""
+        self.orchestrator = orchestrator
 
     def get_all_services(self) -> List[ServiceInfo]:
         """
@@ -237,6 +266,10 @@ class ServiceHealthMonitor:
                 await self._check_docker_service(service)
             elif service.service_type == "database":
                 await self._check_local_database_service(service)
+            elif service.service_type == "mcp":
+                await self._check_mcp_service(service)
+            elif service.service_type == "orchestrator":
+                await self._check_semantic_kernel_service(service)
             else:
                 logger.warning(f"Nieobsługiwany typ usługi: {service.service_type}")
                 service.status = ServiceStatus.UNKNOWN
@@ -251,6 +284,30 @@ class ServiceHealthMonitor:
             service.error_message = str(e)
             service.latency_ms = 0.0
             service.last_check = time.strftime("%Y-%m-%d %H:%M:%S")
+        finally:
+            # Powiadomienie przez WebSocket o zmianie statusu (independently for each service)
+            if self.event_broadcaster:
+                try:
+                    from venom_core.api.stream import EventType
+
+                    asyncio.create_task(
+                        self.event_broadcaster.broadcast_event(
+                            event_type=EventType.SERVICE_STATUS_UPDATE,
+                            message=f"Status update for {service.name}: {service.status.value}",
+                            data={
+                                "name": service.name,
+                                "type": service.service_type,
+                                "service_type": service.service_type,  # Zachowujemy dla wstecznej kompatybilności
+                                "status": service.status.value,
+                                "error_message": service.error_message,
+                                "latency_ms": service.latency_ms,
+                            },
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Nie udało się wysłać powiadomienia WS dla {service.name}: {e}"
+                    )
 
         return service
 
@@ -390,6 +447,70 @@ class ServiceHealthMonitor:
         except Exception as e:
             service.status = ServiceStatus.OFFLINE
             service.error_message = str(e)[:100]
+
+    async def _check_mcp_service(self, service: ServiceInfo):
+        """
+        Sprawdza dostępność silnika MCP i liczy zaimportowane narzędzia.
+
+        Args:
+            service: Usługa do sprawdzenia
+        """
+        try:
+            from pathlib import Path
+
+            from venom_core.skills.mcp_manager_skill import McpManagerSkill
+
+            # Manager tworzy katalogi przy inicjalizacji
+            manager = McpManagerSkill()
+
+            # Policz zaimportowane narzędzia w katalogu _repos
+            repos_path = Path(manager.repos_root)
+            tool_count = 0
+            if repos_path.exists():
+                tool_count = len([d for d in repos_path.iterdir() if d.is_dir()])
+
+            service.status = ServiceStatus.ONLINE
+            service.error_message = f"Zaimportowano {tool_count} narzędzi"
+            service.latency_ms = 0.0  # Błyskawiczne sprawdzanie lokalne
+
+        except ImportError:
+            service.status = ServiceStatus.OFFLINE
+            service.error_message = "Brak biblioteki 'mcp' (SDK)"
+        except Exception as e:
+            service.status = ServiceStatus.OFFLINE
+            service.error_message = f"Błąd MCP: {str(e)[:50]}"
+
+    async def _check_semantic_kernel_service(self, service: ServiceInfo):
+        """
+        Sprawdza stan Semantic Kernel.
+        """
+        try:
+            orchestrator = self.orchestrator
+
+            if not orchestrator:
+                service.status = ServiceStatus.UNKNOWN
+                service.error_message = "Orchestrator nie zainicjalizowany"
+                return
+
+            # Zliczanie pluginów i funkcji
+            kernel = orchestrator.task_dispatcher.kernel
+
+            # Pobierz pluginy (W SK v1.0+ to słownik)
+            plugins = getattr(kernel, "plugins", {})
+            plugin_count = len(plugins)
+
+            # Zlicz funkcje we wszystkich pluginach
+            function_count = 0
+            for plugin in plugins.values():
+                function_count += len(plugin.functions)
+
+            service.status = ServiceStatus.ONLINE
+            service.error_message = f"{plugin_count} skille, {function_count} funkcji"
+            service.latency_ms = 0.0
+
+        except Exception as e:
+            service.status = ServiceStatus.OFFLINE
+            service.error_message = f"Błąd SK: {str(e)[:50]}"
 
     def get_summary(self) -> Dict[str, Any]:
         """

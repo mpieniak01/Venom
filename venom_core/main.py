@@ -170,7 +170,9 @@ async def lifespan(app: FastAPI):
     # Inicjalizuj Service Health Monitor
     try:
         service_registry = ServiceRegistry()
-        service_monitor = ServiceHealthMonitor(service_registry)
+        service_monitor = ServiceHealthMonitor(
+            service_registry, event_broadcaster=event_broadcaster
+        )
         logger.info("Service Health Monitor zainicjalizowany")
     except Exception as e:
         logger.warning(f"Nie udało się zainicjalizować Service Health Monitor: {e}")
@@ -784,6 +786,22 @@ app.add_middleware(
 # Funkcja do ustawienia zależności routerów - wywoływana po inicjalizacji w lifespan
 def setup_router_dependencies():
     """Konfiguracja zależności routerów po inicjalizacji."""
+    logger.info(
+        f"Setting system dependencies. Orchestrator: {orchestrator is not None}"
+    )
+    if service_monitor:
+        service_monitor.set_orchestrator(orchestrator)
+
+    system_deps.set_dependencies(
+        background_scheduler,
+        service_monitor,
+        state_manager,
+        llm_controller,
+        model_manager,
+        request_tracer,
+        hardware_bridge,
+        orchestrator,
+    )
     tasks_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     feedback_routes.set_dependencies(orchestrator, state_manager, request_tracer)
     queue_routes.set_dependencies(orchestrator)

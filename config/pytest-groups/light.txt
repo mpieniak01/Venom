@@ -1,3 +1,11 @@
+tests/test_memory.py
+tests/test_watcher.py
+tests/test_hardware_bridge.py
+tests/test_core_nervous_system.py
+tests/test_ghost_agent.py
+tests/test_orchestrator_intent.py
+tests/test_session_summary_llm.py
+tests/test_memory_api.py
 tests/api/test_memory_api_pruning.py
 tests/test_agent_improvements.py
 tests/test_agents.py
@@ -27,7 +35,6 @@ tests/test_config_manager.py
 tests/test_config_manager_api.py
 tests/test_config_sync.py
 tests/test_context_used_api.py
-tests/test_core_nervous_system.py
 tests/test_cost_guard.py
 tests/test_council.py
 tests/test_council_basic.py
@@ -59,7 +66,6 @@ tests/test_foreman_agent.py
 tests/test_forge_flow.py
 tests/test_generation_params_adapter.py
 tests/test_generation_schema.py
-tests/test_ghost_agent.py
 tests/test_git_skill.py
 tests/test_git_skill_roi.py
 tests/test_github_skill.py
@@ -69,7 +75,6 @@ tests/test_gpu_habitat.py
 tests/test_graph_rag_service.py
 tests/test_graph_store.py
 tests/test_guardian_agent.py
-tests/test_hardware_bridge.py
 tests/test_healing_flow.py
 tests/test_healthz.py
 tests/test_helpers.py
@@ -100,8 +105,6 @@ tests/test_llm_server_controller.py
 tests/test_llm_server_selection.py
 tests/test_main_setup_router_dependencies.py
 tests/test_media_skill.py
-tests/test_memory.py
-tests/test_memory_api.py
 tests/test_memory_cache.py
 tests/test_memory_consolidator.py
 tests/test_message_broker.py
@@ -122,7 +125,6 @@ tests/test_orchestrator_components.py
 tests/test_orchestrator_core_scenarios.py
 tests/test_orchestrator_council.py
 tests/test_orchestrator_decision_gates.py
-tests/test_orchestrator_intent.py
 tests/test_ota_manager.py
 tests/test_parallel_skill.py
 tests/test_parse_intent.py
@@ -147,7 +149,6 @@ tests/test_service_monitor.py
 tests/test_session_context.py
 tests/test_session_history.py
 tests/test_session_store.py
-tests/test_session_summary_llm.py
 tests/test_shadow_agent.py
 tests/test_shell_skill.py
 tests/test_simulation_director.py
@@ -170,8 +171,12 @@ tests/test_tracer_persistence.py
 tests/test_translation_service.py
 tests/test_ux_analyst.py
 tests/test_vision_grounding.py
-tests/test_watcher.py
 tests/test_web_skill.py
 tests/test_web_skill_tavily.py
 tests/test_work_ledger.py
 tests/test_workflow_store.py
+tests/test_proxy_generator.py
+tests/test_mcp_manager.py
+tests/test_api_caching.py
+tests/test_service_monitor_streaming.py
+tests/test_base_skill.py

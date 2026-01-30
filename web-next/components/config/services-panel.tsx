@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity } from "lucide-react";
+import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity, Plug, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
+import { VenomWebSocket } from "@/lib/ws-client";
 
 interface ServiceInfo {
   name: string;
@@ -50,6 +51,7 @@ interface StorageSnapshot {
 export function ServicesPanel() {
   const t = useTranslation();
   const [services, setServices] = useState<ServiceInfo[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
   const [history, setHistory] = useState<ActionHistory[]>([]);
   const [storageSnapshot, setStorageSnapshot] = useState<StorageSnapshot | null>(null);
   const [storageLoading, setStorageLoading] = useState(false);
@@ -95,6 +97,8 @@ export function ServicesPanel() {
         type: "error",
         text: "Wystąpił błąd podczas pobierania statusu usług",
       });
+    } finally {
+      setServicesLoading(false);
     }
   }, []);
 
@@ -179,12 +183,42 @@ export function ServicesPanel() {
     fetchHistory();
     fetchStorageSnapshot();
 
-    // Odświeżaj status co 5 sekund
+    // Połącz przez WebSocket dla aktualizacji statusów w czasie rzeczywistym
+    const ws = new VenomWebSocket("/ws/events", (event: any) => {
+      if (event.type === "SERVICE_STATUS_UPDATE" && event.data) {
+        const serviceData = event.data;
+        const statusMap: Record<string, string> = {
+          online: "running",
+          offline: "stopped",
+          degraded: "degraded",
+          unknown: "unknown",
+        };
+
+        setServices((prevServices) =>
+          prevServices.map((s) =>
+            s.name.toLowerCase() === serviceData.name.toLowerCase()
+              ? {
+                ...s,
+                ...serviceData,
+                status: (statusMap[serviceData.status] as any) || serviceData.status
+              }
+              : s
+          )
+        );
+      }
+    });
+
+    ws.connect();
+
+    // Odświeżaj status co 10 sekund (jako fallback dla WS)
     const interval = setInterval(() => {
       fetchStatus();
-    }, 5000);
+    }, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      ws.disconnect();
+    };
   }, [fetchStatus, fetchHistory, fetchStorageSnapshot]);
 
   const executeAction = async (service: string, action: string) => {
@@ -286,6 +320,10 @@ export function ServicesPanel() {
       case "llm_ollama":
       case "llm_vllm":
         return <Zap className="h-5 w-5" />;
+      case "mcp":
+        return <Plug className="h-5 w-5" />;
+      case "orchestrator":
+        return <Brain className="h-5 w-5" />;
       default:
         return <Activity className="h-5 w-5" />;
     }
@@ -298,6 +336,8 @@ export function ServicesPanel() {
     if (name === "llm_ollama") return "Ollama";
     if (name === "llm_vllm") return "vLLM";
     if (name === "background_tasks") return "Background Tasks";
+    if (name === "mcp engine") return "MCP Engine";
+    if (name === "semantic kernel") return "Semantic Kernel";
     if (name === "local llm") return "Local LLM";
     // Fallback: zamiana podkreśleń na spacje + kapitalizacja pierwszej litery
     const pretty = raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
@@ -372,117 +412,140 @@ export function ServicesPanel() {
 
       {/* Services Grid */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {services.map((service) => {
-          const isRunning = service.status === "running";
-          const actionKey = `${service.service_type}`;
-
-          return (
+        {servicesLoading ? (
+          [1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div
-              key={`${service.service_type}-${service.name}`}
-              className="glass-panel rounded-2xl box-subtle p-4"
+              key={i}
+              className="glass-panel rounded-2xl box-subtle p-4 h-[180px] animate-pulse flex flex-col justify-between"
             >
-              {/* Header */}
-              <div className="mb-3 flex items-start justify-between">
+              <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
-                  <div className={`${getStatusColor(service.status)}`}>
-                    {getServiceIcon(service.service_type)}
-                  </div>
-                  <h4 className="heading-h4">{getDisplayName(service.name)}</h4>
+                  <div className="h-10 w-10 bg-white/10 rounded-xl" />
+                  <div className="h-5 w-24 bg-white/10 rounded" />
                 </div>
-                <span className={`pill-badge ${getStatusBadge(service.status)}`}>
-                  {service.status}
-                </span>
+                <div className="h-5 w-16 bg-white/10 rounded-full" />
               </div>
-
-              {/* Info */}
-              <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <p className="text-zinc-500">PID</p>
-                  <p className="font-mono text-[11px] text-white">{service.pid || "—"}</p>
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-zinc-500">Port</p>
-                    <p className="font-mono text-[11px] text-white">{service.port || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500">RAM</p>
-                    <p className="font-mono text-[11px] text-white">
-                      {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-zinc-500">Uptime</p>
-                    <p className="font-mono text-[11px] text-white">
-                      {formatUptime(service.uptime_seconds)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500">CPU</p>
-                    <p className="font-mono text-[11px] text-white">
-                      {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
-                    </p>
-                  </div>
-                </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="h-8 bg-white/5 rounded-lg" />
+                <div className="h-8 bg-white/5 rounded-lg" />
+                <div className="h-8 bg-white/5 rounded-lg" />
               </div>
-
-              {/* Error */}
-              {service.error_message && (
-                <div className="mb-3 rounded-lg bg-red-500/10 p-2">
-                  <p className="text-[11px] text-red-400">{service.error_message}</p>
-                </div>
-              )}
-
-              {/* Actions or Info Badge */}
-              {service.actionable ? (
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => executeAction(service.service_type, "start")}
-                    disabled={
-                      isRunning || actionInProgress === `${actionKey}-start` || loading
-                    }
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
-                  >
-                    <Play className="mr-1 h-3 w-3" />
-                    {t("config.services.actions.start")}
-                  </Button>
-                  <Button
-                    onClick={() => executeAction(service.service_type, "stop")}
-                    disabled={
-                      !isRunning || actionInProgress === `${actionKey}-stop` || loading
-                    }
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
-                  >
-                    <Square className="mr-1 h-3 w-3" />
-                    {t("config.services.actions.stop")}
-                  </Button>
-                  <Button
-                    onClick={() => executeAction(service.service_type, "restart")}
-                    disabled={actionInProgress === `${actionKey}-restart` || loading}
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
-                  >
-                    <RotateCw className="mr-1 h-3 w-3" />
-                    {t("config.services.actions.restart")}
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-lg bg-blue-500/10 p-2 border border-blue-500/30">
-                  <p className="text-[11px] text-blue-300 text-center">
-                    Kontrolowane przez konfigurację
-                  </p>
-                </div>
-              )}
+              <div className="h-8 w-full bg-white/5 rounded-lg" />
             </div>
-          );
-        })}
+          ))
+        ) : (
+          services.map((service) => {
+            const isRunning = service.status === "running";
+            const actionKey = `${service.service_type}`;
+
+            return (
+              <div
+                key={`${service.service_type}-${service.name}`}
+                className="glass-panel rounded-2xl box-subtle p-4"
+              >
+                {/* Header */}
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`${getStatusColor(service.status)}`}>
+                      {getServiceIcon(service.service_type)}
+                    </div>
+                    <h4 className="heading-h4">{getDisplayName(service.name)}</h4>
+                  </div>
+                  <span className={`pill-badge ${getStatusBadge(service.status)}`}>
+                    {service.status}
+                  </span>
+                </div>
+
+                {/* Info */}
+                <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <p className="text-zinc-500">PID</p>
+                    <p className="font-mono text-[11px] text-white">{service.pid || "—"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-zinc-500">Port</p>
+                      <p className="font-mono text-[11px] text-white">{service.port || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">RAM</p>
+                      <p className="font-mono text-[11px] text-white">
+                        {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-zinc-500">Uptime</p>
+                      <p className="font-mono text-[11px] text-white">
+                        {formatUptime(service.uptime_seconds)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">CPU</p>
+                      <p className="font-mono text-[11px] text-white">
+                        {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Error */}
+                {service.error_message && (
+                  <div className="mb-3 rounded-lg bg-red-500/10 p-2">
+                    <p className="text-[11px] text-red-400">{service.error_message}</p>
+                  </div>
+                )}
+
+                {/* Actions or Info Badge */}
+                {service.actionable ? (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => executeAction(service.service_type, "start")}
+                      disabled={
+                        isRunning || actionInProgress === `${actionKey}-start` || loading
+                      }
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 h-8 border border-emerald-500/30 bg-emerald-500/10 px-2 text-xs text-emerald-200 hover:bg-emerald-500/20"
+                    >
+                      <Play className="mr-1 h-3 w-3" />
+                      {t("config.services.actions.start")}
+                    </Button>
+                    <Button
+                      onClick={() => executeAction(service.service_type, "stop")}
+                      disabled={
+                        !isRunning || actionInProgress === `${actionKey}-stop` || loading
+                      }
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 h-8 border border-red-500/30 bg-red-500/10 px-2 text-xs text-red-200 hover:bg-red-500/20"
+                    >
+                      <Square className="mr-1 h-3 w-3" />
+                      {t("config.services.actions.stop")}
+                    </Button>
+                    <Button
+                      onClick={() => executeAction(service.service_type, "restart")}
+                      disabled={actionInProgress === `${actionKey}-restart` || loading}
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1 h-8 border border-yellow-500/30 bg-yellow-500/10 px-2 text-xs text-yellow-200 hover:bg-yellow-500/20"
+                    >
+                      <RotateCw className="mr-1 h-3 w-3" />
+                      {t("config.services.actions.restart")}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-blue-500/10 p-2 border border-blue-500/30">
+                    <p className="text-[11px] text-blue-300 text-center">
+                      Kontrolowane przez konfigurację
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Storage */}
@@ -552,6 +615,24 @@ export function ServicesPanel() {
         ) : null}
         {storageError ? (
           <p className="mt-3 text-xs text-rose-300">{storageError}</p>
+        ) : storageLoading && !storageSnapshot ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-2xl border border-white/5 bg-white/5 px-4 py-3 animate-pulse"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-24 bg-white/10 rounded" />
+                    <div className="h-3 w-16 bg-white/5 rounded" />
+                  </div>
+                  <div className="h-4 w-12 bg-white/10 rounded" />
+                </div>
+                <div className="h-3 w-3/4 bg-white/5 rounded" />
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             {(storageSnapshot?.items ?? [])

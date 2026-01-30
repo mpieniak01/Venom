@@ -52,6 +52,27 @@ graph_store.load_graph()
 - `GET /api/v1/graph/impact/{path}` - Analiza wpływu usunięcia pliku
 - `POST /api/v1/graph/scan` - Wyzwolenie manualnego skanowania
 
+#### Kontrakt odpowiedzi `/api/v1/graph/summary` (standaryzacja)
+Endpoint zwraca ustandaryzowany obiekt `summary` (snake_case) oraz pola na poziomie root dla kompatybilności wstecznej:
+
+```json
+{
+  "status": "success",
+  "summary": {
+    "nodes": 123,
+    "edges": 456,
+    "last_updated": "2026-01-30T12:34:56+00:00",
+    "total_nodes": 123,
+    "total_edges": 456
+  },
+  "nodes": 123,
+  "edges": 456,
+  "lastUpdated": "2026-01-30T12:34:56+00:00"
+}
+```
+
+Zalecenie: nowy kod powinien używać pól z `summary`, a `nodes/edges/lastUpdated` traktować jako legacy.
+
 ### 2. LessonsStore - Magazyn Lekcji
 
 **Lokalizacja:** `venom_core/memory/lessons_store.py`

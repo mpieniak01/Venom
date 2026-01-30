@@ -44,6 +44,11 @@ Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion
 - `venom_core/skills/mcp/proxy_generator.py` – Automatic proxy code generation for MCP servers.
 - `venom_core/skills/custom/` – Directory for dynamically generated and utility skills.
 
+## Related documentation (MCP)
+- `docs/en/DEV_GUIDE_SKILLS.md` – MCP import and Skills standards.
+- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
+- `docs/en/TREE.md` – repo structure and MCP directories.
+
 ## API Contracts
 Endpoint paths remain unchanged. Refactor concerns only code structure.
 

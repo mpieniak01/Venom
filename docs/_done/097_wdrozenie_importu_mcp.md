@@ -7,7 +7,7 @@
 ---
 
 ## Cel
-Wdrożenie mechanizmu importowania i uruchamiania narzędzi MCP (Model Context Protocol) z repozytoriów Git, zgodnie z analizą zawartą w [nr_101](nr_101_analiza_importu_mcp.md).
+Wdrożenie mechanizmu importowania i uruchamiania narzędzi MCP (Model Context Protocol) z repozytoriów Git.
 
 ## Fazy Realizacji
 
@@ -41,10 +41,15 @@ Wdrożenie mechanizmu importowania i uruchamiania narzędzi MCP (Model Context P
     *   Uruchomienie wygenerowanego skilla.
     *   Wykonanie operacji na bazie danych przez Agenta.
 
-## Decyzje Techniczne (zgodne z nr 101)
+## Decyzje Techniczne
 *   **Runtime**: Python `virtualenv` (Lite mode).
 *   **Komunikacja**: Stdio (Standard Input/Output).
 *   **Bezpieczeństwo**: Ostrzeżenie przed importem (User confirmation required).
+
+## Powiązana dokumentacja
+- `docs/DEV_GUIDE_SKILLS.md` – standardy Skills i import MCP.
+- `docs/BACKEND_ARCHITECTURE.md` – warstwa wykonawcza (Skills & MCP).
+- `docs/TREE.md` – aktualna struktura katalogów i miejsce MCP w repo.
 
 ---
 **Status**: Zakończone

@@ -83,6 +83,13 @@
     │       ├── shell_skill.py   # commands in sandbox
     │       └── git_skill.py     # git handling (status/diff/commit)
     │
+    ├── skills/                  # [LAYER 3: MCP TOOLS] – Git import (MCP)
+    │   ├── mcp_manager_skill.py # MCP import manager
+    │   ├── mcp/
+    │   │   ├── proxy_generator.py # MCP proxy generator
+    │   │   └── _repos/            # cloned MCP repos (runtime)
+    │   └── custom/              # generated MCP wrappers (runtime)
+    │
     ├── perception/              # [LAYER 3: SENSES] – EYES + ANTENNA
     │   ├── __init__.py
     │   ├── eyes.py              # vision models (Ollama / OpenAI) [Florence-2 v2.0]

@@ -8,6 +8,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 
 ### ✨ Kluczowe funkcjonalności
 - 🎨 Tworzenie nowych narzędzi i autonaprawa
+- 🔌 **Import narzędzi MCP** - Integracja z Model Context Protocol (import z Git)
 - 🌐 **Dostęp do Internetu** - Wyszukiwanie aktualnych informacji (ceny, wiadomości, dokumentacja)
 - 🧠 **Planowanie strategiczne** - Automatyczna dekompozycja złożonych projektów na kroki
 - 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł
@@ -139,6 +140,7 @@ Orchestrator (decyzja o przepływie)
 > 🔎 **Nowy dashboard web-next**
 > Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
 > Dokumentacja sesji chatu, trybów Direct/Normal/Complex i zachowania pamięci: `docs/CHAT_SESSION.md`.
+> Dokumentacja standardów Skills oraz importu MCP: `docs/DEV_GUIDE_SKILLS.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 

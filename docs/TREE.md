@@ -85,6 +85,13 @@
     │       ├── shell_skill.py   # komendy w sandboxie
     │       └── git_skill.py     # obsługa gita (status/diff/commit)
     │
+    ├── skills/                  # [WARSTWA 3: NARZĘDZIA MCP] – import z Git (MCP)
+    │   ├── mcp_manager_skill.py # zarządzanie importem MCP
+    │   ├── mcp/
+    │   │   ├── proxy_generator.py # generator proxy MCP
+    │   │   └── _repos/            # klony repozytoriów MCP (runtime)
+    │   └── custom/              # generowane wrappery MCP (runtime)
+    │
     ├── perception/              # [WARSTWA 3: ZMYSŁY] – OCZY + ANTENA
     │   ├── __init__.py
     │   ├── eyes.py              # modele vision (Ollama / OpenAI) [Florence-2 v2.0]

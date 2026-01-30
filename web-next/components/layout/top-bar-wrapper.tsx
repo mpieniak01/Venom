@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { TopBar } from "./top-bar";
 import { fetchLayoutInitialData } from "@/lib/server-data";
 

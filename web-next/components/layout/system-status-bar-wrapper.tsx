@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { SystemStatusBar } from "./system-status-bar";
 import { fetchLayoutInitialData } from "@/lib/server-data";
 

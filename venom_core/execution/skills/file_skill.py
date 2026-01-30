@@ -196,7 +196,6 @@ class FileSkill(BaseSkill):
 
     # Poprawka: Metoda list_files musi być zrobiona inaczej w Pythonie,
     # nie można wewnątrz metody definiować dekoratora na self.
-    # Przepiszę metodę poniżej poprawnie.
 
     @kernel_function(
         name="file_exists",

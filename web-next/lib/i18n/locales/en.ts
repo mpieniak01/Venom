@@ -316,7 +316,7 @@ export const en = {
           description: "Audio interface: speech recognition and voice synthesis",
         },
         shadowActions: {
-          foundProblem: "Shadow Agent: found problem and suggests fix ({{action_type}})",
+          foundProblem: "Shadow Agent: found problem and suggests fix ({{type}})",
         },
       },
       runtimeInfo: {

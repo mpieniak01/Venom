@@ -316,7 +316,7 @@ export const pl = {
           description: "Interfejs audio: rozpoznawanie mowy i synteza głosu",
         },
         shadowActions: {
-          foundProblem: "Shadow Agent: znalazł problem i sugeruje naprawę ({{action_type}})",
+          foundProblem: "Shadow Agent: znalazł problem i sugeruje naprawę ({{type}})",
         },
       },
       runtimeInfo: {

@@ -267,7 +267,8 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
 
             # Basic validation
             valid_actions = self.ACTION_KEYWORDS.keys()
-            action = parsed.get("action", "unknown")
+            action = str(parsed.get("action", "unknown")).strip().lower()
+
             if action not in valid_actions and action != "unknown":
                 logger.warning(
                     f"LLM returned invalid action: {action}. Fallback to unknown."

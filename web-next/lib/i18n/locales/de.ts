@@ -6,6 +6,13 @@ export const de = {
     provider: "Anbieter",
     noDescription: "Keine Beschreibung",
     tuning: "Feintuning",
+    comingSoon: "Demnächst",
+    running: "Läuft",
+    stopped: "Gestoppt",
+    pending: "Ausstehend",
+    completed: "Abgeschlossen",
+    failed: "Fehlgeschlagen",
+    unknown: "Unbekannt",
   },
   topBar: {
     wsLabel: "WS",
@@ -307,6 +314,9 @@ export const de = {
         avatar: {
           title: "Avatar - Audio-Schnittstelle",
           description: "Audio-Schnittstelle: Spracherkennung und Sprachsynthese",
+        },
+        shadowActions: {
+          foundProblem: "Shadow Agent: Problem gefunden, Korrektur vorgeschlagen ({{action_type}})",
         },
       },
       runtimeInfo: {

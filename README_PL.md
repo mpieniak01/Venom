@@ -758,7 +758,7 @@ takie jak `models/` i `models_cache/`.
 
 ## 🎯 Mapa drogowa
 
-### ✅ v1.0 (obecnie - Q4 2025)
+### ✅ v1.0 (obecnie)
 - [x] Warstwa Planowania (ArchitectAgent)
 - [x] Ekspansja Wiedzy (ResearcherAgent + WebSearchSkill)
 - [x] Integracja z Internetem
@@ -808,7 +808,7 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/PL/CONTRIBUTING.md), a
 
 ## 🌐 THE NEXUS: architektura rozproszona
 
-**NOWE w v1.1!** Venom może teraz działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores).
+**Eksperymentalne (v1.0.x):** Venom może działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores). Stabilizacja jest planowana na v1.1.
 
 ### Cechy siatki rozproszonej:
 - 🔗 **Architektura master-worker** - Nexus (mózg) + Spores (wykonawcy)

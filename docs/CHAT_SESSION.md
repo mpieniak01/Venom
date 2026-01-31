@@ -111,6 +111,12 @@ Goal: everything besides sending prompt and first chunk should work in backgroun
 - Summary is generated only on request/trigger. Possible to switch to auto-summary for long sessions, at token cost.
 - Memory retrieval is conditional (heuristics). In future this can be controlled configuratively or per-model.
 
+## Planned for v2.0 (multi-chat + attachments)
+- **Multi-chat sessions:** create multiple named sessions, list/switch between them, and keep their histories available without losing prior sessions.
+- **Session recall:** ability to reopen previous sessions and continue with preserved context (without forcing a reset on backend restart).
+- **Attachments in chat:** upload/store/list/remove attachments, show metadata (type, size, source), and allow reattaching files to new messages.
+- **Storage rules:** per-session attachment limits and retention policies (e.g., manual delete, TTL, or project scope).
+
 ## Where to Find Code
 - Session UI: `web-next/lib/session.tsx`
 - Chat UI: `web-next/components/cockpit/cockpit-home.tsx`

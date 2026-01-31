@@ -808,10 +808,8 @@ python examples/nexus_demo.py
 
 ## 📝 License
 
-This project is currently in early development stage.
-The repository is public for viewing and reference purposes only.
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
 
-At this stage, no license is granted.
-All rights reserved by the author until further notice.
+Copyright (c) 2025-2026 Maciej Pieniak
 
 ---

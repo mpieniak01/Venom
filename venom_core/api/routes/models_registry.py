@@ -4,10 +4,11 @@ import asyncio
 import importlib
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from venom_core.api.routes.models_dependencies import get_model_registry
 from venom_core.config import SETTINGS
+from venom_core.core.model_registry import ModelProvider
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/api/v1", tags=["models"])
 @router.get("/models/providers")
 async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
     """
-    Lista dostepnych modeli ze wszystkich providerow.
+    Lista dostępnych modeli ze wszystkich providerów.
     """
     model_registry = get_model_registry()
     if model_registry is None:
@@ -76,15 +77,13 @@ async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
 @router.get("/models/trending")
 async def list_trending_models(provider: str, limit: int = 12):
     """
-    Lista trendujacych modeli z zewnetrznych providerow.
+    Lista trendujących modeli z zewnętrznych providerów.
     """
     model_registry = get_model_registry()
     if model_registry is None:
         raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
 
     try:
-        from venom_core.core.model_registry import ModelProvider
-
         try:
             provider_enum = ModelProvider(provider.lower())
         except ValueError:
@@ -112,6 +111,47 @@ async def list_trending_models(provider: str, limit: int = 12):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
+@router.get("/models/search")
+async def search_models(
+    query: str = Query(..., min_length=2),
+    provider: str = "huggingface",
+    limit: int = 10,
+):
+    """
+    Wyszukuje modele w zewnętrznych repozytoriach.
+    """
+    model_registry = get_model_registry()
+    if model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        try:
+            provider_enum = ModelProvider(provider.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"Nieprawidłowy provider: {provider}"
+            )
+
+        result = await model_registry.search_external_models(
+            provider=provider_enum, query=query, limit=limit
+        )
+        models = result.get("models", [])
+
+        return {
+            "success": True,
+            "provider": provider_enum.value,
+            "query": query,
+            "models": models,
+            "count": len(models),
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Błąd podczas wyszukiwania modeli: {exc}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+
+
 @router.get("/models/news")
 async def list_model_news(
     provider: str = "huggingface",
@@ -121,7 +161,7 @@ async def list_model_news(
     lang: str = "en",
 ):
     """
-    Lista newsow dla providerow (obecnie tylko HuggingFace).
+    Lista newsów dla providerów (obecnie tylko HuggingFace).
     """
     model_registry = get_model_registry()
     if model_registry is None:

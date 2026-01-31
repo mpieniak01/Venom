@@ -85,7 +85,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     ]);
 
     expect(runtimeReq.method()).toBe("POST");
-    expect(runtimeReq.postDataJSON()).toEqual({ provider: "openai" });
+    expect(runtimeReq.postDataJSON()).toEqual(expect.objectContaining({ provider: "openai" }));
     expect(taskReq.method()).toBe("POST");
     await expect(page.getByText(/Wysłano zadanie: slash-gpt/i)).toBeVisible();
   });

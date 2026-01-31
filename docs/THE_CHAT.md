@@ -1,77 +1,77 @@
 # THE CHAT - Conversational Assistant
 
-## Rola
+## Role
 
-Chat Agent to przyjazny asystent konwersacyjny w systemie Venom, specjalizujący się w naturalnych rozmowach z użytkownikiem, odpowiadaniu na pytania ogólne oraz zarządzaniu prostymi zadaniami bez konieczności złożonego planowania.
+Chat Agent is a friendly conversational assistant in the Venom system, specializing in natural conversations with users, answering general questions, and managing simple tasks without the need for complex planning.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Rozmowa naturalna** - Odpowiadanie na pytania w przyjazny, pomocny sposób
-- **Integracja z pamięcią** - Wykorzystywanie i zapisywanie informacji do pamięci długoterminowej
-- **Zarządzanie kalendarzem** - Integracja z Google Calendar (odczyt, planowanie zadań)
-- **Wiedza ogólna** - Odpowiadanie na pytania faktograficzne
-- **Asystent osobisty** - Pomoc w codziennych zadaniach
+- **Natural conversation** - Answering questions in a friendly, helpful manner
+- **Memory integration** - Using and saving information to long-term memory
+- **Calendar management** - Integration with Google Calendar (reading, task scheduling)
+- **General knowledge** - Answering factual questions
+- **Personal assistant** - Help with daily tasks
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. Dostępne Narzędzia
+### 1. Available Tools
 
 **MemorySkill** (`venom_core/memory/memory_skill.py`):
-- `recall(query)` - Przywołanie informacji z pamięci długoterminowej
-- `memorize(content, tags)` - Zapisanie ważnych informacji
+- `recall(query)` - Retrieve information from long-term memory
+- `memorize(content, tags)` - Save important information
 
 **GoogleCalendarSkill** (`venom_core/execution/skills/google_calendar_skill.py`):
-- `read_agenda(days_ahead)` - Odczyt kalendarza na najbliższe dni
-- `schedule_task(summary, start_time, duration_minutes, description)` - Dodanie wydarzenia
+- `read_agenda(days_ahead)` - Read calendar for upcoming days
+- `schedule_task(summary, start_time, duration_minutes, description)` - Add event
 
-### 2. Zasady Działania
+### 2. Operating Principles
 
-**Kolejność operacji:**
-1. **Najpierw pamięć** - Zawsze sprawdź `recall()` czy nie ma zapisanych informacji
-2. **Wykorzystaj wiedzę** - Jeśli znaleziono w pamięci, użyj w odpowiedzi
-3. **Odpowiedz naturalnie** - Użyj przyjaznego, zwięzłego języka
-4. **Zapisz ważne** - Po ważnej rozmowie rozważ `memorize()`
+**Operation sequence:**
+1. **Memory first** - Always check `recall()` for stored information
+2. **Use knowledge** - If found in memory, use in response
+3. **Respond naturally** - Use friendly, concise language
+4. **Save important** - After important conversation consider `memorize()`
 
-**Przykłady interakcji:**
+**Interaction examples:**
 ```
-Użytkownik: "Cześć Venom, jak się masz?"
-Chat Agent: "Cześć! Świetnie się mam, dziękuję. Gotowy do pomocy!"
+User: "Hi Venom, how are you?"
+Chat Agent: "Hi! I'm doing great, thank you. Ready to help!"
 
-Użytkownik: "Jaka jest stolica Francji?"
-Chat Agent: "Stolicą Francji jest Paryż."
+User: "What is the capital of France?"
+Chat Agent: "The capital of France is Paris."
 
-Użytkownik: "Co mam w planach dziś?"
-Chat Agent: [wywołuje read_agenda(1)]
-           "Dziś masz zaplanowane: 1. Spotkanie z zespołem o 10:00..."
+User: "What do I have planned today?"
+Chat Agent: [calls read_agenda(1)]
+           "Today you have scheduled: 1. Team meeting at 10:00..."
 
-Użytkownik: "Zapamiętaj że lubię kawę o 8 rano"
-Chat Agent: [wywołuje memorize("Użytkownik pije kawę o 8:00", tags=["preferences"])]
-           "Zapamiętałem! Kawę o 8 rano."
+User: "Remember that I like coffee at 8 AM"
+Chat Agent: [calls memorize("User drinks coffee at 8:00", tags=["preferences"])]
+           "Remembered! Coffee at 8 AM."
 ```
 
-### 3. Integracja z Google Calendar
+### 3. Google Calendar Integration
 
-**Konfiguracja:**
+**Configuration:**
 ```bash
-# W .env
+# In .env
 ENABLE_GOOGLE_CALENDAR=true
 GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
 GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
-VENOM_CALENDAR_ID=your_calendar_id  # NIE 'primary', osobny kalendarz
+VENOM_CALENDAR_ID=your_calendar_id  # NOT 'primary', separate calendar
 ```
 
-**Przykłady użycia:**
+**Usage examples:**
 ```
-Użytkownik: "Co mam jutro?"
+User: "What do I have tomorrow?"
 → read_agenda(days_ahead=1)
 
-Użytkownik: "Dodaj spotkanie z Janem jutro o 14:00"
-→ schedule_task("Spotkanie z Janem", "2024-01-15T14:00:00", 60)
+User: "Add meeting with John tomorrow at 2 PM"
+→ schedule_task("Meeting with John", "2024-01-15T14:00:00", 60)
 ```
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
 IntentManager: GENERAL_CHAT
@@ -79,76 +79,76 @@ IntentManager: GENERAL_CHAT
 ChatAgent.execute(user_message)
         ↓
 ChatAgent:
-  1. recall(user_message) - sprawdź pamięć
-  2. Generuj odpowiedź (LLM) z kontekstem pamięci
-  3. Opcjonalnie: read_agenda() dla pytań o kalendarz
-  4. Opcjonalnie: memorize() dla ważnych informacji
-  5. Zwróć odpowiedź
+  1. recall(user_message) - check memory
+  2. Generate response (LLM) with memory context
+  3. Optionally: read_agenda() for calendar questions
+  4. Optionally: memorize() for important information
+  5. Return response
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **IntentManager** - Przekazuje pytania ogólne (GENERAL_CHAT)
-- **MemorySkill** - Długoterminowa pamięć rozmów
-- **Orchestrator** - Routuje proste zapytania bezpośrednio do Chat (bez planowania)
+- **IntentManager** - Passes general questions (GENERAL_CHAT)
+- **MemorySkill** - Long-term conversation memory
+- **Orchestrator** - Routes simple queries directly to Chat (without planning)
 
-## Typy Intencji Obsługiwane przez Chat
+## Intent Types Handled by Chat
 
 **GENERAL_CHAT:**
-- Powitania ("Cześć", "Witaj")
-- Pytania ogólne ("Jaka jest stolica...", "Co to jest...")
-- Żarty i small talk
-- Polecenia kalendarzowe ("Co mam jutro?")
-- Zarządzanie pamięcią ("Zapamiętaj że...")
+- Greetings ("Hi", "Hello")
+- General questions ("What is the capital...", "What is...")
+- Jokes and small talk
+- Calendar commands ("What do I have tomorrow?")
+- Memory management ("Remember that...")
 
-**Nie obsługiwane (przekazywane do innych agentów):**
+**Not handled (passed to other agents):**
 - CODE_GENERATION → CoderAgent
 - COMPLEX_PLANNING → ArchitectAgent
 - RESEARCH → ResearcherAgent
 - KNOWLEDGE_SEARCH → LibrarianAgent / MemorySkill
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env
-# Model dla Chat Agent (zazwyczaj szybki, lokalny)
+# In .env
+# Model for Chat Agent (usually fast, local)
 AI_MODE=LOCAL
 LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
-LLM_MODEL_NAME=llama3  # lub phi3, gemma
+LLM_MODEL_NAME=llama3  # or phi3, gemma
 
-# Google Calendar (opcjonalne)
+# Google Calendar (optional)
 ENABLE_GOOGLE_CALENDAR=false
 
-# Pamięć długoterminowa
+# Long-term memory
 MEMORY_ROOT=./data/memory
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Średni czas odpowiedzi (zazwyczaj <2s dla lokalnych modeli)
-- Współczynnik użycia pamięci (% zapytań wykorzystujących `recall`)
-- Liczba zapisów do pamięci (per sesja)
-- Liczba zapytań do Google Calendar (per dzień)
+**Key indicators:**
+- Average response time (typically <2s for local models)
+- Memory usage rate (% queries using `recall`)
+- Number of memory saves (per session)
+- Number of Google Calendar queries (per day)
 
 ## Best Practices
 
-1. **Pamięć najpierw** - Zawsze sprawdź `recall()` przed odpowiedzią
-2. **Zapisuj ważne** - Użyj `memorize()` dla preferencji, faktów o użytkowniku
-3. **Zwięzłość** - Odpowiedzi krótkie ale kompletne
-4. **Naturalność** - Unikaj formalnego języka, bądź przyjazny
-5. **Kalendarz** - Używaj osobnego kalendarza (NIE 'primary') dla zadań Venom
+1. **Memory first** - Always check `recall()` before responding
+2. **Save important** - Use `memorize()` for preferences, facts about user
+3. **Brevity** - Responses short but complete
+4. **Naturalness** - Avoid formal language, be friendly
+5. **Calendar** - Use separate calendar (NOT 'primary') for Venom tasks
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Brak dostępu do bieżących wydarzeń (wymagany ResearcherAgent + WebSearch)
-- Google Calendar wymaga OAuth2 setup (credentials.json)
-- Pamięć jest wektorowa (semantyczna), nie zawsze precyzyjna dla dat/liczb
-- Brak zarządzania wieloma kontekstami rozmów jednocześnie
-- **Optimistic UI:** Wiadomości są wyświetlane natychmiast po wysłaniu (optimistic update), a następnie aktualizowane o status z serwera. Mechanizm ten zapewnia płynność konwersacji, ale wymaga poprawnej synchronizacji ID (co zostało naprawione w fix-095b).
+- No access to current events (requires ResearcherAgent + WebSearch)
+- Google Calendar requires OAuth2 setup (credentials.json)
+- Memory is vector-based (semantic), not always precise for dates/numbers
+- No management of multiple conversation contexts simultaneously
+- **Optimistic UI:** Messages are displayed immediately upon sending (optimistic update) and then reconciled with server status. This ensures conversation fluidity but requires correct ID synchronization (addressed in fix-095b).
 
-## Zobacz też
+## See also
 
-- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Wyszukiwanie bieżących informacji
-- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Pamięć długoterminowa
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Klasyfikacja intencji
+- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Searching current information
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - How short-term memory works
+- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification

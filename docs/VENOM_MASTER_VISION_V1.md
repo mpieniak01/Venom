@@ -1,109 +1,109 @@
 
 # VENOM – MASTER VISION v1
-## Meta-inteligencja lokalna. Jeden runtime. Jeden organizm.
+## Local meta-intelligence. One runtime. One organism.
 
-> **[English Version](en/VENOM_MASTER_VISION_V1.md)**
+> **[Polska Wersja](../VENOM_MASTER_VISION_V1.md)**
 
-## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
+## 0. Introduction – Target Vision (Venom v2.0)
 > [!NOTE]
-> **Status:** Poniższy opis przedstawia docelową formę organizmu (v2.0). Obecna wersja (v1.0) stanowi fundament (Fundament Layer) realizujący kluczowe funkcje orkiestracji i pamięci.
-Venom to projekt stworzenia organizmu sztucznej inteligencji, który rozwija, nadzoruje i projektuje inne systemy AI.
-To warstwa meta-inteligencji działająca nad Rider-PC (logika, kod, AI) oraz Rider-Pi (świat fizyczny, sensory, ruch).
-Venom może w przyszłości objąć każdym innym modułem Twojego ekosystemu.
+> **Status:** The description below presents the target form of the organism (v2.0). The current version (v1.0) serves as the foundation (Foundation Layer) implementing key orchestration and memory functions.
+Venom is a project to create an artificial intelligence organism that develops, supervises, and designs other AI systems.
+It's a meta-intelligence layer operating above Rider-PC (logic, code, AI) and Rider-Pi (physical world, sensors, movement).
+Venom can in the future encompass any other module in your ecosystem.
 
-Venom to inteligentny, adaptacyjny, uczący się organizm, który:
-- rozumie intencje użytkownika,
-- buduje plany techniczne i architektury systemów,
-- orkiestruje sieć agentów,
-- pisze, modyfikuje i testuje kod,
-- posiada pamięć długoterminową,
-- rozszerza wiedzę przez internet i modele eksperckie,
-- uczy się z każdego zadania,
-- działa w pełni local-first,
-- respektuje polityki i user-ethics.
+Venom is an intelligent, adaptive, learning organism that:
+- understands user intent,
+- builds technical plans and system architectures,
+- orchestrates agent networks,
+- writes, modifies and tests code,
+- has long-term memory,
+- expands knowledge through internet and expert models,
+- learns from every task,
+- operates fully local-first,
+- respects policies and user-ethics.
 
-Venom traktuje:
-- Rider-Pi jako swoje ciało,
-- Rider-PC jako swoje środowisko wewnętrzne,
-- modele ONNX + narzędzia jako organy,
-- agentów jako wyspecjalizowane tkanki.
+Venom treats:
+- Rider-Pi as its body,
+- Rider-PC as its internal environment,
+- ONNX models + tools as organs,
+- agents as specialized tissues.
 
-Venom to meta-mózg, organizm sztucznej inteligencji, architekt kodu, orkiestrator agentów, menedżer wiedzy, strażnik zasad oraz AI, która tworzy AI.
+Venom is a meta-brain, artificial intelligence organism, code architect, agent orchestrator, knowledge manager, policy guardian, and AI that creates AI.
 
 > [!NOTE]
-> **Ewolucja Procesowa:** W v1.0 organizm działa w oparciu o *wbudowane* autonomiczne procesy (Internal Processes). W v2.0 użytkownik uzyska narzędzia do *jawnego modelowania* tych procesów (User-Configurable Processes), przejmując rolę inżyniera przepływu.
+> **Process Evolution:** In v1.0, the organism operates based on *built-in* autonomous processes (Internal Processes). In v2.0, the user will gain tools for *explicit modeling* of these processes (User-Configurable Processes), taking on the role of a flow engineer.
 
-## 1. Definicja techniczna – czym jest Venom jako system
-Venom to warstwa meta-inteligencji lokalnej, która przyjmuje intencję użytkownika i przekształca ją w działające rozwiązanie poprzez:
-- analizę kontekstu projektu,
-- budowanie planów wykonania,
-- sterowanie agentami,
-- generowanie i refaktoring kodu,
-- testowanie i integrację,
-- zarządzanie wiedzą lokalną i zewnętrzną,
-- mechanizmy samodoskonalenia.
+## 1. Technical definition – what is Venom as a system
+Venom is a local meta-intelligence layer that takes user intent and transforms it into a working solution through:
+- project context analysis,
+- execution plan building,
+- agent control,
+- code generation and refactoring,
+- testing and integration,
+- local and external knowledge management,
+- self-improvement mechanisms.
 
-Venom dąży do unifikacji technologicznej w oparciu o standard **ONNX Runtime**.
-W praktyce warstwa LLM działa dziś na serwerach zgodnych z OpenAI API (Ollama/vLLM) oraz chmurze (OpenAI/Gemini/Claude), a ONNX dla LLM pozostaje kierunkiem rozwojowym.
-Oracle Models (chmurowe) są opcjonalne i działają tylko w wybranych politykach.
+Venom strives for technological unification based on the **ONNX Runtime** standard.
+In practice, the LLM layer currently runs on OpenAI-compatible servers (Ollama/vLLM) and cloud providers (OpenAI/Gemini/Claude), while ONNX for LLM remains a future direction.
+Oracle Models (cloud) are optional and work only in selected policies.
 
-## 2. Model biologiczny Venoma – organizm sztucznej inteligencji
+## 2. Venom's biological model – artificial intelligence organism
 <table>
-<tr><th>Organ</th><th>Funkcja</th><th>Rola w organizmie</th><th>Technologia</th><th>Wersja</th></tr>
-<tr><td>System nerwowy</td><td>Orkiestracja</td><td>Dialog, pętle decyzyjne</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td></tr>
-<tr><td>Płat czołowy</td><td>Szybkie myślenie</td><td>Generuje 90% kodu</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td></tr>
-<tr><td>Wyrocznia</td><td>Głębokie myślenie</td><td>Trudne problemy</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td></tr>
-<tr><td>Rozszerzona inteligencja</td><td>Zmysł zewnętrzny</td><td>Wiedza z internetu</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
-<tr><td>Hipokamp</td><td>Pamięć</td><td>Mapa wiedzy</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
-<tr><td>Ręce</td><td>Działanie</td><td>Pliki, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
-<tr><td>Synapsy narzędziowe (MCP)</td><td>Rozszerzenia narzędzi</td><td>Import narzędzi z Git, standaryzacja integracji</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Analiza zrzutów ekranu (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
-<tr><td>Oczy (cyfrowe)</td><td>Percepcja UI</td><td>Docelowy engine lokalny</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
-<tr><td>Uszy</td><td>Słuch (STT)</td><td>Transkrypcja audio (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
-<tr><td>Usta</td><td>Mowa (TTS)</td><td>Synteza głosu (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
-<tr><td>Oczy (fizyczne)</td><td>Percepcja w świecie</td><td>Obiekty, przeszkody</td><td>YOLO ONNX</td><td>v2.0</td></tr>
-<tr><td>Nogi</td><td>Ruch</td><td>Mobilność</td><td>Rider-Pi</td><td>v1.0</td></tr>
-<tr><td>Metabolizm</td><td>Wydajność</td><td>Wykonanie modeli</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
-<tr><td>Układ krążenia (Hive)</td><td>Kolejki i dystrybucja</td><td>Routing i statusy zadań</td><td>Redis + ARQ</td><td>v1.0</td></tr>
-<tr><td>Komunikacja</td><td>Wymiana myśli</td><td>Silnik inferencji</td><td>Ollama / vLLM<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
-<tr><td>Habitat</td><td>Środowisko</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
+<tr><th>Organ</th><th>Function</th><th>Role in organism</th><th>Technology</th><th>Version</th></tr>
+<tr><td>Nervous system</td><td>Orchestration</td><td>Dialog, decision loops</td><td>AutoGen + Orchestrator (FastAPI)</td><td>v1.0</td></tr>
+<tr><td>Frontal lobe</td><td>Fast thinking</td><td>Generates 90% of code</td><td>Phi-3 (ONNX/GGUF), Ollama/vLLM</td><td>v2.0</td></tr>
+<tr><td>Oracle</td><td>Deep thinking</td><td>Difficult problems</td><td>OpenAI GPT-4o, Gemini, Claude</td><td>v1.0</td></tr>
+<tr><td>Extended intelligence</td><td>External sense</td><td>Internet knowledge</td><td>Researcher Agent + DDG/Tavily</td><td>v2.0</td></tr>
+<tr><td>Hippocampus</td><td>Memory</td><td>Knowledge map</td><td>GraphRAG + LanceDB</td><td>v1.0</td></tr>
+<tr><td>Hands</td><td>Action</td><td>Files, shell, git</td><td>Semantic Kernel + Skills</td><td>v1.0</td></tr>
+<tr><td>Tool synapses (MCP)</td><td>Tool extensions</td><td>Git tool import, integration standardization</td><td>McpManagerSkill + MCP Proxy Generator</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Screenshot analysis (eyes.py)</td><td>Ollama (vision) / OpenAI GPT-4o</td><td>v1.0</td></tr>
+<tr><td>Eyes (digital)</td><td>UI perception</td><td>Target local engine</td><td>Florence-2 ONNX</td><td>v2.0</td></tr>
+<tr><td>Ears</td><td>Hearing (STT)</td><td>Audio transcription (WhisperSkill)</td><td>faster-whisper (CTranslate2)</td><td>v1.0</td></tr>
+<tr><td>Mouth</td><td>Speech (TTS)</td><td>Voice synthesis (VoiceSkill)</td><td>Piper TTS (ONNX)</td><td>v1.0</td></tr>
+<tr><td>Eyes (physical)</td><td>World perception</td><td>Objects, obstacles</td><td>YOLO ONNX</td><td>v2.0</td></tr>
+<tr><td>Legs</td><td>Movement</td><td>Mobility</td><td>Rider-Pi</td><td>v1.0</td></tr>
+<tr><td>Metabolism</td><td>Performance</td><td>Model execution</td><td>ONNX / GGUF</td><td>v1.0</td></tr>
+<tr><td>Circulatory system (Hive)</td><td>Queues & distribution</td><td>Task routing and status</td><td>Redis + ARQ</td><td>v1.0</td></tr>
+<tr><td>Communication</td><td>Thought exchange</td><td>Inference engine</td><td>Ollama / vLLM<br>FastAPI + WebSocket<br>Next.js</td><td>v1.0</td></tr>
+<tr><td>Habitat</td><td>Environment</td><td>Sandbox</td><td>WSL2 + Dev Containers</td><td>v1.0</td></tr>
 </table>
 
-## 2A. Warstwa modeli – Strategia Dual-Engine
-Pierwotna wizja zakładała oparcie całego systemu wyłącznie o **ONNX Runtime**.
-W praktyce, inżynieria modeli językowych (LLM) wymusiła podejście hybrydowe.
+## 2A. Model layer – Dual-Engine Strategy
+The original vision assumed basing the entire system solely on **ONNX Runtime**.
+In practice, Large Language Model (LLM) engineering necessitated a hybrid approach.
 
-### Architektura silników (stan v1.0 + cel v2.0):
-1.  **Vision & Audio** -> stan v1.0:
-    *   Vision: lokalne modele w Ollama (np. llava) lub OpenAI GPT-4o; Florence-2 ONNX planowany.
-    *   Audio: STT przez faster-whisper (CTranslate2), TTS przez Piper (ONNX) gdy model jest dostepny.
-2.  **Large Language Models (LLM)** -> stan v1.0:
-    *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + chmura (OpenAI/Gemini/Claude).
-    *   **ONNX LLM:** kierunek rozwojowy dla mniejszych modeli i edge devices.
+### Engine architecture (v1.0 state + v2.0 target):
+1.  **Vision & Audio** -> v1.0 state:
+    *   Vision: local models via Ollama (e.g., llava) or OpenAI GPT-4o; Florence-2 ONNX planned.
+    *   Audio: STT via faster-whisper (CTranslate2), TTS via Piper (ONNX) when a model is available.
+2.  **Large Language Models (LLM)** -> v1.0 state:
+    *   **Runtime:** OpenAI-compatible (Ollama/vLLM) + cloud (OpenAI/Gemini/Claude).
+    *   **ONNX LLM:** future direction for smaller models and edge devices.
 
-> **Decyzja Architektoniczna: Experimental Dual-Stack (Ollama vs vLLM)**
-> Utrzymywanie równoległego wsparcia dla obu technologii serwowania (Ollama i vLLM) jest na obecnym etapie **świadomym wyborem projektowym**.
-> Pozwala to na elastyczne testowanie różnych rodzin modeli i metod kwantyzacji w celu empirycznego wyłonienia najwydajniejszego rozwiązania docelowego dla specyficznych warunków sprzętowych.
-> **Stabilizacja (v1.0.x):** Wprowadzono hybrydową orkiestrację umożliwiającą płynne przełączanie między aktywnym serwerem a modelem bezpośrednio z poziomu Cockpitu (Hybrid Model Orchestration).
+> **Architectural Decision: Experimental Dual-Stack (Ollama vs vLLM)**
+> Maintaining parallel support for both serving technologies (Ollama and vLLM) is currently a **conscious design choice**.
+> It allows for flexible testing of different model families and quantization methods to empirically select the most efficient target solution for specific hardware conditions.
+> **Stabilization (v1.0.x):** Introduced hybrid orchestration enabling seamless switching between the active server and model directly from the Cockpit (Hybrid Model Orchestration).
 
 
-### Kategorie modeli:
-1. **Worker Models (robotnicy)** – szybkie modele lokalne (ONNX lub GGUF, w zaleznosci od runtime).
-2. **Architect Models (architekci)** – duze modele lokalne, jesli sprzet pozwala.
-3. **Oracle Models (zewnętrzne)** – gdy potrzebna wiedza ekspercka.
+### Model categories:
+1. **Worker Models (workers)** – fast local models (ONNX or GGUF depending on runtime).
+2. **Architect Models (architects)** – large local models, if hardware allows.
+3. **Oracle Models (external)** – when expert knowledge is needed.
 
-## 3. Warstwy Venoma (Architektura systemu)
+## 3. Venom layers (System architecture)
 
-### 3.1. Warstwa meta (Core Meta Layer)
+### 3.1. Meta layer (Core Meta Layer)
 - Orchestrator
 - Intent Manager
 - Policy Engine
 - Task Log / State
 
-### 3.2. Warstwa pamięci (Memory Layer)
-GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
+### 3.2. Memory layer (Memory Layer)
+GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
 
-### 3.3. Warstwa agentów (Agent Services Layer)
+### 3.3. Agent layer (Agent Services Layer)
 - planner.arch
 - planner.repo
 - code.autogen
@@ -113,88 +113,88 @@ GraphRAG + LanceDB – struktura repo, zależności, wiedza projektowa.
 - git.integrator
 - docs.writer
 
-### 3.4. Warstwa wykonawcza (Execution Layer)
-Semantic Kernel – pliki, shell, git, testy.
-MCP Import – narzędzia z Git (generator proxy + wrappery w `venom_core/skills/custom`).
+### 3.4. Execution layer (Execution Layer)
+Semantic Kernel – files, shell, git, tests.
+MCP Import – tools from Git (proxy generator + wrappers in `venom_core/skills/custom`).
 
-### 3.5. Warstwa percepcji (Vision Layer)
+### 3.5. Perception layer (Vision Layer)
 - Florence-2 ONNX – UI vision
 - YOLO ONNX – physical vision
 
-### 3.6. Warstwa metabolizmu (Performance Layer)
-Obsługa dwóch silników obliczeniowych:
-- **ONNX Runtime** – dla Vision, Audio i lekkich modeli.
-- **Native/GGUF Engine** – dla ciężkich modeli językowych (LLM).
-### 3.7. Warstwa infrastruktury i kolejek (Infrastructure Layer)
-- **FastAPI + WebSocket** – publiczne API i strumieniowanie zdarzeń.
-- **Redis + ARQ (Hive Message Broker)** – kolejki zadań, broadcast i kontrola węzłów.
-- **Nexus/Spore** – opcjonalna warstwa rozproszona (tryb klastra).
+### 3.6. Metabolism layer (Performance Layer)
+Support for two computational engines:
+- **ONNX Runtime** – for Vision, Audio, and lightweight models.
+- **Native/GGUF Engine** – for heavy Large Language Models (LLM).
+### 3.7. Infrastructure & queues (Infrastructure Layer)
+- **FastAPI + WebSocket** – public API and event streaming.
+- **Redis + ARQ (Hive Message Broker)** – task queues, broadcast, node control.
+- **Nexus/Spore** – optional distributed layer (cluster mode).
 
-## 4. Warstwa wiedzy zewnętrznej (External Knowledge Layer)
-Trzy źródła:
-1. Wiedza lokalna – GraphRAG.
-2. Wiedza ekspercka lokalna – duże modele ONNX.
-3. Wiedza zewnętrzna – Web-Agent + Oracle (OpenAI/Gemini/Claude), DDG/Tavily.
+## 4. External knowledge layer (External Knowledge Layer)
+Three sources:
+1. Local knowledge – GraphRAG.
+2. Local expert knowledge – large ONNX models.
+3. External knowledge – Web-Agent + Oracle (OpenAI/Gemini/Claude), DDG/Tavily.
 
-Zasady:
+Principles:
 - local-first,
-- internet tylko świadomie i logowany,
-- źródła oznaczone i wersjonowane.
+- internet only consciously and logged,
+- sources marked and versioned.
 
-## 5. Warstwa samodoskonalenia (Self-Improvement Layer)
-Venom uczy się poprzez:
-- wyniki testów,
-- PR-y,
-- logi,
-- błędy,
+## 5. Self-improvement layer (Self-Improvement Layer)
+Venom learns through:
+- test results,
+- PRs,
+- logs,
+- errors,
 - retry loops,
-- analizę wiedzy zewnętrznej.
+- external knowledge analysis.
 
-Ulepsza:
-- heurystyki,
-- workflowy,
-- style kodowania,
-- strategie agentów,
-- polityki.
+Improves:
+- heuristics,
+- workflows,
+- coding styles,
+- agent strategies,
+- policies.
 
-## 6. Pipeline Venoma
-1. Intencja użytkownika
+## 6. Venom pipeline
+1. User intent
 2. Orchestrator
 3. GraphRAG
-4. (opcjonalnie) Oracle/Web
+4. (optionally) Oracle/Web
 5. planner.arch
 6. planner.repo
 7. AutoGen + Local Engine
 8. Phi-3 (ONNX/GGUF)
 9. Semantic Kernel
-10. Testy
+10. Tests
 11. Git integrator
 12. GraphRAG update
 13. Self-Improvement update
 
-## 7. Polityki Venoma
-- polityka wiedzy
-- polityka repo
-- polityka autonomii
+## 7. Venom policies
+- knowledge policy
+- repository policy
+- autonomy policy
 - user ethics
-- polityki testów
-- bezpieczeństwo
+- testing policies
+- security
 
-## 8. Integracja Rider-Pi i Google Home (IoT)- Venom 2.0
-Rider-Pi – ciało fizyczne.
-Google Home - internet rzeczy
+## 8. Integration of Rider-Pi and Google Home (IoT) - Venom 2.0
+Rider-Pi – physical body.
+Google Home - Internet of Things
 
-Venom koordynuje cały ekosystem.
+Venom coordinates the entire ecosystem.
 
-## 9. Finalna definicja
-Venom to:
-- meta-mózg,
-- organizm AI,
-- architekt systemów,
-- orkiestrator agentów,
-- menedżer wiedzy,
-- system uczący się,
-- strażnik zasad,
-- AI tworząca AI.
+## 9. Final definition
+Venom is:
+- meta-brain,
+- AI organism,
+- systems architect,
+- agent orchestrator,
+- knowledge manager,
+- learning system,
+- policy guardian,
+- AI creating AI.
 
-Warstwa LLM dziala w podejsciu **Dual-Engine (Ollama/vLLM + chmura)**, a ONNX pokrywa wybrane obszary percepcji/audio; pelna unifikacja ONNX to cel v2.0.
+The LLM layer follows a **Dual-Engine approach (Ollama/vLLM + cloud)**, while ONNX covers selected perception/audio paths; full ONNX unification is a v2.0 goal.

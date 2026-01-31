@@ -1,10 +1,10 @@
-# THE EXECUTIVE - Warstwa Zarządzania i Strategii
+# THE EXECUTIVE - Management and Strategy Layer
 
-## Przegląd
+## Overview
 
-**The Executive** to najwyższa warstwa w hierarchii Venoma, która przekształca system z "wykonawcy zadań" w "zarządcę projektu". Wprowadza autonomiczne zarządzanie projektami z hierarchiczną strukturą celów i automatyczną realizacją roadmapy.
+**The Executive** is the highest layer in Venom's hierarchy, transforming the system from a "task executor" into a "project manager". It introduces autonomous project management with hierarchical goal structure and automatic roadmap execution.
 
-## Architektura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -12,7 +12,7 @@
 │                                                              │
 │  ┌────────────────┐    ┌────────────────┐   ┌────────────┐ │
 │  │ ExecutiveAgent │───►│   GoalStore    │◄──│  War Room  │ │
-│  │   (CEO/PM)     │    │  (Roadmapa)    │   │ Dashboard  │ │
+│  │   (CEO/PM)     │    │  (Roadmap)     │   │ Dashboard  │ │
 │  └────────────────┘    └────────────────┘   └────────────┘ │
 │         │                      │                    │        │
 │         └──────────────────────┼────────────────────┘        │
@@ -32,108 +32,108 @@
                         └─────────────────┘
 ```
 
-## Komponenty
+## Components
 
 ### 1. GoalStore (`venom_core/core/goal_store.py`)
 
-Magazyn hierarchicznej struktury celów projektu.
+Storage for hierarchical project goal structure.
 
-**Hierarchia:**
-- **Vision** (Wizja) - Nadrzędny cel długoterminowy
-- **Milestone** (Kamień Milowy) - Etapy realizacji
-- **Task** (Zadanie) - Konkretne zadania do wykonania
+**Hierarchy:**
+- **Vision** - Overarching long-term goal
+- **Milestone** - Implementation stages
+- **Task** - Specific tasks to complete
 
 **KPI (Key Performance Indicators):**
-- Metryki sukcesu dla każdego celu
-- Automatyczne obliczanie postępu
+- Success metrics for each goal
+- Automatic progress calculation
 
-**Persistencja:**
-- JSON storage w `data/memory/roadmap.json`
-- Automatyczne zapisywanie zmian
+**Persistence:**
+- JSON storage in `data/memory/roadmap.json`
+- Automatic change saving
 
 **API:**
 ```python
 goal_store = GoalStore()
 
-# Dodaj wizję
+# Add vision
 vision = goal_store.add_goal(
-    title="Stworzyć najlepszy framework AI",
+    title="Create best AI framework",
     goal_type=GoalType.VISION,
     description="...",
-    kpis=[KPI(name="Postęp", target_value=100.0, unit="%")]
+    kpis=[KPI(name="Progress", target_value=100.0, unit="%")]
 )
 
-# Dodaj milestone
+# Add milestone
 milestone = goal_store.add_goal(
-    title="Wdrożyć Executive Layer",
+    title="Implement Executive Layer",
     goal_type=GoalType.MILESTONE,
     parent_id=vision.goal_id,
     priority=1
 )
 
-# Pobierz kolejne zadanie
+# Get next task
 next_task = goal_store.get_next_task()
 
-# Aktualizuj postęp
+# Update progress
 goal_store.update_progress(
     task.goal_id,
     status=GoalStatus.COMPLETED
 )
 
-# Generuj raport
+# Generate report
 report = goal_store.generate_roadmap_report()
 ```
 
 ### 2. ExecutiveAgent (`venom_core/agents/executive.py`)
 
-Agent najwyższego szczebla - CEO/Product Manager systemu.
+Top-level agent - system's CEO/Product Manager.
 
-**Rola:**
-- Przekształcanie wizji w roadmapę
-- Priorytetyzacja zadań
-- Zarządzanie zespołem agentów
-- Raportowanie statusu projektu
+**Role:**
+- Transforming vision into roadmap
+- Task prioritization
+- Agent team management
+- Project status reporting
 
-**Kluczowe metody:**
+**Key Methods:**
 ```python
 executive = ExecutiveAgent(kernel, goal_store)
 
-# Utwórz roadmapę z wizji
+# Create roadmap from vision
 roadmap = await executive.create_roadmap(
-    "Chcę stworzyć najlepszy system AI"
+    "I want to create the best AI system"
 )
 
-# Wygeneruj raport statusu
+# Generate status report
 status = await executive.generate_status_report()
 
-# Przeprowadź Daily Standup
+# Run Daily Standup
 meeting = await executive.run_status_meeting()
 
-# Priorytetyzuj zadania
+# Prioritize tasks
 priorities = await executive.prioritize_tasks(milestone_id)
 ```
 
-### 3. Campaign Mode (Tryb Kampanii)
+### 3. Campaign Mode
 
-Autonomiczna pętla realizacji roadmapy w `Orchestrator`.
+Autonomous roadmap execution loop in `Orchestrator`.
 
-**Algorytm:**
+**Algorithm:**
 ```
 LOOP (max_iterations):
-    1. Pobierz kolejne zadanie z GoalStore
-    2. Wykonaj zadanie (deleguj do agentów)
-    3. Zweryfikuj wyniki (Guardian)
-    4. Zaktualizuj postęp w GoalStore
-    5. Jeśli Milestone ukończony:
-       - Pauza dla akceptacji użytkownika
-       - Przejdź do kolejnego Milestone
-    6. Jeśli wszystkie cele osiągnięte:
-       - SUKCES - zakończ kampanię
+    1. Get next task from GoalStore
+    2. Execute task (delegate to agents)
+    3. Verify results (Guardian)
+    4. Update progress in GoalStore
+    5. If Milestone completed:
+       - Pause for user acceptance
+       - Move to next Milestone
+    6. If all goals achieved:
+       - SUCCESS - end campaign
 ```
 
-**Użycie:**
+**Usage:**
 ```python
-# Uruchom kampanię
+# Run campaign
 result = await orchestrator.execute_campaign_mode(
     goal_store=goal_store,
     max_iterations=10
@@ -142,57 +142,57 @@ result = await orchestrator.execute_campaign_mode(
 
 ### 4. War Room Dashboard (`web/templates/strategy.html`)
 
-Wizualny dashboard strategiczny dla zarządzania projektem.
+Visual strategic dashboard for project management.
 
-**Sekcje:**
-- **Vision Panel** - Wyświetla główną wizję i postęp
-- **Milestones Panel** - Lista kamieni milowych z statusem
-- **Tasks List** - Zadania w ramach milestone
-- **KPI Dashboard** - Wskaźniki sukcesu
-- **Actions** - Przyciski do zarządzania
+**Sections:**
+- **Vision Panel** - Displays main vision and progress
+- **Milestones Panel** - Milestone list with status
+- **Tasks List** - Tasks within milestone
+- **KPI Dashboard** - Success indicators
+- **Actions** - Management buttons
 
-**Dostęp:**
+**Access:**
 ```
 http://localhost:8000/strategy
 ```
 
 ## Workflow
 
-### 1. Definiowanie Wizji
+### 1. Defining Vision
 
-Użytkownik definiuje wizję projektu:
+User defines project vision:
 
 ```
-"Chcę stworzyć najlepszy framework AI do automatyzacji zadań"
+"I want to create the best AI framework for task automation"
 ```
 
-ExecutiveAgent automatycznie generuje:
-- Vision (Wizja główna)
-- 3-5 Milestones (Etapy)
-- 3-5 Tasks dla pierwszego Milestone
+ExecutiveAgent automatically generates:
+- Vision (Main vision)
+- 3-5 Milestones (Stages)
+- 3-5 Tasks for first Milestone
 
-### 2. Uruchomienie Kampanii
+### 2. Launching Campaign
 
-System wchodzi w tryb autonomiczny:
+System enters autonomous mode:
 
-1. **Iteracja 1:**
-   - Pobiera Task 1 z Milestone 1
-   - Deleguje do Coder/Guardian
-   - Testuje i weryfikuje
-   - Oznacza jako COMPLETED
+1. **Iteration 1:**
+   - Gets Task 1 from Milestone 1
+   - Delegates to Coder/Guardian
+   - Tests and verifies
+   - Marks as COMPLETED
 
-2. **Iteracja 2:**
-   - Pobiera Task 2
+2. **Iteration 2:**
+   - Gets Task 2
    - ...
 
-3. **Milestone ukończony:**
-   - Pauza dla akceptacji
-   - Czeka na potwierdzenie użytkownika
-   - Przechodzi do Milestone 2
+3. **Milestone completed:**
+   - Pause for acceptance
+   - Waits for user confirmation
+   - Proceeds to Milestone 2
 
 ### 3. Daily Standup
 
-Automatyczne spotkanie statusowe (codziennie):
+Automatic status meeting (daily):
 
 ```python
 scheduler.schedule_daily_standup(
@@ -203,16 +203,16 @@ scheduler.schedule_daily_standup(
 )
 ```
 
-Raport zawiera:
-- Status aktualnego Milestone
-- Ukończone/Pending/Blocked zadania
-- Blokery (jeśli są)
-- Następne zadanie do realizacji
-- Decyzje Executive
+Report contains:
+- Current Milestone status
+- Completed/Pending/Blocked tasks
+- Blockers (if any)
+- Next task to execute
+- Executive decisions
 
-### 4. Raportowanie
+### 4. Reporting
 
-Generowanie raportów menedżerskich:
+Generating management reports:
 
 ```python
 report = await executive.generate_status_report()
@@ -220,32 +220,32 @@ report = await executive.generate_status_report()
 
 Format:
 ```
-=== ROADMAP PROJEKTU ===
+=== PROJECT ROADMAP ===
 
-🎯 VISION: Stworzyć najlepszy framework AI
+🎯 VISION: Create best AI framework
    Status: IN_PROGRESS
-   Postęp: 45.0%
+   Progress: 45.0%
 
-📋 KAMIENIE MILOWE (3):
+📋 MILESTONES (3):
 
-  1. 🔄 [1] Wdrożyć Executive Layer
-      Postęp: 90.0% | IN_PROGRESS
-      Zadania: 4/5 ukończonych
+  1. 🔄 [1] Implement Executive Layer
+      Progress: 90.0% | IN_PROGRESS
+      Tasks: 4/5 completed
 
-  2. ⏸️ [2] Zintegrować z GitHub
-      Postęp: 0.0% | PENDING
-      Zadania: 0/3 ukończonych
+  2. ⏸️ [2] Integrate with GitHub
+      Progress: 0.0% | PENDING
+      Tasks: 0/3 completed
 
-📊 PODSUMOWANIE: 0/3 kamieni milowych ukończonych (0.0%)
+📊 SUMMARY: 0/3 milestones completed (0.0%)
 ```
 
 ## API Endpoints
 
 ### GET /strategy
-Serwuje War Room dashboard
+Serves War Room dashboard
 
 ### GET /api/roadmap
-Pobiera pełną roadmapę
+Gets complete roadmap
 ```json
 {
   "vision": {...},
@@ -256,52 +256,52 @@ Pobiera pełną roadmapę
 ```
 
 ### POST /api/roadmap/create
-Tworzy roadmapę z wizji
+Creates roadmap from vision
 ```json
 {
-  "vision": "Stworzyć najlepszy framework AI"
+  "vision": "Create best AI framework"
 }
 ```
 
 ### GET /api/roadmap/status
-Generuje raport statusu Executive
+Generates Executive status report
 
 ### POST /api/campaign/start
-Uruchamia Tryb Kampanii
+Starts Campaign Mode
 
-## Integracja z Intent Manager
+## Intent Manager Integration
 
-Nowe intencje:
+New intents:
 
 **START_CAMPAIGN:**
 ```
-"Rozpocznij kampanię"
-"Uruchom tryb autonomiczny"
-"Kontynuuj pracę nad projektem"
+"Start campaign"
+"Launch autonomous mode"
+"Continue project work"
 ```
 
 **STATUS_REPORT:**
 ```
-"Jaki jest status projektu?"
-"Pokaż postęp"
-"Gdzie jesteśmy z realizacją?"
+"What is project status?"
+"Show progress"
+"Where are we with execution?"
 ```
 
-## Przykłady użycia
+## Usage Examples
 
-### Scenariusz 1: Nowy projekt
+### Scenario 1: New Project
 
 ```python
-# 1. Użytkownik definiuje wizję
-vision = "Stworzyć system monitoringu serwerów"
+# 1. User defines vision
+vision = "Create server monitoring system"
 
-# 2. Executive tworzy roadmapę
+# 2. Executive creates roadmap
 roadmap = await executive.create_roadmap(vision)
 
-# 3. System uruchamia kampanię
+# 3. System launches campaign
 campaign = await orchestrator.execute_campaign_mode(goal_store)
 
-# 4. Venom autonomicznie realizuje kolejne zadania
+# 4. Venom autonomously executes consecutive tasks
 # - Milestone 1: Backend API
 #   - Task 1: Setup FastAPI ✅
 #   - Task 2: Database models ✅
@@ -310,31 +310,31 @@ campaign = await orchestrator.execute_campaign_mode(goal_store)
 #   ...
 ```
 
-### Scenariusz 2: Status Check
+### Scenario 2: Status Check
 
 ```
-Użytkownik: "Jaki jest status projektu?"
+User: "What is project status?"
 
-Executive: "Jesteśmy w 60% realizacji Milestone 1 (Backend API).
-Ukończono 3/5 zadań. Aktualnie pracujemy nad integracją z bazą danych.
-Brak blokerów. Spodziewany completion: ~2 dni."
+Executive: "We're at 60% completion of Milestone 1 (Backend API).
+Completed 3/5 tasks. Currently working on database integration.
+No blockers. Expected completion: ~2 days."
 ```
 
-### Scenariusz 3: Human-in-the-loop
+### Scenario 3: Human-in-the-loop
 
 ```
-[Milestone 1 ukończony]
+[Milestone 1 completed]
 
-System: "Milestone 1 'Backend API' gotowy. Czy mogę zacząć Milestone 2 'Frontend'?"
+System: "Milestone 1 'Backend API' ready. Can I start Milestone 2 'Frontend'?"
 
-Użytkownik: "Tak, kontynuuj"
+User: "Yes, continue"
 
-System: [Rozpoczyna Milestone 2]
+System: [Starts Milestone 2]
 ```
 
-## Konfiguracja
+## Configuration
 
-W `venom_core/config.py`:
+In `venom_core/config.py`:
 ```python
 # Executive Layer settings
 GOAL_STORE_PATH = "data/memory/roadmap.json"
@@ -343,24 +343,24 @@ DAILY_STANDUP_HOUR = 9
 DAILY_STANDUP_MINUTE = 0
 ```
 
-## Bezpieczeństwo
+## Security
 
-- **Human-in-the-loop:** Po każdym Milestone system pauzuje
-- **Max iterations:** Limit iteracji zapobiega nieskończonym pętlom
-- **Budget control:** Użytkownik kontroluje budżet tokenów
-- **Validation:** Guardian weryfikuje każde zadanie
+- **Human-in-the-loop:** System pauses after each Milestone
+- **Max iterations:** Iteration limit prevents infinite loops
+- **Budget control:** User controls token budget
+- **Validation:** Guardian verifies each task
 
-## Przyszłe rozszerzenia
+## Future Extensions
 
-- **GitHub Issues sync:** Automatyczna synchronizacja z GitHub Issues
-- **Slack notifications:** Powiadomienia o postępach
-- **Multi-project support:** Zarządzanie wieloma projektami
-- **Team collaboration:** Współdzielenie roadmap między członkami zespołu
-- **Advanced KPIs:** Metryki jakości kodu, performance, coverage
-- **AI-powered estimation:** Automatyczne szacowanie czasu realizacji
+- **GitHub Issues sync:** Automatic synchronization with GitHub Issues
+- **Slack notifications:** Progress notifications
+- **Multi-project support:** Managing multiple projects
+- **Team collaboration:** Sharing roadmaps between team members
+- **Advanced KPIs:** Code quality metrics, performance, coverage
+- **AI-powered estimation:** Automatic execution time estimation
 
-## Zobacz również
+## See Also
 
-- [THE_COUNCIL.md](THE_COUNCIL.md) - Współpraca agentów
-- [THE_OVERMIND.md](THE_OVERMIND.md) - System harmonogramowania
-- [CORE_NERVOUS_SYSTEM_V1.md](CORE_NERVOUS_SYSTEM_V1.md) - Architektura systemu
+- [THE_COUNCIL.md](THE_COUNCIL.md) - Agent collaboration
+- [THE_OVERMIND.md](THE_OVERMIND.md) - Scheduling system
+- [CORE_NERVOUS_SYSTEM_V1.md](CORE_NERVOUS_SYSTEM_V1.md) - System architecture

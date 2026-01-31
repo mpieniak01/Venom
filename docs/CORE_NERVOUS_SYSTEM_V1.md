@@ -1,56 +1,56 @@
-# Venom Core Nervous System V1 - Dokumentacja
+# Venom Core Nervous System V1 - Documentation
 
-## Przegląd
+## Overview
 
-Core Nervous System V1 to system zarządzania zadaniami asynchronicznymi dla Venoma. Umożliwia przyjmowanie zadań przez API, kolejkowanie i przetwarzanie w tle, strumieniowanie zdarzeń oraz zarządzanie stanem z persystencją do pliku. Opcjonalnie obsługuje architekturę rozproszoną (Hive) opartą o Redis + ARQ.
+Core Nervous System V1 is Venom's asynchronous task management system. It accepts tasks via API, queues and processes them in the background, streams events, and manages state with file persistence. It also supports an optional distributed mode (Hive) based on Redis + ARQ.
 
-## Architektura
+## Architecture
 
-### Komponenty
+### Components
 
 1. **Models** (`venom_core/core/models.py`)
-   - `TaskStatus`: Enum statusów zadania (PENDING, PROCESSING, COMPLETED, FAILED)
-   - `VenomTask`: Model zadania z pełnymi metadanymi
-   - `TaskRequest`: DTO dla tworzenia zadania
-   - `TaskResponse`: DTO odpowiedzi po utworzeniu zadania
+   - `TaskStatus`: Enum for task statuses (PENDING, PROCESSING, COMPLETED, FAILED)
+   - `VenomTask`: Task model with full metadata
+   - `TaskRequest`: DTO for task creation
+   - `TaskResponse`: DTO for response after task creation
 
 2. **StateManager** (`venom_core/core/state_manager.py`)
-   - Zarządzanie stanem zadań w pamięci
-   - Automatyczna persystencja do pliku JSON
-   - Ładowanie stanu przy starcie
-   - Obsługa błędów I/O
+   - In-memory task state management
+   - Automatic persistence to JSON file
+   - State loading on startup
+   - I/O error handling
 
 3. **QueueManager** (`venom_core/core/queue_manager.py`)
-   - Pauza/wznowienie kolejki, purge, emergency stop
-   - Limity wspolbieznosci i status kolejki
-   - Operacje abort dla pojedynczych zadan
+   - Queue pause/resume, purge, emergency stop
+   - Concurrency limits and queue status
+   - Abort operations for individual tasks
 
 4. **Orchestrator** (`venom_core/core/orchestrator.py`)
-   - Przyjmowanie zadan do przetwarzania
-   - Asynchroniczne wykonywanie zadan w tle
-   - Logowanie etapow i update statusu
-   - Obsloga bledow z automatycznym ustawieniem statusu FAILED
+   - Accepting tasks for processing
+   - Asynchronous background task execution
+   - Stage logging and status updates
+   - Error handling with automatic FAILED status setting
 
 5. **API** (`venom_core/main.py`)
-   - REST API oparte na FastAPI
-   - Endpointy zadan + kolejki + strumieni zdarzen
+   - FastAPI-based REST API
+   - Task + queue + event endpoints
 
 6. **Event Stream** (`venom_core/api/stream.py`)
-   - WebSocket dla statusow i zdarzen systemowych
+   - WebSocket for status and system events
 
 ## API Endpoints
 
-### 1. Utworzenie zadania
+### 1. Create task
 ```bash
 POST /api/v1/tasks
 Content-Type: application/json
 
 {
-  "content": "Treść zadania"
+  "content": "Task content"
 }
 ```
 
-**Odpowiedź:**
+**Response:**
 ```json
 {
   "task_id": "uuid",
@@ -58,45 +58,45 @@ Content-Type: application/json
 }
 ```
 
-### 2. Pobranie szczegółów zadania
+### 2. Get task details
 ```bash
 GET /api/v1/tasks/{task_id}
 ```
 
-**Odpowiedź:**
+**Response:**
 ```json
 {
   "id": "uuid",
-  "content": "Treść zadania",
+  "content": "Task content",
   "created_at": "2025-12-06T14:22:52.927944",
   "status": "COMPLETED",
-  "result": "Przetworzono: Treść zadania",
+  "result": "Processed: Task content",
   "logs": [
-    "Zadanie uruchomione: 2025-12-06T14:22:52.928194",
-    "Rozpoczęto przetwarzanie: 2025-12-06T14:22:52.929935",
-    "Zakończono przetwarzanie: 2025-12-06T14:22:54.931036"
+    "Task started: 2025-12-06T14:22:52.928194",
+    "Processing started: 2025-12-06T14:22:52.929935",
+    "Processing completed: 2025-12-06T14:22:54.931036"
   ]
 }
 ```
 
-### 3. Lista wszystkich zadań
+### 3. List all tasks
 ```bash
 GET /api/v1/tasks
 ```
 
-**Odpowiedź:**
+**Response:**
 ```json
 [
   {
     "id": "uuid",
-    "content": "Treść zadania",
+    "content": "Task content",
     ...
   },
   ...
 ]
 ```
 
-### 4. Status i kontrola kolejki
+### 4. Queue status and control
 ```bash
 GET /api/v1/queue/status
 POST /api/v1/queue/pause
@@ -106,100 +106,100 @@ POST /api/v1/queue/emergency-stop
 POST /api/v1/queue/task/{task_id}/abort
 ```
 
-### 5. Strumien zdarzen
+### 5. Event stream
 ```bash
 WS /ws/events
 ```
 
-## Uruchomienie
+## Running
 
-### Instalacja zależności
+### Install dependencies
 ```bash
 pip install fastapi uvicorn pydantic pydantic-settings loguru
 ```
-Opcjonalnie dla trybu Hive (kolejki rozproszone):
+Optional for Hive mode (distributed queues):
 ```bash
 pip install redis arq
 ```
 
-### Uruchomienie serwera
+### Start server
 ```bash
 uvicorn venom_core.main:app --host 0.0.0.0 --port 8000
 ```
 
-### Przykładowe użycie
+### Example usage
 
 ```bash
-# Utworzenie zadania
+# Create task
 curl -X POST http://localhost:8000/api/v1/tasks \
   -H "Content-Type: application/json" \
-  -d '{"content": "Moje zadanie"}'
+  -d '{"content": "My task"}'
 
-# Pobranie statusu
+# Get status
 curl http://localhost:8000/api/v1/tasks/{task_id}
 
-# Lista wszystkich zadań
+# List all tasks
 curl http://localhost:8000/api/v1/tasks
 ```
 
-## Persystencja
+## Persistence
 
-System automatycznie zapisuje stan wszystkich zadań do pliku `data/memory/state_dump.json`.
-Po restarcie serwera, stan jest automatycznie przywracany z pliku.
+The system automatically saves the state of all tasks to the file `data/memory/state_dump.json`.
+After server restart, the state is automatically restored from the file.
 
-### Konfiguracja
+### Configuration
 
-Ścieżkę do pliku stanu można skonfigurować w pliku `.env`:
+The state file path can be configured in the `.env` file:
 ```
 STATE_FILE_PATH=./data/memory/state_dump.json
 ```
 
-## Testowanie
+## Testing
 
-### Uruchomienie testów
+### Run tests
 ```bash
-# Wszystkie testy
+# All tests
 pytest tests/
 
-# Tylko testy integracyjne
+# Integration tests only
 pytest tests/test_core_nervous_system.py
 
-# Tylko testy jednostkowe
+# Unit tests only
 pytest tests/test_state_and_orchestrator.py
 ```
 
-### Pokrycie testami
+### Test coverage
 
-- ✅ 9 testów integracyjnych (API, async execution)
-- ✅ 13 testów jednostkowych (StateManager, Orchestrator)
-- ✅ Przypadki brzegowe i obsługa błędów
-- ✅ Persystencja i odtwarzanie stanu
+- ✅ 9 integration tests (API, async execution)
+- ✅ 13 unit tests (StateManager, Orchestrator)
+- ✅ Edge cases and error handling
+- ✅ Persistence and state recovery
 
-## Obsługa błędów
+## Error Handling
 
-System obsługuje następujące przypadki:
+The system handles the following cases:
 
-1. **Nieistniejące zadanie**: HTTP 404
-2. **Niepoprawny request**: HTTP 422
-3. **Błąd wewnętrzny**: HTTP 500 (bez ujawniania szczegółów)
-4. **Uszkodzony plik stanu**: Start z pustym stanem + log błędu
-5. **Błąd podczas przetwarzania**: Status FAILED + log błędu
-6. **Błąd zapisu stanu**: Log błędu, próba kontynuacji
+1. **Non-existent task**: HTTP 404
+2. **Invalid request**: HTTP 422
+3. **Internal error**: HTTP 500 (without exposing details)
+4. **Corrupted state file**: Start with empty state + error log
+5. **Processing error**: FAILED status + error log
+6. **State save error**: Error log, attempt to continue
 
-## Ograniczenia MVP
+## MVP Limitations
 
-- Domyslnie single-instance (bez rozproszenia)
-- Zadania wykonywane lokalnie, bez zewnetrznego brokera
-- Brak bazy danych (persystencja do pliku)
-- Retry i priorytety pelne dostepne tylko w Hive (Redis + ARQ)
-- Brak autentykacji i kontroli dostepu na poziomie API
+- Single-instance by default (no distribution)
+- Tasks executed locally without external broker
+- No database (file-based persistence)
+- Retry and priority available only in Hive (Redis + ARQ)
+- No API-level authentication/authorization
 
-## Przyszłe rozszerzenia
+## Future Enhancements
 
-- Migracja do bazy danych (PostgreSQL/MongoDB)
-- Rozszerzenie kolejek o pelny tryb klastra (Hive/Nexus)
-- Rozproszone workery
-- Mechanizmy retry i priorytety
-- Monitoring i metryki
-- Autentykacja i autoryzacja
-- WebSocket dla real-time updates
+- Migration to database (PostgreSQL/MongoDB)
+- Full cluster mode expansion (Hive/Nexus)
+- Distributed workers
+- Retry mechanisms and priorities
+- Monitoring and metrics
+- Authentication and authorization
+- WebSocket for real-time updates

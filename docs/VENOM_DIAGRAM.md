@@ -1,7 +1,7 @@
                                   [ USER INTENT ]
                                           ⬇
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│   WARSTWA 1: CORE META  —  Mózg, Decyzje, Logika                              │
+│   LAYER 1: CORE META  —  Brain, Decisions, Logic                             │
 │                                                                               │
 │   ┌──────────────────────┐   ┌──────────────────┐   ┌──────────────────────┐ │
 │   │     ORCHESTRATOR     │←→│  INTENT MANAGER   │←→│    POLICY ENGINE      │ │
@@ -11,18 +11,18 @@
                           │ (Neural Signals: JSON Plans)
                           ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│   WARSTWA 2: AGENT SERVICES  —  Organy specjalistyczne                        │
+│   LAYER 2: AGENT SERVICES  —  Specialized Organs                             │
 │                                                                               │
 │   ┌──────────────┐   ┌────────────────┐   ┌──────────────┐   ┌────────────┐ │
 │   │ planner.arch │   │  coder.llm     │   │ tester.pytest│   │ git.write  │ │
 │   │ planner.repo │   │  (AutoGen+Phi) │   │ test.smoke   │   │ docs.writer│ │
 │   └──────────────┘   └────────────────┘   └──────────────┘   └────────────┘ │
-│            (Koordynacja między agentami poprzez AutoGen GroupChat)           │
+│            (Coordination between agents via AutoGen GroupChat)               │
 └───────────────────────────────────────────────────────────────────────────────┘
                           │ (Execution Requests)
                           ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│   WARSTWA 3: EXECUTION & PERCEPTION  —  Ręce i Zmysły                          │
+│   LAYER 3: EXECUTION & PERCEPTION  —  Hands and Senses                        │
 │                                                                               │
 │   ┌─────────────────────────────┐  ┌──────────────────────────┐  ┌──────────┐ │
 │   │ SEMANTIC KERNEL (Hands)    │  │ OLLAMA / OPENAI (Eyes UI) │  │ ANTENNA  │ │
@@ -33,7 +33,7 @@
                           │
                           ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│   WARSTWA 4: INFRASTRUCTURE  —  Metabolizm i Ciało                            │
+│   LAYER 4: INFRASTRUCTURE  —  Metabolism and Body                             │
 │                                                                               │
 │   ┌─────────────────────────────────────────────────────────────────────────┐ │
 │   │ RIDER-PC (Host Body)                                                    │ │
@@ -51,16 +51,16 @@
                                 ▲          ▲           ▲
                                 │          │           │
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│   WARSTWA 5: PAMIĘĆ I WIEDZA  —  HIPOKAMP (GraphRAG + Logs + History)        │
-│   - Wiedza o projekcie                                                         │
-│   - Mapa kodu i zależności                                                      │
+│   LAYER 5: MEMORY & KNOWLEDGE  —  HIPPOCAMPUS (GraphRAG + Logs + History)    │
+│   - Project knowledge                                                         │
+│   - Code map and dependencies                                                  │
 │   - Lessons Learned (Self-Improvement)                                          │
-│   - Kontekst dla planowania i agentów                                           │
+│   - Context for planning and agents                                             │
 └───────────────────────────────────────────────────────────────────────────────┘
 
                                 ▲
                                 │  (Feedback loops)
                                 ▼
 
-Legenda:
-- Florence-2 ONNX — planned v2.0 (lokalny vision engine)
+Legend:
+- Florence-2 ONNX — planned v2.0 (local vision engine)

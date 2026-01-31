@@ -1,119 +1,125 @@
-# AutonomyGate - System Kontroli Uprawnień
+# AutonomyGate - Permission Control System
 
-## 📋 Wprowadzenie
+## 📋 Introduction
 
-AutonomyGate to 5-stopniowy system kontroli uprawnień agenta, który zastępuje binarny "Cost Mode". System zarządza dostępem do sieci, budżetem oraz prawami do modyfikacji plików i systemu operacyjnego.
+AutonomyGate is a 5-level agent permission control system that replaces the binary "Cost Mode". The system manages network access, budget, and file/operating system modification rights.
 
-## 🚦 Poziomy Autonomii
+## 🚦 Autonomy Levels
 
-System definiuje 5 poziomów zaufania, gdzie każdy wyższy poziom dziedziczy uprawnienia niższych:
+The system defines 5 trust levels, where each higher level inherits permissions from lower ones:
 
-### Poziom 0: ISOLATED (🟢 Zielony)
-- **Zakres**: Lokalny Odczyt
-- **Uprawnienia**:
-  - ✅ Dostęp do lokalnych plików (read-only)
-  - ✅ Modele lokalne (Ollama, vLLM)
-  - ✅ Pamięć RAG (lokalna)
-  - ❌ Brak dostępu do sieci
-  - ❌ Brak zapisu plików
-- **Ryzyko**: Zerowe
-- **Przykładowe Skille**: `FileRead`, `MemoryRecall`, `LocalLlm`
+### Level 0: ISOLATED (🟢 Green)
+- **Scope**: Local Read
+- **Permissions**:
+  - ✅ Local file access (read-only)
+  - ✅ Local models (Ollama, vLLM)
+  - ✅ RAG memory (local)
+  - ❌ No network access
+  - ❌ No file writing
+- **Risk**: Zero
+- **Example Skills**: `FileRead`, `MemoryRecall`, `LocalLlm`
 
-### Poziom 10: CONNECTED (🔵 Niebieski)
-- **Zakres**: Internet (Free)
-- **Uprawnienia**:
-  - ✅ Wszystko z poziomu ISOLATED
-  - ✅ Dostęp do publicznej sieci
-  - ✅ Darmowe API (DuckDuckGo, Wikipedia)
-  - ✅ Przeglądarka web
-  - ❌ Nadal brak zapisu plików
-- **Ryzyko**: Niskie (wyciek danych)
-- **Przykładowe Skille**: `DuckDuckGo`, `BrowserVisit`, `WeatherApi`
+### Level 10: CONNECTED (🔵 Blue)
+- **Scope**: Internet (Free)
+- **Permissions**:
+  - ✅ Everything from ISOLATED level
+  - ✅ Public network access
+  - ✅ Free APIs (DuckDuckGo, Wikipedia)
+  - ✅ Web browser
+  - ❌ Still no file writing
+- **Risk**: Low (data leak)
+- **Example Skills**: `DuckDuckGo`, `BrowserVisit`, `WeatherApi`
 
-### Poziom 20: FUNDED (🟡 Żółty)
-- **Zakres**: Płatne API (Cloud)
-- **Uprawnienia**:
-  - ✅ Wszystko z poziomu CONNECTED
-  - ✅ Płatne API chmurowe (GPT-4, Gemini)
-  - ✅ Autoryzacja wydatków (Token Economist)
-  - ✅ SOTA AI modele
-  - ❌ Nadal brak zapisu plików
-- **Ryzyko**: Średnie (koszty finansowe)
-- **Przykładowe Skille**: `GPT-4o`, `Gemini Pro`, `DeepL`, `DALL-E`
+### Level 20: FUNDED (🟡 Yellow)
+- **Scope**: Paid APIs (Cloud)
+- **Permissions**:
+  - ✅ Everything from CONNECTED level
+  - ✅ Paid cloud APIs (GPT-4, Gemini)
+  - ✅ Expense authorization (Token Economist)
+  - ✅ SOTA AI models
+  - ❌ Still no file writing
+- **Risk**: Medium (financial costs)
+- **Example Skills**: `GPT-4o`, `Gemini Pro`, `DeepL`, `DALL-E`
 
-### Poziom 30: BUILDER (🟠 Pomarańczowy)
-- **Zakres**: Edycja Plików
-- **Uprawnienia**:
-  - ✅ Wszystko z poziomu FUNDED
-  - ✅ Tworzenie i modyfikacja plików
-  - ✅ Edycja kodu projektu
+### Level 30: BUILDER (🟠 Orange)
+- **Scope**: File Editing
+- **Permissions**:
+  - ✅ Everything from FUNDED level
+  - ✅ File creation and modification
+  - ✅ Project code editing
   - ✅ Git commit/push
-  - ❌ Brak dostępu do terminala systemowego
-- **Ryzyko**: Wysokie (błędy w kodzie)
-- **Przykładowe Skille**: `FileWrite`, `FileEdit`, `GitCommit`
+  - ❌ No system terminal access
+- **Risk**: High (code errors)
+- **Example Skills**: `FileWrite`, `FileEdit`, `GitCommit`
 
-### Poziom 40: ROOT (🔴 Czerwony)
-- **Zakres**: Pełna Władza
-- **Uprawnienia**:
-  - ✅ Wszystko z poziomu BUILDER
-  - ✅ Dostęp do powłoki systemowej (Shell)
-  - ✅ Docker, instalacja pakietów
-  - ✅ Pełna kontrola systemu
-- **Ryzyko**: Krytyczne (destrukcja systemu)
-- **Przykładowe Skille**: `ShellExecute`, `DockerRun`, `PipInstall`
+### Level 40: ROOT (🔴 Red)
+- **Scope**: Full Power
+- **Permissions**:
+  - ✅ Everything from BUILDER level
+  - ✅ System shell access
+  - ✅ Docker, package installation
+  - ✅ Full system control
+- **Risk**: Critical (system destruction)
+- **Example Skills**: `ShellExecute`, `DockerRun`, `PipInstall`
 
-## 🛠️ Implementacja
+## 🛠️ Implementation
 
 ### Backend
 
 #### 1. PermissionGuard
 
-Singleton zarządzający systemem uprawnień:
+Singleton managing permission system:
 
 ```python
 from venom_core.core.permission_guard import permission_guard, AutonomyViolation
 
-# Sprawdź uprawnienia
+# Check permissions
 try:
     permission_guard.check_permission("ShellSkill")
-    # Jeśli uprawnienia wystarczające, wykonaj akcję
+    # If permissions sufficient, execute action
 except AutonomyViolation as e:
-    # Brak uprawnień - zwróć błąd 403 do frontendu
-    print(f"Wymagany poziom: {e.required_level_name}")
+    # No permissions - return 403 error to frontend
+    print(f"Required level: {e.required_level_name}")
 ```
 
 #### 2. StateManager
 
-Persystencja poziomu autonomii:
+Autonomy level persistence:
 
 ```python
 from venom_core.core.state_manager import StateManager
 
 state_manager = StateManager()
-print(f"Aktualny poziom: {state_manager.autonomy_level}")
+print(f"Current level: {state_manager.autonomy_level}")
 ```
 
 #### 3. API Endpoints
 
 ```bash
-# Pobierz aktualny poziom
+# Get current level
+# Note: In production, these endpoints should require authentication
+# to prevent unauthorized autonomy level changes
 GET /api/v1/system/autonomy
 
-# Ustaw nowy poziom
+# Set new level
+# IMPORTANT: This endpoint should be restricted to authenticated,
+# trusted operators only to prevent security bypass
 POST /api/v1/system/autonomy
 {
   "level": 20
 }
 
-# Lista wszystkich poziomów
+# List all levels
 GET /api/v1/system/autonomy/levels
 ```
 
+> **Security Warning:** The autonomy control endpoints should be protected with authentication and restricted to localhost or trusted networks only. Unrestricted access allows any caller to raise the autonomy level to ROOT, bypassing all permission checks for network access, file writes, and shell execution.
+
 ### Frontend
 
-#### 1. Selektor Autonomii
+#### 1. Autonomy Selector
 
-W `index.html`:
+In `index.html`:
 
 ```html
 <select id="autonomyLevel" class="autonomy-select">
@@ -125,105 +131,105 @@ W `index.html`:
 </select>
 ```
 
-#### 2. Dynamiczne Tematowanie
+#### 2. Dynamic Theming
 
-Body element ma klasę tematyczną:
+Body element has theme class:
 
 ```html
 <body class="theme-isolated" id="venomBody">
 ```
 
-Klasy tematyczne definiują kolory:
-- `.theme-isolated` - zielony
-- `.theme-connected` - niebieski
-- `.theme-funded` - żółty
-- `.theme-builder` - pomarańczowy
-- `.theme-root` - czerwony
+Theme classes define colors:
+- `.theme-isolated` - green
+- `.theme-connected` - blue
+- `.theme-funded` - yellow
+- `.theme-builder` - orange
+- `.theme-root` - red
 
-#### 3. Obsługa Błędów
+#### 3. Error Handling
 
-Gdy backend zwróci `403 Autonomy Violation`:
+When backend returns `403 Autonomy Violation`:
 
-1. Frontend wyświetla modal z informacją o wymaganym poziomie
-2. Selektor autonomii pulsuje odpowiednim kolorem
-3. Użytkownik może zwiększyć poziom lub anulować
+1. Frontend displays modal with required level information
+2. Autonomy selector pulses with appropriate color
+3. User can increase level or cancel
 
-## 📊 Scenariusz Użycia
+## 📊 Usage Scenario
 
-### Przykład: Sprawdzanie Pogody i Zapis do Pliku
+### Example: Check Weather and Save to File
 
 ```
-1. START: System w poziomie ISOLATED (0)
+1. START: System at ISOLATED level (0)
 
-2. Użytkownik: "Sprawdź pogodę w Warszawie"
+2. User: "Check weather in Warsaw"
    - Backend: PermissionGuard.check_permission("WebSkill")
-   - Wynik: AutonomyViolation (wymagany poziom 10)
-   - Frontend: Modal + pulsacja na niebiesko
+   - Result: AutonomyViolation (required level 10)
+   - Frontend: Modal + blue pulsation
 
-3. Użytkownik zwiększa poziom do CONNECTED (10)
+3. User increases level to CONNECTED (10)
    - Backend: permission_guard.set_level(10)
-   - Frontend: Theme zmienia się na niebieski
+   - Frontend: Theme changes to blue
 
-4. Użytkownik ponownie: "Sprawdź pogodę w Warszawie"
-   - Backend: Uprawnienia OK, wykonuje WebSkill
-   - Wynik: Pobrano dane o pogodzie
+4. User again: "Check weather in Warsaw"
+   - Backend: Permissions OK, executes WebSkill
+   - Result: Weather data retrieved
 
-5. Użytkownik: "Zapisz to do pliku pogoda.txt"
+5. User: "Save this to file weather.txt"
    - Backend: PermissionGuard.check_permission("FileWriteSkill")
-   - Wynik: AutonomyViolation (wymagany poziom 30)
-   - Frontend: Modal + pulsacja na pomarańczowo
+   - Result: AutonomyViolation (required level 30)
+   - Frontend: Modal + orange pulsation
 
-6. Użytkownik zwiększa poziom do BUILDER (30)
+6. User increases level to BUILDER (30)
    - Backend: permission_guard.set_level(30)
-   - Frontend: Theme zmienia się na pomarańczowy
+   - Frontend: Theme changes to orange
 
-7. Użytkownik ponownie: "Zapisz to do pliku pogoda.txt"
-   - Backend: Uprawnienia OK, wykonuje FileWriteSkill
-   - Wynik: Plik zapisany
+7. User again: "Save this to file weather.txt"
+   - Backend: Permissions OK, executes FileWriteSkill
+   - Result: File saved
 ```
 
-## 🔒 Zasady Bezpieczeństwa
+## 🔒 Security Rules
 
-### 1. Domyślny Poziom: ISOLATED
+### 1. Default Level: ISOLATED
 
-System zawsze startuje w poziomie ISOLATED (0) dla maksymalnego bezpieczeństwa.
+System always starts at ISOLATED level (0) for maximum security.
 
-### 2. Nowe Narzędzia = ROOT
+### 2. New Tools = ROOT
 
-Nowe, nieskategoryzowane skille domyślnie wymagają poziomu ROOT (40):
+New, uncategorized skills default to requiring ROOT level (40):
 
 ```python
-# W skill_permissions.yaml brak UnknownSkill
-# PermissionGuard domyślnie wymaga poziomu 40
-permission_guard.check_permission("UnknownSkill")  # Wymaga ROOT
+# UnknownSkill not in skill_permissions.yaml
+# PermissionGuard defaults to requiring level 40
+permission_guard.check_permission("UnknownSkill")  # Requires ROOT
 ```
 
 ### 3. Explicit > Implicit
 
-Lepiej jawnie ustawić niższy poziom dla bezpiecznego skilla niż polegać na domyślnym ROOT:
+Better to explicitly set lower level for safe skill than rely on default ROOT:
 
 ```yaml
 # skill_permissions.yaml
-SafeReadOnlySkill: 0  # Explicit - bezpieczne
+SafeReadOnlySkill: 0  # Explicit - safe
 ```
 
-### 4. Audyt i Monitoring
+### 4. Audit and Monitoring
 
-- Każda zmiana poziomu jest logowana
-- StateManager persystuje poziom między sesjami
-- TokenEconomist automatycznie włącza/wyłącza paid mode na poziomie 20+
+- Each level change is logged
+- StateManager persists level between sessions
+- TokenEconomist automatically enables/disables paid mode at level 20+
 
-## 📁 Pliki Konfiguracyjne
+## 📁 Configuration Files
 
 ### autonomy_matrix.yaml
 
-Definicja poziomów autonomii:
+Autonomy level definitions:
 
 ```yaml
 levels:
   - id: 0
     name: "ISOLATED"
-    description: "Lokalny Odczyt"
+    description: "Local Read"
     color: "#22c55e"
     permissions:
       network_enabled: false
@@ -234,7 +240,7 @@ levels:
 
 ### skill_permissions.yaml
 
-Mapowanie skillów na poziomy:
+Skill to level mapping:
 
 ```yaml
 FileReadSkill: 0
@@ -244,34 +250,34 @@ FileWriteSkill: 30
 ShellSkill: 40
 ```
 
-## 🧪 Testowanie
+## 🧪 Testing
 
-Uruchom testy:
+Run tests:
 
 ```bash
 pytest tests/test_permission_guard.py -v
 ```
 
-Kluczowe testy:
+Key tests:
 - ✅ Singleton pattern
-- ✅ Ustawianie poziomów
-- ✅ Sprawdzanie uprawnień
-- ✅ Dziedziczenie uprawnień
-- ✅ Blokowanie niedozwolonych akcji
-- ✅ Domyślne wymaganie ROOT dla nieznanych skillów
+- ✅ Level setting
+- ✅ Permission checking
+- ✅ Permission inheritance
+- ✅ Blocking unauthorized actions
+- ✅ Default ROOT requirement for unknown skills
 
 ## 🎯 Best Practices
 
-1. **Start Safe**: Zawsze rozpoczynaj sesję w poziomie ISOLATED
-2. **Incremental Elevation**: Zwiększaj poziom tylko gdy potrzeba
-3. **Explicit Permissions**: Definiuj uprawnienia dla nowych skillów w `skill_permissions.yaml`
-4. **User Confirmation**: Frontend wymaga świadomej zgody użytkownika na zmianę poziomu
-5. **Audit Trail**: Monitoruj zmiany poziomów w logach
+1. **Start Safe**: Always begin session at ISOLATED level
+2. **Incremental Elevation**: Increase level only when needed
+3. **Explicit Permissions**: Define permissions for new skills in `skill_permissions.yaml`
+4. **User Confirmation**: Frontend requires conscious user consent for level change
+5. **Audit Trail**: Monitor level changes in logs
 
-## 📚 Referencje
+## 📚 References
 
-- **Kod Backend**: `venom_core/core/permission_guard.py`
-- **Kod Frontend**: `web/static/js/app.js` (sekcja AutonomyGate)
-- **Konfiguracja**: `data/config/autonomy_matrix.yaml`, `data/config/skill_permissions.yaml`
-- **Testy**: `tests/test_permission_guard.py`
-- **API**: `venom_core/api/routes/system.py` (endpointy `/api/v1/system/autonomy`)
+- **Backend Code**: `venom_core/core/permission_guard.py`
+- **Frontend Code**: `web/static/js/app.js` (AutonomyGate section)
+- **Configuration**: `data/config/autonomy_matrix.yaml`, `data/config/skill_permissions.yaml`
+- **Tests**: `tests/test_permission_guard.py`
+- **API**: `venom_core/api/routes/system.py` (`/api/v1/system/autonomy` endpoints)

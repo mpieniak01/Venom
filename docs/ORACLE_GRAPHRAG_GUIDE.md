@@ -1,84 +1,84 @@
-# Oracle Agent & GraphRAG - Dokumentacja
+# Oracle Agent & GraphRAG - Documentation
 
-## Przegląd
+## Overview
 
-System Oracle Agent to zaawansowany silnik analizy wiedzy wykorzystujący GraphRAG (Graph Retrieval-Augmented Generation) do multi-hop reasoning i głębokiej analizy dokumentów.
+The Oracle Agent system is an advanced knowledge analysis engine using GraphRAG (Graph Retrieval-Augmented Generation) for multi-hop reasoning and deep document analysis.
 
-## Komponenty Systemu
+## System Components
 
 ### 1. **Ingestion Engine** (`venom_core/memory/ingestion_engine.py`)
 
-Silnik przetwarzania wieloformatowych danych.
+Engine for processing multi-format data.
 
-**Obsługiwane formaty:**
-- 📄 **PDF** - używa `markitdown` lub `pypdf`
-- 📝 **DOCX** - używa `markitdown` lub `python-docx`
-- 🖼️ **Obrazy** (PNG, JPG, GIF, etc.) - używa Vision Engine (OpenAI/Ollama) do opisu
-- 🎵 **Audio** (MP3, WAV, OGG) - używa Whisper do transkrypcji
-- 🎬 **Video** (MP4, AVI, MKV) - ekstrahuje audio i transkrybuje
-- 📋 **Tekst** (TXT, MD, kod źródłowy)
-- 🌐 **URL** - pobiera i czyści treść stron WWW
+**Supported Formats:**
+- 📄 **PDF** - uses `markitdown` or `pypdf`
+- 📝 **DOCX** - uses `markitdown` or `python-docx`
+- 🖼️ **Images** (PNG, JPG, GIF, etc.) - uses Vision Engine (OpenAI/Ollama) for description
+- 🎵 **Audio** (MP3, WAV, OGG) - uses Whisper for transcription
+- 🎬 **Video** (MP4, AVI, MKV) - extracts audio and transcribes
+- 📋 **Text** (TXT, MD, source code)
+- 🌐 **URL** - downloads and cleans web content
 
-**Kluczowe funkcje:**
-- `detect_file_type(path)` - wykrywa typ pliku
-- `ingest_file(path)` - przetwarza plik
-- `ingest_url(url)` - przetwarza URL
-- `_semantic_chunk(text)` - dzieli tekst semantycznie (nie co N znaków)
+**Key Functions:**
+- `detect_file_type(path)` - detects file type
+- `ingest_file(path)` - processes file
+- `ingest_url(url)` - processes URL
+- `_semantic_chunk(text)` - splits text semantically (not every N characters)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.memory.ingestion_engine import IngestionEngine
 
 engine = IngestionEngine()
 
-# Przetwórz PDF
+# Process PDF
 result = await engine.ingest_file("./documents/manual.pdf")
 print(f"Chunks: {len(result['chunks'])}")
 print(f"Type: {result['file_type']}")
 
-# Przetwórz URL
+# Process URL
 result = await engine.ingest_url("https://example.com/article")
 ```
 
 ### 2. **GraphRAG Service** (`venom_core/memory/graph_rag_service.py`)
 
-Zaawansowany graf wiedzy z ekstrakcją encji i relacji.
+Advanced knowledge graph with entity and relationship extraction.
 
-**Architektura:**
-- **Węzły (Entities)**: Reprezentują pojęcia, osoby, dokumenty
-- **Krawędzie (Relationships)**: Relacje między encjami (np. CREATED_BY, RELATED_TO)
-- **Społeczności (Communities)**: Klastry powiązanych encji (algorytm Louvain)
-- **VectorStore**: Hybrydowe wyszukiwanie (semantic + keyword)
+**Architecture:**
+- **Nodes (Entities)**: Represent concepts, people, documents
+- **Edges (Relationships)**: Relationships between entities (e.g., CREATED_BY, RELATED_TO)
+- **Communities**: Clusters of related entities (Louvain algorithm)
+- **VectorStore**: Hybrid search (semantic + keyword)
 
-**Kluczowe funkcje:**
+**Key Functions:**
 
 ```python
 from venom_core.memory.graph_rag_service import GraphRAGService
 
 graph = GraphRAGService()
 
-# Dodaj encję
+# Add entity
 graph.add_entity(
     entity_id="python",
     entity_type="ProgrammingLanguage",
     properties={"name": "Python", "created": "1991"}
 )
 
-# Dodaj relację
+# Add relationship
 graph.add_relationship(
     source_id="python",
     target_id="guido_van_rossum",
     relationship_type="CREATED_BY"
 )
 
-# Ekstrahuj wiedzę z tekstu (wymaga LLM)
+# Extract knowledge from text (requires LLM)
 await graph.extract_knowledge_from_text(
     text="Python was created by Guido van Rossum in 1991.",
     source_id="doc_1",
     llm_service=llm
 )
 
-# Global Search (pytania o ogólny obraz)
+# Global Search (questions about the big picture)
 result = await graph.global_search(
     "What is this project about?",
     llm_service=llm
@@ -92,105 +92,105 @@ result = await graph.local_search(
 )
 ```
 
-**Typy wyszukiwania:**
+**Search Types:**
 
 1. **Global Search**:
-   - Analizuje społeczności w grafie
-   - Tworzy podsumowania klastrów
-   - Dobre dla pytań typu "O czym jest ten projekt?"
+   - Analyzes communities in the graph
+   - Creates cluster summaries
+   - Good for questions like "What is this project about?"
 
 2. **Local Search**:
-   - Eksploruje sąsiedztwo węzłów (BFS)
-   - Multi-hop reasoning (do N kroków)
-   - Dobre dla pytań typu "Jaki jest związek między X a Y?"
+   - Explores node neighborhoods (BFS)
+   - Multi-hop reasoning (up to N steps)
+   - Good for questions like "What is the relationship between X and Y?"
 
 ### 3. **Oracle Agent** (`venom_core/agents/oracle.py`)
 
-Agent analityczny wykorzystujący GraphRAG do głębokich analiz.
+Analytical agent using GraphRAG for deep analysis.
 
 **Reasoning Loop:**
-1. **Analiza pytania** - zrozumienie intencji użytkownika
-2. **Wybór strategii** - global vs local search
-3. **Eksploracja** - zbieranie faktów z grafu
-4. **Synteza** - połączenie faktów w odpowiedź
-5. **Weryfikacja** - cytowanie źródeł
+1. **Question Analysis** - understanding user intent
+2. **Strategy Selection** - global vs local search
+3. **Exploration** - gathering facts from the graph
+4. **Synthesis** - combining facts into an answer
+5. **Verification** - citing sources
 
-**Dostępne funkcje (plugin):**
-- `global_search(query)` - wyszukiwanie globalne
-- `local_search(query, max_hops)` - wyszukiwanie lokalne
-- `ingest_file(path)` - przetworzenie pliku
-- `ingest_url(url)` - przetworzenie URL
-- `get_graph_stats()` - statystyki grafu
+**Available Functions (plugin):**
+- `global_search(query)` - global search
+- `local_search(query, max_hops)` - local search
+- `ingest_file(path)` - process file
+- `ingest_url(url)` - process URL
+- `get_graph_stats()` - graph statistics
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from semantic_kernel import Kernel
 from venom_core.agents.oracle import OracleAgent
 
 kernel = Kernel()
-# ... konfiguracja kernel ...
+# ... kernel config ...
 
 oracle = OracleAgent(kernel)
 
-# Zadaj trudne pytanie
+# Ask a difficult question
 result = await oracle.process(
-    "Jaki jest związek między agentem Ghost a modułem Florence-2?"
+    "What is the relationship between agent Ghost and the Florence-2 module?"
 )
 print(result)
 ```
 
 ### 4. **Research Skill** (`venom_core/execution/skills/research_skill.py`)
 
-Skill do ingestii danych używany przez agentów.
+Skill for data ingestion used by agents.
 
-**Funkcje:**
-- `digest_url(url)` - pobiera i dodaje URL do grafu
-- `digest_file(path)` - przetwarza plik
-- `digest_directory(path, recursive)` - przetwarza katalog
-- `get_knowledge_stats()` - statystyki grafu
+**Functions:**
+- `digest_url(url)` - downloads and adds URL to graph
+- `digest_file(path)` - processes file
+- `digest_directory(path, recursive)` - processes directory
+- `get_knowledge_stats()` - graph statistics
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.execution.skills.research_skill import ResearchSkill
 
 skill = ResearchSkill()
 
-# Dodaj plik
+# Add file
 result = await skill.digest_file("./docs/manual.pdf")
 
-# Dodaj cały katalog
+# Add entire directory
 result = await skill.digest_directory(
     "./docs/api",
     recursive=True
 )
 
-# Sprawdź statystyki
+# Check statistics
 stats = skill.get_knowledge_stats()
 print(stats)
 ```
 
-## Instalacja Zależności
+## Dependency Installation
 
 ```bash
-# Podstawowe zależności (już w requirements.txt)
+# Basic dependencies (already in requirements.txt)
 pip install networkx lancedb
 
-# Ingestia dokumentów
+# Document ingestion
 pip install pypdf markitdown python-docx
 
 # Web scraping
 pip install trafilatura beautifulsoup4
 
-# Vision (opcjonalne)
-# Vision Engine jest już w projekcie
+# Vision (optional)
+# Vision Engine is already in the project
 
-# Audio (opcjonalne)
+# Audio (optional)
 pip install faster-whisper
 ```
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Analiza dokumentacji PDF
+### Example 1: PDF Documentation Analysis
 
 ```python
 import asyncio
@@ -199,18 +199,18 @@ from venom_core.agents.oracle import OracleAgent
 
 async def analyze_pdf():
     kernel = Kernel()
-    # ... konfiguracja ...
+    # ... config ...
 
     oracle = OracleAgent(kernel)
 
-    # Przetwórz PDF
+    # Process PDF
     await oracle.process(
-        "Przeczytaj plik ./docs/washing_machine_manual.pdf i dodaj do grafu wiedzy"
+        "Read file ./docs/washing_machine_manual.pdf and add to knowledge graph"
     )
 
-    # Zadaj pytanie
+    # Ask question
     result = await oracle.process(
-        "Dlaczego miga czerwona dioda w pralce?"
+        "Why is the red LED blinking on the washing machine?"
     )
 
     print(result)
@@ -218,138 +218,138 @@ async def analyze_pdf():
 asyncio.run(analyze_pdf())
 ```
 
-### Przykład 2: Multi-Hop Reasoning
+### Example 2: Multi-Hop Reasoning
 
 ```python
-# Po przetworzeniu dokumentacji projektu...
+# After processing project documentation...
 
 result = await oracle.process(
-    "Jaki jest związek między agentem Ghost a modułem Florence-2? "
-    "Wyjaśnij krok po kroku łańcuch zależności."
+    "What is the relationship between agent Ghost and the Florence-2 module? "
+    "Explain the dependency chain step by step."
 )
 
-# Oracle odpowie np.:
-# "1. Agent Ghost używa Input Skill
-#  2. Input Skill korzysta z Vision Grounding
-#  3. Vision Grounding jest powered by Vision Engine
-#  [Źródła: ...]"
+# Oracle might answer e.g.:
+# "1. Agent Ghost uses Input Skill
+#  2. Input Skill uses Vision Grounding
+#  3. Vision Grounding is powered by Vision Engine
+#  [Sources: ...]"
 ```
 
-### Przykład 3: Persistent Knowledge Base
+### Example 3: Persistent Knowledge Base
 
 ```python
-# Buduj graf wiedzy stopniowo...
+# Build knowledge graph gradually...
 
-# Dzień 1: Dodaj dokumentację
+# Day 1: Add documentation
 await oracle.process("digest_file ./docs/api_spec.pdf")
 await oracle.process("digest_url https://docs.python.org/3/")
 
-# Dzień 2: Graf jest zapisany automatycznie
-# Możesz zadawać pytania bez ponownej ingestii
+# Day 2: Graph is saved automatically
+# You can ask questions without re-ingestion
 result = await oracle.process(
-    "Jak zaimplementować autoryzację zgodnie ze specyfikacją API?"
+    "How to implement authorization according to API spec?"
 )
 ```
 
-## Workflow Typowego Użycia
+## Typical Usage Workflow
 
 ```mermaid
 graph TD
-    A[Użytkownik] -->|Pytanie| B[Oracle Agent]
-    B -->|Brak wiedzy?| C[Ingestion Engine]
-    C -->|Przetwarza| D[Dokumenty/URL]
-    D -->|Ekstrahuje| E[GraphRAG Service]
-    E -->|Buduje| F[Graf Wiedzy]
-    F -->|Zapisuje| G[LanceDB + NetworkX]
+    A[User] -->|Question| B[Oracle Agent]
+    B -->|No knowledge?| C[Ingestion Engine]
+    C -->|Process| D[Documents/URL]
+    D -->|Extract| E[GraphRAG Service]
+    E -->|Build| F[Knowledge Graph]
+    F -->|Save| G[LanceDB + NetworkX]
 
-    B -->|Ma wiedzę?| H{Typ pytania}
-    H -->|Ogólny obraz| I[Global Search]
-    H -->|Konkretne relacje| J[Local Search]
+    B -->|Has knowledge?| H{Question Type}
+    H -->|Big Picture| I[Global Search]
+    H -->|Specific Relations| J[Local Search]
 
-    I -->|Analizuje społeczności| F
+    I -->|Analyze Communities| F
     J -->|Multi-hop BFS| F
 
-    I -->|Synteza| K[LLM]
-    J -->|Synteza| K
-    K -->|Odpowiedź z cytatami| A
+    I -->|Synthesis| K[LLM]
+    J -->|Synthesis| K
+    K -->|Answer with Citations| A
 ```
 
-## Performance & Optymalizacja
+## Performance & Optimization
 
-### Chunking Semantyczny
-- Zamiast ciąć tekst co 500 znaków, dzielimy logicznie:
-  - Po akapitach (`\n\n`)
-  - Po zdaniach (`. `)
-  - Po klauzulach (`, `)
+### Semantic Chunking
+- Instead of cutting text every 500 characters, we split logically:
+  - By paragraphs (`\n\n`)
+  - By sentences (`. `)
+  - By clauses (`, `)
 
 ### Lazy Loading
-- Vision Engine (OpenAI/Ollama) ładowany tylko gdy potrzebny
-- Audio Engine (Whisper) ładowany tylko gdy potrzebny
+- Vision Engine (OpenAI/Ollama) loaded only when needed
+- Audio Engine (Whisper) loaded only when needed
 
 ### Cache
-- Społeczności (communities) są cache'owane
-- Graf jest zapisywany po każdej operacji
+- Communities are cached
+- Graph is saved after every operation
 
-### Koszty LLM
-- Ekstrakcja wiedzy: ~500-3000 tokenów na dokument
-- Global search: ~1000-2000 tokenów na zapytanie
-- Local search: ~500-1500 tokenów na zapytanie
-- **Optymalizacja**: Używaj tańszego modelu (Phi-3, Mistral) do ekstrakcji, GPT-4o do syntezy
+### LLM Costs
+- Knowledge extraction: ~500-3000 tokens per document
+- Global search: ~1000-2000 tokens per query
+- Local search: ~500-1500 tokens per query
+- **Optimization**: Use cheaper model (Phi-3, Mistral) for extraction, GPT-4o for synthesis
 
 ## Troubleshooting
 
 ### "No module named 'markitdown'"
 ```bash
 pip install markitdown
-# lub
+# or
 pip install pypdf  # fallback
 ```
 
-### "Vision Engine niedostępny"
-- Lokalne modele vision wymagają GPU lub mogą być wolne na CPU
-- Można pominąć obrazy lub użyć tylko opisu nazwy pliku
+### "Vision Engine unavailable"
+- Local vision models require GPU or may be slow on CPU
+- You can skip images or use only filename description
 
-### "Audio Engine niedostępny"
+### "Audio Engine unavailable"
 ```bash
 pip install faster-whisper
 ```
 
-### Graf wiedzy jest pusty
+### Knowledge graph is empty
 ```python
-# Sprawdź czy pliki zostały przetworzone
+# Check if files were processed
 stats = graph.get_stats()
 print(stats)
 
-# Sprawdź czy graf został załadowany
+# Check if graph was loaded
 graph.load_graph()
 ```
 
-## Roadmap (Przyszłe Funkcje)
+## Roadmap (Future Features)
 
-- [ ] **Dashboard Knowledge Explorer** - wizualizacja grafu (vis.js/cytoscape.js)
-- [ ] **Incremental Updates** - aktualizacja grafu bez przebudowy
-- [ ] **Query Expansion** - automatyczne rozszerzanie zapytań
-- [ ] **Temporal Knowledge** - śledzenie zmian w czasie
-- [ ] **Multi-Graph** - wiele grafów wiedzy (osobiste, projektowe, publiczne)
-- [ ] **Export/Import** - eksport do Neo4j, RDF, etc.
+- [ ] **Dashboard Knowledge Explorer** - graph visualization (vis.js/cytoscape.js)
+- [ ] **Incremental Updates** - graph update without rebuild
+- [ ] **Query Expansion** - automatic query expansion
+- [ ] **Temporal Knowledge** - tracking changes over time
+- [ ] **Multi-Graph** - multiple knowledge graphs (personal, project, public)
+- [ ] **Export/Import** - export to Neo4j, RDF, etc.
 
 ## FAQ
 
-**Q: Czy mogę używać Oracle bez GPT-4?**
-A: Tak! Możesz używać lokalnych modeli (Ollama, vLLM). Ekstrakcja wiedzy i reasoning będą działać, choć mogą być mniej precyzyjne.
+**Q: Can I use Oracle without GPT-4?**
+A: Yes! You can use local models (Ollama, vLLM). Knowledge extraction and reasoning will work, though may be less precise.
 
-**Q: Jak długo trwa przetworzenie 100-stronicowego PDF?**
-A: ~30-60 sekund (zależy od prędkości LLM i jakości PDF).
+**Q: How long does it take to process a 100-page PDF?**
+A: ~30-60 seconds (depends on LLM speed and PDF quality).
 
-**Q: Czy graf jest persistent?**
-A: Tak, graf jest zapisywany do `data/memory/knowledge_graph.json` i ładowany automatycznie.
+**Q: Is the graph persistent?**
+A: Yes, the graph is saved to `data/memory/knowledge_graph.json` and loaded automatically.
 
-**Q: Czy mogę używać Oracle w API?**
-A: Tak, Oracle jest agentem i może być wywoływany przez FastAPI endpoint.
+**Q: Can I use Oracle in API?**
+A: Yes, Oracle is an agent and can be called via FastAPI endpoint.
 
-**Q: Multi-hop reasoning - ile "skoków" mogę zrobić?**
-A: Parametr `max_hops` kontroluje głębokość (domyślnie 2). Więcej skoków = więcej kontekstu, ale dłuższe zapytania.
+**Q: Multi-hop reasoning - how many "hops" can I do?**
+A: The `max_hops` parameter controls depth (default 2). More hops = more context, but longer queries.
 
-## Licencja
+## License
 
-Ten moduł jest częścią projektu Venom i podlega tej samej licencji co cały projekt.
+This module is part of the Venom project and is subject to the same license as the entire project.

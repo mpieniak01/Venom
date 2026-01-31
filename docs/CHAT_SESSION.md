@@ -1,127 +1,118 @@
-# Chat i sesje (aktualny stan)
+# Chat and Sessions (Current State)
 
-Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak sesje sa resetowane.
+This document describes how chat works, what data it collects, where it stores it, and how sessions are reset.
 
-## Przeglad
-- Chat dziala w UI `web-next` (Cockpit AI) i wysyla zadania do backendu FastAPI (QueueManager).
-- Kontekst rozmowy jest budowany po stronie backendu na podstawie historii sesji i metadanych.
-- Ciaglosc rozmowy jest utrzymywana w ramach `session_id`.
-- Restart backendu wymusza nowa sesje (UI generuje nowe `session_id`).
+## Overview
+- Chat works in `web-next` UI (Cockpit AI) and sends tasks to FastAPI backend (QueueManager).
+- Conversation context is built on backend side based on session history and metadata.
+- Conversation continuity is maintained within `session_id`.
+- Backend restart forces new session (UI generates new `session_id`).
 
-## Id sesji (UI)
-- `session_id` jest generowany po stronie UI i zapisywany w `localStorage`:
-  - `venom-session-id` (aktywny identyfikator sesji),
-  - `venom-next-build-id` (build Next.js),
-  - `venom-backend-boot-id` (boot backendu).
-- UI porownuje `boot_id` z backendu. Gdy jest inny, sesja jest resetowana.
+## Session ID (UI)
+- `session_id` is generated on UI side and saved in `localStorage`:
+  - `venom-session-id` (active session identifier),
+  - `venom-next-build-id` (Next.js build),
+  - `venom-backend-boot-id` (backend boot).
+- UI compares `boot_id` with backend. When different, session is reset.
 
-## Źródła danych i magazyny
-### SessionStore (źródło prawdy)
-- Plik: `data/memory/session_store.json`
-- Zawartosc: historia sesji (`history`), opcjonalne `summary`, metadane.
-- Uzywany do budowania kontekstu dla kolejnych requestow w tej samej sesji.
+## Data Sources and Stores
+### SessionStore (source of truth)
+- File: `data/memory/session_store.json`
+- Content: session history (`history`), optional `summary`, metadata.
+- Used to build context for subsequent requests in the same session.
 
-### StateManager (stan zadan)
-- Plik: `data/memory/state_dump.json`
-- Zawartosc: `VenomTask` (content, result, logs, context_history).
-- Historia sesji w `context_history` jest per-zadanie (fallback).
+### StateManager (task state)
+- File: `data/memory/state_dump.json`
+- Content: `VenomTask` (content, result, logs, context_history).
+- Session history in `context_history` is per-task (fallback).
 
 ### RequestTracer (RAM)
-- API: `/api/v1/history/requests` i `/api/v1/history/requests/{id}`
-- Zawartosc: prompt (skrocony), status, kroki, metadane LLM.
-- Nietrwaly (znika po restarcie).
+- API: `/api/v1/history/requests` and `/api/v1/history/requests/{id}`
+- Content: prompt (shortened), status, steps, LLM metadata.
+- Non-persistent (disappears after restart).
 
 ### Event Stream (WebSocket)
 - API: `/ws/events`
-- Zawartosc: zdarzenia i statusy systemowe (np. stream odpowiedzi, metryki).
-- Nietrwaly (po restarcie restartuje strumien).
+- Content: system events and status updates (e.g. response stream, metrics).
+- Non-persistent (stream restarts after reboot).
 
-### Pamiec wektorowa (globalna)
-- Trwala wiedza cross-session (np. LanceDB).
-- Zapisy: odpowiedzi, streszczenia, lekcje, fakty.
-- Czyszczona tylko recznie przez "Wyczysc pamiec globalna".
+### Vector Memory (global)
+- Persistent cross-session knowledge (e.g., LanceDB).
+- Records: responses, summaries, lessons, facts.
+- Cleaned only manually via "Clear global memory".
 
-## Jak powstaje kontekst chatu
-1) UI wysyla `TaskRequest` z `session_id` i trescia promptu.
-2) Backend buduje kontekst:
-   - metadane sesji (ID, scope, jezyk),
-   - historia z SessionStore (ostatnie N wpisow),
-   - summary tylko gdy istnieje lub zostalo zadane explicite,
-   - pamiec wektorowa tylko przy spelnieniu warunkow (np. "przypomnij", "wczesniej").
-3) Model generuje odpowiedz, ktora jest zapisywana do:
-   - SessionStore (historia sesji),
-   - StateManager (wynik zadania),
-   - opcjonalnie do pamieci wektorowej.
+## How Chat Context is Built
+1) UI sends `TaskRequest` with `session_id` and prompt content.
+2) Backend builds context:
+   - session metadata (ID, scope, language),
+   - history from SessionStore (last N entries),
+   - summary only when exists or explicitly requested,
+   - vector memory only when conditions met (e.g., "remind", "earlier").
+3) Model generates response, which is saved to:
+   - SessionStore (session history),
+   - StateManager (task result),
+   - optionally to vector memory.
 
-## Logika routingu w chat (dlaczego i co wywolywane)
-- Domyslna zasada: **jesli intencja nie wymaga narzedzia i nie jest wymuszona, idzie do LLM** (GENERAL_CHAT).
-- Model Router wybiera runtime LLM (LOCAL/HYBRID/CLOUD) zgodnie z `AI_MODE` i politykami.
-- Narzedzia/skills uruchamiane sa tylko gdy:
-  - intencja wymaga narzedzia (np. STATUS_REPORT, VERSION_CONTROL, RESEARCH), lub
-  - uzytkownik wymusi to przez slash command (`/git`, `/web`, itp.).
-- To zapobiega blednym przekierowaniom (np. pytanie definicyjne jako HELP_REQUEST) i utrzymuje chat jako rozmowe.
+## Chat Routing Logic (why and what is called)
+- Default rule: **if intent doesn't require tool and isn't forced, goes to LLM** (GENERAL_CHAT).
+- Model Router selects LLM runtime (LOCAL/HYBRID/CLOUD) based on `AI_MODE` and policies.
+- Tools/skills are triggered only when:
+  - intent requires tool (e.g., STATUS_REPORT, VERSION_CONTROL, RESEARCH), or
+  - user forces it via slash command (`/git`, `/web`, etc.).
+- This prevents wrong redirections (e.g., definition question as HELP_REQUEST) and keeps chat as conversation.
 
-## Tryby pracy czatu (manualny przełącznik)
-W UI czatu są trzy tryby. Mechanizmy retencji i semantic cache wdrożone w zadaniach 088/090 działają w pełni w trybach **DIRECT** i **NORMAL**. Tryb **COMPLEX** korzysta z tych samych danych, ale posiada własną strategię orkiestracji.
+## Chat Work Modes (manual switch)
+In chat UI there are three modes. This doesn't duplicate architecture – it's strategy control.
 
-### 1) Direct (bezpośredni)
-- **Routing:** bez orkiestratora, bez narzędzi, bez planowania.
-- **Ścieżka krytyczna:** UI → LLM → UI (najkrótsza).
-- **Logowanie:** RequestTracer z `session_id`, prompt i response (SimpleMode).
-- **Zastosowanie:** referencja dla TTFT i maszynopisania.
+### 1) Direct (direct)
+- **Routing:** no orchestrator, no tools, no planning.
+- **Critical path:** UI → LLM → UI (shortest).
+- **Logging:** RequestTracer with `session_id`, prompt and response (SimpleMode).
+- **Use case:** reference for TTFT and typing.
 
 ### 2) Normal (standard)
-- **Routing:** orkiestrator + klasyfikacja intencji + standardowe logi.
-- **Ścieżka krytyczna:** UI → (intent/gating) → LLM → UI.
-- **Logowanie:** pełne (history, steps, runtime).
-- **Zastosowanie:** domyślna praca systemu.
+- **Routing:** orchestrator + intent classification + standard logs.
+- **Critical path:** UI → (intent/gating) → LLM → UI.
+- **Logging:** full (history, steps, runtime).
+- **Use case:** default system operation.
 
-### 3) Complex (planowanie)
-- **Routing:** wymuszona intencja `COMPLEX_PLANNING` → Architect → plan/kroki.
-- **Ścieżka krytyczna:** UI → planowanie → LLM → UI.
-- **Logowanie:** pełne + kroki planu + decyzje.
-- **Zastosowanie:** zadania wieloetapowe i złożone.
+### 3) Complex (planning)
+- **Routing:** forced intent `COMPLEX_PLANNING` → Architect → plan/steps.
+- **Critical path:** UI → planning → LLM → UI.
+- **Logging:** full + plan steps + decisions.
+- **Use case:** multi-step and complex tasks.
 
-## Szczegóły requestu i timingi
-Panel „Szczegóły requestu” pokazuje kluczowe metryki ścieżki krytycznej:
-- **UI timings:** `submit → historia`, `TTFT (UI)`.
-- **Backend timings:** `LLM.start` (krok tracera), `first_token.elapsed_ms`, `streaming.first_chunk_ms`, `streaming.chunk_count`, `streaming.last_emit_ms`.
-To pozwala ocenić, czy streaming działa przyrostowo oraz gdzie powstaje opóźnienie.
+## Request Details and Timings
+"Request details" panel shows key critical path metrics:
+- **UI timings:** `submit → history`, `TTFT (UI)`.
+- **Backend timings:** `LLM.start` (tracer step), `first_token.elapsed_ms`, `streaming.first_chunk_ms`, `streaming.chunk_count`, `streaming.last_emit_ms`.
+This allows assessing whether streaming works incrementally and where delays occur.
 
-## Wzorzec ścieżki krytycznej (UI → LLM → UI)
-Cel: wszystko poza wysłaniem promptu i pierwszym chunkem ma działać w tle.
-- **Na ścieżce:** submit → TTFT → streaming/odpowiedź.
-- **W tle:** trace, memory, refreshy paneli, dodatkowe logi.
+## Critical Path Pattern (UI → LLM → UI)
+Goal: everything besides sending prompt and first chunk should work in background.
+- **On path:** submit → TTFT → streaming/response.
+- **In background:** trace, memory, panel refreshes, additional logs.
 
-## Reset sesji
-- Reset sesji w UI tworzy nowe `session_id`.
-- Reset sesji czyści:
-  - SessionStore dla danej sesji,
-  - wpisy sesyjne w `state_dump.json`,
-  - pamiec sesyjna w wektorowej pamieci (jesli byla tagowana `session_id`).
-- Pamiec wektorowa globalna nie jest czyszczona automatycznie.
+## Session Reset
+- Session reset in UI creates new `session_id`.
+- Session reset clears:
+  - SessionStore for given session,
+  - session entries in `state_dump.json`,
+  - session memory in vector memory (if tagged with `session_id`).
+- Global vector memory is not cleared automatically.
 
-## Zarządzanie Retencją (Memory Hygiene)
-System udostępnia dedykowane endpointy API do zarządzania cyklem życia wiedzy (Lekcji):
-- **Pruning wg TTL:** Usuwanie lekcji starszych niż N dni.
-- **Pruning wg Ilości:** Zachowanie tylko N ostatnich lekcji.
-- **Pruning wg Tagu:** Usuwanie grup tematycznych (np. po refactoringu biblioteki).
-- **Global Wipe:** Pełne czyszczenie pamięci długoterminowej.
+## Token Consequences
+- Summary and vector memory increase prompt length only when enabled.
+- By default summary is not generated automatically; created on request or with clear trigger.
 
-Te operacje są kluczowe dla utrzymania jakości kontekstu w czasie. Interfejs do tych operacji znajduje się w panelu **Brain -> Hygiene**.
+## Current Approach
+- Session reset after backend restart is intentional (boot_id). This behavior can be changed if need arises to maintain session after restart.
+- Vector memory is global and persistent; not cleared per-session. In future, additional "session-only" mode or TTL rules may be introduced.
+- Summary is generated only on request/trigger. Possible to switch to auto-summary for long sessions, at token cost.
+- Memory retrieval is conditional (heuristics). In future this can be controlled configuratively or per-model.
 
-## Konsekwencje dla tokenow
-- Summary i pamiec wektorowa zwiekszaja dlugosc promptu tylko wtedy, gdy sa wlaczane.
-- Domyslnie summary nie jest generowane automatycznie; powstaje na zadanie lub przy jasnym triggerze.
-
-## Obecne podejscie
-- Reset sesji po restarcie backendu jest celowy (boot_id). To zachowanie moze zostac zmienione, jesli pojawi sie potrzeba podtrzymania sesji po restarcie.
-- Pamięć wektorowa jest globalna i trwała; nie jest kasowana per‑sesja. W przyszlosci moze zostac wprowadzony dodatkowy tryb „session‑only” lub reguly TTL.
-- Summary jest generowane tylko na zadanie/trigger. Mozliwe jest przestawienie na auto‑summary dla dlugich sesji, kosztem tokenow.
-- Retrieval z pamieci jest warunkowy (heurystyki). W przyszlosci mozna to sterowac konfiguracyjnie lub per‑model.
-
-## Gdzie szukac kodu
-- UI sesji: `web-next/lib/session.tsx`
+## Where to Find Code
+- Session UI: `web-next/lib/session.tsx`
 - Chat UI: `web-next/components/cockpit/cockpit-home.tsx`
-- Budowa kontekstu: `venom_core/core/orchestrator/session_handler.py`
+- Context building: `venom_core/core/orchestrator/session_handler.py`
 - SessionStore: `venom_core/services/session_store.py`

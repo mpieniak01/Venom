@@ -1,80 +1,80 @@
 # THE INTEGRATOR - Git & DevOps Management
 
-## Rola
+## Role
 
-Integrator Agent to ekspert DevOps i Release Engineer w systemie Venom. Zarządza repozytorium Git, tworzy semantyczne commity, Pull Requesty oraz integruje się z platformami zewnętrznymi (GitHub, Discord, Slack).
+Integrator Agent is a DevOps expert and Release Engineer in the Venom system. It manages Git repository, creates semantic commits, Pull Requests, and integrates with external platforms (GitHub, Discord, Slack).
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Zarządzanie Git** - Operacje repo (init, checkout, commit, push, pull)
-- **Semantic Commits** - Tworzenie commitów zgodnych z Conventional Commits
-- **Zarządzanie branchami** - Tworzenie feature branches, merge, checkout
-- **Pull Requesty** - Automatyczne tworzenie PR z opisem i labelsami
-- **Integracje platformowe** - GitHub Issues, Discord/Slack notifications
-- **Release Management** - Tagowanie wersji, CHANGELOG
+- **Git management** - Repo operations (init, checkout, commit, push, pull)
+- **Semantic Commits** - Creating commits compliant with Conventional Commits
+- **Branch management** - Creating feature branches, merge, checkout
+- **Pull Requests** - Automatic PR creation with description and labels
+- **Platform integrations** - GitHub Issues, Discord/Slack notifications
+- **Release Management** - Version tagging, CHANGELOG
 
-## Kluczowe Komponenty
+## Key Components
 
 ### 1. GitSkill (`venom_core/execution/skills/git_skill.py`)
 
-**Dostępne operacje:**
-- `init_repo(path, remote_url)` - Inicjalizuj lub klonuj repozytorium
-- `checkout(branch, create_new)` - Przełącz branch lub utwórz nowy
-- `get_status()` - Sprawdź status zmian (modified, added, deleted)
-- `get_diff(staged)` - Zobacz szczegóły zmian
-- `add_files(patterns)` - Stage'uj pliki do commita
-- `commit(message)` - Utwórz commit
-- `push(branch, remote)` - Wypchnij zmiany do remote
-- `get_last_commit_log(count)` - Zobacz historię commitów
-- `get_current_branch()` - Sprawdź aktualny branch
+**Available operations:**
+- `init_repo(path, remote_url)` - Initialize or clone repository
+- `checkout(branch, create_new)` - Switch branch or create new
+- `get_status()` - Check change status (modified, added, deleted)
+- `get_diff(staged)` - See change details
+- `add_files(patterns)` - Stage files for commit
+- `commit(message)` - Create commit
+- `push(branch, remote)` - Push changes to remote
+- `get_last_commit_log(count)` - View commit history
+- `get_current_branch()` - Check current branch
 
-**Przykład użycia:**
+**Usage example:**
 ```python
 from venom_core.execution.skills.git_skill import GitSkill
 
 git = GitSkill()
 
-# Inicjalizacja repo
+# Repository initialization
 git.init_repo("./project", "https://github.com/user/repo.git")
 
-# Nowy feature branch
+# New feature branch
 git.checkout("feature/new-api", create_new=True)
 
-# Status zmian
+# Change status
 status = git.get_status()
 # → "Modified: app.py, config.py | Added: tests/test_api.py"
 
-# Stage i commit
+# Stage and commit
 git.add_files(["app.py", "config.py", "tests/test_api.py"])
 git.commit("feat(api): add new REST endpoints")
 
-# Push do remote
+# Push to remote
 git.push("feature/new-api", "origin")
 ```
 
 ### 2. PlatformSkill (`venom_core/execution/skills/platform_skill.py`)
 
 **GitHub Integration:**
-- `get_assigned_issues()` - Pobierz Issues przypisane do bota
-- `get_issue_details(issue_number)` - Pobierz szczegóły Issue (z komentarzami)
-- `create_pull_request(title, body, head, base)` - Utwórz Pull Request
-- `comment_on_issue(issue_number, comment)` - Dodaj komentarz do Issue
-- `add_labels_to_issue(issue_number, labels)` - Dodaj labels do Issue
+- `get_assigned_issues()` - Get Issues assigned to bot
+- `get_issue_details(issue_number)` - Get Issue details (with comments)
+- `create_pull_request(title, body, head, base)` - Create Pull Request
+- `comment_on_issue(issue_number, comment)` - Add comment to Issue
+- `add_labels_to_issue(issue_number, labels)` - Add labels to Issue
 
 **Notifications:**
-- `send_notification(message, platform)` - Wyślij powiadomienie (Discord/Slack)
+- `send_notification(message, platform)` - Send notification (Discord/Slack)
 
-**Przykład użycia:**
+**Usage example:**
 ```python
 from venom_core.execution.skills.platform_skill import PlatformSkill
 
 platform = PlatformSkill()
 
-# Pobierz przypisane Issues
+# Get assigned Issues
 issues = platform.get_assigned_issues()
 # → [{"number": 42, "title": "Add login feature", "state": "open"}]
 
-# Stwórz PR
+# Create PR
 pr = platform.create_pull_request(
     title="feat: Add user authentication",
     body="Implements login/logout with JWT tokens. Closes #42",
@@ -82,13 +82,13 @@ pr = platform.create_pull_request(
     base="main"
 )
 
-# Komentarz na Issue
+# Comment on Issue
 platform.comment_on_issue(
     issue_number=42,
     comment="✅ PR created: #123. Ready for review!"
 )
 
-# Powiadomienie na Discord
+# Notification on Discord
 platform.send_notification(
     message="🚀 New PR #123: User Authentication",
     platform="discord"
@@ -99,23 +99,23 @@ platform.send_notification(
 
 **Format:**
 ```
-<typ>(<zakres>): <opis>
+<type>(<scope>): <description>
 
-[opcjonalne ciało]
+[optional body]
 
-[opcjonalne stopki]
+[optional footers]
 ```
 
-**Typy commitów:**
-- `feat` - Nowa funkcjonalność
-- `fix` - Naprawa błędu
-- `docs` - Zmiany w dokumentacji
-- `style` - Formatowanie (bez zmian logiki)
-- `refactor` - Refaktoryzacja kodu
-- `test` - Dodanie/poprawka testów
-- `chore` - Zmiany w buildzie, zależnościach
+**Commit types:**
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation changes
+- `style` - Formatting (no logic changes)
+- `refactor` - Code refactoring
+- `test` - Adding/fixing tests
+- `chore` - Build changes, dependencies
 
-**Przykłady:**
+**Examples:**
 ```bash
 feat(git): add GitSkill implementation
 fix(docker): resolve permission denied in habitat
@@ -125,9 +125,9 @@ test(api): add integration tests for endpoints
 chore(deps): update semantic-kernel to 1.9.0
 ```
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania (Issue → PR)
+### Execution Flow (Issue → PR)
 
 ```
 GitHub Issue #42: "Add login feature"
@@ -140,7 +140,7 @@ ArchitectAgent.plan_execution(issue_description)
         ↓
 Git workflow:
   1. checkout("feature/auth-42", create_new=True)
-  2. [Wykonanie planu - CODER, TESTER]
+  2. [Execute plan - CODER, TESTER]
   3. add_files(["auth.py", "tests/test_auth.py"])
   4. commit("feat(auth): implement JWT authentication (#42)")
   5. push("feature/auth-42", "origin")
@@ -158,19 +158,19 @@ PlatformSkill:
 Human review & merge
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **ArchitectAgent** - Planuje implementację Issues
-- **CoderAgent** - Generuje kod dla feature branch
-- **CriticAgent** - Weryfikuje kod przed commitem
-- **TesterAgent** - Generuje testy dla PR
-- **ReleaseManager** - Tagowanie wersji, CHANGELOG
+- **ArchitectAgent** - Plans Issue implementation
+- **CoderAgent** - Generates code for feature branch
+- **CriticAgent** - Verifies code before commit
+- **TesterAgent** - Generates tests for PR
+- **ReleaseManager** - Version tagging, CHANGELOG
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Automatyczne Przetwarzanie Issue
+### Example 1: Automatic Issue Processing
 ```
-User: "Sprawdź czy są nowe Issues na GitHubie"
+User: "Check if there are new Issues on GitHub"
 
 IntegratorAgent:
 1. get_assigned_issues()
@@ -178,16 +178,16 @@ IntegratorAgent:
 2. get_issue_details(42)
    → Description: "Add dark theme toggle in settings"
 3. checkout("feature/dark-mode-42", create_new=True)
-4. [Delegacja do ArchitectAgent → CoderAgent]
+4. [Delegation to ArchitectAgent → CoderAgent]
 5. commit("feat(ui): add dark mode toggle (#42)")
 6. push("feature/dark-mode-42")
 7. create_pull_request(...)
 8. comment_on_issue(42, "PR #123 created")
 ```
 
-### Przykład 2: Release Workflow
+### Example 2: Release Workflow
 ```
-User: "Stwórz release v1.2.0"
+User: "Create release v1.2.0"
 
 IntegratorAgent:
 1. checkout("main")
@@ -201,13 +201,13 @@ IntegratorAgent:
 5. send_notification("🎉 v1.2.0 released!", "discord")
 ```
 
-### Przykład 3: Hotfix Workflow
+### Example 3: Hotfix Workflow
 ```
-User: "Napraw bug w autentykacji (Issue #55)"
+User: "Fix bug in authentication (Issue #55)"
 
 IntegratorAgent:
 1. checkout("hotfix/auth-55", create_new=True)
-2. [CODER naprawia bug]
+2. [CODER fixes bug]
 3. commit("fix(auth): prevent token expiry race condition (#55)")
 4. push("hotfix/auth-55")
 5. create_pull_request(
@@ -217,62 +217,49 @@ IntegratorAgent:
    )
 ```
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env
+# In .env
 # GitHub Integration
 GITHUB_TOKEN=ghp_your_personal_access_token
 GITHUB_REPO_NAME=username/repo
 
-# Issue Polling (opcjonalne)
+# Issue Polling (optional)
 ENABLE_ISSUE_POLLING=false
 ISSUE_POLLING_INTERVAL_MINUTES=5
-
-# Hugging Face (opcjonalne)
-HF_TOKEN=
-
-# Tavily (opcjonalne)
-TAVILY_API_KEY=
-
-# Google Calendar (opcjonalne)
-ENABLE_GOOGLE_CALENDAR=false
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
-VENOM_CALENDAR_ID=venom_work_calendar
-VENOM_CALENDAR_NAME=Venom Work
 
 # Notifications
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Liczba automatycznie przetworzonych Issues (per tydzień)
-- Średni czas Issue → PR (time-to-PR)
-- Liczba commitów per branch (średnio)
-- Współczynnik merge PR (% PR zaakceptowanych)
-- Liczba powiadomień wysłanych (Discord/Slack)
+**Key indicators:**
+- Number of automatically processed Issues (per week)
+- Average Issue → PR time (time-to-PR)
+- Number of commits per branch (average)
+- PR merge rate (% PRs accepted)
+- Number of notifications sent (Discord/Slack)
 
 ## Best Practices
 
-1. **Semantic commits zawsze** - Ułatwia automatyczne generowanie CHANGELOG
-2. **Feature branch per Issue** - `feature/nazwa-42` (42 = Issue number)
-3. **Link Issues w PR** - "Closes #42" lub "Fixes #55" w body
-4. **Powiadomienia dla ludzi** - Discord/Slack dla ważnych eventów
-5. **Review przed merge** - Nawet automatyczne PR wymagają human review
+1. **Semantic commits always** - Facilitates automatic CHANGELOG generation
+2. **Feature branch per Issue** - `feature/name-42` (42 = Issue number)
+3. **Link Issues in PR** - "Closes #42" or "Fixes #55" in body
+4. **Notifications for humans** - Discord/Slack for important events
+5. **Review before merge** - Even automatic PRs require human review
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Brak automatycznego merge (wymaga human approval)
-- GitHub Token musi mieć uprawnienia repo + issues
-- Issue polling nie wspiera webhooków (tylko periodic check)
-- Brak integracji z GitLab/Bitbucket (tylko GitHub)
+- No automatic merge (requires human approval)
+- GitHub Token must have repo + issues permissions
+- Issue polling doesn't support webhooks (periodic check only)
+- No integration with GitLab/Bitbucket (GitHub only)
 
-## Zobacz też
+## See also
 
-- [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) - Release workflow i deployment
-- [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) - GitHub/Discord/Slack/Tavily/HF/Calendar
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Zasady commitów i PR
+- [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) - Release workflow and deployment
+- [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) - GitHub/Discord/Slack
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Commit and PR rules

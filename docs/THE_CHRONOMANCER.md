@@ -1,32 +1,32 @@
-# THE_CHRONOMANCER - Przewodnik Systemu Zarządzania Stanem
+# THE_CHRONOMANCER - State Management System Guide
 
-## 📖 Wprowadzenie
+## 📖 Introduction
 
-**The Chronomancer** (Zarządca Czasu) to zaawansowany system zarządzania stanem i liniami czasowymi w projekcie Venom. Umożliwia tworzenie snapshotów całego stanu systemu (kod + pamięć + konfiguracja), eksperymentowanie na oddzielnych liniach czasowych oraz bezpieczne przywracanie do wcześniejszych punktów w przypadku błędów.
+**The Chronomancer** (Time Manager) is an advanced state and timeline management system in the Venom project. It enables creating snapshots of the entire system state (code + memory + configuration), experimenting on separate timelines, and safely restoring to earlier points in case of errors.
 
-## 🎯 Główne Funkcjonalności
+## 🎯 Main Features
 
-### 1. Checkpointy (Punkty Przywracania)
-- **Tworzenie migawek** całego stanu systemu
-- **Przywracanie** do dowolnego punktu w historii
-- **Zarządzanie** wieloma punktami przywracania
-- **Automatyczne backupy** przed ryzykownymi operacjami
+### 1. Checkpoints (Restore Points)
+- **Creating snapshots** of entire system state
+- **Restoring** to any point in history
+- **Managing** multiple restore points
+- **Automatic backups** before risky operations
 
-### 2. Linie Czasowe (Timeline Branching)
-- **Tworzenie** oddzielnych linii czasowych do eksperymentowania
-- **Izolacja** eksperymentów od głównego projektu
-- **Bezpieczne testowanie** ryzykownych zmian
-- **Historia** wszystkich zmian i decyzji
+### 2. Timelines (Timeline Branching)
+- **Creating** separate timelines for experimentation
+- **Isolating** experiments from main project
+- **Safe testing** of risky changes
+- **History** of all changes and decisions
 
-### 3. Zarządzanie Ryzykiem
-- **Automatyczna ocena** ryzyka operacji
-- **Rekomendacje** tworzenia checkpointów
-- **Analiza błędów** i uczenie się na podstawie niepowodzeń
-- **Integracja z LessonsStore** do zapisywania doświadczeń
+### 3. Risk Management
+- **Automatic assessment** of operation risk
+- **Recommendations** for checkpoint creation
+- **Error analysis** and learning from failures
+- **LessonsStore integration** for saving experiences
 
-## 🏗️ Architektura
+## 🏗️ Architecture
 
-System składa się z trzech głównych komponentów:
+The system consists of three main components:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -50,45 +50,45 @@ System składa się z trzech głównych komponentów:
 ```
 
 ### ChronosEngine
-Rdzeń systemu - zarządza tworzeniem i przywracaniem migawek.
+System core - manages snapshot creation and restoration.
 
-**Kluczowe metody:**
-- `create_checkpoint(name, description, timeline)` - tworzy snapshot
-- `restore_checkpoint(id, timeline)` - przywraca stan
-- `list_checkpoints(timeline)` - lista snapshotów
-- `create_timeline(name)` - nowa linia czasowa
-- `delete_checkpoint(id)` - usuwa snapshot
+**Key methods:**
+- `create_checkpoint(name, description, timeline)` - creates snapshot
+- `restore_checkpoint(id, timeline)` - restores state
+- `list_checkpoints(timeline)` - snapshot list
+- `create_timeline(name)` - new timeline
+- `delete_checkpoint(id)` - removes snapshot
 
-**Struktura Snapshotu:**
+**Snapshot Structure:**
 ```
 data/timelines/{timeline}/{checkpoint_id}/
-├── checkpoint.json        # Metadane
-├── fs_diff.patch         # Różnice w kodzie (Git)
-├── git_status.txt        # Status Git
-├── memory_dump/          # Backup baz danych
+├── checkpoint.json        # Metadata
+├── fs_diff.patch         # Code differences (Git)
+├── git_status.txt        # Git status
+├── memory_dump/          # Database backup
 │   ├── test.db
 │   └── vector_store/
-└── env_config.json       # Konfiguracja środowiska
+└── env_config.json       # Environment configuration
 ```
 
 ### HistorianAgent
-Agent odpowiedzialny za zarządzanie ryzykiem i analizę przyczynową.
+Agent responsible for risk management and causal analysis.
 
-**Główne funkcje:**
-- Ocena ryzyka operacji (niskie/średnie/wysokie)
-- Rekomendacja checkpointów przed ryzykownymi akcjami
-- Analiza błędów i zapisywanie lekcji
-- Zarządzanie historią zmian
+**Main functions:**
+- Operation risk assessment (low/medium/high)
+- Checkpoint recommendation before risky actions
+- Error analysis and lesson saving
+- Change history management
 
-**Poziomy ryzyka:**
-- 🟢 **Niskie**: Operacje tylko do odczytu
-- 🟡 **Średnie**: Modyfikacje, aktualizacje
-- 🔴 **Wysokie**: hot_patch, delete, refactor, migration
+**Risk levels:**
+- 🟢 **Low**: Read-only operations
+- 🟡 **Medium**: Modifications, updates
+- 🔴 **High**: hot_patch, delete, refactor, migration
 
 ### ChronoSkill
-Interfejs Semantic Kernel dla agentów do interakcji z systemem.
+Semantic Kernel interface for agents to interact with the system.
 
-**Dostępne funkcje kernel:**
+**Available kernel functions:**
 - `create_checkpoint(name, description, timeline)`
 - `restore_checkpoint(checkpoint_id, timeline)`
 - `list_checkpoints(timeline)`
@@ -97,30 +97,30 @@ Interfejs Semantic Kernel dla agentów do interakcji z systemem.
 - `list_timelines()`
 - `merge_timeline(source, target)` - placeholder
 
-## 🚀 Użycie
+## 🚀 Usage
 
-### Przykład 1: Podstawowe Użycie
+### Example 1: Basic Usage
 
 ```python
 from venom_core.core.chronos import ChronosEngine
 
-# Inicjalizacja
+# Initialize
 chronos = ChronosEngine()
 
-# Utwórz checkpoint przed ryzykowną operacją
+# Create checkpoint before risky operation
 checkpoint_id = chronos.create_checkpoint(
     name="before_refactoring",
-    description="Przed dużym refactoringiem modułu core"
+    description="Before major core module refactoring"
 )
 
-# ... wykonaj operacje ...
+# ... perform operations ...
 
-# Jeśli coś poszło nie tak, przywróć
+# If something went wrong, restore
 if error_occurred:
     chronos.restore_checkpoint(checkpoint_id)
 ```
 
-### Przykład 2: Użycie HistorianAgent
+### Example 2: Using HistorianAgent
 
 ```python
 from semantic_kernel import Kernel
@@ -129,17 +129,17 @@ from venom_core.agents.historian import HistorianAgent
 kernel = Kernel()
 historian = HistorianAgent(kernel)
 
-# Oceń ryzyko operacji
-result = await historian.process("Wykonaj hot_patch na module core")
-# Jeśli wysokie ryzyko, rekomenduje checkpoint
+# Assess operation risk
+result = await historian.process("Execute hot_patch on core module")
+# If high risk, recommends checkpoint
 
-# Utwórz checkpoint bezpieczeństwa
+# Create safety checkpoint
 checkpoint_id = historian.create_safety_checkpoint(
     name="pre_hotpatch",
-    description="Przed zastosowaniem hot_patch"
+    description="Before applying hot_patch"
 )
 
-# Po błędzie, analizuj i ucz się
+# After error, analyze and learn
 await historian.analyze_failure(
     operation="hot_patch on core.py",
     error="SyntaxError: invalid syntax",
@@ -147,53 +147,53 @@ await historian.analyze_failure(
 )
 ```
 
-### Przykład 3: Linie Czasowe dla Eksperymentów
+### Example 3: Timelines for Experiments
 
 ```python
-# Utwórz checkpoint na głównej linii
+# Create checkpoint on main timeline
 main_checkpoint = chronos.create_checkpoint(
     name="stable_state",
     timeline="main"
 )
 
-# Utwórz eksperymentalną timeline
+# Create experimental timeline
 chronos.create_timeline("experimental")
 
-# Eksperymentuj na oddzielnej linii
+# Experiment on separate timeline
 exp_checkpoint = chronos.create_checkpoint(
     name="experiment_start",
     timeline="experimental"
 )
 
-# ... przeprowadź eksperymenty ...
+# ... conduct experiments ...
 
-# Jeśli sukces, wiedza jest już w LessonsStore
-# Jeśli porażka, przywróć główną linię
+# If success, knowledge is already in LessonsStore
+# If failure, restore main timeline
 chronos.restore_checkpoint(main_checkpoint, timeline="main")
 ```
 
-### Przykład 4: Użycie przez Semantic Kernel
+### Example 4: Usage via Semantic Kernel
 
 ```python
 from venom_core.execution.skills.chrono_skill import ChronoSkill
 
-# Dodaj skill do kernela
+# Add skill to kernel
 chrono_skill = ChronoSkill()
 kernel.add_plugin(chrono_skill, plugin_name="chronos")
 
-# Agenci mogą teraz używać funkcji czasowych:
-# - "Utwórz checkpoint przed rozpoczęciem"
-# - "Przywróć checkpoint abc123"
-# - "Pokaż listę checkpointów"
-# - "Utwórz nową timeline eksperymentalną"
+# Agents can now use time functions:
+# - "Create checkpoint before starting"
+# - "Restore checkpoint abc123"
+# - "Show checkpoint list"
+# - "Create new experimental timeline"
 ```
 
-## 🔧 Konfiguracja
+## 🔧 Configuration
 
-W pliku `config.py` dodano nowe ustawienia:
+New settings added in `config.py`:
 
 ```python
-# Konfiguracja THE_CHRONOMANCER
+# THE_CHRONOMANCER configuration
 ENABLE_CHRONOS: bool = True
 CHRONOS_TIMELINES_DIR: str = "./data/timelines"
 CHRONOS_AUTO_CHECKPOINT: bool = True
@@ -202,9 +202,9 @@ CHRONOS_CHECKPOINT_RETENTION_DAYS: int = 30
 CHRONOS_COMPRESS_SNAPSHOTS: bool = True
 ```
 
-## 🔗 Integracja z DreamEngine [v2.0]
+## 🔗 DreamEngine Integration [v2.0]
 
-DreamEngine został zintegrowany z Chronos do bezpiecznego eksperymentowania:
+DreamEngine integrated with Chronos for safe experimentation:
 
 ```python
 class DreamEngine:
@@ -212,196 +212,196 @@ class DreamEngine:
         self.chronos = chronos_engine or ChronosEngine()
 
     async def enter_rem_phase(self, ...):
-        # Utwórz tymczasową timeline dla snów
+        # Create temporary timeline for dreams
         timeline_name = f"dream_{session_id}"
         self.chronos.create_timeline(timeline_name)
 
-        # Utwórz checkpoint bezpieczeństwa
+        # Create safety checkpoint
         checkpoint_id = self.chronos.create_checkpoint(
             name=f"dream_start_{session_id}",
             timeline=timeline_name
         )
 
-        # ... śnij ...
+        # ... dream ...
 
-        # Jeśli sukces (>50% sukcesów), zachowaj wiedzę
-        # Jeśli porażka, timeline pozostaje jako historia
+        # If success (>50% successes), keep knowledge
+        # If failure, timeline remains as history
 ```
 
-**Zalety:**
-- Sny nie zaśmiecają głównej pamięci
-- Każdy sen ma własną timeline
-- Łatwe cofnięcie nieudanych eksperymentów
-- Historia wszystkich prób dostępna do analizy
+**Advantages:**
+- Dreams don't clutter main memory
+- Each dream has its own timeline
+- Easy rollback of failed experiments
+- History of all attempts available for analysis
 
-## 📊 Monitoring i Diagnostyka
+## 📊 Monitoring and Diagnostics
 
-### Sprawdzanie Stanu Systemu
+### System State Check
 
 ```python
-# Lista wszystkich linii czasowych
+# List all timelines
 timelines = chronos.list_timelines()
-print(f"Dostępne timelines: {timelines}")
+print(f"Available timelines: {timelines}")
 
-# Lista checkpointów na timeline
+# List checkpoints on timeline
 checkpoints = chronos.list_checkpoints(timeline="main")
 for cp in checkpoints:
     print(f"{cp.name} ({cp.checkpoint_id}) - {cp.timestamp}")
 
-# Historia checkpointów (HistorianAgent)
+# Checkpoint history (HistorianAgent)
 history = historian.get_checkpoint_history(limit=10)
 ```
 
-### Statystyki Snapshotów
+### Snapshot Statistics
 
 ```bash
-# Rozmiar katalogów snapshotów
+# Snapshot directory sizes
 du -sh data/timelines/*
 
-# Liczba checkpointów
+# Number of checkpoints
 find data/timelines -name "checkpoint.json" | wc -l
 ```
 
-## 🛡️ Bezpieczeństwo
+## 🛡️ Security
 
-### Co Jest Zapisywane w Snapshots
-- ✅ Git diff (zmiany w plikach)
-- ✅ Status Git (uncommitted files)
-- ✅ Backup baz danych (LanceDB, GraphStore)
-- ✅ Konfiguracja środowiska (bez sekretów)
+### What Is Saved in Snapshots
+- ✅ Git diff (file changes)
+- ✅ Git status (uncommitted files)
+- ✅ Database backups (LanceDB, GraphStore)
+- ✅ Environment configuration (without secrets)
 
-### Czego NIE Zapisujemy
-- ❌ Sekretów i haseł (.env)
-- ❌ Dużych plików binarnych (modele ML)
-- ❌ Katalogu .git (używamy diff)
+### What We DON'T Save
+- ❌ Secrets and passwords (.env)
+- ❌ Large binary files (ML models)
+- ❌ .git directory (we use diff)
 - ❌ Node_modules, venv, etc.
 
-### Zalecenia
-1. **Regularne czyszczenie** starych checkpointów
-2. **Limity** liczby checkpointów per timeline
-3. **Kompresja** snapshotów (jeśli włączona)
-4. **Backup** ważnych checkpointów poza projekt
+### Recommendations
+1. **Regular cleanup** of old checkpoints
+2. **Limits** on checkpoint count per timeline
+3. **Compression** of snapshots (if enabled)
+4. **Backup** important checkpoints outside project
 
-## 🧪 Testowanie
+## 🧪 Testing
 
-Utworzono kompleksowe testy:
+Comprehensive tests created:
 
 ```bash
-# Testy jednostkowe
+# Unit tests
 pytest tests/test_chronos.py -v
 pytest tests/test_historian_agent.py -v
 pytest tests/test_chrono_skill.py -v
 
-# Wszystkie testy Chronos
+# All Chronos tests
 pytest tests/test_chrono*.py tests/test_historian*.py -v
 ```
 
-**Pokrycie testów:**
-- ✅ Tworzenie i przywracanie checkpointów
-- ✅ Zarządzanie liniami czasowymi
-- ✅ Ocena ryzyka operacji
-- ✅ Analiza błędów i zapisywanie lekcji
-- ✅ Integracja z LessonsStore
-- ✅ Pełne cykle życia checkpointów
+**Test coverage:**
+- ✅ Creating and restoring checkpoints
+- ✅ Timeline management
+- ✅ Operation risk assessment
+- ✅ Error analysis and lesson saving
+- ✅ LessonsStore integration
+- ✅ Complete checkpoint lifecycles
 
-## 🔮 Przyszłe Rozszerzenia
+## 🔮 Future Extensions
 
-### W Planach
-1. **Inteligentne Merge** linii czasowych z konfliktami (przez LLM)
-2. **Automatyczna kompresja** starych snapshotów
-3. **Garbage Collection** nieużywanych checkpointów
-4. **Dashboard** wizualizacji linii czasowych (Web UI)
-5. **Git Worktree** dla fizycznej izolacji branchy
-6. **Docker Volume Snapshots** dla pełnej izolacji kontenerów
+### Planned
+1. **Intelligent Merge** of timelines with conflicts (via LLM)
+2. **Automatic compression** of old snapshots
+3. **Garbage Collection** of unused checkpoints
+4. **Dashboard** timeline visualization (Web UI)
+5. **Git Worktree** for physical branch isolation
+6. **Docker Volume Snapshots** for complete container isolation
 
-### Zaawansowane Scenariusze
-- **A/B Testing**: Dwie timelines, porównanie wyników
-- **Chaos Engineering**: Testowanie odporności z automatycznym rollback
-- **Training Pipelines**: Timeline per eksperyment treningowy
-- **Production Rollback**: Szybkie cofnięcie deploymentu
+### Advanced Scenarios
+- **A/B Testing**: Two timelines, result comparison
+- **Chaos Engineering**: Resilience testing with automatic rollback
+- **Training Pipelines**: Timeline per training experiment
+- **Production Rollback**: Fast deployment rollback
 
 ## 📝 Best Practices
 
-1. **Nazywaj checkpointy opisowo**: Zamiast "cp1" użyj "before_migration_v1"
-2. **Dodawaj opisy**: Pomaga przy późniejszej analizie
-3. **Twórz checkpointy przed ryzykownymi operacjami**: hot_patch, migrations, refactoring
-4. **Używaj oddzielnych timelines do eksperymentów**: Nie zaśmiecaj main
-5. **Regularnie czyść stare checkpointy**: Oszczędność miejsca
-6. **Dokumentuj decyzje**: Dlaczego utworzyłeś checkpoint, co się zmieniło
+1. **Name checkpoints descriptively**: Instead of "cp1" use "before_migration_v1"
+2. **Add descriptions**: Helps with later analysis
+3. **Create checkpoints before risky operations**: hot_patch, migrations, refactoring
+4. **Use separate timelines for experiments**: Don't clutter main
+5. **Regularly clean old checkpoints**: Save space
+6. **Document decisions**: Why you created checkpoint, what changed
 
 ## 🆘 Troubleshooting
 
-### Problem: Checkpoint nie przywraca plików
-**Rozwiązanie**: Sprawdź czy znajdujesz się w repozytorium Git. ChronosEngine używa `git diff` i `git apply`.
+### Problem: Checkpoint doesn't restore files
+**Solution**: Check if you're in a Git repository. ChronosEngine uses `git diff` and `git apply`.
 
-### Problem: Brak miejsca na dysku
-**Rozwiązanie**:
-1. Usuń stare checkpointy: `chronos.delete_checkpoint(id)`
-2. Włącz kompresję: `CHRONOS_COMPRESS_SNAPSHOTS = True`
-3. Zmniejsz limit: `CHRONOS_MAX_CHECKPOINTS_PER_TIMELINE = 10`
+### Problem: Out of disk space
+**Solution**:
+1. Delete old checkpoints: `chronos.delete_checkpoint(id)`
+2. Enable compression: `CHRONOS_COMPRESS_SNAPSHOTS = True`
+3. Decrease limit: `CHRONOS_MAX_CHECKPOINTS_PER_TIMELINE = 10`
 
-### Problem: Przywracanie checkpointu kończy się błędem
-**Rozwiązanie**: Sprawdź logi. Możliwe przyczyny:
-- Konflikty Git (ręcznie rozwiąż)
-- Brak uprawnień do plików
-- Usunięty katalog memory
+### Problem: Checkpoint restore fails with error
+**Solution**: Check logs. Possible causes:
+- Git conflicts (resolve manually)
+- No file permissions
+- Deleted memory directory
 
-### Problem: Historian nie rekomenduje checkpointów
-**Rozwiązanie**: Sprawdź czy operacja zawiera słowa kluczowe wysokiego ryzyka (hot_patch, delete, migration). Możesz rozszerzyć listę w `historian.py`.
+### Problem: Historian doesn't recommend checkpoints
+**Solution**: Check if operation contains high-risk keywords (hot_patch, delete, migration). You can extend the list in `historian.py`.
 
-## 📚 Powiązane Dokumenty
+## 📚 Related Documents
 
-- [THE_DREAMER](./DREAM_ENGINE_GUIDE.md) - Integracja z snami
+- [THE_DREAMER](../DREAM_ENGINE_GUIDE.md) - Background processing
 - [THE_ACADEMY](./THE_ACADEMY.md) - Training pipelines
-- [MEMORY_LAYER_GUIDE](./MEMORY_LAYER_GUIDE.md) - LessonsStore
-- [GUARDIAN_GUIDE](./GUARDIAN_GUIDE.md) - Walidacja zmian
+- [MEMORY_LAYER_GUIDE](../MEMORY_LAYER_GUIDE.md) - Knowledge consolidation
+- [GUARDIAN_GUIDE](../GUARDIAN_GUIDE.md) - Safety checksange validation
 
-## 🎓 Przykład End-to-End
+## 🎓 End-to-End Example
 
 ```python
-# Scenariusz: Bezpieczna migracja bazy danych
+# Scenario: Safe database migration
 
-# 1. Oceń ryzyko
+# 1. Assess risk
 historian = HistorianAgent(kernel)
 risk_assessment = await historian.process(
-    "Przeprowadź migrację schematu bazy danych"
+    "Perform database schema migration"
 )
-# → Rekomenduje checkpoint (wysokie ryzyko)
+# → Recommends checkpoint (high risk)
 
-# 2. Utwórz checkpoint bezpieczeństwa
+# 2. Create safety checkpoint
 checkpoint_id = historian.create_safety_checkpoint(
     name="pre_migration_v1",
-    description="Przed migracją do wersji 2.0 schematu"
+    description="Before migration to schema version 2.0"
 )
 
-# 3. Wykonaj migrację
+# 3. Perform migration
 try:
     run_database_migration()
 except Exception as e:
-    # 4. Błąd - analizuj i cofnij
+    # 4. Error - analyze and rollback
     await historian.analyze_failure(
         operation="database_migration_v1",
         error=str(e),
         checkpoint_before=checkpoint_id
     )
 
-    # Przywróć checkpoint
+    # Restore checkpoint
     chronos.restore_checkpoint(checkpoint_id)
-    logger.error("Migracja nie powiodła się, system przywrócony")
+    logger.error("Migration failed, system restored")
 else:
-    # 5. Sukces - zapisz nową lekcję
+    # 5. Success - save new lesson
     lessons_store.add_lesson(
-        situation="Migracja bazy danych do v1.0",
-        action="Wykonano migrację z checkpointem bezpieczeństwa",
-        result="SUKCES",
-        feedback="Checkpoint umożliwił bezpieczne testowanie",
+        situation="Database migration to v1.0",
+        action="Performed migration with safety checkpoint",
+        result="SUCCESS",
+        feedback="Checkpoint enabled safe testing",
         tags=["migration", "database", "checkpoint"]
     )
 ```
 
 ---
 
-**Autorzy**: Venom Core Team
-**Wersja**: 1.0
-**Data**: 2024-12-08
+**Authors**: Venom Core Team
+**Version**: 1.0
+**Date**: 2024-12-08
 **Status**: Implemented ✅

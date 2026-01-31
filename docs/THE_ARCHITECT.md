@@ -1,145 +1,145 @@
 # THE ARCHITECT - Strategic Planning & Task Decomposition
 
-## Rola
+## Role
 
-Architect Agent to główny planista strategiczny i kierownik projektu w systemie Venom. Przyjmuje złożone cele użytkownika i rozbija je na konkretne, wykonalne kroki, zarządzając orkiestracją wielu wyspecjalizowanych agentów.
+Architect Agent is the main strategic planner and project manager in the Venom system. It takes complex user goals and breaks them down into specific, executable steps, managing the orchestration of multiple specialized agents.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Planowanie strategiczne** - Dekompozycja złożonych zadań na kroki wykonawcze
-- **Zarządzanie przepływem pracy** - Określanie kolejności i zależności między krokami
-- **Dobór wykonawców** - Przypisywanie odpowiednich agentów do konkretnych zadań
-- **Optymalizacja planów** - Minimalizacja liczby kroków przy zachowaniu kompletności
-- **Zarządzanie infrastrukturą** - Planowanie środowisk wielokontenerowych (Docker Compose)
+- **Strategic planning** - Decomposition of complex tasks into executable steps
+- **Workflow management** - Determining sequence and dependencies between steps
+- **Executor selection** - Assigning appropriate agents to specific tasks
+- **Plan optimization** - Minimizing number of steps while maintaining completeness
+- **Infrastructure management** - Planning multi-container environments (Docker Compose)
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. Logika Planowania (`venom_core/agents/architect.py`)
+### 1. Planning Logic (`venom_core/agents/architect.py`)
 
-**Dostępni Wykonawcy:**
-- `RESEARCHER` - Zbieranie wiedzy z Internetu, dokumentacji, przykładów
-- `CODER` - Implementacja kodu, tworzenie plików, środowisk Docker Compose
-- `LIBRARIAN` - Zarządzanie plikami, czytanie istniejącego kodu
-- `TOOLMAKER` - Tworzenie nowych narzędzi/umiejętności dla systemu
+**Available Executors:**
+- `RESEARCHER` - Gathering knowledge from Internet, documentation, examples
+- `CODER` - Code implementation, file creation, Docker Compose environments
+- `LIBRARIAN` - File management, reading existing code
+- `TOOLMAKER` - Creating new tools/skills for the system
 
-**Zasady Planowania:**
-1. Rozbij cel na małe, konkretne kroki (3-7 kroków optymalnie)
-2. Każdy krok ma jednego wykonawcę
-3. Kroki w logicznej kolejności z określonymi zależnościami
-4. Zadania wymagające wiedzy technologicznej rozpoczynają się od RESEARCHER
-5. Infrastruktura (bazy danych, cache) zarządzana przez CODER + ComposeSkill
+**Planning Principles:**
+1. Break down goal into small, specific steps (3-7 steps optimally)
+2. Each step has one executor
+3. Steps in logical sequence with defined dependencies
+4. Tasks requiring technical knowledge start with RESEARCHER
+5. Infrastructure (databases, cache) managed by CODER + ComposeSkill
 
-**Format Planu (ExecutionPlan):**
+**Plan Format (ExecutionPlan):**
 ```json
 {
   "steps": [
     {
       "step_number": 1,
       "agent_type": "RESEARCHER",
-      "instruction": "Znajdź dokumentację PyGame dot. kolizji i renderowania",
+      "instruction": "Find PyGame documentation on collisions and rendering",
       "depends_on": null
     },
     {
       "step_number": 2,
       "agent_type": "CODER",
-      "instruction": "Stwórz plik game.py z podstawową strukturą gry Snake",
+      "instruction": "Create game.py file with basic Snake game structure",
       "depends_on": 1
     }
   ]
 }
 ```
 
-### 2. Przykłady Planów
+### 2. Plan Examples
 
-**Przykład 1: Aplikacja webowa z bazą danych**
+**Example 1: Web application with database**
 ```
-Zadanie: "Stwórz API REST z Redis cache"
+Task: "Create REST API with Redis cache"
 Plan:
-1. RESEARCHER - Znajdź dokumentację FastAPI i Redis client
-2. CODER - Stwórz docker-compose.yml (api + redis) i uruchom stack
-3. CODER - Zaimplementuj endpoints API z integracją Redis
+1. RESEARCHER - Find FastAPI and Redis client documentation
+2. CODER - Create docker-compose.yml (api + redis) and launch stack
+3. CODER - Implement API endpoints with Redis integration
 ```
 
-**Przykład 2: Gra w PyGame**
+**Example 2: PyGame game**
 ```
-Zadanie: "Stwórz grę Snake w PyGame"
+Task: "Create Snake game in PyGame"
 Plan:
-1. RESEARCHER - Znajdź dokumentację PyGame (kolizje, renderowanie)
-2. CODER - Stwórz strukturę gry (main loop, klasy)
-3. CODER - Zaimplementuj logikę węża i jedzenia
-4. CODER - Dodaj system punktacji i game over
+1. RESEARCHER - Find PyGame documentation (collisions, rendering)
+2. CODER - Create game structure (main loop, classes)
+3. CODER - Implement snake and food logic
+4. CODER - Add scoring system and game over
 ```
 
-**Przykład 3: Nowe narzędzie**
+**Example 3: New tool**
 ```
-Zadanie: "Dodaj możliwość wysyłania emaili"
+Task: "Add email sending capability"
 Plan:
-1. TOOLMAKER - Stwórz EmailSkill z metodami send_email, validate_email
-2. CODER - Zintegruj EmailSkill z systemem
+1. TOOLMAKER - Create EmailSkill with send_email, validate_email methods
+2. CODER - Integrate EmailSkill with system
 ```
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-Użytkownik: "Stwórz aplikację TODO z FastAPI + PostgreSQL"
+User: "Create TODO app with FastAPI + PostgreSQL"
         ↓
 IntentManager: COMPLEX_PLANNING
         ↓
 ArchitectAgent.plan_execution()
         ↓
-ExecutionPlan (4 kroki):
-  1. RESEARCHER - Dokumentacja FastAPI + PostgreSQL
-  2. CODER - docker-compose.yml + uruchomienie stacka
-  3. CODER - Modele SQLAlchemy + połączenie DB
-  4. CODER - Endpoints CRUD dla TODO
+ExecutionPlan (4 steps):
+  1. RESEARCHER - FastAPI + PostgreSQL documentation
+  2. CODER - docker-compose.yml + launch stack
+  3. CODER - SQLAlchemy models + DB connection
+  4. CODER - CRUD endpoints for TODO
         ↓
-TaskDispatcher wykonuje kroki sekwencyjnie
+TaskDispatcher executes steps sequentially
         ↓
-Wynik: Działająca aplikacja w Docker Compose
+Result: Working application in Docker Compose
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **TaskDispatcher** - Przekazuje plan do wykonania krok po kroku
-- **ResearcherAgent** - Dostarcza wiedzę techniczną na początku projektu
-- **CoderAgent** - Implementuje kod zgodnie z instrukcjami
-- **LibrarianAgent** - Sprawdza istniejące pliki przed rozpoczęciem pracy
-- **ToolmakerAgent** - Tworzy brakujące narzędzia na żądanie planu
+- **TaskDispatcher** - Passes plan for execution step by step
+- **ResearcherAgent** - Provides technical knowledge at project start
+- **CoderAgent** - Implements code according to instructions
+- **LibrarianAgent** - Checks existing files before starting work
+- **ToolmakerAgent** - Creates missing tools on plan request
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env (brak dedykowanych flag dla Architect)
-# Architect jest zawsze dostępny w trybie COMPLEX_PLANNING
+# In .env (no dedicated flags for Architect)
+# Architect is always available in COMPLEX_PLANNING mode
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Średnia liczba kroków w planie (optymalnie 3-7)
-- Współczynnik sukcesu planu (% planów zakończonych bez błędów)
-- Czas planowania (zazwyczaj <10s)
-- Wykorzystanie różnych typów agentów (balans RESEARCHER/CODER/LIBRARIAN)
+**Key indicators:**
+- Average number of steps in plan (optimally 3-7)
+- Plan success rate (% plans completed without errors)
+- Planning time (typically <10s)
+- Usage of different agent types (RESEARCHER/CODER/LIBRARIAN balance)
 
 ## Best Practices
 
-1. **Rozpocznij od badań** - Złożone projekty powinny mieć krok RESEARCHER na początku
-2. **Infrastruktura najpierw** - Stack Docker Compose przed kodem aplikacji
-3. **Małe kroki** - Lepiej 5 małych kroków niż 2 duże
-4. **Jasne instrukcje** - Każdy krok powinien być konkretny i zrozumiały
-5. **Zależności** - Używaj `depends_on` do wymuszenia kolejności
+1. **Start with research** - Complex projects should have RESEARCHER step at beginning
+2. **Infrastructure first** - Docker Compose stack before application code
+3. **Small steps** - Better 5 small steps than 2 large ones
+4. **Clear instructions** - Each step should be specific and understandable
+5. **Dependencies** - Use `depends_on` to enforce order
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Plan jest liniowy (brak równoległego wykonania kroków)
-- Brak automatycznej optymalizacji planu po niepowodzeniu kroku
-- Maksymalna głębokość planowania: 1 poziom (brak zagnieżdżonych podplanów)
+- Plan is linear (no parallel step execution)
+- No automatic plan optimization after step failure
+- Maximum planning depth: 1 level (no nested subplans)
 
-## Zobacz też
+## See also
 
-- [THE_CODER.md](THE_CODER.md) - Implementacja kodu
-- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Zbieranie wiedzy
-- [THE_HIVE.md](THE_HIVE.md) - Rozproszone wykonanie planów
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Klasyfikacja intencji
+- [THE_CODER.md](THE_CODER.md) - Code implementation
+- [THE_RESEARCHER.md](THE_RESEARCHER.md) - Knowledge gathering
+- [THE_HIVE.md](THE_HIVE.md) - Distributed plan execution
+- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification

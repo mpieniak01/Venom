@@ -1,16 +1,16 @@
-# Model Tuning - System Strojenia Parametrów
+# Model Tuning - Parameter Tuning System
 
-## Przegląd
+## Overview
 
-System strojenia parametrów (Model Tuning) umożliwia użytkownikowi dynamiczną konfigurację parametrów inferencji modeli AI. Pozwala to na kontrolowanie "kreatywności" i zachowania modelu poprzez interfejs, który automatycznie dostosowuje się do możliwości wybranego modelu.
+The Model Tuning system enables users to dynamically configure AI model inference parameters. It allows control over model "creativity" and behavior through an interface that automatically adapts to the selected model's capabilities.
 
-## Architektura
+## Architecture
 
 ### Backend (venom_core)
 
-#### 1. Definicja Schematów Parametrów
+#### 1. Parameter Schema Definition
 
-**GenerationParameter** - dataclass definiujący pojedynczy parametr:
+**GenerationParameter** - dataclass defining a single parameter:
 ```python
 @dataclass
 class GenerationParameter:
@@ -22,26 +22,26 @@ class GenerationParameter:
     options: Optional[List[Any]] = None
 ```
 
-**ModelCapabilities** - rozszerzony o pole `generation_schema`:
+**ModelCapabilities** - extended with `generation_schema` field:
 ```python
 @dataclass
 class ModelCapabilities:
-    # ... inne pola ...
+    # ... other fields ...
     generation_schema: Optional[Dict[str, GenerationParameter]] = None
 ```
 
-#### 2. Domyślne Parametry
+#### 2. Default Parameters
 
-Funkcja `_create_default_generation_schema()` zwraca standardowy zestaw parametrów:
-- **temperature** (float, 0.0-2.0, default: 0.7) - Kreatywność modelu
-- **max_tokens** (int, 128-8192, default: 2048) - Maksymalna liczba tokenów
+Function `_create_default_generation_schema()` returns standard parameter set:
+- **temperature** (float, 0.0-2.0, default: 0.7) - Model creativity
+- **max_tokens** (int, 128-8192, default: 2048) - Maximum token count
 - **top_p** (float, 0.0-1.0, default: 0.9) - Nucleus sampling
 - **top_k** (int, 1-100, default: 40) - Top-K sampling
-- **repeat_penalty** (float, 1.0-2.0, default: 1.1) - Kara za powtarzanie
+- **repeat_penalty** (float, 1.0-2.0, default: 1.1) - Repetition penalty
 
-#### 3. Specjalne Konfiguracje Modeli
+#### 3. Special Model Configurations
 
-**Llama 3** - temperatura ograniczona do 0.0-1.0:
+**Llama 3** - temperature limited to 0.0-1.0:
 ```python
 if "llama" in name.lower() and "3" in name:
     generation_schema["temperature"] = GenerationParameter(
@@ -49,7 +49,7 @@ if "llama" in name.lower() and "3" in name:
         default=0.7,
         min=0.0,
         max=1.0,
-        desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
+        desc="Model creativity (0 = deterministic, 1 = creative)",
     )
 ```
 
@@ -57,7 +57,7 @@ if "llama" in name.lower() and "3" in name:
 
 **GET /api/v1/models/{model_name}/config**
 
-Zwraca schemat parametrów dla danego modelu:
+Returns parameter schema for given model:
 ```json
 {
   "success": true,
@@ -68,22 +68,22 @@ Zwraca schemat parametrów dla danego modelu:
       "default": 0.7,
       "min": 0.0,
       "max": 1.0,
-      "desc": "Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)"
+      "desc": "Model creativity (0 = deterministic, 1 = creative)"
     },
     "max_tokens": {
       "type": "int",
       "default": 2048,
       "min": 128,
       "max": 8192,
-      "desc": "Maksymalna liczba tokenów w odpowiedzi"
+      "desc": "Maximum number of tokens in response"
     }
   }
 }
 ```
 
-#### 5. Przekazywanie Parametrów
+#### 5. Parameter Passing
 
-**TaskRequest** rozszerzony o pole `generation_params`:
+**TaskRequest** extended with `generation_params` field:
 ```python
 class TaskRequest(BaseModel):
     content: str
@@ -93,16 +93,16 @@ class TaskRequest(BaseModel):
 
 ### Frontend (web-next)
 
-#### 1. Komponent DynamicParameterForm
+#### 1. DynamicParameterForm Component
 
-Inteligentny komponent renderujący UI na podstawie schematu z backendu:
+Intelligent component rendering UI based on backend schema:
 
-**Typy kontrolek:**
-- **float/int** → Suwak (slider) + Input numeryczny
-- **bool** → Przełącznik (Toggle Switch)
+**Control Types:**
+- **float/int** → Slider + Numeric Input
+- **bool** → Toggle Switch
 - **list/enum** → Dropdown (Select)
 
-**Użycie:**
+**Usage:**
 ```tsx
 <DynamicParameterForm
   schema={generationSchema}
@@ -112,9 +112,9 @@ Inteligentny komponent renderujący UI na podstawie schematu z backendu:
 />
 ```
 
-#### 2. Integracja z Cockpit
+#### 2. Cockpit Integration
 
-**Przycisk Tuning** - otwiera drawer z formularzem:
+**Tuning Button** - opens drawer with form:
 ```tsx
 <Button onClick={handleOpenTuning}>
   <Settings className="h-4 w-4 mr-1" />
@@ -122,19 +122,19 @@ Inteligentny komponent renderujący UI na podstawie schematu z backendu:
 </Button>
 ```
 
-**Drawer (Sheet)** - panel z prawej strony z formularzem parametrów.
+**Drawer (Sheet)** - right-side panel with parameter form.
 
-#### 3. Wysyłanie Zadań
+#### 3. Task Submission
 
-Parametry przekazywane w `sendTask()`:
+Parameters passed in `sendTask()`:
 ```typescript
 await sendTask(content, storeKnowledge, generationParams);
 ```
 
-Payload do API:
+API Payload:
 ```json
 {
-  "content": "Napisz funkcję...",
+  "content": "Write a function...",
   "store_knowledge": true,
   "generation_params": {
     "temperature": 0.5,
@@ -144,44 +144,44 @@ Payload do API:
 }
 ```
 
-## Użycie
+## Usage
 
-### Dla Użytkownika
+### For Users
 
-1. Otwórz interfejs Cockpit
-2. Kliknij przycisk **"Tuning"** (ikona ustawień)
-3. W otwartym drawerze dostosuj parametry:
-   - Przesuń suwaki (temperature, max_tokens, etc.)
-   - Przełącz opcje bool
-   - Wybierz opcje z dropdownów
-4. Kliknij **"Resetuj"** aby przywrócić domyślne wartości
-5. Zamknij drawer - ustawienia zostaną zapamiętane
-6. Wyślij zadanie - parametry zostaną automatycznie dołączone
+1. Open Cockpit interface
+2. Click **"Tuning"** button (settings icon)
+3. In opened drawer, adjust parameters:
+   - Move sliders (temperature, max_tokens, etc.)
+   - Toggle bool options
+   - Select options from dropdowns
+4. Click **"Reset"** to restore default values
+5. Close drawer - settings will be remembered
+6. Submit task - parameters will be automatically included
 
-### Dla Developera
+### For Developers
 
-#### Dodanie Nowego Parametru
+#### Adding New Parameter
 
-1. Zaktualizuj `_create_default_generation_schema()` w `model_registry.py`:
+1. Update `_create_default_generation_schema()` in `model_registry.py`:
 ```python
 def _create_default_generation_schema():
     return {
-        # ... istniejące parametry ...
+        # ... existing parameters ...
         "presence_penalty": GenerationParameter(
             type="float",
             default=0.0,
             min=-2.0,
             max=2.0,
-            desc="Kara za obecność tokenu w tekście",
+            desc="Penalty for token presence in text",
         ),
     }
 ```
 
-2. Frontend automatycznie renderuje nowy parametr
+2. Frontend automatically renders new parameter
 
-#### Konfiguracja dla Specyficznego Modelu
+#### Configuration for Specific Model
 
-Edytuj manifest modelu (`data/models/manifest.json`):
+Edit model manifest (`data/models/manifest.json`):
 ```json
 {
   "models": [
@@ -204,33 +204,33 @@ Edytuj manifest modelu (`data/models/manifest.json`):
 }
 ```
 
-## Kryteria Akceptacji
+## Acceptance Criteria
 
-- ✅ Dla modelu "Llama 3" suwak temperatury ma zakres 0.0-1.0
-- ✅ Dla modelu specyficznego pojawiają się dodatkowe opcje jeśli zdefiniowane w manifeście
-- ⚠️ Zmiana parametru w UI realnie wpływa na odpowiedź (wymaga integracji z LLMServerController)
+- ✅ For "Llama 3" model, temperature slider has range 0.0-1.0
+- ✅ For specific model, additional options appear if defined in manifest
+- ⚠️ Parameter change in UI actually affects response (requires integration with LLMServerController)
 
-## Status Implementacji
+## Implementation Status
 
-### Zrealizowane
-- ✅ Backend: GenerationParameter i ModelCapabilities
+### Completed
+- ✅ Backend: GenerationParameter and ModelCapabilities
 - ✅ Backend: Endpoint /api/v1/models/{name}/config
-- ✅ Backend: TaskRequest z generation_params
-- ✅ Frontend: DynamicParameterForm z dynamicznym renderowaniem
-- ✅ Frontend: Przycisk Tuning i Drawer
-- ✅ Frontend: Przekazywanie parametrów do API
+- ✅ Backend: TaskRequest with generation_params
+- ✅ Frontend: DynamicParameterForm with dynamic rendering
+- ✅ Frontend: Tuning Button and Drawer
+- ✅ Frontend: Parameter passing to API
 
-### Do Zrealizowania
-- ⚠️ Backend: Integracja z LLMServerController
-  - Mapowanie parametrów dla vLLM
-  - Mapowanie parametrów dla Ollama (np. num_predict zamiast max_tokens)
-- ⚠️ Testy integracyjne
-- ⚠️ Weryfikacja wpływu parametrów na odpowiedzi
+### To Be Completed
+- ⚠️ Backend: Integration with LLMServerController
+  - Parameter mapping for vLLM
+  - Parameter mapping for Ollama (e.g., num_predict instead of max_tokens)
+- ⚠️ Integration tests
+- ⚠️ Verification of parameter impact on responses
 
-## Przykład Użycia
+## Usage Example
 
 ```python
-# Backend - definicja schematu
+# Backend - schema definition
 schema = {
     "temperature": GenerationParameter(
         type="float", default=0.7, min=0.0, max=1.0
@@ -240,14 +240,14 @@ schema = {
 # API Request
 POST /api/v1/tasks
 {
-    "content": "Napisz funkcję sortującą",
+    "content": "Write a sorting function",
     "generation_params": {
-        "temperature": 0.3,  # deterministyczny
+        "temperature": 0.3,  # deterministic
         "max_tokens": 512
     }
 }
 
-# Frontend - użycie komponentu
+# Frontend - component usage
 <DynamicParameterForm
     schema={schema}
     onChange={handleParamsChange}
@@ -256,18 +256,18 @@ POST /api/v1/tasks
 
 ## Troubleshooting
 
-**Problem:** Model nie ma zdefiniowanego schematu
-**Rozwiązanie:** Dodaj `generation_schema` w manifeście modelu lub użyj domyślnego
+**Problem:** Model has no defined schema
+**Solution:** Add `generation_schema` in model manifest or use default
 
-**Problem:** Parametry nie wpływają na odpowiedź
-**Rozwiązanie:** Upewnij się że LLMServerController przekazuje parametry do silnika LLM
+**Problem:** Parameters don't affect response
+**Solution:** Ensure LLMServerController passes parameters to LLM engine
 
-**Problem:** UI nie renderuje niektórych typów parametrów
-**Rozwiązanie:** Sprawdź czy typ parametru jest obsługiwany (float, int, bool, list, enum)
+**Problem:** UI doesn't render some parameter types
+**Solution:** Check if parameter type is supported (float, int, bool, list, enum)
 
 ## Roadmap
 
-1. **Faza 1** (Zrealizowana) - Backend schema + Frontend UI
-2. **Faza 2** (Do zrobienia) - Integracja z LLMServerController
-3. **Faza 3** (Przyszłość) - Profile parametrów (zapisywanie ulubionych ustawień)
-4. **Faza 4** (Przyszłość) - A/B testing parametrów
+1. **Phase 1** (Completed) - Backend schema + Frontend UI
+2. **Phase 2** (To do) - Integration with LLMServerController
+3. **Phase 3** (Future) - Parameter profiles (saving favorite settings)
+4. **Phase 4** (Future) - A/B testing of parameters

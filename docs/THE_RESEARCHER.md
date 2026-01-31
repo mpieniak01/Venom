@@ -1,47 +1,47 @@
 # THE RESEARCHER - Knowledge Synthesis & Web Search
 
-## Rola
+## Role
 
-Researcher Agent to ekspert badawczy w systemie Venom, specjalizujący się w znajdowaniu i syntezie wiedzy z Internetu. Dostarcza aktualną dokumentację, przykłady kodu, najlepsze praktyki oraz informacje o bibliotekach i narzędziach.
+Researcher Agent is a research expert in the Venom system, specializing in finding and synthesizing knowledge from the Internet. It provides current documentation, code examples, best practices, and information about libraries and tools.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Wyszukiwanie informacji** - Znajdowanie aktualnych danych w Internecie (DuckDuckGo, Google Grounding)
-- **Ekstrakcja treści** - Pobieranie i czyszczenie tekstu ze stron WWW (trafilatura)
-- **Synteza wiedzy** - Agregacja informacji z wielu źródeł w spójną odpowiedź
-- **Wyszukiwanie repozytoriów** - Znajdowanie bibliotek i narzędzi na GitHub
-- **Integracja z HuggingFace** - Wyszukiwanie modeli i datasetów
-- **Zarządzanie pamięcią** - Zapisywanie ważnej wiedzy do LanceDB
+- **Information search** - Finding current data on the Internet (DuckDuckGo, Google Grounding)
+- **Content extraction** - Downloading and cleaning text from web pages (trafilatura)
+- **Knowledge synthesis** - Aggregating information from multiple sources into coherent response
+- **Repository search** - Finding libraries and tools on GitHub
+- **HuggingFace integration** - Finding models and datasets
+- **Memory management** - Saving important knowledge to LanceDB
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. Dostępne Narzędzia
+### 1. Available Tools
 
 **WebSearchSkill** (`venom_core/execution/skills/web_skill.py`):
-- `search(query, max_results)` - Wyszukiwanie w Internecie (DuckDuckGo)
-- `scrape_text(url)` - Ekstrakcja tekstu ze strony (trafilatura)
-- `search_and_scrape(query, max_pages)` - Wyszukaj i pobierz treść z top wyników
+- `search(query, max_results)` - Internet search (DuckDuckGo)
+- `scrape_text(url)` - Text extraction from page (trafilatura)
+- `search_and_scrape(query, max_pages)` - Search and download content from top results
 
 **GitHubSkill** (`venom_core/execution/skills/github_skill.py`):
-- `search_repos(query, language, max_results)` - Wyszukiwanie repozytoriów
-- `get_repo_details(repo_name)` - Szczegóły repozytorium
-- `get_readme(repo_name)` - README.md repozytorium
+- `search_repos(query, language, max_results)` - Repository search
+- `get_repo_details(repo_name)` - Repository details
+- `get_readme(repo_name)` - Repository README.md
 
 **HuggingFaceSkill** (`venom_core/execution/skills/huggingface_skill.py`):
-- `search_models(query, task, max_results)` - Wyszukiwanie modeli ML
-- `search_datasets(query, max_results)` - Wyszukiwanie zbiorów danych
-- `get_model_details(model_id)` - Szczegóły modelu
+- `search_models(query, task, max_results)` - ML model search
+- `search_datasets(query, max_results)` - Dataset search
+- `get_model_details(model_id)` - Model details
 
 **MemorySkill** (`venom_core/memory/memory_skill.py`):
-- `save_fact(content, tags)` - Zapisuje wiedzę do LanceDB
-- `search_memory(query)` - Przeszukuje pamięć wektorową
+- `save_fact(content, tags)` - Saves knowledge to LanceDB
+- `search_memory(query)` - Searches vector memory
 
-### 2. Integracja z Google Grounding (Gemini)
+### 2. Google Grounding Integration (Gemini)
 
-Researcher może korzystać z **Google Search Grounding** gdy dostępny jest Gemini API:
+Researcher can use **Google Search Grounding** when Gemini API is available:
 
 ```python
-# Automatyczne dodawanie źródeł do odpowiedzi
+# Automatic source addition to response
 response_metadata = {
   "grounding_metadata": {
     "grounding_chunks": [
@@ -51,111 +51,111 @@ response_metadata = {
   }
 }
 
-# Format wyjściowy:
+# Output format:
 """
-Odpowiedź agenta...
+Agent response...
 
 ---
-📚 Źródła (Google Grounding):
+📚 Sources (Google Grounding):
 [1] FastAPI Documentation - https://fastapi.tiangolo.com/
 [2] Pydantic V2 - https://docs.pydantic.dev/
 """
 ```
 
-**Zalety Google Grounding:**
-- Zawsze aktualne wyniki (Google Index)
-- Automatyczne cytowanie źródeł
-- Wyższa jakość odpowiedzi niż DuckDuckGo
-- Zero kosztów ekstrakcji (scraping) - tekst już jest w kontekście
+**Google Grounding Advantages:**
+- Always current results (Google Index)
+- Automatic source citation
+- Higher quality responses than DuckDuckGo
+- Zero extraction costs (scraping) - text already in context
 
-**Konfiguracja:**
+**Configuration:**
 ```bash
-# W .env
+# In .env
 GOOGLE_API_KEY=your_key_here
-AI_MODE=HYBRID  # lub CLOUD
+AI_MODE=HYBRID  # or CLOUD
 HYBRID_CLOUD_PROVIDER=google
 ```
 
-### 3. Przykłady Użycia
+### 3. Usage Examples
 
-**Przykład 1: Dokumentacja biblioteki**
+**Example 1: Library documentation**
 ```
-Użytkownik: "Jak używać FastAPI z PostgreSQL?"
-Akcja:
+User: "How to use FastAPI with PostgreSQL?"
+Action:
 1. search("FastAPI PostgreSQL tutorial")
 2. scrape_text(top_results[0])
-3. save_fact(synteza_wiedzy, tags=["fastapi", "postgresql"])
-4. Zwróć odpowiedź z przykładami
+3. save_fact(knowledge_synthesis, tags=["fastapi", "postgresql"])
+4. Return response with examples
 ```
 
-**Przykład 2: Wyszukiwanie repozytorium**
+**Example 2: Repository search**
 ```
-Użytkownik: "Znajdź bibliotekę do parsowania JSON w Pythonie"
-Akcja:
+User: "Find library for JSON parsing in Python"
+Action:
 1. search_repos("JSON parser", language="python")
 2. get_readme(top_repo)
-3. Zwróć opis + link
+3. Return description + link
 ```
 
-**Przykład 3: Model ML**
+**Example 3: ML model**
 ```
-Użytkownik: "Znajdź model do sentiment analysis"
-Akcja:
+User: "Find model for sentiment analysis"
+Action:
 1. search_models("sentiment analysis", task="text-classification")
 2. get_model_details(top_model)
-3. Zwróć opis + instrukcję użycia
+3. Return description + usage instructions
 ```
 
-**Przykład 4: Aktualna cena/informacja**
+**Example 4: Current price/information**
 ```
-Użytkownik: "Jaka jest aktualna cena Bitcoina?"
-Akcja (z Google Grounding):
-1. LLM Gemini z tools=[google_search_retrieval]
-2. Automatyczne wyszukanie + synteza
-3. Zwróć odpowiedź ze źródłami
+User: "What's the current price of Bitcoin?"
+Action (with Google Grounding):
+1. LLM Gemini with tools=[google_search_retrieval]
+2. Automatic search + synthesis
+3. Return response with sources
 ```
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-ArchitectAgent tworzy plan:
-  Krok 1: RESEARCHER - "Znajdź dokumentację PyGame"
+ArchitectAgent creates plan:
+  Step 1: RESEARCHER - "Find PyGame documentation"
         ↓
-TaskDispatcher wywołuje ResearcherAgent.execute()
+TaskDispatcher calls ResearcherAgent.execute()
         ↓
 ResearcherAgent:
   1. search("PyGame documentation collision detection")
-  2. scrape_text(top 3 wyniki)
-  3. Synteza wiedzy (LLM)
-  4. save_fact(synteza, tags=["pygame", "game-dev"])
-  5. Zwraca wynik z linkami
+  2. scrape_text(top 3 results)
+  3. Knowledge synthesis (LLM)
+  4. save_fact(synthesis, tags=["pygame", "game-dev"])
+  5. Returns result with links
         ↓
-CoderAgent używa wiedzy do implementacji
+CoderAgent uses knowledge for implementation
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **ArchitectAgent** - Dostarcza wiedzę techniczną na początku projektu
-- **CoderAgent** - Przekazuje dokumentację i przykłady do implementacji
-- **MemorySkill** - Zapisuje ważną wiedzę do długoterminowej pamięci
-- **ChatAgent** - Odpowiada na pytania użytkownika o fakty
+- **ArchitectAgent** - Provides technical knowledge at project start
+- **CoderAgent** - Passes documentation and examples for implementation
+- **MemorySkill** - Saves important knowledge to long-term memory
+- **ChatAgent** - Answers user questions about facts
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env
-# Tryb wyszukiwania
-AI_MODE=LOCAL               # Tylko DuckDuckGo
-AI_MODE=HYBRID              # DuckDuckGo + opcjonalnie Google Grounding
-AI_MODE=CLOUD               # Preferencja Google Grounding
+# In .env
+# Search mode
+AI_MODE=LOCAL               # DuckDuckGo only
+AI_MODE=HYBRID              # DuckDuckGo + optionally Google Grounding
+AI_MODE=CLOUD               # Google Grounding preference
 
 # Google Grounding (Gemini)
 GOOGLE_API_KEY=your_key
 HYBRID_CLOUD_PROVIDER=google
 
-# Tavily AI (opcjonalne, lepsze wyniki niż DuckDuckGo)
+# Tavily AI (optional, better results than DuckDuckGo)
 TAVILY_API_KEY=your_key
 
 # HuggingFace
@@ -166,51 +166,51 @@ HF_TOKEN=your_token
 GITHUB_TOKEN=ghp_your_token
 ```
 
-## Strategie Wyszukiwania
+## Search Strategies
 
-### 1. DuckDuckGo (Domyślne)
-- **Zalety**: Darmowe, prywatne, bez limitów API
-- **Wady**: Mniej wyników niż Google, czasem przestarzałe
-- **Użycie**: Tryb LOCAL, backup dla HYBRID
+### 1. DuckDuckGo (Default)
+- **Pros**: Free, private, no API limits
+- **Cons**: Fewer results than Google, sometimes outdated
+- **Use**: LOCAL mode, backup for HYBRID
 
 ### 2. Google Grounding (Gemini API)
-- **Zalety**: Najlepsze wyniki, automatyczne źródła, zawsze aktualne
-- **Wady**: Wymaga API key, koszty per request
-- **Użycie**: Tryb HYBRID/CLOUD, pytania faktograficzne
+- **Pros**: Best results, automatic sources, always current
+- **Cons**: Requires API key, costs per request
+- **Use**: HYBRID/CLOUD mode, factual questions
 
-### 3. Tavily AI (Opcjonalne)
-- **Zalety**: AI-optimized search, wyższa jakość niż DDG
-- **Wady**: Płatne, limity API
-- **Użycie**: Profesjonalne deployments
+### 3. Tavily AI (Optional)
+- **Pros**: AI-optimized search, higher quality than DDG
+- **Cons**: Paid, API limits
+- **Use**: Professional deployments
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Liczba zapytań wyszukiwania (per sesja)
-- Średnia liczba źródeł na odpowiedź
-- Współczynnik użycia cache (memory hit rate)
-- Czas wyszukiwania + scraping (średnio)
-- Stosunek Google Grounding vs DuckDuckGo (w trybie HYBRID)
+**Key indicators:**
+- Number of search queries (per session)
+- Average number of sources per response
+- Cache usage rate (memory hit rate)
+- Search + scraping time (average)
+- Google Grounding vs DuckDuckGo ratio (in HYBRID mode)
 
 ## Best Practices
 
-1. **Cache w pamięci** - Zawsze zapisuj ważną wiedzę do `save_fact()`
-2. **Weryfikuj źródła** - Sprawdź datę publikacji (preferuj <1 rok)
-3. **Agreguj wiedzę** - Nie kopiuj surowego tekstu, syntetyzuj kluczowe punkty
-4. **Taguj odpowiednio** - Używaj spójnych tagów dla łatwiejszego wyszukiwania
-5. **Google dla faktów** - Pytania o cenę/wiadomości → Google Grounding
+1. **Memory cache** - Always save important knowledge to `save_fact()`
+2. **Verify sources** - Check publication date (prefer <1 year)
+3. **Aggregate knowledge** - Don't copy raw text, synthesize key points
+4. **Tag appropriately** - Use consistent tags for easier searching
+5. **Google for facts** - Questions about price/news → Google Grounding
 
-## Znane Ograniczenia
+## Known Limitations
 
-- DuckDuckGo ma limity rate-limit (zazwyczaj nie problem)
-- Scraping może zawieść dla stron z JavaScript (trafilatura nie renderuje JS)
-- Google Grounding wymaga Gemini API (koszty)
-- Brak wsparcia dla płatnych źródeł (paywalls, subskrypcje)
+- DuckDuckGo has rate-limit restrictions (usually not a problem)
+- Scraping can fail for JavaScript sites (trafilatura doesn't render JS)
+- Google Grounding requires Gemini API (costs)
+- No support for paid sources (paywalls, subscriptions)
 
-## Zobacz też
+## See also
 
-- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie z wykorzystaniem wiedzy
-- [THE_CODER.md](THE_CODER.md) - Implementacja bazująca na dokumentacji
-- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Pamięć długoterminowa
-- [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) - Google Grounding
-- [HYBRID_AI_ENGINE.md](HYBRID_AI_ENGINE.md) - Routing LOCAL/HYBRID/CLOUD
+- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planning with knowledge utilization
+- [THE_CODER.md](THE_CODER.md) - Implementation based on documentation
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md)
+- [GOOGLE_SEARCH_GROUNDING_INTEGRATION.md](../GOOGLE_SEARCH_GROUNDING_INTEGRATION.md) - Google Grounding
+- [HYBRID_AI_ENGINE.md](HYBRID_AI_ENGINE.md) - LOCAL/HYBRID/CLOUD routing

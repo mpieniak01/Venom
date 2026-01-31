@@ -1,76 +1,64 @@
 # Security fixes and dependency hygiene
 
-Plik dokumentuje zmiany i decyzje dotyczące bezpieczeństwa oraz higieny
-zależności (aktualizacje wersji, akceptacja ryzyk, ograniczenia projektu).
-Ma charakter notatki utrzymaniowej dla projektu eksperymentalnego.
+This file documents changes and decisions related to security and dependency
+hygiene (version updates, risk acceptance, project constraints).
+It is a maintenance note for the experimental project.
 
-## Ostatnie działania (18.01.2025)
+## Recent actions (2025-01-18)
 
-Na podstawie sygnałów z narzędzia **Snyk** podniesiono wersje zależności
-zidentyfikowanych jako podatne (CVE – high):
+Based on signals from **Snyk**, dependency versions identified as vulnerable
+(CVE - high) were updated:
 
-- `aiohttp>=3.13.3` – throttling i limity zasobów
-- `urllib3>=2.6.3` – obsługa skompresowanych danych
-- `transformers>=4.57.6` – potencjalna deserializacja niezweryfikowanych danych
-- `azure-core>=1.38.0` – potencjalna deserializacja niezweryfikowanych danych
-- `pydantic` podniesiono do `>=2.12,<3.0` zgodnie z polityką „nowszych wersji”.
-- `openai` podniesiono do `>=2.8.0` (wymaganie `litellm>=1.81.3`).
-- `openapi-core` podniesiono do `>=0.22.0`, aby odblokować `werkzeug>=3.1.5`.
-- `graphrag` i `lancedb` przypięte do stabilnych wersji w `requirements.txt`
-  (ograniczenie backtrackingu resolvera).
+- `aiohttp>=3.13.3` - throttling and resource limits
+- `urllib3>=2.6.3` - handling of compressed data
+- `transformers>=4.57.6` - potential deserialization of untrusted data
+- `azure-core>=1.38.0` - potential deserialization of untrusted data
+- `pydantic` bumped to `>=2.12,<3.0` to maintain compatibility with vLLM 0.12.x
+  and eliminate the version conflict (runtime warning).
 
-## Status po ostatnim skanie (bieżące)
-
-- Podbicie `pypdf`, `filelock`, `litellm`, `marshmallow`, `pyasn1` i `werkzeug`
-  zmniejsza liczbę podatności, ale **łamie** zależności:
-  - `semantic-kernel` deklaruje `openai<2` i `pydantic<2.12` (wymaga weryfikacji
-    i ewentualnych patchy/override przy nowszych wersjach).
-  - `semantic-kernel` oczekuje `openapi-core<0.20`, podczas gdy projekt używa `>=0.22`.
-  Przyjęto decyzję: **idziemy w nowsze wersje mimo konfliktów** – wymagane testy
-  regresji oraz ewentualne poprawki runtime.
-
-## Narzędzia i zakres kontroli
+## Tools and scope of checks
 
 - **Snyk**
-  Wykorzystywany manualnie do analizy podatności w zależnościach.
-  Nie jest zintegrowany z pipeline CI.
+  Used manually for dependency vulnerability analysis.
+  Not integrated with the CI pipeline.
 
 - **pre-commit + Ruff**
-  Stosowane do kontroli jakości i spójności kodu.
-  Nie obejmują skanowania zależności pod kątem CVE.
+  Used for code quality and consistency checks.
+  Do not cover dependency CVE scanning.
 
 - **GitHub Security (Dependabot / GitGuardian)**
-  Wykorzystywane są domyślne mechanizmy GitHuba:
-  - alerty zależności,
-  - skanowanie sekretów.
-  Nie stanowi to pełnego systemu audytu bezpieczeństwa.
+  Default GitHub mechanisms are used:
+  - dependency alerts,
+  - secret scanning.
+  This is not a full security audit system.
 
-### Polityka wersji zależności (Python)
+### Dependency version policy (Python)
 
-- `semantic-kernel >= 1.39.2` – deklaruje `pydantic <2.12` i `openai<2`, ale projekt
-  utrzymuje nowsze wersje wbrew metadanym. Wymaga walidacji runtime.
-- `pydantic >=2.12,<3.0` – docelowy zakres zgodny z polityką aktualizacji.
-- Oczekiwane jest utrzymywanie zestawu: SK 1.39.2+, Pydantic 2.12+ (z override),
-  OpenAI 2.x. Po każdej aktualizacji konieczne smoke testy.
+- `semantic-kernel >= 1.39.1` - works with `pydantic 2.12.x` with the `Url` shim
+  (added in `venom_core/__init__.py`).
+- `pydantic 2.12.x` - required by vLLM 0.12.x (pip warns because SK declares
+  `<2.12`, but it works with the shim).
+- The expected set is: SK 1.39.1+, Pydantic 2.12.x, vLLM 0.12.x; if any of
+  these packages are bumped, verify SK imports (Url) and run smoke tests.
 
-Projekt obecnie **nie posiada**:
+The project currently **does not have**:
 - SonarQube / SonarCloud,
-- cyklicznego skanera CVE w CI,
-- automatycznej weryfikacji artefaktów modelowych.
+- a cyclic CVE scanner in CI,
+- automatic verification of model artifacts.
 
-## Uwagi dotyczące ryzyk
+## Risk notes
 
-- W ekosystemie HuggingFace (`transformers`, `accelerate`, `tokenizers`)
-  występują zgłoszenia typu *deserialization of untrusted data*, dla których
-  brak pełnych upstream fixów.
+- In the HuggingFace ecosystem (`transformers`, `accelerate`, `tokenizers`)
+  there are reports of *deserialization of untrusted data* for which there are
+  no complete upstream fixes.
 
-- Ryzyko ograniczane jest organizacyjnie:
-  - używane są wyłącznie zaufane modele i artefakty,
-  - brak dynamicznego pobierania modeli w runtime.
+- Risk is reduced organizationally:
+  - only trusted models and artifacts are used,
+  - no dynamic model downloads at runtime.
 
-## Rejestr ryzyk
+## Risk register
 
-- **Źródło modeli i artefaktów**
-  Venom jest oprogramowaniem eksperymentalnym.
-  System nie weryfikuje automatycznie integralności ani pochodzenia modeli.
-  Odpowiedzialność za wybór źródeł spoczywa na użytkowniku.
+- **Model and artifact sources**
+  Venom is experimental software.
+  The system does not automatically verify integrity or provenance of models.
+  Responsibility for choosing sources rests with the user.

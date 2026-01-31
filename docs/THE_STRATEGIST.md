@@ -1,79 +1,79 @@
 # THE STRATEGIST - Task Planning & Complexity Management (v2.0)
 
 > [!NOTE]
-> **Status Implementacji:** Ekran Strategii został przesunięty do wersji **Venom 2.0**. W obecnej wersji (v1.0) jest ukryty w interfejsie użytkownika, a agent działa w tle jako komponent systemowy.
+> **Implementation Status:** The Strategy Screen has been postponed to **Venom 2.0**. In the current version (v1.0), it is hidden from the UI, while the agent operates in the background as a system component.
 
-## Rola
+## Role
 
-Strategist Agent to planista i analityk złożoności w systemie Venom, odpowiedzialny za ocenę trudności zadań, zarządzanie progresem, wykrywanie scope creep oraz optymalizację wykorzystania zasobów (API calls, tokeny).
+Strategist Agent is a planner and complexity analyst in the Venom system, responsible for assessing task difficulty, managing progress, detecting scope creep, and optimizing resource usage (API calls, tokens).
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Ocena złożoności** - Klasyfikacja zadań jako TRIVIAL, SIMPLE, MODERATE, COMPLEX, VERY_COMPLEX
-- **Dzielenie zadań** - Rozbijanie dużych zadań na mniejsze, wykonalne części
-- **Monitorowanie postępu** - Śledzenie wykonania vs. oszacowania (overrun detection)
-- **Zarządzanie budżetem** - Kontrola limitów API calls i tokenów
-- **Ostrzeganie** - Alerty o scope creep, przekroczeniu budżetu
+- **Complexity assessment** - Classifying tasks as TRIVIAL, SIMPLE, MODERATE, COMPLEX, VERY_COMPLEX
+- **Task splitting** - Breaking down large tasks into smaller, executable parts
+- **Progress monitoring** - Tracking execution vs. estimates (overrun detection)
+- **Budget management** - Controlling API call and token limits
+- **Warning** - Alerts about scope creep, budget overrun
 
-## Kluczowe Komponenty
+## Key Components
 
 ### 1. Work Ledger (`venom_core/ops/work_ledger.py`)
 
-**Rola:** Księga zadań i postępu projektu.
+**Role:** Task and project progress ledger.
 
-**Funkcjonalność:**
-- Rejestracja zadań z oszacowaniami złożoności
-- Śledzenie statusu (PLANNED, IN_PROGRESS, COMPLETED, FAILED)
-- Porównanie rzeczywistego czasu vs. oszacowanie
-- Wykrywanie overrun (przekroczenie budżetu)
-- Eksport raportów (JSON)
+**Functionality:**
+- Task registration with complexity estimates
+- Status tracking (PLANNED, IN_PROGRESS, COMPLETED, FAILED)
+- Actual time vs. estimate comparison
+- Overrun detection (budget exceeded)
+- Report export (JSON)
 
-**Przykład użycia:**
+**Usage example:**
 ```python
 from venom_core.ops.work_ledger import WorkLedger, TaskComplexity
 
 ledger = WorkLedger()
 
-# Rejestracja zadania
+# Task registration
 task_id = ledger.register_task(
-    description="Implementacja REST API",
+    description="REST API implementation",
     estimated_complexity=TaskComplexity.MODERATE,
     estimated_time_minutes=120
 )
 
-# Aktualizacja statusu
+# Status update
 ledger.start_task(task_id)
-# ... praca ...
+# ... work ...
 ledger.complete_task(task_id, success=True)
 
-# Raport
+# Report
 report = ledger.generate_report()
-print(f"Ukończone zadania: {report['completed_tasks']}")
-print(f"Czas total: {report['total_time_minutes']} min")
+print(f"Completed tasks: {report['completed_tasks']}")
+print(f"Total time: {report['total_time_minutes']} min")
 ```
 
 ### 2. Complexity Skill (`venom_core/execution/skills/complexity_skill.py`)
 
-**Rola:** Narzędzie do oceny złożoności zadań.
+**Role:** Tool for assessing task complexity.
 
-**Funkcjonalność:**
-- `estimate_complexity(task_description)` - Ocena złożoności (1-5)
-- `split_task(task_description)` - Podział na subtasks
-- `detect_scope_creep(original_task, current_task)` - Wykrywanie rozszerzenia zakresu
+**Functionality:**
+- `estimate_complexity(task_description)` - Complexity assessment (1-5)
+- `split_task(task_description)` - Split into subtasks
+- `detect_scope_creep(original_task, current_task)` - Detecting scope expansion
 
-**Skala złożoności:**
+**Complexity scale:**
 ```python
 class TaskComplexity(Enum):
-    TRIVIAL = 1       # <15 min  - "Wyświetl Hello World"
-    SIMPLE = 2        # 15-30 min - "Stwórz plik z funkcją"
-    MODERATE = 3      # 30-90 min - "REST API z 3 endpointami"
-    COMPLEX = 4       # 1.5-3h - "Aplikacja TODO z DB"
-    VERY_COMPLEX = 5  # >3h - "Sklep e-commerce z płatnościami"
+    TRIVIAL = 1       # <15 min  - "Display Hello World"
+    SIMPLE = 2        # 15-30 min - "Create file with function"
+    MODERATE = 3      # 30-90 min - "REST API with 3 endpoints"
+    COMPLEX = 4       # 1.5-3h - "TODO app with DB"
+    VERY_COMPLEX = 5  # >3h - "E-commerce with payments"
 ```
 
 ### 3. API Budget Management
 
-**Limity domyślne (dziennie):**
+**Default limits (daily):**
 ```python
 DEFAULT_API_LIMITS = {
     "openai": {
@@ -91,18 +91,18 @@ DEFAULT_API_LIMITS = {
 }
 ```
 
-**Monitorowanie:**
-- Tracking liczby wywołań API per provider
-- Tracking liczby tokenów (input + output)
-- Alerty przy zbliżaniu się do limitu (>80%)
-- Blokada przy przekroczeniu (wymaga aprobacji)
+**Monitoring:**
+- Tracking API calls per provider
+- Tracking tokens (input + output)
+- Alerts when approaching limit (>80%)
+- Block on excess (requires approval)
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-Użytkownik: "Stwórz sklep e-commerce"
+User: "Create e-commerce shop"
         ↓
 StrategistAgent.estimate_complexity()
         → VERY_COMPLEX (5/5)
@@ -111,88 +111,88 @@ StrategistAgent.split_task()
         → [
             "Backend API (COMPLEX)",
             "Frontend (COMPLEX)",
-            "System płatności (MODERATE)",
-            "Baza produktów (MODERATE)"
+            "Payment system (MODERATE)",
+            "Product database (MODERATE)"
           ]
         ↓
 WorkLedger.register_task(parent_task)
 WorkLedger.register_task(subtask_1)
 ...
         ↓
-ArchitectAgent planuje każdy subtask osobno
+ArchitectAgent plans each subtask separately
         ↓
-Monitoring wykonania przez Work Ledger
+Execution monitoring through Work Ledger
         ↓
-Raport końcowy (czas, koszty, sukces)
+Final report (time, costs, success)
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **ArchitectAgent** - Otrzymuje oszacowania i podziały zadań
-- **Orchestrator** - Raportuje przekroczenia budżetu i scope creep
-- **AnalystAgent** - Dostarcza metryki kosztów i wydajności
-- **IntentManager** - Klasyfikuje intencje jako SIMPLE vs COMPLEX
+- **ArchitectAgent** - Receives task estimates and splits
+- **Orchestrator** - Reports budget overruns and scope creep
+- **AnalystAgent** - Provides cost and performance metrics
+- **IntentManager** - Classifies intents as SIMPLE vs COMPLEX
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Ocena Złożoności
+### Example 1: Complexity Assessment
 ```python
 strategist = StrategistAgent(kernel=kernel)
 
 complexity = await strategist.estimate_complexity(
-    "Stwórz stronę HTML z zegarem cyfrowym"
+    "Create HTML page with digital clock"
 )
 # → TaskComplexity.SIMPLE (2/5)
 
 complexity = await strategist.estimate_complexity(
-    "Zbuduj platformę e-learningową z videami i quizami"
+    "Build e-learning platform with videos and quizzes"
 )
 # → TaskComplexity.VERY_COMPLEX (5/5)
 ```
 
-### Przykład 2: Podział Zadania
+### Example 2: Task Split
 ```python
 subtasks = await strategist.split_task(
-    "Stwórz aplikację TODO z FastAPI i PostgreSQL"
+    "Create TODO app with FastAPI and PostgreSQL"
 )
 # → [
 #     "Setup FastAPI + PostgreSQL (Docker Compose)",
-#     "Modele SQLAlchemy dla TODO",
-#     "Endpoints CRUD (GET, POST, PUT, DELETE)",
-#     "Testy jednostkowe",
+#     "SQLAlchemy models for TODO",
+#     "CRUD endpoints (GET, POST, PUT, DELETE)",
+#     "Unit tests",
 # ]
 ```
 
-### Przykład 3: Wykrywanie Scope Creep
+### Example 3: Scope Creep Detection
 ```python
-original = "Stwórz prostą stronę HTML"
-current = "Stwórz responsywną stronę z animacjami, formami i integracją API"
+original = "Create simple HTML page"
+current = "Create responsive page with animations, forms and API integration"
 
 scope_creep = await strategist.detect_scope_creep(original, current)
 if scope_creep:
-    # Alert: "Zadanie rozrosło się poza pierwotny zakres!"
+    # Alert: "Task has grown beyond original scope!"
 ```
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env (brak dedykowanych flag dla Strategist)
-# API Limits konfigurowane w kodzie lub przez environment variables
+# In .env (no dedicated flags for Strategist)
+# API Limits configured in code or through environment variables
 
-# Przykładowe custom limity:
+# Example custom limits:
 OPENAI_DAILY_CALLS_LIMIT=500
 OPENAI_DAILY_TOKENS_LIMIT=500000
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Średnia dokładność oszacowań (actual_time / estimated_time)
-- Współczynnik overrun (% zadań przekraczających oszacowanie)
-- Wykorzystanie API (calls/day, tokens/day per provider)
-- Liczba zadań ze scope creep (% zadań)
+**Key indicators:**
+- Average estimate accuracy (actual_time / estimated_time)
+- Overrun rate (% tasks exceeding estimate)
+- API usage (calls/day, tokens/day per provider)
+- Number of tasks with scope creep (% tasks)
 
-**Raporty Work Ledger:**
+**Work Ledger reports:**
 ```json
 {
   "total_tasks": 15,
@@ -207,22 +207,22 @@ OPENAI_DAILY_TOKENS_LIMIT=500000
 
 ## Best Practices
 
-1. **Szacuj przed planowaniem** - Zawsze wywołaj `estimate_complexity()` przed ArchitectAgent
-2. **Dziel duże zadania** - VERY_COMPLEX (5/5) → split_task() → mniejsze części
-3. **Monitoruj budżet** - Sprawdzaj API usage co 100 requestów
-4. **Dokumentuj overrun** - Zapisz przyczynę przekroczenia czasu
-5. **Scope freeze** - Po akceptacji planu nie rozszerzaj zakresu bez aprobacji
+1. **Estimate before planning** - Always call `estimate_complexity()` before ArchitectAgent
+2. **Split large tasks** - VERY_COMPLEX (5/5) → split_task() → smaller parts
+3. **Monitor budget** - Check API usage every 100 requests
+4. **Document overrun** - Record reason for time overrun
+5. **Scope freeze** - After plan approval don't expand scope without approval
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Oszacowania oparte na heurystykach LLM (nie zawsze precyzyjne)
-- Brak integracji z rzeczywistymi kosztami API (tylko tracking calls/tokens)
-- Work Ledger trzymany w pamięci (resetuje się po restarcie)
-- Brak automatycznej re-estymacji po wykryciu overrun
+- Estimates based on LLM heuristics (not always precise)
+- No integration with actual API costs (only tracking calls/tokens)
+- Work Ledger kept in memory (resets after restart)
+- No automatic re-estimation after overrun detection
 
-## Zobacz też
+## See also
 
-- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie zadań
-- [THE_HIVE.md](THE_HIVE.md) - Rozproszone wykonanie zadań
-- [COST_GUARD.md](COST_GUARD.md) - Ochrona budżetu API
-- [AGENTS_INDEX.md](AGENTS_INDEX.md) - Pełny indeks agentów
+- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Task planning
+- [THE_HIVE.md](THE_HIVE.md) - Distributed task execution
+- [COST_GUARD.md](COST_GUARD.md) - API budget protection
+- [AGENTS_INDEX.md](AGENTS_INDEX.md) - Complete agent index

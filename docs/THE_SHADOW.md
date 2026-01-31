@@ -1,44 +1,44 @@
 # THE SHADOW - Desktop Awareness & Proactive Assistance
 
-## Przegląd
+## Overview
 
-Shadow Agent to system proaktywnej pomocy, który monitoruje aktywność użytkownika (schowek, aktywne okno) i oferuje kontekstową pomoc bez przerywania przepływu pracy. To inteligentny "cień", który obserwuje Twoją pracę i pomaga w kluczowych momentach.
+Shadow Agent is a proactive assistance system that monitors user activity (clipboard, active window) and offers contextual help without interrupting workflow. It's an intelligent "shadow" that observes your work and helps at key moments.
 
-## Architektura
+## Architecture
 
 ```
 ┌─────────────────┐
-│ Desktop Sensor  │  ← Monitoruje schowek i okna
+│ Desktop Sensor  │  ← Monitors clipboard and windows
 └────────┬────────┘
          │ Sensor Data
          ↓
 ┌─────────────────┐
-│  Shadow Agent   │  ← Analizuje kontekst, generuje sugestie
+│  Shadow Agent   │  ← Analyzes context, generates suggestions
 └────────┬────────┘
          │ Suggestions
          ↓
 ┌─────────────────┐
-│    Notifier     │  ← Wysyła powiadomienia systemowe
+│    Notifier     │  ← Sends system notifications
 └─────────────────┘
 ```
 
-## Komponenty
+## Components
 
 ### 1. Desktop Sensor (`venom_core/perception/desktop_sensor.py`)
 
-Monitoruje aktywność pulpitu:
-- **Schowek**: Wykrywa zmiany w schowku (pyperclip)
-- **Aktywne okno**: Śledzi tytuł aktywnego okna (Windows/Linux)
-- **Zrzuty ekranu**: Opcjonalnie robi screenshots (PIL)
-- **Privacy Filter**: Blokuje wrażliwe dane (hasła, karty, API keys)
+Monitors desktop activity:
+- **Clipboard**: Detects clipboard changes (pyperclip)
+- **Active Window**: Tracks active window title (Windows/Linux)
+- **Screenshots**: Optionally takes screenshots (PIL)
+- **Privacy Filter**: Blocks sensitive data (passwords, cards, API keys)
 
 **Features:**
-- Async monitoring loop z debouncing (1s)
-- Automatyczne wykrywanie WSL2
-- Konfigurowalna długość max tekstu (default: 1000 chars)
+- Async monitoring loop with debouncing (1s)
+- Automatic WSL2 detection
+- Configurable max text length (default: 1000 chars)
 - Thread-safe callbacks
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.perception.desktop_sensor import DesktopSensor
 
@@ -54,19 +54,19 @@ await sensor.start()
 
 ### 2. Shadow Agent (`venom_core/agents/shadow.py`)
 
-Inteligentny agent analizujący kontekst pracy:
-- **Wykrywanie błędów**: Regex dla tracebacks, exceptions
-- **Analiza kodu**: Heurystyki dla snippetów
-- **Kontekst dokumentacji**: Wykrywa czytanie docs
-- **Uczenie się**: Zapisuje odrzucone sugestie do LessonsStore
+Intelligent agent analyzing work context:
+- **Error Detection**: Regex for tracebacks, exceptions
+- **Code Analysis**: Heuristics for code snippets
+- **Documentation Context**: Detects documentation reading
+- **Learning**: Saves rejected suggestions to LessonsStore
 
-**Typy sugestii:**
-- `ERROR_FIX` - Naprawa błędów w kodzie
-- `CODE_IMPROVEMENT` - Poprawa jakości kodu
-- `TASK_UPDATE` - Aktualizacja statusu zadań
-- `CONTEXT_HELP` - Kontekstowa pomoc
+**Suggestion Types:**
+- `ERROR_FIX` - Fix code errors
+- `CODE_IMPROVEMENT` - Improve code quality
+- `TASK_UPDATE` - Update task status
+- `CONTEXT_HELP` - Contextual help
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.agents.shadow import ShadowAgent
 
@@ -84,24 +84,24 @@ suggestion = await shadow.analyze_sensor_data({
 })
 
 if suggestion:
-    print(f"Sugestia: {suggestion.title}")
-    print(f"Pewność: {suggestion.confidence:.2%}")
+    print(f"Suggestion: {suggestion.title}")
+    print(f"Confidence: {suggestion.confidence:.2%}")
 ```
 
 ### 3. Notifier (`venom_core/ui/notifier.py`)
 
-System powiadomień natywnych:
+Native notification system:
 - **Windows**: Toast Notifications (win10toast + PowerShell fallback)
 - **Linux**: notify-send (libnotify)
-- **WSL2**: Bridge do Windows przez powershell.exe
+- **WSL2**: Bridge to Windows via powershell.exe
 
 **Features:**
 - Async subprocess execution
-- Bezpieczne przekazywanie argumentów (brak command injection)
-- Wsparcie dla akcji w powiadomieniach
-- Konfigurowalna pilność (low/normal/critical)
+- Safe argument passing (no command injection)
+- Support for notification actions
+- Configurable urgency (low/normal/critical)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.ui.notifier import Notifier
 
@@ -111,38 +111,38 @@ async def handle_action(payload):
 notifier = Notifier(webhook_handler=handle_action)
 
 await notifier.send_toast(
-    title="Błąd wykryty",
-    message="Znalazłem błąd w Twoim kodzie",
+    title="Error detected",
+    message="Found an error in your code",
     action_payload={"type": "error_fix", "code": "..."}
 )
 ```
 
-## Konfiguracja
+## Configuration
 
-W pliku `.env`:
+In `.env` file:
 
 ```env
-# Włącz Shadow Agent
+# Enable Shadow Agent
 ENABLE_PROACTIVE_MODE=True
 ENABLE_DESKTOP_SENSOR=True
 
-# Próg pewności dla sugestii (0.0-1.0)
+# Confidence threshold for suggestions (0.0-1.0)
 SHADOW_CONFIDENCE_THRESHOLD=0.8
 
-# Filtr prywatności
+# Privacy filter
 SHADOW_PRIVACY_FILTER=True
 
-# Maks. długość tekstu ze schowka
+# Max clipboard text length
 SHADOW_CLIPBOARD_MAX_LENGTH=1000
 
-# Interwał sprawdzania (sekundy)
+# Check interval (seconds)
 SHADOW_CHECK_INTERVAL=1
 ```
 
 ## API Endpoints
 
 ### GET /api/v1/shadow/status
-Zwraca status Shadow Agent i komponentów.
+Returns Shadow Agent and component status.
 
 **Response:**
 ```json
@@ -176,7 +176,7 @@ Zwraca status Shadow Agent i komponentów.
 ```
 
 ### POST /api/v1/shadow/reject
-Rejestruje odrzuconą sugestię dla uczenia się.
+Registers a rejected suggestion for learning.
 
 **Body:**
 ```json
@@ -189,30 +189,30 @@ Rejestruje odrzuconą sugestię dla uczenia się.
 ```json
 {
   "status": "success",
-  "message": "Odrzucona sugestia typu 'error_fix' zarejestrowana"
+  "message": "Rejected suggestion of type 'error_fix' registered"
 }
 ```
 
 ## Privacy & Security
 
 ### Privacy Filter
-Blokuje następujące typy danych:
-- 💳 Numery kart kredytowych (`\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}`)
-- 📧 Adresy email (opcjonalnie)
-- 🔑 Hasła (`password:`, `hasło:`, `pwd:`)
-- 🔐 API keys i tokeny
-- 🌐 Adresy IP (opcjonalnie)
-- 🔒 Klucze prywatne (PEM format)
+Blocks the following data types:
+- 💳 Credit card numbers (`\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}`)
+- 📧 Email addresses (optional)
+- 🔑 Passwords (`password:`, `hasło:`, `pwd:`)
+- 🔐 API keys and tokens
+- 🌐 IP addresses (optional)
+- 🔒 Private keys (PEM format)
 
 ### Security Features
-- ✅ Brak command injection (subprocess z argument list)
-- ✅ Regex validation dla wrażliwych danych
-- ✅ Konfigurowalna max długość tekstu
+- ✅ No command injection (subprocess with argument list)
+- ✅ Regex validation for sensitive data
+- ✅ Configurable max text length
 - ✅ CodeQL security check passed (0 alerts)
 
-## Workflow - Przykładowy scenariusz
+## Workflow - Example Scenario
 
-1. **Użytkownik kopiuje błąd do schowka:**
+1. **User copies error to clipboard:**
    ```python
    Traceback (most recent call last):
      File "main.py", line 10
@@ -220,45 +220,44 @@ Blokuje następujące typy danych:
    ZeroDivisionError: division by zero
    ```
 
-2. **Desktop Sensor wykrywa zmianę:**
-   - Privacy Filter sprawdza czy nie ma wrażliwych danych
-   - Przekazuje do Shadow Agent
+2. **Desktop Sensor detects change:**
+   - Privacy Filter checks for sensitive data
+   - Passes to Shadow Agent
 
-3. **Shadow Agent analizuje:**
-   - Regex wykrywa `ZeroDivisionError`
-   - Generuje sugestię typu `ERROR_FIX`
-   - Pewność: 85% (> threshold 80%)
+3. **Shadow Agent analyzes:**
+   - Regex detects `ZeroDivisionError`
+   - Generates `ERROR_FIX` suggestion
+   - Confidence: 85% (> threshold 80%)
 
-4. **Notifier wysyła powiadomienie:**
+4. **Notifier sends notification:**
    ```
    ┌────────────────────────────────────┐
    │ 🔍 Venom                           │
    │                                    │
-   │ Wykryto błąd w schowku             │
-   │ Znalazłem błąd w skopiowanym       │
-   │ kodzie. Czy chcesz, abym go        │
-   │ przeanalizował?                    │
+   │ Error detected in clipboard        │
+   │ Found an error in copied code.     │
+   │ Would you like me to analyze it?   │
    │                                    │
-   │ [Analizuj] [Odrzuć]                │
+   │ [Analyze] [Reject]                 │
    └────────────────────────────────────┘
    ```
 
-5. **Użytkownik klika [Odrzuć]:**
-   - Shadow Agent zapisuje odrzucenie do LessonsStore
-   - W przyszłości podobne sugestie będą rzadsze
+5. **User clicks [Reject]:**
+   - Shadow Agent saves rejection to LessonsStore
+   - Similar suggestions will be less frequent in the future
 
 ## WSL2 Support
 
-Shadow Agent działa w WSL2, ale z ograniczeniami:
-- ✅ **Clipboard**: Działa przez pyperclip (native Windows API)
-- ⚠️ **Window tracking**: Wymaga satelity na Windows
-- ⚠️ **Notifications**: Wymaga bridge przez powershell.exe
+Shadow Agent works in WSL2, but with limitations:
+- ✅ **Clipboard**: Works via pyperclip (native Windows API)
+- ⚠️ **Window tracking**: Requires satellite on Windows
+- ⚠️ **Notifications**: Requires bridge via powershell.exe
 
-### Opcjonalny satelita dla WSL2
-Dla pełnej funkcjonalności w WSL2, uruchom `venom_satellite.py` na Windows:
+### Optional Satellite for WSL2
+For full functionality in WSL2, run `venom_satellite.py` on Windows:
 ```python
-# venom_satellite.py (uruchom na Windows)
-# Monitoruje okna i wysyła dane do Venom w WSL przez HTTP
+# venom_satellite.py (run on Windows)
+# Monitors windows and sends data to Venom in WSL via HTTP
 
 import requests
 import win32gui
@@ -272,58 +271,58 @@ while True:
 
 ## Demo
 
-Uruchom demo aby zobaczyć Shadow Agent w akcji:
+Run the demo to see Shadow Agent in action:
 ```bash
 cd /home/runner/work/Venom/Venom
 PYTHONPATH=/home/runner/work/Venom/Venom python examples/shadow_demo.py
 ```
 
-Demo pokazuje:
-- Privacy Filter w akcji
-- Wykrywanie błędów w kodzie
-- Generowanie sugestii z różnymi typami
-- Status wszystkich komponentów
+Demo shows:
+- Privacy Filter in action
+- Code error detection
+- Suggestion generation with different types
+- Status of all components
 
-## Testy
+## Tests
 
-Uruchom testy:
+Run tests:
 ```bash
 pytest tests/test_desktop_sensor.py tests/test_shadow_agent.py tests/test_notifier.py -v
 ```
 
 **Test Coverage:**
-- 16 testów Desktop Sensor
-- 16 testów Shadow Agent
-- 10 testów Notifier
-- **42 testy total - wszystkie ✅**
+- 16 Desktop Sensor tests
+- 16 Shadow Agent tests
+- 10 Notifier tests
+- **42 tests total - all ✅**
 
 ## Roadmap
 
 ### Planned Features
-- [ ] Integracja z Eyes dla OCR z screenshots
-- [ ] Głębsza integracja z GoalStore (auto task updates)
-- [ ] Więcej typów sugestii (DocumentationNeeded, TestCoverage)
-- [ ] Dashboard UI dla Ghost Mode
-- [ ] Satelita WSL2 (Python service na Windows)
-- [ ] Machine Learning dla lepszego confidence scoring
-- [ ] Context window ze historią aktywności
+- [ ] Integration with Eyes for OCR from screenshots
+- [ ] Deeper integration with GoalStore (auto task updates)
+- [ ] More suggestion types (DocumentationNeeded, TestCoverage)
+- [ ] Dashboard UI for Ghost Mode
+- [ ] WSL2 satellite (Python service on Windows)
+- [ ] Machine Learning for better confidence scoring
+- [ ] Context window with activity history
 
 ### Known Limitations
-- Shadow Agent używa prostych heurystyk + LLM (może dawać false positives)
-- Windows Toast wymaga win10toast lub PowerShell
-- WSL2 wymaga bridge/satelity dla pełnej funkcjonalności
-- Credit card detection może dawać false positives (brak Luhn validation)
+- Shadow Agent uses simple heuristics + LLM (may have false positives)
+- Windows Toast requires win10toast or PowerShell
+- WSL2 requires bridge/satellite for full functionality
+- Credit card detection may have false positives (no Luhn validation)
 
 ## Contributing
 
-Zgłaszaj issues i PRy na GitHub:
-- Bug reports: Issues z tagiem `shadow-agent`
-- Feature requests: Issues z tagiem `enhancement`
-- Security issues: Prywatne security advisories
+Report issues and PRs on GitHub:
+- Bug reports: Issues with `shadow-agent` tag
+- Feature requests: Issues with `enhancement` tag
+- Security issues: Private security advisories
 
 ## License
 
-Część projektu Venom - patrz główny README.md
+Part of Venom project - see main README.md
 
 ---
 

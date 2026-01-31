@@ -1,29 +1,29 @@
 # Backend Architecture (Model Management)
 
-## Zakres
-Ten dokument opisuje podzial odpowiedzialnosci w obszarze zarzadzania modelami oraz strukture routerow API po refaktorze 76c.
+## Scope
+This document describes the division of responsibilities in model management and the API router structure after refactor 76c.
 
-## Podzial odpowiedzialnosci
+## Division of Responsibilities
 
 ### ModelRegistry (venom_core/core/model_registry.py)
-- Discovery i katalog modeli (registry: providers/trending/news).
-- Instalacja/usuwanie modeli przez providery.
-- Metadane i capabilities modeli (manifest, schema generacji).
-- Operacje asynchroniczne na modelach (ModelOperation).
-- Nie wykonuje bezposrednio I/O - korzysta z adapterow (clients).
+- Model discovery and catalog (registry: providers/trending/news).
+- Model installation/removal through providers.
+- Model metadata and capabilities (manifest, generation schema).
+- Asynchronous model operations (ModelOperation).
+- Does not execute I/O directly - uses adapters (clients).
 
 ### ModelManager (venom_core/core/model_manager.py)
-- Lifecycle i wersjonowanie modeli lokalnych.
-- Resource guard (limity, metryki uzycia, odciazenia).
-- Aktywacja wersji i operacje na modelach lokalnych.
+- Lifecycle and versioning of local models.
+- Resource guard (limits, usage metrics, offloading).
+- Version activation and local model operations.
 
-## Adaptery I/O (clients)
+## I/O Adapters (clients)
 - `venom_core/core/model_registry_clients.py`
-  - `OllamaClient` - HTTP + CLI dla ollama (list_tags, pull, remove).
+  - `OllamaClient` - HTTP + CLI for ollama (list_tags, pull, remove).
   - `HuggingFaceClient` - HTTP (list, news) + snapshot download.
 
-## Routery API modeli
-Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
+## Model API Routers
+Routers are composed in `venom_core/api/routes/models.py` (aggregator). Submodules:
 - `models_install.py` - /models, /models/install, /models/switch, /models/{model_name}
 - `models_usage.py` - /models/usage, /models/unload-all
 - `models_registry.py` - /models/providers, /models/trending, /models/news
@@ -31,26 +31,26 @@ Routery zlozone sa w `venom_core/api/routes/models.py` (agregator). Submoduly:
 - `models_config.py` - /models/{model_name}/capabilities, /models/{model_name}/config
 - `models_translation.py` - /translate
 
-## Runtime i routing modeli
-- `venom_core/execution/model_router.py` i `venom_core/core/model_router.py` – routing pomiedzy lokalnym LLM i chmura (LOCAL/HYBRID/CLOUD).
-- `venom_core/core/llm_server_controller.py` – kontrola serwerow LLM (Ollama/vLLM) i healthcheck.
-- `venom_core/core/generation_params_adapter.py` – mapowanie parametrow generacji na format OpenAI/vLLM/Ollama.
-- Konfiguracja runtime znajduje sie w `venom_core/config.py` oraz `.env` (np. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
+## Runtime and model routing
+- `venom_core/execution/model_router.py` and `venom_core/core/model_router.py` – routing between local LLM and cloud (LOCAL/HYBRID/CLOUD).
+- `venom_core/core/llm_server_controller.py` – LLM server control (Ollama/vLLM) and health checks.
+- `venom_core/core/generation_params_adapter.py` – maps generation params to OpenAI/vLLM/Ollama formats.
+- Runtime configuration lives in `venom_core/config.py` and `.env` (e.g. `LLM_LOCAL_ENDPOINT`, `VLLM_ENDPOINT`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
 
-## Warstwa Wykonawcza (Skills & MCP)
-Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości agentów:
-- `venom_core/execution/skills/base_skill.py` – Klasa bazowa dla wszystkich umiejętności.
-- `venom_core/skills/mcp_manager_skill.py` – Zarządzanie narzędziami MCP (import z Git, venv).
-- `venom_core/skills/mcp/proxy_generator.py` – Automatyczne generowanie kodu proxy dla serwerów MCP.
-- `venom_core/skills/custom/` – Katalog na dynamicznie generowane i użytkowe umiejętności.
+## Execution Layer (Skills & MCP)
+Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion:
+- `venom_core/execution/skills/base_skill.py` – Base class for all skills.
+- `venom_core/skills/mcp_manager_skill.py` – MCP tools management (Git import, venv).
+- `venom_core/skills/mcp/proxy_generator.py` – Automatic proxy code generation for MCP servers.
+- `venom_core/skills/custom/` – Directory for dynamically generated and utility skills.
 
-## Powiązana dokumentacja (MCP)
-- `docs/DEV_GUIDE_SKILLS.md` – import MCP i standardy Skills.
-- `docs/_done/097_wdrozenie_importu_mcp.md` – wdrożenie importu MCP (MVP).
-- `docs/TREE.md` – struktura repo i katalogi MCP.
+## Related documentation (MCP)
+- `docs/en/DEV_GUIDE_SKILLS.md` – MCP import and Skills standards.
+- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
+- `docs/en/TREE.md` – repo structure and MCP directories.
 
-## Kontrakty API
-Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
+## API Contracts
+Endpoint paths remain unchanged. Refactor concerns only code structure.
 
-## Chat routing (uwaga spójności)
-Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w `docs/CHAT_SESSION.md`.
+## Chat routing (consistency note)
+Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `docs/en/CHAT_SESSION.md`.

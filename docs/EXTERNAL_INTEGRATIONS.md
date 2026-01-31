@@ -1,227 +1,227 @@
-# External Integrations - Warstwa Integracji Zewnętrznej
+# External Integrations - External Integration Layer
 
-## Przegląd
+## Overview
 
-Moduł integracji zewnętrznej umożliwia Venomowi automatyczną obsługę zadań z platform zewnętrznych (GitHub Issues), wysyłanie powiadomień (Discord/Slack), wyszukiwanie w sieci (Tavily), eksplorację modeli (Hugging Face) oraz integrację kalendarza (Google Calendar). Wszystkie integracje są opcjonalne i działają tylko po konfiguracji w `.env`.
+The external integration module enables Venom to automatically handle tasks from external platforms (GitHub Issues), send notifications (Discord/Slack), search the web (Tavily), explore models (Hugging Face), and connect calendars (Google Calendar). All integrations are optional and only activate after `.env` configuration.
 
-## Komponenty
+## Components
 
 ### 1. PlatformSkill (`venom_core/execution/skills/platform_skill.py`)
 
-Wrapper dla API platform zewnętrznych:
+Wrapper for external platform APIs:
 
-**Funkcje GitHub:**
-- `get_assigned_issues(state="open")` - Pobiera Issues przypisane do bota
-- `get_issue_details(issue_number)` - Pobiera szczegóły Issue z komentarzami
-- `create_pull_request(branch, title, body, base="main")` - Tworzy Pull Request
-- `comment_on_issue(issue_number, text)` - Dodaje komentarz do Issue
+**GitHub functions:**
+- `get_assigned_issues(state="open")` - Retrieves Issues assigned to bot
+- `get_issue_details(issue_number)` - Retrieves Issue details with comments
+- `create_pull_request(branch, title, body, base="main")` - Creates Pull Request
+- `comment_on_issue(issue_number, text)` - Adds comment to Issue
 
-**Funkcje komunikacji:**
-- `send_notification(message, channel="discord")` - Wysyła powiadomienie na Discord/Slack
-- `check_connection()` - Sprawdza status połączenia z platformami
+**Communication functions:**
+- `send_notification(message, channel="discord")` - Sends notification to Discord/Slack
+- `check_connection()` - Checks connection status with platforms
 
 ### 2. WebSearchSkill (`venom_core/execution/skills/web_skill.py`)
 
-Integracja wyszukiwania zewnętrznego:
-- **Tavily API** (jeśli `TAVILY_API_KEY` jest ustawiony) dla lepszej jakości wyników.
-- **DuckDuckGo (DDG)** jako fallback bez klucza.
+External search integration:
+- **Tavily API** (when `TAVILY_API_KEY` is set) for higher-quality results.
+- **DuckDuckGo (DDG)** fallback without a key.
 
 ### 3. HuggingFaceSkill (`venom_core/execution/skills/huggingface_skill.py`)
 
-Eksploracja modeli i datasetów:
-- wyszukiwanie modeli/datasetów,
-- pobieranie metadanych,
-- wsparcie tokenem `HF_TOKEN` (opcjonalnie, prywatne modele).
+Model and dataset exploration:
+- model/dataset search,
+- metadata retrieval,
+- optional `HF_TOKEN` for private access.
 
 ### 4. GoogleCalendarSkill (`venom_core/execution/skills/google_calendar_skill.py`)
 
-Integracja kalendarza:
-- odczyt i zapis zdarzeń (write-only do kalendarza Venoma),
-- OAuth2 credentials w `data/config/*`.
+Calendar integration:
+- read and write events (write-only to the Venom calendar),
+- OAuth2 credentials in `data/config/*`.
 
 ### 5. IntegratorAgent 1.0 (`venom_core/agents/integrator.py`)
 
-Rozszerzony agent DevOps z funkcjami:
+Extended DevOps agent with functions:
 
-**Nowe metody:**
-- `poll_issues()` - Pobiera nowe Issues z GitHub
-- `handle_issue(issue_number)` - Obsługuje Issue: pobiera szczegóły, tworzy branch
-- `finalize_issue(issue_number, branch_name, pr_title, pr_body)` - Finalizuje: tworzy PR, komentuje, wysyła powiadomienie
+**New methods:**
+- `poll_issues()` - Retrieves new Issues from GitHub
+- `handle_issue(issue_number)` - Handles Issue: retrieves details, creates branch
+- `finalize_issue(issue_number, branch_name, pr_title, pr_body)` - Finalizes: creates PR, comments, sends notification
 
 ### 6. Orchestrator Pipeline (`venom_core/core/orchestrator.py`)
 
-**Nowa metoda:**
-- `handle_remote_issue(issue_number)` - Kompletny workflow "Issue-to-PR":
-  1. Integrator pobiera Issue i tworzy branch
-  2. Architekt tworzy plan naprawy
-  3. Coder implementuje fix
-  4. Integrator commituje, pushuje i tworzy PR
-  5. Wysyła powiadomienie
+**New method:**
+- `handle_remote_issue(issue_number)` - Complete "Issue-to-PR" workflow:
+  1. Integrator retrieves Issue and creates branch
+  2. Architect creates fix plan
+  3. Coder implements fix
+  4. Integrator commits, pushes and creates PR
+  5. Sends notification
 
-## Konfiguracja
+## Configuration
 
-Dodaj do `.env`:
+Add to `.env`:
 
 ```env
 # GitHub Integration
 GITHUB_TOKEN=ghp_your_personal_access_token
 GITHUB_REPO_NAME=username/repository
 
-# Hugging Face (opcjonalne)
+# Hugging Face (optional)
 HF_TOKEN=
 
-# Discord Notifications (opcjonalne)
+# Discord Notifications (optional)
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
-# Slack Notifications (opcjonalne)
+# Slack Notifications (optional)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
-# Tavily AI Search (opcjonalne)
+# Tavily AI Search (optional)
 TAVILY_API_KEY=
 
-# Google Calendar (opcjonalne)
+# Google Calendar (optional)
 ENABLE_GOOGLE_CALENDAR=false
 GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
 GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
 VENOM_CALENDAR_ID=venom_work_calendar
 VENOM_CALENDAR_NAME=Venom Work
 
-# Issue Polling (opcjonalne)
+# Issue Polling (optional)
 ENABLE_ISSUE_POLLING=true
 ISSUE_POLLING_INTERVAL_MINUTES=5
 ```
 
-### Uzyskanie GitHub Token
+### Obtaining GitHub Token
 
-1. Przejdź do GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
 2. Generate new token
-3. Zaznacz uprawnienia:
-   - `repo` (pełny dostęp do repozytoriów prywatnych)
-   - `workflow` (jeśli chcesz zarządzać workflow)
-4. Skopiuj token i dodaj do `.env`
+3. Check permissions:
+   - `repo` (full access to private repositories)
+   - `workflow` (if you want to manage workflows)
+4. Copy token and add to `.env`
 
-### Uzyskanie Discord Webhook URL
+### Obtaining Discord Webhook URL
 
-1. Przejdź do ustawień serwera Discord
+1. Go to Discord server settings
 2. Integrations → Webhooks → New Webhook
-3. Wybierz kanał i skopiuj URL webhooka
-4. Dodaj do `.env`
+3. Select channel and copy webhook URL
+4. Add to `.env`
 
-## Użycie
+## Usage
 
-### Przykład 1: Ręczna obsługa Issue
+### Example 1: Manual Issue handling
 
 ```python
 from venom_core.core.orchestrator import Orchestrator
 
-# Załóżmy że masz skonfigurowany orchestrator
+# Assuming you have configured orchestrator
 result = await orchestrator.handle_remote_issue(issue_number=42)
 
 if result["success"]:
-    print(f"✅ Issue #{result['issue_number']} obsłużone!")
+    print(f"✅ Issue #{result['issue_number']} handled!")
     print(result["message"])
 else:
-    print(f"❌ Błąd: {result['message']}")
+    print(f"❌ Error: {result['message']}")
 ```
 
-### Przykład 2: Polling Issues (w background task)
+### Example 2: Polling Issues (in background task)
 
 ```python
 from venom_core.agents.integrator import IntegratorAgent
 
-# Tworzenie agenta
+# Creating agent
 integrator = IntegratorAgent(kernel)
 
-# Sprawdź nowe Issues
+# Check new Issues
 issues = await integrator.poll_issues()
 
 for issue in issues:
-    print(f"Znaleziono Issue: {issue}")
-    # Obsłuż każde Issue
+    print(f"Found Issue: {issue}")
+    # Handle each Issue
 ```
 
-### Przykład 3: Wysłanie powiadomienia
+### Example 3: Sending notification
 
 ```python
 from venom_core.execution.skills.platform_skill import PlatformSkill
 
 skill = PlatformSkill()
 
-# Wyślij na Discord
+# Send to Discord
 await skill.send_notification(
-    message="🚀 Deploy zakończony sukcesem!",
+    message="🚀 Deploy completed successfully!",
     channel="discord"
 )
 
-# Wyślij na Slack
+# Send to Slack
 await skill.send_notification(
-    message="⚠️ Wykryto krytyczny błąd",
+    message="⚠️ Critical error detected",
     channel="slack"
 )
 ```
 
-## Workflow "Issue-to-PR"
+## "Issue-to-PR" Workflow
 
-1. **Użytkownik zgłasza Issue na GitHubie** (nawet z telefonu)
-2. **Venom wykrywa nowe Issue** (polling lub webhook)
-3. **Integrator pobiera szczegóły** i tworzy branch `issue-{number}`
-4. **Architekt analizuje** problem i tworzy plan naprawy
-5. **Coder implementuje** fix zgodnie z planem
-6. **Guardian waliduje** zmiany (jeśli włączone)
-7. **Integrator commituje** i pushuje zmiany
-8. **Integrator tworzy PR** z linkiem do Issue (`Closes #123`)
-9. **Integrator dodaje komentarz** w Issue z informacją o PR
-10. **Integrator wysyła powiadomienie** na Discord/Slack
+1. **User reports Issue on GitHub** (even from phone)
+2. **Venom detects new Issue** (polling or webhook)
+3. **Integrator retrieves details** and creates branch `issue-{number}`
+4. **Architect analyzes** problem and creates fix plan
+5. **Coder implements** fix according to plan
+6. **Guardian validates** changes (if enabled)
+7. **Integrator commits** and pushes changes
+8. **Integrator creates PR** with link to Issue (`Closes #123`)
+9. **Integrator adds comment** in Issue with PR information
+10. **Integrator sends notification** to Discord/Slack
 
-## Bezpieczeństwo
+## Security
 
-### Maskowanie tokenów w logach
+### Token masking in logs
 
-PlatformSkill automatycznie maskuje tokeny w logach:
+PlatformSkill automatically masks tokens in logs:
 ```python
 # Token: ghp_1234567890abcdef...
-# W logach: ghp_1234...cdef
+# In logs: ghp_1234...cdef
 ```
 
 ### Best practices
 
-1. **NIE commituj** `.env` do repozytorium
-2. **Używaj** Personal Access Tokens z minimalnymi uprawnieniami
-3. **Rotuj** tokeny regularnie
-4. **Monitoruj** aktywność API na GitHubie
-5. **Ogranicz** IP jeśli to możliwe (GitHub Settings → Personal access tokens)
+1. **DO NOT commit** `.env` to repository
+2. **Use** Personal Access Tokens with minimal permissions
+3. **Rotate** tokens regularly
+4. **Monitor** API activity on GitHub
+5. **Limit** IP if possible (GitHub Settings → Personal access tokens)
 
-## Ograniczenia
+## Limitations
 
 ### Polling vs Webhooks
 
-Implementacja używa **polling** (odpytywanie API co N minut) zamiast webhooków z powodu:
-- Prostota architektury (Local-First)
-- Brak potrzeby publicznego IP
-- Brak potrzeby tunelu (ngrok)
+Implementation uses **polling** (querying API every N minutes) instead of webhooks because:
+- Architecture simplicity (Local-First)
+- No need for public IP
+- No need for tunnel (ngrok)
 
-Rate limits GitHub API:
+GitHub API rate limits:
 - Authenticated: 5000 requests/hour
-- Polling co 5 minut = 12 requests/hour ✅
+- Polling every 5 minutes = 12 requests/hour ✅
 
-### Limity i zależności dodatkowe
+### Additional limits and dependencies
 
-- **Tavily** wymaga aktywnego klucza API; bez niego WebSearchSkill użyje DDG.
-- **Google Calendar** wymaga konfiguracji OAuth2 i pierwszego logowania w trybie lokalnym.
+- **Tavily** requires an API key; without it WebSearchSkill falls back to DDG.
+- **Google Calendar** requires OAuth2 setup and first-time local login.
 
 ### Rate Limiting
 
-PlatformSkill automatycznie obsługuje błędy rate limit, ale:
-- Nie implementuj agresywnego pollingu (< 1 minuta)
-- Monitoruj pozostałe requesty: `Github.get_rate_limit()`
+PlatformSkill automatically handles rate limit errors, but:
+- Don't implement aggressive polling (< 1 minute)
+- Monitor remaining requests: `Github.get_rate_limit()`
 
-## Testowanie
+## Testing
 
-### Testy manualne
+### Manual tests
 
-Bez pełnej instalacji zależności, przetestuj:
+Without full dependency installation, test:
 
-1. **Konfigurację:**
+1. **Configuration:**
 ```python
 from venom_core.execution.skills.platform_skill import PlatformSkill
 
@@ -230,75 +230,75 @@ status = skill.check_connection()
 print(status)
 ```
 
-2. **Pobieranie Issues:**
+2. **Retrieving Issues:**
 ```python
 result = await skill.get_assigned_issues()
 print(result)
 ```
 
-3. **Wysyłanie powiadomień:**
+3. **Sending notifications:**
 ```python
 result = await skill.send_notification("Test", "discord")
 print(result)
 ```
 
-### Testy jednostkowe
+### Unit tests
 
-Testy wymagają pełnej instalacji zależności z `requirements.txt`.
+Tests require full dependency installation from `requirements.txt`.
 
-Ze względu na brak miejsca na dysku w środowisku testowym, pełne testy jednostkowe
-mogą być uruchomione lokalnie po instalacji wszystkich zależności.
+Due to lack of disk space in test environment, full unit tests
+can be run locally after installing all dependencies.
 
 ## Troubleshooting
 
-### "GitHub nie skonfigurowany"
+### "GitHub not configured"
 
-Sprawdź `.env`:
-- `GITHUB_TOKEN` jest ustawiony
-- `GITHUB_REPO_NAME` ma format `owner/repo`
+Check `.env`:
+- `GITHUB_TOKEN` is set
+- `GITHUB_REPO_NAME` has format `owner/repo`
 
-### "Webhook URL nie skonfigurowany"
+### "Webhook URL not configured"
 
-Sprawdź `.env`:
-- `DISCORD_WEBHOOK_URL` lub `SLACK_WEBHOOK_URL` jest ustawiony
+Check `.env`:
+- `DISCORD_WEBHOOK_URL` or `SLACK_WEBHOOK_URL` is set
 
-### "Błąd GitHub API: 401"
+### "GitHub API Error: 401"
 
-Token jest nieprawidłowy lub wygasł:
-- Wygeneruj nowy token
-- Sprawdź czy token ma odpowiednie uprawnienia
+Token is invalid or expired:
+- Generate new token
+- Check if token has appropriate permissions
 
-### "Błąd GitHub API: 403"
+### "GitHub API Error: 403"
 
-Rate limit osiągnięty:
-- Zwiększ interwał pollingu
-- Sprawdź pozostałe requesty: `Github.get_rate_limit()`
+Rate limit reached:
+- Increase polling interval
+- Check remaining requests: `Github.get_rate_limit()`
 
-### "Błąd GitHub API: 404"
+### "GitHub API Error: 404"
 
-Repository nie istnieje lub brak dostępu:
-- Sprawdź nazwę repozytorium w `GITHUB_REPO_NAME`
-- Sprawdź uprawnienia tokena
+Repository doesn't exist or no access:
+- Check repository name in `GITHUB_REPO_NAME`
+- Check token permissions
 
 ## Roadmap
 
-### Zaimplementowane (v1.0)
+### Implemented (v1.0)
 - ✅ PlatformSkill (GitHub + Discord/Slack)
 - ✅ IntegratorAgent 1.0 (Issue handling)
 - ✅ Orchestrator pipeline (Issue-to-PR)
-- ✅ Konfiguracja i maskowanie sekretów
+- ✅ Configuration and secret masking
 
-### Planowane (v1.0)
-- ⏳ Background task dla auto-pollingu Issues
-- ⏳ Webhook support (alternatywa dla pollingu)
+### Planned (v1.0)
+- ⏳ Background task for auto-polling Issues
+- ⏳ Webhook support (alternative to polling)
 - ⏳ Dashboard panel "External Integrations"
-- ⏳ Obsługa GitHub Projects
-- ⏳ Obsługa GitHub Actions (trigger workflows)
+- ⏳ GitHub Projects support
+- ⏳ GitHub Actions support (trigger workflows)
 - ⏳ Slack interactive messages (buttons, selects)
 - ⏳ MS Teams integration
 
-## Autorzy
+## Authors
 
-- **Implementacja:** GitHub Copilot & mpieniak01
-- **Architektura:** Venom Core Team
+- **Implementation:** GitHub Copilot & mpieniak01
+- **Architecture:** Venom Core Team
 - **Issue:** #018_THE_TEAMMATE

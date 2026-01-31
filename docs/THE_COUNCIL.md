@@ -1,27 +1,27 @@
 # The Council - AutoGen Swarm Intelligence
 
-## Przegląd
+## Overview
 
-The Council to system inteligencji rojowej (Swarm Intelligence) oparty na bibliotece AutoGen, który pozwala agentom Venom współpracować autonomicznie poprzez rozmowę zamiast ręcznej orkiestracji.
+The Council is a Swarm Intelligence system based on the AutoGen library, which allows Venom agents to collaborate autonomously through conversation instead of manual orchestration.
 
-## Architektura
+## Architecture
 
-### Główne komponenty:
+### Main components:
 
-1. **VenomAgent (swarm.py)** - Wrapper łączący agenty Semantic Kernel z AutoGen ConversableAgent
-2. **CouncilConfig (council.py)** - Konfiguracja Group Chat i uczestników
-3. **CouncilSession (council.py)** - Sesja rozmowy między agentami
-4. **Orchestrator** - Logika decyzyjna: Council vs standardowy flow
+1. **VenomAgent (swarm.py)** - Wrapper connecting Semantic Kernel agents with AutoGen ConversableAgent
+2. **CouncilConfig (council.py)** - Group Chat configuration and participants
+3. **CouncilSession (council.py)** - Conversation session between agents
+4. **Orchestrator** - Decision logic: Council vs standard flow
 
-### Uczestnicy Council:
+### Council participants:
 
-- **User** (UserProxy) - Reprezentuje użytkownika, zleca zadanie
-- **Architect** - Planuje strukturę i kolejność działań
-- **Coder** - Pisze kod, tworzy pliki
-- **Critic** - Sprawdza jakość i bezpieczeństwo kodu
-- **Guardian** - Weryfikuje testy, zatwierdza finalną wersję
+- **User** (UserProxy) - Represents user, assigns task
+- **Architect** - Plans structure and action sequence
+- **Coder** - Writes code, creates files
+- **Critic** - Checks code quality and security
+- **Guardian** - Verifies tests, approves final version
 
-### Graf przepływu rozmowy:
+### Conversation flow graph:
 
 ```
 User → Architect → Coder ↔ Critic
@@ -29,67 +29,67 @@ User → Architect → Coder ↔ Critic
                 Guardian → User (TERMINATE)
 ```
 
-## Jak to działa?
+## How does it work?
 
-### 1. Automatyczna decyzja
+### 1. Automatic decision
 
-Orchestrator decyduje automatycznie czy użyć Council na podstawie:
+Orchestrator automatically decides whether to use Council based on:
 
-- **Intencja COMPLEX_PLANNING** - zawsze używa Council
-- **Długość zadania** > 100 znaków + obecność słów kluczowych:
-  - "projekt", "aplikacja", "system"
-  - "stwórz grę", "zbuduj"
-  - "zaprojektuj", "zaimplementuj"
-  - "kompletny", "cała aplikacja"
+- **COMPLEX_PLANNING intent** - always uses Council
+- **Task length** > 100 characters + presence of keywords:
+  - "project", "application", "system"
+  - "create game", "build"
+  - "design", "implement"
+  - "complete", "whole application"
 
-### 2. Proces rozmowy
+### 2. Conversation process
 
 ```python
-# Przykład zadania wymagającego Council:
-task = "Napisz grę w węża w Pythonie z GUI używając pygame"
+# Example task requiring Council:
+task = "Write a snake game in Python with GUI using pygame"
 
-# Przebieg rozmowy:
-# 1. User zleca zadanie
-# 2. Architect planuje strukturę (main loop, grafika, logika)
-# 3. Coder pisze kod
-# 4. Critic sprawdza kod, wskazuje błędy
-# 5. Coder poprawia (pętla 3-4 powtarza się)
-# 6. Guardian uruchamia testy
-# 7. Jeśli testy OK: Guardian mówi "TERMINATE"
+# Conversation flow:
+# 1. User assigns task
+# 2. Architect plans structure (main loop, graphics, logic)
+# 3. Coder writes code
+# 4. Critic checks code, points out errors
+# 5. Coder fixes (loop 3-4 repeats)
+# 6. Guardian runs tests
+# 7. If tests OK: Guardian says "TERMINATE"
 ```
 
-> **⚠️ Uwaga dot. terminacji:**
-> GuardianAgent obecnie nie ma wbudowanego mechanizmu automatycznego wysyłania "TERMINATE".
-> Aby rozmowa zakończyła się poprawnie, należy:
-> 1. Skonfigurować SYSTEM_PROMPT GuardianAgent tak, by w przypadku pozytywnej weryfikacji testów wyraźnie wysyłał wiadomość zawierającą słowo "TERMINATE"
-> 2. Jeśli Guardian nie wyśle "TERMINATE", rozmowa zakończy się automatycznie po osiągnięciu limitu max_round=20 rund
-> 3. **Zalecane:** Dodaj do prompta Guardian jasną instrukcję: *"Jeśli wszystkie testy przejdą pomyślnie, zakończ swoją odpowiedź słowem: TERMINATE"*
+> **⚠️ Note on termination:**
+> GuardianAgent currently doesn't have a built-in mechanism for automatically sending "TERMINATE".
+> For conversation to end properly, you should:
+> 1. Configure GuardianAgent SYSTEM_PROMPT so that in case of positive test verification it clearly sends a message containing the word "TERMINATE"
+> 2. If Guardian doesn't send "TERMINATE", conversation will end automatically after reaching max_round=20 rounds limit
+> 3. **Recommended:** Add clear instruction to Guardian prompt: *"If all tests pass successfully, end your response with the word: TERMINATE"*
 >
-> W przyszłych wersjach może zostać dodany automatyczny mechanizm terminacji po sukcesie testów.
+> In future versions, automatic termination mechanism after test success may be added.
 
-### 3. Streaming do WebSocket
+### 3. Streaming to WebSocket
 
-Wszystkie wiadomości z rozmowy są streamowane do klientów przez WebSocket:
+All conversation messages are streamed to clients via WebSocket:
 
 ```javascript
-// Nowe typy zdarzeń:
+// New event types:
 // - COUNCIL_STARTED
 // - COUNCIL_MEMBERS
 // - COUNCIL_COMPLETED
 // - COUNCIL_ERROR
-// - COUNCIL_AGENT_SPEAKING (TODO: dodać w przyszłości)
+// - COUNCIL_AGENT_SPEAKING (TODO: add in future)
 ```
 
-## Konfiguracja
+## Configuration
 
 ### Local-First LLM
 
-The Council domyślnie używa lokalnego modelu (Ollama):
+The Council uses local model (Ollama) by default:
 
 ```python
 from venom_core.core.council import create_local_llm_config
 
-# Domyślna konfiguracja
+# Default configuration
 llm_config = create_local_llm_config()
 # {
 #   "config_list": [{
@@ -100,7 +100,7 @@ llm_config = create_local_llm_config()
 #   "temperature": 0.7
 # }
 
-# Niestandardowa konfiguracja
+# Custom configuration
 llm_config = create_local_llm_config(
     base_url="http://localhost:8080/v1",
     model="mixtral",
@@ -108,47 +108,47 @@ llm_config = create_local_llm_config(
 )
 ```
 
-### Włączanie/wyłączanie Council
+### Enabling/disabling Council
 
-W `orchestrator.py`:
+In `orchestrator.py`:
 
 ```python
-ENABLE_COUNCIL_MODE = True  # Ustaw False aby wyłączyć
-COUNCIL_TASK_THRESHOLD = 100  # Minimalna długość zadania
+ENABLE_COUNCIL_MODE = True  # Set False to disable
+COUNCIL_TASK_THRESHOLD = 100  # Minimum task length
 
-# Edytuj słowa kluczowe
+# Edit keywords
 COUNCIL_COLLABORATION_KEYWORDS = [
-    "projekt", "aplikacja", ...
+    "project", "application", ...
 ]
 ```
 
-## Przykłady użycia
+## Usage Examples
 
-### Przykład 1: Proste zadanie (używa standardowego flow)
+### Example 1: Simple task (uses standard flow)
 
 ```python
-request = TaskRequest(content="Napisz funkcję hello world")
-# → Orchestrator użyje CoderAgent bezpośrednio
+request = TaskRequest(content="Write hello world function")
+# → Orchestrator will use CoderAgent directly
 ```
 
-### Przykład 2: Złożone zadanie (używa Council)
+### Example 2: Complex task (uses Council)
 
 ```python
 request = TaskRequest(content="""
-Stwórz kompletną aplikację TODO list w Pythonie z:
-- FastAPI backend z REST API
-- Bazą danych SQLite
-- Prostym HTML/CSS frontendem
-- Testami jednostkowymi
+Create complete TODO list application in Python with:
+- FastAPI backend with REST API
+- SQLite database
+- Simple HTML/CSS frontend
+- Unit tests
 """)
-# → Orchestrator aktywuje The Council
-# → Architect planuje strukturę projektu
-# → Coder pisze kolejne komponenty
-# → Critic sprawdza każdy komponent
-# → Guardian weryfikuje testy
+# → Orchestrator activates The Council
+# → Architect plans project structure
+# → Coder writes successive components
+# → Critic checks each component
+# → Guardian verifies tests
 ```
 
-### Przykład 3: Ręczne użycie Council (programistyczne)
+### Example 3: Manual Council usage (programmatic)
 
 ```python
 from venom_core.core.council import CouncilConfig, CouncilSession, create_local_llm_config
@@ -163,38 +163,38 @@ council_config = CouncilConfig(
     llm_config=llm_config
 )
 
-# Stwórz sesję
+# Create session
 user_proxy, group_chat, manager = council_config.create_council()
 session = CouncilSession(user_proxy, group_chat, manager)
 
-# Uruchom rozmowę
-result = await session.run("Napisz grę Snake")
+# Run conversation
+result = await session.run("Write Snake game")
 
-# Analiza rozmowy
-print(f"Liczba wiadomości: {session.get_message_count()}")
-print(f"Uczestnicy: {session.get_speakers()}")
+# Conversation analysis
+print(f"Message count: {session.get_message_count()}")
+print(f"Participants: {session.get_speakers()}")
 ```
 
-## Wymagania
+## Requirements
 
 ### Software:
 
 1. **Python 3.10+**
-2. **pyautogen>=0.2.0** (zainstalowany automatycznie)
-3. **semantic-kernel>=1.9.0** (wymagany przez Venom)
-4. **Lokalny LLM Server** (opcjonalny, ale zalecany):
-   - Ollama z modelem llama3/mixtral
+2. **pyautogen>=0.2.0** (installed automatically)
+3. **semantic-kernel>=1.9.0** (required by Venom)
+4. **Local LLM Server** (optional, but recommended):
+   - Ollama with llama3/mixtral model
    - LiteLLM
    - vLLM
    - Llama.cpp server
 
-### Instalacja Ollama (zalecane):
+### Ollama installation (recommended):
 
 ```bash
 # Linux/WSL2
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Uruchom model
+# Run model
 ollama pull llama3
 ollama serve
 
@@ -206,66 +206,66 @@ curl http://localhost:11434/v1/models
 
 ### Problem: "Connection refused to localhost:11434"
 
-**Rozwiązanie**: Upewnij się, że Ollama jest uruchomione:
+**Solution**: Make sure Ollama is running:
 
 ```bash
 ollama serve
 ```
 
-### Problem: Council nie aktywuje się dla mojego zadania
+### Problem: Council doesn't activate for my task
 
-**Rozwiązanie**: Sprawdź długość zadania i słowa kluczowe, lub wymuszaj przez COMPLEX_PLANNING:
+**Solution**: Check task length and keywords, or force through COMPLEX_PLANNING:
 
 ```python
-# W intent_manager.py - dodaj regułę dla swojego typu zadania
+# In intent_manager.py - add rule for your task type
 ```
 
-### Problem: Rozmowa Council trwa za długo
+### Problem: Council conversation takes too long
 
-**Rozwiązanie**: Zmniejsz `max_round` w GroupChat:
+**Solution**: Decrease `max_round` in GroupChat:
 
 ```python
-# W council.py
+# In council.py
 group_chat = GroupChat(
     agents=agents,
-    max_round=10,  # Zamiast 20
+    max_round=10,  # Instead of 20
     ...
 )
 ```
 
-## Metryki i monitoring
+## Metrics and monitoring
 
-### Dostępne eventy WebSocket:
+### Available WebSocket events:
 
 ```python
-COUNCIL_STARTED      # Council rozpoczął pracę
-COUNCIL_MEMBERS      # Lista uczestników
-COUNCIL_COMPLETED    # Dyskusja zakończona
-COUNCIL_ERROR        # Błąd podczas dyskusji
+COUNCIL_STARTED      # Council started work
+COUNCIL_MEMBERS      # Participant list
+COUNCIL_COMPLETED    # Discussion completed
+COUNCIL_ERROR        # Error during discussion
 ```
 
-### Logi:
+### Logs:
 
 ```python
-# Włącz debug logging
+# Enable debug logging
 import logging
 logging.getLogger("venom_core.core.council").setLevel(logging.DEBUG)
 logging.getLogger("venom_core.core.swarm").setLevel(logging.DEBUG)
 ```
 
-## Dalszy rozwój
+## Further development
 
-### Planowane funkcje:
+### Planned features:
 
-- [ ] Streaming pojedynczych wiadomości agentów (COUNCIL_AGENT_SPEAKING)
-- [ ] Możliwość przerwania rozmowy przez użytkownika
-- [ ] Zapisywanie historii rozmów Council do bazy
-- [ ] Dashboard z wizualizacją grafu rozmowy
-- [ ] Niestandardowe grafy przepływu (configurable transitions)
-- [ ] Więcej agentów specjalistycznych (Tester, DevOps, Security)
+- [ ] Streaming individual agent messages (COUNCIL_AGENT_SPEAKING)
+- [ ] User interrupt conversation capability
+- [ ] Saving Council conversation history to database
+- [ ] Dashboard with conversation graph visualization
+- [ ] Custom flow graphs (configurable transitions)
+- [ ] More specialist agents (Tester, DevOps, Security)
 
-## Zobacz też
+## See also
 
 - [AutoGen Documentation](https://microsoft.github.io/autogen/)
 - [Semantic Kernel Documentation](https://learn.microsoft.com/en-us/semantic-kernel/)
-- [Venom Architecture Overview](../README.md)
+- [Venom Architecture Overview](README.md)

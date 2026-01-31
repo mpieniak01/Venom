@@ -1,121 +1,121 @@
 # THE CODER - Code Generation & Implementation
 
-## Rola
+## Role
 
-Coder Agent to główny wykonawca implementacyjny w systemie Venom. Generuje czysty, udokumentowany kod, tworzy pliki w workspace, zarządza środowiskami Docker Compose i wykonuje komendy shell w bezpiecznym środowisku.
+Coder Agent is the main implementation executor in the Venom system. It generates clean, documented code, creates files in workspace, manages Docker Compose environments, and executes shell commands in a secure environment.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Generowanie kodu** - Tworzenie kompletnego, gotowego do użycia kodu
-- **Zarządzanie plikami** - Zapisywanie, odczyt, sprawdzanie istnienia plików
-- **Orkiestracja Docker Compose** - Tworzenie stacków wielokontenerowych
-- **Wykonywanie poleceń** - Bezpieczne uruchamianie komend shell
-- **Samonaprawa** - Automatyczne wykrywanie i naprawa błędów w kodzie (opcjonalne)
+- **Code generation** - Creating complete, ready-to-use code
+- **File management** - Writing, reading, checking file existence
+- **Docker Compose orchestration** - Creating multi-container stacks
+- **Command execution** - Safely running shell commands
+- **Self-repair** - Automatic detection and fixing of code errors (optional)
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. Dostępne Narzędzia
+### 1. Available Tools
 
 **FileSkill** (`venom_core/execution/skills/file_skill.py`):
-- `write_file(path, content)` - Zapisuje kod do pliku w workspace
-- `read_file(path)` - Odczytuje istniejący kod
-- `list_files(directory)` - Listuje pliki w katalogu
-- `file_exists(path)` - Sprawdza czy plik istnieje
+- `write_file(path, content)` - Writes code to file in workspace
+- `read_file(path)` - Reads existing code
+- `list_files(directory)` - Lists files in directory
+- `file_exists(path)` - Checks if file exists
 
 **ShellSkill** (`venom_core/execution/skills/shell_skill.py`):
-- `run_shell(command)` - Wykonuje komendę shell w sandbox
+- `run_shell(command)` - Executes shell command in sandbox
 
 **ComposeSkill** (`venom_core/execution/skills/compose_skill.py`):
-- `create_environment(name, compose_content, auto_start)` - Tworzy środowisko Docker Compose
-- `destroy_environment(name)` - Usuwa środowisko i czyści zasoby
-- `check_service_health(env_name, service_name)` - Sprawdza status i logi serwisu
-- `list_environments()` - Lista aktywnych środowisk
-- `get_environment_status(name)` - Szczegółowy status środowiska
+- `create_environment(name, compose_content, auto_start)` - Creates Docker Compose environment
+- `destroy_environment(name)` - Removes environment and cleans resources
+- `check_service_health(env_name, service_name)` - Checks service status and logs
+- `list_environments()` - Lists active environments
+- `get_environment_status(name)` - Detailed environment status
 
-### 2. Zasady Działania
+### 2. Operating Principles
 
-**Generowanie kodu:**
-1. Kod powinien być kompletny i gotowy do użycia
-2. Komentarze tylko gdy logika jest złożona
-3. Zgodność z dobrymi praktykami i konwencjami nazewnictwa
-4. Użycie `write_file()` do fizycznego zapisu kodu (nie tylko markdown)
+**Code generation:**
+1. Code should be complete and ready to use
+2. Comments only when logic is complex
+3. Compliance with best practices and naming conventions
+4. Use `write_file()` for physical code writing (not just markdown)
 
-**Infrastruktura:**
-- Gdy zadanie wymaga bazy danych, cache lub kolejki → `create_environment()` z docker-compose.yml
-- Serwisy komunikują się przez nazwy sieciowe (np. `host='redis'`, `host='postgres'`)
-- Stack jest izolowany w sieci Docker, dostępny z hosta przez mapowane porty
+**Infrastructure:**
+- When task requires database, cache or queue → `create_environment()` with docker-compose.yml
+- Services communicate through network names (e.g., `host='redis'`, `host='postgres'`)
+- Stack is isolated in Docker network, accessible from host through mapped ports
 
-**Samonaprawa (opcjonalna):**
-- Automatyczne wykrywanie błędów kompilacji/runtime
-- Próba naprawy kodu (max 3 iteracje)
-- Logowanie wszystkich prób naprawy
+**Self-repair (optional):**
+- Automatic detection of compilation/runtime errors
+- Code repair attempt (max 3 iterations)
+- Logging of all repair attempts
 
-### 3. Przykłady Użycia
+### 3. Usage Examples
 
-**Przykład 1: Prosty plik Python**
+**Example 1: Simple Python file**
 ```
-Użytkownik: "Stwórz plik hello.py z funkcją Hello World"
-Akcja:
-1. Generuj kod funkcji
-2. write_file("hello.py", kod)
-3. Potwierdź zapis
+User: "Create hello.py file with Hello World function"
+Action:
+1. Generate function code
+2. write_file("hello.py", code)
+3. Confirm writing
 ```
 
-**Przykład 2: API z Redis**
+**Example 2: API with Redis**
 ```
-Użytkownik: "Stwórz FastAPI z cache Redis"
-Akcja:
-1. Stwórz docker-compose.yml (api + redis)
+User: "Create FastAPI with Redis cache"
+Action:
+1. Create docker-compose.yml (api + redis)
 2. create_environment("fastapi-redis", compose_content, auto_start=True)
-3. Stwórz kod API z integracją Redis (host='redis')
-4. write_file("main.py", kod)
-5. write_file("requirements.txt", zależności)
+3. Create API code with Redis integration (host='redis')
+4. write_file("main.py", code)
+5. write_file("requirements.txt", dependencies)
 ```
 
-**Przykład 3: Odczyt istniejącego kodu**
+**Example 3: Reading existing code**
 ```
-Użytkownik: "Co jest w pliku config.py?"
-Akcja: read_file("config.py")
+User: "What's in config.py file?"
+Action: read_file("config.py")
 ```
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-ArchitectAgent tworzy plan:
-  Krok 2: CODER - "Stwórz plik app.py z REST API"
+ArchitectAgent creates plan:
+  Step 2: CODER - "Create app.py file with REST API"
         ↓
-TaskDispatcher wywołuje CoderAgent.execute()
+TaskDispatcher calls CoderAgent.execute()
         ↓
 CoderAgent:
-  1. Generuje kod (LLM)
-  2. Wywołuje write_file("app.py", kod)
-  3. Opcjonalnie: run_shell("python app.py") - test
-  4. Zwraca wynik
+  1. Generate code (LLM)
+  2. Call write_file("app.py", code)
+  3. Optionally: run_shell("python app.py") - test
+  4. Return result
         ↓
-TaskDispatcher przechodzi do następnego kroku
+TaskDispatcher proceeds to next step
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **ArchitectAgent** - Otrzymuje instrukcje z planu wykonania
-- **CriticAgent** - Weryfikuje jakość wygenerowanego kodu
-- **LibrarianAgent** - Sprawdza istniejące pliki przed nadpisaniem
-- **ResearcherAgent** - Dostarcza dokumentację i przykłady
+- **ArchitectAgent** - Receives instructions from execution plan
+- **CriticAgent** - Verifies generated code quality
+- **LibrarianAgent** - Checks existing files before overwriting
+- **ResearcherAgent** - Provides documentation and examples
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env
-WORKSPACE_ROOT=./workspace          # Katalog roboczy dla plików
-ENABLE_SANDBOX=true                 # Czy uruchamiać kod w sandboxie
-DOCKER_IMAGE_NAME=python:3.11-slim  # Obraz dla Docker sandbox
+# In .env
+WORKSPACE_ROOT=./workspace          # Working directory for files
+ENABLE_SANDBOX=true                 # Whether to run code in sandbox
+DOCKER_IMAGE_NAME=python:3.11-slim  # Image for Docker sandbox
 ```
 
 ## Docker Compose Stack - Best Practices
 
-### Struktura docker-compose.yml
+### docker-compose.yml Structure
 
 ```yaml
 version: '3.8'
@@ -151,45 +151,45 @@ networks:
     driver: bridge
 ```
 
-### Komunikacja między Kontenerami
+### Communication Between Containers
 
 ```python
-# W kodzie aplikacji używaj nazw serwisów Docker (nie localhost!)
-redis_client = redis.Redis(host='redis', port=6379)  # ✅ Poprawne
-redis_client = redis.Redis(host='localhost', port=6379)  # ❌ Nie zadziała w kontenerze
+# In application code use Docker service names (not localhost!)
+redis_client = redis.Redis(host='redis', port=6379)  # ✅ Correct
+redis_client = redis.Redis(host='localhost', port=6379)  # ❌ Won't work in container
 
 # PostgreSQL connection
-db_url = "postgresql://user:pass@postgres:5432/dbname"  # ✅ Poprawne
-db_url = "postgresql://user:pass@localhost:5432/dbname"  # ❌ Nie zadziała
+db_url = "postgresql://user:pass@postgres:5432/dbname"  # ✅ Correct
+db_url = "postgresql://user:pass@localhost:5432/dbname"  # ❌ Won't work
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Liczba wygenerowanych plików (per sesja)
-- Średni rozmiar generowanego kodu (linie)
-- Współczynnik błędów kompilacji/runtime
-- Liczba iteracji samonaprawy (średnio)
-- Wykorzystanie różnych skills (File/Shell/Compose)
+**Key indicators:**
+- Number of generated files (per session)
+- Average generated code size (lines)
+- Compilation/runtime error rate
+- Number of self-repair iterations (average)
+- Usage of different skills (File/Shell/Compose)
 
 ## Best Practices
 
-1. **Fizycznie zapisuj pliki** - Zawsze używaj `write_file()`, nie tylko markdown
-2. **Testuj przed zapisem** - Opcjonalnie uruchom kod i sprawdź błędy
-3. **Stack przed kodem** - Najpierw `create_environment()`, potem kod aplikacji
-4. **Nazwy sieciowe** - W Docker Compose używaj nazw serwisów (nie localhost)
-5. **Clean-up** - Użyj `destroy_environment()` gdy stack nie jest już potrzebny
+1. **Physically write files** - Always use `write_file()`, not just markdown
+2. **Test before writing** - Optionally run code and check errors
+3. **Stack before code** - First `create_environment()`, then application code
+4. **Network names** - In Docker Compose use service names (not localhost)
+5. **Clean-up** - Use `destroy_environment()` when stack is no longer needed
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Samonaprawa ma limit 3 iteracji
-- Sandbox Docker ma ograniczony dostęp do systemu plików
-- Brak wsparcia dla języków wymagających kompilacji (C++, Rust) - tylko skrypty
-- Docker Compose stacki są standalone (brak orchestracji z Kubernetes)
+- Self-repair has 3 iteration limit
+- Docker sandbox has limited file system access
+- No support for languages requiring compilation (C++, Rust) - scripts only
+- Docker Compose stacks are standalone (no Kubernetes orchestration)
 
-## Zobacz też
+## See also
 
-- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie projektów
-- [THE_CRITIC.md](THE_CRITIC.md) - Weryfikacja jakości kodu
-- [THE_LIBRARIAN.md](THE_LIBRARIAN.md) - Zarządzanie plikami
-- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Architektura backendu
+- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Project planning
+- [THE_CRITIC.md](THE_CRITIC.md) - Code quality verification
+- [THE_LIBRARIAN.md](THE_LIBRARIAN.md) - File management
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture

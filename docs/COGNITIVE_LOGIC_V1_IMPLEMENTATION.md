@@ -1,49 +1,49 @@
 # Cognitive Logic v1.0 - Memory & Parsing Services
 
-**Status:** ✅ Implementacja zakończona
+**Status:** ✅ Implementation completed
 **PR:** mpieniak01/Venom#7
 **Branch:** `copilot/implement-memory-parsing-services`
 
-## Podsumowanie zmian
+## Summary of Changes
 
 ### 1. Smart Command Dispatcher - Parse Intent (`venom_core/core/dispatcher.py`)
 
-#### Nowa funkcjonalność:
-- **Metoda `parse_intent(content: str) -> Intent`**
-  - **Krok 1 (Regex):** Ekstrakcja ścieżek plików z tekstu za pomocą wyrażeń regularnych
-  - **Krok 2 (LLM Fallback):** Jeśli regex zawiedzie, używa lokalnego LLM przez Kernel
-  - Wykrywanie akcji: edit, create, delete, read
-  - Zwraca strukturę `Intent(action, targets, params)`
+#### New functionality:
+- **Method `parse_intent(content: str) -> Intent`**
+  - **Step 1 (Regex):** File path extraction from text using regular expressions
+  - **Step 2 (LLM Fallback):** If regex fails, uses local LLM through Kernel
+  - Action detection: edit, create, delete, read
+  - Returns `Intent(action, targets, params)` structure
 
-#### Przykład użycia:
+#### Usage example:
 ```python
 dispatcher = TaskDispatcher(kernel)
-intent = await dispatcher.parse_intent("proszę popraw błąd w pliku venom_core/main.py")
+intent = await dispatcher.parse_intent("please fix the error in file venom_core/main.py")
 # Intent(action="edit", targets=["venom_core/main.py"], params={})
 ```
 
-#### Wspierane formaty ścieżek:
-- Relatywne: `src/main.py`, `venom_core/core/dispatcher.py`
-- Rozszerzenia: `.py`, `.js`, `.ts`, `.txt`, `.md`, `.json`, `.yaml`, `.yml`, `.html`, `.css`, `.java`, `.go`, `.rs`, `.cpp`, `.c`, `.h`
+#### Supported path formats:
+- Relative: `src/main.py`, `venom_core/core/dispatcher.py`
+- Extensions: `.py`, `.js`, `.ts`, `.txt`, `.md`, `.json`, `.yaml`, `.yml`, `.html`, `.css`, `.java`, `.go`, `.rs`, `.cpp`, `.c`, `.h`
 
 ---
 
 ### 2. Memory Consolidation Service (`venom_core/services/memory_service.py`)
 
-#### Nowa klasa: `MemoryConsolidator`
+#### New class: `MemoryConsolidator`
 
-**Główne funkcje:**
-- **Konsolidacja logów:** Metoda `consolidate_daily_logs(logs: List[str])`
-  - Pobiera listę logów/akcji z ostatniego okresu
-  - Używa LLM (lokalny tryb) do tworzenia podsumowań
-  - Generuje "Lekcje" (Key Lessons) do zapisania w bazie wektorowej
+**Main functions:**
+- **Log consolidation:** Method `consolidate_daily_logs(logs: List[str])`
+  - Retrieves list of logs/actions from recent period
+  - Uses LLM (local mode) to create summaries
+  - Generates "Key Lessons" to be saved in vector database
 
-- **Filtrowanie wrażliwych danych:** Metoda `_filter_sensitive_data(text: str)`
-  - Automatyczne maskowanie haseł, kluczy API, tokenów
-  - Wzorce: `password:`, `api_key:`, `token:`, `secret:`, długie hashe
-  - Bezpieczeństwo: nawet lokalny LLM nie otrzymuje wrażliwych danych
+- **Sensitive data filtering:** Method `_filter_sensitive_data(text: str)`
+  - Automatic masking of passwords, API keys, tokens
+  - Patterns: `password:`, `api_key:`, `token:`, `secret:`, long hashes
+  - Security: even local LLM doesn't receive sensitive data
 
-#### Przykład użycia:
+#### Usage example:
 ```python
 consolidator = MemoryConsolidator(kernel)
 logs = [
@@ -53,58 +53,58 @@ logs = [
 ]
 result = await consolidator.consolidate_daily_logs(logs)
 # {
-#   "summary": "Użytkownik stworzył nowy plik...",
-#   "lessons": ["Plik main.py wymaga utils.py", ...]
+#   "summary": "User created a new file...",
+#   "lessons": ["File main.py requires utils.py", ...]
 # }
 ```
 
 ---
 
-### 3. Model danych Intent (`venom_core/core/models.py`)
+### 3. Intent data model (`venom_core/core/models.py`)
 
 ```python
 class Intent(BaseModel):
-    """Reprezentacja sparsowanej intencji użytkownika."""
+    """Representation of parsed user intent."""
     action: str  # edit, create, delete, read
-    targets: List[str]  # Lista plików/ścieżek
-    params: Dict[str, Any]  # Dodatkowe parametry
+    targets: List[str]  # List of files/paths
+    params: Dict[str, Any]  # Additional parameters
 ```
 
 ---
 
-## Testy
+## Tests
 
-### Testy jednostkowe (100% pokrycia kluczowych funkcji)
+### Unit tests (100% coverage of key functions)
 
-#### MemoryConsolidator (15/15 testów ✓)
-- ✅ Inicjalizacja
-- ✅ Filtrowanie wrażliwych danych (hasła, API keys, tokeny)
-- ✅ Konsolidacja pustych logów
-- ✅ Konsolidacja z sukcesem (mock LLM)
-- ✅ Konsolidacja z wrażliwymi danymi (weryfikacja filtrowania)
+#### MemoryConsolidator (15/15 tests ✓)
+- ✅ Initialization
+- ✅ Sensitive data filtering (passwords, API keys, tokens)
+- ✅ Empty logs consolidation
+- ✅ Successful consolidation (mock LLM)
+- ✅ Consolidation with sensitive data (filtering verification)
 - ✅ Error handling (LLM fallback)
-- ✅ Parsowanie odpowiedzi LLM (różne formaty)
+- ✅ LLM response parsing (various formats)
 
-#### Parse Intent (15 testów utworzonych)
-- ✅ Parsowanie ścieżek plików
-- ✅ Wykrywanie akcji (edit, create, delete, read)
-- ✅ Wiele plików w jednym poleceniu
-- ✅ Różne rozszerzenia plików
-- ✅ LLM fallback gdy regex nie wystarczy
-- ✅ Parsowanie JSON z markdown code blocks
+#### Parse Intent (15 tests created)
+- ✅ File path parsing
+- ✅ Action detection (edit, create, delete, read)
+- ✅ Multiple files in one command
+- ✅ Various file extensions
+- ✅ LLM fallback when regex is insufficient
+- ✅ JSON parsing from markdown code blocks
 - ✅ Error handling
 
-### Uruchomienie testów:
+### Running tests:
 ```bash
 pytest tests/test_memory_consolidator.py -v  # 15/15 passed
-pytest tests/test_parse_intent.py -v         # (wymaga pełnych dependencies)
+pytest tests/test_parse_intent.py -v         # (requires full dependencies)
 ```
 
 ---
 
-## Jakość kodu
+## Code Quality
 
-### Linting i formatowanie:
+### Linting and formatting:
 - ✅ **Ruff:** 0 issues
 - ✅ **Black:** formatted
 - ✅ **Isort:** sorted
@@ -122,87 +122,87 @@ pytest tests/test_parse_intent.py -v         # (wymaga pełnych dependencies)
 
 ---
 
-## Przykłady użycia
+## Usage Examples
 
-### 1. Standalone demo (bez dependencies):
+### 1. Standalone demo (without dependencies):
 ```bash
 python examples/intent_parsing_standalone.py
 ```
 
-### 2. Pełne demo (wymaga LLM):
+### 2. Full demo (requires LLM):
 ```bash
 PYTHONPATH=. python examples/cognitive_logic_demo.py
 ```
 
-Przykład output:
+Example output:
 ```
-1. Tekst użytkownika:
-   'proszę popraw błąd w pliku venom_core/main.py'
-   → Akcja: edit
-   → Cele:  venom_core/main.py
+1. User text:
+   'please fix the error in file venom_core/main.py'
+   → Action: edit
+   → Targets:  venom_core/main.py
 ```
 
 ---
 
-## Architektura i integracja
+## Architecture and Integration
 
-### Nowa struktura:
+### New structure:
 ```
 venom_core/
-  services/           # ← NOWY katalog dla logiki biznesowej
+  services/           # ← NEW directory for business logic
     __init__.py
     memory_service.py
   core/
-    dispatcher.py     # ← Rozszerzony o parse_intent()
-    models.py         # ← Dodany Intent model
+    dispatcher.py     # ← Extended with parse_intent()
+    models.py         # ← Added Intent model
 ```
 
-### Gotowe do integracji z:
-- **Scheduler** (PR #1): `consolidate_daily_logs()` może być wywoływane przez cron job
-- **ModelRouter** (PR #3): Używa `kernel.get_service()` kompatybilnie z routerem
-- **Baza wektorowa:** Lekcje gotowe do zapisania w vector store
+### Ready to integrate with:
+- **Scheduler** (PR #1): `consolidate_daily_logs()` can be called by cron job
+- **ModelRouter** (PR #3): Uses `kernel.get_service()` compatible with router
+- **Vector database:** Lessons ready to be saved in vector store
 
-### Nie wymaga zmian w:
-- `main.py` - konsolidacja jest niezależnym serwisem
-- Istniejących agentach - dispatcher zachowuje wsteczną kompatybilność
-
----
-
-## Spełnienie wymagań (DoD)
-
-- ✅ Dispatcher poprawnie wyciąga ścieżkę pliku z tekstu "proszę popraw błąd w pliku venom_core/main.py"
-- ✅ Istnieje nowa klasa `MemoryConsolidator` z działającą logiką streszczania tekstu
-- ✅ Kod jest przygotowany do użycia przez `scheduler.py`, nie wymaga zmian w `main.py`
-- ✅ Implementacja wykorzystuje `Kernel` (zgodny z ModelRouter z PR #3)
-- ✅ Local First: logika lekka, gotowa na lokalny model
-- ✅ Filtrowanie wrażliwych danych przed wysłaniem do LLM
+### No changes required in:
+- `main.py` - consolidation is an independent service
+- Existing agents - dispatcher maintains backward compatibility
 
 ---
 
-## Następne kroki (opcjonalne)
+## Fulfillment of Requirements (DoD)
 
-1. **Integracja z Scheduler:** Podpięcie `consolidate_daily_logs()` do cron job
-2. **Vector Store:** Zapisywanie lekcji w bazie wektorowej (np. ChromaDB)
-3. **Rozszerzenie parse_intent:** Dodanie więcej typów akcji (run, test, deploy)
-4. **Few-shot learning:** Rozbudowa promptu LLM o przykłady dla lepszej ekstrakcji
+- ✅ Dispatcher correctly extracts file path from text "please fix the error in file venom_core/main.py"
+- ✅ New class `MemoryConsolidator` exists with working text summarization logic
+- ✅ Code is prepared for use by `scheduler.py`, doesn't require changes in `main.py`
+- ✅ Implementation uses `Kernel` (compatible with ModelRouter from PR #3)
+- ✅ Local First: lightweight logic, ready for local model
+- ✅ Sensitive data filtering before sending to LLM
 
 ---
 
-## Wnioski
+## Next Steps (optional)
 
-### Co się udało:
-- ✅ Czysta separacja logiki biznesowej (services/)
-- ✅ Hybrydowe podejście regex + LLM daje najlepsze wyniki
-- ✅ Filtrowanie wrażliwych danych działa poprawnie
-- ✅ Kod gotowy do produkcji (testy, linting, security)
+1. **Scheduler Integration:** Connect `consolidate_daily_logs()` to cron job
+2. **Vector Store:** Save lessons in vector database (e.g., ChromaDB)
+3. **Extend parse_intent:** Add more action types (run, test, deploy)
+4. **Few-shot learning:** Expand LLM prompt with examples for better extraction
+
+---
+
+## Conclusions
+
+### What succeeded:
+- ✅ Clean separation of business logic (services/)
+- ✅ Hybrid regex + LLM approach gives best results
+- ✅ Sensitive data filtering works correctly
+- ✅ Production-ready code (tests, linting, security)
 
 ### Lessons learned:
-- Regex jest szybki dla prostych przypadków, LLM dla złożonych
-- Filtrowanie wrażliwych danych MUSI być przed każdym wywołaniem LLM
-- Struktura Intent upraszcza przekazywanie danych między modułami
+- Regex is fast for simple cases, LLM for complex ones
+- Sensitive data filtering MUST be before every LLM call
+- Intent structure simplifies data passing between modules
 
 ---
 
-**Implementacja:** @copilot
-**Data:** 2024-12-09
+**Implementation:** @copilot
+**Date:** 2024-12-09
 **Commit:** `3f707e7`

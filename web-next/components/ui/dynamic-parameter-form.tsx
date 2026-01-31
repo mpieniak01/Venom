@@ -2,23 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import type { GenerationSchema, GenerationParameterSchema } from "@/lib/types";
 
-/**
- * Schema parametru generacji z backendu
- */
-export type GenerationParameterSchema = {
-  type: "float" | "int" | "bool" | "list" | "enum";
-  default: number | string | boolean | null;
-  min?: number;
-  max?: number;
-  desc?: string;
-  options?: Array<number | string>;
-};
 
-/**
- * Słownik schematów parametrów
- */
-export type GenerationSchema = Record<string, GenerationParameterSchema>;
 
 /**
  * Props dla DynamicParameterForm
@@ -106,14 +92,12 @@ function ParameterControl({
           onClick={() => onChange(!checked)}
           variant="ghost"
           size="xs"
-          className={`relative inline-flex h-6 w-11 items-center rounded-full p-0 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
-            checked ? "bg-violet-600" : "bg-white/20"
-          }`}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full p-0 transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${checked ? "bg-violet-600" : "bg-white/20"
+            }`}
         >
           <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              checked ? "translate-x-6" : "translate-x-1"
-            }`}
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? "translate-x-6" : "translate-x-1"
+              }`}
           />
         </Button>
       </div>
@@ -178,10 +162,10 @@ export function DynamicParameterForm({
   >(
     () => {
       const defaults: Record<string, number | string | boolean | null | undefined> = {};
-    Object.entries(schema).forEach(([key, paramSchema]) => {
-      defaults[key] = paramSchema.default;
-    });
-    return initialValues || defaults;
+      Object.entries(schema).forEach(([key, paramSchema]) => {
+        defaults[key] = paramSchema.default;
+      });
+      return initialValues || defaults;
     },
   );
 

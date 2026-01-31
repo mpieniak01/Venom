@@ -21,7 +21,6 @@ export const de = {
   sidebar: {
     brand: {
       caption: "Venom",
-      title: "Leitstand",
     },
     modulesTitle: "Module",
     collapse: "Menü einklappen",
@@ -229,6 +228,7 @@ export const de = {
         full: "Full Stack",
         light: "Light (ohne LLM)",
         llmOff: "LLM AUS",
+        mcp: "MCP-Modelle & Tools",
         description: "Profile konfigurieren schnell Dienstsätze",
       },
       status: {
@@ -236,6 +236,7 @@ export const de = {
         stopped: "Gestoppt",
         unknown: "Unbekannt",
         error: "Fehler",
+        orchestrator: "Orchestrator",
       },
       actions: {
         start: "Start",
@@ -342,6 +343,7 @@ export const de = {
       backendTimingsFirstToken: "erstes Token (ms)",
       backendTimingsFirstChunk: "erster Chunk (ms)",
       backendTimingsChunks: "Chunks",
+      backendTimingsTotalDuration: "Gesamtzeit",
       backendTimingsLastEmit: "letzte Emission (ms)",
       tokensTitle: "Token & Limits",
       tokensInput: "Eingabetokens",

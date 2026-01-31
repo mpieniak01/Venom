@@ -518,6 +518,18 @@ export interface GenerationParams {
   repeat_penalty?: number | null;
   [key: string]: number | string | boolean | null | undefined;
 }
+
+export interface GenerationParameterSchema {
+  type: "float" | "int" | "bool" | "list" | "enum";
+  default: number | string | boolean | null;
+  min?: number;
+  max?: number;
+  desc?: string;
+  options?: Array<number | string>;
+}
+
+export type GenerationSchema = Record<string, GenerationParameterSchema>;
+
 // Benchmark types
 export type BenchmarkStatus = "idle" | "running" | "completed" | "failed" | "pending";
 
@@ -538,8 +550,12 @@ export interface BenchmarkModelResult {
   avg_response_time_ms: number;
   tokens_per_sec: number;
   max_vram_mb: number;
-  status: "success" | "oom" | "error";
+  status: "success" | "oom" | "error" | "completed" | "failed"; // Support both
   error_message?: string;
+  // Aliases for compatibility
+  latency_ms?: number;
+  tokens_per_second?: number;
+  peak_vram_mb?: number;
 }
 
 export interface BenchmarkResult {
@@ -607,4 +623,10 @@ export interface CreateEventResponse {
   message: string;
   event_id?: string;
   event_link?: string;
+}
+
+export interface ContextUsed {
+  lessons?: string[];
+  memory_entries?: string[];
+  [key: string]: unknown; // Allow for future expansion
 }

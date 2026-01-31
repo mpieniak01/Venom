@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { HistoryRequestDetail, Task } from "@/lib/types";
+import type { Task } from "@/lib/types";
 
 export function useTokenHistoryBuffer(
   tokenTotal: number | undefined,

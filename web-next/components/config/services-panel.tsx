@@ -20,6 +20,11 @@ interface ServiceInfo {
   actionable: boolean;
 }
 
+interface ServiceEvent {
+  type: string;
+  data: Partial<ServiceInfo> & { status: string };
+}
+
 interface ActionHistory {
   timestamp: string;
   service: string;
@@ -184,8 +189,9 @@ export function ServicesPanel() {
     fetchStorageSnapshot();
 
     // Połącz przez WebSocket dla aktualizacji statusów w czasie rzeczywistym
-    const ws = new VenomWebSocket("/ws/events", (event: any) => {
-      if (event.type === "SERVICE_STATUS_UPDATE" && event.data) {
+    const ws = new VenomWebSocket("/ws/events", (payload: unknown) => {
+      const event = payload as ServiceEvent;
+      if (event.type === "SERVICE_STATUS_UPDATE" && event.data && event.data.name) {
         const serviceData = event.data;
         const statusMap: Record<string, string> = {
           online: "running",
@@ -196,11 +202,11 @@ export function ServicesPanel() {
 
         setServices((prevServices) =>
           prevServices.map((s) =>
-            s.name.toLowerCase() === serviceData.name.toLowerCase()
+            s.name.toLowerCase() === serviceData.name!.toLowerCase()
               ? {
                 ...s,
                 ...serviceData,
-                status: (statusMap[serviceData.status] as any) || serviceData.status
+                status: (statusMap[serviceData.status] as ServiceInfo["status"]) || (serviceData.status as ServiceInfo["status"])
               }
               : s
           )

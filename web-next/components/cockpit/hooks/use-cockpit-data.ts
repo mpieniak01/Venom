@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import {
     useMetrics,
     useTasks,
@@ -101,7 +102,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
     const modelsUsageResponse =
         liveModelsUsageResponse ?? initialData.modelsUsage ?? null;
 
-    const findTaskMatch = (requestId?: string, prompt?: string | null) => {
+    const findTaskMatch = useCallback((requestId?: string, prompt?: string | null) => {
         if (!tasks) return null;
         if (requestId) {
             const found = tasks.find((t) => t.task_id === requestId || t.id === requestId);
@@ -111,7 +112,7 @@ export function useCockpitData(initialData: CockpitInitialData) {
             return tasks.find((t) => t.content === prompt) || null;
         }
         return null;
-    };
+    }, [tasks]);
 
     return {
         metrics,

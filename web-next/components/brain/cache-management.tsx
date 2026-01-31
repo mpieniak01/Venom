@@ -28,7 +28,7 @@ export function CacheManagement() {
         try {
             const res = await flushSemanticCache();
             pushToast(`Wyczyszczono cache: ${res.deleted} wpisów.`, "success");
-        } catch (error) {
+        } catch {
             pushToast("Błąd podczas czyszczenia cache.", "error");
         } finally {
             setLoading(null);
@@ -40,7 +40,7 @@ export function CacheManagement() {
         try {
             const res = await clearGlobalMemory();
             pushToast(`Wyczyszczono pamięć globalną: ${res.deleted_vectors} wektorów.`, "success");
-        } catch (error) {
+        } catch {
             pushToast("Błąd podczas czyszczenia pamięci globalnej.", "error");
         } finally {
             setLoading(null);

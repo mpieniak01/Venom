@@ -13,7 +13,7 @@ interface BenchmarkHistoryItem {
   status: string;
   created_at: string;
   models: string[];
-  results: any[];
+  results: BenchmarkModelResult[];
 }
 
 export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
@@ -156,7 +156,7 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
 }
 
 // Komponent tabeli (reusable)
-function ResultsTable({ results, mini = false }: { results: any[], mini?: boolean }) {
+function ResultsTable({ results, mini = false }: { results: BenchmarkModelResult[], mini?: boolean }) {
   return (
     <table className="w-full text-left">
       <thead>
@@ -169,7 +169,7 @@ function ResultsTable({ results, mini = false }: { results: any[], mini?: boolea
         </tr>
       </thead>
       <tbody className="divide-y divide-white/5">
-        {results.map((r: any) => (
+        {results.map((r: BenchmarkModelResult) => (
           <tr key={r.model_name}>
             <td className="py-2 font-medium text-zinc-300">{r.model_name}</td>
             <td className="py-2 text-right text-zinc-400">{r.latency_ms ? `${r.latency_ms}ms` : '-'}</td>

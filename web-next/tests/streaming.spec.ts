@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 
 const emptyJson = JSON.stringify([]);
 
@@ -120,9 +120,10 @@ test.describe("Cockpit streaming SSE", () => {
             ];
             payloads.forEach((payload, index) => {
               setTimeout(() => {
-                (window as any).__taskStreamEvents = [
-                  ...((window as any).__taskStreamEvents ?? []),
-                  { event: payload.event, ...(JSON.parse(payload.data) || {}) },
+                const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+                win.__taskStreamEvents = [
+                  ...(win.__taskStreamEvents ?? []),
+                  { event: payload.event, ...(JSON.parse(payload.data) as Record<string, unknown> || {}) },
                 ].slice(-25);
                 const event = new MessageEvent(payload.event, { data: payload.data });
                 (this.listeners[payload.event] || []).forEach((handler) => handler(event));
@@ -176,11 +177,13 @@ test.describe("Cockpit streaming SSE", () => {
     await textarea.fill("Przetestuj strumień SSE");
     await page.getByTestId("cockpit-send-button").click();
     await page.waitForFunction(
-      () =>
-        Array.isArray((window as any).__taskStreamEvents) &&
-        (window as any).__taskStreamEvents.some(
-          (event: { result?: string }) => event?.result === "SSE wynik odpowiedzi",
-        ),
+      () => {
+        const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+        return Array.isArray(win.__taskStreamEvents) &&
+          win.__taskStreamEvents.some(
+            (event: Record<string, unknown>) => event?.result === "SSE wynik odpowiedzi",
+          );
+      },
       undefined,
       { timeout: 10000 },
     );

@@ -57,8 +57,13 @@ async def test_hf_search_success(mock_hf_response):
     mock_response.json.return_value = mock_hf_response
     mock_response.raise_for_status.return_value = None
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = mock_response
+    # Patch AsyncClient class to support context manager
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
 
         results = await client.search_models("llama3", limit=1)
 
@@ -78,8 +83,12 @@ async def test_ollama_search_scraping_success(mock_ollama_html):
     mock_response.text = mock_ollama_html
     mock_response.raise_for_status.return_value = None
 
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = mock_response
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
 
         results = await client.search_models("llama3", limit=1)
 
@@ -105,6 +114,7 @@ async def test_api_search_endpoint():
                 "tags": [],
             }
         ],
+        "count": 1,
         "error": None,
     }
 
@@ -124,3 +134,11 @@ async def test_api_search_endpoint():
         assert data["success"] is True
         assert len(data["models"]) == 1
         assert data["models"][0]["model_name"] == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_api_search_validation():
+    # Test min_length validation
+    client = TestClient(app)
+    response = client.get("/api/v1/models/search?query=a&provider=huggingface")
+    assert response.status_code == 422

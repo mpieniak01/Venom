@@ -30,7 +30,7 @@ class OllamaClient:
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
-                logger.warning(f"Ollama list_tags filed: {e}")
+                logger.warning(f"Ollama list_tags failed: {e}")
                 return {"models": []}
 
     async def search_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -159,7 +159,6 @@ class HuggingFaceClient:
                         "search": query,
                         "limit": limit,
                         "sort": "downloads",
-                        "direction": -1,
                         "filter": "text-generation",  # Filter for text gen models
                     },
                     headers=headers,
@@ -356,7 +355,6 @@ def _parse_ollama_search_html(payload: str, limit: int) -> List[Dict[str, Any]]:
     #     <span class="...">modelname</span>
     #     <span class="...">description</span>
     #   </a>
-    # </li>
 
     # Przystosowanie do potencjalnych zmian struktury - szukamy linków do /library/
     results = []
@@ -369,10 +367,13 @@ def _parse_ollama_search_html(payload: str, limit: int) -> List[Dict[str, Any]]:
 
     for a in anchors:
         href = str(a["href"])
-        if (
-            href.startswith("/library/") and len(href.split("/")) > 2
-        ):  # np /library/llama3
-            model_name = href.split("/")[-1]
+        parts = href.split("/")
+        # Check if we have enough parts and the last part is not empty
+        if href.startswith("/library/") and len(parts) >= 3:
+            model_name = parts[-1]
+            if not model_name:
+                continue
+
             if model_name in seen:
                 continue
 

@@ -874,10 +874,9 @@ python examples/nexus_demo.py
 
 ## 📝 Licencja
 
-Ten projekt znajduje się obecnie na wczesnym etapie rozwoju.
-Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
+Projekt jest udostępniany na licencji MIT. Zobacz plik [`LICENSE`](LICENSE), aby uzyskać więcej informacji.
 
-Na tym etapie nie jest udzielana żadna licencja.
+Copyright (c) 2025-2026 Maciej Pieniak
 Wszelkie prawa są zastrzeżone przez autora do odwołania.
 
 ---

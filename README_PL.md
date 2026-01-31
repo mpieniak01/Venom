@@ -2,7 +2,7 @@
 
 > **| [English Documentation Available](README.md)**
 
-**Venom wersja dekstop – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
+**Venom wersja desktop – system meta-inteligencji** — Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
 Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
 
@@ -108,8 +108,7 @@ venom_core/
 - **LanceDB** – lokalna pamięć wektorowa (embedded); **Redis** – opcjonalny broker/locki (może być wyłączony).
 - **Nexus**, **Background Tasks** – opcjonalne miejsca na przyszłe procesy (domyślnie disabled, bez akcji start/stop; można ukryć/ignorować jeśli niewykorzystane).
 
-**Uwaga o vision/obrazie:** obecnie percepcja obrazu korzysta z lokalnych modeli vision w Ollama lub z OpenAI GPT-4o; Florence-2 ONNX jest planowany. Ollama/vLLM mogą obsługiwać modele multimodalne, ale w tym repo nie są jeszcze spinane jako osobny runtime ONNX dla vision.
-**ONNX już używamy:** obecnie głównie w TTS (Piper). LLM-y pozostają na Ollama/vLLM (lub chmurze), a ONNX dla vision to kierunek rozwojowy.
+**Uwaga o vision/obrazie:** percepcja korzysta obecnie z lokalnych modeli ONNX (OCR/rozpoznawanie obiektów) oraz wybranych ścieżek audio. Multimodalne LLM-y (Ollama/vLLM) są wspierane koncepcyjnie, ale nie są jeszcze spięte jako runtime vision.
 
 ### Przepływ danych
 
@@ -801,7 +800,7 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/PL/CONTRIBUTING.md), a
 
 ### Konwencje
 
-- **Kod i komentarze:** Polski
+- **Kod i komentarze:** Polski lub angielski
 - **Wiadomości commitów:** Conventional Commits (feat, fix, docs, test, refactor)
 - **Styl:** Black + Ruff + isort (automatyczne przez pre-commit)
 - **Testy:** Wymagane dla nowych funkcjonalności
@@ -876,14 +875,6 @@ python examples/nexus_demo.py
 ## 📝 Licencja
 
 Ten projekt znajduje się obecnie na wczesnym etapie rozwoju.
-Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
-
-Na tym etapie nie jest udzielana żadna licencja.
-Wszelkie prawa są zastrzeżone przez autora do odwołania.
-
-## Licencja
-
-Projekt znajduje się obecnie na wczesnym etapie rozwoju.
 Repozytorium jest publiczne wyłącznie w celach poglądowych i referencyjnych.
 
 Na tym etapie nie jest udzielana żadna licencja.

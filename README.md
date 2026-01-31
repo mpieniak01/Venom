@@ -2,12 +2,13 @@
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 
-**Venom desktop version – meta-intelligence system** - Autonomous AI agent system with strategic planning layer and knowledge expansion.
+**Venom desktop version – meta-intelligence system** — Autonomous AI agent system with strategic planning layer and knowledge expansion.
 
 Venom is transforming from a simple command executor into an **autonomous engineer** that can:
 
 ### ✨ Key Features
 - 🎨 Creating new tools and self-repair
+- 🔌 **MCP Tool Import** - Model Context Protocol integration (import from Git)
 - 🌐 **Internet Access** - Searching for current information (prices, news, documentation)
 - 🧠 **Strategic Planning** - Automatic decomposition of complex projects into steps
 - 📚 **Knowledge Synthesis** - Gathering and analyzing documentation from multiple sources
@@ -107,8 +108,7 @@ venom_core/
 - **LanceDB** – local vector memory (embedded); **Redis** – optional broker/locks (can be disabled).
 - **Nexus**, **Background Tasks** – optional spots for future processes (disabled by default, no start/stop actions; can be hidden/ignored if unused).
 
-**Note about vision/image:** currently perception (OCR/object recognition) uses local ONNX models or optional external endpoints. Ollama/vLLM can handle multimodal models, but in this repo they are not yet connected as runtime for vision — they require separate integration.
-**We already use ONNX:** currently in the perception layer (vision) — OCR/object recognition — via local ONNX Runtime models. LLMs remain on Ollama/vLLM (or cloud), and ONNX covers the vision scope.
+**Note about vision/image:** perception currently uses local ONNX models (OCR/object recognition) and selected audio pipelines. Multimodal LLMs (Ollama/vLLM) are supported in theory, but are not wired as the vision runtime yet.
 
 ### Data Flow
 
@@ -139,6 +139,7 @@ Orchestrator (flow decision)
 > 🔎 **New web-next dashboard**
 > Detailed description of data sources for Brain/Strategy views and test checklist can be found in `docs/FRONTEND_NEXT_GUIDE.md`. The document also defines entry criteria for the next stage of UI work.
 > Chat session documentation, Direct/Normal/Complex modes and memory behavior: `docs/CHAT_SESSION.md`.
+> Skills standards and MCP import: `docs/DEV_GUIDE_SKILLS.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 
@@ -623,6 +624,7 @@ source .venv/bin/activate || true
 
 # Run all tests
 pytest
+```
 
 ## 🔬 Tests and Benchmarks
 

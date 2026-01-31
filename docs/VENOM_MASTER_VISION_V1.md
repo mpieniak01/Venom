@@ -198,3 +198,7 @@ Venom is:
 - AI creating AI.
 
 The LLM layer follows a **Dual-Engine approach (Ollama/vLLM + cloud)**, while ONNX covers selected perception/audio paths; full ONNX unification is a v2.0 goal.
+### v2.0 roadmap detail (chat experience)
+- **Multi-chat sessions:** multiple named sessions with quick switching and preserved history.
+- **Session recall:** reopen past sessions and continue with their context.
+- **Chat attachments:** attach files to messages, manage them (list/remove), and reuse attachments across messages.

@@ -198,3 +198,7 @@ Venom to:
 - AI tworząca AI.
 
 Warstwa LLM dziala w podejsciu **Dual-Engine (Ollama/vLLM + chmura)**, a ONNX pokrywa wybrane obszary percepcji/audio; pelna unifikacja ONNX to cel v2.0.
+### Szczegoly roadmapy v2.0 (chat)
+- **Multi‑chat:** wiele nazwanych sesji, szybkie przełączanie i zachowana historia.
+- **Powrot do sesji:** wznawianie dawnych sesji i kontynuacja z ich kontekstem.
+- **Zalaczniki w chacie:** dolaczanie plikow do wiadomosci, zarzadzanie nimi (lista/usuwanie) i ponowne użycie w kolejnych wiadomościach.

@@ -120,6 +120,12 @@ Te operacje są kluczowe dla utrzymania jakości kontekstu w czasie. Interfejs d
 - Summary jest generowane tylko na zadanie/trigger. Mozliwe jest przestawienie na auto‑summary dla dlugich sesji, kosztem tokenow.
 - Retrieval z pamieci jest warunkowy (heurystyki). W przyszlosci mozna to sterowac konfiguracyjnie lub per‑model.
 
+## Plany na v2.0 (multi‑chat + zalaczniki)
+- **Multi‑chat:** tworzenie wielu nazwanych sesji, lista/przelaczanie oraz zachowanie historii bez utraty poprzednich sesji.
+- **Powrot do sesji:** mozliwosc wznawiania dawnych sesji i kontynuowania z zachowanym kontekstem (bez wymuszonego resetu po restarcie backendu).
+- **Zalaczniki w chacie:** upload/przechowywanie/listowanie/usuwanie zalacznikow, metadata (typ, rozmiar, zrodlo) i mozliwosc ponownego dolaczania do nowych wiadomosci.
+- **Zasady retencji:** limity per‑sesja oraz polityki przechowywania (manualne usuwanie, TTL lub zakres projektu).
+
 ## Gdzie szukac kodu
 - UI sesji: `web-next/lib/session.tsx`
 - Chat UI: `web-next/components/cockpit/cockpit-home.tsx`

@@ -33,7 +33,7 @@ import { LessonActions } from "@/components/brain/lesson-actions";
 import { LessonStats } from "@/components/brain/lesson-stats";
 import { FileAnalysisForm, FileAnalysisPanel } from "@/components/brain/file-analytics";
 import { GraphFilterButtons, GraphFilterType } from "@/components/brain/graph-filters";
-import { clearGlobalMemory, clearSessionMemory, deleteMemoryEntry, pinMemoryEntry } from "@/hooks/use-api";
+import { clearSessionMemory, deleteMemoryEntry, pinMemoryEntry } from "@/hooks/use-api";
 import { useToast } from "@/components/ui/toast";
 import { KNOWLEDGE_GRAPH_LIMIT, MEMORY_GRAPH_LIMIT } from "@/hooks/use-api";
 import { useProjectionTrigger } from "@/hooks/use-projection";
@@ -613,24 +613,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     }
   };
 
-  const handleClearGlobalMemory = async () => {
-    const confirmed = window.confirm("Wyczyścić całą pamięć globalną? Tej operacji nie można cofnąć.");
-    if (!confirmed) return;
-    try {
-      setMemoryWipePending(true);
-      const resp = await clearGlobalMemory();
-      pushToast(`Wyczyszczono pamięć globalną (wektorów: ${resp.deleted_vectors ?? 0}).`, "success");
-      setMemoryGraphOverride({ elements: { nodes: [], edges: [] }, stats: { nodes: 0, edges: 0 } });
-      await memoryGraphPoll.refresh();
-      await refreshSummary();
-      setMemoryGraphOverride(null);
-    } catch (err) {
-      pushToast("Nie udało się wyczyścić pamięci globalnej.", "error");
-      console.error(err);
-    } finally {
-      setMemoryWipePending(false);
-    }
-  };
+
 
   const handleFitGraph = () => {
     const cy = cyInstanceRef.current;

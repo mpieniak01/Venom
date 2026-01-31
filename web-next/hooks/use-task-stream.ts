@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { fetchTaskDetail } from "@/hooks/use-api";
 import { POLLING } from "@/lib/ui-config";
-import type { TaskStatus, Task } from "@/lib/types";
+import type { TaskStatus, ContextUsed } from "@/lib/types";
 
 export type TaskStreamEventName = "task_update" | "task_finished" | "task_missing" | "heartbeat";
 
@@ -20,7 +20,7 @@ export type TaskStreamEvent = {
   llmStatus?: string | null;
   llmRuntimeError?: string | null;
   context?: Record<string, unknown> | null;
-  contextUsed?: Record<string, unknown> | null;
+  contextUsed?: ContextUsed | null;
 };
 
 export type TaskStreamState = {
@@ -36,10 +36,7 @@ export type TaskStreamState = {
   llmEndpoint: string | null;
   llmStatus: string | null;
   context: Record<string, unknown> | null;
-  contextUsed: {
-    lessons?: string[];
-    memory_entries?: string[];
-  } | null;
+  contextUsed: ContextUsed | null;
 };
 
 export type UseTaskStreamResult = {
@@ -107,7 +104,11 @@ function mergeLogs(existing: string[], incoming: string[]): string[] {
 
 function safeParse(data: string): Record<string, unknown> {
   try {
-    return JSON.parse(data);
+    const parsed = JSON.parse(data);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
   } catch {
     return {};
   }
@@ -234,7 +235,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs);
           pollTimersRef.current.set(taskId, timer);
         }
-      } catch (err) {
+      } catch {
         const timer = window.setTimeout(() => pollTask(taskId), pollIntervalMs * 2);
         pollTimersRef.current.set(taskId, timer);
       }

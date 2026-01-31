@@ -202,7 +202,7 @@ test.describe("Chat mode routing", () => {
 
     await taskRequest;
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
-    expect((taskBody as any)?.forced_intent).toBeUndefined();
+    expect((taskBody as Record<string, unknown> | null)?.forced_intent).toBeUndefined();
 
     // Verify exactly one user question and one assistant response (no duplicates)
     await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
@@ -256,7 +256,7 @@ test.describe("Chat mode routing", () => {
     await simpleRequest;
     await expect.poll(() => simpleCalls, { timeout: 10000 }).toBeGreaterThan(0);
     expect(taskCalls).toBe(0);
-    expect((simpleBody as any)?.session_id).toBeTruthy();
+    expect((simpleBody as Record<string, unknown> | null)?.session_id).toBeTruthy();
 
     // Verify exactly one user question and one assistant response (no duplicates)
     await expect(page.getByTestId("conversation-bubble-user")).toHaveCount(1);
@@ -351,11 +351,13 @@ test.describe("Chat mode routing", () => {
 
     await taskRequest;
     await page.waitForFunction(
-      () =>
-        Array.isArray((window as any).__taskStreamEvents) &&
-        (window as any).__taskStreamEvents.some(
-          (event: { result?: string }) => event?.result === "Pierwszy fragment",
-        ),
+      () => {
+        const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+        return Array.isArray(win.__taskStreamEvents) &&
+          win.__taskStreamEvents.some(
+            (event: Record<string, unknown>) => event?.result === "Pierwszy fragment",
+          );
+      },
       undefined,
       { timeout: 10000 },
     );
@@ -365,11 +367,13 @@ test.describe("Chat mode routing", () => {
     });
     expect(ttftMs).toBeLessThan(3000);
     await page.waitForFunction(
-      () =>
-        Array.isArray((window as any).__taskStreamEvents) &&
-        (window as any).__taskStreamEvents.some(
-          (event: { result?: string }) => event?.result === "Pierwszy fragment + reszta",
-        ),
+      () => {
+        const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+        return Array.isArray(win.__taskStreamEvents) &&
+          win.__taskStreamEvents.some(
+            (event: Record<string, unknown>) => event?.result === "Pierwszy fragment + reszta",
+          );
+      },
       undefined,
       { timeout: 10000 },
     );
@@ -460,6 +464,6 @@ test.describe("Chat mode routing", () => {
 
     await taskRequest;
     await expect.poll(() => taskBody, { timeout: 10000 }).not.toBeNull();
-    expect((taskBody as any)?.forced_intent).toBe("COMPLEX_PLANNING");
+    expect((taskBody as Record<string, unknown> | null)?.forced_intent).toBe("COMPLEX_PLANNING");
   });
 });

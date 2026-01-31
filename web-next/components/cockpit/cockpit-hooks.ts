@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogEntryType } from "@/lib/logs";
-import type { ServiceStatus, Task } from "@/lib/types";
+import type { ServiceStatus, Task, GenerationParams, ContextUsed } from "@/lib/types";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import {
   isTelemetryEventPayload,
@@ -14,6 +14,7 @@ import {
   type TelemetryEventPayload,
 } from "@/components/cockpit/cockpit-utils";
 import type { HiddenPromptEntry } from "@/lib/types";
+import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
 
 type ModelsPayload = {
   providers?: Record<string, Array<{ name?: string; provider?: string | null }>>;
@@ -218,7 +219,7 @@ export type SessionHistoryEntry = {
   timestamp?: string;
   pending?: boolean;
   status?: string | null;
-  contextUsed?: any;
+  contextUsed?: ContextUsed | null;
 };
 
 type SessionHistoryHookArgs = {
@@ -249,8 +250,6 @@ export function useSessionHistoryState({
     [sessionHistoryData],
   );
   const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
-  // Use exported version via closure or just use it directly
-  const entryKey = useCallback((entry: SessionHistoryEntry) => sessionEntryKey(entry), []);
   const lastSessionIdRef = useRef<string | null>(null);
   const [bootId, setBootId] = useState<string | null>(null);
   const sessionHistoryStorageKey =
@@ -310,7 +309,7 @@ export function useSessionHistoryState({
       });
       return merged;
     });
-  }, [sessionHistory, sessionId, sessionEntryKey]);
+  }, [sessionHistory, sessionId]);
 
   useEffect(() => {
     if (!sessionHistoryStorageKey) return;
@@ -447,7 +446,18 @@ type MacroRunContext = {
   enqueueOptimisticRequest: (prompt: string) => string;
   linkOptimisticRequest: (clientId: string, requestId: string | null) => void;
   dropOptimisticRequest: (clientId: string) => void;
-  sendTask: (...args: any[]) => Promise<{ task_id?: string | null }>;
+  sendTask: (
+    content: string,
+    storeKnowledge?: boolean,
+    generationParams?: GenerationParams | null,
+    runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
+    extraContext?: TaskExtraContext | null,
+    forcedRoute?: ForcedRoute | null,
+    forcedIntent?: string | null,
+    preferredLanguage?: "pl" | "en" | "de" | null,
+    sessionId?: string | null,
+    preferenceScope?: "session" | "global" | null,
+  ) => Promise<{ task_id?: string | null }>;
   refreshTasks: () => Promise<unknown>;
   refreshQueue: () => Promise<unknown>;
   refreshHistory: () => Promise<unknown>;
@@ -555,7 +565,7 @@ export function useMacroActions({
           null,
           null,
           null,
-          language,
+          language as ("pl" | "en" | "de" | null),
           sessionId,
           "session",
         );

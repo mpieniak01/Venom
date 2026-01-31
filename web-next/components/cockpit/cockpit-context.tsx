@@ -1,10 +1,10 @@
 "use client";
 
 import { createContext, useContext, RefObject } from "react";
-import { useCockpitData } from "./hooks/use-cockpit-data";
-import { useCockpitLayout } from "./hooks/use-cockpit-layout";
-import { useCockpitInteractiveState } from "./hooks/use-cockpit-interactive-state";
-import { useCockpitLogic } from "./hooks/use-cockpit-logic";
+import type { useCockpitData } from "./hooks/use-cockpit-data";
+import type { useCockpitLayout } from "./hooks/use-cockpit-layout";
+import type { useCockpitInteractiveState } from "./hooks/use-cockpit-interactive-state";
+import type { useCockpitLogic } from "./hooks/use-cockpit-logic";
 
 export type CockpitData = ReturnType<typeof useCockpitData>;
 export type CockpitLayout = ReturnType<typeof useCockpitLayout>;

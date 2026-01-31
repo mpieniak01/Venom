@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import type { GenerationParams, HistoryRequestDetail } from "@/lib/types";
+import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
 import { parseSlashCommand } from "@/lib/slash-commands";
 import { createParser } from "eventsource-parser";
 
@@ -23,7 +24,7 @@ type ChatSendParams = {
   language: string;
   resetSession: () => string | null;
   refreshActiveServer: () => void;
-  setActiveLlmRuntime: (runtime: "openai" | "google") => Promise<{
+  setActiveLlmRuntime: (runtime: "openai" | "google", model: string) => Promise<{
     config_hash?: string | null;
     runtime_id?: string | null;
   }>;
@@ -36,15 +37,15 @@ type ChatSendParams = {
   }) => Promise<Response>;
   sendTask: (
     content: string,
-    useMemory: boolean,
-    generationParams: GenerationParams | null,
-    runtimeInfo: { configHash?: string | null; runtimeId?: string | null },
-    context?: unknown,
-    forced?: { tool?: string | null; provider?: string | null } | null,
+    storeKnowledge?: boolean,
+    generationParams?: GenerationParams | null,
+    runtimeMeta?: { configHash?: string | null; runtimeId?: string | null } | null,
+    extraContext?: TaskExtraContext | null,
+    forcedRoute?: ForcedRoute | null,
     forcedIntent?: string | null,
-    language?: string | null,
+    preferredLanguage?: "pl" | "en" | "de" | null,
     sessionId?: string | null,
-    scope?: string,
+    preferenceScope?: "session" | "global" | null,
   ) => Promise<{ task_id?: string | null }>;
   ingestMemoryEntry: (payload: {
     text: string;
@@ -154,7 +155,7 @@ export function useChatSend({
         return false;
       }
       try {
-        const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google");
+        const runtime = await setActiveLlmRuntime(forcedRuntimeProvider as "openai" | "google", selectedLlmModel);
         runtimeOverride = {
           configHash: runtime.config_hash ?? null,
           runtimeId: runtime.runtime_id ?? null,
@@ -493,7 +494,7 @@ export function useChatSend({
             provider: parsed.forcedProvider,
           },
           forcedIntent,
-          language,
+          language as ("pl" | "en" | "de" | null),
           resolvedSession,
           "session",
         );

@@ -7,6 +7,7 @@ import {
   CostMode,
   FlowTrace,
   GenerationParams,
+  GenerationSchema,
   GitStatus,
   GraphFileInfoResponse,
   GraphImpactResponse,
@@ -75,15 +76,7 @@ type PollingEntry<T> = {
 const pollingRegistry = new Map<string, PollingEntry<unknown>>();
 const SERVICE_UNAVAILABLE_CODES = new Set([502, 503, 504]);
 const OFFLINE_BACKOFF_MS = 15000;
-type GenerationSchemaEntry = {
-  type: string;
-  default: unknown;
-  min?: number;
-  max?: number;
-  desc?: string;
-  options?: unknown[];
-};
-type GenerationSchema = Record<string, GenerationSchemaEntry>;
+
 
 function ensureEntry<T>(key: string, fetcher: () => Promise<T>, interval: number) {
   const existing = pollingRegistry.get(key) as PollingEntry<T> | undefined;
@@ -199,7 +192,7 @@ function usePolling<T>(
     const actualEntry = ensureEntry(key, fetcher, intervalMs);
     entryRef.current = actualEntry;
     setReady(true);
-  }, [isBrowser, pollingDisabled, key, intervalMs]);
+  }, [isBrowser, pollingDisabled, key, intervalMs, fetcher]);
 
   useEffect(() => {
     if (pollingDisabled) return;

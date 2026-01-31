@@ -1,12 +1,15 @@
 "use client";
 
 import { createElement, useMemo, useCallback } from "react";
-import type { ServiceStatus, HistoryRequest, GenerationParams } from "@/lib/types";
+import type { ServiceStatus, HistoryRequest, GenerationParams, ContextUsed } from "@/lib/types";
+import type { LogEntryType } from "@/lib/logs";
 import { CockpitHiddenPromptsPanel } from "@/components/cockpit/cockpit-hidden-prompts-panel";
 import { useCockpitRuntimeSectionProps } from "@/components/cockpit/cockpit-runtime-props";
 import { PROMPT_PRESETS } from "@/components/cockpit/cockpit-prompts";
 import { useTranslation } from "@/lib/i18n";
 import { useCockpitContext } from "@/components/cockpit/cockpit-context";
+
+
 
 export function useCockpitSectionProps() {
   const { data, interactive, layout, logic, chatScrollRef } = useCockpitContext();
@@ -63,10 +66,11 @@ export function useCockpitSectionProps() {
   const onFeedbackSubmit = logic.chatUi.handleFeedbackSubmit;
   const onUpdateFeedbackState = logic.chatUi.updateFeedbackState;
   const onChangeGenerationParams = useCallback((vals: Record<string, unknown>) => interactive.setters.setGenerationParams(vals as Partial<GenerationParams>), [interactive.setters]);
+  const handleActivateModel = logic.handleActivateModel;
 
   const composerRef = logic.chatUi.composerRef;
   const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
-  const onActivateModel = useCallback((model: string) => logic.handleActivateModel(model), [logic.handleActivateModel]);
+  const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
 
   const llmServerOptions = useMemo(() => data.llmServers?.map(s => ({ label: s.name, value: s.name })) || [], [data.llmServers]);
   const llmModelOptions = useMemo(() => data.models?.models
@@ -81,8 +85,8 @@ export function useCockpitSectionProps() {
 
   const llmServersLoading = data.loading.llmServers;
   const llmServers = useMemo(() => data.llmServers || [], [data.llmServers]);
-  const llmServerOptionsPanel = useMemo(() => [] as { label: string; value: string }[], []);
-  const llmModelOptionsPanel = useMemo(() => [] as { label: string; value: string }[], []);
+  const llmServerOptionsPanel = llmServerOptions;
+  const llmModelOptionsPanel = llmModelOptions;
 
   const availableModelsForServer = useMemo(() => data.models?.models
     ?.filter(m => !selectedLlmServer || m.provider === selectedLlmServer)
@@ -108,17 +112,26 @@ export function useCockpitSectionProps() {
 
   const onActivateServer = useCallback(() => {
     if (interactive.state.selectedLlmModel) {
-      logic.handleActivateModel(interactive.state.selectedLlmModel);
+      handleActivateModel(interactive.state.selectedLlmModel);
     }
-  }, [interactive.state.selectedLlmModel, logic.handleActivateModel]);
+  }, [interactive.state.selectedLlmModel, handleActivateModel]);
 
   const connected = logic.telemetry.connected;
 
   const onLogFilterChange = interactive.setters.setLogFilter;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const logEntries: any[] = useMemo(() => [], []);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
-  const onTogglePin = useMemo(() => (entry: any) => { }, []);
+  const logEntries = logic.telemetry.entries;
+  const onTogglePin = useCallback((entryId: string) => {
+    interactive.setters.setPinnedLogs((prev: LogEntryType[]) => {
+      if (prev.some(entry => entry.id === entryId)) {
+        return prev.filter(entry => entry.id !== entryId);
+      }
+      const entryToAdd = logEntries.find(e => e.id === entryId);
+      if (entryToAdd) {
+        return [...prev, entryToAdd];
+      }
+      return prev;
+    });
+  }, [interactive.setters, logEntries]);
   const onExportPinnedLogs = logic.chatUi.handleExportPinnedLogs;
   const onClearPinnedLogs = useMemo(() => () => interactive.setters.setPinnedLogs([]), [interactive.setters]);
 
@@ -138,8 +151,7 @@ export function useCockpitSectionProps() {
   const hiddenError = null;
   const activeHiddenLoading = false;
   const activeHiddenError = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const onSetActiveHiddenPrompt = (logic.hiddenState as any).onSetActiveHiddenPrompt;
+  const onSetActiveHiddenPrompt = logic.hiddenState.onSetActiveHiddenPrompt;
 
   const history = useMemo(() => data.history || [], [data.history]);
 
@@ -205,18 +217,17 @@ export function useCockpitSectionProps() {
   const feedbackError = null;
 
   const services = data.services || [];
-  const entries: any[] = [];
+  const entries = logic.telemetry.entries;
 
-  const newMacro = logic.macros.newMacro;
-  const setNewMacro = logic.macros.setNewMacro;
-  const customMacros = logic.macros.customMacros;
-  const setCustomMacros = useCallback((macros: any) => { /* placeholder or logic */ }, []);
-  const allMacros = logic.macros.allMacros;
-  const macroSending = logic.macros.macroSending;
-  const onRunMacro = logic.macros.onRunMacro;
-  const onAddMacro = logic.macros.onAddMacro;
-  const onDeleteMacro = logic.macros.onDeleteMacro;
-  const onClearMacros = logic.macros.onClearMacros;
+  const {
+    newMacro,
+    setNewMacro,
+    customMacros,
+    allMacros,
+    macroSending,
+    onRunMacro,
+    setCustomMacros,
+  } = logic.macros;
 
   const onCloseDetail = () => setDetailOpen(false);
 
@@ -225,7 +236,7 @@ export function useCockpitSectionProps() {
   const payloadSessionMeta = undefined;
   const payloadForcedRoute = undefined;
   const payloadGenerationParams = undefined;
-  const payloadContextUsed = undefined;
+  const payloadContextUsed = historyDetail?.context_used as ContextUsed | undefined;
 
   const contextPreviewMeta = logic.requestDetail.contextPreviewMeta || null;
   const onCopyDetailSteps = logic.requestDetail.handleCopyDetailSteps;
@@ -245,7 +256,7 @@ export function useCockpitSectionProps() {
   const responseBadgeTone = logic.chatUi.responseBadgeTone;
   const responseBadgeTitle = logic.chatUi.responseBadgeTitle;
   const responseBadgeText = logic.chatUi.responseBadgeText;
-  const chatMessages = (logic.chatUi as any).chatMessages || logic.historyMessages;
+  const chatMessages = logic.chatUi.chatMessages || logic.historyMessages;
   const onChatScroll = logic.chatUi.handleChatScroll;
   const promptPresets = PROMPT_PRESETS;
 
@@ -502,7 +513,7 @@ export function useCockpitSectionProps() {
       feedbackError,
       hiddenPromptsPanel: createElement(CockpitHiddenPromptsPanel, hiddenPromptsPanelProps),
       services: services.map(s => typeof s.status === 'string' ? { name: s.name, status: s.status } as ServiceStatus : s.status),
-      entries: entries.map(e => ({ id: e.id, payload: e.payload, ts: new Date(e.timestamp).getTime() })),
+      entries: entries.map(e => ({ id: e.id, payload: e.payload, ts: e.ts })),
       newMacro,
       setNewMacro,
       customMacros,

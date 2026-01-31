@@ -1,357 +1,267 @@
 "use client";
 
-import { createElement, useMemo } from "react";
-import type { ComponentProps, RefObject } from "react";
+import { createElement, useMemo, useCallback } from "react";
+import type { ServiceStatus, HistoryRequest, GenerationParams, ContextUsed } from "@/lib/types";
 import type { LogEntryType } from "@/lib/logs";
-import type { HistoryRequest, HistoryRequestDetail, ServiceStatus, Task, LlmServerInfo, HiddenPromptEntry, HiddenPromptsResponse, LearningLogsResponse, FeedbackLogsResponse } from "@/lib/types";
-import type { GenerationParams } from "@/lib/types";
-import type { TokenSample } from "@/components/cockpit/token-types";
-import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
-import type { SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
 import { CockpitHiddenPromptsPanel } from "@/components/cockpit/cockpit-hidden-prompts-panel";
-import { CockpitPrimarySection } from "@/components/cockpit/cockpit-primary-section";
-import { CockpitRuntimeSection } from "@/components/cockpit/cockpit-runtime-section";
 import { useCockpitRuntimeSectionProps } from "@/components/cockpit/cockpit-runtime-props";
+import { PROMPT_PRESETS } from "@/components/cockpit/cockpit-prompts";
+import { useTranslation } from "@/lib/i18n";
+import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 
-type PrimarySectionProps = ComponentProps<typeof CockpitPrimarySection>;
-type RuntimeSectionProps = ComponentProps<typeof CockpitRuntimeSection>;
 
-type CockpitSectionPropsInput = {
-  chatFullscreen: boolean;
-  setChatFullscreen: (value: boolean) => void;
-  showArtifacts: boolean;
-  showReferenceSections: boolean;
-  showSharedSections: boolean;
-  labMode: boolean;
-  responseBadgeTone: "success" | "warning" | "danger" | "neutral" | string;
-  responseBadgeTitle: string;
-  responseBadgeText: string;
-  chatMessages: PrimarySectionProps["chatThreadProps"]["chatMessages"];
-  selectedRequestId: string | null;
-  historyLoading: boolean;
-  feedbackByRequest: Record<string, { rating?: "up" | "down" | null; comment?: string; message?: string | null }>;
-  feedbackSubmittingId: string | null;
-  onOpenRequestDetail: (requestId: string, prompt?: string) => void;
-  onFeedbackClick: (requestId: string, rating: "up" | "down") => void;
-  onFeedbackSubmit: (requestId: string, override?: { rating: "up" | "down"; comment?: string }) => void;
-  onUpdateFeedbackState: (requestId: string, patch: { rating?: "up" | "down" | null; comment?: string; message?: string | null }) => void;
-  chatScrollRef: RefObject<HTMLDivElement>;
-  onChatScroll: () => void;
-  composerRef: PrimarySectionProps["composerProps"]["ref"];
-  onSend: (payload: string) => Promise<boolean>;
-  sending: boolean;
-  chatMode: PrimarySectionProps["composerProps"]["chatMode"];
-  setChatMode: PrimarySectionProps["composerProps"]["setChatMode"];
-  setLabMode: (value: boolean) => void;
-  selectedLlmServer: string;
-  llmServerOptions: PrimarySectionProps["composerProps"]["llmServerOptions"];
-  setSelectedLlmServer: (value: string) => void;
-  selectedLlmModel: string;
-  llmModelOptions: PrimarySectionProps["composerProps"]["llmModelOptions"];
-  setSelectedLlmModel: (value: string) => void;
-  onActivateModel: (value: string) => void;
-  hasModels: boolean;
-  onOpenTuning: () => void;
-  tuningLabel: string;
-  quickActionsOpen: boolean;
-  setQuickActionsOpen: (value: boolean) => void;
-  message: string | null;
-  promptPresets: ReadonlyArray<{ id: string; category: string; description: string; prompt: string; icon: string }>;
-  onSuggestionClick: (prompt: string) => void;
-  llmServersLoading: boolean;
-  llmServers: LlmServerInfo[];
-  llmServerOptionsPanel: PrimarySectionProps["llmOpsPanelProps"]["llmServerOptions"];
-  llmModelOptionsPanel: PrimarySectionProps["llmOpsPanelProps"]["llmModelOptions"];
-  availableModelsForServer: Array<{ name?: string }>;
-  selectedServerEntry: PrimarySectionProps["llmOpsPanelProps"]["selectedServerEntry"];
-  resolveServerStatus: (displayName?: string, status?: string | null) => string;
-  sessionId: string;
-  memoryAction: null | "session" | "global";
-  onSessionReset: () => void;
-  onServerSessionReset: () => void;
-  onClearSessionMemory: () => void;
-  onClearGlobalMemory: () => void;
-  activeServerInfo: PrimarySectionProps["llmOpsPanelProps"]["activeServerInfo"];
-  activeServerName: string;
-  llmActionPending: string | null;
-  onActivateServer: (override?: { server?: string; model?: string }) => void;
-  connected: boolean;
-  logFilter: string;
-  onLogFilterChange: (value: string) => void;
-  logEntries: LogEntryType[];
-  pinnedLogs: LogEntryType[];
-  onTogglePin: (entry: LogEntryType) => void;
-  exportingPinned: boolean;
-  onExportPinnedLogs: () => void;
-  onClearPinnedLogs: () => void;
-  tasksPreview: Array<Task>;
-  hiddenScoreFilter: number;
-  hiddenIntentFilter: string;
-  onHiddenIntentFilterChange: (value: string) => void;
-  onHiddenScoreFilterChange: (value: number) => void;
-  hiddenIntentOptions: string[];
-  selectableHiddenPrompts: HiddenPromptEntry[];
-  activeHiddenKeys: Set<string>;
-  activeHiddenMap: Map<string, HiddenPromptEntry>;
-  activeForIntent: HiddenPromptEntry | null;
-  hiddenPrompts: HiddenPromptsResponse | null;
-  hiddenLoading: boolean;
-  hiddenError: string | null;
-  activeHiddenLoading: boolean;
-  activeHiddenError: string | null;
-  onSetActiveHiddenPrompt: (payload: {
-    intent?: string;
-    prompt?: string;
-    approved_response?: string;
-    prompt_hash?: string;
-    active: boolean;
-    actor: string;
-  }) => Promise<void>;
-  history: Array<HistoryRequest>;
-  loadingHistory: boolean;
-  historyError: string | null;
-  metrics: PrimarySectionProps["metricsProps"]["metrics"];
-  metricsLoading: boolean;
-  successRate: number | null;
-  tasksCreated: number;
-  queue: PrimarySectionProps["metricsProps"]["queue"];
-  feedbackScore: number | null;
-  feedbackUp: number;
-  feedbackDown: number;
-  tokenMetricsLoading: boolean;
-  tokenSplits: Array<{ label: string; value: number }>;
-  tokenHistory: TokenSample[];
-  tokenTrendDelta: number;
-  tokenTrendLabel: string;
-  totalTokens: number;
-  telemetryFeed: Array<{ id: string; type: string; message: string; timestamp: string; tone: "success" | "warning" | "danger" | "neutral" }>;
-  usageMetrics: Record<string, number> | null;
-  cpuUsageValue: number | null;
-  gpuUsageValue: number | null;
-  ramValue: number | null;
-  vramValue: number | null;
-  diskValue: number | null;
-  diskPercent: number | null;
-  sessionCostValue: number | null;
-  graphNodes: string | number;
-  graphEdges: string | number;
-  agentDeck: Array<{ label: string; value: string }>;
-  queueLoading: boolean;
-  queueAction: string | null;
-  queueActionMessage: string | null;
-  onToggleQueue: () => void;
-  onExecuteQueueMutation: (action: "purge" | "emergency") => Promise<void>;
-  historyStatusEntries: Array<{ label: string; value: number }>;
-  learningLogs: LearningLogsResponse | null;
-  learningLoading: boolean;
-  learningError: string | null;
-  feedbackLogs: FeedbackLogsResponse | null;
-  feedbackLoading: boolean;
-  feedbackError: string | null;
-  services: Array<{ name: string; status: ServiceStatus }>;
-  entries: Array<{ id: string; payload: unknown; timestamp: string }>;
-  newMacro: { label: string; description: string; content: string };
-  setNewMacro: (value: { label: string; description: string; content: string }) => void;
-  customMacros: Array<{ id: string; label: string; description: string; content: string; type?: "system" | "user" }>;
-  setCustomMacros: (value: Array<any>) => void;
-  allMacros: Array<{ id: string; label: string; description: string; content: string; type?: "system" | "user" }>;
-  macroSending: string | null;
-  onRunMacro: (macro: any) => void;
-  onAddMacro: () => void;
-  onDeleteMacro: (id: string) => void;
-  onClearMacros: () => void;
-  detailOpen: boolean;
-  setDetailOpen: (value: boolean) => void;
-  onCloseDetail: () => void;
-  historyDetail: HistoryRequestDetail | null;
-  selectedTask: Task | null;
-  uiTimingEntry: Record<string, number> | undefined;
-  llmStartAt: string | null;
-  payloadSessionMeta: Record<string, unknown> | undefined;
-  payloadForcedRoute: Record<string, unknown> | undefined;
-  payloadGenerationParams: Record<string, unknown> | undefined;
-  payloadContextUsed: Record<string, unknown> | undefined;
-  contextPreviewMeta: { preview?: string | null; truncated?: boolean | null; hiddenPrompts?: number | null; mode?: string | null } | null;
-  copyStepsMessage: string | null;
-  onCopyDetailSteps: () => void;
-  t: (key: string, replacements?: Record<string, string | number>) => string;
-  tuningOpen: boolean;
-  setTuningOpen: (value: boolean) => void;
-  loadingSchema: boolean;
-  modelSchema: GenerationSchema | null;
-  generationParams: GenerationParams | null;
-  onChangeGenerationParams: (values: Record<string, unknown>) => void;
-  onResetGenerationParams: () => void;
-  tuningSaving: boolean;
-  onApplyTuning: () => void;
-};
 
-export function useCockpitSectionProps({
-  chatFullscreen,
-  setChatFullscreen,
-  showArtifacts,
-  showReferenceSections,
-  showSharedSections,
-  labMode,
-  responseBadgeTone,
-  responseBadgeTitle,
-  responseBadgeText,
-  chatMessages,
-  selectedRequestId,
-  historyLoading,
-  feedbackByRequest,
-  feedbackSubmittingId,
-  onOpenRequestDetail,
-  onFeedbackClick,
-  onFeedbackSubmit,
-  onUpdateFeedbackState,
-  chatScrollRef,
-  onChatScroll,
-  composerRef,
-  onSend,
-  sending,
-  chatMode,
-  setChatMode,
-  setLabMode,
-  selectedLlmServer,
-  llmServerOptions,
-  setSelectedLlmServer,
-  selectedLlmModel,
-  llmModelOptions,
-  setSelectedLlmModel,
-  onActivateModel,
-  hasModels,
-  onOpenTuning,
-  tuningLabel,
-  quickActionsOpen,
-  setQuickActionsOpen,
-  message,
-  promptPresets,
-  onSuggestionClick,
-  llmServersLoading,
-  llmServers,
-  llmServerOptionsPanel,
-  llmModelOptionsPanel,
-  availableModelsForServer,
-  selectedServerEntry,
-  resolveServerStatus,
-  sessionId,
-  memoryAction,
-  onSessionReset,
-  onServerSessionReset,
-  onClearSessionMemory,
-  onClearGlobalMemory,
-  activeServerInfo,
-  activeServerName,
-  llmActionPending,
-  onActivateServer,
-  connected,
-  logFilter,
-  onLogFilterChange,
-  logEntries,
-  pinnedLogs,
-  onTogglePin,
-  exportingPinned,
-  onExportPinnedLogs,
-  onClearPinnedLogs,
-  tasksPreview,
-  hiddenScoreFilter,
-  hiddenIntentFilter,
-  onHiddenIntentFilterChange,
-  onHiddenScoreFilterChange,
-  hiddenIntentOptions,
-  selectableHiddenPrompts,
-  activeHiddenKeys,
-  activeHiddenMap,
-  activeForIntent,
-  hiddenPrompts,
-  hiddenLoading,
-  hiddenError,
-  activeHiddenLoading,
-  activeHiddenError,
-  onSetActiveHiddenPrompt,
-  history,
-  loadingHistory,
-  historyError,
-  metrics,
-  metricsLoading,
-  successRate,
-  tasksCreated,
-  queue,
-  feedbackScore,
-  feedbackUp,
-  feedbackDown,
-  tokenMetricsLoading,
-  tokenSplits,
-  tokenHistory,
-  tokenTrendDelta,
-  tokenTrendLabel,
-  totalTokens,
-  telemetryFeed,
-  usageMetrics,
-  cpuUsageValue,
-  gpuUsageValue,
-  ramValue,
-  vramValue,
-  diskValue,
-  diskPercent,
-  sessionCostValue,
-  graphNodes,
-  graphEdges,
-  agentDeck,
-  queueLoading,
-  queueAction,
-  queueActionMessage,
-  onToggleQueue,
-  onExecuteQueueMutation,
-  historyStatusEntries,
-  learningLogs,
-  learningLoading,
-  learningError,
-  feedbackLogs,
-  feedbackLoading,
-  feedbackError,
-  services,
-  entries,
-  newMacro,
-  setNewMacro,
-  customMacros,
-  setCustomMacros,
-  allMacros,
-  macroSending,
-  onRunMacro,
-  detailOpen,
-  setDetailOpen,
-  onCloseDetail,
-  historyDetail,
-  selectedTask,
-  uiTimingEntry,
-  llmStartAt,
-  payloadSessionMeta,
-  payloadForcedRoute,
-  payloadGenerationParams,
-  payloadContextUsed,
-  contextPreviewMeta,
-  copyStepsMessage,
-  onCopyDetailSteps,
-  feedbackByRequest: detailFeedbackByRequest,
-  feedbackSubmittingId: detailFeedbackSubmittingId,
-  onFeedbackSubmit: onFeedbackSubmitDetail,
-  onUpdateFeedbackState: onUpdateFeedbackStateDetail,
-  t,
-  tuningOpen,
-  setTuningOpen,
-  loadingSchema,
-  modelSchema,
-  generationParams,
-  onChangeGenerationParams,
-  onResetGenerationParams,
-  tuningSaving,
-  onApplyTuning,
-  onAddMacro,
-  onDeleteMacro,
-  onClearMacros,
-}: CockpitSectionPropsInput) {
+export function useCockpitSectionProps() {
+  const { data, interactive, layout, logic, chatScrollRef } = useCockpitContext();
+
+  const {
+    chatFullscreen,
+    setChatFullscreen,
+    showArtifacts,
+    showReferenceSections,
+    showSharedSections,
+    labMode,
+    setLabMode,
+    detailOpen,
+    setDetailOpen,
+    quickActionsOpen,
+    setQuickActionsOpen,
+    tuningOpen,
+    setTuningOpen,
+    exportingPinned,
+  } = layout;
+
+  const {
+    state: {
+      chatMode,
+      sending,
+      message,
+      llmActionPending,
+      selectedLlmServer,
+      selectedLlmModel,
+      historyDetail,
+      loadingHistory: historyLoading,
+      historyError,
+      pinnedLogs,
+      logFilter,
+      selectedRequestId,
+      selectedTask,
+      copyStepsMessage,
+      feedbackByRequest,
+      feedbackSubmittingId,
+      generationParams,
+      modelSchema,
+      loadingSchema,
+      tuningSaving,
+    },
+    setters: {
+      setChatMode,
+      setSelectedLlmServer,
+      setSelectedLlmModel,
+    },
+  } = interactive;
+
+  const onOpenRequestDetail = logic.requestDetail.openRequestDetail;
+  const onFeedbackClick = logic.chatUi.handleFeedbackClick;
+  const onFeedbackSubmit = logic.chatUi.handleFeedbackSubmit;
+  const onUpdateFeedbackState = logic.chatUi.updateFeedbackState;
+  const onChangeGenerationParams = useCallback((vals: Record<string, unknown>) => interactive.setters.setGenerationParams(vals as Partial<GenerationParams>), [interactive.setters]);
+  const handleActivateModel = logic.handleActivateModel;
+
+  const composerRef = logic.chatUi.composerRef;
+  const onSend = useCallback(async (txt: string) => { logic.chatUi.handleSend(txt); return true; }, [logic.chatUi]);
+  const onActivateModel = useCallback((model: string) => handleActivateModel(model), [handleActivateModel]);
+
+  const llmServerOptions = useMemo(() => data.llmServers?.map(s => ({ label: s.name, value: s.name })) || [], [data.llmServers]);
+  const llmModelOptions = useMemo(() => data.models?.models
+    ?.filter(m => !selectedLlmServer || m.provider === selectedLlmServer)
+    ?.map(m => ({ label: m.name, value: m.name })) || [], [data.models?.models, selectedLlmServer]);
+  const hasModels = useMemo(() => ((data.models?.models?.length ?? 0) > 0), [data.models?.models]);
+
+  const onOpenTuning = logic.chatUi.handleOpenTuning;
+  const tuningLabel = "Strojenie";
+
+  const onSuggestionClick = logic.chatUi.handleSuggestionClick;
+
+  const llmServersLoading = data.loading.llmServers;
+  const llmServers = useMemo(() => data.llmServers || [], [data.llmServers]);
+  const llmServerOptionsPanel = llmServerOptions;
+  const llmModelOptionsPanel = llmModelOptions;
+
+  const availableModelsForServer = useMemo(() => data.models?.models
+    ?.filter(m => !selectedLlmServer || m.provider === selectedLlmServer)
+    ?.map(m => ({ name: m.name })) || [], [data.models?.models, selectedLlmServer]);
+
+  const selectedServerEntry = useMemo(() => data.llmServers?.find(s => s.name === selectedLlmServer) || null, [data.llmServers, selectedLlmServer]);
+
+  const resolveServerStatus = useCallback((name?: string, fallback?: string | null) => {
+    const s = data.llmServers.find(server => server.name === name);
+    return s?.status || fallback || "unknown";
+  }, [data.llmServers]);
+
+  const sessionId = logic.sessionId || "";
+  const memoryAction = interactive.state.memoryAction;
+
+  const onSessionReset = logic.sessionActions.handleSessionReset;
+  const onServerSessionReset = logic.sessionActions.handleServerSessionReset;
+  const onClearSessionMemory = logic.sessionActions.handleClearSessionMemory;
+  const onClearGlobalMemory = logic.sessionActions.handleClearGlobalMemory;
+
+  const activeServerInfo = data.activeServerInfo;
+  const activeServerName = data.activeServerInfo?.active_server || "unknown";
+
+  const onActivateServer = useCallback(() => {
+    if (interactive.state.selectedLlmModel) {
+      handleActivateModel(interactive.state.selectedLlmModel);
+    }
+  }, [interactive.state.selectedLlmModel, handleActivateModel]);
+
+  const connected = logic.telemetry.connected;
+
+  const onLogFilterChange = interactive.setters.setLogFilter;
+  const logEntries = logic.telemetry.entries;
+  const onTogglePin = useCallback((entryId: string) => {
+    interactive.setters.setPinnedLogs((prev: LogEntryType[]) => {
+      if (prev.some(entry => entry.id === entryId)) {
+        return prev.filter(entry => entry.id !== entryId);
+      }
+      const entryToAdd = logEntries.find(e => e.id === entryId);
+      if (entryToAdd) {
+        return [...prev, entryToAdd];
+      }
+      return prev;
+    });
+  }, [interactive.setters, logEntries]);
+  const onExportPinnedLogs = logic.chatUi.handleExportPinnedLogs;
+  const onClearPinnedLogs = useMemo(() => () => interactive.setters.setPinnedLogs([]), [interactive.setters]);
+
+  const tasksPreview = (data.tasks || []).slice(0, 4);
+
+  const hiddenScoreFilter = logic.hiddenState.score;
+  const hiddenIntentFilter = logic.hiddenState.filter;
+  const onHiddenIntentFilterChange = logic.hiddenState.setFilter;
+  const onHiddenScoreFilterChange = logic.hiddenState.setScore;
+  const hiddenIntentOptions = logic.hiddenState.hiddenIntentOptions;
+  const selectableHiddenPrompts = useMemo(() => logic.hiddenState.selectableHiddenPrompts || [], [logic.hiddenState.selectableHiddenPrompts]);
+  const activeHiddenKeys = logic.hiddenState.activeHiddenKeys;
+  const activeHiddenMap = logic.hiddenState.activeHiddenMap;
+  const activeForIntent = logic.hiddenState.activeForIntent || null;
+  const hiddenPrompts = logic.hiddenState.hiddenPrompts || null;
+  const hiddenLoading = false;
+  const hiddenError = null;
+  const activeHiddenLoading = false;
+  const activeHiddenError = null;
+  const onSetActiveHiddenPrompt = logic.hiddenState.onSetActiveHiddenPrompt;
+
+  const history = useMemo(() => data.history || [], [data.history]);
+
+  const metrics = data.metrics;
+  const metricsLoading = data.loading.metrics;
+  const successRate = data.metrics?.tasks?.success_rate ?? 0;
+  const tasksCreated = data.metrics?.tasks?.created ?? 0;
+  const queue = data.queue;
+  const feedbackScore = ((data.metrics?.feedback?.up ?? 0) + (data.metrics?.feedback?.down ?? 0)) > 0
+    ? Math.round(((data.metrics?.feedback?.up ?? 0) / ((data.metrics?.feedback?.up ?? 0) + (data.metrics?.feedback?.down ?? 0))) * 100)
+    : 0;
+  const feedbackUp = data.metrics?.feedback?.up ?? 0;
+  const feedbackDown = data.metrics?.feedback?.down ?? 0;
+
+  const tokenMetricsLoading = data.loading.tokenMetrics;
+  const tokenSplits = logic.metricsDisplay.tokenSplits;
+  const tokenHistory = logic.metricsDisplay.tokenHistory;
+  const tokenTrendDelta = 0;
+  const tokenTrendLabel = "vs 1h";
+  const totalTokens = data.tokenMetrics?.total_tokens || 0;
+
+  const telemetryFeed = logic.telemetry.entries.map(e => ({
+    id: e.id,
+    timestamp: new Date(e.ts).toISOString(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tone: (e.payload as any)?.tone || "neutral",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type: (e.payload as any)?.type || "info",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    message: (e.payload as any)?.message || "",
+  }));
+
+  const usageMetrics = data.modelsUsageResponse?.usage || null;
+  const cpuUsageValue = data.modelsUsageResponse?.usage?.cpu_usage_percent || 0;
+  const gpuUsageValue = data.modelsUsageResponse?.usage?.gpu_usage_percent || 0;
+  const ramValue = data.modelsUsageResponse?.usage?.memory_used_gb || 0;
+  const vramValue = data.modelsUsageResponse?.usage?.vram_usage_mb || 0;
+  const diskValue = data.modelsUsageResponse?.usage?.disk_usage_gb || 0;
+  const diskPercent = data.modelsUsageResponse?.usage?.disk_usage_percent || 0;
+  const sessionCostValue = data.tokenMetrics?.session_cost_usd || 0;
+  const graphNodes = (data.graph?.nodes ?? data.graph?.summary?.nodes ?? 0).toString();
+  const graphEdges = (data.graph?.edges ?? data.graph?.summary?.edges ?? 0).toString();
+
+  const agentDeck = (data.services || []).map(s => ({
+    label: s.name,
+    value: s.detail || s.description || s.type || "Service",
+  }));
+
+  const queueLoading = data.loading.queue;
+  const queueAction = logic.queue.queueAction;
+  const queueActionMessage = logic.queue.queueActionMessage;
+  const onToggleQueue = logic.queue.onToggleQueue;
+  const onExecuteQueueMutation = logic.queue.onExecuteQueueMutation;
+
+  const historyStatusEntries = logic.metricsDisplay.historyStatusEntries;
+
+  const learningLogs = data.learningLogs || null;
+  const learningLoading = data.loading.learning;
+  const learningError = null;
+
+  const feedbackLogs = data.feedbackLogs || null;
+  const feedbackLoading = data.loading.feedback;
+  const feedbackError = null;
+
+  const services = data.services || [];
+  const entries = logic.telemetry.entries;
+
+  const {
+    newMacro,
+    setNewMacro,
+    customMacros,
+    allMacros,
+    macroSending,
+    onRunMacro,
+    setCustomMacros,
+  } = logic.macros;
+
+  const onCloseDetail = () => setDetailOpen(false);
+
+  const uiTimingEntry = undefined;
+  const llmStartAt = null;
+  const payloadSessionMeta = undefined;
+  const payloadForcedRoute = undefined;
+  const payloadGenerationParams = undefined;
+  const payloadContextUsed = historyDetail?.context_used as ContextUsed | undefined;
+
+  const contextPreviewMeta = logic.requestDetail.contextPreviewMeta || null;
+  const onCopyDetailSteps = logic.requestDetail.handleCopyDetailSteps;
+
+  const detailFeedbackByRequest = feedbackByRequest;
+  const detailFeedbackSubmittingId = feedbackSubmittingId;
+  const onFeedbackSubmitDetail = onFeedbackSubmit;
+
+  // Use useTranslation from i18n
+  // note: CockpitHome used const t = useTranslation();
+  // We can import it here as we are a hook.
+  const t = useTranslation();
+
+  const onResetGenerationParams = () => interactive.setters.setGenerationParams(null);
+  const onApplyTuning = logic.chatUi.handleApplyTuning;
+
+  const responseBadgeTone = logic.chatUi.responseBadgeTone;
+  const responseBadgeTitle = logic.chatUi.responseBadgeTitle;
+  const responseBadgeText = logic.chatUi.responseBadgeText;
+  const chatMessages = logic.chatUi.chatMessages || logic.historyMessages;
+  const onChatScroll = logic.chatUi.handleChatScroll;
+  const promptPresets = PROMPT_PRESETS;
+
+  // --- Sub-props construction ---
+
   const chatThreadProps = useMemo(() => ({
     chatMessages,
     selectedRequestId,
@@ -515,22 +425,23 @@ export function useCockpitSectionProps({
   ]);
 
   const historyPanelProps = useMemo(() => ({
-    history: history as HistoryRequest[],
+    history: history,
     selectedRequestId,
     onSelect: (entry: HistoryRequest) =>
       onOpenRequestDetail(entry.request_id, entry.prompt),
-    loadingHistory,
+    loadingHistory: historyLoading,
     historyError,
   }), [
     history,
     historyError,
-    loadingHistory,
+    historyLoading,
     onOpenRequestDetail,
     selectedRequestId,
   ]);
 
   const metricsProps = useMemo(() => ({
-    metrics,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    metrics: metrics as any,
     metricsLoading,
     successRate,
     tasksCreated,
@@ -592,7 +503,7 @@ export function useCockpitSectionProps({
       historyStatusEntries,
       selectedRequestId,
       onSelectHistory: (entry) => onOpenRequestDetail(entry.request_id, entry.prompt),
-      loadingHistory,
+      loadingHistory: historyLoading,
       historyError,
       learningLogs,
       learningLoading,
@@ -602,14 +513,13 @@ export function useCockpitSectionProps({
       feedbackError,
       hiddenPromptsPanel: createElement(CockpitHiddenPromptsPanel, hiddenPromptsPanelProps),
       services: services.map(s => typeof s.status === 'string' ? { name: s.name, status: s.status } as ServiceStatus : s.status),
-      entries: entries.map(e => ({ id: e.id, payload: e.payload, ts: new Date(e.timestamp).getTime() })),
+      entries: entries.map(e => ({ id: e.id, payload: e.payload, ts: e.ts })),
       newMacro,
       setNewMacro,
       customMacros,
       setCustomMacros,
       allMacros,
       macroSending,
-
       onRunMacro,
       onOpenQuickActions: () => setQuickActionsOpen(true),
     },
@@ -618,7 +528,7 @@ export function useCockpitSectionProps({
       onOpenChange: setDetailOpen,
       onClose: onCloseDetail,
       historyDetail,
-      loadingHistory,
+      loadingHistory: historyLoading,
       historyError,
       selectedRequestId,
       selectedTask,
@@ -633,8 +543,10 @@ export function useCockpitSectionProps({
       onCopyDetailSteps,
       feedbackByRequest: detailFeedbackByRequest,
       feedbackSubmittingId: detailFeedbackSubmittingId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onFeedbackSubmit: onFeedbackSubmitDetail as any,
-      onUpdateFeedbackState: onUpdateFeedbackStateDetail as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onUpdateFeedbackState: onUpdateFeedbackState as any,
       t,
     },
     tuningDrawerProps: {

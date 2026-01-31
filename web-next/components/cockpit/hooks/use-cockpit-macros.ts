@@ -94,7 +94,7 @@ export function useCockpitMacros(
             try {
                 await onSend(macro.content);
                 pushToast(`Uruchomiono makro: ${macro.label}`, "info");
-            } catch (err) {
+            } catch {
                 pushToast("Błąd uruchamiania makra", "error");
             } finally {
                 setMacroSending(null);
@@ -142,6 +142,7 @@ export function useCockpitMacros(
         onRunMacro: handleRunMacro,
         onAddMacro: handleAddMacro,
         onDeleteMacro: handleDeleteMacro,
-        onClearMacros: handleClearMacros
+        onClearMacros: handleClearMacros,
+        setCustomMacros
     };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
@@ -34,7 +34,10 @@ import {
     useSessionHistory,
     useHiddenPrompts,
     useActiveHiddenPrompts,
+    setActiveHiddenPrompt,
 } from "@/hooks/use-api";
+
+import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
 
 import { useCockpitData } from "./use-cockpit-data";
 import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
@@ -67,15 +70,14 @@ export function useCockpitLogic(
         setQueueAction(action);
         setQueueActionMessage(null);
         try {
-            const res = action === "purge" ? await purgeQueue() : await emergencyStop();
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const anyRes = res as any;
-            if (action === "emergency") {
-                setQueueActionMessage(
-                    `Zatrzymano zadania: cancelled ${anyRes.cancelled}, purged ${anyRes.purged}.`
-                );
-            } else {
+            if (action === "purge") {
+                await purgeQueue();
                 setQueueActionMessage("Kolejka została wyczyszczona.");
+            } else {
+                const res = await emergencyStop();
+                setQueueActionMessage(
+                    `Zatrzymano zadania: cancelled ${res.cancelled}, purged ${res.purged}.`
+                );
             }
             data.refresh.queue();
             data.refresh.tasks();
@@ -144,10 +146,12 @@ export function useCockpitLogic(
 
     const {
         data: hiddenPrompts,
+        refresh: refreshHiddenPrompts,
     } = useHiddenPrompts(6, 20000, hiddenIntentParam, hiddenScoreFilter);
 
     const {
         data: activeHiddenPrompts,
+        refresh: refreshActiveHiddenPrompts,
     } = useActiveHiddenPrompts(hiddenIntentParam, 20000);
 
     const hiddenState = useHiddenPromptState({
@@ -184,8 +188,7 @@ export function useCockpitLogic(
 
         const activeStreams = Object.values(taskStreams) as { status: string }[];
         const hasActive = activeStreams.some(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (s: any) => s.status === "processing" || s.status === "pending"
+            (s) => s.status === "processing" || s.status === "pending"
         );
         if (!hasActive && activeStreams.length > 0) {
             // Just finished?
@@ -256,19 +259,20 @@ export function useCockpitLogic(
                 });
             }
         });
-    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory]);
+    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
 
     // Sync feedback from history to local state
     useEffect(() => {
-        const updates: Record<string, any> = {};
+        interface FeedbackValue { rating?: "up" | "down" | null; comment?: string }
+        const updates: Record<string, FeedbackValue> = {};
 
         // 1. From history list
         if (data.history) {
-            data.history.forEach((item: any) => {
+            data.history.forEach((item) => {
                 if (item.feedback && item.request_id) {
                     updates[item.request_id] = {
-                        rating: item.feedback.rating,
-                        comment: item.feedback.comment
+                        rating: item.feedback.rating as "up" | "down",
+                        comment: item.feedback.comment ?? undefined
                     };
                 }
             });
@@ -278,8 +282,8 @@ export function useCockpitLogic(
         const detail = interactive.state.historyDetail;
         if (detail && detail.feedback && detail.request_id) {
             updates[detail.request_id] = {
-                rating: detail.feedback.rating,
-                comment: detail.feedback.comment
+                rating: detail.feedback.rating as "up" | "down",
+                comment: detail.feedback.comment ?? undefined
             };
         }
 
@@ -322,11 +326,10 @@ export function useCockpitLogic(
     const historyMessages = useMemo(() => {
         const resolvedHistory =
             localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
-        let deduped: any[] = [];
+        let deduped: SessionHistoryEntry[] = [];
 
         if (resolvedHistory.length > 0) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const seenMap = new Map<string, any>();
+            const seenMap = new Map<string, SessionHistoryEntry>();
             resolvedHistory.forEach((entry) => {
                 const key = sessionEntryKey(entry);
                 const existing = seenMap.get(key);
@@ -406,7 +409,7 @@ export function useCockpitLogic(
             };
         });
 
-    }, [localSessionHistory, sessionHistory, sessionEntryKey, taskStreams]);
+    }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey]);
 
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed
@@ -429,10 +432,9 @@ export function useCockpitLogic(
         language: language ?? "pl",
         resetSession,
         refreshActiveServer: data.refresh.activeServer,
-        setActiveLlmRuntime: setActiveLlmRuntime as any,
+        setActiveLlmRuntime: setActiveLlmRuntime,
         sendSimpleChatStream,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        sendTask: sendTask as any, // Cast
+        sendTask: sendTask, // No cast
         ingestMemoryEntry,
         refreshQueue: data.refresh.queue,
         refreshSessionHistory,
@@ -450,8 +452,7 @@ export function useCockpitLogic(
         setLastResponseDurationMs: interactive.setters.setLastResponseDurationMs,
         setResponseDurations: interactive.setters.setResponseDurations,
         models: data.models,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fetchModelConfig: fetchModelConfig as any, // Cast
+        fetchModelConfig: fetchModelConfig,
         updateModelConfig,
         setTuningOpen: layout.setTuningOpen, // Layout state!
         setLoadingSchema: interactive.setters.setLoadingSchema,
@@ -517,7 +518,13 @@ export function useCockpitLogic(
                 (s.details && (s.details.includes("hidden_prompts") || s.details.includes("hiddenPrompts")))
             );
 
-            let meta: any = null;
+            interface ContextPreviewMeta {
+                preview: string | null;
+                truncated: boolean;
+                hiddenPrompts: number | null;
+                mode: string | null;
+            }
+            let meta: ContextPreviewMeta | null = null;
 
             if (contextStep?.details) {
                 const details = contextStep.details.trim();
@@ -531,7 +538,7 @@ export function useCockpitLogic(
                             hiddenPrompts: parsed.hidden_prompts_count ?? null,
                             mode: parsed.mode ?? null
                         };
-                    } catch (e) { }
+                    } catch { }
                 }
 
                 if (!meta) {
@@ -570,7 +577,7 @@ export function useCockpitLogic(
                                 hiddenPrompts: null,
                                 mode: null
                             };
-                        } catch (e) { }
+                        } catch { }
                     }
                     if (!meta) {
                         const promptMatch = details.match(/(?:prompt|payload|input)=([\s\S]*?)(?:$|\s\w+=)/);
@@ -591,7 +598,7 @@ export function useCockpitLogic(
                 const hiddenMatch = hiddenStep.details.match(/hidden_prompts:?\s*(\d+)/i) ||
                     hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
                 if (hiddenMatch) {
-                    if (!meta) meta = { preview: null, truncated: false, mode: null };
+                    if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
                     meta.hiddenPrompts = parseInt(hiddenMatch[1], 10);
                 }
             }
@@ -600,6 +607,15 @@ export function useCockpitLogic(
         }
         return null;
     }, [interactive.state.selectedTask, interactive.state.historyDetail]);
+
+    const handleSetActiveHiddenPrompt = useCallback(async (payload: Parameters<typeof setActiveHiddenPrompt>[0]) => {
+        try {
+            await setActiveHiddenPrompt(payload);
+            refreshActiveHiddenPrompts();
+        } catch (e) {
+            console.error("Failed to set active hidden prompt:", e);
+        }
+    }, [refreshActiveHiddenPrompts]);
 
     const handleActivateModel = async (model: string) => {
         interactive.setters.setSelectedLlmModel(model);
@@ -656,10 +672,9 @@ export function useCockpitLogic(
             setScore: setHiddenScoreFilter,
             hiddenPrompts, // Exposed
             activeHiddenPrompts, // Exposed
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            refreshHiddenPrompts: () => { }, // Placeholder or fetch from useHiddenPrompts if available
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            refreshActiveHiddenPrompts: () => { }, // Placeholder
+            onSetActiveHiddenPrompt: handleSetActiveHiddenPrompt,
+            refreshHiddenPrompts,
+            refreshActiveHiddenPrompts,
         },
         historyMessages,
         chatUi,

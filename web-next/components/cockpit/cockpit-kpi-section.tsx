@@ -8,6 +8,7 @@ import { TokenChart } from "@/components/cockpit/token-chart";
 import type { TokenSample } from "@/components/cockpit/token-types";
 import { Bot } from "lucide-react";
 import { memo, useEffect, useState } from "react";
+import type { Metrics } from "@/lib/types";
 
 type QueueSnapshot = {
   active?: number | null;
@@ -15,7 +16,7 @@ type QueueSnapshot = {
 };
 
 type CockpitKpiSectionProps = {
-  metrics: Record<string, any> | null;
+  metrics: Metrics | null;
   metricsLoading: boolean;
   successRate: number | null;
   tasksCreated: number;
@@ -137,8 +138,8 @@ export function CockpitKpiSection({
                 }
                 progress={successRate}
                 footer={`Uptime: ${metrics?.uptime_seconds !== undefined
-                    ? formatUptime(metrics.uptime_seconds)
-                    : "—"
+                  ? formatUptime(metrics.uptime_seconds)
+                  : "—"
                   }`}
               />
             )}

@@ -3,11 +3,12 @@
 import { useState } from "react";
 import type {
     GenerationParams,
+    GenerationSchema,
     HistoryRequestDetail,
     Task,
 } from "@/lib/types";
 import { LogEntryType } from "@/lib/logs";
-import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
+
 import type { ChatMode } from "@/components/cockpit/cockpit-chat-thread";
 import { useOptimisticRequests } from "@/components/cockpit/cockpit-chat-hooks";
 

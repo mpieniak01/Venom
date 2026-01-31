@@ -4,7 +4,6 @@ import type {
     BenchmarkLog,
     BenchmarkModelResult,
     BenchmarkStatus,
-    BenchmarkResponse,
     BenchmarkStartResponse,
     BenchmarkStatusResponse,
 } from "@/lib/types";

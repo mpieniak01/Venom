@@ -213,7 +213,7 @@ export function CockpitRequestDetailDrawer({
       return { text: previewMatch[1].trim(), truncated: true };
     }
     return null;
-  }, [historyDetail?.steps]);
+  }, [historyDetail?.steps, historyDetail?.result]);
   const requestModeLabel = useMemo(() => {
     if (contextPreviewMeta?.mode === "direct") return "direct";
     if (contextPreviewMeta?.mode === "normal") return "normal";

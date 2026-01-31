@@ -586,6 +586,62 @@ class ModelRegistry:
             logger.warning(f"Nie udało się pobrać newsów HF: {e}")
             return {"items": [], "stale": True, "error": str(e)}
 
+    async def search_external_models(
+        self, provider: ModelProvider, query: str, limit: int = 20
+    ) -> Dict[str, Any]:
+        """Przeszukuje modele u zewnętrznego providera."""
+        try:
+            if not query or len(query) < 2:
+                return {"models": [], "count": 0}
+
+            if provider == ModelProvider.HUGGINGFACE:
+                models = await self.hf_client.search_models(query, limit)
+                # Mapowanie wyników HF na format katalogu
+                formatted = []
+                for item in models:
+                    model_id = item.get("modelId") or item.get("id")
+                    if not model_id:
+                        continue
+                    entry = self._format_catalog_entry(
+                        provider=ModelProvider.HUGGINGFACE,
+                        model_name=model_id,
+                        display_name=model_id.split("/")[-1],
+                        runtime="vllm",
+                        size_gb=None,
+                        tags=item.get("tags"),
+                        downloads=item.get("downloads"),
+                        likes=item.get("likes"),
+                    )
+                    entry["description"] = None
+                    formatted.append(entry)
+                return {"models": formatted, "count": len(formatted)}
+
+            elif provider == ModelProvider.OLLAMA:
+                raw_models = await self.ollama_catalog_client.search_models(
+                    query, limit
+                )
+                formatted = []
+                for item in raw_models:
+                    entry = self._format_catalog_entry(
+                        provider=ModelProvider.OLLAMA,
+                        model_name=item["name"],
+                        display_name=item["name"],
+                        runtime="ollama",
+                        size_gb=None,
+                        tags=[],
+                        downloads=None,
+                        likes=None,
+                    )
+                    entry["description"] = item.get("description")
+                    formatted.append(entry)
+                return {"models": formatted, "count": len(formatted)}
+
+            return {"models": [], "count": 0}
+
+        except Exception as e:
+            logger.error(f"Search failed for {provider}: {e}")
+            return {"models": [], "count": 0, "error": str(e)}
+
     async def _list_external_models(
         self, provider: ModelProvider, limit: int, mode: str
     ) -> Dict[str, Any]:

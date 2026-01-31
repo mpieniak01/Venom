@@ -211,7 +211,7 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
                 key={svc.name}
                 title={svc.name}
                 subtitle={t(svc.detail ?? "common.noDescription")}
-                badge={<Badge tone={toneFromStatus(svc.status)}>{t(svc.status)}</Badge>}
+                badge={<Badge tone={toneFromStatus(svc.status)}>{t(svc.status ? `common.${svc.status.toLowerCase()}` : "common.unknown")}</Badge>}
               />
             ))}
             {servicesOffline && (

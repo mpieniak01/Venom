@@ -113,6 +113,33 @@ Response:
 }
 ```
 
+#### Papers (HuggingFace Papers Month)
+
+```bash
+GET /api/v1/models/news?provider=huggingface&limit=5&type=papers&month=2025-12
+```
+
+Response:
+```json
+{
+  "success": true,
+  "provider": "huggingface",
+  "items": [
+    {
+      "title": "New paper",
+      "url": "https://huggingface.co/papers/2512.00001",
+      "summary": "Paper summary...",
+      "published_at": "2025-12-01T12:00:00.000Z",
+      "authors": ["Author 1", "Author 2"],
+      "source": "huggingface"
+    }
+  ],
+  "count": 1,
+  "stale": false,
+  "error": null
+}
+```
+
 #### Install a model
 
 ```bash
@@ -356,33 +383,6 @@ Notes:
 3. **Invalid data**
    - Send unsupported `target_lang` (e.g., `fr`).
    - Expected: HTTP 400 validation error.
-
-#### Papers (HuggingFace Papers Month)
-
-```bash
-GET /api/v1/models/news?provider=huggingface&limit=5&type=papers&month=2025-12
-```
-
-Response:
-```json
-{
-  "success": true,
-  "provider": "huggingface",
-  "items": [
-    {
-      "title": "New paper",
-      "url": "https://huggingface.co/papers/2512.00001",
-      "summary": "Paper summary...",
-      "published_at": "2025-12-01T12:00:00.000Z",
-      "authors": ["Author 1", "Author 2"],
-      "source": "huggingface"
-    }
-  ],
-  "count": 1,
-  "stale": false,
-  "error": null
-}
-```
 
 Switch runtime + activate model:
 

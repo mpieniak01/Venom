@@ -1,6 +1,6 @@
 # Venom v1.0 🐍
 
-> **[English Documentation](#-venom-v10-)** | **[Dokumentacja w języku polskim](README.md)**
+> **| [Dokumentacja w języku polskim](README_PL.md)**
 
 **Venom desktop version – meta-intelligence system** - Autonomous AI agent system with strategic planning layer and knowledge expansion.
 
@@ -599,7 +599,7 @@ make run
 
 ### Tools and Features
 - [Model Management](docs/MODEL_MANAGEMENT.md)
-- [LLM Model Tuning](docs/_done/072_strojenie_modelu_llm_ui.md)
+- [LLM Model Tuning](docs/MODEL_TUNING_GUIDE.md)
 - [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
 - [Dream Engine](docs/DREAM_ENGINE_GUIDE.md)
 - [Memory Layer](docs/MEMORY_LAYER_GUIDE.md)

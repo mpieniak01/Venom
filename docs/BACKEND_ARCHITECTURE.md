@@ -45,12 +45,11 @@ Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion
 - `venom_core/skills/custom/` – Directory for dynamically generated and utility skills.
 
 ## Related documentation (MCP)
-- `docs/en/DEV_GUIDE_SKILLS.md` – MCP import and Skills standards.
-- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
-- `docs/en/TREE.md` – repo structure and MCP directories.
+- `docs/DEV_GUIDE_SKILLS.md` – MCP import and Skills standards.
+- `docs/TREE.md` – repo structure and MCP directories.
 
 ## API Contracts
 Endpoint paths remain unchanged. Refactor concerns only code structure.
 
 ## Chat routing (consistency note)
-Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `docs/en/CHAT_SESSION.md`.
+Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `docs/CHAT_SESSION.md`.

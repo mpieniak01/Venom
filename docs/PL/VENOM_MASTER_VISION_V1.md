@@ -2,7 +2,7 @@
 # VENOM – MASTER VISION v1
 ## Meta-inteligencja lokalna. Jeden runtime. Jeden organizm.
 
-> **[English Version](en/VENOM_MASTER_VISION_V1.md)**
+> **[English Version](../VENOM_MASTER_VISION_V1.md)**
 
 ## 0. Wprowadzenie – Wizja Docelowa (Venom v2.0)
 > [!NOTE]

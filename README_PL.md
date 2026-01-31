@@ -1,6 +1,6 @@
 # Venom v1.0 🐍
 
-> **[English Documentation Available](docs/en/README.md)** | **[Dokumentacja w języku polskim](#-venom-v10-)**
+> **| [English Documentation Available](README.md)**
 
 **Venom wersja dekstop – system meta-inteligencji** - Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
 
@@ -138,9 +138,9 @@ Orchestrator (decyzja o przepływie)
 ## 🚀 Szybki start
 
 > 🔎 **Nowy dashboard web-next**
-> Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
-> Dokumentacja sesji chatu, trybów Direct/Normal/Complex i zachowania pamięci: `docs/CHAT_SESSION.md`.
-> Dokumentacja standardów Skills oraz importu MCP: `docs/DEV_GUIDE_SKILLS.md`.
+> Szczegółowy opis źródeł danych dla widoków Brain/Strategy oraz checklistę testów znajdziesz w `docs/PL/FRONTEND_NEXT_GUIDE.md`. Dokument definiuje też kryteria wejścia do kolejnego etapu prac nad UI.
+> Dokumentacja sesji chatu, trybów Direct/Normal/Complex i zachowania pamięci: `docs/PL/CHAT_SESSION.md`.
+> Dokumentacja standardów Skills oraz importu MCP: `docs/PL/DEV_GUIDE_SKILLS.md`.
 
 ## 🖥️ Frontend (Next.js – `web-next`)
 
@@ -175,7 +175,7 @@ NEXT_PUBLIC_WS_BASE=ws://localhost:8000/ws/events
 API_PROXY_TARGET=http://localhost:8000
 ```
 
-> Szczegóły (architektura katalogów, wytyczne dla SCC, źródła danych widoków) opisuje `docs/FRONTEND_NEXT_GUIDE.md`.
+> Szczegóły (architektura katalogów, wytyczne dla SCC, źródła danych widoków) opisuje `docs/PL/FRONTEND_NEXT_GUIDE.md`.
 
 Uwaga: Cockpit ma teraz dwa widoki — `/` (produkcyjny układ z wybranymi boxami) oraz `/chat` (referencyjna, pełna kopia wcześniejszego układu).
 
@@ -230,7 +230,7 @@ cp .env.example .env
 
 ## ⚙️ Uruchamianie (FastAPI + Next.js)
 
-Pełna lista kroków oraz checklisty wdrożeniowej znajduje się w [`docs/DEPLOYMENT_NEXT.md`](docs/DEPLOYMENT_NEXT.md). Poniżej skrót:
+Pełna lista kroków oraz checklisty wdrożeniowej znajduje się w [`docs/PL/DEPLOYMENT_NEXT.md`](docs/PL/DEPLOYMENT_NEXT.md). Poniżej skrót:
 
 ### Tryb developerski
 ```bash
@@ -410,8 +410,8 @@ ENABLE_ISSUE_POLLING=false          # Włącz automatyczne odpytywanie zgłosze�
 ```
 
 📖 **Pełna lista zmiennych:** [.env.example](.env.example)
-📖 **Dokumentacja integracji zewnętrznych:** [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md)
-📖 **Dokumentacja silnika hybrydowego AI:** [docs/HYBRID_AI_ENGINE.md](docs/HYBRID_AI_ENGINE.md)
+📖 **Dokumentacja integracji zewnętrznych:** [docs/PL/EXTERNAL_INTEGRATIONS.md](docs/PL/EXTERNAL_INTEGRATIONS.md)
+📖 **Dokumentacja silnika hybrydowego AI:** [docs/PL/HYBRID_AI_ENGINE.md](docs/PL/HYBRID_AI_ENGINE.md)
 
 ### Panel konfiguracji (UI)
 
@@ -609,47 +609,47 @@ make run
 ## 📖 Dokumentacja
 
 ### Architektura i Wizja
-- [Architektura systemu](docs/VENOM_MASTER_VISION_V1.md)
-- [Architektura backendu](docs/BACKEND_ARCHITECTURE.md)
-- [Architektura rozproszona (The Hive)](docs/THE_HIVE.md)
-- [System rozpoznawania intencji](docs/INTENT_RECOGNITION.md)
-- [Silnik hybrydowy AI](docs/HYBRID_AI_ENGINE.md)
+- [Architektura systemu](docs/PL/VENOM_MASTER_VISION_V1.md)
+- [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md)
+- [Architektura rozproszona (The Hive)](docs/PL/THE_HIVE.md)
+- [System rozpoznawania intencji](docs/PL/INTENT_RECOGNITION.md)
+- [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
 
 ### Agenci
-- [**Indeks wszystkich agentów** (34 agenty)](docs/AGENTS_INDEX.md) 📋
-- [The Architect - Planowanie](docs/THE_ARCHITECT.md)
-- [The Coder - Generowanie kodu](docs/THE_CODER.md)
-- [The Researcher - Wyszukiwanie wiedzy](docs/THE_RESEARCHER.md)
-- [The Chat - Asystent konwersacyjny](docs/THE_CHAT.md)
-- [The Strategist - Analiza złożoności](docs/THE_STRATEGIST.md) *(Przesunięte do v2.0)*
-- [The Critic - Weryfikacja kodu](docs/THE_CRITIC.md)
-- [The Librarian - Zarządzanie plikami](docs/THE_LIBRARIAN.md)
-- [The Integrator - Git & DevOps](docs/THE_INTEGRATOR.md)
-- [The Forge (Toolmaker) - Tworzenie narzędzi](docs/THE_FORGE.md)
+- [**Indeks wszystkich agentów** (34 agenty)](docs/PL/AGENTS_INDEX.md) 📋
+- [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md)
+- [The Coder - Generowanie kodu](docs/PL/THE_CODER.md)
+- [The Researcher - Wyszukiwanie wiedzy](docs/PL/THE_RESEARCHER.md)
+- [The Chat - Asystent konwersacyjny](docs/PL/THE_CHAT.md)
+- [The Strategist - Analiza złożoności](docs/PL/THE_STRATEGIST.md) *(Przesunięte do v2.0)*
+- [The Critic - Weryfikacja kodu](docs/PL/THE_CRITIC.md)
+- [The Librarian - Zarządzanie plikami](docs/PL/THE_LIBRARIAN.md)
+- [The Integrator - Git & DevOps](docs/PL/THE_INTEGRATOR.md)
+- [The Forge (Toolmaker) - Tworzenie narzędzi](docs/PL/THE_FORGE.md)
 
 ### Frontend i UI
-- [Frontend Next.js](docs/FRONTEND_NEXT_GUIDE.md)
-- [Panel konfiguracji](docs/CONFIG_PANEL.md)
-- [Dashboard](docs/DASHBOARD_GUIDE.md)
+- [Frontend Next.js](docs/PL/FRONTEND_NEXT_GUIDE.md)
+- [Panel konfiguracji](docs/PL/CONFIG_PANEL.md)
+- [Dashboard](docs/PL/DASHBOARD_GUIDE.md)
 
 ### Narzędzia i Funkcjonalności
-- [Zarządzanie modelami](docs/MODEL_MANAGEMENT.md)
-- [Strojenie modelu LLM](docs/_done/072_strojenie_modelu_llm_ui.md)
-- [Flow Inspector](docs/FLOW_INSPECTOR_GUIDE.md)
-- [Dream Engine](docs/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
-- [Process Engine](docs/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
-- [Warstwa pamięci](docs/MEMORY_LAYER_GUIDE.md)
-- [Google Search Grounding](docs/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
+- [Zarządzanie modelami](docs/PL/MODEL_MANAGEMENT.md)
+- [Strojenie modelu LLM](docs/PL/MODEL_TUNING_GUIDE.md)
+- [Flow Inspector](docs/PL/FLOW_INSPECTOR_GUIDE.md)
+- [Dream Engine](docs/PL/DREAM_ENGINE_GUIDE.md) *(Przesunięte do v2.0)*
+- [Process Engine](docs/PL/PROCESS_ENGINE_CONCEPT.md) *(Planowany dla v2.0)*
+- [Warstwa pamięci](docs/PL/MEMORY_LAYER_GUIDE.md)
+- [Google Search Grounding](docs/PL/GOOGLE_SEARCH_GROUNDING_INTEGRATION.md)
 
 ### DevOps i Deployment
-- [Deployment (Next.js)](docs/DEPLOYMENT_NEXT.md)
-- [Integracje zewnętrzne](docs/EXTERNAL_INTEGRATIONS.md)
-- [Guardian - Bezpieczeństwo](docs/GUARDIAN_GUIDE.md)
-- [QA Delivery](docs/QA_DELIVERY_GUIDE.md)
+- [Deployment (Next.js)](docs/PL/DEPLOYMENT_NEXT.md)
+- [Integracje zewnętrzne](docs/PL/EXTERNAL_INTEGRATIONS.md)
+- [Guardian - Bezpieczeństwo](docs/PL/GUARDIAN_GUIDE.md)
+- [QA Delivery](docs/PL/QA_DELIVERY_GUIDE.md)
 
 ### Współpraca
-- [Przewodnik współpracy](docs/CONTRIBUTING.md)
-- [Testowanie i wydajność](docs/TESTING_CHAT_LATENCY.md)
+- [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)
+- [Testowanie i wydajność](docs/PL/TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Testy
 
@@ -692,7 +692,7 @@ npm --prefix web-next run test:e2e:functional -- --workers=1
 
 ## 🔬 Testy i benchmarki
 
-Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md). Najważniejsze komendy:
+Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_LATENCY.md`](docs/PL/TESTING_CHAT_LATENCY.md). Najważniejsze komendy:
 
 ### Backend (FastAPI / agenci)
 - `pytest -q` — szybki test całego systemu.
@@ -789,7 +789,7 @@ takie jak `models/` i `models_cache/`.
 
 ## 🤝 Wkład w projekt
 
-Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/CONTRIBUTING.md), aby dowiedzieć się jak zacząć.
+Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/PL/CONTRIBUTING.md), aby dowiedzieć się jak zacząć.
 
 ### Proces współpracy
 
@@ -852,7 +852,7 @@ python examples/nexus_demo.py
 ```
 
 📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)
-📖 **Architektura Hive:** [docs/THE_HIVE.md](docs/THE_HIVE.md)
+📖 **Architektura Hive:** [docs/PL/THE_HIVE.md](docs/PL/THE_HIVE.md)
 
 ## 👥 Zespół
 

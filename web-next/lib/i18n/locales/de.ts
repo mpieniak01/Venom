@@ -316,7 +316,7 @@ export const de = {
           description: "Audio-Schnittstelle: Spracherkennung und Sprachsynthese",
         },
         shadowActions: {
-          foundProblem: "Shadow Agent: Problem gefunden, Korrektur vorgeschlagen ({{action_type}})",
+          foundProblem: "Shadow Agent: Problem gefunden, Korrektur vorgeschlagen ({{type}})",
         },
       },
       runtimeInfo: {

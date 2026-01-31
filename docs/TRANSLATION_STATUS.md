@@ -3,11 +3,12 @@
 ## Summary
 This document tracks the progress of translating Venom documentation from Polish to English.
 
-**Last Updated:** 2026-01-19
+**Last Updated:** 2026-01-31
 **Total Files:** 55 markdown files in `docs/`
+**Scope for translation tracking:** 54 files (excluding `TRANSLATION_STATUS.md` as an administrative file)
 
 
-## Completed Files (30)
+## Completed Files (54)
 
 ### From PR #223 (14 files):
 1. AGENTS_INDEX.md
@@ -62,23 +63,24 @@ This document tracks the progress of translating Venom documentation from Polish
 42. HYBRID_AI_ENGINE.md
 43. ORACLE_GRAPHRAG_GUIDE.md
 
-## Remaining Files (13)
+### Current session - priority system guides (7 files):
+44. GUARDIAN_GUIDE.md
+45. MEMORY_LAYER_GUIDE.md
+46. REQUEST_TRACING_GUIDE.md
+47. GOOGLE_SEARCH_GROUNDING_INTEGRATION.md
+48. KNOWLEDGE_HYGIENE.md
+49. MODEL_MANAGEMENT.md
+50. QA_DELIVERY_GUIDE.md
 
-### Priority 2 - System Guides (9 files):
-- DREAM_ENGINE_GUIDE.md
-- GOOGLE_SEARCH_GROUNDING_INTEGRATION.md
-- GUARDIAN_GUIDE.md
-- KNOWLEDGE_HYGIENE.md
-- MEMORY_LAYER_GUIDE.md
-- MODEL_MANAGEMENT.md
-- QA_DELIVERY_GUIDE.md
-- REQUEST_TRACING_GUIDE.md
+### Additional docs already in EN (not tied to a PR list):
+51. DEV_GUIDE_SKILLS.md
+52. DREAM_ENGINE_GUIDE.md
+53. PROCESS_ENGINE_CONCEPT.md
+54. SECURITY_FIXES.md
 
-### Priority 3 - Technical Reports (4 files):
-- GENERATION_PARAMS_EXECUTION.md
-- SKILLS_ENHANCEMENTS_SUMMARY.md
-- TECHNICAL_DEBT_ELIMINATION_REPORT.md
-- refactoring_report_config_centralization.md
+## Remaining Files (0)
+
+All remaining technical reports were removed (both PL and EN) per current documentation scope.
 
 ## Translation Guidelines
 
@@ -90,15 +92,4 @@ This document tracks the progress of translating Venom documentation from Polish
 
 ## Next Steps
 
-To complete the remaining 25 files:
-1. Prioritize agent documentation (THE_*.md files)
-2. Translate system guides
-3. Complete technical reports last
-4. Update cross-references between translated documents
-5. Final review for consistency
-
-## Related PRs
-
-- PR #223: Initial documentation translation (copilot/prepare-english-documentation)
-- PR #225: Continuation (copilot/finish-documentation-task)
-- Current: Final completion (copilot/finish-english-documentation-task)
+Translation tracking complete for the in-scope documentation set. Any future additions should be added here and assigned a translation status.

@@ -23,7 +23,7 @@ export function LogEntry({ entry, pinned, onPin }: LogEntryProps) {
       : JSON.stringify(payload, null, 2);
 
   // Próbujemy przetłumaczyć rawText jako klucz i18n
-  const text = t(rawText, logObj?.data as Record<string, string | number>);
+  const text = t(rawText, logObj?.data);
 
   const level = logObj?.level ? logObj.level.toUpperCase() : "INFO";
   const type = logObj?.type || "log";

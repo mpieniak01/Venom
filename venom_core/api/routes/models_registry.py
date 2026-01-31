@@ -112,6 +112,45 @@ async def list_trending_models(provider: str, limit: int = 12):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
+@router.get("/models/search")
+async def search_models(query: str, provider: str = "huggingface", limit: int = 10):
+    """
+    Wyszukuje modele w zewnetrznych repozytoriach.
+    """
+    model_registry = get_model_registry()
+    if model_registry is None:
+        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+
+    try:
+        from venom_core.core.model_registry import ModelProvider
+
+        try:
+            provider_enum = ModelProvider(provider.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"Nieprawidłowy provider: {provider}"
+            )
+
+        result = await model_registry.search_external_models(
+            provider=provider_enum, query=query, limit=limit
+        )
+        models = result.get("models", [])
+
+        return {
+            "success": True,
+            "provider": provider_enum.value,
+            "query": query,
+            "models": models,
+            "count": len(models),
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Błąd podczas wyszukiwania modeli: {exc}")
+        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+
+
 @router.get("/models/news")
 async def list_model_news(
     provider: str = "huggingface",

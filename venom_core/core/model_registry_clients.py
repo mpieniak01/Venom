@@ -25,9 +25,25 @@ class OllamaClient:
 
     async def list_tags(self) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{self.endpoint}/api/tags")
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = await client.get(f"{self.endpoint}/api/tags")
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.warning(f"Ollama list_tags filed: {e}")
+                return {"models": []}
+
+    async def search_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Przeszukuje modele na ollama.com (scraping)."""
+        url = "https://ollama.com/search"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(url, params={"q": query})
+                response.raise_for_status()
+                return _parse_ollama_search_html(response.text, limit)
+            except Exception as e:
+                logger.warning(f"Ollama search failed: {e}")
+                return []
 
     async def pull_model(
         self, model_name: str, progress_callback: Optional[Callable] = None
@@ -128,6 +144,32 @@ class HuggingFaceClient:
                 payload = response.json()
 
         return payload if isinstance(payload, list) else []
+
+    async def search_models(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        url = "https://huggingface.co/api/models"
+        headers: Dict[str, str] = {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(
+                    url,
+                    params={
+                        "search": query,
+                        "limit": limit,
+                        "sort": "downloads",
+                        "direction": -1,
+                        "filter": "text-generation",  # Filter for text gen models
+                    },
+                    headers=headers,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                return payload if isinstance(payload, list) else []
+            except Exception as e:
+                logger.warning(f"HF search failed: {e}")
+                return []
 
     async def fetch_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
         url = "https://huggingface.co/blog/feed.xml"
@@ -296,3 +338,67 @@ def _parse_hf_papers_html(payload: str, url: str, limit: int) -> List[Dict[str, 
             }
         )
     return items
+
+
+def _parse_ollama_search_html(payload: str, limit: int) -> List[Dict[str, Any]]:
+    """Parsuje wyniki wyszukiwania z ollama.com."""
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.error("Brak biblioteki bs4 (beautifulsoup4)")
+        return []
+
+    soup = BeautifulSoup(payload, "html.parser")
+    # Zakładamy, że wyniki są w liście <ul> -> <li>
+    # Struktura na dzień 2024:
+    # <li class="...">
+    #   <a href="/library/modelname">
+    #     <span class="...">modelname</span>
+    #     <span class="...">description</span>
+    #   </a>
+    # </li>
+
+    # Przystosowanie do potencjalnych zmian struktury - szukamy linków do /library/
+    results = []
+
+    seen = set()
+
+    # Znajdźmy kontener wyników (zazwyczaj główny content)
+    # create a resilient finder
+    anchors = soup.find_all("a", href=True)
+
+    for a in anchors:
+        href = str(a["href"])
+        if (
+            href.startswith("/library/") and len(href.split("/")) > 2
+        ):  # np /library/llama3
+            model_name = href.split("/")[-1]
+            if model_name in seen:
+                continue
+
+            # W aktualnym layout ollama.com, opis jest w <p> poniżej tytułu wewnątrz <a>
+            description = ""
+            desc_tag = a.find("p")
+            if desc_tag:
+                description = desc_tag.get_text(strip=True)
+            else:
+                # Fallback: tekst elementu minus nazwa
+                full_text = a.get_text(" ", strip=True)
+                if model_name in full_text:
+                    description = full_text.replace(model_name, "", 1).strip()
+
+            results.append(
+                {
+                    "name": model_name,
+                    "description": description,
+                    "provider": "ollama",
+                    "source": "ollama",
+                    "runtime": "ollama",
+                }
+            )
+            seen.add(model_name)
+
+            if len(results) >= limit:
+                break
+
+    return results

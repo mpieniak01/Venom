@@ -216,6 +216,9 @@ export type SessionHistoryEntry = {
   session_id?: string;
   request_id?: string;
   timestamp?: string;
+  pending?: boolean;
+  status?: string | null;
+  contextUsed?: any;
 };
 
 type SessionHistoryHookArgs = {
@@ -223,6 +226,16 @@ type SessionHistoryHookArgs = {
   sessionHistoryData?: { history?: SessionHistoryEntry[] } | null;
   refreshSessionHistory: () => void;
   refreshHistory: () => void;
+};
+
+export const sessionEntryKey = (entry: SessionHistoryEntry) => {
+  const role = entry.role ?? "user";
+  const requestId = entry.request_id ?? "no-request";
+  if (requestId !== "no-request") {
+    return `${requestId}:${role}`;
+  }
+  const content = entry.content ?? "";
+  return `no-request:${role}:${content}`;
 };
 
 export function useSessionHistoryState({
@@ -236,15 +249,8 @@ export function useSessionHistoryState({
     [sessionHistoryData],
   );
   const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
-  const sessionEntryKey = useCallback((entry: SessionHistoryEntry) => {
-    const role = entry.role ?? "user";
-    const requestId = entry.request_id ?? "no-request";
-    if (requestId !== "no-request") {
-      return `${requestId}:${role}`;
-    }
-    const content = entry.content ?? "";
-    return `no-request:${role}:${content}`;
-  }, []);
+  // Use exported version via closure or just use it directly
+  const entryKey = useCallback((entry: SessionHistoryEntry) => sessionEntryKey(entry), []);
   const lastSessionIdRef = useRef<string | null>(null);
   const [bootId, setBootId] = useState<string | null>(null);
   const sessionHistoryStorageKey =

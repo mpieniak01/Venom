@@ -693,7 +693,7 @@ such as `models/` and `models_cache/`.
 
 ## 🎯 Roadmap
 
-### ✅ v1.0 (current - Q4 2025)
+### ✅ v1.0 (current)
 - [x] Planning Layer (ArchitectAgent)
 - [x] Knowledge Expansion (ResearcherAgent + WebSearchSkill)
 - [x] Internet Integration
@@ -742,7 +742,7 @@ Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) to learn 
 
 ## 🌐 THE NEXUS: Distributed Architecture
 
-**NEW in v1.1!** Venom can now operate as a **Central Node (Nexus)** managing a swarm of remote instances ("Spores").
+**Experimental (v1.0.x):** Venom can operate as a **Central Node (Nexus)** managing a swarm of remote instances ("Spores"). Stabilization is planned for v1.1.
 
 ### Distributed mesh features:
 - 🔗 **Master-worker architecture** - Nexus (brain) + Spores (executors)

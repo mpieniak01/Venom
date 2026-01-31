@@ -128,7 +128,7 @@ Obsługa dwóch silników obliczeniowych:
 ### 3.7. Warstwa infrastruktury i kolejek (Infrastructure Layer)
 - **FastAPI + WebSocket** – publiczne API i strumieniowanie zdarzeń.
 - **Redis + ARQ (Hive Message Broker)** – kolejki zadań, broadcast i kontrola węzłów.
-- **Nexus/Spore** – opcjonalna warstwa rozproszona (tryb klastra).
+- **Nexus/Spore** – opcjonalna warstwa rozproszona (tryb klastra). Eksperymentalna w v1.0.x; stabilizacja planowana na v1.1.
 
 ## 4. Warstwa wiedzy zewnętrznej (External Knowledge Layer)
 Trzy źródła:

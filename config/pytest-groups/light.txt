@@ -180,3 +180,4 @@ tests/test_mcp_manager.py
 tests/test_api_caching.py
 tests/test_service_monitor_streaming.py
 tests/test_base_skill.py
+tests/test_model_discovery.py

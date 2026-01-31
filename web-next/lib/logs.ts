@@ -9,6 +9,7 @@ export type LogPayload = {
   level?: string;
   type?: string;
   details?: unknown;
+  data?: Record<string, string | number>;
 };
 
 export function isLogPayload(value: unknown): value is LogPayload {

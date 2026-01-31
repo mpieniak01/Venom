@@ -264,8 +264,19 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
             response_text = re.sub(r"```\s*", "", response_text)
 
             parsed = json.loads(response_text)
+
+            # Basic validation
+            valid_actions = self.ACTION_KEYWORDS.keys()
+            action = str(parsed.get("action", "unknown")).strip().lower()
+
+            if action not in valid_actions and action != "unknown":
+                logger.warning(
+                    f"LLM returned invalid action: {action}. Fallback to unknown."
+                )
+                action = "unknown"
+
             return Intent(
-                action=parsed.get("action", "unknown"),
+                action=action,
                 targets=parsed.get("targets", []),
                 params={},
             )
@@ -304,9 +315,10 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
                 if result:
                     return result
             except Exception as e:
-                logger.warning(
-                    f"Nie udało się wykonać na węźle zdalnym: {e}. Fallback do lokalnego wykonania."
+                logger.error(
+                    f"Błąd wykonania na węźle zdalnym: {e}. Zgodnie z polityką brak fallbacku lokalnego."
                 )
+                raise
 
         # Znajdź odpowiedniego agenta
         agent = self.agent_map.get(intent)
@@ -423,8 +435,24 @@ Jeśli nie ma ścieżek plików, zwróć pustą listę targets. Jeśli nie ma ja
         if skill_name == "ShellSkill":
             return {"command": content}
         elif skill_name == "FileSkill":
-            # TODO: Parsowanie content dla operacji na plikach
-            # W przyszłości można dodać logikę parsowania z content
-            return {}
+            # Basic content extraction for file operations
+            # If the content looks like it has a path, we try to use it as the path parameter
+            # But the primary logic is usually handled by the agent.
+            # For remote execution, we need to be explicit.
+
+            params: dict[str, object] = {}
+            # Try to find path in content using regex if not already found
+            paths = []
+            for match in self.FILE_PATH_PATTERN.finditer(content):
+                paths.append(match.group(0))
+
+            if paths:
+                params["path"] = paths[0]
+
+            # If we are writing, we might want to extract content, but that's hard safely via regex
+            # and usually requires the Agent to structure the call.
+            # This is a best-effort fallback for direct skill invocation on remote node.
+
+            return params
         else:
             return {}

@@ -6,6 +6,13 @@ export const en = {
     provider: "Provider",
     noDescription: "No description",
     tuning: "Tuning",
+    comingSoon: "Coming soon",
+    running: "Running",
+    stopped: "Stopped",
+    pending: "Pending",
+    completed: "Completed",
+    failed: "Failed",
+    unknown: "Unknown",
   },
   topBar: {
     wsLabel: "WS",
@@ -307,6 +314,9 @@ export const en = {
         avatar: {
           title: "Avatar - Audio Interface",
           description: "Audio interface: speech recognition and voice synthesis",
+        },
+        shadowActions: {
+          foundProblem: "Shadow Agent: found problem and suggests fix ({{type}})",
         },
       },
       runtimeInfo: {

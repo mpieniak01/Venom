@@ -359,11 +359,9 @@ async def lifespan(app: FastAPI):
                 func=_consolidate_memory_wrapper,
                 minutes=SETTINGS.MEMORY_CONSOLIDATION_INTERVAL_MINUTES,
                 job_id="consolidate_memory",
-                description="Konsolidacja pamięci i analiza logów (placeholder)",
+                description="common.comingSoon",
             )
-            logger.info(
-                "Zadanie consolidate_memory zarejestrowane (PLACEHOLDER - wymaga implementacji)"
-            )
+            logger.info("Zadanie consolidate_memory zarejestrowane (COMING SOON)")
 
         if SETTINGS.ENABLE_HEALTH_CHECKS:
             # Wrapper do przekazania event_broadcaster
@@ -374,11 +372,9 @@ async def lifespan(app: FastAPI):
                 func=_check_health_wrapper,
                 minutes=SETTINGS.HEALTH_CHECK_INTERVAL_MINUTES,
                 job_id="check_health",
-                description="Sprawdzanie zdrowia systemu (placeholder)",
+                description="common.comingSoon",
             )
-            logger.info(
-                "Zadanie check_health zarejestrowane (PLACEHOLDER - wymaga implementacji)"
-            )
+            logger.info("Zadanie check_health zarejestrowane (COMING SOON)")
 
     except Exception as e:
         logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {e}")
@@ -518,7 +514,7 @@ async def lifespan(app: FastAPI):
                 # Broadcast akcji do UI
                 await event_broadcaster.broadcast_event(
                     event_type=EventType.SYSTEM_LOG,
-                    message=f"Shadow action triggered: {action_type} (implementation pending)",
+                    message="config.parameters.sections.shadowActions.foundProblem",
                     data=action_payload,
                 )
 

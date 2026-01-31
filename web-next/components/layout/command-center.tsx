@@ -210,8 +210,8 @@ export function CommandCenter({ open, onOpenChange }: CommandCenterProps) {
               <ListCard
                 key={svc.name}
                 title={svc.name}
-                subtitle={svc.detail ?? t("common.noDescription")}
-                badge={<Badge tone={toneFromStatus(svc.status)}>{svc.status}</Badge>}
+                subtitle={t(svc.detail ?? "common.noDescription")}
+                badge={<Badge tone={toneFromStatus(svc.status)}>{t(svc.status ? `common.${svc.status.toLowerCase()}` : "common.unknown")}</Badge>}
               />
             ))}
             {servicesOffline && (

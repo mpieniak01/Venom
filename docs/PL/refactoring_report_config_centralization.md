@@ -326,7 +326,7 @@ Dodano 52 nowe zmienne konfiguracyjne w sekcjach:
 ## 5. Kryteria Akceptacyjne
 
 ### ✅ 1. Raport zmian
-- [x] Utworzono szczegółowy raport w `docs/refactoring_report_config_centralization.md`
+- [x] Utworzono szczegółowy raport w `docs/PL/refactoring_report_config_centralization.md`
 - [x] Dokumentacja zawiera: nazwę pliku, linie, nową nazwę klucza
 
 ### ✅ 2. Testy przechodzą bez zmian

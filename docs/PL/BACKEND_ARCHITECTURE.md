@@ -45,12 +45,11 @@ Zintegrowana z Microsoft Semantic Kernel, pozwala na rozszerzanie możliwości a
 - `venom_core/skills/custom/` – Katalog na dynamicznie generowane i użytkowe umiejętności.
 
 ## Powiązana dokumentacja (MCP)
-- `docs/DEV_GUIDE_SKILLS.md` – import MCP i standardy Skills.
-- `docs/_done/097_wdrozenie_importu_mcp.md` – wdrożenie importu MCP (MVP).
-- `docs/TREE.md` – struktura repo i katalogi MCP.
+- `docs/PL/DEV_GUIDE_SKILLS.md` – import MCP i standardy Skills.
+- `docs/PL/TREE.md` – struktura repo i katalogi MCP.
 
 ## Kontrakty API
 Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
 
 ## Chat routing (uwaga spójności)
-Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w `docs/CHAT_SESSION.md`.
+Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w `docs/PL/CHAT_SESSION.md`.

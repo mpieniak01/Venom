@@ -2,7 +2,7 @@
 
 ## Overview
 
-> **[Polska Wersja](../AGENTS_INDEX.md)**
+> **[Polska Wersja](PL/AGENTS_INDEX.md)**
 
 The Venom system consists of 34 specialized agents, each responsible for a specific functionality area. Below you'll find the complete list with descriptions and links to detailed documentation.
 

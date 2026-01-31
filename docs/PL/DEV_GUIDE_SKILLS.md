@@ -117,6 +117,5 @@ Wszystkie importy MCP są obsługiwane przez `McpManagerSkill` i mają ustandary
 *   `venom_core/skills/custom/mcp_*.py` - Wygenerowane wrappery (można podglądać, nie edytować).
 
 ### Powiązana dokumentacja (MCP)
-- `docs/_done/097_wdrozenie_importu_mcp.md` – wdrożenie importu MCP (MVP).
-- `docs/BACKEND_ARCHITECTURE.md` – warstwa wykonawcza i MCP w architekturze.
-- `docs/TREE.md` – struktura repo i katalogi MCP.
+- `docs/PL/BACKEND_ARCHITECTURE.md` – warstwa wykonawcza i MCP w architekturze.
+- `docs/PL/TREE.md` – struktura repo i katalogi MCP.

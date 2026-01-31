@@ -4,12 +4,15 @@
 ├── requirements.txt             # zależności VENOM
 ├── README.md                    # opis projektu (może być pusty na start)
 │
-├── docs/                        # wizja, diagramy, notatki
-│   ├── _done/                   # Dokumentacja zadan programistycznych zrealizowanych
-│   ├── _to_do/                  # Dokumentacja zadan programistycznych do realizacji
+├── docs/                        # dokumentacja (angielska, domyślna)
+│   ├── PL/                      # dokumentacja po polsku
 │   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] System procesowy (koncepcja)
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
+├── docs_dev/                    # dokumentacja deweloperska lokalnie (ignorowana)
+│   ├── _backlog/
+│   ├── _done/
+│   └── _to_do/
 │
 ├── data/                        # dane runtime (nie kod)
 │   └── memory/

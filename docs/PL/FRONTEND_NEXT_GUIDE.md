@@ -1,6 +1,6 @@
 # FRONTEND NEXT – ARCHITEKTURA I CHECKLISTA
 
-Dokument rozszerza `docs/DASHBOARD_GUIDE.md` o informacje specyficzne dla wersji `web-next`. Zawiera:
+Dokument rozszerza `docs/PL/DASHBOARD_GUIDE.md` o informacje specyficzne dla wersji `web-next`. Zawiera:
 1. Architekturę i katalogi Next.js (App Router, SCC – Server/Client Components) oraz konfigurację środowiska.
 2. Opis źródeł danych wykorzystywanych przez kluczowe widoki (Brain, Strategy, Cockpit) – łącznie z fallbackami.
 3. Checklistę testów ręcznych i Playwright, która potwierdza gotowość funkcjonalną.

@@ -117,6 +117,5 @@ All MCP imports are handled by `McpManagerSkill` and follow a standardized struc
 *   `venom_core/skills/custom/mcp_*.py` - Generated wrappers (can be viewed, do not edit).
 
 ### Related documentation (MCP)
-- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
-- `docs/en/BACKEND_ARCHITECTURE.md` – execution layer and MCP in architecture.
-- `docs/en/TREE.md` – repo structure and MCP directories.
+- `docs/BACKEND_ARCHITECTURE.md` – execution layer and MCP in architecture.
+- `docs/TREE.md` – repo structure and MCP directories.

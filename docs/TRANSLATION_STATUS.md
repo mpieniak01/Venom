@@ -84,7 +84,7 @@ This document tracks the progress of translating Venom documentation from Polish
 
 1. **Technical terms:** Keep English (API, REST, Docker, etc.)
 2. **Code examples:** Translate comments but keep code unchanged
-3. **Links:** Update internal links to point to `/en/` directory where translated versions exist
+3. **Links:** English docs live in `/docs/`, Polish docs live in `/docs/PL/`; internal links should point to the matching language folder
 4. **Format:** Maintain original markdown structure
 5. **Quality:** Ensure natural, professional English suitable for technical documentation
 

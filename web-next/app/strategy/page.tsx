@@ -230,7 +230,7 @@ export default function StrategyPage() {
     const summary: Record<string, number> = {};
     milestones.forEach((milestone) =>
       (milestone.tasks || []).forEach((task) => {
-        const key = (task.status || "TODO").toUpperCase();
+        const key = (task.status || "PENDING").toUpperCase();
         summary[key] = (summary[key] || 0) + 1;
       }),
     );

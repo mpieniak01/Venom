@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -263,7 +264,7 @@ export function Sidebar() {
               const active = pathname === item.href;
               const label = item.labelKey ? t(item.labelKey) : item.label;
               return (
-                <a
+                <Link
                   key={item.href}
                   href={item.href}
                   title={label}
@@ -282,7 +283,7 @@ export function Sidebar() {
                   <span className={cn("transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden", collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[200px] opacity-100 ml-3")}>
                     {label}
                   </span>
-                </a>
+                </Link>
               );
             })}
           </div>

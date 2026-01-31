@@ -128,7 +128,7 @@ Support for two computational engines:
 ### 3.7. Infrastructure & queues (Infrastructure Layer)
 - **FastAPI + WebSocket** – public API and event streaming.
 - **Redis + ARQ (Hive Message Broker)** – task queues, broadcast, node control.
-- **Nexus/Spore** – optional distributed layer (cluster mode).
+- **Nexus/Spore** – optional distributed layer (cluster mode). Experimental in v1.0.x; stabilization planned for v1.1.
 
 ## 4. External knowledge layer (External Knowledge Layer)
 Three sources:

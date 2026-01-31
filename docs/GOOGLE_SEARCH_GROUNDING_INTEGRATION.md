@@ -255,7 +255,7 @@ HYBRID_CLOUD_MODEL=gemini-1.5-pro
 ### Enable/disable paid mode
 
 #### Via API:
-```python
+```http
 POST /api/v1/settings/paid-mode
 {
   "enabled": true

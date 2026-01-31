@@ -4,6 +4,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Pin, PinOff } from "lucide-react";
 
 import { type LogEntryType, isLogPayload } from "@/lib/logs";
+import { useTranslation } from "@/lib/i18n";
 
 type LogEntryProps = {
   entry: LogEntryType;
@@ -13,12 +14,17 @@ type LogEntryProps = {
 
 export function LogEntry({ entry, pinned, onPin }: LogEntryProps) {
   const payload = entry.payload;
+  const t = useTranslation();
   const logObj = isLogPayload(payload) ? payload : null;
-  const text = logObj?.message
+  const rawText = logObj?.message
     ? logObj.message
     : typeof payload === "string"
       ? payload
       : JSON.stringify(payload, null, 2);
+
+  // Próbujemy przetłumaczyć rawText jako klucz i18n
+  const text = t(rawText, logObj?.data as Record<string, string | number>);
+
   const level = logObj?.level ? logObj.level.toUpperCase() : "INFO";
   const type = logObj?.type || "log";
 

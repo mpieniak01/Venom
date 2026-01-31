@@ -1,67 +1,68 @@
-# Panel Konfiguracji i Sterowania Stosem (ZADANIE 060 + 084)
+# Configuration and Stack Control Panel (TASK 060 + 084)
 
-## Przegląd
+## Overview
 
-Panel konfiguracji dostępny pod `/config` w interfejsie web-next pozwala na:
-- Zarządzanie usługami Venom (uruchamianie, zatrzymywanie, restart)
-- Edycję parametrów konfiguracji z poziomu UI
-- Monitorowanie statusu usług (CPU, RAM, uptime)
-- Stosowanie profili szybkich (Full Stack, Light, LLM OFF)
-- **Rozróżnienie usług sterowalnych od konfiguracyjnych** (ZADANIE 084)
+Configuration panel available at `/config` in web-next interface allows:
+- Managing Venom services (start, stop, restart)
+- Editing configuration parameters from UI
+- Monitoring service status (CPU, RAM, uptime)
+- Applying quick profiles (Full Stack, Light, LLM OFF)
+- **Distinguishing controllable services from configurable ones** (TASK 084)
 
-## Architektura
+## Architecture
 
 ### Backend
 
 #### Runtime Controller (`venom_core/services/runtime_controller.py`)
-Zarządza cyklem życia procesów Venom:
-- **Wykrywanie statusów**: Skanuje PID files (`.venom.pid`, `.web-next.pid`) i procesy systemowe
-- **Metryki**: Pobiera CPU/RAM za pomocą `psutil`
-- **Akcje**: Start/stop/restart dla każdej usługi
-- **Historia**: Przechowuje ostatnie 100 akcji
-- **Pole `actionable`**: Rozróżnia usługi z realnymi akcjami od kontrolowanych przez konfigurację
+Manages Venom process lifecycle:
+- **Status detection**: Scans PID files (`.venom.pid`, `.web-next.pid`) and system processes
+- **Metrics**: Retrieves CPU/RAM using `psutil`
+- **Actions**: Start/stop/restart for each service
+- **History**: Stores last 100 actions
+- **`actionable` field**: Distinguishes services with real actions from those controlled by configuration
 
-**Obsługiwane usługi:**
+**Supported services:**
 
-**Usługi sterowalne (actionable=true):**
-- `backend` (Backend API – FastAPI/uvicorn) – sterowanie przez `make start-dev` / `make stop`
-- `ui` (Next.js UI – dev/prod) – sterowanie przez make, razem z backendem
-- `llm_ollama` (Ollama) – sterowanie przez komendy z env (`OLLAMA_START_COMMAND`, `OLLAMA_STOP_COMMAND`)
-- `llm_vllm` (vLLM) – sterowanie przez komendy z env (`VLLM_START_COMMAND`, `VLLM_STOP_COMMAND`)
+**Controllable services (actionable=true):**
+- `backend` (Backend API – FastAPI/uvicorn) – controlled via `make start-dev` / `make stop`
+- `ui` (Next.js UI – dev/prod) – controlled via make, together with backend
+- `llm_ollama` (Ollama) – controlled via env commands (`OLLAMA_START_COMMAND`, `OLLAMA_STOP_COMMAND`)
+- `llm_vllm` (vLLM) – controlled via env commands (`VLLM_START_COMMAND`, `VLLM_STOP_COMMAND`)
 
-**Usługi konfigurowalne (actionable=false):**
-- `hive` (przetwarzanie rozproszone) – kontrolowane przez flagę `ENABLE_HIVE` w konfiguracji
-- `nexus` (mesh/kooperacja) – kontrolowane przez flagę `ENABLE_NEXUS` w konfiguracji
-- `background_tasks` (workery w tle) – kontrolowane przez flagę `VENOM_PAUSE_BACKGROUND_TASKS`
+**Configurable services (actionable=false):**
+- `hive` (distributed processing) – controlled by `ENABLE_HIVE` flag in configuration
+- `nexus` (mesh/cooperation) – controlled by `ENABLE_NEXUS` flag in configuration
+- `background_tasks` (background workers) – controlled by `VENOM_PAUSE_BACKGROUND_TASKS` flag
 
-**Usługi monitorowane (actionable=false, z ServiceMonitor):**
-- LanceDB (pamięć wektorowa embedded) – tylko health check, brak start/stop
-- Redis (broker/locki) – serwis zewnętrzny, tylko health check
-- Docker Daemon (sandbox) – serwis systemowy, tylko health check
+**Monitored services (actionable=false, with ServiceMonitor):**
+- LanceDB (embedded vector memory) – health check only, no start/stop
+- Redis (broker/locks) – external service, health check only
+- Docker Daemon (sandbox) – system service, health check only
 
-**Profile:**
-- `full` - Uruchamia backend, UI i Ollama
-- `light` - Tylko backend i UI
-- `llm_off` - Backend i UI, wyłącza LLM
+**Profiles:**
+- `full` - Starts backend, UI and Ollama
+- `light` - Backend and UI only
+- `llm_off` - Backend and UI, disables LLM
 
 #### Config Manager (`venom_core/services/config_manager.py`)
-Zarządza plikiem `.env`:
-- **Whitelist**: 55 parametrów dostępnych do edycji przez UI
-- **Walidacja**: Pydantic models sprawdzają poprawność danych
-- **Backup**: Każda zmiana tworzy backup w `config/env-history/.env-YYYYMMDD-HHMMSS`
-- **Restart tracking**: Określa które usługi wymagają restartu po zmianie
+Manages `.env` file:
+- **Whitelist**: 55 parameters available for UI editing
+- **Validation**: Pydantic models verify data correctness
+- **Backup**: Each change creates backup in `config/env-history/.env-YYYYMMDD-HHMMSS`
+- **Restart tracking**: Determines which services require restart after change
 
-**Whitelista parametrów:**
-- AI Configuration: `AI_MODE`, `LLM_SERVICE_TYPE`, `LLM_LOCAL_ENDPOINT`, klucze API
-- LLM Commands: `VLLM_START_COMMAND`, `OLLAMA_START_COMMAND`
-- Parametry generacji (per runtime/model): `MODEL_GENERATION_OVERRIDES` (JSON)
+**Parameter whitelist:**
+- AI Configuration: `AI_MODE`, `LLM_SERVICE_TYPE`, `LLM_LOCAL_ENDPOINT`, API keys
+- Generation parameters (per runtime/model): `MODEL_GENERATION_OVERRIDES` (JSON)
 - Hive: `ENABLE_HIVE`, `REDIS_HOST`, `REDIS_PORT`
 - Nexus: `ENABLE_NEXUS`, `NEXUS_PORT`, `NEXUS_SHARED_TOKEN`
 - Background Tasks: `ENABLE_AUTO_DOCUMENTATION`, `ENABLE_AUTO_GARDENING`
 - Agents: `ENABLE_GHOST_AGENT`, `ENABLE_DESKTOP_SENSOR`, `ENABLE_AUDIO_INTERFACE`
 
-**Maskowanie sekretów:**
-Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-****1234` (pierwsze 4 i ostatnie 4 znaki)
+> **Security Note:** LLM runtime start/stop commands (e.g., `VLLM_START_COMMAND`, `OLLAMA_START_COMMAND`) are **not** editable from the configuration panel for security reasons. These commands are configured outside the UI to prevent potential command injection vulnerabilities.
+
+**Secret masking:**
+Parameters containing "KEY", "TOKEN", "PASSWORD" are masked in format: `sk-****1234` (first 4 and last 4 characters)
 
 #### API Endpoints (`venom_core/api/routes/system.py`)
 
@@ -70,17 +71,17 @@ Parametry zawierające "KEY", "TOKEN", "PASSWORD" są maskowane w formacie: `sk-
 GET  /api/v1/runtime/status
      → {services: [{name, status, pid, port, cpu_percent, memory_mb, uptime_seconds, last_log, actionable, endpoint?, latency_ms?}]}
 
-     Pole 'actionable' określa czy usługa ma realne akcje start/stop/restart:
-     - true: usługi sterowalne (backend, ui, llm_ollama, llm_vllm)
-     - false: usługi kontrolowane przez konfigurację lub tylko monitorowane (hive, nexus, background_tasks, Redis, Docker, LanceDB)
+     'actionable' field determines if service has real start/stop/restart actions:
+     - true: controllable services (backend, ui, llm_ollama, llm_vllm)
+     - false: services controlled by configuration or only monitored (hive, nexus, background_tasks, Redis, Docker, LanceDB)
 
 POST /api/v1/runtime/{service}/{action}
      service: backend|ui|llm_ollama|llm_vllm|hive|nexus|background_tasks
      action: start|stop|restart
      → {success: bool, message: str}
 
-     Uwaga: Dla usług z actionable=false (hive, nexus, background_tasks) akcje zwracają komunikat
-     "kontrolowane przez konfigurację" bez wykonywania realnej operacji.
+     Note: For services with actionable=false (hive, nexus, background_tasks) actions return
+     "controlled by configuration" message without executing real operation.
 
 GET  /api/v1/runtime/history?limit=50
      → {history: [{timestamp, service, action, success, message}]}
@@ -95,9 +96,16 @@ POST /api/v1/runtime/profile/{profile_name}
 GET  /api/v1/config/runtime?mask_secrets=true
      → {config: {KEY: "value", ...}}
 
+     Note: Secret masking is enforced server-side. In production deployments,
+     this endpoint should be protected with authentication to prevent
+     unauthorized access to configuration data.
+
 POST /api/v1/config/runtime
      body: {updates: {KEY: "new_value", ...}}
      → {success: bool, message: str, restart_required: [services], changed_keys: [...], backup_path: str}
+
+     Note: In production deployments, this endpoint should require authentication
+     and authorization to prevent unauthorized configuration changes.
 
 GET  /api/v1/config/backups?limit=20
      → {backups: [{filename, path, size_bytes, created_at}]}
@@ -109,62 +117,62 @@ POST /api/v1/config/restore
 
 ### Frontend
 
-#### Struktura komponentów
+#### Component Structure
 ```
 web-next/
-├── app/config/page.tsx              # Strona główna konfiguracji
+├── app/config/page.tsx              # Main configuration page
 ├── components/config/
-│   ├── config-home.tsx              # Główny komponent z zakładkami
-│   ├── services-panel.tsx           # Panel usług (kafelki, akcje, profile)
-│   └── parameters-panel.tsx         # Panel parametrów (formularze, sekcje)
+│   ├── config-home.tsx              # Main component with tabs
+│   ├── services-panel.tsx           # Services panel (tiles, actions, profiles)
+│   └── parameters-panel.tsx         # Parameters panel (forms, sections)
 └── lib/i18n/locales/
-    ├── pl.ts                        # Tłumaczenia PL
-    ├── en.ts                        # Tłumaczenia EN
-    └── de.ts                        # Tłumaczenia DE
+    ├── pl.ts                        # Polish translations
+    ├── en.ts                        # English translations
+    └── de.ts                        # German translations
 ```
 
 #### ServicesPanel (`components/config/services-panel.tsx`)
-- **Auto-refresh**: Pobiera status co 5 sekund
-- **Kafelki usług**: Wyświetla live status, PID, port, CPU, RAM, uptime, ostatni log
-- **Akcje warunkowe**: Przyciski start/stop/restart tylko dla usług z `actionable=true`
-- **Usługi non-actionable**: Zamiast przycisków wyświetlany jest info badge "Kontrolowane przez konfigurację"
-- **Profile szybkie**: 3 przyciski (Full Stack, Light, LLM OFF)
-- **Historia akcji**: Ostatnie 10 akcji z timestampem
-- **Feedback**: Komunikaty sukcesu/błędu w formie bannerów
+- **Auto-refresh**: Fetches status every 5 seconds
+- **Service tiles**: Displays live status, PID, port, CPU, RAM, uptime, last log
+- **Conditional actions**: Start/stop/restart buttons only for services with `actionable=true`
+- **Non-actionable services**: Info badge "Controlled by configuration" instead of buttons
+- **Quick profiles**: 3 buttons (Full Stack, Light, LLM OFF)
+- **Action history**: Last 10 actions with timestamp
+- **Feedback**: Success/error messages in banner form
 
-**Rozróżnienie typów usług w UI:**
-- **Sterowalne (actionable=true)**: Pełny zestaw przycisków Start/Stop/Restart
-- **Konfigurowalne (actionable=false)**: Info badge "Kontrolowane przez konfigurację" - zmiana statusu wymaga edycji parametrów w zakładce "Parametry"
-- **Monitorowane (actionable=false, z ServiceMonitor)**: Info badge + ewentualna latencja/endpoint - tylko odczyt statusu
+**Service type distinction in UI:**
+- **Controllable (actionable=true)**: Full set of Start/Stop/Restart buttons
+- **Configurable (actionable=false)**: Info badge "Controlled by configuration" - status change requires parameter editing in "Parameters" tab
+- **Monitored (actionable=false, with ServiceMonitor)**: Info badge + possible latency/endpoint - status read-only
 
 #### ParametersPanel (`components/config/parameters-panel.tsx`)
-- **Sekcje**: 8 sekcji konfiguracji (AI, Commands, Hive, Nexus, Tasks, Shadow, Ghost, Avatar)
-- **Maskowanie**: Automatyczne maskowanie pól sekretów z przyciskiem "pokaż"
-- **Walidacja**: Sprawdzanie wypełnionych pól przed zapisem
-- **Sticky footer**: Panel akcji zawsze widoczny na dole ekranu
-- **Restart warnings**: Banner z listą usług wymagających restartu po zapisie
-- **Info box**: Sekcja informacyjna o Ollama vs vLLM z linkiem do benchmarków
+- **Sections**: 8 configuration sections (AI, Commands, Hive, Nexus, Tasks, Shadow, Ghost, Avatar)
+- **Masking**: Automatic masking of secret fields with "show" button
+- **Validation**: Checking filled fields before save
+- **Sticky footer**: Action panel always visible at bottom of screen
+- **Restart warnings**: Banner with list of services requiring restart after save
+- **Info box**: Informational section about Ollama vs vLLM with link to benchmarks
 
-#### Nawigacja
-Sidebar zawiera nową pozycję "Konfiguracja" z ikoną Settings:
-- Polska: "Konfiguracja"
-- Angielska: "Configuration"
-- Niemiecka: "Konfiguration"
+#### Navigation
+Sidebar contains new "Configuration" item with Settings icon:
+- Polish: "Konfiguracja"
+- English: "Configuration"
+- German: "Konfiguration"
 
-## Bezpieczeństwo
+## Security
 
-### Whitelist parametrów
-Tylko 55 parametrów jest dostępnych do edycji. Lista jest zdefiniowana w `CONFIG_WHITELIST` w `config_manager.py`. Próba edycji innych parametrów zwraca błąd walidacji.
+### Parameter Whitelist
+Only 55 parameters are available for editing. List is defined in `CONFIG_WHITELIST` in `config_manager.py`. Attempt to edit other parameters returns validation error.
 
-### Maskowanie sekretów
-Parametry zawierające wrażliwe dane są maskowane:
+### Secret Masking
+Parameters containing sensitive data are masked:
 - `OPENAI_API_KEY` → `sk-****1234`
 - `GOOGLE_API_KEY` → `AI****5678`
 - `NEXUS_SHARED_TOKEN` → `tok_****abcd`
 - `REDIS_PASSWORD` → `****`
 
-### Backup automatyczny
-Każda zmiana `.env` tworzy backup w `config/env-history/`:
+### Automatic Backup
+Each `.env` change creates backup in `config/env-history/`:
 ```
 config/env-history/
 ├── .env-20241218-094500
@@ -172,70 +180,70 @@ config/env-history/
 └── .env-20241218-143045
 ```
 
-System przechowuje ostatnie 50 backupów. Starsze są automatycznie usuwane.
+System keeps last 50 backups. Older ones are automatically removed.
 
-### Kontrola restartów
-Po zapisie konfiguracji backend zwraca listę usług wymagających restartu:
-- Zmiany w `AI_MODE`, `LLM_SERVICE_TYPE` → restart `backend`
-- Zmiany w `ENABLE_HIVE` → restart `backend`
-- Zmiany w komendach LLM → brak restartu (komendy używane przy next start/stop)
+### Restart Control
+After saving configuration, backend returns list of services requiring restart:
+- Changes in `AI_MODE`, `LLM_SERVICE_TYPE` → restart `backend`
+- Changes in `ENABLE_HIVE` → restart `backend`
+- Changes in LLM commands → no restart (commands used at next start/stop)
 
-UI wyświetla ostrzeżenie z listą usług i CTA do zakładki "Usługi".
+UI displays warning with service list and CTA to "Services" tab.
 
-## Użycie
+## Usage
 
-### Uruchamianie usług
-1. Przejdź do `/config`
-2. Kliknij zakładkę "Usługi"
-3. Wybierz usługę (np. backend)
-4. Kliknij "Start"
-5. Status zmienia się na "running", wyświetlane są metryki CPU/RAM
+### Starting Services
+1. Go to `/config`
+2. Click "Services" tab
+3. Select service (e.g., backend)
+4. Click "Start"
+5. Status changes to "running", CPU/RAM metrics displayed
 
-### Stosowanie profilu
-1. W zakładce "Usługi" kliknij jeden z profili:
-   - **Full Stack**: Uruchamia backend, UI, Ollama
-   - **Light**: Uruchamia backend, UI (bez LLM)
-   - **LLM OFF**: Uruchamia backend, UI, zatrzymuje LLM
-2. System wykonuje akcje dla wszystkich usług w profilu
-3. Banner pokazuje rezultat operacji
+### Applying Profile
+1. In "Services" tab click one of profiles:
+   - **Full Stack**: Starts backend, UI, Ollama
+   - **Light**: Starts backend, UI (without LLM)
+   - **LLM OFF**: Starts backend, UI, stops LLM
+2. System executes actions for all services in profile
+3. Banner shows operation result
 
-### Edycja parametrów
-1. Przejdź do zakładki "Parametry"
-2. Znajdź sekcję (np. "Tryb AI")
-3. Zmień wartości pól (np. `AI_MODE` na "HYBRID")
-4. Kliknij "Zapisz konfigurację" w dolnym panelu
+### Editing Parameters
+1. Go to "Parameters" tab
+2. Find section (e.g., "AI Mode")
+3. Change field values (e.g., `AI_MODE` to "HYBRID")
+4. Click "Save configuration" in bottom panel
 5. System:
-   - Tworzy backup `.env`
-   - Zapisuje zmiany
-   - Wyświetla banner z informacją o sukcesie
-   - Pokazuje ostrzeżenie o wymaganych restartach
+   - Creates `.env` backup
+   - Saves changes
+   - Displays success banner
+   - Shows restart requirements warning
 
-### Przywracanie backupu
-1. API endpoint `/api/v1/config/backups` zwraca listę backupów
-2. POST do `/api/v1/config/restore` przywraca wybrany backup
-3. Aktualny `.env` jest zapisywany jako nowy backup przed przywróceniem
+### Restoring Backup
+1. API endpoint `/api/v1/config/backups` returns backup list
+2. POST to `/api/v1/config/restore` restores selected backup
+3. Current `.env` is saved as new backup before restoration
 
-## Tryby LLM: Ollama vs vLLM
+## LLM Modes: Ollama vs vLLM
 
-Panel zawiera sekcję informacyjną wyjaśniającą różnice:
+Panel contains informational section explaining differences:
 
 **Ollama (Light):**
-- Priorytet: najkrótszy czas pytanie→odpowiedź
-- Niski footprint pamięci
-- Single user, ideal do codziennej pracy
-- Szybki start (~3 sekundy)
+- Priority: shortest question→answer time
+- Low memory footprint
+- Single user, ideal for daily work
+- Quick start (~3 seconds)
 
 **vLLM (Full):**
-- Pipeline benchmarkowy
-- Dłuższy start (~5-10 sekund)
-- Rezerwuje cały VRAM
-- Wyższa przepustowość dla wielu requestów
-- Lepsze do testów wydajności
+- Benchmark pipeline
+- Longer start (~5-10 seconds)
+- Reserves full VRAM
+- Higher throughput for multiple requests
+- Better for performance tests
 
-**Rekomendacja:**
-Domyślnie uruchamiamy tylko jeden runtime naraz. Drugi runtime ma sens gdy rozdzielamy role (np. UI na Ollama, agent kodujący na vLLM). Pełna strategia wyboru powinna być oparta na wynikach benchmarków → link do `/benchmark`.
+**Recommendation:**
+By default we run only one runtime at a time. Second runtime makes sense when separating roles (e.g., UI on Ollama, coding agent on vLLM). Full selection strategy should be based on benchmark results → link to `/benchmark`.
 
-## Testy
+## Tests
 
 ### Backend (pytest)
 ```bash
@@ -243,7 +251,7 @@ pytest tests/test_runtime_controller_api.py -v
 pytest tests/test_config_manager_api.py -v
 ```
 
-**Pokrycie:**
+**Coverage:**
 - Runtime status (GET /api/v1/runtime/status)
 - Service actions (POST /api/v1/runtime/{service}/{action})
 - Runtime history (GET /api/v1/runtime/history)
@@ -254,108 +262,108 @@ pytest tests/test_config_manager_api.py -v
 - Edge cases (invalid service, invalid action, validation errors)
 
 ### Frontend (Playwright)
-TODO: Dodać scenariusze E2E:
-- Nawigacja do `/config`
-- Zmiana statusu usługi (start/stop)
-- Aplikacja profilu
-- Edycja parametru i zapis
-- Maskowanie/odmaskowanie sekretu
-- Wyświetlanie warningów o restartach
+TODO: Add E2E scenarios:
+- Navigation to `/config`
+- Service status change (start/stop)
+- Profile application
+- Parameter edit and save
+- Secret mask/unmask
+- Restart warnings display
 
 ## Troubleshooting
 
-### Usługa nie uruchamia się
-**Problem**: Kliknięcie "Start" nie zmienia statusu na "running"
+### Service Won't Start
+**Problem**: Clicking "Start" doesn't change status to "running"
 
-**Rozwiązanie:**
-1. Sprawdź logi w kafelku usługi (pole "Ostatni log")
-2. Sprawdź PID file:
+**Solution:**
+1. Check logs in service tile ("Last log" field)
+2. Check PID file:
    - Backend: `.venom.pid`
    - UI: `.web-next.pid`
-3. Sprawdź port (czy nie jest zajęty):
+3. Check port (if not occupied):
    ```bash
    lsof -ti tcp:8000  # Backend
    lsof -ti tcp:3000  # UI
    ```
-4. Sprawdź komendy LLM w `.env`:
+4. Check LLM commands in `.env`:
    - `OLLAMA_START_COMMAND`
    - `VLLM_START_COMMAND`
 
-### Zmiany konfiguracji nie są widoczne
-**Problem**: Po zapisie parametrów backend nie widzi nowych wartości
+### Configuration Changes Not Visible
+**Problem**: After saving parameters backend doesn't see new values
 
-**Rozwiązanie:**
-1. Sprawdź czy `.env` został zaktualizowany:
+**Solution:**
+1. Check if `.env` was updated:
    ```bash
    grep AI_MODE .env
    ```
-2. Sprawdź backup w `config/env-history/`
-3. Zrestartuj backend (zakładka "Usługi" → backend → Restart)
-4. Backend wczytuje `.env` tylko przy starcie
+2. Check backup in `config/env-history/`
+3. Restart backend ("Services" tab → backend → Restart)
+4. Backend loads `.env` only at startup
 
-### Błąd "Nieprawidłowy poziom: X"
-**Problem**: Próba zapisu nieznanego parametru
+### Error "Invalid level: X"
+**Problem**: Attempt to save unknown parameter
 
-**Rozwiązanie:**
-1. Sprawdź czy klucz jest na whiteliście (`CONFIG_WHITELIST` w `config_manager.py`)
-2. Jeśli parametr jest potrzebny, dodaj go do whitelisty i `RESTART_REQUIREMENTS`
+**Solution:**
+1. Check if key is on whitelist (`CONFIG_WHITELIST` in `config_manager.py`)
+2. If parameter is needed, add it to whitelist and `RESTART_REQUIREMENTS`
 
-### Port zajęty
-**Problem**: Usługa nie może się uruchomić bo port jest zajęty
+### Port Occupied
+**Problem**: Service can't start because port is occupied
 
-**Rozwiązanie:**
+**Solution:**
 ```bash
-# Znajdź proces zajmujący port
+# Find process occupying port
 lsof -ti tcp:8000
 
-# Zakończ proces
+# Kill process
 kill <PID>
 
-# Lub użyj make clean-ports
+# Or use make clean-ports
 make clean-ports
 ```
 
 ## Roadmap
 
-### Zrealizowane (v1.0)
-- [x] Backend runtime controller z obsługą 7 typów usług
-- [x] Backend config manager z whitelistą 55 parametrów
-- [x] API endpoints dla runtime i config
-- [x] Frontend panels: Services i Parameters
-- [x] Profile szybkie (Full/Light/LLM OFF)
-- [x] Maskowanie sekretów
-- [x] Backup .env z historią
+### Completed (v1.0)
+- [x] Backend runtime controller with support for 7 service types
+- [x] Backend config manager with 55 parameter whitelist
+- [x] API endpoints for runtime and config
+- [x] Frontend panels: Services and Parameters
+- [x] Quick profiles (Full/Light/LLM OFF)
+- [x] Secret masking
+- [x] .env backup with history
 - [x] Restart warnings
-- [x] Testy jednostkowe backend
+- [x] Backend unit tests
 
 ### TODO (v1.1)
-- [ ] Testy E2E Playwright
-- [ ] Docker compose integration (opcjonalnie)
+- [ ] Playwright E2E tests
+- [ ] Docker compose integration (optional)
 - [ ] Remote nodes control (Hive/Nexus)
-- [ ] Logs viewer (tail -f w panelu UI)
+- [ ] Logs viewer (tail -f in UI panel)
 - [ ] CPU/RAM alerts (threshold warnings)
 - [ ] Service dependencies graph
-- [ ] Export/import konfiguracji
+- [ ] Configuration export/import
 
-### TODO (v1.0)
+### TODO (v2.0)
 - [ ] Multi-user access control (role-based)
-- [ ] Audit log (kto, kiedy, co zmienił)
+- [ ] Audit log (who, when, what changed)
 - [ ] Config templates (dev/prod/test)
 - [ ] One-click deployment profiles
-- [ ] Health checks i auto-restart
-- [ ] Integracja z systemd/supervisord
+- [ ] Health checks and auto-restart
+- [ ] Integration with systemd/supervisord
 
-## Dokumentacja API
+## API Documentation
 
-Pełna dokumentacja API dostępna w Swagger UI po uruchomieniu backend:
+Full API documentation available in Swagger UI after running backend:
 ```
 http://localhost:8000/docs
 ```
 
-Sekcje:
+Sections:
 - **Runtime** → `/api/v1/runtime/*`
 - **Config** → `/api/v1/config/*`
 
-## Licencja
+## License
 
-Zgodnie z licencją projektu Venom.
+According to Venom project license.

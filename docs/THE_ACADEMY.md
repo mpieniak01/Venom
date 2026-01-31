@@ -1,14 +1,14 @@
 # THE ACADEMY - Knowledge Distillation & Autonomous Fine-Tuning
 
-## Przegląd
+## Overview
 
-THE ACADEMY to system uczenia maszynowego, który pozwala Venomowi na autonomiczne doskonalenie się poprzez:
-- **Destylację Wiedzy** - ekstrakcję cennych wzorców z historii działań
-- **Fine-tuning LoRA** - szybkie douczanie modelu bez nadpisywania bazowej wiedzy
-- **Hot Swap** - bezproblemowa wymiana "mózgu" na nowszą wersję
-- **Genealogię Inteligencji** - śledzenie ewolucji modelu
+THE ACADEMY is a machine learning system that enables Venom to improve autonomously through:
+- **Knowledge Distillation** - extraction of valuable patterns from action history
+- **LoRA Fine-tuning** - rapid model training without overwriting base knowledge
+- **Hot Swap** - seamless "brain" replacement with newer version
+- **Intelligence Genealogy** - tracking model evolution
 
-## Architektura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -28,82 +28,82 @@ THE ACADEMY to system uczenia maszynowego, który pozwala Venomowi na autonomicz
 │                     │ dataset.jsonl                          │
 │                     ▼                                        │
 │            ┌────────────────┐                                │
-│            │   Professor    │ ◄─── Decyzje, parametry       │
+│            │   Professor    │ ◄─── Decisions, parameters    │
 │            └────────┬───────┘                                │
 │                     │                                        │
 │                     ▼                                        │
 │            ┌────────────────┐                                │
-│            │  GPUHabitat    │ ◄─── Trening w Dockerze       │
+│            │  GPUHabitat    │ ◄─── Docker training          │
 │            └────────┬───────┘                                │
 │                     │ adapter.pth                            │
 │                     ▼                                        │
 │            ┌────────────────┐                                │
-│            │ ModelManager   │ ◄─── Hot Swap, Wersjonowanie  │
+│            │ ModelManager   │ ◄─── Hot Swap, Versioning     │
 │            └────────────────┘                                │
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Komponenty
+## Components
 
 ### 1. DatasetCurator (`venom_core/learning/dataset_curator.py`)
 
-**Cel:** Konwersja surowych danych w format treningowy (JSONL).
+**Purpose:** Convert raw data into training format (JSONL).
 
-**Źródła danych:**
-- **LessonsStore** - pary (Sytuacja → Rozwiązanie)
-- **Git History** - analiza commitów (Diff → Commit Message)
-- **Task History** - udane konwersacje z orchestratorem
+**Data Sources:**
+- **LessonsStore** - (Situation → Solution) pairs
+- **Git History** - commit analysis (Diff → Commit Message)
+- **Task History** - successful conversations with orchestrator
 
-**Formaty wyjściowe:**
-- **Alpaca** - format instruction-input-output
-- **ShareGPT** - format conversations (system-human-gpt)
+**Output Formats:**
+- **Alpaca** - instruction-input-output format
+- **ShareGPT** - conversations format (system-human-gpt)
 
-**Przykład użycia:**
+**Usage Example:**
 
 ```python
 from venom_core.learning.dataset_curator import DatasetCurator
 from venom_core.memory.lessons_store import LessonsStore
 
-# Inicjalizacja
+# Initialize
 lessons_store = LessonsStore()
 curator = DatasetCurator(lessons_store=lessons_store)
 
-# Zbieranie danych
+# Collect data
 curator.collect_from_lessons(limit=200)
 curator.collect_from_git_history(max_commits=100)
 
-# Filtrowanie
+# Filter
 curator.filter_low_quality()
 
-# Zapisz
+# Save
 dataset_path = curator.save_dataset(format="alpaca")
-print(f"Dataset zapisany: {dataset_path}")
+print(f"Dataset saved: {dataset_path}")
 
-# Statystyki
+# Statistics
 stats = curator.get_statistics()
-print(f"Liczba przykładów: {stats['total_examples']}")
+print(f"Number of examples: {stats['total_examples']}")
 ```
 
 ### 2. GPUHabitat (`venom_core/infrastructure/gpu_habitat.py`)
 
-**Cel:** Zarządzanie środowiskiem treningowym z obsługą GPU.
+**Purpose:** Manage training environment with GPU support.
 
-**Funkcjonalności:**
-- Automatyczna detekcja GPU i nvidia-container-toolkit
-- Uruchamianie kontenerów z Unsloth (bardzo szybki fine-tuning)
-- Monitorowanie jobów treningowych
-- Fallback na CPU jeśli brak GPU
+**Features:**
+- Automatic GPU detection and nvidia-container-toolkit
+- Running containers with Unsloth (very fast fine-tuning)
+- Training job monitoring
+- CPU fallback if no GPU
 
-**Przykład użycia:**
+**Usage Example:**
 
 ```python
 from venom_core.infrastructure.gpu_habitat import GPUHabitat
 
-# Inicjalizacja
+# Initialize
 habitat = GPUHabitat(enable_gpu=True)
 
-# Uruchom trening
+# Run training
 job_info = habitat.run_training_job(
     dataset_path="./data/training/dataset.jsonl",
     base_model="unsloth/Phi-3-mini-4k-instruct",
@@ -114,70 +114,70 @@ job_info = habitat.run_training_job(
 )
 
 print(f"Job ID: {job_info['job_name']}")
-print(f"Kontener: {job_info['container_id']}")
+print(f"Container: {job_info['container_id']}")
 
-# Monitoruj postęp
+# Monitor progress
 status = habitat.get_training_status(job_info['job_name'])
 print(f"Status: {status['status']}")
-print(f"Logi:\n{status['logs']}")
+print(f"Logs:\n{status['logs']}")
 ```
 
 ### 3. Professor (`venom_core/agents/professor.py`)
 
-**Cel:** Agent Data Scientist - opiekun procesu nauki.
+**Purpose:** Data Scientist Agent - learning process supervisor.
 
-**Odpowiedzialności:**
-- Decyzja o rozpoczęciu treningu (minimum 100 lekcji)
-- Dobór parametrów (learning rate, epochs, LoRA rank)
-- Ewaluacja modeli (Arena - porównanie wersji)
-- Promocja lepszych modeli
+**Responsibilities:**
+- Decision to start training (minimum 100 lessons)
+- Parameter selection (learning rate, epochs, LoRA rank)
+- Model evaluation (Arena - version comparison)
+- Promotion of better models
 
-**Komendy:**
+**Commands:**
 
 ```python
 from venom_core.agents.professor import Professor
 
-# Inicjalizacja
+# Initialize
 professor = Professor(kernel, dataset_curator, gpu_habitat, lessons_store)
 
-# Sprawdź gotowość
+# Check readiness
 decision = professor.should_start_training()
 if decision["should_train"]:
-    print("✅ Gotowy do treningu!")
+    print("✅ Ready for training!")
 
-# Generuj dataset
-result = await professor.process("przygotuj materiały do nauki")
+# Generate dataset
+result = await professor.process("prepare learning materials")
 
-# Rozpocznij trening
-result = await professor.process("rozpocznij trening")
+# Start training
+result = await professor.process("start training")
 
-# Sprawdź postęp
-result = await professor.process("sprawdź postęp treningu")
+# Check progress
+result = await professor.process("check training progress")
 
-# Oceń model
-result = await professor.process("oceń model")
+# Evaluate model
+result = await professor.process("evaluate model")
 ```
 
 ### 4. ModelManager (`venom_core/core/model_manager.py`)
 
-**Cel:** Zarządzanie wersjami modeli i Hot Swap.
+**Purpose:** Model version management and Hot Swap.
 
-**Funkcjonalności:**
-- Rejestracja wersji modeli
-- Hot swap (wymiana bez restartu)
-- Genealogia Inteligencji (historia wersji)
-- Porównanie metryk między wersjami
-- Integracja z Ollama (tworzenie Modelfile)
+**Features:**
+- Model version registration
+- Hot swap (replacement without restart)
+- Intelligence Genealogy (version history)
+- Metrics comparison between versions
+- Ollama integration (Modelfile creation)
 
-**Przykład użycia:**
+**Usage Example:**
 
 ```python
 from venom_core.core.model_manager import ModelManager
 
-# Inicjalizacja
+# Initialize
 manager = ModelManager()
 
-# Zarejestruj wersje
+# Register versions
 manager.register_version(
     version_id="v1.0",
     base_model="phi3:latest",
@@ -191,74 +191,74 @@ manager.register_version(
     performance_metrics={"accuracy": 0.92}
 )
 
-# Aktywuj nową wersję (hot swap)
+# Activate new version (hot swap)
 manager.activate_version("v1.1")
 
-# Porównaj wersje
+# Compare versions
 comparison = manager.compare_versions("v1.0", "v1.1")
 print(f"Improvement: {comparison['metrics_diff']['accuracy']['diff_pct']:.1f}%")
 
-# Genealogia
+# Genealogy
 genealogy = manager.get_genealogy()
 for version in genealogy['versions']:
     print(f"{version['version_id']}: {version['performance_metrics']}")
 ```
 
-## Workflow: Od Lekcji do Modelu
+## Workflow: From Lesson to Model
 
 ```
-1. Zbieranie Doświadczeń
-   └─> LessonsStore.add_lesson() po każdym sukcesie
+1. Experience Collection
+   └─> LessonsStore.add_lesson() after each success
 
-2. Kuracja Datasetu (automatyczna lub on-demand)
+2. Dataset Curation (automatic or on-demand)
    └─> DatasetCurator.collect_from_*()
-   └─> Minimum 50-100 przykładów
+   └─> Minimum 50-100 examples
 
-3. Decyzja o Treningu
+3. Training Decision
    └─> Professor.should_start_training()
-   └─> Sprawdza: liczba lekcji, interwał od ostatniego treningu
+   └─> Checks: lesson count, interval from last training
 
-4. Trening (w tle, Docker + GPU)
+4. Training (in background, Docker + GPU)
    └─> GPUHabitat.run_training_job()
-   └─> Unsloth + LoRA (szybki, oszczędny VRAM)
+   └─> Unsloth + LoRA (fast, VRAM-efficient)
 
-5. Ewaluacja (Arena)
-   └─> Professor ocenia: Stary Model vs Nowy Model
-   └─> Test suite (10 pytań kodowania)
+5. Evaluation (Arena)
+   └─> Professor evaluates: Old Model vs New Model
+   └─> Test suite (10 coding questions)
 
-6. Promocja
+6. Promotion
    └─> ModelManager.activate_version()
-   └─> Hot swap - Venom używa nowego modelu
+   └─> Hot swap - Venom uses new model
 
 7. Monitoring
-   └─> Dashboard: wykresy Loss, statystyki, genealogia
+   └─> Dashboard: Loss charts, statistics, genealogy
 ```
 
-## Konfiguracja
+## Configuration
 
-### Wymagania systemowe
+### System Requirements
 
-**Minimalne (CPU only):**
-- Docker zainstalowany
+**Minimum (CPU only):**
+- Docker installed
 - 8 GB RAM
 - Python 3.10+
 
-**Zalecane (GPU):**
+**Recommended (GPU):**
 - NVIDIA GPU (min. 8 GB VRAM)
 - nvidia-container-toolkit
 - CUDA 12.0+
 - 16 GB RAM
 
-### Instalacja nvidia-container-toolkit (Ubuntu/Debian)
+### Installing nvidia-container-toolkit (Ubuntu/Debian)
 
 ```bash
-# Dodaj repozytorium NVIDIA
+# Add NVIDIA repository
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
 curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
   sudo tee /etc/apt/sources.list.d/nvidia-docker.list
 
-# Instaluj
+# Install
 sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 
@@ -269,17 +269,17 @@ sudo systemctl restart docker
 docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 ```
 
-### Konfiguracja środowiska (`.env`)
+### Environment Configuration (`.env`)
 
 ```bash
-# Ścieżki
+# Paths
 WORKSPACE_ROOT=./workspace
 MEMORY_ROOT=./data/memory
 
-# Model bazowy dla fine-tuningu
+# Base model for fine-tuning
 DEFAULT_BASE_MODEL=unsloth/Phi-3-mini-4k-instruct
 
-# Parametry treningowe
+# Training parameters
 DEFAULT_LORA_RANK=16
 DEFAULT_LEARNING_RATE=2e-4
 DEFAULT_NUM_EPOCHS=3
@@ -288,92 +288,92 @@ DEFAULT_NUM_EPOCHS=3
 ENABLE_GPU=true
 TRAINING_IMAGE=unsloth/unsloth:latest
 
-# Kryteria treningu
+# Training criteria
 MIN_LESSONS_FOR_TRAINING=100
 MIN_TRAINING_INTERVAL_HOURS=24
 ```
 
-## Przykład: Automatyzacja z Scheduler
+## Example: Automation with Scheduler
 
 ```python
 from venom_core.core.scheduler import BackgroundScheduler
 from venom_core.agents.professor import Professor
 
 async def auto_training_job():
-    """Zadanie cykliczne - sprawdza czy pora na trening."""
+    """Periodic task - checks if training time."""
     decision = professor.should_start_training()
     if decision["should_train"]:
-        logger.info("Rozpoczynam automatyczny trening...")
-        await professor.process("przygotuj materiały do nauki")
-        await professor.process("rozpocznij trening")
+        logger.info("Starting automatic training...")
+        await professor.process("prepare learning materials")
+        await professor.process("start training")
 
-# Dodaj do schedulera (co 24h)
+# Add to scheduler (every 24h)
 scheduler = BackgroundScheduler()
 scheduler.add_interval_job(
     func=auto_training_job,
-    minutes=60 * 24,  # Raz dziennie
+    minutes=60 * 24,  # Once per day
     job_id="auto_training",
-    description="Automatyczny trening Venoma"
+    description="Automatic Venom training"
 )
 ```
 
-## Najlepsze Praktyki
+## Best Practices
 
-1. **Jakość > Ilość**
-   - Filtruj niepoprawne przykłady
-   - Weryfikuj output przed dodaniem do LessonsStore
-   - Używaj tagów do kategoryzacji
+1. **Quality > Quantity**
+   - Filter incorrect examples
+   - Verify output before adding to LessonsStore
+   - Use tags for categorization
 
-2. **Rozpocznij małym datasetom**
-   - 50-100 przykładów na start
-   - Monitoruj overfitting
+2. **Start with Small Datasets**
+   - 50-100 examples to start
+   - Monitor overfitting
 
-3. **Regularność > Masywność**
-   - Lepiej 100 nowych przykładów co tydzień niż 1000 raz na rok
-   - Model "nie zapomina" dzięki LoRA
+3. **Regularity > Massiveness**
+   - Better 100 new examples weekly than 1000 once a year
+   - Model "doesn't forget" thanks to LoRA
 
-4. **Testuj przed promocją**
-   - Arena - porównaj na testowym zestawie
-   - Sprawdź regresję (czy nowy model nie jest gorszy w czymś)
+4. **Test Before Promotion**
+   - Arena - compare on test set
+   - Check regression (whether new model is worse at something)
 
-5. **Backup modeli**
-   - ModelManager trzyma historię
-   - Możesz wrócić do poprzedniej wersji
+5. **Backup Models**
+   - ModelManager keeps history
+   - You can revert to previous version
 
 ## Troubleshooting
 
-**Problem:** Trening się zawiesza
-- **Rozwiązanie:** Zmniejsz `batch_size` lub `max_seq_length`
+**Problem:** Training hangs
+- **Solution:** Decrease `batch_size` or `max_seq_length`
 
 **Problem:** CUDA Out of Memory
-- **Rozwiązanie:** Włącz `load_in_4bit=True` (już domyślne), zmniejsz `lora_rank`
+- **Solution:** Enable `load_in_4bit=True` (already default), decrease `lora_rank`
 
-**Problem:** Dataset za mały (< 50 przykładów)
-- **Rozwiązanie:** Zbierz więcej lekcji, włącz Task History, analizuj więcej commitów
+**Problem:** Dataset too small (< 50 examples)
+- **Solution:** Collect more lessons, enable Task History, analyze more commits
 
-**Problem:** Model nie ulega poprawie
-- **Rozwiązanie:**
-  - Zwiększ `num_epochs` (np. 5-10)
-  - Sprawdź jakość datasetu (czy są błędy?)
-  - Użyj większego `learning_rate` (np. 3e-4)
+**Problem:** Model doesn't improve
+- **Solution:**
+  - Increase `num_epochs` (e.g., 5-10)
+  - Check dataset quality (are there errors?)
+  - Use higher `learning_rate` (e.g., 3e-4)
 
 ## Roadmap
 
-- [ ] Pełna implementacja Arena (automated evaluation)
-- [ ] Dashboard - wizualizacja w czasie rzeczywistym
-- [ ] Integracja z PEFT dla KernelBuilder
-- [ ] Multi-modal learning (obrazy, audio)
+- [ ] Full Arena implementation (automated evaluation)
+- [ ] Dashboard - real-time visualization
+- [ ] PEFT integration for KernelBuilder
+- [ ] Multi-modal learning (images, audio)
 - [ ] Distributed training (multiple GPUs)
-- [ ] A/B testing dla modeli
+- [ ] A/B testing for models
 
-## Referencje
+## References
 
-- [Unsloth](https://github.com/unslothai/unsloth) - bardzo szybki fine-tuning
+- [Unsloth](https://github.com/unslothai/unsloth) - very fast fine-tuning
 - [LoRA Paper](https://arxiv.org/abs/2106.09685) - Low-Rank Adaptation
 - [PEFT](https://github.com/huggingface/peft) - Parameter-Efficient Fine-Tuning
 
 ---
 
-**Status:** ✅ Core features zaimplementowane
-**Wersja:** 1.0 (PR 022)
-**Autor:** Venom Team
+**Status:** ✅ Core features implemented
+**Version:** 1.0 (PR 022)
+**Author:** Venom Team

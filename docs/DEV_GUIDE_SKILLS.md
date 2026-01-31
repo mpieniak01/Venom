@@ -1,10 +1,10 @@
-# Poradnik Tworzenia Skills (Umiejętności) w Venom
+# Skills Development Guide in Venom
 
-Niniejszy dokument opisuje standardy tworzenia nowych umiejętności (Skills) w systemie Venom. Dzięki klasie `BaseSkill` proces jest uproszczony i bezpieczny.
+This document describes the standards for creating new Skills in the Venom system. Thanks to the `BaseSkill` class, the process is simplified and secure.
 
-## 1. Szybki Start
+## 1. Quick Start
 
-Aby stworzyć nową umiejętność, utwórz nowy plik w `venom_core/execution/skills/` (np. `my_custom_skill.py`) i dziedzicz po `BaseSkill`.
+To create a new skill, create a new file in `venom_core/execution/skills/` (e.g., `my_custom_skill.py`) and inherit from `BaseSkill`.
 
 ```python
 from typing import Annotated
@@ -13,110 +13,110 @@ from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action
 
 class MyCustomSkill(BaseSkill):
     """
-    Krótki opis co robi ten skill.
+    Short description of what this skill does.
     """
 
     @kernel_function(
         name="do_something",
-        description="Opis funkcji widoczny dla LLM.",
+        description="Function description visible to LLM.",
     )
     @async_safe_action
     async def do_something(
         self,
-        param_name: Annotated[str, "Opis parametru dla LLM"],
+        param_name: Annotated[str, "Parameter description for LLM"],
     ) -> str:
         """
-        Docstring funkcji.
+        Function docstring.
         """
-        # Twoja logika
+        # Your logic
         result = perform_logic(param_name)
 
-        # Logowanie (masz dostęp do self.logger)
-        self.logger.info(f"Wykonano akcję: {result}")
+        # Logging (you have access to self.logger)
+        self.logger.info(f"Action performed: {result}")
 
-        return f"✅ Sukces: {result}"
+        return f"✅ Success: {result}"
 ```
 
-## 2. Kluczowe Komponenty
+## 2. Key Components
 
-### Klasa `BaseSkill`
-Zapewnia:
-- **Logger (`self.logger`)**: Automatycznie skonfigurowany logger.
-- **Workspace (`self.workspace_root`)**: Bezpieczna ścieżka do katalogu roboczego.
-- **Metody pomocnicze**: np. `validate_path(path)` dla bezpieczeństwa plików.
+### `BaseSkill` Class
+Provides:
+- **Logger (`self.logger`)**: Automatically configured logger.
+- **Workspace (`self.workspace_root`)**: Safe path to the working directory.
+- **Helper methods**: e.g., `validate_path(path)` for file safety.
 
-### Dekoratory
-Używaj dekoratorów `safe_action` (dla metod synchronicznych) lub `async_safe_action` (dla asynchronicznych), aby:
-- Automatycznie łapać wyjątki.
-- Logować błędy.
-- Zwracać sformatowany komunikat błędu ("❌ ...") zamiast przerywać działanie agenta.
+### Decorators
+Use `safe_action` (for synchronous methods) or `async_safe_action` (for asynchronous ones) to:
+- Automatically catch exceptions.
+- Log errors.
+- Return a formatted error message ("❌ ...") instead of crashing the agent.
 
-**Przykład:**
+**Example:**
 ```python
 @async_safe_action
 async def risky_method(self):
-    raise ValueError("Ups!")
-    # Zwróci: "❌ Wystąpił błąd: Ups!"
+    raise ValueError("Oops!")
+    # Returns: "❌ Error occurred: Oops!"
 ```
 
-### Typowanie
-Używaj `Annotated[Typ, "Opis"]` dla wszystkich argumentów funkcji `@kernel_function`. Te opisy są kluczowe dla LLM, aby wiedział jak używać narzędzia.
+### Typing
+Use `Annotated[Type, "Description"]` for all `@kernel_function` arguments. These descriptions are crucial for the LLM to understand how to use the tool.
 
-## 3. Bezpieczeństwo
+## 3. Security
 
-Jeśli Twój skill operuje na plikach, **ZAWSZE** używaj `self.validate_path(path)`.
-Metoda ta upewnia się, że ścieżka nie wykracza poza dozwolony `workspace_root` (zapobiega Path Traversal).
+If your skill operates on files, **ALWAYS** use `self.validate_path(path)`.
+This method ensures the path does not escape the allowed `workspace_root` (prevents Path Traversal).
 
 ```python
 def read(self, path: str):
     safe_path = self.validate_path(path)
-    # Teraz safe_path jest bezpieczna do użycia
+    # Now safe_path is safe to use
     with open(safe_path, 'r') as f: ...
 ```
 
-## 4. Testowanie
+## 4. Testing
 
-Każdy nowy skill musi posiadać testy jednostkowe w `tests/`.
-- Testuj sukces ("✅").
-- Testuj błędy (oczekuj zwrotu stringa z błędem "❌", a nie rzucenia wyjątku).
-- Używaj `pytest.mark.asyncio` dla metod asynchronicznych.
+Every new skill must have unit tests in `tests/`.
+- Test success ("✅").
+- Test errors (expect return string with error "❌", not exception raising).
+- Use `pytest.mark.asyncio` for asynchronous methods.
 
 ***
 
-## 5. Import Narzędzi MCP (Model Context Protocol)
+## 5. MCP Tools Import (Model Context Protocol)
 
-Venom obsługuje standard **MCP (Model Context Protocol)**, co pozwala na importowanie narzędzi bezpośrednio z repozytoriów Git bez konieczności pisania własnego wrapper'a.
+Venom supports the **MCP (Model Context Protocol)** standard, allowing you to import tools directly from Git repositories without writing your own wrapper.
 
-### Jak to działa?
-1.  **Agenci używają skilla `McpManagerSkill`**.
-2.  System klonuje repozytorium do `venom_core/skills/mcp/_repos`.
-3.  Tworzone jest izolowane środowisko `venv` dla narzędzia.
-4.  Generator tworzy plik `.py` w `custom/`, który działa jak "Proxy" do serwera MCP.
+### How it works?
+1.  **Agents use the `McpManagerSkill`**.
+2.  System clones the repository to `venom_core/skills/mcp/_repos`.
+3.  An isolated `venv` environment is created for the tool.
+4.  Generator creates a `.py` file in `custom/` that acts as a "Proxy" to the MCP server.
 
-### Przykład Użycia (przez Agenta)
+### Usage Example (by Agent)
 ```python
-# Agent prosi o pobranie narzędzia
+# Agent requests tool download
 await mcp_manager.import_mcp_tool_from_git(
     repo_url="https://github.com/modelcontextprotocol/servers",
     tool_name="sqlite",
-    server_entrypoint="python src/sqlite/server.py" # Ścieżka względna w repo
+    server_entrypoint="python src/sqlite/server.py" # Relative path in repo
 )
 ```
 
-Po wykonaniu tej operacji, w systemie pojawi się nowy skill (np. `SqliteMcpSkill`), który udostępnia funkcje serwera MCP (np. `query`, `list_tables`) jako natywne `@kernel_function`.
+After this operation, a new skill (e.g., `SqliteMcpSkill`) appears in the system, exposing MCP server functions (e.g., `query`, `list_tables`) as native `@kernel_function`.
 
-### Standaryzacja integracji MCP
-Wszystkie importy MCP są obsługiwane przez `McpManagerSkill` i mają ustandaryzowaną strukturę:
-- repozytoria trafiają do `venom_core/skills/mcp/_repos/`,
-- wrappery generowane są w `venom_core/skills/custom/` jako `mcp_*.py`,
-- nie edytuj tych plików ręcznie (są generowane).
+### MCP Integration Standardization
+All MCP imports are handled by `McpManagerSkill` and follow a standardized structure:
+- repositories go to `venom_core/skills/mcp/_repos/`,
+- wrappers are generated in `venom_core/skills/custom/` as `mcp_*.py`,
+- do not edit these files manually (they are generated).
 
-### Struktura MCP w Venomie
-*   `venom_core/skills/mcp/` - Logika managera i generatora.
-*   `venom_core/skills/mcp/_repos/` - Sklonowane repozytoria (nie edytuj ręcznie).
-*   `venom_core/skills/custom/mcp_*.py` - Wygenerowane wrappery (można podglądać, nie edytować).
+### MCP Structure in Venom
+*   `venom_core/skills/mcp/` - Manager and generator logic.
+*   `venom_core/skills/mcp/_repos/` - Cloned repositories (do not edit manually).
+*   `venom_core/skills/custom/mcp_*.py` - Generated wrappers (can be viewed, do not edit).
 
-### Powiązana dokumentacja (MCP)
-- `docs/_done/097_wdrozenie_importu_mcp.md` – wdrożenie importu MCP (MVP).
-- `docs/BACKEND_ARCHITECTURE.md` – warstwa wykonawcza i MCP w architekturze.
-- `docs/TREE.md` – struktura repo i katalogi MCP.
+### Related documentation (MCP)
+- `docs/_done/097_wdrozenie_importu_mcp.md` – MCP import rollout (MVP).
+- `docs/en/BACKEND_ARCHITECTURE.md` – execution layer and MCP in architecture.
+- `docs/en/TREE.md` – repo structure and MCP directories.

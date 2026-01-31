@@ -1,44 +1,44 @@
-# Global Cost Guard - Dokumentacja
+# Global Cost Guard - Documentation
 
-## Przegląd
+## Overview
 
-**Global Cost Guard** to mechanizm bezpieczeństwa finansowego w systemie Venom, który chroni przed niekontrolowanymi kosztami API. System domyślnie działa w trybie **Eco (Local-Only)**, fizycznie blokując dostęp do płatnych API (OpenAI, Google Gemini). Użytkownik musi świadomie włączyć tryb **Pro (Paid)** aby uzyskać dostęp do modeli chmurowych.
+**Global Cost Guard** is a financial security mechanism in the Venom system that protects against uncontrolled API costs. The system defaults to **Eco (Local-Only)** mode, physically blocking access to paid APIs (OpenAI, Google Gemini). Users must consciously enable **Pro (Paid)** mode to gain access to cloud models.
 
-## Funkcje
+## Features
 
-### 1. Safety Reset (Bezpieczny Start)
-- System **zawsze** startuje w trybie Eco
-- Stan `paid_mode_enabled` **nie jest persystowany** do pliku
-- Restart aplikacji resetuje tryb do Eco
-- Uniemożliwia przypadkowe pozostawienie włączonego "licznika"
+### 1. Safety Reset (Safe Start)
+- System **always** starts in Eco mode
+- `paid_mode_enabled` state is **not persisted** to file
+- Application restart resets mode to Eco
+- Prevents accidentally leaving the "meter" running
 
-### 2. Fizyczna Bramka (Cost Gate)
-- Model Router sprawdza stan `paid_mode_enabled` przed każdym zapytaniem do chmury
-- Jeśli tryb płatny wyłączony: automatyczny fallback do modelu lokalnego
-- Logowanie każdej blokady w logach systemowych
-- Zero wycieków zapytań do płatnych API
+### 2. Physical Gate (Cost Gate)
+- Model Router checks `paid_mode_enabled` state before every cloud request
+- If paid mode is disabled: automatic fallback to local model
+- Logging of every blockage in system logs
+- Zero leakage of requests to paid APIs
 
-### 3. Transparentność (Model Attribution)
-- Każda odpowiedź systemu oznaczona informacją o użytym modelu
-- Wizualne odróżnienie: 🤖 dla lokalnych, ⚡ dla płatnych
-- Badge przy każdej wiadomości: zielony (free) / fioletowy (paid)
-- Użytkownik widzi w czasie rzeczywistym, za co płaci
+### 3. Transparency (Model Attribution)
+- Every system response tagged with information about the model used
+- Visual distinction: 🤖 for local, ⚡ for paid
+- Badge on every message: green (free) / purple (paid)
+- User sees in real-time what they're paying for
 
-## Tryby Pracy
+## Operation Modes
 
-### Eco Mode (Domyślny) 🌿
-- **Status**: Tylko lokalne modele (Llama, Phi-3)
-- **Koszt**: $0.00
-- **Ikona**: Zielona plakietka
-- **Zachowanie**: Wszystkie zapytania kierowane do lokalnego LLM
+### Eco Mode (Default) 🌿
+- **Status**: Local models only (Llama, Phi-3)
+- **Cost**: $0.00
+- **Icon**: Green badge
+- **Behavior**: All requests directed to local LLM
 
-### Pro Mode (Opcjonalny) 💸
-- **Status**: Dostęp do modeli chmurowych (GPT-4, Gemini)
-- **Koszt**: Według cenika dostawcy
-- **Ikona**: Fioletowa plakietka
-- **Zachowanie**: Złożone zadania kierowane do chmury (w trybie HYBRID)
+### Pro Mode (Optional) 💸
+- **Status**: Access to cloud models (GPT-4, Gemini)
+- **Cost**: According to provider pricing
+- **Icon**: Purple badge
+- **Behavior**: Complex tasks directed to cloud (in HYBRID mode)
 
-## Architektura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -51,13 +51,13 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    API: /api/v1/system/cost-mode            │
-│  GET  → Pobiera aktualny stan (enabled: bool)              │
-│  POST → Ustawia tryb (enable: bool)                        │
+│  GET  → Retrieves current state (enabled: bool)            │
+│  POST → Sets mode (enable: bool)                            │
 └─────────────────────────────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      StateManager                            │
-│  • paid_mode_enabled: bool = False (ZAWSZE przy starcie)   │
+│  • paid_mode_enabled: bool = False (ALWAYS at start)       │
 │  • enable_paid_mode() → True                                │
 │  • disable_paid_mode() → False                              │
 │  • is_paid_mode_enabled() → bool                            │
@@ -86,44 +86,44 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Użycie
+## Usage
 
 ### Dashboard UI
 
-1. **Sprawdzenie aktualnego trybu**:
-   - Patrz na przełącznik w nagłówku
-   - 🌿 Eco Mode = Bezpłatny
-   - 💸 Pro Mode = Płatny
+1. **Check current mode**:
+   - Look at the toggle in the header
+   - 🌿 Eco Mode = Free
+   - 💸 Pro Mode = Paid
 
-2. **Włączenie Pro Mode**:
-   - Kliknij przełącznik
-   - Potwierdź w oknie dialogowym
-   - Przeczytaj ostrzeżenie o kosztach
-   - Kliknij "Potwierdzam i Akceptuję Koszty"
+2. **Enable Pro Mode**:
+   - Click the toggle
+   - Confirm in dialog window
+   - Read cost warning
+   - Click "I Confirm and Accept Costs"
 
-3. **Wyłączenie Pro Mode**:
-   - Kliknij przełącznik
-   - Automatyczne wyłączenie bez potwierdzenia
+3. **Disable Pro Mode**:
+   - Click the toggle
+   - Automatic disable without confirmation
 
-### API Programowe
+### Programmatic API
 
 ```python
 import requests
 
-# Sprawdź aktualny tryb
+# Check current mode
 response = requests.get("http://localhost:8000/api/v1/system/cost-mode")
 print(response.json())
 # {"enabled": false, "provider": "hybrid"}
 
-# Włącz Pro Mode
+# Enable Pro Mode
 response = requests.post(
     "http://localhost:8000/api/v1/system/cost-mode",
     json={"enable": True}
 )
 print(response.json())
-# {"status": "success", "message": "Paid Mode (Pro) włączony...", "enabled": true}
+# {"status": "success", "message": "Paid Mode (Pro) enabled...", "enabled": true}
 
-# Wyłącz Pro Mode
+# Disable Pro Mode
 response = requests.post(
     "http://localhost:8000/api/v1/system/cost-mode",
     json={"enable": False}
@@ -136,148 +136,148 @@ response = requests.post(
 from venom_core.core.state_manager import StateManager
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
-# Inicjalizacja
+# Initialization
 state_manager = StateManager()
 router = HybridModelRouter(state_manager=state_manager)
 
-# Domyślnie: Eco Mode (paid_mode_enabled = False)
-routing = router.route_task(TaskType.CODING_COMPLEX, "Refaktoryzuj kod")
-print(routing["target"])  # "local" - zablokowany dostęp do chmury
+# Default: Eco Mode (paid_mode_enabled = False)
+routing = router.route_task(TaskType.CODING_COMPLEX, "Refactor code")
+print(routing["target"])  # "local" - cloud access blocked
 print(routing["is_paid"]) # False
 
-# Włącz Pro Mode
+# Enable Pro Mode
 state_manager.enable_paid_mode()
 
-# Teraz: dostęp do chmury
-routing = router.route_task(TaskType.CODING_COMPLEX, "Refaktoryzuj kod")
-print(routing["target"])  # "cloud" - dostęp do GPT-4/Gemini
+# Now: cloud access available
+routing = router.route_task(TaskType.CODING_COMPLEX, "Refactor code")
+print(routing["target"])  # "cloud" - access to GPT-4/Gemini
 print(routing["is_paid"]) # True
 ```
 
-## Przepływ Typowego Użycia
+## Typical Usage Flow
 
-### Scenariusz: Zadanie wymaga modelu chmurowego
+### Scenario: Task requires cloud model
 
-1. **Użytkownik wysyła zadanie**: "Przeanalizuj tę architekturę i zaproponuj refaktoryzację"
-2. **Router ocenia zadanie**: TaskType.CODING_COMPLEX → normalnie cloud
-3. **Cost Guard sprawdza**: `paid_mode_enabled == False` → BLOKADA
-4. **Fallback do LOCAL**: Zadanie wykonywane przez Llama 3
-5. **UI pokazuje badge**: [🤖 Llama 3 (Local)]
-6. **Użytkownik widzi**: To było wykonane lokalnie, zero kosztów
+1. **User sends task**: "Analyze this architecture and propose refactoring"
+2. **Router evaluates task**: TaskType.CODING_COMPLEX → normally cloud
+3. **Cost Guard checks**: `paid_mode_enabled == False` → BLOCK
+4. **Fallback to LOCAL**: Task executed by Llama 3
+5. **UI shows badge**: [🤖 Llama 3 (Local)]
+6. **User sees**: This was executed locally, zero costs
 
-### Scenariusz: Użytkownik włącza Pro Mode
+### Scenario: User enables Pro Mode
 
-1. **Kliknięcie przełącznika** → Modal z ostrzeżeniem
-2. **Potwierdzenie** → POST /api/v1/system/cost-mode (enable: true)
+1. **Toggle click** → Modal with warning
+2. **Confirmation** → POST /api/v1/system/cost-mode (enable: true)
 3. **StateManager**: `paid_mode_enabled = True`
-4. **Notyfikacja**: "💸 Pro Mode włączony - Cloud API dostępne"
-5. **Kolejne zapytania**: Mogą korzystać z GPT-4/Gemini (w HYBRID/CLOUD mode)
-6. **UI Badge**: [⚡ GPT-4o] przy odpowiedziach z chmury
+4. **Notification**: "💸 Pro Mode enabled - Cloud API available"
+5. **Subsequent requests**: Can use GPT-4/Gemini (in HYBRID/CLOUD mode)
+6. **UI Badge**: [⚡ GPT-4o] on cloud responses
 
-## Konfiguracja Trybu AI
+## AI Mode Configuration
 
-Global Cost Guard współpracuje z konfiguracją `AI_MODE`:
+Global Cost Guard works with `AI_MODE` configuration:
 
 ### LOCAL Mode
 ```env
 AI_MODE=LOCAL
 ```
-- Wszystkie zadania → local
-- Cost Guard nie ma wpływu (cloud i tak zablokowany)
+- All tasks → local
+- Cost Guard has no effect (cloud blocked anyway)
 
-### HYBRID Mode (Zalecany)
+### HYBRID Mode (Recommended)
 ```env
 AI_MODE=HYBRID
 ```
-- Proste zadania → local (zawsze)
-- Złożone zadania → cloud (tylko gdy `paid_mode_enabled == True`)
-- Cost Guard aktywny dla złożonych zadań
+- Simple tasks → local (always)
+- Complex tasks → cloud (only when `paid_mode_enabled == True`)
+- Cost Guard active for complex tasks
 
 ### CLOUD Mode
 ```env
 AI_MODE=CLOUD
 ```
-- Wszystkie zadania → cloud
-- Cost Guard blokuje WSZYSTKIE zapytania gdy `paid_mode_enabled == False`
-- ⚠️ Uwaga: W tym trybie wyłączony Cost Guard = brak dostępu do AI
+- All tasks → cloud
+- Cost Guard blocks ALL requests when `paid_mode_enabled == False`
+- ⚠️ Note: In this mode disabled Cost Guard = no AI access
 
-## Wrażliwe Dane (Sensitive Data)
+## Sensitive Data
 
-**WAŻNE**: Wrażliwe dane **ZAWSZE** idą do modelu lokalnego, niezależnie od:
-- Trybu AI (LOCAL/HYBRID/CLOUD)
-- Stanu Cost Guard (Eco/Pro)
+**IMPORTANT**: Sensitive data **ALWAYS** goes to local model, regardless of:
+- AI Mode (LOCAL/HYBRID/CLOUD)
+- Cost Guard state (Eco/Pro)
 
 ```python
-# Przykład: hasło w zapytaniu
+# Example: password in request
 routing = router.route_task(
     TaskType.SENSITIVE,
-    "Wygeneruj skrypt z hasłem: secret123"
+    "Generate script with password: secret123"
 )
-print(routing["target"])  # "local" - ZAWSZE
-print(routing["reason"])  # "Wrażliwe dane - HARD BLOCK..."
+print(routing["target"])  # "local" - ALWAYS
+print(routing["reason"])  # "Sensitive data - HARD BLOCK..."
 ```
 
-## Logi i Monitoring
+## Logs and Monitoring
 
-### Logowane Zdarzenia
+### Logged Events
 
 ```
-[WARNING] 🔒 COST GUARD: Zablokowano dostęp do Cloud API. Fallback do LOCAL.
-[WARNING] 🔓 Paid Mode ENABLED przez API - użytkownik zaakceptował koszty
-[INFO] 🔒 Paid Mode DISABLED przez API - tryb Eco aktywny
+[WARNING] 🔒 COST GUARD: Blocked access to Cloud API. Fallback to LOCAL.
+[WARNING] 🔓 Paid Mode ENABLED via API - user accepted costs
+[INFO] 🔒 Paid Mode DISABLED via API - Eco mode active
 ```
 
-### Metryki Tokenów
+### Token Metrics
 
-Dashboard wyświetla koszt sesji:
+Dashboard displays session cost:
 ```
 Session Cost: $0.0000  (Eco Mode)
-Session Cost: $0.0234  (Pro Mode - aktywne użycie GPT-4)
+Session Cost: $0.0234  (Pro Mode - active GPT-4 usage)
 ```
 
-## Bezpieczeństwo
+## Security
 
-### Zabezpieczenia Wbudowane
+### Built-in Safeguards
 
-1. **Safety Reset**: Zawsze startuj w Eco Mode
-2. **No Persistence**: Stan nie zapisywany na dysku
-3. **Explicit Confirmation**: Modal przy włączaniu Pro Mode
-4. **Fallback Logic**: Błąd w Cost Guard → local (safe default)
-5. **Sensitive Data Lock**: Wrażliwe dane nigdy do chmury
+1. **Safety Reset**: Always start in Eco Mode
+2. **No Persistence**: State not saved to disk
+3. **Explicit Confirmation**: Modal when enabling Pro Mode
+4. **Fallback Logic**: Error in Cost Guard → local (safe default)
+5. **Sensitive Data Lock**: Sensitive data never to cloud
 
 ### Best Practices
 
-1. **Wyłącz Pro Mode po użyciu**: Nie pozostawiaj włączonego na noc
-2. **Monitoruj koszty**: Regularnie sprawdzaj "Session Cost"
-3. **Używaj HYBRID**: Optymalizuje koszty vs. jakość
-4. **Oznaczaj wrażliwe**: Używaj TaskType.SENSITIVE dla danych osobowych
+1. **Disable Pro Mode after use**: Don't leave enabled overnight
+2. **Monitor costs**: Regularly check "Session Cost"
+3. **Use HYBRID**: Optimizes cost vs. quality
+4. **Mark sensitive**: Use TaskType.SENSITIVE for personal data
 
-## Rozwiązywanie Problemów
+## Troubleshooting
 
-### Problem: Nie mogę uzyskać odpowiedzi z GPT-4
+### Problem: Cannot get GPT-4 response
 
-**Rozwiązanie**:
-1. Sprawdź czy Pro Mode jest włączony (przełącznik w nagłówku)
-2. Sprawdź czy masz ustawiony `GOOGLE_API_KEY` lub `OPENAI_API_KEY` w `.env`
-3. Sprawdź czy `AI_MODE=HYBRID` lub `CLOUD` w `.env`
+**Solution**:
+1. Check if Pro Mode is enabled (toggle in header)
+2. Check if you have `GOOGLE_API_KEY` or `OPENAI_API_KEY` set in `.env`
+3. Check if `AI_MODE=HYBRID` or `CLOUD` in `.env`
 
-### Problem: Cost Guard blokuje mimo włączonego Pro Mode
+### Problem: Cost Guard blocks despite Pro Mode enabled
 
-**Rozwiązanie**:
-1. Sprawdź logi: `grep "COST GUARD" logs/venom.log`
-2. Restart aplikacji: Pro Mode resetuje się przy restarcie
-3. Włącz ponownie przez UI
+**Solution**:
+1. Check logs: `grep "COST GUARD" logs/venom.log`
+2. Restart application: Pro Mode resets on restart
+3. Enable again through UI
 
-### Problem: Badge nie pokazuje się przy odpowiedziach
+### Problem: Badge doesn't show on responses
 
-**Rozwiązanie**:
-1. Upewnij się że używasz najnowszej wersji frontendu
-2. Sprawdź konsolę przeglądarki: F12 → Console
-3. Przeładuj stronę: Ctrl+Shift+R (cache clear)
+**Solution**:
+1. Ensure you're using latest frontend version
+2. Check browser console: F12 → Console
+3. Reload page: Ctrl+Shift+R (clear cache)
 
-## Integracja z Własnym Kodem
+## Integration with Custom Code
 
-Jeśli tworzysz własnego agenta korzystającego z HybridModelRouter:
+If you're creating your own agent using HybridModelRouter:
 
 ```python
 from venom_core.core.state_manager import StateManager
@@ -285,17 +285,17 @@ from venom_core.execution.model_router import HybridModelRouter
 
 class MyCustomAgent:
     def __init__(self, state_manager: StateManager):
-        # Przekaż state_manager do routera
+        # Pass state_manager to router
         self.router = HybridModelRouter(state_manager=state_manager)
 
     async def process_task(self, prompt: str):
-        # Routing z Cost Guard
+        # Routing with Cost Guard
         routing = self.router.route_task(TaskType.STANDARD, prompt)
 
-        # Użyj routing["model_name"], routing["provider"]
+        # Use routing["model_name"], routing["provider"]
         # ...
 
-        # Zwróć odpowiedź z metadanymi
+        # Return response with metadata
         return {
             "response": "...",
             "metadata": {
@@ -308,37 +308,37 @@ class MyCustomAgent:
 
 ## FAQ
 
-**Q: Czy Cost Guard wpływa na wydajność?**
-A: Nie. Sprawdzenie flagi `paid_mode_enabled` to operacja O(1), praktycznie zerowy overhead.
+**Q: Does Cost Guard affect performance?**
+A: No. Checking the `paid_mode_enabled` flag is O(1), practically zero overhead.
 
-**Q: Co jeśli zapomnę wyłączyć Pro Mode?**
-A: Restart aplikacji automatycznie wyłącza Pro Mode (Safety Reset).
+**Q: What if I forget to disable Pro Mode?**
+A: Application restart automatically disables Pro Mode (Safety Reset).
 
-**Q: Czy mogę programowo wymusić użycie Cloud API?**
-A: Nie. Cost Guard jest physical gate - nie ma bypassa. Musisz włączyć Pro Mode.
+**Q: Can I programmatically force Cloud API usage?**
+A: No. Cost Guard is a physical gate - no bypass. You must enable Pro Mode.
 
-**Q: Jak działa w trybie LOCAL?**
-A: W LOCAL mode Cost Guard jest transparentny - cloud i tak jest zablokowany przez AI_MODE.
+**Q: How does it work in LOCAL mode?**
+A: In LOCAL mode Cost Guard is transparent - cloud is blocked by AI_MODE anyway.
 
-**Q: Czy Cost Guard chroni przed wszystkimi kosztami?**
-A: Tak - blokuje OpenAI, Google Gemini, Azure. Nie blokuje lokalnych modeli (są darmowe).
+**Q: Does Cost Guard protect against all costs?**
+A: Yes - blocks OpenAI, Google Gemini, Azure. Doesn't block local models (they're free).
 
 ## Changelog
 
 ### v1.4.0 (2024-12-09)
-- ✨ Dodano Global Cost Guard
-- ✨ Dodano Model Attribution (badges)
-- ✨ Dodano Master Switch w UI
-- ✨ Dodano API endpoints dla cost mode
-- ✨ Dodano Safety Reset mechanism
-- 📝 Dokumentacja COST_GUARD.md
-- ✅ Testy jednostkowe dla Cost Guard
+- ✨ Added Global Cost Guard
+- ✨ Added Model Attribution (badges)
+- ✨ Added Master Switch in UI
+- ✨ Added API endpoints for cost mode
+- ✨ Added Safety Reset mechanism
+- 📝 Documentation COST_GUARD.md
+- ✅ Unit tests for Cost Guard
 
-## Kontakt
+## Contact
 
-W razie pytań lub problemów:
+For questions or issues:
 - GitHub Issues: [mpieniak01/Venom/issues](https://github.com/mpieniak01/Venom/issues)
-- Dokumentacja: `/docs/`
+- Documentation: `/docs/`
 
 ---
 

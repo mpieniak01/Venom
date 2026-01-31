@@ -1,27 +1,27 @@
-# THE_LAUNCHPAD - Warstwa Wdrożeniowa i Kreatywna
+# THE_LAUNCHPAD - Deployment and Creative Layer
 
-## Przegląd
+## Overview
 
-THE_LAUNCHPAD to zestaw komponentów umożliwiających Venomowi "wypuszczenie" aplikacji w świat poprzez:
-- **Cloud Deployment** - automatyczne wdrażanie na zdalnych serwerach
-- **Media Generation** - generowanie logo, grafik i assetów wizualnych
-- **Branding & Marketing** - tworzenie strategii marketingowej i content marketingu
+THE_LAUNCHPAD is a set of components enabling Venom to "release" applications to the world through:
+- **Cloud Deployment** - automatic deployment on remote servers
+- **Media Generation** - generating logos, graphics and visual assets
+- **Branding & Marketing** - creating marketing strategy and content marketing
 
 ---
 
-## Komponenty
+## Components
 
 ### 1. CloudProvisioner (`venom_core/infrastructure/cloud_provisioner.py`)
 
-Zarządca deploymentów w chmurze obsługujący SSH i Docker.
+Cloud deployment manager supporting SSH and Docker.
 
-**Funkcjonalności:**
-- `provision_server()` - instalacja Dockera i Nginx na czystym serwerze
-- `deploy_stack()` - deployment aplikacji przez docker-compose
-- `check_deployment_health()` - monitorowanie stanu deploymentu
-- `configure_domain()` - konfiguracja DNS (placeholder)
+**Features:**
+- `provision_server()` - installing Docker and Nginx on clean server
+- `deploy_stack()` - application deployment via docker-compose
+- `check_deployment_health()` - deployment state monitoring
+- `configure_domain()` - DNS configuration (placeholder)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.infrastructure.cloud_provisioner import CloudProvisioner
 
@@ -34,24 +34,24 @@ await provisioner.deploy_stack(
 )
 ```
 
-**Bezpieczeństwo:**
-- Używa `asyncssh` dla asynchronicznych operacji
-- Timeout dla wszystkich operacji SSH
-- Nigdy nie loguje kluczy prywatnych
-- Obsługa błędów połączenia
+**Security:**
+- Uses `asyncssh` for asynchronous operations
+- Timeout for all SSH operations
+- Never logs private keys
+- Connection error handling
 
 ---
 
 ### 2. MediaSkill (`venom_core/execution/skills/media_skill.py`)
 
-Skill do generowania i przetwarzania obrazów.
+Skill for generating and processing images.
 
-**Funkcjonalności:**
-- `generate_image()` - generowanie obrazów (DALL-E lub placeholder Pillow)
-- `resize_image()` - zmiana rozmiaru dla różnych użyć (favicon, og:image)
-- `list_assets()` - lista wygenerowanych assetów
+**Features:**
+- `generate_image()` - image generation (DALL-E or placeholder Pillow)
+- `resize_image()` - resizing for different uses (favicon, og:image)
+- `list_assets()` - list of generated assets
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.execution.skills.media_skill import MediaSkill
 
@@ -70,63 +70,63 @@ favicon_path = await skill.resize_image(
 )
 ```
 
-**Tryby pracy:**
-- `placeholder` - generuje placeholdery używając Pillow (domyślny, bez GPU)
-- `openai` - używa DALL-E 3 przez OpenAI API (wymaga klucza)
-- `local-sd` - Stable Diffusion lokalnie (TODO - wymaga ONNX/GPU)
+**Operation Modes:**
+- `placeholder` - generates placeholders using Pillow (default, no GPU)
+- `openai` - uses DALL-E 3 via OpenAI API (requires key)
+- `local-sd` - Stable Diffusion locally (TODO - requires ONNX/GPU)
 
 ---
 
 ### 3. Creative Director Agent (`venom_core/agents/creative_director.py`)
 
-Agent specjalizujący się w brandingu i marketingu.
+Agent specializing in branding and marketing.
 
-**Kompetencje:**
-- Tworzenie promptów do AI art generation
-- Projektowanie identyfikacji wizualnej
-- Copywriting (landing pages, opisy produktów)
-- Content marketing (social media, tweety, posty LinkedIn)
+**Competencies:**
+- Creating prompts for AI art generation
+- Visual identity design
+- Copywriting (landing pages, product descriptions)
+- Content marketing (social media, tweets, LinkedIn posts)
 
 **System Prompt:**
-- Ekspert w brandingu i marketingu
-- Dobiera styl wizualny do tematyki produktu
-- Tworzy kompleksowe marketing kity
+- Branding and marketing expert
+- Selects visual style matching product theme
+- Creates comprehensive marketing kits
 
-**Przykład zadania:**
+**Example Task:**
 ```
-"Stwórz branding dla aplikacji do zarządzania finansami osobistymi 'MoneyFlow'.
-Target: millenialsi 25-35 lat. Wygeneruj logo i przygotuj launch tweet."
+"Create branding for personal finance management app 'MoneyFlow'.
+Target: millennials 25-35 years. Generate logo and prepare launch tweet."
 ```
 
 ---
 
 ### 4. DevOps Agent (`venom_core/agents/devops.py`)
 
-Agent specjalizujący się w infrastrukturze i deploymencie.
+Agent specializing in infrastructure and deployment.
 
-**Kompetencje:**
-- Zarządzanie infrastrukturą cloud (VPS, Docker, Kubernetes)
+**Competencies:**
+- Cloud infrastructure management (VPS, Docker, Kubernetes)
 - Deployment & CI/CD pipelines
-- Konfiguracja serwerów (Linux, Docker, Nginx)
+- Server configuration (Linux, Docker, Nginx)
 - Monitoring & Logging
 - Security (SSH keys, SSL certificates, secrets management)
 
 **System Prompt:**
-- Ekspert DevOps i SRE
-- Priorytet: bezpieczeństwo i niezawodność
-- Używa CloudProvisioner do operacji
+- DevOps and SRE expert
+- Priority: security and reliability
+- Uses CloudProvisioner for operations
 
-**Przykład zadania:**
+**Example Task:**
 ```
-"Deploy aplikację e-commerce na serwer 1.2.3.4. Użyj docker-compose,
-skonfiguruj Nginx jako reverse proxy, zainstaluj SSL certyfikat."
+"Deploy e-commerce app on server 1.2.3.4. Use docker-compose,
+configure Nginx as reverse proxy, install SSL certificate."
 ```
 
 ---
 
-## Konfiguracja
+## Configuration
 
-Dodaj do `.env`:
+Add to `.env`:
 
 ```env
 # === THE_LAUNCHPAD Configuration ===
@@ -140,9 +140,9 @@ DEPLOYMENT_TIMEOUT=300
 # Media Generation
 ASSETS_DIR=./workspace/assets
 ENABLE_IMAGE_GENERATION=true
-IMAGE_GENERATION_SERVICE=placeholder  # lub 'openai', 'local-sd'
+IMAGE_GENERATION_SERVICE=placeholder  # or 'openai', 'local-sd'
 
-# Jeśli używasz OpenAI DALL-E:
+# If using OpenAI DALL-E:
 OPENAI_API_KEY=sk-...
 DALLE_MODEL=dall-e-3
 IMAGE_DEFAULT_SIZE=1024x1024
@@ -153,113 +153,113 @@ IMAGE_STYLE=vivid
 
 ## Workflow: "Go-Live"
 
-Kompletny proces wdrożenia aplikacji:
+Complete application deployment process:
 
 ### 1. Build
 ```
-CoderAgent tworzy aplikację → docker-compose.yml
+CoderAgent creates application → docker-compose.yml
 ```
 
 ### 2. Branding
 ```
 CreativeDirector → generate_image → logo.png, favicon.png
-CreativeDirector → MARKETING_KIT.md (tweets, posty, opisy)
+CreativeDirector → MARKETING_KIT.md (tweets, posts, descriptions)
 ```
 
 ### 3. Deploy
 ```
-DevOpsAgent → provision_server → instalacja Docker
-DevOpsAgent → deploy_stack → uruchomienie aplikacji
+DevOpsAgent → provision_server → Docker installation
+DevOpsAgent → deploy_stack → application launch
 ```
 
 ### 4. Announce
 ```
 CreativeDirector → launch tweet, LinkedIn post
-PublisherAgent → publikacja na Product Hunt, Hacker News
+PublisherAgent → publication on Product Hunt, Hacker News
 ```
 
 ---
 
-## Demo & Testy
+## Demo & Tests
 
-### Uruchom demo:
+### Run demo:
 ```bash
 python examples/demo_launchpad.py
 ```
 
-### Uruchom testy:
+### Run tests:
 ```bash
 pytest tests/test_media_skill.py -v
 pytest tests/test_cloud_provisioner.py -v
 pytest tests/test_launchpad_agents.py -v
 ```
 
-**Wyniki:**
-- 32/32 testy przechodzą ✓
-- Wszystkie komponenty działają poprawnie
+**Results:**
+- 32/32 tests pass ✓
+- All components working correctly
 - Code coverage: >90%
 
 ---
 
 ## Marketing Kit Template
 
-Każdy projekt otrzymuje `MARKETING_KIT.md` zawierający:
-- Identyfikację wizualną (logo, kolory, typografia)
+Each project receives `MARKETING_KIT.md` containing:
+- Visual identity (logo, colors, typography)
 - Copywriting (tagline, value proposition, features)
-- Social media content (tweets, posty LinkedIn, Instagram)
+- Social media content (tweets, LinkedIn posts, Instagram)
 - Marketing strategy (go-to-market plan)
-- Metryki sukcesu
+- Success metrics
 
-Szablon: `workspace/MARKETING_KIT_TEMPLATE.md`
+Template: `workspace/MARKETING_KIT_TEMPLATE.md`
 
 ---
 
-## Bezpieczeństwo
+## Security
 
-### Zasady:
-1. ✅ **NIE** loguj kluczy prywatnych SSH
-2. ✅ **NIE** wklejaj sekretów w promptach LLM
-3. ✅ Używaj tylko ścieżek do kluczy, nie samych kluczy
-4. ✅ Wszystkie operacje SSH mają timeout
-5. ✅ Sekrety w `.env` lub vault, nigdy w kodzie
+### Principles:
+1. ✅ **DO NOT** log SSH private keys
+2. ✅ **DO NOT** paste secrets in LLM prompts
+3. ✅ Use only paths to keys, not keys themselves
+4. ✅ All SSH operations have timeout
+5. ✅ Secrets in `.env` or vault, never in code
 
 ### CloudProvisioner:
-- Używa `asyncssh` z timeoutem
-- Walidacja komend przed wykonaniem
+- Uses `asyncssh` with timeout
+- Command validation before execution
 - Known hosts handling
-- Obsługa błędów połączenia
+- Connection error handling
 
 ---
 
 ## Roadmap
 
-### Zaimplementowane (v1.0):
+### Implemented (v1.0):
 - ✅ CloudProvisioner (SSH, Docker, deployment)
-- ✅ MediaSkill (placeholder generation z Pillow)
+- ✅ MediaSkill (placeholder generation with Pillow)
 - ✅ Creative Director Agent
 - ✅ DevOps Agent
 - ✅ Marketing Kit Template
-- ✅ 32 testy jednostkowe
+- ✅ 32 unit tests
 
-### Planowane (v1.1):
-- ⏳ DALL-E 3 integration (wymaga OPENAI_API_KEY)
-- ⏳ Stable Diffusion lokalnie (ONNX + GPU)
-- ❌ DNS configuration (Cloudflare API) - **USUNIĘTE**: Zastąpione przez mDNS (venom.local)
+### Planned (v1.1):
+- ⏳ DALL-E 3 integration (requires OPENAI_API_KEY)
+- ⏳ Stable Diffusion locally (ONNX + GPU)
+- ❌ DNS configuration (Cloudflare API) - **REMOVED**: Replaced by mDNS (venom.local)
 - ⏳ SSL certificates (Let's Encrypt/Certbot automation)
 - ⏳ Kubernetes deployment
 - ⏳ Dashboard: Deployments view (web UI)
 
-### Planowane (v1.0):
+### Planned (v2.0):
 - ⏳ CI/CD pipeline generation (GitHub Actions, GitLab CI)
 - ⏳ Monitoring & alerting (Prometheus, Grafana)
 - ⏳ Video generation (Gemini API)
-- ⏳ Landing page generator (automatyczne HTML/CSS)
+- ⏳ Landing page generator (automatic HTML/CSS)
 
 ---
 
-## Przykłady użycia
+## Usage Examples
 
-### Przykład 1: Generowanie Logo
+### Example 1: Logo Generation
 ```python
 from venom_core.execution.skills.media_skill import MediaSkill
 
@@ -272,23 +272,23 @@ logo = await skill.generate_image(
 print(f"Logo: {logo}")
 ```
 
-### Przykład 2: Deployment na VPS
+### Example 2: VPS Deployment
 ```python
 from venom_core.infrastructure.cloud_provisioner import CloudProvisioner
 
 provisioner = CloudProvisioner(ssh_key_path="~/.ssh/vps_key")
 
-# Provision serwera
+# Provision server
 await provisioner.provision_server(host="1.2.3.4", user="root")
 
-# Deploy aplikacji
+# Deploy application
 await provisioner.deploy_stack(
     host="1.2.3.4",
     stack_name="shop_app",
     compose_file_path="./workspace/shop/docker-compose.yml"
 )
 
-# Sprawdź health
+# Check health
 health = await provisioner.check_deployment_health(
     host="1.2.3.4",
     stack_name="shop_app"
@@ -296,26 +296,26 @@ health = await provisioner.check_deployment_health(
 print(health)
 ```
 
-### Przykład 3: Kompletny Workflow z Agentami
+### Example 3: Complete Workflow with Agents
 ```python
-# 1. Creative Director tworzy branding
+# 1. Creative Director creates branding
 creative = CreativeDirectorAgent(kernel)
 branding = await creative.process(
-    "Stwórz kompletny branding dla aplikacji kwiaciarni online 'FlowerDelivery'"
+    "Create complete branding for online florist app 'FlowerDelivery'"
 )
 
-# 2. DevOps wdraża aplikację
+# 2. DevOps deploys application
 devops = DevOpsAgent(kernel)
 deployment = await devops.process(
-    "Deploy aplikację FlowerDelivery na serwer 1.2.3.4 z SSL"
+    "Deploy FlowerDelivery app on server 1.2.3.4 with SSL"
 )
 ```
 
 ---
 
-## Dokumentacja API
+## API Documentation
 
-Szczegółowa dokumentacja w docstringach:
+Detailed documentation in docstrings:
 - `venom_core.infrastructure.cloud_provisioner.CloudProvisioner`
 - `venom_core.execution.skills.media_skill.MediaSkill`
 - `venom_core.agents.creative_director.CreativeDirectorAgent`
@@ -326,29 +326,29 @@ Szczegółowa dokumentacja w docstringach:
 ## Troubleshooting
 
 ### Problem: "ModuleNotFoundError: No module named 'asyncssh'"
-**Rozwiązanie:** `pip install asyncssh`
+**Solution:** `pip install asyncssh`
 
-### Problem: "Brak klucza SSH"
-**Rozwiązanie:** Ustaw `DEPLOYMENT_SSH_KEY_PATH` w `.env` lub użyj hasła
+### Problem: "No SSH key"
+**Solution:** Set `DEPLOYMENT_SSH_KEY_PATH` in `.env` or use password
 
 ### Problem: "Connection timeout"
-**Rozwiązanie:** Sprawdź firewall, serwer musi mieć otwarty port 22 (SSH)
+**Solution:** Check firewall, server must have open port 22 (SSH)
 
 ### Problem: "OpenAI API error"
-**Rozwiązanie:** Sprawdź `OPENAI_API_KEY` lub użyj trybu `placeholder`
+**Solution:** Check `OPENAI_API_KEY` or use `placeholder` mode
 
 ---
 
-## Kontrybutorzy
+## Contributors
 
-- **Zadanie:** 029_THE_LAUNCHPAD
-- **Priorytet:** Strategiczny (Product Release & Monetization)
-- **Status:** ✅ Zakończone (2025-12-08)
-- **Testy:** 32/32 przechodzą
+- **Task:** 029_THE_LAUNCHPAD
+- **Priority:** Strategic (Product Release & Monetization)
+- **Status:** ✅ Completed (2025-12-08)
+- **Tests:** 32/32 passing
 - **Code Quality:** Linted (ruff, black, isort)
 
 ---
 
-## Licencja
+## License
 
-Część projektu Venom Meta-Intelligence.
+Part of the Venom Meta-Intelligence project.

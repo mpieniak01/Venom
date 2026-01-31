@@ -1,172 +1,172 @@
 # THE LIBRARIAN - File Management & Project Structure
 
-## Rola
+## Role
 
-Librarian Agent to bibliotekarz projektu w systemie Venom, specjalizujący się w nawigacji po plikach, zarządzaniu strukturą workspace oraz utrzymywaniu wiedzy o organizacji projektu.
+Librarian Agent is the project librarian in the Venom system, specializing in file navigation, workspace structure management, and maintaining knowledge about project organization.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Nawigacja po plikach** - Listowanie, sprawdzanie istnienia, odczyt plików
-- **Zarządzanie wiedzą** - Zapisywanie ważnych informacji o strukturze do pamięci
-- **Audyt projektu** - Sprawdzanie co już istnieje przed rozpoczęciem pracy
-- **Dokumentacja struktury** - Utrzymywanie mapy plików i katalogów
-- **Integracja z pamięcią** - Zapisywanie i przywołanie informacji o plikach
+- **File navigation** - Listing, checking existence, reading files
+- **Knowledge management** - Saving important information about structure to memory
+- **Project audit** - Checking what already exists before starting work
+- **Structure documentation** - Maintaining map of files and directories
+- **Memory integration** - Saving and retrieving file information
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. Dostępne Narzędzia
+### 1. Available Tools
 
 **FileSkill** (`venom_core/execution/skills/file_skill.py`):
-- `list_files(directory)` - Lista plików i katalogów
-- `file_exists(path)` - Sprawdzenie czy plik istnieje
-- `read_file(path)` - Odczyt zawartości pliku
+- `list_files(directory)` - List files and directories
+- `file_exists(path)` - Check if file exists
+- `read_file(path)` - Read file contents
 
 **MemorySkill** (`venom_core/memory/memory_skill.py`):
-- `memorize(content, tags)` - Zapisanie ważnych informacji (np. struktura, konfiguracja)
-- `recall(query)` - Przywołanie informacji z pamięci
+- `memorize(content, tags)` - Save important information (e.g., structure, configuration)
+- `recall(query)` - Retrieve information from memory
 
-### 2. Zasady Działania
+### 2. Operating Principles
 
-**Kiedy używać narzędzi:**
-- ✅ Pytania o pliki/struktury w workspace: `list_files`, `read_file`
-- ✅ Pytania o dokumentację/konfigurację: `read_file` + opcjonalnie `memorize`
-- ✅ Sprawdzenie czy plik istnieje: `file_exists`
-- ❌ Pytania ogólne (matematyka, definicje): NIE używaj narzędzi, odpowiedz wprost
+**When to use tools:**
+- ✅ Questions about files/structures in workspace: `list_files`, `read_file`
+- ✅ Questions about documentation/configuration: `read_file` + optionally `memorize`
+- ✅ Check if file exists: `file_exists`
+- ❌ General questions (math, definitions): DON'T use tools, answer directly
 
 **Workflow:**
-1. Użytkownik pyta o strukturę → `list_files(".")`
-2. Użytkownik pyta o konkretny plik → `file_exists()` lub `read_file()`
-3. Czytasz ważny plik (config, docs) → rozważ `memorize()` dla przyszłych zapytań
-4. Przed odpowiedzią możesz sprawdzić pamięć: `recall()`
+1. User asks about structure → `list_files(".")`
+2. User asks about specific file → `file_exists()` or `read_file()`
+3. You read important file (config, docs) → consider `memorize()` for future queries
+4. Before answering you can check memory: `recall()`
 
-**Przykłady:**
+**Examples:**
 ```
-Użytkownik: "Jakie mam pliki?"
-→ list_files(".") i pokaż wynik
+User: "What files do I have?"
+→ list_files(".") and show result
 
-Użytkownik: "Czy istnieje plik test.py?"
-→ file_exists("test.py") i odpowiedź
+User: "Does test.py file exist?"
+→ file_exists("test.py") and answer
 
-Użytkownik: "Co jest w pliku config.json?"
-→ read_file("config.json"), pokaż zawartość
-→ Rozważ: memorize("Konfiguracja: ...", tags=["config"])
+User: "What's in config.json file?"
+→ read_file("config.json"), show contents
+→ Consider: memorize("Configuration: ...", tags=["config"])
 
-Użytkownik: "Co to jest trójkąt?"
-→ Odpowiedź wprost, NIE używaj list_files
+User: "What is a triangle?"
+→ Answer directly, DON'T use list_files
 ```
 
-### 3. Integracja z Pamięcią
+### 3. Memory Integration
 
-Librarian zapisuje ważne informacje o projekcie do pamięci długoterminowej:
+Librarian saves important project information to long-term memory:
 
-**Co zapisywać:**
-- Struktura katalogów (po `list_files` głównego katalogu)
-- Zawartość plików konfiguracyjnych (`config.json`, `.env.example`)
-- Ważne pliki dokumentacji (`README.md`, `CONTRIBUTING.md`)
-- Zależności projektu (`requirements.txt`, `package.json`)
+**What to save:**
+- Directory structure (after `list_files` of main directory)
+- Configuration file contents (`config.json`, `.env.example`)
+- Important documentation files (`README.md`, `CONTRIBUTING.md`)
+- Project dependencies (`requirements.txt`, `package.json`)
 
-**Tagi:**
-- `["project-structure"]` - Struktura katalogów
-- `["config"]` - Pliki konfiguracyjne
-- `["documentation"]` - Pliki dokumentacji
-- `["dependencies"]` - Zależności projektu
+**Tags:**
+- `["project-structure"]` - Directory structure
+- `["config"]` - Configuration files
+- `["documentation"]` - Documentation files
+- `["dependencies"]` - Project dependencies
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-ArchitectAgent tworzy plan:
-  Krok 1: LIBRARIAN - "Sprawdź czy istnieje plik app.py"
+ArchitectAgent creates plan:
+  Step 1: LIBRARIAN - "Check if app.py file exists"
         ↓
-TaskDispatcher wywołuje LibrarianAgent.execute()
+TaskDispatcher calls LibrarianAgent.execute()
         ↓
 LibrarianAgent:
   1. file_exists("app.py")
-  2. Jeśli istnieje: read_file("app.py") dla szczegółów
-  3. Zwraca wynik (tak/nie + opcjonalnie zawartość)
+  2. If exists: read_file("app.py") for details
+  3. Returns result (yes/no + optionally contents)
         ↓
-ArchitectAgent: Jeśli plik istnieje, pomiń tworzenie, przejdź do edycji
+ArchitectAgent: If file exists, skip creation, proceed to editing
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **ArchitectAgent** - Sprawdzanie istniejących plików przed planowaniem
-- **CoderAgent** - Weryfikacja czy plik istnieje przed nadpisaniem
-- **ChatAgent** - Odpowiadanie na pytania użytkownika o strukturę projektu
-- **MemorySkill** - Długoterminowa pamięć o strukturze projektu
+- **ArchitectAgent** - Checking existing files before planning
+- **CoderAgent** - Verifying file exists before overwriting
+- **ChatAgent** - Answering user questions about project structure
+- **MemorySkill** - Long-term memory about project structure
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Audyt Struktury Projektu
+### Example 1: Project Structure Audit
 ```python
-# Użytkownik: "Pokaż strukturę projektu"
+# User: "Show project structure"
 # Librarian:
 files = await list_files(".")
-await memorize(f"Struktura główna: {files}", tags=["project-structure"])
-# Zwraca: Lista katalogów i plików z opisem
+await memorize(f"Main structure: {files}", tags=["project-structure"])
+# Returns: List of directories and files with description
 ```
 
-### Przykład 2: Sprawdzenie Konfiguracji
+### Example 2: Configuration Check
 ```python
-# Użytkownik: "Jakie mam zmienne w .env.example?"
+# User: "What variables are in .env.example?"
 # Librarian:
 content = await read_file(".env.example")
-await memorize(f"Zmienne env: {summary}", tags=["config"])
-# Zwraca: Lista zmiennych środowiskowych z opisem
+await memorize(f"Env variables: {summary}", tags=["config"])
+# Returns: List of environment variables with description
 ```
 
-### Przykład 3: Przed Tworzeniem Pliku
+### Example 3: Before File Creation
 ```python
-# ArchitectAgent: Plan - Krok 1: LIBRARIAN - "Sprawdź czy app.py istnieje"
+# ArchitectAgent: Plan - Step 1: LIBRARIAN - "Check if app.py exists"
 # Librarian:
 exists = await file_exists("app.py")
 if exists:
     content = await read_file("app.py")
-    return f"Plik istnieje. Zawartość: {content[:200]}..."
+    return f"File exists. Contents: {content[:200]}..."
 else:
-    return "Plik nie istnieje. Można tworzyć."
+    return "File doesn't exist. Can create."
 ```
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env
-WORKSPACE_ROOT=./workspace  # Katalog workspace (scope operacji)
-MEMORY_ROOT=./data/memory   # Pamięć długoterminowa
+# In .env
+WORKSPACE_ROOT=./workspace  # Workspace directory (operation scope)
+MEMORY_ROOT=./data/memory   # Long-term memory
 ```
 
-**Bezpieczeństwo:**
-- Wszystkie operacje ograniczone do `WORKSPACE_ROOT`
-- Brak dostępu poza workspace (sandbox)
-- Tylko odczyt - Librarian NIE może zapisywać/usuwać plików
+**Security:**
+- All operations limited to `WORKSPACE_ROOT`
+- No access outside workspace (sandbox)
+- Read-only - Librarian CANNOT write/delete files
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Liczba odczytów plików (per sesja)
-- Współczynnik cache hit (% zapytań z pamięci)
-- Najczęściej czytane pliki (top 10)
-- Liczba zapisów do pamięci (per sesja)
+**Key indicators:**
+- Number of file reads (per session)
+- Cache hit rate (% queries from memory)
+- Most frequently read files (top 10)
+- Number of memory saves (per session)
 
 ## Best Practices
 
-1. **Pamięć dla konfiguracji** - Zapisuj `config.json`, `.env.example` do pamięci
-2. **Struktura projektu** - Po pierwszym `list_files` zapisz strukturę
-3. **Weryfikuj przed zapisem** - Zawsze sprawdź `file_exists` przed `write_file` (inny agent)
-4. **Nie nadużywaj narzędzi** - Dla pytań ogólnych odpowiadaj wprost
-5. **Tagi spójne** - Używaj standaryzowanych tagów dla łatwiejszego wyszukiwania
+1. **Memory for configuration** - Save `config.json`, `.env.example` to memory
+2. **Project structure** - After first `list_files` save structure
+3. **Verify before writing** - Always check `file_exists` before `write_file` (other agent)
+4. **Don't overuse tools** - For general questions answer directly
+5. **Consistent tags** - Use standardized tags for easier searching
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Tylko odczyt (brak `write_file`, `delete_file`) - użyj CoderAgent do zapisu
-- Scope ograniczony do `WORKSPACE_ROOT` (brak dostępu do systemu plików)
-- `list_files` może być wolne dla dużych katalogów (>1000 plików)
-- Brak wsparcia dla binarnych plików (tylko tekst)
+- Read-only (no `write_file`, `delete_file`) - use CoderAgent for writing
+- Scope limited to `WORKSPACE_ROOT` (no file system access)
+- `list_files` can be slow for large directories (>1000 files)
+- No support for binary files (text only)
 
-## Zobacz też
+## See also
 
-- [THE_CODER.md](THE_CODER.md) - Tworzenie i edycja plików
-- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planowanie z wykorzystaniem audytu
-- [MEMORY_LAYER_GUIDE.md](MEMORY_LAYER_GUIDE.md) - Pamięć długoterminowa
-- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Architektura backendu
+- [THE_CODER.md](THE_CODER.md) - File creation and editing
+- [THE_ARCHITECT.md](THE_ARCHITECT.md) - Planning with audit utilization
+- [MEMORY_LAYER_GUIDE.md](../MEMORY_LAYER_GUIDE.md) - Context retrievalm memory
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture

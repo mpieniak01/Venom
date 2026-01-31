@@ -1,65 +1,65 @@
-# Hybrid AI Engine - Dokumentacja
+# Hybrid AI Engine - Documentation
 
-## Przegląd
+## Overview
 
-Hybrydowy Silnik AI (Hybrid AI Engine) to kluczowy komponent systemu Venom, który zarządza inteligentnym routingiem zapytań między lokalnym LLM a chmurą. System priorytetyzuje prywatność i zerowy koszt operacyjny poprzez strategię "Local First".
+Hybrid AI Engine is a key component of the Venom system that manages intelligent query routing between local LLM and cloud. The system prioritizes privacy and zero operational cost through a "Local First" strategy.
 
-## Architektura
+## Architecture
 
-### Komponenty
+### Components
 
 1. **HybridModelRouter** (`venom_core/execution/model_router.py`)
-   - Główna logika routingu zapytań
-   - Zarządzanie trybami pracy (LOCAL/HYBRID/CLOUD)
-   - Wykrywanie wrażliwych danych
+   - Main query routing logic
+   - Work mode management (LOCAL/HYBRID/CLOUD)
+   - Sensitive data detection
 
 2. **KernelBuilder** (`venom_core/execution/kernel_builder.py`)
-   - Budowanie Semantic Kernel z odpowiednimi konektorami
-   - Obsługa Local LLM (Ollama/vLLM)
-   - Obsługa Google Gemini
-   - Obsługa OpenAI
-   - Stub dla Azure OpenAI
+   - Building Semantic Kernel with appropriate connectors
+   - Local LLM support (Ollama/vLLM)
+   - Google Gemini support
+   - OpenAI support
+   - Azure OpenAI stub
 
-3. **Konfiguracja** (`venom_core/config.py`)
-   - Parametry trybu AI
-   - Klucze API
-   - Ustawienia modeli
+3. **Configuration** (`venom_core/config.py`)
+   - AI mode parameters
+   - API keys
+   - Model settings
 
-## Tryby Pracy
+## Operating Modes
 
-### LOCAL (Domyślny)
+### LOCAL (Default)
 ```env
 AI_MODE=LOCAL
 ```
-- **Wszystkie** zapytania kierowane do lokalnego LLM
-- Chmura **całkowicie zablokowana**
-- 100% prywatności, $0 kosztów
-- Idealne dla pracy offline
+- **All** queries directed to local LLM
+- Cloud **completely blocked**
+- 100% privacy, $0 costs
+- Ideal for offline work
 
-### HYBRID (Inteligentny)
+### HYBRID (Intelligent)
 ```env
 AI_MODE=HYBRID
 GOOGLE_API_KEY=your_key_here
 ```
-- Proste zadania → Local LLM
-- Złożone zadania → Cloud (Gemini/OpenAI)
-- Wrażliwe dane → **ZAWSZE Local**
-- Fallback do Local jeśli brak dostępu do chmury
+- Simple tasks → Local LLM
+- Complex tasks → Cloud (Gemini/OpenAI)
+- Sensitive data → **ALWAYS Local**
+- Fallback to Local if no cloud access
 
 ### CLOUD
 ```env
 AI_MODE=CLOUD
 GOOGLE_API_KEY=your_key_here
 ```
-- Wszystkie zapytania (oprócz wrażliwych) → Cloud
-- Wrażliwe dane → **ZAWSZE Local**
+- All queries (except sensitive) → Cloud
+- Sensitive data → **ALWAYS Local**
 
-## Routing Zadań
+## Task Routing
 
 ### TaskType
 
-| Typ Zadania | LOCAL Mode | HYBRID Mode | CLOUD Mode |
-|-------------|------------|-------------|------------|
+| Task Type | LOCAL Mode | HYBRID Mode | CLOUD Mode |
+|-----------|------------|-------------|------------|
 | `STANDARD` | Local | Local | Cloud |
 | `CHAT` | Local | Local | Cloud |
 | `CODING_SIMPLE` | Local | Local | Cloud |
@@ -68,16 +68,16 @@ GOOGLE_API_KEY=your_key_here
 | `ANALYSIS` | Local | Cloud* | Cloud |
 | `GENERATION` | Local | Cloud* | Cloud |
 
-\* = Jeśli dostępny klucz API, w przeciwnym razie fallback do Local
+\* = If API key available, otherwise fallback to Local
 
-## Ochrona Prywatności
+## Privacy Protection
 
-### Hard Block dla Wrażliwych Danych
+### Hard Block for Sensitive Data
 
-System automatycznie wykrywa wrażliwe treści i **nigdy** nie wysyła ich do chmury:
+System automatically detects sensitive content and **never** sends it to cloud:
 
 ```python
-# Wykrywane słowa kluczowe:
+# Detected keywords:
 - password, hasło
 - token, klucz, key
 - secret
@@ -85,17 +85,17 @@ System automatycznie wykrywa wrażliwe treści i **nigdy** nie wysyła ich do ch
 - credentials, uwierzytelnienie
 ```
 
-### Flaga SENSITIVE_DATA_LOCAL_ONLY
+### SENSITIVE_DATA_LOCAL_ONLY Flag
 
 ```env
-SENSITIVE_DATA_LOCAL_ONLY=True  # Domyślnie włączone
+SENSITIVE_DATA_LOCAL_ONLY=True  # Enabled by default
 ```
 
-Gdy włączona, **wszystkie** zapytania są skanowane pod kątem wrażliwych treści, niezależnie od TaskType.
+When enabled, **all** queries are scanned for sensitive content, regardless of TaskType.
 
-## Konfiguracja
+## Configuration
 
-### Minimalna (Local Only - $0)
+### Minimal (Local Only - $0)
 
 ```env
 AI_MODE=LOCAL
@@ -103,7 +103,7 @@ LLM_LOCAL_ENDPOINT=http://localhost:11434/v1
 LLM_MODEL_NAME=llama3
 ```
 
-### Hybrydowa z Google Gemini
+### Hybrid with Google Gemini
 
 ```env
 AI_MODE=HYBRID
@@ -113,7 +113,7 @@ HYBRID_LOCAL_MODEL=llama3
 HYBRID_CLOUD_MODEL=gemini-1.5-pro
 ```
 
-### Hybrydowa z OpenAI
+### Hybrid with OpenAI
 
 ```env
 AI_MODE=HYBRID
@@ -123,140 +123,140 @@ HYBRID_LOCAL_MODEL=llama3
 HYBRID_CLOUD_MODEL=gpt-4o
 ```
 
-## Użycie w Kodzie
+## Code Usage
 
-### ApprenticeAgent (Przykład Integracji)
+### ApprenticeAgent (Integration Example)
 
 ```python
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
-# Inicjalizacja (zwykle w __init__ agenta)
+# Initialization (usually in agent __init__)
 router = HybridModelRouter()
 
-# Pobierz decyzję routingu dla prostego zapytania
+# Get routing decision for simple query
 routing_info = router.get_routing_info_for_task(
     task_type=TaskType.CHAT,
     prompt="Hello, how are you?"
 )
 print(f"Would use: {routing_info['provider']} ({routing_info['model_name']})")
 
-# Pobierz decyzję routingu dla złożonego zadania
+# Get routing decision for complex task
 routing_info = router.get_routing_info_for_task(
     task_type=TaskType.CODING_COMPLEX,
     prompt="Analyze architecture of 10 microservices..."
 )
 print(f"Would use: {routing_info['provider']} ({routing_info['model_name']})")
 
-# Pobierz decyzję dla wrażliwych danych (ZAWSZE local)
+# Get decision for sensitive data (ALWAYS local)
 routing_info = router.get_routing_info_for_task(
     task_type=TaskType.SENSITIVE,
     prompt="Store password: secret123"
 )
 print(f"Would use: {routing_info['provider']} (always local for sensitive)")
 
-# UWAGA: Router tylko podejmuje decyzję o routingu.
-# Faktyczne wywołanie LLM powinno być wykonane przez KernelBuilder
-# używając informacji z routing_info.
+# NOTE: Router only makes routing decision.
+# Actual LLM call should be performed by KernelBuilder
+# using information from routing_info.
 ```
 
-### Używanie Decyzji Routingu z KernelBuilder
+### Using Routing Decision with KernelBuilder
 
 ```python
 from venom_core.execution.kernel_builder import KernelBuilder
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
-# Pobierz decyzję routingu
+# Get routing decision
 router = HybridModelRouter()
 routing_info = router.get_routing_info_for_task(
     task_type=TaskType.CODING_COMPLEX,
     prompt="Complex coding task..."
 )
 
-# Użyj informacji do budowy odpowiedniego kernela
+# Use information to build appropriate kernel
 builder = KernelBuilder()
 if routing_info['target'] == 'local':
-    # Buduj kernel z lokalnym LLM
+    # Build kernel with local LLM
     kernel = builder.build_kernel()
 elif routing_info['target'] == 'cloud':
-    # Buduj kernel z cloud providerem
-    # (wymaga dalszej implementacji dla pełnej integracji)
+    # Build kernel with cloud provider
+    # (requires further implementation for full integration)
     pass
 ```
 
-### Bezpośrednia Analiza Routingu
+### Direct Routing Analysis
 
 ```python
 router = HybridModelRouter()
 
-# Pobierz info o routingu bez wykonywania
+# Get routing info without execution
 info = router.get_routing_info_for_task(
     task_type=TaskType.CODING_COMPLEX,
     prompt="Complex task..."
 )
 
-print(f"Would route to: {info['target']}")  # 'local' lub 'cloud'
+print(f"Would route to: {info['target']}")  # 'local' or 'cloud'
 print(f"Provider: {info['provider']}")
 print(f"Model: {info['model_name']}")
 print(f"Reason: {info['reason']}")
 ```
 
-## Testy
+## Tests
 
-Pełny zestaw testów znajduje się w `tests/test_hybrid_model_router.py`:
+Full test suite in `tests/test_hybrid_model_router.py`:
 
 ```bash
-# Uruchom testy
+# Run tests
 pytest tests/test_hybrid_model_router.py -v
 
-# Wynik: 18 passed
+# Result: 18 passed
 ```
 
-## Kryteria Akceptacji (DoD)
+## Acceptance Criteria (DoD)
 
-- ✅ **Offline Test**: System działa po odłączeniu internetu (z Ollama)
-- ✅ **Cloud Test**: Zadania CODING_COMPLEX trafiają do Gemini w trybie HYBRID (z kluczem)
-- ✅ **Audit Pass**: Brak NotImplementedError w sekcji Azure
-- ✅ **Privacy**: Zadania SENSITIVE nigdy nie wychodzą poza localhost
-- ✅ **Tests**: 18/18 testów przechodzi
-- ✅ **Security**: 0 alertów CodeQL
+- ✅ **Offline Test**: System works after disconnecting internet (with Ollama)
+- ✅ **Cloud Test**: CODING_COMPLEX tasks go to Gemini in HYBRID mode (with key)
+- ✅ **Audit Pass**: No NotImplementedError in Azure section
+- ✅ **Privacy**: SENSITIVE tasks never leave localhost
+- ✅ **Tests**: 18/18 tests passing
+- ✅ **Security**: 0 CodeQL alerts
 
-## Przykładowe Scenariusze
+## Example Scenarios
 
-### Scenario 1: Developer bez Internetu
+### Scenario 1: Developer without Internet
 ```env
 AI_MODE=LOCAL
 ```
-→ Wszystko działa lokalnie, zerowe koszty, pełna prywatność
+→ Everything works locally, zero costs, full privacy
 
-### Scenario 2: Złożony Projekt w Firmie
+### Scenario 2: Complex Project in Company
 ```env
 AI_MODE=HYBRID
 GOOGLE_API_KEY=company_key
 SENSITIVE_DATA_LOCAL_ONLY=True
 ```
-→ Proste zadania local, złożone przez Gemini, wrażliwe dane NIGDY nie wychodzą
+→ Simple tasks local, complex via Gemini, sensitive data NEVER leaves
 
-### Scenario 3: Praca na Serwerze Cloud
+### Scenario 3: Working on Cloud Server
 ```env
 AI_MODE=CLOUD
 OPENAI_API_KEY=server_key
 ```
-→ Wszystko przez OpenAI (oprócz SENSITIVE), maksymalna moc
+→ Everything via OpenAI (except SENSITIVE), maximum power
 
-## Rozszerzanie
+## Extension
 
-### Dodanie Nowego Providera
+### Adding New Provider
 
-1. Dodaj connector w `kernel_builder.py`
-2. Rozszerz `_register_service()` o nowy typ
-3. Dodaj konfigurację w `config.py`
-4. Zaktualizuj `_has_cloud_access()` w `model_router.py`
+1. Add connector in `kernel_builder.py`
+2. Extend `_register_service()` with new type
+3. Add configuration in `config.py`
+4. Update `_has_cloud_access()` in `model_router.py`
 
-### Dodanie Nowego TaskType
+### Adding New TaskType
 
-1. Rozszerz enum `TaskType` w `model_router.py`
-2. Zaktualizuj logikę w `_hybrid_route()`
-3. Dodaj testy w `test_hybrid_model_router.py`
+1. Extend `TaskType` enum in `model_router.py`
+2. Update logic in `_hybrid_route()`
+3. Add tests in `test_hybrid_model_router.py`
 
 ## Troubleshooting
 
@@ -265,35 +265,35 @@ OPENAI_API_KEY=server_key
 pip install google-generativeai
 ```
 
-### "GOOGLE_API_KEY jest wymagany"
-Ustaw w `.env`:
+### "GOOGLE_API_KEY is required"
+Set in `.env`:
 ```env
 GOOGLE_API_KEY=your_key_here
 ```
 
-### Wszystko idzie do chmury mimo trybu LOCAL
-Sprawdź:
+### Everything goes to cloud despite LOCAL mode
+Check:
 ```python
 from venom_core.config import SETTINGS
-print(SETTINGS.AI_MODE)  # Powinno być "LOCAL"
+print(SETTINGS.AI_MODE)  # Should be "LOCAL"
 ```
 
-## Bezpieczeństwo
+## Security
 
-- ✅ Wrażliwe dane nigdy nie trafiają do chmury
-- ✅ Klucze API w `.env` (nie commitowane)
-- ✅ Scanning wrażliwych treści przed routingiem
+- ✅ Sensitive data never reaches cloud
+- ✅ API keys in `.env` (not committed)
+- ✅ Sensitive content scanning before routing
 - ✅ CodeQL: 0 vulnerabilities
-- ✅ Hard block dla TaskType.SENSITIVE
+- ✅ Hard block for TaskType.SENSITIVE
 
 ## Performance
 
-- Local LLM: ~100ms/token (Ollama na CPU)
+- Local LLM: ~100ms/token (Ollama on CPU)
 - Google Gemini: ~50ms/token (API)
 - OpenAI GPT-4o: ~30ms/token (API)
 
-**Zalecenie**: Używaj HYBRID dla balansu szybkości i prywatności.
+**Recommendation**: Use HYBRID for balance of speed and privacy.
 
-## Licencja
+## License
 
-Część projektu Venom - patrz główny LICENSE
+Part of Venom project - see main LICENSE

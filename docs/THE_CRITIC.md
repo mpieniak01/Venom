@@ -1,130 +1,130 @@
 # THE CRITIC - Code Quality & Security Review
 
-## Rola
+## Role
 
-Critic Agent to ekspert w zakresie bezpieczeństwa i jakości kodu w systemie Venom. Pełni rolę Senior Developer/QA, wykrywając błędy logiczne, luki bezpieczeństwa oraz problemy z jakością kodu przed jego finalnym zatwierdzeniem.
+Critic Agent is an expert in code security and quality in the Venom system. It plays the role of Senior Developer/QA, detecting logical errors, security vulnerabilities, and code quality issues before final approval.
 
-## Odpowiedzialności
+## Responsibilities
 
-- **Ocena jakości kodu** - Weryfikacja czytelności, dokumentacji, zgodności z best practices
-- **Audyt bezpieczeństwa** - Wykrywanie hardcoded credentials, SQL injection, niebezpiecznych komend
-- **Weryfikacja poprawności** - Sprawdzanie błędów logicznych, typowania, składni
-- **Diagnostyka źródeł błędów** - Identyfikacja problemów w importowanych modułach
-- **Sugestie naprawy** - Konkretne wskazówki jak poprawić problematyczny kod
+- **Code quality assessment** - Verification of readability, documentation, best practices compliance
+- **Security audit** - Detection of hardcoded credentials, SQL injection, dangerous commands
+- **Correctness verification** - Checking logical errors, typing, syntax
+- **Error source diagnostics** - Identifying problems in imported modules
+- **Fix suggestions** - Concrete guidelines on how to fix problematic code
 
-## Kluczowe Komponenty
+## Key Components
 
-### 1. System Oceny Kodu
+### 1. Code Evaluation System
 
-**3 rodzaje odpowiedzi:**
+**3 types of responses:**
 
-**1. APPROVED** - Kod bezpieczny i dobrej jakości
+**1. APPROVED** - Code is secure and of good quality
 ```
-Kod nie zawiera problemów. APPROVED
-```
-
-**2. Problemy w analizowanym kodzie** - Lista błędów w formie tekstowej
-```
-Znalezione problemy:
-1. Linia 15: Hardcoded API key - Użyj zmiennej środowiskowej
-2. Linia 23: Brak obsługi błędów - Dodaj try/except
-3. Linia 45: Brak typowania parametru 'data' - Dodaj type hint
+Code contains no problems. APPROVED
 ```
 
-**3. Problemy w importowanym pliku** - JSON z target_file_change
+**2. Problems in analyzed code** - List of errors in text form
+```
+Found problems:
+1. Line 15: Hardcoded API key - Use environment variable
+2. Line 23: No error handling - Add try/except
+3. Line 45: No type hint for parameter 'data' - Add type hint
+```
+
+**3. Problems in imported file** - JSON with target_file_change
 ```json
 {
-  "analysis": "ImportError: module 'config' brak funkcji 'get_setting'",
-  "suggested_fix": "Dodaj funkcję get_setting(key) w config.py",
+  "analysis": "ImportError: module 'config' missing function 'get_setting'",
+  "suggested_fix": "Add function get_setting(key) in config.py",
   "target_file_change": "venom_core/config.py"
 }
 ```
 
-### 2. Wykrywane Problemy
+### 2. Detected Problems
 
-**Bezpieczeństwo:**
+**Security:**
 - ❌ Hardcoded API keys (`api_key = "sk-..."`)
-- ❌ Hasła w kodzie (`password = "secret123"`)
-- ❌ SQL queries bez parametryzacji
-- ❌ Niebezpieczne komendy shell (`rm -rf`, `eval()`)
-- ❌ Brak walidacji inputu użytkownika
+- ❌ Passwords in code (`password = "secret123"`)
+- ❌ SQL queries without parameterization
+- ❌ Dangerous shell commands (`rm -rf`, `eval()`)
+- ❌ No user input validation
 
-**Jakość:**
-- ❌ Brak typowania funkcji
-- ❌ Brak docstringów
-- ❌ Brak obsługi błędów (try/except)
-- ❌ Magiczne liczby bez stałych
-- ❌ Zbyt długie funkcje (>50 linii)
+**Quality:**
+- ❌ No function typing
+- ❌ No docstrings
+- ❌ No error handling (try/except)
+- ❌ Magic numbers without constants
+- ❌ Too long functions (>50 lines)
 
-**Błędy importów:**
-- ❌ ImportError - brakująca funkcja/klasa w module
-- ❌ AttributeError - brak atrybutu w obiekcie
-- ❌ ModuleNotFoundError - brak modułu
+**Import errors:**
+- ❌ ImportError - missing function/class in module
+- ❌ AttributeError - missing attribute in object
+- ❌ ModuleNotFoundError - missing module
 
-### 3. Integracja z PolicyEngine
+### 3. PolicyEngine Integration
 
-Critic korzysta z **PolicyEngine** do weryfikacji zasad projektu:
+Critic uses **PolicyEngine** to verify project policies:
 
 ```python
 from venom_core.core.policy_engine import PolicyEngine
 
 policy_engine = PolicyEngine()
 
-# Sprawdź czy operacja jest dozwolona
+# Check if operation is allowed
 is_allowed = policy_engine.is_allowed(
     operation="write_file",
     path="/etc/passwd"
 )
-# → False (poza workspace)
+# → False (outside workspace)
 ```
 
-**Polityki:**
-- Sandbox filesystem (tylko workspace)
-- Blokada niebezpiecznych komend shell
-- Limity zasobów (CPU, RAM)
-- Blokada dostępu do sieci (opcjonalne)
+**Policies:**
+- Sandbox filesystem (workspace only)
+- Blocking dangerous shell commands
+- Resource limits (CPU, RAM)
+- Network access blocking (optional)
 
-## Integracja z Systemem
+## System Integration
 
-### Przepływ Wykonania
+### Execution Flow
 
 ```
-CoderAgent generuje kod
+CoderAgent generates code
         ↓
-CriticAgent.execute(kod)
+CriticAgent.execute(code)
         ↓
 CriticAgent:
-  1. Analiza kodu (LLM z temperature=0.3)
-  2. Wykrywanie problemów bezpieczeństwa
-  3. Sprawdzenie jakości i dokumentacji
+  1. Code analysis (LLM with temperature=0.3)
+  2. Security problem detection
+  3. Quality and documentation check
   4. PolicyEngine.validate()
         ↓
-Zwraca: "APPROVED" lub lista problemów
+Returns: "APPROVED" or list of problems
         ↓
-Jeśli APPROVED → Kod zaakceptowany
-Jeśli problemy → CoderAgent naprawia (self-repair)
+If APPROVED → Code accepted
+If problems → CoderAgent fixes (self-repair)
 ```
 
-### Współpraca z Innymi Agentami
+### Collaboration with Other Agents
 
-- **CoderAgent** - Główny klient (pętla generate → review → fix)
-- **ArchitectAgent** - Weryfikacja planów pod kątem wykonalności
-- **PolicyEngine** - Egzekwowanie zasad bezpieczeństwa
-- **ToolmakerAgent** - Review generowanych narzędzi
+- **CoderAgent** - Main client (generate → review → fix loop)
+- **ArchitectAgent** - Plan verification for feasibility
+- **PolicyEngine** - Enforcing security policies
+- **ToolmakerAgent** - Review of generated tools
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Kod z Hardcoded Credentials
+### Example 1: Code with Hardcoded Credentials
 ```python
-# Kod do review:
+# Code to review:
 api_key = "sk-1234567890abcdef"
 response = requests.get("https://api.example.com", headers={"Authorization": api_key})
 
-# CriticAgent odpowiedź:
+# CriticAgent response:
 """
-Znalezione problemy:
-1. Linia 1: Hardcoded API key 'sk-1234567890abcdef'
-   Sugestia: Użyj zmiennej środowiskowej
+Found problems:
+1. Line 1: Hardcoded API key 'sk-1234567890abcdef'
+   Suggestion: Use environment variable
    ```python
    api_key = os.environ.get("API_KEY")
    if not api_key:
@@ -133,80 +133,80 @@ Znalezione problemy:
 """
 ```
 
-### Przykład 2: Brak Obsługi Błędów
+### Example 2: No Error Handling
 ```python
-# Kod do review:
+# Code to review:
 def read_config():
     with open("config.json") as f:
         return json.load(f)
 
-# CriticAgent odpowiedź:
+# CriticAgent response:
 """
-Znalezione problemy:
-1. Funkcja 'read_config': Brak obsługi błędów (FileNotFoundError, JSONDecodeError)
-   Sugestia: Dodaj try/except z graceful degradation
+Found problems:
+1. Function 'read_config': No error handling (FileNotFoundError, JSONDecodeError)
+   Suggestion: Add try/except with graceful degradation
    ```python
    def read_config():
        try:
            with open("config.json") as f:
                return json.load(f)
        except (FileNotFoundError, JSONDecodeError) as e:
-           logger.error(f"Błąd odczytu config: {e}")
-           return {}  # Zwróć domyślną konfigurację
+           logger.error(f"Config read error: {e}")
+           return {}  # Return default configuration
    ```
 """
 ```
 
-### Przykład 3: Import Error (inny plik)
+### Example 3: Import Error (other file)
 ```python
-# Kod do review:
-from config import get_database_url  # ImportError: brak funkcji
+# Code to review:
+from config import get_database_url  # ImportError: missing function
 
-# CriticAgent odpowiedź (JSON):
+# CriticAgent response (JSON):
 {
-  "analysis": "ImportError w linii 1: module 'config' nie posiada funkcji 'get_database_url'. Problem w pliku venom_core/config.py",
-  "suggested_fix": "Dodaj funkcję get_database_url() w venom_core/config.py:\n\ndef get_database_url() -> str:\n    return os.environ.get('DATABASE_URL', 'sqlite:///default.db')",
+  "analysis": "ImportError on line 1: module 'config' doesn't have function 'get_database_url'. Problem in file venom_core/config.py",
+  "suggested_fix": "Add function get_database_url() in venom_core/config.py:\n\ndef get_database_url() -> str:\n    return os.environ.get('DATABASE_URL', 'sqlite:///default.db')",
   "target_file_change": "venom_core/config.py"
 }
 ```
 
-## Konfiguracja
+## Configuration
 
 ```bash
-# W .env (brak dedykowanych flag dla Critic)
-# Temperature dla LLM ustawiona w kodzie (0.3 dla konsystencji ocen)
+# In .env (no dedicated flags for Critic)
+# Temperature for LLM set in code (0.3 for consistency of assessments)
 
 # PolicyEngine settings
 ENABLE_SANDBOX=true
 WORKSPACE_ROOT=./workspace
 ```
 
-## Metryki i Monitoring
+## Metrics and Monitoring
 
-**Kluczowe wskaźniki:**
-- Liczba review per sesja
-- Współczynnik APPROVED vs. odrzucone (% approved)
-- Najczęstsze typy problemów (security, quality, imports)
-- Średnia liczba iteracji fix → review (self-repair)
-- Czas review (zazwyczaj <5s)
+**Key indicators:**
+- Number of reviews per session
+- APPROVED vs. rejected rate (% approved)
+- Most common problem types (security, quality, imports)
+- Average number of fix → review iterations (self-repair)
+- Review time (typically <5s)
 
 ## Best Practices
 
-1. **Zawsze review przed commitm** - Każdy wygenerowany kod przez CriticAgent
-2. **Fix iteracyjnie** - Max 3 iteracje self-repair, potem eskalacja
-3. **Loguj odrzucone** - Zapisz problemy do Work Ledger
-4. **PolicyEngine ON** - Zawsze weryfikuj zgodność z politykami
-5. **Temperature niska** - 0.3 dla konsystencji ocen (nie kreatywność)
+1. **Always review before commit** - Every generated code through CriticAgent
+2. **Fix iteratively** - Max 3 self-repair iterations, then escalation
+3. **Log rejected** - Save problems to Work Ledger
+4. **PolicyEngine ON** - Always verify policy compliance
+5. **Low temperature** - 0.3 for consistency of assessments (not creativity)
 
-## Znane Ograniczenia
+## Known Limitations
 
-- Analiza statyczna (brak uruchomienia kodu) - może przeoczyć runtime bugs
-- LLM może dać false positive (zbyt rygorystyczne oceny)
-- Brak integracji z linterami zewnętrznymi (ruff, mypy) - tylko LLM
-- Max 3 iteracje self-repair (potem manual intervention)
+- Static analysis (no code execution) - may miss runtime bugs
+- LLM can give false positives (too rigorous assessments)
+- No integration with external linters (ruff, mypy) - LLM only
+- Max 3 self-repair iterations (then manual intervention)
 
-## Zobacz też
+## See also
 
-- [THE_CODER.md](THE_CODER.md) - Generowanie kodu
-- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Architektura backendu
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Zasady współpracy (pre-commit hooks)
+- [THE_CODER.md](THE_CODER.md) - Code generation
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution rules (pre-commit hooks)

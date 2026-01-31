@@ -1,156 +1,156 @@
-# Flow Inspector - Przewodnik Użytkownika
+# Flow Inspector - User Guide
 
-## 🔀 Co to jest Flow Inspector?
+## 🔀 What is Flow Inspector?
 
-Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom w czasie rzeczywistym. Pozwala zrozumieć, dlaczego system podjął daną decyzję (np. wybrał konkretnego agenta, wszedł w tryb The Council).
+Flow Inspector is a real-time visualization tool for Venom system's decision-making processes. It helps understand why the system made a specific decision (e.g., selected a particular agent, entered Council mode).
 
-### Dostępne wersje:
+### Available versions:
 
-1. **Flow Inspector (legacy)** (`/flow-inspector`) - podstawowa wersja w legacy UI (FastAPI).
-2. **Inspector (web-next)** (`/inspector`) - docelowa wersja w Next.js:
+1. **Flow Inspector (legacy)** (`/flow-inspector`) - basic version in legacy UI (FastAPI).
+2. **Inspector (web-next)** (`/inspector`) - target version in Next.js:
    - React + Mermaid
-   - zoom/pan na diagramie (`react-zoom-pan-pinch`)
-   - panel telemetryczny i filtr kroków
-   - pełne dane błędu (`error_code`, `error_details`)
+   - diagram zoom/pan (`react-zoom-pan-pinch`)
+   - telemetry panel and step filter
+   - full error data (`error_code`, `error_details`)
 
-## ✨ Główne Funkcje
+## ✨ Main Features
 
-- **Dynamiczna wizualizacja** - diagramy Mermaid.js Sequence Diagram pokazujące przepływ zadania
-- **Decision Gates** - wyróżnione bramki decyzyjne pokazujące kluczowe punkty w przepływie
-- **Real-time updates** - automatyczne odświeżanie dla zadań w trakcie wykonywania
-- **Historia zadań** - przeglądanie wszystkich wykonanych zadań z filtrami
+- **Dynamic visualization** - Mermaid.js Sequence Diagrams showing task flow
+- **Decision Gates** - highlighted decision gates showing key points in flow
+- **Real-time updates** - automatic refresh for tasks in progress
+- **Task history** - browse all executed tasks with filters
 
-## 🚀 Jak używać?
+## 🚀 How to use?
 
-### 1. Dostęp do Flow Inspector
+### 1. Accessing Flow Inspector
 
-Przejdź do Flow Inspector klikając na link w nawigacji:
+Navigate to Flow Inspector by clicking the link in navigation:
 
 - **🔀 Flow Inspector (legacy)**: `http://localhost:8000/flow-inspector`
 - **🔍 Inspector (web-next)**: `http://localhost:3000/inspector`
 
-### 2. Interactive Inspector - Zaawansowane funkcje
+### 2. Interactive Inspector - Advanced features
 
-#### Układ interfejsu:
+#### Interface layout:
 
-1. **Sidebar (lewy panel)** - Lista śladów (ostatnie 50 requestów)
-   - Filtry statusów przez badge i listę historii
-   - Przyciski odświeżania
+1. **Sidebar (left panel)** - Trace list (last 50 requests)
+   - Status filters via badge and history list
+   - Refresh buttons
 
-2. **Diagram Panel (górny panel główny)** - Mermaid + zoom/pan
-   - Kontrolki: zoom in/out, reset
-   - Sanitizacja treści przed renderem
+2. **Diagram Panel (top main panel)** - Mermaid + zoom/pan
+   - Controls: zoom in/out, reset
+   - Content sanitization before render
 
-3. **Telemetry Panel (dolny panel główny)** - Kontekst i błędy
-   - `error_code`, `error_details`, etap i retryable
-   - Lista kroków z filtrem tekstowym
-   - Checkbox „Tylko kontrakty” (execution_contract_violation)
+3. **Telemetry Panel (bottom main panel)** - Context and errors
+   - `error_code`, `error_details`, stage and retryable
+   - Step list with text filter
+   - "Contracts only" checkbox (execution_contract_violation)
 
-#### Interaktywność:
+#### Interactivity:
 
 ✅ **Zoom & Pan:**
-- Kółko myszy - zoom in/out
-- Przeciąganie myszą - przesuwanie diagramu
-- Przyciski 🔍+/🔍-/↺ - kontrolki zoom
+- Mouse wheel - zoom in/out
+- Mouse drag - move diagram
+- Buttons 🔍+/🔍-/↺ - zoom controls
 
-✅ **Lista kroków + panel telemetryczny:**
-- Kliknij krok w liście, by zobaczyć szczegóły i JSON
-- Filtruj kroki po treści lub tylko kontrakty wykonania
+✅ **Step list + telemetry panel:**
+- Click step in list to see details and JSON
+- Filter steps by content or contracts only
 
 ✅ **Decision Gates:**
-- Wyróżnione żółtym tłem na diagramie
-- Emoji 🔀 w opisie
-- Dodatkowe informacje w panelu szczegółów
+- Highlighted with yellow background on diagram
+- Emoji 🔀 in description
+- Additional information in details panel
 
-### 3. Wybór zadania do analizy (obie wersje)
+### 3. Selecting task for analysis (both versions)
 
-W sekcji "📋 Wybierz zadanie do analizy" zobaczysz listę ostatnich zadań:
+In "📋 Select task for analysis" section you'll see list of recent tasks:
 
-- **Zielona ramka** - zadanie ukończone (COMPLETED)
-- **Czerwona ramka** - zadanie zakończone błędem (FAILED)
-- **Pomarańczowa ramka** - zadanie w trakcie (PROCESSING)
-- **Niebieska ramka** - zadanie oczekujące (PENDING)
+- **Green border** - completed task (COMPLETED)
+- **Red border** - failed task (FAILED)
+- **Orange border** - task in progress (PROCESSING)
+- **Blue border** - pending task (PENDING)
 
-Kliknij na zadanie, które chcesz przeanalizować.
+Click on the task you want to analyze.
 
-### 3. Analiza diagramu przepływu
+### 3. Flow diagram analysis
 
-Po wybraniu zadania zobaczysz:
+After selecting a task you'll see:
 
-#### 📊 Diagram Mermaid
+#### 📊 Mermaid Diagram
 
-Interaktywny diagram sekwencji pokazujący:
-- **Uczestników** - komponenty systemu (User, Orchestrator, Agenci)
-- **Strzałki** - przepływ komunikacji między komponentami
-- **Notatki żółte (Decision Gates)** - kluczowe punkty decyzyjne oznaczone emoji:
+Interactive sequence diagram showing:
+- **Participants** - system components (User, Orchestrator, Agents)
+- **Arrows** - communication flow between components
+- **Yellow notes (Decision Gates)** - key decision points marked with emoji:
   - 🔀 Routing decision
   - 🏛️ Council Mode
   - 💻 Code Review Loop
   - 🚀 Campaign Mode
-  - itp.
+  - etc.
 
-#### 🔍 Szczegóły kroków
+#### 🔍 Step Details
 
-Lista wszystkich kroków z:
-- **Component** - nazwa komponentu
-- **Action** - wykonana akcja
-- **Timestamp** - czas wykonania
-- **Details** - dodatkowe szczegóły
+List of all steps with:
+- **Component** - component name
+- **Action** - performed action
+- **Timestamp** - execution time
+- **Details** - additional details
 
-Decision Gates są wyróżnione **pomarańczowym tłem** i mają badge **🔀 Decision Gate**.
+Decision Gates are highlighted with **orange background** and have **🔀 Decision Gate** badge.
 
 ### 4. Auto-refresh
 
-**Flow Inspector (podstawowy):** Jeśli zadanie jest nadal w trakcie (PROCESSING), automatycznie odświeża dane co 3 sekundy.
+**Flow Inspector (basic):** If task is still in progress (PROCESSING), automatically refreshes data every 3 seconds.
 
-**Interactive Inspector:** Wymaga ręcznego odświeżenia przyciskiem.
+**Interactive Inspector:** Requires manual refresh with button.
 
-## 🔒 Bezpieczeństwo
+## 🔒 Security
 
-Inspector w web-next:
-- Sanityzuje treści (komponenty, akcje, szczegóły) przed renderem Mermaid.
-- Renderuje diagramy w kontrolowanym komponencie (bez zewnętrznych CDN).
-- Obsługuje fallback diagramu przy błędach renderu.
+Inspector in web-next:
+- Sanitizes content (components, actions, details) before Mermaid render.
+- Renders diagrams in controlled component (no external CDN).
+- Handles diagram fallback on render errors.
 
-## 🎯 Przykłady użycia
+## 🎯 Usage Examples
 
-### Analiza wyboru agenta
+### Agent selection analysis
 
 ```
-User -> Orchestrator: "Napisz funkcję sortującą"
+User -> Orchestrator: "Write a sorting function"
 Orchestrator -> IntentManager: classify_intent
 Note over DecisionGate: 🔀 Route to Code Generation
 Orchestrator -> CoderAgent: process_task
 CoderAgent -> User: ✅ Task completed
 ```
 
-**Decision Gate** pokazuje, że system rozpoznał intencję CODE_GENERATION i zdecydował się na użycie CoderAgent.
+**Decision Gate** shows that system recognized CODE_GENERATION intent and decided to use CoderAgent.
 
-### Analiza trybu Council
+### Council mode analysis
 
 ```
-User -> Orchestrator: "Stwórz złożoną aplikację webową"
+User -> Orchestrator: "Create a complex web application"
 Orchestrator -> IntentManager: classify_intent
 Note over DecisionGate: 🏛️ Complex task -> Council Mode
 Orchestrator -> CouncilFlow: run_discussion
 CouncilFlow -> User: ✅ Task completed
 ```
 
-**Decision Gate** pokazuje, że zadanie było wystarczająco złożone, aby system aktywował tryb Council.
+**Decision Gate** shows that task was complex enough for system to activate Council mode.
 
-### Analiza błędu
+### Error analysis
 
 ```
-User -> Orchestrator: "Zadanie z błędem"
+User -> Orchestrator: "Task with error"
 Orchestrator -> Agent: process_task
 Agent --x User: ❌ Task failed (Connection timeout)
 ```
 
-Przerywana linia `--x` wskazuje na błąd w przepływie.
+Dashed line `--x` indicates error in flow.
 
 ## 🔧 API Endpoint
 
-Flow Inspector wykorzystuje endpoint REST API:
+Flow Inspector uses REST API endpoint:
 
 ```
 GET /api/v1/flow/{task_id}
@@ -160,7 +160,7 @@ GET /api/v1/flow/{task_id}
 ```json
 {
   "request_id": "uuid",
-  "prompt": "Treść zadania",
+  "prompt": "Task content",
   "status": "COMPLETED",
   "created_at": "2024-12-10T13:00:00",
   "finished_at": "2024-12-10T13:00:05",
@@ -187,96 +187,96 @@ GET /api/v1/flow/{task_id}
 }
 ```
 
-## 📝 Decision Gates - Typy
+## 📝 Decision Gates - Types
 
-System rozpoznaje następujące typy Decision Gates:
+System recognizes following Decision Gate types:
 
-1. **route_help** - routing do systemu pomocy (HELP_REQUEST)
-2. **route_campaign** - routing do trybu kampanii (START_CAMPAIGN)
-3. **select_council_mode** - wybór trybu Council dla złożonych zadań
-4. **select_code_review_loop** - wybór pętli Coder-Critic dla generowania kodu
-5. **route_to_architect** - routing do Architekta dla złożonego planowania
-6. **route_to_agent** - standardowy routing do konkretnego agenta
+1. **route_help** - routing to help system (HELP_REQUEST)
+2. **route_campaign** - routing to campaign mode (START_CAMPAIGN)
+3. **select_council_mode** - Council mode selection for complex tasks
+4. **select_code_review_loop** - Coder-Critic loop selection for code generation
+5. **route_to_architect** - routing to Architect for complex planning
+6. **route_to_agent** - standard routing to specific agent
 
 ## 💡 Tips & Tricks
 
-### Flow Inspector (podstawowy):
-1. **Filtrowanie** - użyj przycisku "🔄 Odśwież" aby załadować najnowsze zadania
-2. **Live monitoring** - pozostaw otwartą stronę podczas wykonywania zadania
+### Flow Inspector (basic):
+1. **Filtering** - use "🔄 Refresh" button to load latest tasks
+2. **Live monitoring** - keep page open while executing task
 
 ### Interactive Inspector:
-1. **Nawigacja** - użyj kółka myszy i przeciągania dla dużych diagramów
-2. **Eksploracja** - klikaj elementy aby zobaczyć szczegóły JSON
-3. **Reset widoku** - przycisk ↺ przywraca początkowe ustawienie zoom
-4. **Debugging** - panel szczegółów pokazuje pełne dane każdego kroku
+1. **Navigation** - use mouse wheel and dragging for large diagrams
+2. **Exploration** - click elements to see JSON details
+3. **Reset view** - ↺ button restores initial zoom settings
+4. **Debugging** - details panel shows complete data for each step
 
-### Obie wersje:
-1. **Debugging** - Decision Gates pomagają zrozumieć, dlaczego system wybrał konkretną ścieżkę wykonania
-2. **Historia** - wszystkie zadania są zapisywane, możesz wrócić do analizy starszych zadań
+### Both versions:
+1. **Debugging** - Decision Gates help understand why system chose specific execution path
+2. **History** - all tasks are saved, you can return to analyze older tasks
 
 ## 🐛 Troubleshooting
 
-### Brak zadań na liście
-- Upewnij się, że RequestTracer jest włączony w konfiguracji
-- Wykonaj przynajmniej jedno zadanie przez system
+### No tasks in list
+- Ensure RequestTracer is enabled in configuration
+- Execute at least one task through system
 
-### Diagram nie renderuje się
-- Sprawdź konsolę JavaScript w przeglądarce (F12)
-- Upewnij się, że Mermaid.js jest załadowany (powinien być w base.html)
-- **Interactive Inspector:** Sprawdź czy biblioteki CDN są dostępne (Alpine.js, svg-pan-zoom)
+### Diagram doesn't render
+- Check JavaScript console in browser (F12)
+- Ensure Mermaid.js is loaded (should be in base.html)
+- **Interactive Inspector:** Check if CDN libraries are accessible (Alpine.js, svg-pan-zoom)
 
-### Brak Decision Gates w diagramie
-- Upewnij się, że używasz najnowszej wersji Orchestrator z wzbogaconym logowaniem
-- Decision Gates są dodawane tylko dla zadań wykonanych po wdrożeniu tej funkcji
+### No Decision Gates in diagram
+- Ensure you're using latest Orchestrator version with enhanced logging
+- Decision Gates are only added for tasks executed after this feature deployment
 
-### Interactive Inspector - brak interaktywności
-- Sprawdź konsolę JavaScript - powinny być komunikaty o inicjalizacji
-- Sprawdź połączenie internetowe (CDN libraries)
-- Odśwież stronę (Ctrl+F5)
+### Interactive Inspector - no interactivity
+- Check JavaScript console - should see initialization messages
+- Check internet connection (CDN libraries)
+- Refresh page (Ctrl+F5)
 
-### Błędy bezpieczeństwa CSP (Content Security Policy)
-- Interactive Inspector używa CDN - upewnij się, że CSP pozwala na `cdn.jsdelivr.net`
+### CSP (Content Security Policy) errors
+- Interactive Inspector uses CDN - ensure CSP allows `cdn.jsdelivr.net`
 
-## 🔗 Powiązane dokumenty
+## 🔗 Related Documents
 
-- [REQUEST_TRACING_GUIDE.md](REQUEST_TRACING_GUIDE.md) - szczegóły o systemie śledzenia requestów
-- [THE_COUNCIL.md](THE_COUNCIL.md) - dokumentacja trybu Council
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - klasyfikacja intencji
+- [REQUEST_TRACING_GUIDE.md](../REQUEST_TRACING_GUIDE.md) - request tracing system details
+- [THE_COUNCIL.md](THE_COUNCIL.md) - Council mode documentation
+- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - intent classification
 
-## 📊 Przykładowe scenariusze
+## 📊 Example Scenarios
 
-### Scenariusz 1: Prosty request
+### Scenario 1: Simple request
 
 ```
-Użytkownik: "Hello!"
+User: "Hello!"
 Intent: GENERAL_CHAT
 Decision: Route to AssistantAgent
-Rezultat: Odpowiedź od AssistantAgent
+Result: Response from AssistantAgent
 ```
 
-### Scenariusz 2: Złożony projekt
+### Scenario 2: Complex project
 
 ```
-Użytkownik: "Stwórz aplikację TODO z React i FastAPI"
+User: "Create TODO app with React and FastAPI"
 Intent: COMPLEX_PLANNING
 Decision: Check complexity -> Council Mode activated
-Rezultat: Dyskusja w Council -> Architect planuje -> Coder implementuje
+Result: Council discussion -> Architect plans -> Coder implements
 ```
 
-### Scenariusz 3: Generowanie kodu z review
+### Scenario 3: Code generation with review
 
 ```
-Użytkownik: "Napisz funkcję fibonacci"
+User: "Write fibonacci function"
 Intent: CODE_GENERATION
 Decision: Code Review Loop
-Rezultat: Coder generuje -> Critic sprawdza -> iteracje -> akceptacja
+Result: Coder generates -> Critic checks -> iterations -> acceptance
 ```
 
 ---
 
-## 📚 Technologie
+## 📚 Technologies
 
-### Flow Inspector (podstawowy):
+### Flow Inspector (basic):
 - Vanilla JavaScript
 - Mermaid.js (sequence diagrams)
 - Fetch API
@@ -289,6 +289,6 @@ Rezultat: Coder generuje -> Critic sprawdza -> iteracje -> akceptacja
 
 ---
 
-**Wersja:** 1.0
-**Data:** 2024-12-10
-**Autor:** Venom Team
+**Version:** 2.0
+**Date:** 2024-12-10
+**Author:** Venom Team

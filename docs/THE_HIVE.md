@@ -1,14 +1,14 @@
-# THE HIVE - Architektura Rozproszonego Przetwarzania
+# THE HIVE - Distributed Processing Architecture
 
 > [!NOTE]
-> **Definicja Ula w v1.0:** W obecnej wersji dokument ten opisuje **Wewnętrzny Klaster (Internal Hive)**, czyli lokalną sieć węzłów Spore.
-> Koncepcja **Zewnętrznego Ula (Global Hive)**, gdzie Venom działa jako pojedyncze urządzenie IoT połączone z chmurą, jest planowana dla wersji **Venom 2.0**.
+> **Hive Definition in v1.0:** This document describes the **Internal Hive**, a local cluster of Spore nodes.
+> The concept of **Global Hive**, where Venom acts as a single IoT device connected to a cloud registry, is planned for **Venom 2.0**.
 
-## Przegląd
+## Overview
 
-THE HIVE to architektura rozproszonego przetwarzania, która przekształca luźno połączone węzły Spore w jeden zsynchronizowany klaster obliczeniowy. System umożliwia równoległe wykonywanie zadań, dynamiczną dystrybucję obciążenia oraz synchronizację kodu między węzłami.
+THE HIVE is a distributed processing architecture that transforms loosely connected Spore nodes into one synchronized compute cluster. The system enables parallel task execution, dynamic load distribution, and code synchronization across nodes.
 
-## Architektura
+## Architecture
 
 ```
 ┌─────────────┐
@@ -26,171 +26,171 @@ THE HIVE to architektura rozproszonego przetwarzania, która przekształca luźn
    └──────┘    └──────┘    └──────┘    └──────┘
 ```
 
-## Komponenty Główne
+## Main Components
 
 ### 1. Message Broker (`venom_core/infrastructure/message_broker.py`)
 
-**Rola:** Infrastruktura kolejkowania zadań oparty na Redis + ARQ.
+**Role:** Task queuing infrastructure based on Redis + ARQ.
 
-**Funkcjonalność:**
-- Zarządzanie kolejkami zadań (high_priority, background)
-- Redis Pub/Sub dla broadcast control
-- Monitoring statusu zadań
-- Detekcja zombie tasks
-- Retry mechanism dla nieudanych zadań
+**Functionality:**
+- Task queue management (high_priority, background)
+- Redis Pub/Sub for broadcast control
+- Task status monitoring
+- Zombie task detection
+- Retry mechanism for failed tasks
 
-**Kolejki:**
-- `venom:tasks:high` - Zadania wysokiego priorytetu (interakcje użytkownika)
-- `venom:tasks:background` - Zadania w tle (scraping, training)
-- `venom:broadcast` - Kanał broadcast (komendy systemowe)
+**Queues:**
+- `venom:tasks:high` - High priority tasks (user interactions)
+- `venom:tasks:background` - Background tasks (scraping, training)
+- `venom:broadcast` - Broadcast channel (system commands)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.infrastructure.message_broker import MessageBroker
 
-# Inicjalizacja
+# Initialization
 broker = MessageBroker()
 await broker.connect()
 
-# Dodanie zadania do kolejki
+# Add task to queue
 task_id = await broker.enqueue_task(
     task_type="web_scraping",
     payload={"url": "https://example.com"},
     priority="background"
 )
 
-# Sprawdzenie statusu
+# Check status
 status = await broker.get_task_status(task_id)
 print(f"Status: {status.status}")
 
-# Broadcast do wszystkich węzłów
+# Broadcast to all nodes
 await broker.broadcast_control("UPDATE_SYSTEM", {"version": "1.2.0"})
 ```
 
 ### 2. Foreman Agent (`venom_core/agents/foreman.py`)
 
-**Rola:** Load Balancer & Watchdog dla klastra.
+**Role:** Load Balancer & Watchdog for the cluster.
 
-**Funkcjonalność:**
-- Monitoring obciążenia węzłów (CPU, RAM, liczba zadań)
-- Inteligentny routing zadań do najlepszych węzłów
-- Watchdog - wykrywanie zombie tasks
-- Automatyczny retry dla nieudanych zadań
-- Zarządzanie statusem klastra
+**Functionality:**
+- Node load monitoring (CPU, RAM, task count)
+- Intelligent task routing to best nodes
+- Watchdog - zombie task detection
+- Automatic retry for failed tasks
+- Cluster status management
 
-**Algorytm Load Balancing:**
+**Load Balancing Algorithm:**
 ```python
 load_score = cpu_usage * 0.4 + memory_usage * 0.3 + (active_tasks/10) * 0.3
 ```
-Węzeł z najniższym `load_score` jest wybierany dla nowego zadania.
+Node with lowest `load_score` is selected for new tasks.
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.agents.foreman import ForemanAgent
 
-# Inicjalizacja
+# Initialization
 foreman = ForemanAgent(kernel, message_broker, node_manager)
 await foreman.start()
 
-# Wybór najlepszego węzła
+# Select best node
 node_id = foreman.select_best_node(task_requirements={"gpu": True})
 
-# Przypisanie zadania
+# Assign task
 await foreman.assign_task("task_123", task_requirements={"gpu": True})
 
-# Status klastra
+# Cluster status
 status = foreman.get_cluster_status()
-print(f"Węzły online: {status['online_nodes']}/{status['total_nodes']}")
-print(f"Średnie obciążenie CPU: {status['avg_cpu_usage']}%")
+print(f"Nodes online: {status['online_nodes']}/{status['total_nodes']}")
+print(f"Average CPU load: {status['avg_cpu_usage']}%")
 ```
 
 ### 3. Parallel Skill (`venom_core/execution/skills/parallel_skill.py`)
 
-**Rola:** Umiejętność równoległego przetwarzania dla Architekta (Map-Reduce).
+**Role:** Parallel processing skill for Architect (Map-Reduce).
 
-**Funkcjonalność:**
-- `map_reduce()` - Przetwarzanie list elementów równolegle
-- `parallel_execute()` - Równoległe wykonywanie pod-zadań
-- `get_task_status()` - Sprawdzanie postępu zadań
+**Functionality:**
+- `map_reduce()` - Process lists of items in parallel
+- `parallel_execute()` - Parallel execution of sub-tasks
+- `get_task_status()` - Check task progress
 
 **Map-Reduce Flow:**
-1. **MAP** - Rozdzielenie zadania na N pod-zadań
-2. **DISTRIBUTE** - Dodanie do kolejki Redis
-3. **WAIT** - Asynchroniczne oczekiwanie na wyniki
-4. **REDUCE** - Agregacja wyników
+1. **MAP** - Split task into N sub-tasks
+2. **DISTRIBUTE** - Add to Redis queue
+3. **WAIT** - Asynchronously wait for results
+4. **REDUCE** - Aggregate results
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 from venom_core.execution.skills.parallel_skill import ParallelSkill
 
 skill = ParallelSkill(message_broker)
 
-# Map-Reduce na liście URLi
+# Map-Reduce on list of URLs
 urls = ["https://site1.com", "https://site2.com", "https://site3.com"]
 result = await skill.map_reduce(
-    task_description="Pobierz treść artykułu i stresuść do 3 zdań",
+    task_description="Fetch article content and summarize to 3 sentences",
     items=json.dumps(urls),
     priority="high_priority",
     wait_timeout=300
 )
 
-# Wynik zawiera summary + results
+# Result contains summary + results
 data = json.loads(result)
-print(f"Ukończone: {data['summary']['completed']}/{data['summary']['total_tasks']}")
+print(f"Completed: {data['summary']['completed']}/{data['summary']['total_tasks']}")
 ```
 
 ### 4. OTA Manager (`venom_core/core/ota_manager.py`)
 
-**Rola:** Over-The-Air Updates dla węzłów Spore.
+**Role:** Over-The-Air Updates for Spore nodes.
 
-**Funkcjonalność:**
-- Tworzenie paczek aktualizacji (ZIP)
-- Weryfikacja checksum (SHA256)
-- Broadcast UPDATE_SYSTEM do węzłów
-- Bezpieczna instalacja na węzłach
-- Automatyczna instalacja zależności
-- Backup plików przed nadpisaniem
+**Functionality:**
+- Create update packages (ZIP)
+- Checksum verification (SHA256)
+- Broadcast UPDATE_SYSTEM to nodes
+- Safe installation on nodes
+- Automatic dependency installation
+- Backup files before overwriting
 
-**Proces aktualizacji:**
-1. Nexus tworzy paczkę z nowym kodem
-2. Nexus wysyła broadcast UPDATE_SYSTEM
-3. Spores pobierają paczkę
-4. Weryfikacja checksum
-5. Rozpakowanie i kopiowanie plików
-6. Instalacja zależności (`pip install`)
-7. Restart procesu
+**Update Process:**
+1. Nexus creates package with new code
+2. Nexus sends UPDATE_SYSTEM broadcast
+3. Spores download package
+4. Checksum verification
+5. Unpack and copy files
+6. Install dependencies (`pip install`)
+7. Process restart
 
-**Przykład użycia (Nexus):**
+**Usage Example (Nexus):**
 ```python
 from venom_core.core.ota_manager import OTAManager
 
 ota = OTAManager(message_broker)
 
-# Tworzenie paczki
+# Create package
 package = await ota.create_package(
     version="1.2.0",
-    description="Nowe funkcje Hive",
+    description="New Hive features",
     source_paths=[Path("venom_core"), Path("venom_spore")],
     include_dependencies=True
 )
 
-# Broadcast do węzłów
+# Broadcast to nodes
 await ota.broadcast_update(package, target_nodes=["spore-1", "spore-2"])
 ```
 
-**Przykład użycia (Spore):**
+**Usage Example (Spore):**
 ```python
-# UWAGA BEZPIECZEŃSTWA: W produkcji należy zweryfikować źródło aktualizacji!
-# Nasłuchiwanie broadcast
+# SECURITY WARNING: In production, verify update source!
+# Listen to broadcast
 pubsub = await message_broker.subscribe_broadcast()
 
 async for message in pubsub.listen():
     if message["type"] == "message":
         data = json.loads(message["data"])
         if data["command"] == "UPDATE_SYSTEM":
-            # KROK 1: Zweryfikuj że package_url pochodzi z zaufanego źródła
-            # KROK 2: Opcjonalnie: weryfikuj podpis cyfrowy paczki
-            # KROK 3: Aplikuj aktualizację
+            # STEP 1: Verify package_url comes from trusted source
+            # STEP 2: Optionally: verify digital signature of package
+            # STEP 3: Apply update
             await ota.apply_update(
                 package_url=data["data"]["package_url"],
                 expected_checksum=data["data"]["checksum"],
@@ -198,21 +198,21 @@ async for message in pubsub.listen():
             )
 ```
 
-**⚠️ UWAGA BEZPIECZEŃSTWA OTA:**
-Powyższy przykład jest uproszczony dla celów demonstracyjnych. W środowisku produkcyjnym:
-1. **Autentykacja źródła**: Weryfikuj że aktualizacje pochodzą tylko z zaufanego Nexus
-2. **Podpisy cyfrowe**: Podpisuj paczki OTA kluczem prywatnym Nexus, weryfikuj przez Spores
-3. **Whitelist URLi**: Ogranicz package_url do zaufanych hostów
-4. **Token autoryzacji**: Dodaj NEXUS_SHARED_TOKEN do danych broadcast
-5. **Redis auth**: Zawsze używaj REDIS_PASSWORD w produkcji
+**⚠️ OTA SECURITY WARNING:**
+The above example is simplified for demonstration. In production:
+1. **Source authentication**: Verify updates only from trusted Nexus
+2. **Digital signatures**: Sign OTA packages with Nexus private key, verify on Spores
+3. **URL whitelist**: Limit package_url to trusted hosts only
+4. **Authorization token**: Add NEXUS_SHARED_TOKEN to broadcast data
+5. **Redis auth**: Always use REDIS_PASSWORD in production
 
-## Konfiguracja
+## Configuration
 
-### Docker Compose - Redis Stack (Produkcja)
+### Docker Compose - Redis Stack (Production)
 
-⚠️ **KRYTYCZNE**: Domyślna konfiguracja Redis NIE JEST bezpieczna dla produkcji!
+⚠️ **CRITICAL**: Default Redis configuration is NOT secure for production!
 
-**Konfiguracja zabezpieczona (ZALECANA):**
+**Secured Configuration (RECOMMENDED):**
 
 ```yaml
 version: '3.8'
@@ -221,11 +221,11 @@ services:
   redis:
     image: redis:alpine
     container_name: venom-hive-redis
-    # NIE eksponuj portu na hosta w produkcji!
+    # DO NOT expose port to host in production!
     # ports:
     #   - "6379:6379"
     environment:
-      # KRYTYCZNE: Ustaw silne hasło!
+      # CRITICAL: Set strong password!
       REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
     volumes:
       - redis_data:/data
@@ -236,18 +236,18 @@ services:
       --bind 0.0.0.0
     restart: unless-stopped
     networks:
-      - venom-internal  # Tylko wewnętrzna sieć!
+      - venom-internal  # Internal network only!
 
 networks:
   venom-internal:
     driver: bridge
-    internal: true  # Brak dostępu z zewnątrz
+    internal: true  # No external access
 
 volumes:
   redis_data:
 ```
 
-**Minimalna konfiguracja (TYLKO dla developmentu/demo):**
+**Minimal Configuration (Development/demo ONLY):**
 
 ```yaml
 version: '3.8'
@@ -257,7 +257,7 @@ services:
     image: redis:alpine
     container_name: venom-hive-redis
     ports:
-      - "127.0.0.1:6379:6379"  # Bind tylko do localhost!
+      - "127.0.0.1:6379:6379"  # Bind to localhost only!
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -267,7 +267,7 @@ volumes:
   redis_data:
 ```
 
-Wdrażanie stacka:
+Stack deployment:
 ```python
 from venom_core.infrastructure.stack_manager import StackManager
 
@@ -275,7 +275,7 @@ manager = StackManager()
 success, msg = manager.deploy_default_hive_stack()
 ```
 
-### Zmienne Środowiskowe (.env)
+### Environment Variables (.env)
 
 ```bash
 # THE_HIVE Configuration
@@ -285,69 +285,69 @@ REDIS_PORT=6379
 REDIS_DB=0
 REDIS_PASSWORD=
 
-# Kolejki
+# Queues
 HIVE_HIGH_PRIORITY_QUEUE=venom:tasks:high
 HIVE_BACKGROUND_QUEUE=venom:tasks:background
 HIVE_BROADCAST_CHANNEL=venom:broadcast
 
-# Timeouty
+# Timeouts
 HIVE_TASK_TIMEOUT=300
 HIVE_MAX_RETRIES=3
 HIVE_ZOMBIE_TASK_TIMEOUT=600
 ```
 
-## Scenariusze Użycia
+## Use Cases
 
-### 1. Masowe Przetwarzanie (Bulk Processing)
+### 1. Bulk Processing
 
-**Problem:** Pobierz i stresuść 20 artykułów z różnych stron.
+**Problem:** Fetch and summarize 20 articles from different sites.
 
-**Rozwiązanie:**
+**Solution:**
 ```python
-# Architect rozbija zadanie
+# Architect splits task
 urls = ["url1", "url2", ..., "url20"]
 
-# Używa Parallel Skill
+# Uses Parallel Skill
 result = await parallel_skill.map_reduce(
-    task_description="Pobierz artykuł i stresuść do 3 zdań",
+    task_description="Fetch article and summarize to 3 sentences",
     items=json.dumps(urls),
     priority="high_priority"
 )
 
-# 5 Spores pracuje jednocześnie (każdy po 4 artykuły)
-# Czas: ~5x szybciej niż sekwencyjnie
+# 5 Spores work simultaneously (each processes 4 articles)
+# Time: ~5x faster than sequential
 ```
 
-### 2. Równoległe Skanowanie Repozytorium
+### 2. Parallel Repository Scanning
 
-**Problem:** Przeskanuj całe repozytorium pod kątem security issues.
+**Problem:** Scan entire repository for security issues.
 
-**Rozwiązanie:**
+**Solution:**
 ```python
 subtasks = [
-    "Skanuj katalog /src",
-    "Skanuj katalog /tests",
-    "Skanuj katalog /config",
-    "Skanuj zależności requirements.txt"
+    "Scan /src directory",
+    "Scan /tests directory",
+    "Scan /config directory",
+    "Scan requirements.txt dependencies"
 ]
 
 result = await parallel_skill.parallel_execute(
-    task_description="Security audit repozytorium",
+    task_description="Repository security audit",
     subtasks=json.dumps(subtasks),
     priority="high_priority"
 )
 ```
 
-### 3. Automatyczna Aktualizacja Węzłów
+### 3. Automatic Node Updates
 
-**Problem:** Nexus otrzymał nową wersję kodu (PR merge).
+**Problem:** Nexus received new code version (PR merge).
 
-**Rozwiązanie:**
+**Solution:**
 ```python
-# 1. Tworzenie paczki
+# 1. Create package
 package = await ota.create_package(
     version="1.3.0",
-    description="PR #45: Nowa funkcja X",
+    description="PR #45: New feature X",
     source_paths=[Path("venom_core")],
     include_dependencies=True
 )
@@ -355,29 +355,29 @@ package = await ota.create_package(
 # 2. Broadcast
 await ota.broadcast_update(package)
 
-# 3. Wszystkie Spores automatycznie:
-#    - Pobiorą nowy kod
-#    - Zweryfikują checksum
-#    - Zainstalują zależności
-#    - Zrestartują się
+# 3. All Spores automatically:
+#    - Download new code
+#    - Verify checksum
+#    - Install dependencies
+#    - Restart
 ```
 
 ## Monitoring & Debugging
 
-### Status Klastra
+### Cluster Status
 
 ```python
 # Foreman Status
 status = foreman.get_cluster_status()
 print(f"""
-Węzły: {status['online_nodes']}/{status['total_nodes']} online
-Średnie CPU: {status['avg_cpu_usage']}%
-Średnia RAM: {status['avg_memory_usage']}%
-Aktywne zadania: {status['total_active_tasks']}
+Nodes: {status['online_nodes']}/{status['total_nodes']} online
+Average CPU: {status['avg_cpu_usage']}%
+Average RAM: {status['avg_memory_usage']}%
+Active tasks: {status['total_active_tasks']}
 """)
 ```
 
-### Statystyki Kolejek
+### Queue Statistics
 
 ```python
 stats = await message_broker.get_queue_stats()
@@ -394,7 +394,7 @@ Failed: {stats['tasks_failed']}
 ### Zombie Tasks
 
 ```python
-# Foreman automatycznie wykrywa i retry
+# Foreman automatically detects and retries
 zombies = await message_broker.detect_zombie_tasks()
 for zombie in zombies:
     print(f"Zombie task: {zombie.task_id}, elapsed: {datetime.now() - zombie.started_at}")
@@ -402,31 +402,31 @@ for zombie in zombies:
 
 ## Best Practices
 
-### 1. Idempotentność
+### 1. Idempotency
 
-Zadania powinny być idempotentne (bezpieczne do wielokrotnego wykonania):
+Tasks should be idempotent (safe to execute multiple times):
 
 ```python
-# ✅ DOBRZE - Idempotentne
+# ✅ GOOD - Idempotent
 async def process_url(url: str):
-    # Sprawdź czy już przetworzone
+    # Check if already processed
     if await cache.exists(url):
         return await cache.get(url)
 
-    # Przetwórz
+    # Process
     result = await scrape(url)
     await cache.set(url, result)
     return result
 
-# ❌ ŹLE - Nie-idempotentne
+# ❌ BAD - Not idempotent
 async def increment_counter():
     counter = await db.get_counter()
-    await db.set_counter(counter + 1)  # Przy retry zwiększy 2x!
+    await db.set_counter(counter + 1)  # On retry will increment twice!
 ```
 
 ### 2. Error Handling
 
-Zawsze obsługuj błędy i zwracaj sensowne komunikaty:
+Always handle errors and return meaningful messages:
 
 ```python
 try:
@@ -437,195 +437,195 @@ except Exception as e:
     await message_broker.update_task_status(task_id, "failed", error=str(e))
 ```
 
-### 3. Timeouty
+### 3. Timeouts
 
-Ustaw rozsądne timeouty dla zadań długotrwałych:
+Set reasonable timeouts for long-running tasks:
 
 ```python
-# Zadanie scraping (max 5 min)
+# Scraping task (max 5 min)
 await skill.map_reduce(
     task_description="Scrape articles",
     items=json.dumps(urls),
-    wait_timeout=300  # 5 minut
+    wait_timeout=300  # 5 minutes
 )
 
-# Zadanie ML inference (max 10 min)
+# ML inference task (max 10 min)
 await skill.parallel_execute(
     task_description="Run model inference",
     subtasks=json.dumps(batches),
-    wait_timeout=600  # 10 minut
+    wait_timeout=600  # 10 minutes
 )
 ```
 
-### 4. Priorytetyzacja
+### 4. Prioritization
 
-Używaj priorytetów świadomie:
+Use priorities consciously:
 
 ```python
-# High priority - interakcje użytkownika
+# High priority - user interactions
 await broker.enqueue_task("user_query", data, priority="high_priority")
 
-# Background - zadania wsadowe
+# Background - batch tasks
 await broker.enqueue_task("bulk_scraping", data, priority="background")
 ```
 
-## Rozwiązywanie Problemów
+## Troubleshooting
 
 ### Problem: Redis connection failed
 
-**Rozwiązanie:**
+**Solution:**
 ```bash
-# Sprawdź czy Redis działa
+# Check if Redis is running
 docker ps | grep redis
 
-# Uruchom Redis stack
+# Start Redis stack
 cd venom_core/infrastructure
 docker compose up -d
 
-# Lub użyj StackManager
+# Or use StackManager
 python -c "from venom_core.infrastructure.stack_manager import StackManager; StackManager().deploy_default_hive_stack()"
 ```
 
 ### Problem: Zombie tasks
 
-**Rozwiązanie:**
-- Foreman automatycznie wykrywa i retry
-- Sprawdź logi węzłów: `docker logs venom-spore-1`
-- Zmień timeout jeśli zadania są intensywne:
+**Solution:**
+- Foreman automatically detects and retries
+- Check node logs: `docker logs venom-spore-1`
+- Increase timeout if tasks are intensive:
   ```bash
-  HIVE_ZOMBIE_TASK_TIMEOUT=1200  # 20 minut
+  HIVE_ZOMBIE_TASK_TIMEOUT=1200  # 20 minutes
   ```
 
-### Problem: Węzeł offline
+### Problem: Node offline
 
-**Rozwiązanie:**
+**Solution:**
 ```python
-# Sprawdź status węzłów
+# Check node status
 status = foreman.get_cluster_status()
 for node in status['nodes']:
     if not node['is_online']:
         print(f"Node {node['node_name']} offline!")
-        # Restart węzła
+        # Restart node
 ```
 
-## Przykłady Integracji
+## Integration Examples
 
-### Integracja z Architect Agent
+### Integration with Architect Agent
 
 ```python
-# W promptcie Architekta można używać:
+# In Architect's prompt you can use:
 """
-Jeśli zadanie wymaga przetworzenia wielu elementów równolegle,
-użyj ParallelSkill.map_reduce():
+If task requires processing many items in parallel,
+use ParallelSkill.map_reduce():
 
-PRZYKŁAD:
-Zadanie: "Pobierz 50 artykułów i wyciągnij kluczowe informacje"
+EXAMPLE:
+Task: "Fetch 50 articles and extract key information"
 Plan:
-1. RESEARCHER - Znajdź 50 URLi artykułów
-2. CODER - Użyj ParallelSkill.map_reduce() do równoległego przetworzenia
+1. RESEARCHER - Find 50 article URLs
+2. CODER - Use ParallelSkill.map_reduce() for parallel processing
 """
 ```
 
-### Integracja z Spore Nodes
+### Integration with Spore Nodes
 
 ```python
-# W venom_spore/main.py
+# In venom_spore/main.py
 from venom_core.infrastructure.message_broker import MessageBroker
 
 broker = MessageBroker()
 await broker.connect()
 
-# Nasłuchuj zadań
+# Listen for tasks
 while True:
     task = await get_next_task_from_queue()
     result = await execute_skill(task)
     await broker.update_task_status(task.id, "completed", result=result)
 ```
 
-## Metryki & Wydajność
+## Metrics & Performance
 
 ### Throughput
-- **Pojedynczy Spore:** ~10-20 zadań/minutę (zależnie od typu)
-- **Klaster 5 Spores:** ~50-100 zadań/minutę
-- **Speedup:** ~5x dla zadań równoległych
+- **Single Spore:** ~10-20 tasks/minute (depending on type)
+- **5 Spore Cluster:** ~50-100 tasks/minute
+- **Speedup:** ~5x for parallel tasks
 
-### Latencja
+### Latency
 - **Task enqueue:** <10ms
 - **Task routing (Foreman):** <50ms
 - **Broadcast:** <100ms
 
-### Skalowanie
-- Linearne dla większości zadań
-- Overhead Redis: marginalny (<5%)
-- Bottleneck: Zazwyczaj I/O, nie CPU
+### Scaling
+- Linear for most tasks
+- Redis overhead: marginal (<5%)
+- Bottleneck: Usually I/O, not CPU
 
-## Bezpieczeństwo (Security)
+## Security
 
-### ⚠️ KRYTYCZNE: Zabezpieczenie Produkcyjne
+### ⚠️ CRITICAL: Production Security
 
-THE HIVE wymaga szczególnej uwagi na bezpieczeństwo ze względu na:
-- Rozproszoną architekturę z wieloma węzłami
-- Zdalne wykonywanie kodu (OTA updates)
-- Shared Redis jako single point of trust
+THE HIVE requires special security attention due to:
+- Distributed architecture with multiple nodes
+- Remote code execution (OTA updates)
+- Shared Redis as single point of trust
 
 ### Redis Security
 
-**Minimalne wymagania:**
-1. **Hasło**: Zawsze ustaw `requirepass` (REDIS_PASSWORD)
-2. **Binding**: Bind do `127.0.0.1` lub wewnętrznej sieci, NIE `0.0.0.0` na publicznym interface
-3. **Firewall**: Ogranicz dostęp do portu 6379 tylko dla zaufanych węzłów
-4. **TLS**: Rozważ Redis TLS dla komunikacji przez Internet
+**Minimum requirements:**
+1. **Password**: Always set `requirepass` (REDIS_PASSWORD)
+2. **Binding**: Bind to `127.0.0.1` or internal network, NOT `0.0.0.0` on public interface
+3. **Firewall**: Limit access to port 6379 to trusted nodes only
+4. **TLS**: Consider Redis TLS for communication over Internet
 
-**Konfiguracja secure Redis:**
+**Secure Redis configuration:**
 ```bash
 # .env
 REDIS_PASSWORD=very_strong_password_here_min_32_chars
 
-# redis.conf lub command
+# redis.conf or command
 requirepass ${REDIS_PASSWORD}
-bind 127.0.0.1  # lub wewnętrzny IP
+bind 127.0.0.1  # or internal IP
 protected-mode yes
 ```
 
 ### Pickle Serialization Security
 
-MessageBroker używa pickle dla serializacji TaskMessage:
-- **Ryzyko**: Pickle może wykonać arbitrary code przy deserializacji
-- **Mitygacja**: Wszystkie węzły muszą być zaufane
-- **Alternatywa**: Użyj JSON z custom serializers dla prostych zadań
+MessageBroker uses pickle for TaskMessage serialization:
+- **Risk**: Pickle can execute arbitrary code on deserialization
+- **Mitigation**: All nodes must be trusted
+- **Alternative**: Use JSON with custom serializers for simple tasks
 
-**Zasady bezpiecznego użycia:**
-1. Wszystkie węzły Hive w zamkniętej, zaufanej sieci (VPN, private network)
-2. Redis auth (hasło) dla dodatkowej warstwy
-3. Monitoring dostępu do Redis (logs, metrics)
-4. Dla publicznych deploymentów: rozważ JSON zamiast pickle
+**Safe usage rules:**
+1. All Hive nodes in closed, trusted network (VPN, private network)
+2. Redis auth (password) for additional layer
+3. Monitor Redis access (logs, metrics)
+4. For public deployments: consider JSON instead of pickle
 
 ### OTA Updates Security
 
-**Problem**: OTA updates mogą być użyte do RCE jeśli źródło nie jest zweryfikowane.
+**Problem**: OTA updates can be used for RCE if source is not verified.
 
-**Wymagane zabezpieczenia dla produkcji:**
+**Required security measures for production:**
 
-1. **Autentykacja źródła**:
+1. **Source authentication**:
 ```python
-# Sprawdź że broadcast pochodzi od zaufanego Nexus
+# Check that broadcast comes from trusted Nexus
 if data.get("nexus_token") != SETTINGS.NEXUS_SHARED_TOKEN.get_secret_value():
     logger.error("Unauthorized OTA update attempt!")
     return
 ```
 
-2. **Podpisy cyfrowe paczek** (zalecane):
+2. **Digital package signatures** (recommended):
 ```python
-# Nexus: podpisz paczkę
+# Nexus: sign package
 import hmac
 signature = hmac.new(secret_key, package_data, hashlib.sha256).hexdigest()
 
-# Spore: weryfikuj podpis
+# Spore: verify signature
 if not hmac.compare_digest(signature, expected_signature):
     raise SecurityError("Invalid package signature!")
 ```
 
-3. **Whitelist URLi paczek**:
+3. **Package URL whitelist**:
 ```python
 ALLOWED_PACKAGE_HOSTS = ["nexus.internal", "localhost"]
 parsed_url = urlparse(package_url)
@@ -633,9 +633,9 @@ if parsed_url.hostname not in ALLOWED_PACKAGE_HOSTS:
     raise SecurityError(f"Package URL not whitelisted: {parsed_url.hostname}")
 ```
 
-4. **Walidacja requirements.txt**:
+4. **requirements.txt validation**:
 ```python
-# Przed pip install, sprawdź zawartość
+# Before pip install, check content
 with open(requirements_path) as f:
     for line in f:
         if line.strip().startswith(("http://", "https://", "git+")):
@@ -645,7 +645,7 @@ with open(requirements_path) as f:
 
 5. **Rate limiting**:
 ```python
-# Ogranicz częstotliwość OTA updates (max 1 na godzinę)
+# Limit OTA update frequency (max 1 per hour)
 if last_update_time and (datetime.now() - last_update_time) < timedelta(hours=1):
     logger.warning("OTA update rate limit exceeded")
     return False
@@ -653,13 +653,13 @@ if last_update_time and (datetime.now() - last_update_time) < timedelta(hours=1)
 
 ### Task Execution Security
 
-**Sandbox isolation**: Rozważ uruchamianie zadań w izolowanych kontenerach Docker dla dodatkowego bezpieczeństwa.
+**Sandbox isolation**: Consider running tasks in isolated Docker containers for additional security.
 
-**Input validation**: Zawsze waliduj payload zadań przed wykonaniem.
+**Input validation**: Always validate task payloads before execution.
 
 ### Network Security
 
-**Zalecana architektura sieciowa:**
+**Recommended network architecture:**
 ```
 Internet
     |
@@ -681,43 +681,43 @@ Internet
          (internal network only)
 ```
 
-### Checklist Bezpieczeństwa
+### Security Checklist
 
-Przed uruchomieniem produkcyjnym sprawdź:
+Before production deployment, verify:
 
-- [ ] Redis ma silne hasło (`requirepass`)
-- [ ] Redis nie jest dostępny publicznie (firewall/binding)
-- [ ] NEXUS_SHARED_TOKEN jest unikalny i długi (min 32 znaki)
-- [ ] OTA updates mają autentykację źródła
-- [ ] Package URLs są whitelistowane
-- [ ] Monitoring i alerty dla podejrzanej aktywności
-- [ ] Backup i disaster recovery plan
-- [ ] Wszystkie węzły w zamkniętej sieci (VPN/private)
-- [ ] Logi są zbierane i analizowane
-- [ ] Regular security updates dla Redis i Python packages
+- [ ] Redis has strong password (`requirepass`)
+- [ ] Redis not publicly accessible (firewall/binding)
+- [ ] NEXUS_SHARED_TOKEN is unique and long (min 32 chars)
+- [ ] OTA updates have source authentication
+- [ ] Package URLs are whitelisted
+- [ ] Monitoring and alerts for suspicious activity
+- [ ] Backup and disaster recovery plan
+- [ ] All nodes in closed network (VPN/private)
+- [ ] Logs collected and analyzed
+- [ ] Regular security updates for Redis and Python packages
 
 ### Incident Response
 
-W przypadku podejrzenia kompromitacji:
-1. Natychmiast zmień REDIS_PASSWORD i NEXUS_SHARED_TOKEN
-2. Restart wszystkich węzłów
-3. Sprawdź logi Redis i węzłów
-4. Zweryfikuj checksumy zainstalowanego kodu
-5. Rozważ reinstalację z czystych obrazów
+In case of suspected compromise:
+1. Immediately change REDIS_PASSWORD and NEXUS_SHARED_TOKEN
+2. Restart all nodes
+3. Check Redis and node logs
+4. Verify checksums of installed code
+5. Consider reinstallation from clean images
 
 ## Roadmap
 
-### Planowane Funkcje
-- [ ] Dashboard Hive Monitor (wizualizacja klastra)
-- [ ] Auto-scaling węzłów (Kubernetes)
-- [ ] Priorytety wielopoziomowe (0-10)
+### Planned Features
+- [ ] Hive Monitor dashboard (cluster visualization)
+- [ ] Auto-scaling nodes (Kubernetes)
+- [ ] Multi-level priorities (0-10)
 - [ ] Task dependencies (DAG)
 - [ ] Streaming results (partial results)
-- [ ] **Podpisy cyfrowe dla OTA packages**
+- [ ] **Digital signatures for OTA packages**
 - [ ] **Redis TLS support**
-- [ ] **Audit logging dla security events**
+- [ ] **Audit logging for security events**
 
-## Referencje
+## References
 
 - [Redis Documentation](https://redis.io/docs/)
 - [Redis Security](https://redis.io/docs/management/security/)

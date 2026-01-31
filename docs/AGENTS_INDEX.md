@@ -1,144 +1,145 @@
-# Indeks Agentów Venom - Pełna Lista
+# Venom Agents Index - Complete List
 
-## Przegląd
+## Overview
 
-> **[English Version](en/AGENTS_INDEX.md)**
+> **[Polska Wersja](../AGENTS_INDEX.md)**
 
-System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialny za konkretny obszar funkcjonalności. Poniżej znajdziesz pełną listę z opisami i linkami do szczegółowej dokumentacji.
+The Venom system consists of 34 specialized agents, each responsible for a specific functionality area. Below you'll find the complete list with descriptions and links to detailed documentation.
 
-## Kategorie Agentów
+> **Note:** This index has been translated to English. Individual agent documentation files (THE_*.md) are currently being translated. Links to untranslated files may not work yet.
 
-### 🏗️ Planowanie i Architektura
+## Agent Categories
 
-| Agent | Plik | Dokumentacja | Opis |
+### 🏗️ Planning and Architecture
+
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Architect** | `architect.py` | [THE_ARCHITECT.md](THE_ARCHITECT.md) | Planowanie strategiczne, dekompozycja złożonych zadań |
-| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | [v2.0] Ocena złożoności, zarządzanie budżetem API |
-| **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) | Orkiestracja na wysokim poziomie, decision-making |
+| **Architect** | `architect.py` | [THE_ARCHITECT.md](THE_ARCHITECT.md) | Strategic planning, complex task decomposition |
+| **Strategist** | `strategist.py` | [THE_STRATEGIST.md](THE_STRATEGIST.md) | [v2.0] Complexity assessment, API budget management |
+| **Executive** | `executive.py` | [THE_EXECUTIVE.md](THE_EXECUTIVE.md) | High-level orchestration, decision-making |
 
-### 💻 Implementacja i Kod
+### 💻 Implementation and Code
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Coder** | `coder.py` | [THE_CODER.md](THE_CODER.md) | Generowanie kodu, Docker Compose, samonaprawa |
-| **Critic** | `critic.py` | [THE_CRITIC.md](THE_CRITIC.md) | Weryfikacja jakości i bezpieczeństwa kodu |
-| **Toolmaker** | `toolmaker.py` | [THE_FORGE.md](THE_FORGE.md) | Tworzenie nowych Skills/narzędzi |
+| **Coder** | `coder.py` | [THE_CODER.md](THE_CODER.md) | Code generation, Docker Compose, self-repair |
+| **Critic** | `critic.py` | [THE_CRITIC.md](THE_CRITIC.md) | Code quality and security verification |
+| **Toolmaker** | `toolmaker.py` | [THE_FORGE.md](THE_FORGE.md) | Creating new Skills/tools |
 
-### 📚 Wiedza i Badania
+### 📚 Knowledge and Research
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Researcher** | `researcher.py` | [THE_RESEARCHER.md](THE_RESEARCHER.md) | Wyszukiwanie w Internecie, synteza wiedzy |
-| **Librarian** | `librarian.py` | [THE_LIBRARIAN.md](THE_LIBRARIAN.md) | Zarządzanie plikami, nawigacja po projekcie |
-| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](ORACLE_GRAPHRAG_GUIDE.md) | GraphRAG, analiza wiedzy projektowej |
-| **Historian** | `historian.py` | - | Historia projektu, tracking zmian |
+| **Researcher** | `researcher.py` | [THE_RESEARCHER.md](THE_RESEARCHER.md) | Internet search, knowledge synthesis |
+| **Librarian** | `librarian.py` | [THE_LIBRARIAN.md](THE_LIBRARIAN.md) | File management, project navigation |
+| **Oracle** | `oracle.py` | [ORACLE_GRAPHRAG_GUIDE.md](../ORACLE_GRAPHRAG_GUIDE.md) | GraphRAG, project knowledge analysis |
+| **Historian** | `historian.py` | - | Project history, change tracking |
 
-### 🤖 Interakcja z Użytkownikiem
+### 🤖 User Interaction
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Chat** | `chat.py` | [THE_CHAT.md](THE_CHAT.md) | Asystent konwersacyjny, pytania ogólne |
-| **Apprentice** | `apprentice.py` | [THE_APPRENTICE.md](THE_APPRENTICE.md) | Uczenie przez obserwację, nagrywanie workflows |
-| **Professor** | `professor.py` | [THE_ACADEMY.md](THE_ACADEMY.md) | Edukacja użytkownika, wyjaśnienia koncepcji |
+| **Chat** | `chat.py` | [THE_CHAT.md](THE_CHAT.md) | Conversational assistant, general questions |
+| **Apprentice** | `apprentice.py` | [THE_APPRENTICE.md](THE_APPRENTICE.md) | Learning by observation, workflow recording |
+| **Professor** | `professor.py` | [THE_ACADEMY.md](THE_ACADEMY.md) | User education, concept explanations |
 
-### 🎨 Kreatywność i Design
+### 🎨 Creativity and Design
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Creative Director** | `creative_director.py` | - | Branding, marketing, prompty do AI art |
-| **Designer** | `designer.py` | - | Design UI/UX, prototypy |
-| **UX Analyst** | `ux_analyst.py` | - | Analiza doświadczenia użytkownika |
+| **Creative Director** | `creative_director.py` | - | Branding, marketing, AI art prompts |
+| **Designer** | `designer.py` | - | UI/UX design, prototypes |
+| **UX Analyst** | `ux_analyst.py` | - | User experience analysis |
 
-### 🔧 DevOps i Infrastruktura
+### 🔧 DevOps and Infrastructure
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Integrator** | `integrator.py` | [THE_INTEGRATOR.md](THE_INTEGRATOR.md) | Git, GitHub Issues, Pull Requesty |
+| **Integrator** | `integrator.py` | [THE_INTEGRATOR.md](THE_INTEGRATOR.md) | Git, GitHub Issues, Pull Requests |
 | **DevOps** | `devops.py` | - | CI/CD, deployment, monitoring |
-| **System Engineer** | `system_engineer.py` | - | Konfiguracja systemowa, infrastruktura |
-| **Operator** | `operator.py` | - | Operacje runtime, maintenance |
-| **Release Manager** | `release_manager.py` | [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) | Zarządzanie wydaniami, CHANGELOG |
+| **System Engineer** | `system_engineer.py` | - | System configuration, infrastructure |
+| **Operator** | `operator.py` | - | Runtime operations, maintenance |
+| **Release Manager** | `release_manager.py` | [THE_LAUNCHPAD.md](THE_LAUNCHPAD.md) | Release management, CHANGELOG |
 
-### 🧪 Testowanie i Jakość
+### 🧪 Testing and Quality
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Tester** | `tester.py` | - | Generowanie testów jednostkowych i integracyjnych |
-| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](GUARDIAN_GUIDE.md) | Bezpieczeństwo, weryfikacja w sandbox |
-| **Analyst** | `analyst.py` | - | Analiza wydajności, metryki, koszty |
+| **Tester** | `tester.py` | - | Unit and integration test generation |
+| **Guardian** | `guardian.py` | [GUARDIAN_GUIDE.md](../GUARDIAN_GUIDE.md) | Security, sandbox verification |
+| **Analyst** | `analyst.py` | - | Performance analysis, metrics, costs |
 
-### 📝 Dokumentacja i Porządkowanie
+### 📝 Documentation and Cleanup
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Documenter** | `documenter.py` | - | Generowanie dokumentacji, docstringi |
-| **Gardener** | `gardener.py` | - | Refaktoryzacja, clean-up kodu |
-| **Foreman** | `foreman.py` | - | Zarządzanie zadaniami budowlanymi projektu |
-| **Publisher** | `publisher.py` | - | Publikacja artefaktów, release notes |
-| **Writer** | - | - | *[Wycofany/Zintegrowany z CreativeDirector]* |
+| **Documenter** | `documenter.py` | - | Documentation generation, docstrings |
+| **Gardener** | `gardener.py` | - | Refactoring, code cleanup |
+| **Foreman** | `foreman.py` | - | Project build task management |
+| **Publisher** | `publisher.py` | - | Artifact publication, release notes |
 
-### 🤝 Integracje Zewnętrzne
+### 🤝 External Integrations
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Integrator** | `integrator.py` | [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) | Integracje zewnętrzne (GitHub, Discord/Slack, Tavily, HF, Calendar) |
-| **Simulated User** | `simulated_user.py` | - | Symulacja użytkownika dla testów E2E |
-| **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) | Automatyzacja GUI (RPA) |
-| **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) | Desktop awareness, proaktywna pomoc |
+| **Integrator** | `integrator.py` | [EXTERNAL_INTEGRATIONS.md](EXTERNAL_INTEGRATIONS.md) | External integrations (GitHub, Discord/Slack, Tavily, HF, Calendar) |
+| **Simulated User** | `simulated_user.py` | - | User simulation for E2E tests |
+| **Ghost Agent** | `ghost_agent.py` | [GHOST_AGENT.md](GHOST_AGENT.md) | GUI automation (RPA) |
+| **Shadow** | `shadow.py` | [THE_SHADOW.md](THE_SHADOW.md) | Desktop awareness, proactive help |
 
-### ⏰ Czas i Monitoring
+### ⏰ Time and Monitoring
 
-| Agent | Plik | Dokumentacja | Opis |
+| Agent | File | Documentation | Description |
 |-------|------|--------------|------|
-| **Time Assistant** | `time_assistant.py` | [THE_CHRONOMANCER.md](THE_CHRONOMANCER.md) | Zarządzanie czasem, harmonogramy |
-| **System Status** | `system_status.py` | [THE_OVERMIND.md](THE_OVERMIND.md) | Monitoring stanu systemu, health checks |
+| **Time Assistant** | `time_assistant.py` | [THE_CHRONOMANCER.md](THE_CHRONOMANCER.md) | Time management, schedules |
+| **System Status** | `system_status.py` | [THE_OVERMIND.md](THE_OVERMIND.md) | System status monitoring, health checks |
 
-### 🌐 Architektura Rozproszona
+### 🌐 Distributed Architecture
 
-| Koncepcja | Dokumentacja | Opis |
+| Concept | Documentation | Description |
 |-----------|--------------|------|
-| **The Hive** | [THE_HIVE.md](THE_HIVE.md) | Architektura rozproszona z Redis |
+| **The Hive** | [THE_HIVE.md](THE_HIVE.md) | Distributed architecture with Redis |
 | **The Nexus** | - | Master-worker mesh, distributed execution |
-| **The Council** | [THE_COUNCIL.md](THE_COUNCIL.md) | Zarządzanie kolektywne, consensus |
+| **The Council** | [THE_COUNCIL.md](THE_COUNCIL.md) | Collective management, consensus |
 
-## Agenci bez Dedykowanej Dokumentacji
+## Agents Without Dedicated Documentation
 
-Poniżsi agenci istnieją w kodzie ale nie mają jeszcze dedykowanych plików dokumentacji (15 z 33):
+The following agents exist in code but don't yet have dedicated documentation files (15 of 33):
 
-- **Analyst** (`analyst.py`) - Analiza wydajności i kosztów
-- **Creative Director** (`creative_director.py`) - Branding i marketing
-- **Designer** (`designer.py`) - Design UI/UX
-- **DevOps** (`devops.py`) - CI/CD i deployment
-- **Documenter** (`documenter.py`) - Generowanie dokumentacji
-- **Foreman** (`foreman.py`) - Zarządzanie zadaniami budowlanymi
-- **Gardener** (`gardener.py`) - Refaktoryzacja i clean-up
-- **Historian** (`historian.py`) - Historia projektu
-- **Integrator** (`integrator.py`) - Integracje zewnętrzne (GitHub/Discord/Slack/Tavily/HF/Calendar)
-- **Operator** (`operator.py`) - Operacje runtime
-- **Publisher** (`publisher.py`) - Publikacja artefaktów
-- **Simulated User** (`simulated_user.py`) - Symulacja użytkownika
-- **System Engineer** (`system_engineer.py`) - Konfiguracja systemowa
-- **Tester** (`tester.py`) - Generowanie testów
-- **UX Analyst** (`ux_analyst.py`) - Analiza UX
+- **Analyst** (`analyst.py`) - Performance and cost analysis
+- **Creative Director** (`creative_director.py`) - Branding and marketing
+- **Designer** (`designer.py`) - UI/UX design
+- **DevOps** (`devops.py`) - CI/CD and deployment
+- **Documenter** (`documenter.py`) - Documentation generation
+- **Foreman** (`foreman.py`) - Build task management
+- **Gardener** (`gardener.py`) - Refactoring and cleanup
+- **Historian** (`historian.py`) - Project history
+- **Integrator** (`integrator.py`) - External integrations (GitHub/Discord/Slack/Tavily/HF/Calendar)
+- **Operator** (`operator.py`) - Runtime operations
+- **Publisher** (`publisher.py`) - Artifact publication
+- **Simulated User** (`simulated_user.py`) - User simulation
+- **System Engineer** (`system_engineer.py`) - System configuration
+- **Tester** (`tester.py`) - Test generation
+- **UX Analyst** (`ux_analyst.py`) - UX analysis
 
-## Jak Wybrać Odpowiedniego Agenta?
+## How to Choose the Right Agent?
 
-### Chcę...
+### I want to...
 
-**Napisać kod** → **Coder** + **Critic** (review)
-**Znaleźć informacje** → **Researcher** (Internet) lub **Librarian** (pliki lokalne)
-**Zaplanować projekt** → **Architect** (plan) + **Strategist** (ocena złożoności)
-**Stworzyć nowe narzędzie** → **Toolmaker** (THE_FORGE)
-**Zarządzać repozytorium** → **Integrator** (Git, PR, Issues)
-**Porozmawiać** → **Chat** (pytania ogólne)
-**Automatyzować GUI** → **Ghost Agent** (RPA)
-**Testować** → **Tester** (generowanie) + **Guardian** (sandbox)
-**Dokumentować** → **Documenter** (docstringi) + **Publisher** (release notes)
-**Nauczyć system** → **Apprentice** (nagrywanie workflows)
+**Write code** → **Coder** + **Critic** (review)
+**Find information** → **Researcher** (Internet) or **Librarian** (local files)
+**Plan project** → **Architect** (plan) + **Strategist** (complexity assessment)
+**Create new tool** → **Toolmaker** (THE_FORGE)
+**Manage repository** → **Integrator** (Git, PR, Issues)
+**Chat** → **Chat** (general questions)
+**Automate GUI** → **Ghost Agent** (RPA)
+**Test** → **Tester** (generation) + **Guardian** (sandbox)
+**Document** → **Documenter** (docstrings) + **Publisher** (release notes)
+**Teach system** → **Apprentice** (workflow recording)
 
-## Przepływy Pracy (Workflows)
+## Workflows
 
-### 1. Złożony Projekt (E2E)
+### 1. Complex Project (E2E)
 ```
 User Request → IntentManager (COMPLEX_PLANNING)
             → Architect (plan: 5 steps)
@@ -151,42 +152,42 @@ User Request → IntentManager (COMPLEX_PLANNING)
             → Integrator (commit, PR)
 ```
 
-### 2. Proste Pytanie
+### 2. Simple Question
 ```
-User: "Jaka jest stolica Francji?"
+User: "What is the capital of France?"
 → IntentManager (GENERAL_CHAT)
 → Chat Agent
-→ Odpowiedź: "Paryż"
+→ Answer: "Paris"
 ```
 
-### 3. Nowe Narzędzie
+### 3. New Tool
 ```
-User: "Dodaj możliwość sprawdzania pogody"
+User: "Add weather checking capability"
 → Architect detects missing tool
 → Toolmaker creates WeatherSkill
 → Critic reviews code
 → SkillManager loads skill
-→ System: "Skill załadowany. Możesz używać get_weather()"
+→ System: "Skill loaded. You can use get_weather()"
 ```
 
-## Metryki Systemu Agentów
+## Agent System Metrics
 
-**Ogólne statystyki:**
-- Liczba agentów: **34**
-- Z dokumentacją `THE_*.md` lub dedykowanymi plikami: **21** (62%)
-- Bez dokumentacji: **13** (38%)
-- Kategorie: **10**
+**General statistics:**
+- Number of agents: **34**
+- With `THE_*.md` documentation or dedicated files: **21** (62%)
+- Without documentation: **13** (38%)
+- Categories: **10**
 
-**Najbardziej używane:**
-1. **Coder** - Generowanie kodu
-2. **Chat** - Rozmowy z użytkownikiem
-3. **Researcher** - Wyszukiwanie informacji
-4. **Architect** - Planowanie projektów
-5. **Integrator** - Git i GitHub
+**Most used:**
+1. **Coder** - Code generation
+2. **Chat** - User conversations
+3. **Researcher** - Information search
+4. **Architect** - Project planning
+5. **Integrator** - Git and GitHub
 
-## Zobacz też
+## See also
 
-- [VENOM_MASTER_VISION_V1.md](VENOM_MASTER_VISION_V1.md) - Wizja systemu
-- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Architektura backendu
-- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Klasyfikacja intencji
-- [THE_HIVE.md](THE_HIVE.md) - Architektura rozproszona
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) - Backend architecture
+- [INTENT_RECOGNITION.md](INTENT_RECOGNITION.md) - Intent classification
+
+*Note: Additional documentation files (VENOM_MASTER_VISION_V1.md, THE_HIVE.md) are currently being translated.*

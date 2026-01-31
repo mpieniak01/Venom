@@ -1,31 +1,31 @@
 # THE_OVERMIND - Background Lifecycle Management
 
-## Przegląd
+## Overview
 
-THE_OVERMIND to system zarządzania zadaniami w tle, który przekształca Venoma z modelu "Request-Response" w autonomiczny system działający 24/7. System monitoruje zmiany w plikach, automatycznie aktualizuje dokumentację i przeprowadza refaktoryzację w trybie bezczynności.
+THE_OVERMIND is a background task management system that transforms Venom from a "Request-Response" model into an autonomous 24/7 operating system. The system monitors file changes, automatically updates documentation, and performs refactoring during idle time.
 
-## Architektura
+## Architecture
 
 ### 1. BackgroundScheduler (`venom_core/core/scheduler.py`)
 
-System harmonogramowania oparty na APScheduler (AsyncIOScheduler).
+Scheduling system based on APScheduler (AsyncIOScheduler).
 
-**Funkcjonalność:**
-- Rejestracja zadań cyklicznych (interval, cron)
-- Integracja z FastAPI lifespan (start/stop)
-- Pause/Resume wszystkich zadań
-- Tracking metadanych zadań
+**Functionality:**
+- Registration of periodic tasks (interval, cron)
+- FastAPI lifespan integration (start/stop)
+- Pause/Resume all tasks
+- Task metadata tracking
 
-**Domyślne zadania:**
-- `consolidate_memory`: Konsolidacja pamięci co 60 minut
-- `check_health`: Sprawdzanie zdrowia systemu co 5 minut
+**Default tasks:**
+- `consolidate_memory`: Memory consolidation every 60 minutes
+- `check_health`: System health check every 5 minutes
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 scheduler = BackgroundScheduler(event_broadcaster=event_broadcaster)
 await scheduler.start()
 
-# Dodaj zadanie interwałowe
+# Add interval job
 scheduler.add_interval_job(
     func=my_async_function,
     minutes=30,
@@ -33,33 +33,33 @@ scheduler.add_interval_job(
     description="Custom job"
 )
 
-# Wstrzymaj wszystkie zadania
+# Pause all tasks
 await scheduler.pause_all_jobs()
 
-# Wznów zadania
+# Resume tasks
 await scheduler.resume_all_jobs()
 ```
 
 ### 2. FileWatcher (`venom_core/perception/watcher.py`)
 
-Obserwator systemu plików oparty na Watchdog.
+File system observer based on Watchdog.
 
-**Funkcjonalność:**
-- Rekursywne monitorowanie workspace
-- Debouncing (domyślnie 5 sekund)
-- Ignorowanie wzorców (.git, __pycache__, etc.)
-- Broadcasting zdarzeń CODE_CHANGED
+**Functionality:**
+- Recursive workspace monitoring
+- Debouncing (default 5 seconds)
+- Ignore patterns (.git, __pycache__, etc.)
+- Broadcasting CODE_CHANGED events
 
-**Ignorowane wzorce:**
+**Ignored patterns:**
 - `.git`, `__pycache__`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`
-- `node_modules`, `.venv`, `venv`, `.idea`, `.vscode`
+- `node_modules`, `.venv`, `venom`, `.idea`, `.vscode`
 - `*.pyc`, `*.pyo`, `*.swp`, `*.tmp`
 
-**Monitorowane rozszerzenia:**
+**Monitored extensions:**
 - `.py` (Python)
 - `.md` (Markdown)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 async def on_file_change(file_path: str):
     print(f"File changed: {file_path}")
@@ -74,23 +74,23 @@ await watcher.start()
 
 ### 3. DocumenterAgent (`venom_core/agents/documenter.py`)
 
-Agent automatycznie aktualizujący dokumentację przy zmianie kodu.
+Agent automatically updating documentation on code changes.
 
-**Funkcjonalność:**
-- Wykrywanie zmian w plikach Python
-- Analiza diff z GitSkill
-- Tworzenie/aktualizacja CHANGELOG_AUTO.md
-- Automatyczny commit zmian dokumentacji
-- Zapobieganie pętlom (ignoruje zmiany venom-bot)
+**Functionality:**
+- Detecting changes in Python files
+- Diff analysis with GitSkill
+- Creating/updating CHANGELOG_AUTO.md
+- Automatic commit of documentation changes
+- Loop prevention (ignores venom-bot changes)
 
-**Algorytm:**
-1. Plik .py się zmienia → FileWatcher wykrywa
-2. DocumenterAgent sprawdza diff
-3. Analizuje czy zmiana wymaga aktualizacji dokumentacji
-4. Aktualizuje docs/CHANGELOG_AUTO.md
-5. Commituje: `docs: auto-update documentation for [file]`
+**Algorithm:**
+1. .py file changes → FileWatcher detects
+2. DocumenterAgent checks diff
+3. Analyzes if change requires documentation update
+4. Updates docs/CHANGELOG_AUTO.md
+5. Commits: `docs: auto-update documentation for [file]`
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 documenter = DocumenterAgent(
     workspace_root="./workspace",
@@ -98,30 +98,30 @@ documenter = DocumenterAgent(
     event_broadcaster=event_broadcaster
 )
 
-# Wywołanie przy zmianie pliku
+# Call on file change
 await documenter.handle_code_change("/path/to/changed_file.py")
 ```
 
 ### 4. Enhanced GardenerAgent (Idle Mode)
 
-Rozszerzony GardenerAgent z funkcjonalnością automatycznej refaktoryzacji.
+Extended GardenerAgent with automatic refactoring functionality.
 
-**Funkcjonalność:**
-- Monitorowanie ostatniej aktywności (orchestrator.last_activity)
-- Próg bezczynności: 15 minut (konfigurowalny)
-- Analiza złożoności cyklomatycznej (radon)
-- Tworzenie brancha `refactor/auto-gardening`
-- Wybór pliku o najwyższej złożoności
+**Functionality:**
+- Monitoring last activity (orchestrator.last_activity)
+- Idle threshold: 15 minutes (configurable)
+- Cyclomatic complexity analysis (radon)
+- Creating branch `refactor/auto-gardening`
+- Selecting file with highest complexity
 
-**Algorytm idle mode:**
-1. System bezczynny przez 15+ minut
-2. GardenerAgent skanuje pliki Python
-3. Radon analizuje złożoność cyklomatyczną
-4. Wybiera plik o złożoności > 10
-5. Tworzy branch `refactor/auto-gardening`
-6. (W przyszłości: refaktoryzacja + testy + commit)
+**Idle mode algorithm:**
+1. System idle for 15+ minutes
+2. GardenerAgent scans Python files
+3. Radon analyzes cyclomatic complexity
+4. Selects file with complexity > 10
+5. Creates branch `refactor/auto-gardening`
+6. (Future: refactoring + tests + commit)
 
-**Przykład użycia:**
+**Usage Example:**
 ```python
 gardener = GardenerAgent(
     graph_store=graph_store,
@@ -131,34 +131,34 @@ gardener = GardenerAgent(
 await gardener.start()
 ```
 
-## Konfiguracja
+## Configuration
 
-Wszystkie ustawienia w `venom_core/config.py`:
+All settings in `venom_core/config.py`:
 
 ```python
-# Globalny wyłącznik zadań w tle
+# Global background tasks switch
 VENOM_PAUSE_BACKGROUND_TASKS: bool = False
 
-# Automatyczna aktualizacja dokumentacji
+# Automatic documentation update
 ENABLE_AUTO_DOCUMENTATION: bool = True
 
-# Automatyczna refaktoryzacja w trybie Idle
+# Automatic refactoring in Idle mode
 ENABLE_AUTO_GARDENING: bool = True
 
-# Czas debounce dla watchdog (sekundy)
+# Debounce time for watchdog (seconds)
 WATCHER_DEBOUNCE_SECONDS: int = 5
 
-# Próg bezczynności przed uruchomieniem auto-gardening (minuty)
+# Idle threshold before auto-gardening (minutes)
 IDLE_THRESHOLD_MINUTES: int = 15
 
-# Interwał konsolidacji pamięci (minuty)
+# Memory consolidation interval (minutes)
 MEMORY_CONSOLIDATION_INTERVAL_MINUTES: int = 60
 
-# Interwał sprawdzania zdrowia (minuty)
+# Health check interval (minutes)
 HEALTH_CHECK_INTERVAL_MINUTES: int = 5
 ```
 
-Można też użyć zmiennych środowiskowych w pliku `.env`:
+Environment variables in `.env` file:
 
 ```bash
 VENOM_PAUSE_BACKGROUND_TASKS=true
@@ -194,7 +194,7 @@ IDLE_THRESHOLD_MINUTES=30
       "id": "consolidate_memory",
       "next_run_time": "2024-12-07T12:00:00",
       "type": "interval",
-      "description": "Konsolidacja pamięci i analiza logów",
+      "description": "Memory consolidation and log analysis",
       "interval_minutes": 60
     }
   ],
@@ -267,10 +267,10 @@ IDLE_THRESHOLD_MINUTES=30
 
 ## WebSocket Events
 
-Nowe typy zdarzeń w `EventType`:
+New event types in `EventType`:
 
 ```python
-# Zdarzenia Background Tasks
+# Background Tasks events
 CODE_CHANGED = "CODE_CHANGED"
 BACKGROUND_JOB_STARTED = "BACKGROUND_JOB_STARTED"
 BACKGROUND_JOB_COMPLETED = "BACKGROUND_JOB_COMPLETED"
@@ -281,7 +281,7 @@ IDLE_REFACTORING_STARTED = "IDLE_REFACTORING_STARTED"
 IDLE_REFACTORING_COMPLETED = "IDLE_REFACTORING_COMPLETED"
 ```
 
-**Przykład zdarzenia:**
+**Example event:**
 ```json
 {
   "type": "CODE_CHANGED",
@@ -298,28 +298,28 @@ IDLE_REFACTORING_COMPLETED = "IDLE_REFACTORING_COMPLETED"
 
 ## Dashboard UI
 
-Nowy tab **"⚙️ Jobs"** w prawym panelu:
+New tab **"⚙️ Jobs"** in right panel:
 
-### Sekcje:
+### Sections:
 
 1. **Scheduler Status**
    - Status (Running/Stopped)
-   - Liczba zadań
+   - Job count
    - Paused (Yes/No)
 
 2. **Active Jobs**
-   - Lista aktywnych zadań
-   - Next run time dla każdego zadania
-   - Typ zadania (interval/cron)
+   - Active job list
+   - Next run time for each job
+   - Job type (interval/cron)
 
 3. **File Watcher**
    - Status (Watching/Stopped)
    - Workspace path
-   - Monitorowane rozszerzenia
+   - Monitored extensions
 
 4. **Auto-Documentation**
    - Enabled/Disabled
-   - Liczba przetwarzanych plików
+   - Number of processing files
 
 5. **Auto-Gardening**
    - Running status
@@ -327,82 +327,82 @@ Nowy tab **"⚙️ Jobs"** w prawym panelu:
    - In progress status
    - Last scan time
 
-### Kontrolki:
+### Controls:
 
-- **⏸️ Pause** - Wstrzymanie wszystkich zadań
-- **▶️ Resume** - Wznowienie zadań
-- **🔄 Refresh** - Odświeżenie statusu
+- **⏸️ Pause** - Pause all tasks
+- **▶️ Resume** - Resume tasks
+- **🔄 Refresh** - Refresh status
 
-## Scenariusze użycia
+## Use Case Scenarios
 
 ### 1. Live Documentation
 
-**Scenariusz:**
-1. Zmieniam nazwę funkcji w `venom_core/utils/helpers.py`
-2. Zapisuję plik (Ctrl+S)
-3. FileWatcher wykrywa zmianę (po 5s debounce)
-4. DocumenterAgent analizuje diff
-5. Aktualizuje `docs/CHANGELOG_AUTO.md`
-6. Commituje: `docs: auto-update documentation for helpers.py`
+**Scenario:**
+1. I change function name in `venom_core/utils/helpers.py`
+2. Save file (Ctrl+S)
+3. FileWatcher detects change (after 5s debounce)
+4. DocumenterAgent analyzes diff
+5. Updates `docs/CHANGELOG_AUTO.md`
+6. Commits: `docs: auto-update documentation for helpers.py`
 
-**Rezultat:** Dokumentacja zawsze aktualna, bez manualnej pracy.
+**Result:** Documentation always up-to-date, without manual work.
 
-### 2. Refaktoryzacja w tle
+### 2. Background Refactoring
 
-**Scenariusz:**
-1. Zostawiam Venoma włączonego na noc
-2. System bezczynny przez >15 minut
-3. GardenerAgent wykrywa idle mode
-4. Skanuje workspace radon-em
-5. Znajduje `complex_module.py` o złożoności 15
-6. Tworzy branch `refactor/auto-gardening`
-7. (W przyszłości: refaktoryzuje kod)
+**Scenario:**
+1. Leave Venom running overnight
+2. System idle for >15 minutes
+3. GardenerAgent detects idle mode
+4. Scans workspace with radon
+5. Finds `complex_module.py` with complexity 15
+6. Creates branch `refactor/auto-gardening`
+7. (Future: refactors code)
 
-**Rezultat:** Rano widzę PR z poprawionym kodem.
+**Result:** In the morning see PR with improved code.
 
-### 3. Konsolidacja pamięci
+### 3. Memory Consolidation
 
-**Scenariusz:**
-1. Intensywna sesja kodowania (3h)
-2. Co godzinę uruchamia się `consolidate_memory()`
-3. (W przyszłości: Analizuje logi, wyciąga wnioski)
-4. Zapisuje kluczowe ustalenia do VectorStore
+**Scenario:**
+1. Intensive coding session (3h)
+2. Every hour `consolidate_memory()` runs
+3. (Future: Analyzes logs, extracts insights)
+4. Saves key findings to VectorStore
 
-**Rezultat:** Venom "pamięta" kontekst długotrwałych sesji.
+**Result:** Venom "remembers" context of long sessions.
 
-## Bezpieczeństwo
+## Security
 
-### Zapobieganie pętlom
+### Loop Prevention
 
-**Problem:** Venom zmienia plik → Watchdog wykrywa → Venom reaguje → pętla
+**Problem:** Venom changes file → Watchdog detects → Venom reacts → loop
 
-**Rozwiązania:**
-1. DocumenterAgent ignoruje zmiany od użytkownika "venom-bot"
-2. Tracking ostatnio przetwarzanych plików (60s timeout)
-3. Debouncing w FileWatcher (5s ciszy przed reakcją)
+**Solutions:**
+1. DocumenterAgent ignores changes from "venom-bot" user
+2. Tracking recently processed files (60s timeout)
+3. Debouncing in FileWatcher (5s quiet before reaction)
 
-### Walidacja ścieżek
+### Path Validation
 
-Wszystkie endpointy API walidują ścieżki:
-- Brak `..` w ścieżce
-- Brak absolutnych ścieżek
-- Wszystko w ramach workspace_root
+All API endpoints validate paths:
+- No `..` in path
+- No absolute paths
+- Everything within workspace_root
 
-### Globalny wyłącznik
+### Global Switch
 
-`VENOM_PAUSE_BACKGROUND_TASKS=true` wyłącza wszystkie zadania w tle.
+`VENOM_PAUSE_BACKGROUND_TASKS=true` disables all background tasks.
 
-## Testy
+## Tests
 
-### Jednostkowe
-- `tests/test_scheduler.py` - BackgroundScheduler (7 testów)
-- `tests/test_watcher.py` - FileWatcher (6 testów)
-- `tests/test_documenter.py` - DocumenterAgent (5 testów)
+### Unit Tests
+- `tests/test_scheduler.py` - BackgroundScheduler (7 tests)
+- `tests/test_watcher.py` - FileWatcher (6 tests)
+- `tests/test_documenter.py` - DocumenterAgent (5 tests)
 
-### Integracyjne
-- `tests/test_overmind_integration.py` - Integracja komponentów (6 testów)
+### Integration Tests
+- `tests/test_overmind_integration.py` - Component integration (6 tests)
 
-**Uruchomienie:**
+**Execution:**
 ```bash
 pytest tests/test_scheduler.py tests/test_watcher.py -v
 pytest tests/test_overmind_integration.py -v
@@ -410,90 +410,90 @@ pytest tests/test_overmind_integration.py -v
 
 ## Troubleshooting
 
-### FileWatcher nie wykrywa zmian
+### FileWatcher doesn't detect changes
 
-**Przyczyny:**
-1. Plik w ignorowanych wzorcach (.git, __pycache__)
-2. Rozszerzenie inne niż .py lub .md
-3. Watcher nie uruchomiony
+**Causes:**
+1. File in ignored patterns (.git, __pycache__)
+2. Extension other than .py or .md
+3. Watcher not started
 
-**Rozwiązanie:**
+**Solution:**
 ```bash
-# Sprawdź status
+# Check status
 curl http://localhost:8000/api/v1/watcher/status
 
-# Sprawdź logi
+# Check logs
 tail -f logs/venom.log | grep FileWatcher
 ```
 
-### Zadania w tle nie działają
+### Background tasks don't work
 
-**Przyczyny:**
+**Causes:**
 1. `VENOM_PAUSE_BACKGROUND_TASKS=true`
-2. Scheduler nie uruchomiony
-3. Błąd w funkcji zadania
+2. Scheduler not started
+3. Error in task function
 
-**Rozwiązanie:**
+**Solution:**
 ```bash
-# Sprawdź status schedulera
+# Check scheduler status
 curl http://localhost:8000/api/v1/scheduler/status
 
-# Sprawdź listę zadań
+# Check job list
 curl http://localhost:8000/api/v1/scheduler/jobs
 
-# Wznów zadania
+# Resume tasks
 curl -X POST http://localhost:8000/api/v1/scheduler/resume
 ```
 
-### Dokumentacja nie aktualizuje się
+### Documentation doesn't update
 
-**Przyczyny:**
+**Causes:**
 1. `ENABLE_AUTO_DOCUMENTATION=false`
-2. Brak GitSkill (workspace nie jest repo Git)
-3. Zmiana dokonana przez venom-bot (ignorowana)
+2. Missing GitSkill (workspace not Git repo)
+3. Change made by venom-bot (ignored)
 
-**Rozwiązanie:**
+**Solution:**
 ```bash
-# Sprawdź status documentera
+# Check documenter status
 curl http://localhost:8000/api/v1/documenter/status
 
-# Sprawdź config
+# Check config
 grep ENABLE_AUTO_DOCUMENTATION .env
 ```
 
-## Przyszłe rozszerzenia
+## Future Extensions
 
-1. **Inteligentna refaktoryzacja**
-   - Użycie LLM do analizy i przepisania złożonego kodu
-   - Automatyczne testy po refaktoryzacji
-   - PR z opisem zmian
+1. **Intelligent refactoring**
+   - Using LLM for complex code analysis and rewriting
+   - Automatic tests after refactoring
+   - PR with change description
 
-2. **Konsolidacja pamięci**
-   - Analiza logów z semantic_kernel
-   - Ekstrakcja kluczowych wniosków
-   - Zapis do GraphRAG
+2. **Memory consolidation**
+   - semantic_kernel log analysis
+   - Key insight extraction
+   - GraphRAG storage
 
-3. **Zaawansowane health checks**
-   - Sprawdzanie Docker containers
-   - Pingowanie LLM endpoints
-   - Monitorowanie użycia zasobów
+3. **Advanced health checks**
+   - Docker container checking
+   - LLM endpoint pinging
+   - Resource usage monitoring
 
-4. **Notyfikacje**
-   - Slack/Discord webhooks dla ważnych zdarzeń
-   - Email przy wykryciu problemów
+4. **Notifications**
+   - Slack/Discord webhooks for important events
+   - Email on problem detection
    - Dashboard toast notifications
 
-## Zależności
+## Dependencies
 
-Dodane do `requirements.txt`:
+Added to `requirements.txt`:
 ```
-apscheduler      # Scheduler zadań w tle
-watchdog         # Monitorowanie systemu plików
-radon            # Analiza złożoności kodu
+apscheduler      # Background task scheduler
+watchdog         # File system monitoring
+radon            # Code complexity analysis
 ```
 
-## Autorzy
+## Authors
 
-- Implementacja: GitHub Copilot (Copilot Workspace)
+- Implementation: GitHub Copilot (Copilot Workspace)
 - Issue: mpieniak01 (#015_THE_OVERMIND)
 - Repository: mpieniak01/Venom

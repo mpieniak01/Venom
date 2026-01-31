@@ -1,144 +1,144 @@
 # Ghost Agent - Visual GUI Automation (Task 032)
 
-## 🎯 Przegląd
+## 🎯 Overview
 
-Ghost Agent (Upiór) to rewolucyjna funkcja Venom umożliwiająca **fizyczną interakcję z interfejsem systemu operacyjnego**. Agent "opętuje" kursor myszy i klawiaturę, aby wykonywać zadania w aplikacjach, które nie posiadają API (np. Spotify, Excel, Photoshop, legacy software).
+Ghost Agent (The Ghost) is a revolutionary Venom feature enabling **physical interaction with the operating system interface**. The agent "possesses" the mouse cursor and keyboard to perform tasks in applications without APIs (e.g., Spotify, Excel, Photoshop, legacy software).
 
-## 🏗️ Architektura
+## 🏗️ Architecture
 
-### Komponenty
+### Components
 
 1. **VisionGrounding** (`venom_core/perception/vision_grounding.py`)
-   - Lokalizacja elementów UI na podstawie opisów wizualnych
-   - Obsługa GPT-4o Vision (OpenAI) lub fallback do OCR
-   - Zwraca współrzędne (x, y) znalezionego elementu
+   - UI element localization based on visual descriptions
+   - GPT-4o Vision (OpenAI) support or OCR fallback
+   - Returns coordinates (x, y) of found element
 
 2. **InputSkill** (`venom_core/execution/skills/input_skill.py`)
-   - Kontrola myszy (klikanie, podwójne kliknięcie, ruch)
-   - Kontrola klawiatury (pisanie, skróty klawiszowe)
-   - **Zabezpieczenia Fail-Safe** (PyAutoGUI)
+   - Mouse control (clicking, double-clicking, movement)
+   - Keyboard control (typing, hotkeys)
+   - **Fail-Safe Protection** (PyAutoGUI)
 
 3. **GhostAgent** (`venom_core/agents/ghost_agent.py`)
-   - Agent RPA z pętlą OODA (Observe-Orient-Decide-Act)
-   - Planowanie i wykonywanie sekwencji akcji
-   - Generowanie raportów z wykonanych zadań
+   - RPA agent with OODA loop (Observe-Orient-Decide-Act)
+   - Planning and executing action sequences
+   - Generating task execution reports
 
-4. **DesktopSensor** (rozszerzony)
-   - Tryb nagrywania akcji użytkownika
-   - Replay/makra dla GhostAgent
+4. **DesktopSensor** (extended)
+   - User action recording mode
+   - Replay/macros for GhostAgent
 
-## 🔐 Bezpieczeństwo
+## 🔐 Security
 
 ### PyAutoGUI Fail-Safe
-**KRYTYCZNE:** Ghost Agent ma wbudowane zabezpieczenie:
-- Ruch myszy do rogu ekranu **(0, 0)** NATYCHMIAST przerywa wszystkie operacje
-- Fail-Safe jest **ZAWSZE AKTYWNY** i nie można go wyłączyć
-- To mechanizm ochronny przed niekontrolowanym działaniem agenta
+**CRITICAL:** Ghost Agent has built-in protection:
+- Moving mouse to screen corner **(0, 0)** IMMEDIATELY interrupts all operations
+- Fail-Safe is **ALWAYS ACTIVE** and cannot be disabled
+- This is a protective mechanism against uncontrolled agent behavior
 
-### Inne zabezpieczenia
-- Walidacja współrzędnych (sprawdzanie czy nie wykraczają poza ekran)
-- Opóźnienia między akcjami (domyślnie 0.5s)
-- Logowanie wszystkich operacji
-- Limit maksymalnej liczby kroków (domyślnie 20)
+### Other protections
+- Coordinate validation (checking if within screen bounds)
+- Delays between actions (default 0.5s)
+- Logging all operations
+- Maximum step limit (default 20)
 - Emergency Stop API
 
-## 📝 Konfiguracja
+## 📝 Configuration
 
-W pliku `.env` lub `config.py`:
+In `.env` or `config.py` file:
 
 ```python
 # Ghost Agent (Visual GUI Automation)
-ENABLE_GHOST_AGENT = False  # Włącz Ghost Agent
-GHOST_MAX_STEPS = 20  # Maksymalna liczba kroków
-GHOST_STEP_DELAY = 1.0  # Opóźnienie między krokami (sekundy)
-GHOST_VERIFICATION_ENABLED = True  # Weryfikacja po każdym kroku
-GHOST_SAFETY_DELAY = 0.5  # Opóźnienie bezpieczeństwa
-GHOST_VISION_CONFIDENCE = 0.7  # Próg pewności dla vision grounding
+ENABLE_GHOST_AGENT = False  # Enable Ghost Agent
+GHOST_MAX_STEPS = 20  # Maximum number of steps
+GHOST_STEP_DELAY = 1.0  # Delay between steps (seconds)
+GHOST_VERIFICATION_ENABLED = True  # Verification after each step
+GHOST_SAFETY_DELAY = 0.5  # Safety delay
+GHOST_VISION_CONFIDENCE = 0.7  # Confidence threshold for vision grounding
 
-# OpenAI API (opcjonalne, dla vision grounding)
-OPENAI_API_KEY = "sk-..."  # Jeśli chcesz używać GPT-4o Vision
+# OpenAI API (optional, for vision grounding)
+OPENAI_API_KEY = "sk-..."  # If you want to use GPT-4o Vision
 ```
 
-## 🚀 Przykłady Użycia
+## 🚀 Usage Examples
 
-### Przykład 1: Otwórz Notatnik i napisz tekst
+### Example 1: Open Notepad and write text
 
 ```python
 from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.execution.kernel_builder import KernelBuilder
 
-# Zbuduj kernel
+# Build kernel
 kernel = KernelBuilder().build()
 
-# Utwórz Ghost Agent
+# Create Ghost Agent
 ghost = GhostAgent(
     kernel=kernel,
     max_steps=20,
     step_delay=1.0,
 )
 
-# Wykonaj zadanie
-result = await ghost.process("Otwórz notatnik i napisz 'Hello Venom'")
+# Execute task
+result = await ghost.process("Open notepad and write 'Hello Venom'")
 print(result)
 ```
 
-**Wyjście:**
+**Output:**
 ```
-📊 RAPORT GHOST AGENT
+📊 GHOST AGENT REPORT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Wykonane kroki: 7
-Udane: 7 ✅
-Nieudane: 0 ❌
+Steps executed: 7
+Successful: 7 ✅
+Failed: 0 ❌
 
-SZCZEGÓŁY:
-1. ✅ Otwórz dialog Run
-   → ✅ Wykonano skrót: win+r
-2. ✅ Czekaj na otwarcie
-   → Oczekiwano 1.0s
-3. ✅ Wpisz 'notepad'
-   → ✅ Wpisano tekst (7 znaków)
-4. ✅ Naciśnij Enter
-   → ✅ Wykonano skrót: enter
-5. ✅ Czekaj na notatnik
-   → Oczekiwano 2.0s
-6. ✅ Wpisz tekst: Hello Venom
-   → ✅ Wpisano tekst (12 znaków)
+DETAILS:
+1. ✅ Open Run dialog
+   → ✅ Executed hotkey: win+r
+2. ✅ Wait for opening
+   → Waited 1.0s
+3. ✅ Type 'notepad'
+   → ✅ Typed text (7 characters)
+4. ✅ Press Enter
+   → ✅ Executed hotkey: enter
+5. ✅ Wait for notepad
+   → Waited 2.0s
+6. ✅ Type text: Hello Venom
+   → ✅ Typed text (12 characters)
 ```
 
-### Przykład 2: Włącz następną piosenkę w Spotify
+### Example 2: Play next song in Spotify
 
 ```python
-result = await ghost.process("Włącz następną piosenkę w Spotify")
+result = await ghost.process("Play next song in Spotify")
 ```
 
-**Jak to działa:**
-1. Ghost robi screenshot ekranu
-2. VisionGrounding lokalizuje przycisk "Next" w Spotify
-3. InputSkill klika w znaleziony przycisk
-4. Muzyka się zmienia ✅
+**How it works:**
+1. Ghost takes screenshot of screen
+2. VisionGrounding locates "Next" button in Spotify
+3. InputSkill clicks found button
+4. Music changes ✅
 
-### Przykład 3: Użycie InputSkill bezpośrednio
+### Example 3: Using InputSkill directly
 
 ```python
 from venom_core.execution.skills.input_skill import InputSkill
 
 input_skill = InputSkill(safety_delay=0.5)
 
-# Kliknij w punkt (500, 300)
+# Click at point (500, 300)
 await input_skill.mouse_click(x=500, y=300)
 
-# Wpisz tekst
+# Type text
 await input_skill.keyboard_type("Hello World", interval=0.1)
 
-# Wykonaj skrót Ctrl+S
+# Execute Ctrl+S shortcut
 await input_skill.keyboard_hotkey("ctrl+s")
 
-# Pobierz pozycję myszy
+# Get mouse position
 position = await input_skill.get_mouse_position()
-print(position)  # "Pozycja myszy: (500, 300)"
+print(position)  # "Mouse position: (500, 300)"
 ```
 
-### Przykład 4: Vision Grounding
+### Example 4: Vision Grounding
 
 ```python
 from venom_core.perception.vision_grounding import VisionGrounding
@@ -146,86 +146,86 @@ from PIL import ImageGrab
 
 vision = VisionGrounding()
 
-# Zrób screenshot
+# Take screenshot
 screenshot = ImageGrab.grab()
 
-# Znajdź element
+# Find element
 coords = await vision.locate_element(
     screenshot,
-    description="zielony przycisk Zapisz"
+    description="green Save button"
 )
 
 if coords:
     x, y = coords
-    print(f"Element znaleziony: ({x}, {y})")
+    print(f"Element found: ({x}, {y})")
 else:
-    print("Element nie znaleziony")
+    print("Element not found")
 ```
 
-## 🧪 Testowanie
+## 🧪 Testing
 
-Uruchom testy:
+Run tests:
 
 ```bash
-# Wszystkie testy Ghost Agent
+# All Ghost Agent tests
 pytest tests/test_ghost_agent.py -v
 
-# Testy InputSkill
+# InputSkill tests
 pytest tests/test_input_skill.py -v
 
-# Testy VisionGrounding
+# VisionGrounding tests
 pytest tests/test_vision_grounding.py -v
 
-# Wszystkie testy razem
+# All tests together
 pytest tests/test_ghost_agent.py tests/test_input_skill.py tests/test_vision_grounding.py -v
 ```
 
-**Wyniki:**
-- 42 testy jednostkowe i integracyjne
+**Results:**
+- 42 unit and integration tests
 - 100% passing rate ✅
 
-## ⚠️ Ograniczenia i Znane Problemy
+## ⚠️ Limitations and Known Issues
 
-1. **Wymaga GUI Environment:**
-   - Ghost Agent nie działa w środowiskach headless (bez X11/Wayland)
-   - Testy używają mocków aby działać w CI/CD
+1. **Requires GUI Environment:**
+   - Ghost Agent doesn't work in headless environments (without X11/Wayland)
+   - Tests use mocks to work in CI/CD
 
 2. **Vision Grounding:**
-   - Wymaga OpenAI API key dla najlepszych rezultatów
-   - Fallback OCR (pytesseract) ma ograniczoną dokładność
-   - Florence-2 nie jest jeszcze zaimplementowane (TODO)
+   - Requires OpenAI API key for best results
+   - OCR fallback (pytesseract) has limited accuracy
+   - Florence-2 not yet implemented (TODO)
 
 3. **DPI Scaling:**
-   - Na systemach z skalowaniem DPI mogą wystąpić przesunięcia współrzędnych
-   - TODO: Automatyczne wykrywanie i kompensacja DPI
+   - On systems with DPI scaling coordinate shifts may occur
+   - TODO: Automatic DPI detection and compensation
 
-4. **Wydajność:**
-   - Analiza obrazu przez GPT-4o Vision trwa 2-5 sekund
-   - Ghost Agent jest wolniejszy niż człowiek (celowo, dla bezpieczeństwa)
+4. **Performance:**
+   - Image analysis through GPT-4o Vision takes 2-5 seconds
+   - Ghost Agent is slower than human (intentionally, for safety)
 
-## 🔮 Przyszłe Usprawnienia
+## 🔮 Future Improvements
 
-### Planowane na kolejne iteracje:
+### Planned for future iterations:
 
 1. **Florence-2 Integration**
-   - Lokalny model vision dla offline action
-   - Szybsza lokalizacja elementów (< 1s)
+   - Local vision model for offline action
+   - Faster element localization (< 1s)
 
 2. **DPI Auto-Compensation**
-   - Automatyczne wykrywanie i kompensacja skalowania
+   - Automatic scaling detection and compensation
 
 3. **Recording & Replay**
-   - Nagrywanie sekwencji akcji użytkownika
-   - Generalizacja do procedur/makr
+   - Recording user action sequences
+   - Generalization to procedures/macros
 
 4. **Dashboard Update**
-   - Remote Control UI w przeglądarce
-   - Live streaming pulpitu (MJPEG)
+   - Remote Control UI in browser
+   - Live desktop streaming (MJPEG)
    - Emergency Stop button
 
 5. **Advanced Planning**
    - LLM-based action planning
-   - Multi-step reasoning dla złożonych zadań
+   - Multi-step reasoning for complex tasks
 
 ## 📚 API Reference
 
@@ -278,17 +278,17 @@ class VisionGrounding:
     def load_screenshot(path_or_bytes) -> Image.Image
 ```
 
-## 🤝 Współtworzenie
+## 🤝 Contributing
 
-Ghost Agent jest częścią projektu Venom. Zachęcamy do:
-- Zgłaszania Issues z problemami/propozycjami
-- Pull Requests z usprawnieniami
-- Testowania i raportowania błędów
+Ghost Agent is part of the Venom project. We encourage:
+- Reporting Issues with problems/suggestions
+- Pull Requests with improvements
+- Testing and bug reporting
 
-## 📄 Licencja
+## 📄 License
 
-Zobacz główny plik LICENSE projektu Venom.
+See main Venom project LICENSE file.
 
 ---
 
-**Uwaga:** Ghost Agent to potężne narzędzie. Używaj odpowiedzialnie i zawsze testuj w bezpiecznym środowisku przed uruchomieniem na produkcji.
+**Note:** Ghost Agent is a powerful tool. Use responsibly and always test in a safe environment before running in production.

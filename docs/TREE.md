@@ -1,116 +1,114 @@
-~/venom                          # ROOT projektu Venom (repo)
-├── .venv/                       # środowisko wirtualne Pythona
-├── .env                         # konfiguracja / sekrety (poza Gitem)
-├── requirements.txt             # zależności VENOM
-├── README.md                    # opis projektu (może być pusty na start)
+~/venom                          # Venom project ROOT (repo)
+├── .venv/                       # Python virtual environment
+├── .env                         # configuration / secrets (outside Git)
+├── requirements.txt             # VENOM dependencies
+├── README.md                    # project description (can be empty on start)
 │
-├── docs/                        # wizja, diagramy, notatki
-│   ├── _done/                   # Dokumentacja zadan programistycznych zrealizowanych
-│   ├── _to_do/                  # Dokumentacja zadan programistycznych do realizacji
-│   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] System procesowy (koncepcja)
+├── docs/                        # vision, diagrams, notes
+│   ├── _done/                   # Documentation of completed development tasks
+│   ├── _to_do/                  # Documentation of development tasks to do
+│   ├── PROCESS_ENGINE_CONCEPT.md # [v2.0] Process Engine (concept)
 │   ├── VENOM_DIAGRAM.md
 │   └── VENOM_MASTER_VISION_V1.md
 │
-├── data/                        # dane runtime (nie kod)
+├── data/                        # runtime data (not code)
 │   └── memory/
-│       └── lessons_learned.json # pamięć błędów / wniosków
+│       └── lessons_learned.json # memory of errors / conclusions
 │
-├── web/                         # warstwa WEB (UI Venoma)
+├── web/                         # WEB layer (Venom UI)
 │   ├── templates/
-│   │   ├── base.html            # wspólny layout
-│   │   └── index.html           # dashboard / widok główny
+│   │   ├── base.html            # common layout
+│   │   └── index.html           # dashboard / main view
 │   └── static/
 │       ├── css/
-│       │   └── app.css          # style
+│       │   └── app.css          # styles
 │       └── js/
-│           └── app.js           # logika frontendu
+│           └── app.js           # frontend logic
 │
-├── web-next/                    # [NOWY] Next.js Dashboard (VENOM 1.0)
+├── web-next/                    # [NEW] Next.js Dashboard (VENOM 1.0)
 │   ├── app/                     # App Router
-│   ├── components/              # komponenty React/Shadcn UI
+│   ├── components/              # React/Shadcn UI components
 │   ├── lib/                     # utils, types, api clients
 │   └── public/                  # static assets
 │
-├── tests/                       # testy (API, core, itd.)
+├── tests/                       # tests (API, core, etc.)
 │   ├── __init__.py
-│   └── test_healthz.py          # np. test endpointu /healthz
+│   └── test_healthz.py          # e.g. /healthz endpoint test
 │
-├── logs/                        # logi Venoma
-│   └── venom.log                # (tworzone przez logger, nie ręcznie)
+├── logs/                        # Venom logs
+│   └── venom.log                # (created by logger, not manually)
 │
-├── workspace/                   # roboczy katalog na pliki, które Venom tworzy/obrabia
+├── workspace/                   # working directory for files Venom creates/processes
 │
-├── scripts/                     # narzędzia CLI / pomocnicze skrypty
-│   └── genesis.py               # skrypt do tworzenia struktury (GENESIS)
+├── scripts/                     # CLI tools / helper scripts
+│   └── genesis.py               # script to create structure (GENESIS)
 │
-└── venom_core/                  # pakiet Pythona – organizm Venoma
+└── venom_core/                  # Python package – Venom organism
     ├── __init__.py
-    ├── main.py                  # FastAPI, /healthz, / (UI), spinanie warstw
-    ├── config.py                # Settings (Pydantic): ścieżki, modele, ENV
-    │
-    ├── core/                    # [WARSTWA 1: META] – MÓZG
+    ├── main.py                  # FastAPI, /healthz, / (UI), layer binding
+    ├── core/                    # [LAYER 1: META] – BRAIN
     │   ├── __init__.py
-    │   ├── orchestrator.py      # cykl życia zadania (Orchestrator pipeline)
-    │   ├── intent_manager.py    # klasyfikacja intencji (code/research/arch)
-    │   ├── policy_engine.py     # etyka, autonomia, poziomy domen
-    │   ├── state_manager.py     # stan organizmu, log zadań
-    │   ├── model_registry.py    # rejestr modeli (Ollama + HF Hub)
-    │   ├── model_manager.py     # lifecycle, wersjonowanie i aktywacja modeli lokalnych
-    │   ├── model_router.py      # routing między LLM lokalnym a chmurą
-    │   ├── llm_server_controller.py # zarządzanie serwerami LLM (Ollama/vLLM)
-    │   ├── prompt_manager.py    # zarządzanie template'ami promptów
-    │   ├── service_monitor.py   # monitorowanie usług systemowych (status, CPU/RAM)
-    │   ├── tracer.py            # RequestTracer (śledzenie kroków i mermaid)
-    │   └── dream_engine.py      # [v2.0] System aktywnego śnienia (przesunięty)
+    │   ├── orchestrator.py      # task lifecycle (Orchestrator pipeline)
+    │   ├── intent_manager.py    # intent classification (code/research/arch)
+    │   ├── policy_engine.py     # ethics, autonomy, domain levels
+    │   ├── state_manager.py     # organism state, task log
+    │   ├── model_registry.py    # model registry (Ollama + HF Hub)
+    │   ├── model_manager.py     # lifecycle, versioning and activation of local models
+    │   ├── model_router.py      # routing between local LLM and cloud
+    │   ├── llm_server_controller.py # LLM server management (Ollama/vLLM)
+    │   ├── prompt_manager.py    # prompt template management
+    │   ├── service_monitor.py   # system services monitoring (status, CPU/RAM)
+    │   ├── tracer.py            # RequestTracer (step tracking and mermaid)
+    │   └── dream_engine.py      # [v2.0] Active dreaming system (postponed)
     │
-    ├── agents/                  # [WARSTWA 2: AGENT SERVICES] – SPECJALIŚCI
+    ├── agents/                  # [LAYER 2: AGENT SERVICES] – SPECIALISTS
     │   ├── __init__.py
-    │   ├── architect.py         # planowanie architektury
-    │   ├── librarian.py         # struktura repo / plików
-    │   ├── coder.py             # generacja kodu
+    │   ├── architect.py         # architecture planning
+    │   ├── librarian.py         # repo / file structure
+    │   ├── coder.py             # code generation
     │   ├── strategist.py        # [v2.0] Strategy Supervisor (Roadmap, KPI)
-    │   ├── critic.py            # testy / review
-    │   ├── writer.py            # dokumentacja, logi, opisy PR
-    │   ├── ghost_agent.py       # wizualna automatyzacja GUI
-    │   ├── apprentice.py        # nauka przez obserwację
-    │   ├── professor.py         # system edukacji użytkownika
-    │   └── oracle.py            # analiza grafu wiedzy (GraphRAG)
+    │   ├── critic.py            # tests / review
+    │   ├── writer.py            # documentation, logs, PR descriptions
+    │   ├── ghost_agent.py       # visual GUI automation
+    │   ├── apprentice.py        # learning by observation
+    │   ├── professor.py         # user education system
+    │   └── oracle.py            # knowledge graph analysis (GraphRAG)
     │
-    ├── execution/               # [WARSTWA 3: RĘCE] – Semantic Kernel / tools
+    ├── execution/               # [LAYER 3: HANDS] – Semantic Kernel / tools
     │   ├── __init__.py
-    │   ├── kernel_builder.py    # konfiguracja SK, rejestracja skills
+    │   ├── kernel_builder.py    # SK configuration, skill registration
     │   └── skills/
     │       ├── __init__.py
-    │       ├── file_skill.py    # operacje na plikach (safe I/O)
-    │       ├── shell_skill.py   # komendy w sandboxie
-    │       └── git_skill.py     # obsługa gita (status/diff/commit)
+    │       ├── file_skill.py    # file operations (safe I/O)
+    │       ├── shell_skill.py   # commands in sandbox
+    │       └── git_skill.py     # git handling (status/diff/commit)
     │
-    ├── skills/                  # [WARSTWA 3: NARZĘDZIA MCP] – import z Git (MCP)
-    │   ├── mcp_manager_skill.py # zarządzanie importem MCP
+    ├── skills/                  # [LAYER 3: MCP TOOLS] – Git import (MCP)
+    │   ├── mcp_manager_skill.py # MCP import manager
     │   ├── mcp/
-    │   │   ├── proxy_generator.py # generator proxy MCP
-    │   │   └── _repos/            # klony repozytoriów MCP (runtime)
-    │   └── custom/              # generowane wrappery MCP (runtime)
+    │   │   ├── proxy_generator.py # MCP proxy generator
+    │   │   └── _repos/            # cloned MCP repos (runtime)
+    │   └── custom/              # generated MCP wrappers (runtime)
     │
-    ├── perception/              # [WARSTWA 3: ZMYSŁY] – OCZY + ANTENA
+    ├── perception/              # [LAYER 3: SENSES] – EYES + ANTENNA
     │   ├── __init__.py
-    │   ├── eyes.py              # modele vision (Ollama / OpenAI) [Florence-2 v2.0]
-    │   ├── audio_engine.py      # silnik audio (Whisper STT + Piper TTS)
+    │   ├── eyes.py              # vision models (Ollama / OpenAI) [Florence-2 v2.0]
+    │   ├── audio_engine.py      # audio engine (Whisper STT + Piper TTS)
     │   └── antenna.py           # web search, scraping
     │
-    ├── memory/                  # [WARSTWA 5: HIPOKAMP] – PAMIĘĆ
+    ├── memory/                  # [LAYER 5: HIPPOCAMPUS] – MEMORY
     │   ├── __init__.py
-    │   ├── graph_store.py       # integracja z GraphRAG
-    │   ├── vector_store.py      # LanceDB / inne wektorowe storage
-    │   └── lessons_store.py     # API do data/memory/lessons_learned.json
+    │   ├── graph_store.py       # GraphRAG integration
+    │   ├── vector_store.py      # LanceDB / other vector storage
+    │   └── lessons_store.py     # API to data/memory/lessons_learned.json
     │
-    ├── infrastructure/          # [WARSTWA 4: METABOLIZM] – SILNIKI
+    ├── infrastructure/          # [LAYER 4: METABOLISM] – ENGINES
     │   ├── __init__.py
-    │   ├── docker_habitat.py    # zarządzanie kontenerami / sandboxami
+    │   ├── docker_habitat.py    # container / sandbox management
     │   ├── message_broker.py    # Redis + ARQ (Hive)
-    │   └── hardware_pi.py       # most do Rider-Pi (API, heartbeat)
+    │   └── hardware_pi.py       # bridge to Rider-Pi (API, heartbeat)
     │
-    └── utils/                   # NARZĘDZIA WSPÓLNE
+    └── utils/                   # COMMON TOOLS
         ├── __init__.py
-        ├── logger.py            # konfiguracja Loguru/Rich
-        └── helpers.py           # drobne helpery (ID, czas, konwersje, itd.)
+        ├── logger.py            # Loguru/Rich configuration
+        └── helpers.py           # small helpers (ID, time, conversions, etc.)

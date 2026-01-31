@@ -1,12 +1,12 @@
-# Hybrydowe Rozpoznawanie Intencji (Local-First Brain)
+# Hybrid Intent Recognition (Local-First Brain)
 
-System klasyfikacji intencji użytkownika z wykorzystaniem lokalnych lub chmurowych LLM.
+User intent classification system using local or cloud LLMs.
 
-## Konfiguracja
+## Configuration
 
-### Tryb Lokalny (domyślny)
+### Local Mode (default)
 
-Utwórz plik `.env` w głównym katalogu projektu:
+Create `.env` file in project root directory:
 
 ```env
 LLM_SERVICE_TYPE=local
@@ -15,7 +15,7 @@ LLM_MODEL_NAME=phi3:latest
 LLM_LOCAL_API_KEY=venom-local
 ```
 
-### Tryb Chmurowy (OpenAI)
+### Cloud Mode (OpenAI)
 
 ```env
 LLM_SERVICE_TYPE=openai
@@ -23,56 +23,56 @@ LLM_MODEL_NAME=gpt-4o
 OPENAI_API_KEY=sk-your-api-key-here
 ```
 
-## Typy Intencji
+## Intent Types
 
-System klasyfikuje wejście użytkownika do jednej z trzech kategorii:
+System classifies user input into one of three categories:
 
-1. **CODE_GENERATION** - prośby o kod, skrypty, refactoring
-   - Przykład: "Napisz funkcję w Pythonie do sortowania"
+1. **CODE_GENERATION** - code requests, scripts, refactoring
+   - Example: "Write a Python function for sorting"
 
-2. **KNOWLEDGE_SEARCH** - pytania o wiedzę, fakty, wyjaśnienia
-   - Przykład: "Co to jest GraphRAG?"
+2. **KNOWLEDGE_SEARCH** - knowledge questions, facts, explanations
+   - Example: "What is GraphRAG?"
 
-3. **GENERAL_CHAT** - rozmowa ogólna, powitania
-   - Przykład: "Witaj Venom, jak się masz?"
+3. **GENERAL_CHAT** - general conversation, greetings
+   - Example: "Hello Venom, how are you?"
 
-## Użycie w Kodzie
+## Usage in Code
 
-### Podstawowe użycie z Orchestrator
+### Basic Usage with Orchestrator
 
 ```python
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
 from venom_core.core.models import TaskRequest
 
-# Inicjalizacja
+# Initialization
 state_manager = StateManager(state_file_path="./data/state.json")
 orchestrator = Orchestrator(state_manager)
 
-# Wyślij zadanie - intencja zostanie automatycznie sklasyfikowana
+# Submit task - intent will be automatically classified
 response = await orchestrator.submit_task(
-    TaskRequest(content="Napisz funkcję sortującą")
+    TaskRequest(content="Write a sorting function")
 )
 
-# Sprawdź wynik
+# Check result
 task = state_manager.get_task(response.task_id)
-print(f"Wynik: {task.result}")  # Zawiera sklasyfikowaną intencję
+print(f"Result: {task.result}")  # Contains classified intent
 ```
 
-### Bezpośrednie użycie IntentManager
+### Direct IntentManager Usage
 
 ```python
 from venom_core.core.intent_manager import IntentManager
 
-# Użyj domyślnej konfiguracji
+# Use default configuration
 manager = IntentManager()
 
-# Klasyfikuj intencję
-intent = await manager.classify_intent("Napisz kod w Python")
-print(f"Intencja: {intent}")  # Output: CODE_GENERATION
+# Classify intent
+intent = await manager.classify_intent("Write Python code")
+print(f"Intent: {intent}")  # Output: CODE_GENERATION
 ```
 
-### Własna konfiguracja
+### Custom Configuration
 
 ```python
 from venom_core.execution.kernel_builder import KernelBuilder
@@ -86,67 +86,67 @@ class CustomSettings(BaseSettings):
     LLM_MODEL_NAME: str = "mistral:latest"
     LLM_LOCAL_API_KEY: str = "custom-key"
 
-# Zbuduj kernel z custom settings
+# Build kernel with custom settings
 builder = KernelBuilder(settings=CustomSettings())
 kernel = builder.build_kernel()
 
-# Utwórz IntentManager z custom kernel
+# Create IntentManager with custom kernel
 manager = IntentManager(kernel=kernel)
 ```
 
-## Wymagania
+## Requirements
 
-### Tryb Lokalny
+### Local Mode
 
-Wymagany lokalny serwer LLM zgodny z API OpenAI, np.:
+Required local LLM server compatible with OpenAI API, e.g.:
 
-- [Ollama](https://ollama.ai/) - najprostsze rozwiązanie
+- [Ollama](https://ollama.ai/) - simplest solution
   ```bash
   ollama serve
   ollama pull phi3
   ```
 
-- [vLLM](https://vllm.ai/) - wydajniejsze dla produkcji
-- [LocalAI](https://localai.io/) - alternatywa
+- [vLLM](https://vllm.ai/) - more efficient for production
+- [LocalAI](https://localai.io/) - alternative
 
-### Tryb Chmurowy
+### Cloud Mode
 
-Wymagany klucz API OpenAI.
+Required OpenAI API key.
 
-## Testy
+## Tests
 
 ```bash
-# Wszystkie testy
+# All tests
 pytest tests/test_kernel_builder.py tests/test_intent_manager.py tests/test_orchestrator_intent.py -v
 
-# Tylko testy KernelBuilder
+# KernelBuilder tests only
 pytest tests/test_kernel_builder.py -v
 
-# Tylko testy IntentManager
+# IntentManager tests only
 pytest tests/test_intent_manager.py -v
 ```
 
-## Rozwiązywanie Problemów
+## Troubleshooting
 
-### Błąd połączenia z lokalnym serwerem
+### Connection Error with Local Server
 
-Upewnij się, że lokalny serwer LLM działa:
+Make sure local LLM server is running:
 
 ```bash
-# Dla Ollama
+# For Ollama
 curl http://localhost:11434/v1/models
 
-# Sprawdź czy model jest pobrany
+# Check if model is downloaded
 ollama list
 ```
 
-### Wolne odpowiedzi
+### Slow Responses
 
-Lokalne modele mogą odpowiadać wolniej niż chmura. Rozważ:
-- Użycie mniejszego modelu (np. `phi3:mini`)
-- Przyspieszenie przez GPU (`ollama run phi3 --gpu`)
-- Zwiększenie timeoutów w konfiguracji
+Local models may respond slower than cloud. Consider:
+- Using smaller model (e.g., `phi3:mini`)
+- GPU acceleration (`ollama run phi3 --gpu`)
+- Increasing timeouts in configuration
 
-## Licencja i Prywatność
+## License and Privacy
 
-Tryb lokalny zachowuje pełną prywatność - żadne dane nie opuszczają Twojego komputera.
+Local mode maintains full privacy - no data leaves your computer.

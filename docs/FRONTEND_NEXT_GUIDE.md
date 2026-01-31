@@ -1,199 +1,199 @@
-# FRONTEND NEXT – ARCHITEKTURA I CHECKLISTA
+# FRONTEND NEXT – ARCHITECTURE AND CHECKLIST
 
-Dokument rozszerza `docs/DASHBOARD_GUIDE.md` o informacje specyficzne dla wersji `web-next`. Zawiera:
-1. Architekturę i katalogi Next.js (App Router, SCC – Server/Client Components) oraz konfigurację środowiska.
-2. Opis źródeł danych wykorzystywanych przez kluczowe widoki (Brain, Strategy, Cockpit) – łącznie z fallbackami.
-3. Checklistę testów ręcznych i Playwright, która potwierdza gotowość funkcjonalną.
-4. Kryteria wejścia do **Etapu 29** i listę elementów uznanych nadal za „legacy”.
+This document extends `docs/DASHBOARD_GUIDE.md` with information specific to the `web-next` version. Contains:
+1. Architecture and Next.js directories (App Router, SCC – Server/Client Components) and environment configuration.
+2. Description of data sources used by key views (Brain, Strategy, Cockpit) – including fallbacks.
+3. Manual and Playwright test checklist confirming functional readiness.
+4. Entry criteria for **Stage 29** and list of elements still considered "legacy".
 
 ---
 
-## 0. Stack i struktura `web-next`
+## 0. Stack and `web-next` structure
 
-### 0.1 Katalogi
+### 0.1 Directories
 ```
 web-next/
-├── app/                    # App Router, server components (`page.tsx`, layouty, route handlers)
+├── app/                    # App Router, server components (`page.tsx`, layouts, route handlers)
 │   ├── page.tsx            # Cockpit
-│   ├── chat/page.tsx       # Cockpit reference (pełny układ)
-│   ├── brain/page.tsx      # Widok Brain
+│   ├── chat/page.tsx       # Cockpit reference (full layout)
+│   ├── brain/page.tsx      # Brain view
 │   ├── inspector/page.tsx  # Flow Inspector
-│   ├── strategy/page.tsx   # Strategy / KPI (v2.0 - Ukryty)
-│   └── config/page.tsx     # Configuration Panel (Zadanie 060)
-├── components/             # Wspólne komponenty (layout, UI, overlaye)
-├── hooks/                  # Hooki danych (`use-api.ts`, `use-telemetry.ts`)
-├── lib/                    # Narzędzia (i18n, formatery, API client)
-├── public/                 # statyczne zasoby (`meta.json`)
-├── scripts/                # narzędzia buildowe (`generate-meta.mjs`, `prepare-standalone.mjs`)
+│   ├── strategy/page.tsx   # Strategy / KPI (v2.0 - Hidden)
+│   └── config/page.tsx     # Configuration Panel (Task 060)
+├── components/             # Shared components (layout, UI, overlays)
+├── hooks/                  # Data hooks (`use-api.ts`, `use-telemetry.ts`)
+├── lib/                    # Utilities (i18n, formatters, API client)
+├── public/                 # Static assets (`meta.json`)
+├── scripts/                # Build tools (`generate-meta.mjs`, `prepare-standalone.mjs`)
 └── tests/                  # Playwright (smoke suite)
 ```
 
-### 0.2 S C C – zasady (Server / Client Components)
-- Domyślnie komponenty w `app/*` są serwerowe – nie dodajemy `"use client"` jeżeli nie musimy.
-- Komponenty interaktywne (chat, belki, overlaye) deklarują `"use client"` i korzystają z hooków Reacta.
-- `components/layout/*` to mieszanka: np. `SystemStatusBar` jest klientowy (aktualizuje się w czasie rzeczywistym), natomiast sekcje Brain/Strategy pozostają serwerowe z lazy-hydrationem tylko tam, gdzie to konieczne.
-- Re-używamy stylów przez tokeny (`surface-card`, `glass-panel` itd.) w `globals.css`.
-- **Konwencje nazewnictwa:** wszystkie interfejsy/typy w `web-next/lib/types.ts` używają angielskich nazw (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`, `ModelsUsageResponse`). Nie dopisujemy równoległych aliasów PL ani skrótów w importach – zamiast `Lekcja` używamy `Lesson`, zamiast `StatusSłużba` → `ServiceStatus`. Translacje dla UI żyją w `lib/i18n`, ale kod/typy zachowują jednolity, angielski prefiks, żeby uniknąć dryfowania konwencji przy dodawaniu nowych modułów.
+### 0.2 SCC – principles (Server / Client Components)
+- By default, components in `app/*` are server-side – we don't add `"use client"` if we don't need to.
+- Interactive components (chat, bars, overlays) declare `"use client"` and use React hooks.
+- `components/layout/*` is mixed: e.g. `SystemStatusBar` is client-side (real-time updates), while Brain/Strategy sections remain server-side with lazy-hydration only where necessary.
+- We reuse styles through tokens (`surface-card`, `glass-panel` etc.) in `globals.css`.
+- **Naming conventions:** all interfaces/types in `web-next/lib/types.ts` use English names (`Lesson`, `LessonsStats`, `ServiceStatus`, `Task`, `Metrics`, `ModelsUsageResponse`). We don't add parallel PL aliases or import shortcuts – instead of `Lekcja` we use `Lesson`, instead of `StatusSłużba` → `ServiceStatus`. UI translations live in `lib/i18n`, but code/types maintain a uniform English prefix to avoid convention drift when adding new modules.
 
-### 0.3 Skrypty NPM / workflow
-| Komenda                               | Cel                                                                                   |
-|---------------------------------------|----------------------------------------------------------------------------------------|
-| `npm --prefix web-next install`       | Instalacja zależności                                                                |
-| `npm --prefix web-next run dev`       | Dev server (Next 15) z automatyczną generacją meta (`predev → generate-meta.mjs`)     |
-| `npm --prefix web-next run build`     | Build prod, generuje `public/meta.json` i standalone `.next/standalone`               |
-| `npm --prefix web-next run test:e2e`  | Playwright smoke w trybie prod (15 scenariuszy Cockpit + belki)                       |
-| `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                  |
-| `npm --prefix web-next run lint:locales` | Walidacja spójności słowników i18n (`scripts/check-locales.ts`)                     |
+### 0.3 NPM scripts / workflow
+| Command                               | Purpose                                                                               |
+|---------------------------------------|---------------------------------------------------------------------------------------|
+| `npm --prefix web-next install`       | Install dependencies                                                                 |
+| `npm --prefix web-next run dev`       | Dev server (Next 15) with automatic meta generation (`predev → generate-meta.mjs`)   |
+| `npm --prefix web-next run build`     | Prod build, generates `public/meta.json` and standalone `.next/standalone`           |
+| `npm --prefix web-next run test:e2e`  | Playwright smoke in prod mode (15 Cockpit + bars scenarios)                          |
+| `npm --prefix web-next run lint`      | Next lint (ESLint 9)                                                                 |
+| `npm --prefix web-next run lint:locales` | Validate i18n dictionary consistency (`scripts/check-locales.ts`)                  |
 
-### 0.4 Konfiguracja i proxy
-- backend FastAPI domyślnie nasłuchuje na porcie 8000 – front łączy się poprzez *rewrites* Next (patrz `next.config.mjs`) lub poprzez zmienne:
-  - `NEXT_PUBLIC_API_BASE` – baza `/api/v1/*` (gdy uruchamiamy dashboard w trybie standalone)
+### 0.4 Configuration and proxy
+- Backend FastAPI listens on port 8000 by default – frontend connects via Next *rewrites* (see `next.config.mjs`) or via variables:
+  - `NEXT_PUBLIC_API_BASE` – base `/api/v1/*` (when running dashboard in standalone mode)
   - `NEXT_PUBLIC_WS_BASE` – WebSocket event stream (`ws://localhost:8000/ws/events`)
-  - `API_PROXY_TARGET` – bezpośredni URL backendu; Next buduje rewritera, więc w trybie dev nie trzeba modyfikować kodu.
-- `scripts/generate-meta.mjs` zapisuje `public/meta.json` z `version`, `commit`, `timestamp`. Dane konsumuje dolna belka statusu.
+  - `API_PROXY_TARGET` – direct backend URL; Next builds rewriter, so no code modification needed in dev mode.
+- `scripts/generate-meta.mjs` saves `public/meta.json` with `version`, `commit`, `timestamp`. Data consumed by bottom status bar.
 
-### 0.5 Optymalizacje ładowania (zad. 054)
-- `lib/server-data.ts` wykonuje SSR-prefetch krytycznych endpointów (`/api/v1/metrics`, `/queue/status`, `/tasks`, `/models/usage`, `/metrics/tokens`, `/git/status`). Layout przekazuje je do `TopBar` (`StatusPills`) i `SystemStatusBar` jako `initialData`, dzięki czemu przy pierwszym renderze nie widać już pustych kresek.
-- `StatusPills` i dolna belka pracują w trybie „stale-while-revalidate”: pokazują dane z SSR, a hook `usePolling` dociąga aktualizację po montowaniu (spinnery pojawiają się dopiero jeśli nie mamy żadnego snapshotu).
-- `/strategy` posiada lokalny cache `sessionStorage` (`strategy-roadmap-cache`, `strategy-status-report`). Roadmapa jest prezentowana natychmiast po wejściu, a raport statusu pobiera się automatycznie w tle, jeśli poprzedni snapshot jest starszy niż 60 sekund. Cache nie blokuje ręcznego „Raport statusu” – kliknięcie wymusza nowe zapytanie.
-- `next.config.ts` ma włączone `experimental.optimizePackageImports` dla `lucide-react`, `framer-motion`, `chart.js`, `mermaid`, co obcina JS „first load” i przyśpiesza dynamiczne importy ikon/animacji.
-- Cockpit i Brain korzystają z serwerowych wrapperów (`app/page.tsx`, `app/brain/page.tsx`), które pobierają snapshot danych przez `fetchCockpitInitialData` / `fetchBrainInitialData`. Klientowe komponenty (`components/cockpit/cockpit-home.tsx`, `components/brain/brain-home.tsx`) łączą te snapshoty z hookami `usePolling`, więc KPI, lista modeli, lekcje i graf pokazują ostatni stan już po SSR i tylko dociągają aktualizacje po hydratacji.
-- Command Console (chat) ma optimistic UI: `optimisticRequests` renderują bąbelki użytkownika + placeholder odpowiedzi jeszcze przed zwrotką API, blokują otwieranie szczegółów do czasu zsynchronizowania z `useHistory`, a `ConversationBubble` pokazuje spinner oraz raportuje ostatni czas odpowiedzi w nagłówku.
-- Command Console obsługuje slash commands (`/gpt`, `/gem`, `/<tool>`) z autouzupełnianiem (max 3 propozycje) oraz badge „Forced” w odpowiedzi.
-- Język UI (PL/EN/DE) jest przesyłany jako `preferred_language` w `/api/v1/tasks` i backend tłumaczy odpowiedź, jeśli wykryje inny język.
-- Wyniki obliczeń (np. JSON/tablice) są formatowane w czacie do tabel/list; przy wykryciu formuł renderujemy KaTeX.
+### 0.5 Loading optimizations (task 054)
+- `lib/server-data.ts` performs SSR-prefetch of critical endpoints (`/api/v1/metrics`, `/queue/status`, `/tasks`, `/models/usage`, `/metrics/tokens`, `/git/status`). Layout passes them to `TopBar` (`StatusPills`) and `SystemStatusBar` as `initialData`, so on first render no empty dashes are visible.
+- `StatusPills` and bottom bar work in "stale-while-revalidate" mode: show SSR data, and `usePolling` hook fetches update after mounting (spinners appear only if we have no snapshot).
+- `/strategy` has local `sessionStorage` cache (`strategy-roadmap-cache`, `strategy-status-report`). Roadmap is presented immediately on entry, and status report fetches automatically in background if previous snapshot is older than 60 seconds. Cache doesn't block manual "Status report" – click forces new request.
+- `next.config.ts` has enabled `experimental.optimizePackageImports` for `lucide-react`, `framer-motion`, `chart.js`, `mermaid`, which trims JS "first load" and accelerates dynamic icon/animation imports.
+- Cockpit and Brain use server wrappers (`app/page.tsx`, `app/brain/page.tsx`) that fetch data snapshot via `fetchCockpitInitialData` / `fetchBrainInitialData`. Client components (`components/cockpit/cockpit-home.tsx`, `components/brain/brain-home.tsx`) combine these snapshots with `usePolling` hooks, so KPIs, model list, lessons and graph show last state already after SSR and only fetch updates after hydration.
+- Command Console (chat) has optimistic UI: `optimisticRequests` render user bubbles + response placeholder before API return, block opening details until synchronized with `useHistory`, and `ConversationBubble` shows spinner and reports last response time in header.
+- Command Console handles slash commands (`/gpt`, `/gem`, `/<tool>`) with autocomplete (max 3 suggestions) and "Forced" badge in response.
+- UI language (PL/EN/DE) is sent as `preferred_language` in `/api/v1/tasks` and backend translates response if different language detected.
+- Calculation results (e.g. JSON/arrays) are formatted in chat to tables/lists; when formulas detected we render KaTeX.
 
-## 1. Brain / Strategy – Źródła danych i hooki
+## 1. Brain / Strategy – Data sources and hooks
 
-| Widok / moduł                     | Endpointy / hooki                                                                                              | Fallback / uwagi                                                                                           |
+| View / module                     | Endpoints / hooks                                                                                              | Fallback / notes                                                                                           |
 |----------------------------------|----------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| **Cockpit** – Statusy i kolejka  | `useMetrics`, `useQueueStatus`, `useHistory` → `/api/v1/metrics`, `/api/v1/queue/status`, `/api/v1/history/requests` | Brak backendu → `OverlayFallback` lub neutralne pillsy z komunikatem.                                       |
-| **Cockpit** – Eventy na zywo     | `useTelemetry`, `useTaskStream` → `WS /ws/events`                                                               | Bez WS wylaczamy realtime i przechodzimy na polling.                                                       |
-| **Brain** – Mind Mesh            | `useKnowledgeGraph` → `/api/v1/graph/summary`, `/api/v1/graph/scan`, `/api/v1/graph/file`, `/api/v1/graph/impact` | W przypadku błędu HTTP renderuje `OverlayFallback` i blokuje akcje (scan/upload).                          |
-| **Brain** – Lessons & stats      | `useLessons`, `useLessonsStats`, `LessonActions` (tagi), `FileAnalysisForm`                                     | Brak danych wyświetla `EmptyState` z CTA „Odśwież lekcje”.                                                  |
-| **Brain** – Kontrolki grafu      | `GraphFilterButtons`, `GraphActionButtons` + `useGraphSummary`                                                 | Wersje offline (np. brak `/api/v1/graph/summary`) pokazują badge `offline` w kartach BrainMetricCard.      |
-### Strategy (Przesunięte do v2.0)
+| **Cockpit** – Status & queue     | `useMetrics`, `useQueueStatus`, `useHistory` → `/api/v1/metrics`, `/api/v1/queue/status`, `/api/v1/history/requests` | Backend down → `OverlayFallback` or neutral pills with message.                                             |
+| **Cockpit** – Live events        | `useTelemetry`, `useTaskStream` → `WS /ws/events`                                                               | Without WS we disable realtime and fall back to polling.                                                    |
+| **Brain** – Mind Mesh            | `useKnowledgeGraph` → `/api/v1/graph/summary`, `/api/v1/graph/scan`, `/api/v1/graph/file`, `/api/v1/graph/impact` | On HTTP error renders `OverlayFallback` and blocks actions (scan/upload).                                  |
+| **Brain** – Lessons & stats      | `useLessons`, `useLessonsStats`, `LessonActions` (tags), `FileAnalysisForm`                                     | No data displays `EmptyState` with CTA "Refresh lessons".                                                  |
+| **Brain** – Graph controls       | `GraphFilterButtons`, `GraphActionButtons` + `useGraphSummary`                                                 | Offline versions (e.g. no `/api/v1/graph/summary`) show `offline` badge in BrainMetricCard cards.         |
+### Strategy (Postponed to v2.0)
 
 > [!NOTE]
-> **Przesunięte do v2.0:** Ekran Strategii i powiązane funkcje (Wizja, KPI, Roadmapa) zostały przesunięte do wersji Venom v2.0. Kod pozostaje w `app/strategy`, ale jest ukryty z nawigacji w v1.0.
+> **Postponed to v2.0:** The Strategy screen and its associated features (Vision, KPI, Roadmap) have been postponed to Venom v2.0. The code remains in `app/strategy` but is hidden from navigation in v1.0.
 
-| **Strategy** – KPI / Vision      | `useRoadmap` (`/api/v1/roadmap`), `requestRoadmapStatus`, `createRoadmap`, `startCampaign`                      | Wszystkie akcje owinięte w `useToast`; w razie 4xx/5xx panel wyświetla `OverlayFallback`.                   |
-| **Strategy** – Milestones/Tasks  | `RoadmapKpiCard`, `TaskStatusBreakdown` (wykorzystuje `/api/v1/roadmap` oraz `/api/v1/tasks` dla statusów)      | Brak zadań → komunikat „Brak zdefiniowanych milestone’ów” (EmptyState).                                     |
-| **Strategy** – Kampanie          | `handleStartCampaign` pyta `window.confirm` (jak legacy), po czym wysyła `/api/campaign/start`.                 | W razie braku API informuje użytkownika toastem i nie zmienia lokalnego stanu.                              |
-| **Config** – Usługi              | `/api/v1/runtime/status`, `/api/v1/runtime/{service}/{action}`, `/api/v1/runtime/profile/{profile}`             | Wyświetla live status usług (backend, UI, LLM, Hive, Nexus) z metrykami CPU/RAM. Akcje start/stop/restart.    |
-| **Config** – Parametry           | `/api/v1/config/runtime` (GET/POST), `/api/v1/config/backups`, `/api/v1/config/restore`                         | Edycja whitelisty parametrów z `.env`, maskowanie sekretów, backup do `config/env-history/`, restart warnings. |
+| **Strategy** – KPI / Vision      | `useRoadmap` (`/api/v1/roadmap`), `requestRoadmapStatus`, `createRoadmap`, `startCampaign`                      | All actions wrapped in `useToast`; on 4xx/5xx panel displays `OverlayFallback`.                            |
+| **Strategy** – Milestones/Tasks  | `RoadmapKpiCard`, `TaskStatusBreakdown` (uses `/api/v1/roadmap` and `/api/v1/tasks` for statuses)              | No tasks → message "No defined milestones" (EmptyState).                                                    |
+| **Strategy** – Campaigns         | `handleStartCampaign` asks `window.confirm` (like legacy), then sends `/api/campaign/start`.                   | On missing API informs user via toast and doesn't change local state.                                       |
+| **Config** – Services            | `/api/v1/runtime/status`, `/api/v1/runtime/{service}/{action}`, `/api/v1/runtime/profile/{profile}`            | Displays live service status (backend, UI, LLM, Hive, Nexus) with CPU/RAM metrics. Start/stop/restart actions. |
+| **Config** – Parameters          | `/api/v1/config/runtime` (GET/POST), `/api/v1/config/backups`, `/api/v1/config/restore`                        | Edit whitelisted parameters from `.env`, mask secrets, backup to `config/env-history/`, restart warnings.    |
 
-> **Notatka:** wszystkie hooki korzystają z `lib/api-client.ts`, który automatycznie pobiera bazowy URL z `NEXT_PUBLIC_API_BASE` lub rewritów Next. Dzięki temu UI działa zarówno na HTTP jak i HTTPS bez ręcznej konfiguracji.
+> **Note:** all hooks use `lib/api-client.ts`, which automatically retrieves base URL from `NEXT_PUBLIC_API_BASE` or Next rewrites. This allows UI to work on both HTTP and HTTPS without manual configuration.
 
 ---
 
-## 1.1 Configuration Panel – Zarządzanie stosem (Zadanie 060)
+## 1.1 Configuration Panel – Stack management (Task 060)
 
-### Cel
-Panel konfiguracji (`/config`) pozwala zarządzać usługami Venom (backend, UI, LLM, moduły rozproszone) oraz edytować kluczowe parametry z poziomu UI, bez ręcznej edycji `.env`.
+### Goal
+Configuration panel (`/config`) allows managing Venom services (backend, UI, LLM, distributed modules) and editing key parameters from UI, without manual `.env` editing.
 
-### Funkcjonalność
+### Functionality
 
-#### Panel "Usługi"
-- **Kafelki statusów**: Każda usługa (backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks) pokazuje:
+#### "Services" Panel
+- **Status tiles**: Each service (backend, ui, llm_ollama, llm_vllm, hive, nexus, background_tasks) shows:
   - Status (running/stopped/error)
-  - PID i port
-  - CPU i RAM
+  - PID and port
+  - CPU and RAM
   - Uptime
-  - Ostatni log
-- **Akcje**: Przyciski start/stop/restart dla każdej usługi
-- **Profile szybkie**:
-  - **Full Stack**: Uruchamia wszystkie usługi
-  - **Light**: Tylko backend i UI (bez LLM)
-  - **LLM OFF**: Backend i UI, wyłącza modele językowe
-- **Historia akcji**: Lista ostatnich 10 akcji z timestampem
+  - Last log
+- **Actions**: Start/stop/restart buttons for each service
+- **Quick profiles**:
+  - **Full Stack**: Starts all services
+  - **Light**: Only backend and UI (no LLM)
+  - **LLM OFF**: Backend and UI, disables language models
+- **Action history**: List of last 10 actions with timestamp
 
-#### Panel "Parametry"
-- **Sekcje konfiguracji**:
-  - Tryb AI (AI_MODE, LLM_SERVICE_TYPE, endpointy modeli, klucze API)
-  - Komendy serwera LLM (VLLM_START_COMMAND, OLLAMA_START_COMMAND)
-  - Hive – przetwarzanie rozproszone (ENABLE_HIVE, Redis config)
+#### "Parameters" Panel
+- **Configuration sections**:
+  - AI mode (AI_MODE, LLM_SERVICE_TYPE, model endpoints, API keys)
+  - LLM server commands (VLLM_START_COMMAND, OLLAMA_START_COMMAND)
+  - Hive – distributed processing (ENABLE_HIVE, Redis config)
   - Nexus – distributed mesh (ENABLE_NEXUS, port, token)
-  - Zadania w tle (auto-dokumentacja, gardening, konsolidacja pamięci)
+  - Background tasks (auto-documentation, gardening, memory consolidation)
   - Shadow Agent (desktop awareness)
   - Ghost Agent (GUI automation)
   - Avatar (audio interface)
-- **Maskowanie sekretów**: API keys i tokeny są domyślnie maskowane, przycisk "pokaż" odkrywa wartość
-- **Walidacja**: Frontend sprawdza obecność wartości, backend waliduje whitelistę
-- **Backup**: Każdy zapis tworzy backup `.env` w `config/env-history/.env-YYYYMMDD-HHMMSS`
-- **Restart warnings**: Po zapisie UI informuje, które komponenty wymagają restartu
+- **Secret masking**: API keys and tokens are masked by default, "show" button reveals value
+- **Validation**: Frontend checks value presence, backend validates whitelist
+- **Backup**: Each save creates `.env` backup in `config/env-history/.env-YYYYMMDD-HHMMSS`
+- **Restart warnings**: After save UI informs which components require restart
 
 #### Info Box: Ollama vs vLLM
-Panel zawiera sekcję informacyjną wyjaśniającą różnice między runtime'ami LLM:
-- **Ollama (Light)**: Szybki start, niski footprint, single user
-- **vLLM (Full)**: Dłuższy start, większy VRAM, benchmarki i testy wydajności
-- Link do `/benchmark` z sugestią porównania modeli
+Panel contains informational section explaining differences between LLM runtimes:
+- **Ollama (Light)**: Quick start, low footprint, single user
+- **vLLM (Full)**: Longer start, higher VRAM, benchmarks and performance tests
+- Link to `/benchmark` with suggestion to compare models
 
 ### Backend API
 
 #### Runtime Controller
 ```
-GET  /api/v1/runtime/status            # Lista usług z statusem, PID, CPU/RAM
+GET  /api/v1/runtime/status            # Service list with status, PID, CPU/RAM
 POST /api/v1/runtime/{service}/{action} # start/stop/restart (service: backend, ui, llm_ollama, etc.)
-GET  /api/v1/runtime/history           # Historia akcji (limit 50)
-POST /api/v1/runtime/profile/{name}    # Aplikuj profil (full, light, llm_off)
+GET  /api/v1/runtime/history           # Action history (limit 50)
+POST /api/v1/runtime/profile/{name}    # Apply profile (full, light, llm_off)
 ```
 
 #### Config Manager
 ```
-GET  /api/v1/config/runtime            # Pobierz whitelistę parametrów (mask_secrets=true)
-POST /api/v1/config/runtime            # Zapisz zmiany (updates: {key: value})
-GET  /api/v1/config/backups            # Lista backupów .env
-POST /api/v1/config/restore            # Przywróć backup (backup_filename)
+GET  /api/v1/config/runtime            # Fetch whitelisted parameters (mask_secrets=true)
+POST /api/v1/config/runtime            # Save changes (updates: {key: value})
+GET  /api/v1/config/backups            # List .env backups
+POST /api/v1/config/restore            # Restore backup (backup_filename)
 ```
 
-### Bezpieczeństwo
-- **Whitelist parametrów**: Tylko wybrane parametry (55 kluczy) są edytowalne przez UI
-- **Maskowanie sekretów**: Pola zawierające "KEY", "TOKEN", "PASSWORD" są maskowane
-- **Backup automatyczny**: Każda zmiana `.env` tworzy kopię zapasową
-- **Restart notification**: UI informuje które usługi wymagają restartu po zmianie konfiguracji
+### Security
+- **Parameter whitelist**: Only selected parameters (55 keys) are editable via UI
+- **Secret masking**: Fields containing "KEY", "TOKEN", "PASSWORD" are masked
+- **Automatic backup**: Every `.env` change creates backup copy
+- **Restart notification**: UI informs which services require restart after configuration change
 
-### Testy
+### Tests
 - Backend: `tests/test_runtime_controller_api.py`, `tests/test_config_manager_api.py`
-- Frontend: TODO – Playwright scenarios dla nawigacji, start/stop, edycji parametrów
+- Frontend: TODO – Playwright scenarios for navigation, start/stop, parameter editing
 
 ---
 
-## 2. Testy – Brain / Strategy (manualne + Playwright)
+## 2. Tests – Brain / Strategy (manual + Playwright)
 
-### 2.1 Manual smoke (po każdym release)
+### 2.1 Manual smoke (after each release)
 1. **Brain**
-   - `Scan graph` zwraca spinner i nowy log w „Ostatnie operacje grafu”.
-   - Kliknięcie w węzeł otwiera panel z relacjami, tagami i akcjami (file impact, lessons).
+   - `Scan graph` returns spinner and new log in "Recent graph operations".
+   - Click on node opens panel with relations, tags and actions (file impact, lessons).
 2. **Strategy**
-   - Odśwież roadmapę (`refreshRoadmap`) i sprawdź, że KPI/Milestones pokazują dane z API.
-   - `Start campaign` → confirm prompt → komunikat sukcesu/błędu + log w toastach.
+   - Refresh roadmap (`refreshRoadmap`) and check that KPI/Milestones show API data.
+   - `Start campaign` → confirm prompt → success/error message + log in toasts.
 
-### 2.2 Playwright (do dodania / rozszerzenia)
-| Nazwa scenariusza                    | Wejście / oczekiwania                                                                 |
+### 2.2 Playwright (to be added / extended)
+| Scenario name                       | Input / expectations                                                                  |
 |-------------------------------------|----------------------------------------------------------------------------------------|
-| `brain-can-open-node-details`       | `page.goto("/brain")`, kliknięcie w pierwszy węzeł (seed data) → widoczny panel detali |
-| `strategy-campaign-confirmation`    | Otwórz `/strategy`, kliknij „Uruchom kampanię”, sprawdź confirm + komunikat offline    |
-| `strategy-kpi-offline-fallback`     | Przy wyłączonym backendzie widoczny `OverlayFallback` + tekst „Brak danych”.           |
+| `brain-can-open-node-details`       | `page.goto("/brain")`, click first node (seed data) → details panel visible          |
+| `strategy-campaign-confirmation`    | Open `/strategy`, click "Start campaign", check confirm + offline message             |
+| `strategy-kpi-offline-fallback`     | With backend disabled visible `OverlayFallback` + text "No data".                     |
 
-> TODO: scenariusze powyżej dodajemy do `web-next/tests/smoke.spec.ts` po ustabilizowaniu CI. Dokument zostanie zaktualizowany wraz z PR-em dodającym testy.
+> TODO: add above scenarios to `web-next/tests/smoke.spec.ts` after stabilizing CI. Document will be updated with PR adding tests.
 
 ---
 
-## 3. Mapa bloków → etap 29
+## 3. Block map → stage 29
 
-### 3.1 Checklist „legacy vs. next”
-- [x] Sidebar / TopBar – korzystają z tokenów glass i wspólnych komponentów.
-- [x] Cockpit – hero, command console, makra, modele, repo → wszystkie w stylu `_szablon.html`.
-- [x] Brain / Strategy – opisane powyżej.
-- [ ] Inspector – brak ręcznego „Odśwież” + panelu JSON (zadanie 051, sekcja 6).
-- [ ] Strategy KPI timeline – wymaga realnych danych z `/api/v1/tasks` (zadanie 051, sekcja 6.3).
+### 3.1 Checklist "legacy vs. next"
+- [x] Sidebar / TopBar – use glass tokens and shared components.
+- [x] Cockpit – hero, command console, macros, models, repo → all in `_szablon.html` style.
+- [x] Brain / Strategy – described above.
+- [ ] Inspector – missing manual "Refresh" + JSON panel (task 051, section 6).
+- [ ] Strategy KPI timeline – requires real data from `/api/v1/tasks` (task 051, section 6.3).
 
-### 3.2 Kryteria wejścia do **Etapu 29**
-1. **Parzystość funkcjonalna** – każde legacy view ma odpowiednik w `web-next`; brak duplikatów paneli.
-2. **Komponenty współdzielone** – wszystkie listy/historie używają `HistoryList`/`TaskStatusBreakdown`.
-3. **Testy** – Playwright obejmuje Cockpit, Brain, Inspector, Strategy + krytyczne overlaye.
-4. **Dokumentacja** – niniejszy plik + README posiadają sekcję źródeł danych i testów.
-5. **QA** – lista uwag z zadania 051 (sekcje 4–7) oznaczona jako ✅.
+### 3.2 Entry criteria for **Stage 29**
+1. **Functional parity** – each legacy view has counterpart in `web-next`; no duplicate panels.
+2. **Shared components** – all lists/histories use `HistoryList`/`TaskStatusBreakdown`.
+3. **Tests** – Playwright covers Cockpit, Brain, Inspector, Strategy + critical overlays.
+4. **Documentation** – this file + README have data sources and tests section.
+5. **QA** – note list from task 051 (sections 4–7) marked as ✅.
 
-Po spełnieniu powyższych punktów można oficjalnie zamknąć etap 28 i przejść do 29 (np. optymalizacje wydajności, A/B testy UI).
+After meeting above points, can officially close stage 28 and move to 29 (e.g. performance optimizations, UI A/B tests).

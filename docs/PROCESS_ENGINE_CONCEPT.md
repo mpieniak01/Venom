@@ -1,59 +1,59 @@
-# System Procesowy Venom (Process Engine) [v2.0]
+# Venom Process Engine Concept [v2.0]
 
 > [!NOTE]
-> **Status:** Koncepcja planowana dla wersji **Venom 2.0**.
-> Dokument ten opisuje wizję "Podejścia Procesowego", w którym użytkownik może samodzielnie budować, układać i zarządzać złożonymi procesami biznesowymi/logicznymi.
+> **Status:** Concept planned for **Venom 2.0**.
+> This document describes the vision of the "Process Approach", where the user can manually build, arrange, and manage complex business/logic processes.
 
-## Wizja: Venom jako Silnik Procesów
+## Vision: Venom as a Process Engine
 
-W wersji 1.0 Venom posiada **wbudowane procesy** (np. cykl Chat => Planner => Coder => Critic), które są sztywne i zarządzane przez system ("Internal/Fixed Processes"). Użytkownik zleca zadania, a Venom dobiera odpowiedni wbudowany proces.
+In v1.0, Venom utilizes **internal processes** (e.g., Chat => Planner => Coder => Critic cycle), which are fixed and managed by the system ("Internal/Fixed Processes"). The user assigns tasks, and Venom selects the appropriate built-in process.
 
-W wersji 2.0 wprowadzamy **Podejście Procesowe (User-Configurable Processes)**, gdzie użytkownik zyskuje kontrolę nad definicją tych przepływów. Przestaje być tylko zlecającym, a staje się architektem logiki, układając klocki w graficznym edytorze.
+In v2.0, we introduce the **Process Approach (User-Configurable Processes)**, where the user gains control over the definition of these workflows. The user moves from being just a requester to becoming an architect of logic, arranging blocks in a graphical editor.
 
-### Kluczowe Założenia
+### Key Assumptions
 
-1.  **Visual Process Builder** - Graficzny interfejs (drag & drop) do układania klocków (Agents, Skills, Logic).
-2.  **Determinizm vs AI** - Możliwość łączenia sztywnych reguł (If/Else, Pętle) z elastycznymi węzłami AI (np. "Zdecyduj czy mail jest ważny").
-3.  **Wielokrotne Użycie** - Zdefiniowany proces staje się nowym "Skillem" dostępnym dla innych agentów.
-4.  **Human-in-the-Loop** - Węzły wymagające zatwierdzenia lub decyzji człowieka przed przejściem dalej.
+1.  **Visual Process Builder** - Graphical interface (drag & drop) for arranging blocks (Agents, Skills, Logic).
+2.  **Determinism vs AI** - Ability to combine rigid rules (If/Else, Loops) with flexible AI nodes (e.g., "Decide if email is important").
+3.  **Reusability** - A defined process becomes a new "Skill" available to other agents.
+4.  **Human-in-the-Loop** - Nodes requiring human approval or decision before proceeding.
 
-## Architektura (Planowana)
+## Architecture (Planned)
 
 ```mermaid
 graph TD
-    User[Użytkownik] -->|Buduje| ProcessBuilder[Visual Process Builder]
-    ProcessBuilder -->|Generuje| WorkflowDef[Workflow Definition (JSON/YAML)]
+    User -->|Builds| ProcessBuilder[Visual Process Builder]
+    ProcessBuilder -->|Generates| WorkflowDef[Workflow Definition (JSON/YAML)]
 
-    WorkflowDef -->|Wczytuje| ProcessEngine[Process Engine Core]
+    WorkflowDef -->|Loads| ProcessEngine[Process Engine Core]
 
-    ProcessEngine -->|Orkiestruje| Flow[Przepływ]
+    ProcessEngine -->|Orchestrates| Flow[Flow Execution]
 
     subgraph Flow Execution
-        Node1[Węzeł: Pobierz Dane] -->|Wynik| Node2{Decyzja AI}
-        Node2 -->|Ważne| Node3[Agent: Wyślij Alert]
-        Node2 -->|Spam| Node4[Ignoruj]
+        Node1[Node: Fetch Data] -->|Result| Node2{AI Decision}
+        Node2 -->|Important| Node3[Agent: Send Alert]
+        Node2 -->|Spam| Node4[Ignore]
     end
 ```
 
-### Komponenty
+### Components
 
--   **Process Designer**: UI w Next.js oparty na bibliotece grafowej (np. React Flow).
--   **Execution Engine**: Rozszerzenie obecnego `Orchestrator` o obsługę długotrwałych, stanowych procesów (State Machines).
--   **Standard**: Rozważenie adaptacji BPMN 2.0 lub uproszczonego standardu JSON.
+-   **Process Designer**: UI in Next.js based on a graph library (e.g., React Flow).
+-   **Execution Engine**: Extension of the current `Orchestrator` to support long-running, stateful processes (State Machines).
+-   **Standard**: Consideration of adapting BPMN 2.0 or a simplified JSON standard.
 
-## Przykładowe Procesy Użytkownika
+## Example User Processes
 
-1.  **Onboarding Pracownika**
-    *   Krok 1: Wygeneruj umowę (Coder/Writer)
-    *   Krok 2: Wyślij email (Tool: SMTP)
-    *   Krok 3: Czekaj na podpis (Human Trigger)
-    *   Krok 4: Utwórz konta w systemach (Ghost Agent)
+1.  **Employee Onboarding**
+    *   Step 1: Generate contract (Coder/Writer)
+    *   Step 2: Send email (Tool: SMTP)
+    *   Step 3: Wait for signature (Human Trigger)
+    *   Step 4: Create system accounts (Ghost Agent)
 
-2.  **Monitoring Mediów**
-    *   Krok 1: Co 1h sprawdź RSS (Researcher)
-    *   Krok 2: Jeśli temat = "Venom AI" -> Analizuj sentyment (Analyst)
-    *   Krok 3: Jeśli negatywny -> Wyślij SMS do Admina
+2.  **Media Monitoring**
+    *   Step 1: Check RSS every 1h (Researcher)
+    *   Step 2: If topic = "Venom AI" -> Analyze sentiment (Analyst)
+    *   Step 3: If negative -> Send SMS to Admin
 
-## Relacja z The Apprentice
+## Relation to The Apprentice
 
-Podczas gdy **The Apprentice** uczy się przez *obserwację* (nagrywanie), **Process Engine** pozwala na *świadome projektowanie* i *edycję* logiki. Te systemy będą współpracować: Apprentice może wygenerować surowy proces, który użytkownik następnie dopracuje w Process Builderze.
+While **The Apprentice** learns by *observation* (recording), the **Process Engine** allows for *conscious design* and *editing* of logic. These systems will collaborate: Apprentice can generate a raw process, which the user then refines in the Process Builder.

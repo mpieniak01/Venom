@@ -1,86 +1,86 @@
-# Testowanie czasu reakcji chatu
+# Testing Chat Response Time
 
-Dokument opisuje jak zmierzyć wydajność pipeline’u czatu Venoma w dwóch obszarach:
+This document describes how to measure Venom chat pipeline performance in two areas:
 
-1. **Frontend (UI)** – czas od wysłania promptu do pojawienia się odpowiedzi w Cockpicie.
-2. **Backend (API/SSE)** – czas trwania zadania (`task_update` → `task_finished`), skalowanie równoległe i obciążenie.
+1. **Frontend (UI)** – time from sending prompt to response appearing in Cockpit.
+2. **Backend (API/SSE)** – task duration (`task_update` → `task_finished`), parallel scaling and load.
 
-## Wymagania
-- Uruchomiony backend (`make start-dev` lub `make start-prod`).
-- Uruchomiony Next (`make start-dev` / `make start-prod`).
-- Stary panel FastAPI dostępny na porcie 8000 (tylko do testu porównawczego) – jeśli `SERVE_LEGACY_UI=False`, odpal tymczasowo z `True`.
-- Node 18.19+ (Playwright) i Python środowiska testowego (`pip install -r requirements.txt` + `pip install locust`).
+## Requirements
+- Running backend (`make start-dev` or `make start-prod`).
+- Running Next (`make start-dev` / `make start-prod`).
+- Old FastAPI panel available on port 8000 (for comparison test only) – if `SERVE_LEGACY_UI=False`, temporarily run with `True`.
+- Node 18.19+ (Playwright) and Python test environment (`pip install -r requirements.txt` + `pip install locust`).
 
-## Playwright: porównanie UI
+## Playwright: UI Comparison
 
-Plik: `web-next/tests/perf/chat-latency.spec.ts`
-Konfiguracja: `web-next/playwright.perf.config.ts`
+File: `web-next/tests/perf/chat-latency.spec.ts`
+Configuration: `web-next/playwright.perf.config.ts`
 
 ```bash
 npm --prefix web-next run test:perf
 ```
 
 Test:
-1. Otwiera Next Cockpit i Legacy Cockpit.
-2. Wysyła prompt „benchmark latency”.
-3. Oczekuje na nowy bąbelek odpowiedzi i mierzy czas.
-4. Sprawdza budżety (Next ≤ ~5s, Legacy ≤ 4s – wartości konfigurowalne).
+1. Opens Next Cockpit and Legacy Cockpit.
+2. Sends prompt "benchmark latency".
+3. Waits for new response bubble and measures time.
+4. Checks budgets (Next ≤ ~5s, Legacy ≤ 4s – configurable values).
 
-Artefakty (screenshoty/wideo) zapisują się do `web-next/test-results/` i są ignorowane przez git.
+Artifacts (screenshots/video) are saved to `web-next/test-results/` and ignored by git.
 
-## Pytest: backendowy pipeline SSE
+## Pytest: Backend SSE Pipeline
 
-Pliki:
-- `tests/perf/chat_pipeline.py` – helpery (submit_task, stream_task, pomiar).
-- `tests/perf/test_chat_pipeline.py` – testy:
+Files:
+- `tests/perf/chat_pipeline.py` – helpers (submit_task, stream_task, measurement).
+- `tests/perf/test_chat_pipeline.py` – tests:
   - `test_chat_pipeline_smoke_latency`
   - `test_chat_pipeline_parallel_batch`
 
-Uruchomienie:
+Execution:
 
 ```bash
 pytest tests/perf/test_chat_pipeline.py -m performance
 ```
 
-Parametry (w pliku):
-- `STREAM_TIMEOUT` – maksymalny czas oczekiwania na `task_finished`.
-- `PIPELINE_CONCURRENCY` – liczba równoległych zadań.
-- `PIPELINE_BATCH_BUDGET_SECONDS` – budżet dla najwolniejszego zadania.
+Parameters (in file):
+- `STREAM_TIMEOUT` – maximum wait time for `task_finished`.
+- `PIPELINE_CONCURRENCY` – number of parallel tasks.
+- `PIPELINE_BATCH_BUDGET_SECONDS` – budget for slowest task.
 
-## Locust: test obciążeniowy (manualny)
+## Locust: Load Testing (Manual)
 
-Plik: `tests/perf/locustfile.py`
+File: `tests/perf/locustfile.py`
 
-Uruchomienie pomocniczego skryptu:
+Helper script execution:
 
 ```bash
 ./scripts/run-locust.sh
 ```
 
-Skrypt:
-- ubija poprzednie instancje nasłuchujące na porcie 8089,
-- uruchamia Locusta z `LOCUST_WEB_HOST`/`LOCUST_WEB_PORT` (domyślnie `127.0.0.1:8089`),
-- informuje w logu gdzie dostępny jest panel.
+Script:
+- kills previous instances listening on port 8089,
+- starts Locust with `LOCUST_WEB_HOST`/`LOCUST_WEB_PORT` (default `127.0.0.1:8089`),
+- informs in log where panel is available.
 
-W panelu ustaw liczbę użytkowników, tempo narastania oraz adresy (domyślnie `http://localhost:8000`). Scenariusz `ChatUser` symuluje żądani → SSE.
+In panel set number of users, spawn rate, and addresses (default `http://localhost:8000`). `ChatUser` scenario simulates request → SSE.
 
-## Archiwizacja wyników
+## Archiving Results
 
 ```
 ./scripts/archive-perf-results.sh
 ```
 
-Tworzy `perf-artifacts/<timestamp>/` i kopiuje:
+Creates `perf-artifacts/<timestamp>/` and copies:
 - `test-results/`, `web-next/test-results/`,
 - `playwright-report/`,
-- logi Locusta (`locust.stats.csv`, `locust.failure.csv` jeśli istnieją).
+- Locust logs (`locust.stats.csv`, `locust.failure.csv` if exist).
 
-## Uwagi
-- Repozytorium jest lokalnym eksperymentem – artefakty testów NIE są szyfrowane, ale są ignorowane (`.gitignore`) i przechowywane lokalnie.
-- Gdy Next ma działać bez legacy UI, pamiętaj aby uruchamiać test `Legacy Cockpit` tylko przy włączonym `SERVE_LEGACY_UI=True`.
-- Wydajnościowe testy nie są jeszcze podpięte pod CI – wykonujemy je ręcznie przed wydaniem.
+## Notes
+- Repository is local experiment – test artifacts are NOT encrypted, but are ignored (`.gitignore`) and stored locally.
+- When Next should run without legacy UI, remember to run `Legacy Cockpit` test only with `SERVE_LEGACY_UI=True` enabled.
+- Performance tests are not yet hooked to CI – we run them manually before release.
 
-## Referencyjne wyniki (ostatni przebieg)
-| Data (UTC) | Test | Wynik |
+## Reference Results (Last Run)
+| Date (UTC) | Test | Result |
 | --- | --- | --- |
 | 2026-01-05 | `tests/perf/chat-latency.spec.ts` (Next Cockpit) | PASS, 4.0s |

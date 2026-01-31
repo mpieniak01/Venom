@@ -1,133 +1,133 @@
 # The Apprentice - Visual Imitation Learning Guide
 
-## Przegląd
+## Overview
 
-**The Apprentice** to rewolucyjna funkcja Venoma umożliwiająca uczenie się nowych umiejętności poprzez obserwację działań użytkownika. Zamiast ręcznie programować skrypty automatyzacji, operator wykonuje zadanie a Venom "patrzy i uczy się".
+**The Apprentice** is a revolutionary Venom feature enabling learning of new skills through observation of user actions. Instead of manually programming automation scripts, the operator performs the task and Venom "watches and learns".
 
-## Architektura
+## Architecture
 
-System składa się z czterech głównych komponentów:
+The system consists of four main components:
 
 ### 1. Demonstration Recorder (`venom_core/perception/recorder.py`)
 
-Rejestrator nagrywa demonstracje użytkownika:
-- **Zrzuty ekranu** - wykonywane w momentach akcji (mss library)
-- **Zdarzenia myszy** - kliknięcia, pozycje (pynput)
-- **Zdarzenia klawiatury** - wpisany tekst, skróty (pynput)
+The recorder captures user demonstrations:
+- **Screenshots** - taken at action moments (mss library)
+- **Mouse events** - clicks, positions (pynput)
+- **Keyboard events** - typed text, shortcuts (pynput)
 
-Dane są zapisywane jako sesja (`session.json` + katalog ze zrzutami).
+Data is saved as a session (`session.json` + directory with screenshots).
 
 ```python
 from venom_core.perception.recorder import DemonstrationRecorder
 
 recorder = DemonstrationRecorder()
 
-# Rozpocznij nagrywanie
+# Start recording
 session_id = recorder.start_recording(session_name="my_workflow")
 
-# [Użytkownik wykonuje akcje]
+# [User performs actions]
 
-# Zatrzymaj nagrywanie
+# Stop recording
 session_path = recorder.stop_recording()
 ```
 
 ### 2. Demonstration Analyzer (`venom_core/learning/demonstration_analyzer.py`)
 
-Analizator zamienia surowe dane na semantyczne akcje:
-- Transformuje współrzędne pikseli → opisy elementów UI
-- Rozpoznaje sekwencje klawiszy (tekst vs skróty)
-- Wykrywa wrażliwe dane (hasła)
-- Generuje `ActionIntent` (semantyczne kroki)
+The analyzer transforms raw data into semantic actions:
+- Transforms pixel coordinates → UI element descriptions
+- Recognizes key sequences (text vs shortcuts)
+- Detects sensitive data (passwords)
+- Generates `ActionIntent` (semantic steps)
 
 ```python
 from venom_core.learning.demonstration_analyzer import DemonstrationAnalyzer
 
 analyzer = DemonstrationAnalyzer()
 
-# Analizuj sesję
+# Analyze session
 session = recorder.load_session(session_id)
 actions = await analyzer.analyze_session(session)
 
-# actions to lista ActionIntent z opisami semantycznymi
+# actions is a list of ActionIntent with semantic descriptions
 ```
 
 ### 3. Apprentice Agent (`venom_core/agents/apprentice.py`)
 
-Agent zarządza całym cyklem uczenia:
-- Kontroluje nagrywanie (REC/STOP)
-- Analizuje demonstracje
-- Generuje skrypty Python
-- Parametryzuje workflow
-- Zapisuje do `custom_skills/`
+Agent manages the entire learning cycle:
+- Controls recording (REC/STOP)
+- Analyzes demonstrations
+- Generates Python scripts
+- Parameterizes workflows
+- Saves to `custom_skills/`
 
 ```python
 from venom_core.agents.apprentice import ApprenticeAgent
 
 apprentice = ApprenticeAgent(kernel)
 
-# Rozpocznij nagrywanie
-await apprentice.process("Rozpocznij nagrywanie nazwany login_workflow")
+# Start recording
+await apprentice.process("Start recording named login_workflow")
 
-# [Demonstracja]
+# [Demonstration]
 
-# Zatrzymaj i analizuj
-await apprentice.process("Zatrzymaj nagrywanie")
-await apprentice.process("Analizuj sesję login_workflow")
+# Stop and analyze
+await apprentice.process("Stop recording")
+await apprentice.process("Analyze session login_workflow")
 
-# Generuj skill
-await apprentice.process("Generuj skill login_to_app")
+# Generate skill
+await apprentice.process("Generate skill login_to_app")
 ```
 
 ### 4. Workflow Store (`venom_core/memory/workflow_store.py`)
 
-Magazyn przechowuje i zarządza workflow:
-- Zapisywanie/ładowanie workflow (JSON)
-- CRUD operacje na krokach
-- Eksport do Python
-- Wyszukiwanie workflow
+Storage manages workflows:
+- Save/load workflows (JSON)
+- CRUD operations on steps
+- Export to Python
+- Workflow search
 
 ```python
 from venom_core.memory.workflow_store import WorkflowStore
 
 store = WorkflowStore()
 
-# Lista workflow
+# List workflows
 workflows = store.list_workflows()
 
-# Załaduj workflow
+# Load workflow
 workflow = store.load_workflow("my_workflow")
 
-# Edytuj krok
+# Edit step
 store.update_step("my_workflow", step_id=1, updates={"enabled": False})
 
-# Eksportuj do Python
+# Export to Python
 python_file = store.export_to_python("my_workflow")
 ```
 
-## Workflow Użytkownika
+## User Workflow
 
-### Krok 1: Demonstracja
-
-```
-Użytkownik: "Venom, patrz jak wysyłam raport na Slacka"
-Venom: "🔴 Rozpoczęto nagrywanie demonstracji (sesja: send_report_slack)"
-
-[Użytkownik]:
-1. Otwiera Slack
-2. Klika kanał #general
-3. Klika ikonę spinacza (attach)
-4. Wybiera plik report.pdf
-5. Klika "Send"
-
-Użytkownik: "Zrobione"
-Venom: "⬛ Zakończono nagrywanie (5 akcji, 32 sekundy)"
-```
-
-### Krok 2: Analiza
+### Step 1: Demonstration
 
 ```
-Venom: "Analizuję demonstrację..."
-Venom: "Zrozumiałem workflow składający się z 5 kroków:
+User: "Venom, watch how I send a report to Slack"
+Venom: "🔴 Started recording demonstration (session: send_report_slack)"
+
+[User]:
+1. Opens Slack
+2. Clicks #general channel
+3. Clicks paperclip icon (attach)
+4. Selects file report.pdf
+5. Clicks "Send"
+
+User: "Done"
+Venom: "⬛ Recording completed (5 actions, 32 seconds)"
+```
+
+### Step 2: Analysis
+
+```
+Venom: "Analyzing demonstration..."
+Venom: "I understood workflow consisting of 5 steps:
   1. Click Slack icon on taskbar
   2. Click #general channel
   3. Click attachment button (paperclip icon)
@@ -136,54 +136,54 @@ Venom: "Zrozumiałem workflow składający się z 5 kroków:
 "
 ```
 
-### Krok 3: Parametryzacja
+### Step 3: Parameterization
 
 ```
-Venom: "Zauważyłem wartość 'report.pdf'. Czy to ma być parametr?"
-Użytkownik: "Tak, nazwij to 'filename'"
-Venom: "OK, utworzę parametr 'filename' z domyślną wartością 'report.pdf'"
+Venom: "I noticed value 'report.pdf'. Should this be a parameter?"
+User: "Yes, name it 'filename'"
+Venom: "OK, I'll create parameter 'filename' with default value 'report.pdf'"
 ```
 
-### Krok 4: Generowanie Skill
+### Step 4: Skill Generation
 
 ```
-Venom: "Generuję skill 'send_report_slack'..."
-Venom: "✅ Skill wygenerowany: workspace/custom_skills/send_report_slack.py"
+Venom: "Generating skill 'send_report_slack'..."
+Venom: "✅ Skill generated: workspace/custom_skills/send_report_slack.py"
 ```
 
-### Krok 5: Wykonanie
+### Step 5: Execution
 
 ```
-Użytkownik: "Venom, wyślij raport na Slacka"
-Venom: "Wykonuję workflow send_report_slack..."
-[GhostAgent wykonuje wygenerowany kod]
-Venom: "✅ Raport wysłany pomyślnie"
+User: "Venom, send report to Slack"
+Venom: "Executing workflow send_report_slack..."
+[GhostAgent executes generated code]
+Venom: "✅ Report sent successfully"
 ```
 
-## Przykłady Użycia
+## Usage Examples
 
-### Przykład 1: Login do Aplikacji
+### Example 1: Application Login
 
 ```python
-# 1. Nagraj demonstrację
-await apprentice.process("Rozpocznij nagrywanie nazwany bank_login")
+# 1. Record demonstration
+await apprentice.process("Start recording named bank_login")
 
-# Użytkownik:
-# - Otwiera przeglądarkę
-# - Wpisuje URL
-# - Klika pole username
-# - Wpisuje nazwę użytkownika
-# - Klika pole password
-# - Wpisuje hasło
-# - Klika przycisk Login
+# User:
+# - Opens browser
+# - Types URL
+# - Clicks username field
+# - Types username
+# - Clicks password field
+# - Types password
+# - Clicks Login button
 
-await apprentice.process("Zatrzymaj nagrywanie")
+await apprentice.process("Stop recording")
 
-# 2. Analizuj i generuj
-await apprentice.process("Analizuj sesję bank_login")
-await apprentice.process("Generuj skill bank_login_skill")
+# 2. Analyze and generate
+await apprentice.process("Analyze session bank_login")
+await apprentice.process("Generate skill bank_login_skill")
 
-# 3. Wygenerowany kod (workspace/custom_skills/bank_login_skill.py):
+# 3. Generated code (workspace/custom_skills/bank_login_skill.py):
 """
 async def bank_login_skill(ghost_agent: GhostAgent, **kwargs):
     username = kwargs.get("username", "user@example.com")
@@ -203,36 +203,36 @@ async def bank_login_skill(ghost_agent: GhostAgent, **kwargs):
 """
 ```
 
-### Przykład 2: Eksport Danych
+### Example 2: Data Export
 
 ```python
-# Demonstracja:
-# 1. Otwórz Excel
+# Demonstration:
+# 1. Open Excel
 # 2. File → Export → CSV
-# 3. Wybierz lokalizację
-# 4. Zapisz
+# 3. Choose location
+# 4. Save
 
-await apprentice.process("Rozpocznij nagrywanie nazwany excel_export")
-# [Demonstracja]
-await apprentice.process("Zatrzymaj nagrywanie")
-await apprentice.process("Generuj skill excel_to_csv")
+await apprentice.process("Start recording named excel_export")
+# [Demonstration]
+await apprentice.process("Stop recording")
+await apprentice.process("Generate skill excel_to_csv")
 
-# Użycie:
-await ghost.process("Wykonaj skill excel_to_csv")
+# Usage:
+await ghost.process("Execute skill excel_to_csv")
 ```
 
-## Zaawansowane Funkcje
+## Advanced Features
 
-### Edycja Workflow
+### Workflow Editing
 
-Po wygenerowaniu, workflow można edytować:
+After generation, workflows can be edited:
 
 ```python
 from venom_core.memory.workflow_store import WorkflowStore, WorkflowStep
 
 store = WorkflowStore()
 
-# Dodaj krok (wait)
+# Add step (wait)
 new_step = WorkflowStep(
     step_id=0,
     action_type="wait",
@@ -241,108 +241,108 @@ new_step = WorkflowStep(
 )
 store.add_step("my_workflow", new_step, position=3)
 
-# Wyłącz krok
+# Disable step
 store.update_step("my_workflow", step_id=5, updates={"enabled": False})
 
-# Zmień opis
+# Change description
 store.update_step("my_workflow", step_id=2, updates={
     "description": "Click UPDATED button"
 })
 ```
 
-### Wyszukiwanie Workflow
+### Workflow Search
 
 ```python
-# Wyszukaj po nazwie/opisie
+# Search by name/description
 results = store.search_workflows("login")
 
-# Wynik: lista workflow zawierających "login" w nazwie lub opisie
+# Result: list of workflows containing "login" in name or description
 ```
 
-### Parametryzacja
+### Parameterization
 
-System automatycznie wykrywa:
-- **Stałe wartości** (URL, ścieżki) → hardcoded
-- **Zmienne wartości** (dane użytkownika) → parametry z domyślnymi wartościami
-- **Wrażliwe dane** (hasła) → parametry wymagane (bez domyślnej wartości)
+The system automatically detects:
+- **Constant values** (URL, paths) → hardcoded
+- **Variable values** (user data) → parameters with default values
+- **Sensitive data** (passwords) → required parameters (no default value)
 
 ```python
-# Heurystyka wykrywania haseł:
-# - Brak spacji
-# - Zawiera cyfry
-# - Zawiera znaki specjalne
-# - Krótki tekst (< 20 znaków)
+# Password detection heuristic:
+# - No spaces
+# - Contains digits
+# - Contains special characters
+# - Short text (< 20 characters)
 ```
 
-## Bezpieczeństwo i Prywatność
+## Security and Privacy
 
-### Zamazywanie Haseł
+### Password Masking
 
-System automatycznie wykrywa prawdopodobne hasła:
+System automatically detects probable passwords:
 
 ```python
-# W demonstracji:
-# Użytkownik wpisuje: "MyP@ssw0rd!"
+# In demonstration:
+# User types: "MyP@ssw0rd!"
 
-# W analizie:
+# In analysis:
 action = ActionIntent(
     action_type="type",
-    description="Type text: ***",  # Zamazane
+    description="Type text: ***",  # Masked
     params={
         "text": "MyP@ssw0rd!",
-        "is_sensitive": True  # Oznaczony jako wrażliwy
+        "is_sensitive": True  # Marked as sensitive
     }
 )
 
-# W wygenerowanym kodzie:
-# password = kwargs.get("password", "")  # Brak domyślnej wartości
+# In generated code:
+# password = kwargs.get("password", "")  # No default value
 ```
 
-### Prywatność Zrzutów Ekranu
+### Screenshot Privacy
 
-Zrzuty ekranu przechowywane lokalnie w `workspace/demonstrations/`.
-Można je ręcznie usunąć po wygenerowaniu skill.
+Screenshots stored locally in `workspace/demonstrations/`.
+Can be manually deleted after skill generation.
 
-## Integracja z GhostAgent
+## GhostAgent Integration
 
-Wygenerowane skrypty używają API GhostAgent:
+Generated scripts use GhostAgent API:
 
-- `vision_click(description, fallback_coords)` - kliknięcie elementu
-- `input_skill.keyboard_type(text)` - wpisanie tekstu
-- `input_skill.keyboard_hotkey(keys)` - skrót klawiszowy
-- `_wait(duration)` - opóźnienie
+- `vision_click(description, fallback_coords)` - element click
+- `input_skill.keyboard_type(text)` - text input
+- `input_skill.keyboard_hotkey(keys)` - keyboard shortcut
+- `_wait(duration)` - delay
 
-### Odporność na Pozycję
+### Position Resilience
 
-Kod używa opisów elementów zamiast sztywnych współrzędnych:
+Code uses element descriptions instead of fixed coordinates:
 
 ```python
-# ❌ Nieodporne (sztywne współrzędne)
+# ❌ Not resilient (fixed coordinates)
 await ghost.input_skill.mouse_click(x=500, y=300)
 
-# ✅ Odporne (opis elementu + fallback)
+# ✅ Resilient (element description + fallback)
 await ghost.vision_click(
     description="blue Submit button",
-    fallback_coords=(500, 300)  # Fallback jeśli nie znaleziono
+    fallback_coords=(500, 300)  # Fallback if not found
 )
 ```
 
-## Ograniczenia i Roadmap
+## Limitations and Roadmap
 
-### Aktualne Ograniczenia
+### Current Limitations
 
-- Rozpoznawanie elementów UI wymaga dalszej integracji z Florence-2/LLaVA
-- Brak OCR dla automatycznego wykrywania tekstu na przyciskach
-- Brak automatycznej walidacji wygenerowanych workflow
+- UI element recognition requires further integration with Florence-2/LLaVA
+- No OCR for automatic button text detection
+- No automatic validation of generated workflows
 
-### Planowane Funkcje
+### Planned Features
 
-- **Dashboard UI**: Web interface z przyciskami REC/STOP, timeline, edytor
-- **Florence-2 Integration**: Lepsze rozpoznawanie elementów UI
-- **OCR**: Automatyczne wykrywanie tekstu na przyciskach
-- **Walidacja**: Automatyczne testy wygenerowanych workflow
-- **Multi-monitor Support**: Obsługa wielu monitorów
-- **Conditional Steps**: Kroki warunkowe (if/else)
+- **Dashboard UI**: Web interface with REC/STOP buttons, timeline, editor
+- **Florence-2 Integration**: Better UI element recognition
+- **OCR**: Automatic button text detection
+- **Validation**: Automatic testing of generated workflows
+- **Multi-monitor Support**: Multiple monitor support
+- **Conditional Steps**: Conditional steps (if/else)
 
 ## API Reference
 
@@ -351,19 +351,19 @@ await ghost.vision_click(
 ```python
 recorder = DemonstrationRecorder(workspace_root="./workspace")
 
-# Rozpocznij nagrywanie
+# Start recording
 session_id = recorder.start_recording(
     session_name="my_session",
     metadata={"description": "Login workflow"}
 )
 
-# Zatrzymaj nagrywanie
+# Stop recording
 session_path = recorder.stop_recording()
 
-# Załaduj sesję
+# Load session
 session = recorder.load_session(session_id)
 
-# Lista sesji
+# List sessions
 sessions = recorder.list_sessions()
 ```
 
@@ -372,10 +372,10 @@ sessions = recorder.list_sessions()
 ```python
 analyzer = DemonstrationAnalyzer()
 
-# Analizuj sesję
+# Analyze session
 actions = await analyzer.analyze_session(session)
 
-# Generuj opis
+# Generate description
 summary = analyzer.generate_workflow_summary(actions)
 ```
 
@@ -384,11 +384,11 @@ summary = analyzer.generate_workflow_summary(actions)
 ```python
 apprentice = ApprenticeAgent(kernel, workspace_root="./workspace")
 
-# Przetwarzaj komendy
-await apprentice.process("Rozpocznij nagrywanie")
-await apprentice.process("Zatrzymaj nagrywanie")
-await apprentice.process("Analizuj sesję <session_id>")
-await apprentice.process("Generuj skill <skill_name>")
+# Process commands
+await apprentice.process("Start recording")
+await apprentice.process("Stop recording")
+await apprentice.process("Analyze session <session_id>")
+await apprentice.process("Generate skill <skill_name>")
 ```
 
 ### WorkflowStore
@@ -401,47 +401,47 @@ workflow = store.load_workflow(workflow_id)
 store.save_workflow(workflow)
 store.delete_workflow(workflow_id)
 
-# Operacje na krokach
+# Step operations
 store.add_step(workflow_id, step, position=None)
 store.update_step(workflow_id, step_id, updates)
 store.remove_step(workflow_id, step_id)
 
-# Eksport
+# Export
 python_path = store.export_to_python(workflow_id)
 
-# Wyszukiwanie
+# Search
 results = store.search_workflows(query)
 ```
 
 ## Troubleshooting
 
-### Problem: Nagrywanie nie startuje
+### Problem: Recording doesn't start
 
-**Przyczyna**: Brak uprawnień do przechwytywania zdarzeń
-**Rozwiązanie**: Uruchom z uprawnieniami administratora (Windows) lub jako sudo (Linux)
+**Cause**: No permissions to capture events
+**Solution**: Run with administrator privileges (Windows) or as sudo (Linux)
 
-### Problem: Zrzuty ekranu są puste
+### Problem: Screenshots are empty
 
-**Przyczyna**: Problem z biblioteką mss w środowisku headless
-**Rozwiązanie**: Użyj środowiska z GUI lub zmień backend na PIL.ImageGrab
+**Cause**: mss library issue in headless environment
+**Solution**: Use GUI environment or change backend to PIL.ImageGrab
 
-### Problem: Wygenerowany kod nie działa
+### Problem: Generated code doesn't work
 
-**Przyczyna**: Nieodpowiednie opisy elementów
-**Rozwiązanie**:
-1. Sprawdź logi analizy
-2. Ręcznie edytuj workflow w WorkflowStore
-3. Dodaj bardziej szczegółowe opisy elementów
+**Cause**: Inappropriate element descriptions
+**Solution**:
+1. Check analysis logs
+2. Manually edit workflow in WorkflowStore
+3. Add more detailed element descriptions
 
-## Przykłady
+## Examples
 
-Zobacz pełne przykłady w:
-- `examples/apprentice_demo.py` - podstawowe demo
-- `examples/apprentice_integration_example.py` - integracja z GhostAgent
+See complete examples in:
+- `examples/apprentice_demo.py` - basic demo
+- `examples/apprentice_integration_example.py` - GhostAgent integration
 
-## Wsparcie
+## Support
 
-W razie problemów:
-1. Sprawdź logi: `data/logs/venom.log`
-2. Uruchom demo: `python examples/apprentice_demo.py`
-3. Zgłoś issue na GitHub
+In case of issues:
+1. Check logs: `data/logs/venom.log`
+2. Run demo: `python examples/apprentice_demo.py`
+3. Report issue on GitHub

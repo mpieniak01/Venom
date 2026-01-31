@@ -1,69 +1,69 @@
 # Contributing to Venom 🧬
 
-Dziękujemy, że chcesz pomóc w rozwoju projektu! Poniżej znajdziesz zasady, wskazówki i instrukcje, jak możesz się zaangażować.
+Thank you for wanting to help develop the project! Below you'll find guidelines, tips, and instructions on how you can get involved.
 
-## Spis treści
+## Table of Contents
 
-- [Jak zgłosić błąd / feature request](#how-to-report-bugs-or-request-features)
-- [Jak zaproponować zmianę / kod](#how-to-contribute-code)
-- [Standard commitów i formatowania](#code-style-and-commit-messages)
-- [Testy i CI](#tests-and-ci)
-- [Kod zachowania i etyka](#code-of-conduct)
-- [Kontakt / pytania](#contact)
+- [How to report bugs / feature requests](#how-to-report-bugs-or-request-features)
+- [How to propose changes / code](#how-to-contribute-code)
+- [Code style and commit messages](#code-style-and-commit-messages)
+- [Tests and CI](#tests-and-ci)
+- [Code of conduct and ethics](#code-of-conduct)
+- [Contact / questions](#contact)
 
 ---
 
 ## How to report bugs or request features
 
-- Sprawdź, czy podobny issue już istnieje.
-- Jeśli nie — otwórz nowy issue, podając:
-  - opis kroku do reprodukcji (jeśli to bug),
-  - wersję Pythona i system,
-  - opcjonalnie stack trace / logi,
-  - oczekiwany rezultat vs. aktualny.
+- Check if a similar issue already exists.
+- If not — open a new issue, providing:
+  - reproduction steps description (if it's a bug),
+  - Python version and system,
+  - optionally stack trace / logs,
+  - expected result vs. actual result.
 
 ---
 
 ## How to contribute code
 
-1. Sforkuj repo → utwórz branch `feat/`, `fix/` albo `chore/`.
-2. Zrób zmiany, uruchom `make lint && make test` (lub lokalnie `pre-commit run --all-files && pytest`).
-3. Dodaj tests / dokumentację, jeśli zmieniasz API / logikę.
-4. Użyj standardowych commit-message (zobacz niżej).
-5. Zrób PR — jeśli wszystko przejdzie, zmergujemy do `main`.
+1. Fork the repo → create a `feat/`, `fix/`, or `chore/` branch.
+2. Make changes, run `make lint && make test` (or locally `pre-commit run --all-files && pytest`).
+3. Add tests / documentation if you're changing API / logic.
+4. Use standard commit messages (see below).
+5. Create PR — if everything passes, we'll merge to `main`.
 
 ---
 
 ## Code style and commit messages
 
-- Kod w Pythonie: **PEP-8 / Black + Ruff + isort**.
-- Przed commitem uruchom `pre-commit install`.
+- Python code: **PEP-8 / Black + Ruff + isort**.
+- Before committing, run `pre-commit install`.
 - Commit message:
-  - format: `type(scope): krótki opis` (np. `feat(core): add orchestrator`)
-  - typy: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`.
-  - pierwszy wiersz ≤ 50 znaków, potem pusta linia, potem szczegóły.
+  - format: `type(scope): short description` (e.g., `feat(core): add orchestrator`)
+  - types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`.
+  - first line ≤ 50 characters, then blank line, then details.
 
 ---
 
 ## Tests and CI
 
-- Wszystkie nowo dodawane funkcjonalności muszą mieć testy (pytest).
-- Testy wrzucamy do katalogu `/tests`.
-- CI będzie sprawdzał: lint → testy → format → raport coverage.
+- All newly added functionality must have tests (pytest).
+- Tests go into the `/tests` directory.
+- CI will check: lint → tests → format → coverage report.
 
 ---
 
 ## Code of Conduct
 
-Wszyscy współpracownicy zobowiązują się do **szacunku, uprzejmości i konstruktywnej współpracy**.
-Nie tolerujemy: hejtu, obelg, nękania, spamowania.
-Jeśli coś Cię niepokoi — otwórz issue lub skontaktuj się bezpośrednio.
+All contributors commit to **respect, courtesy, and constructive collaboration**.
+We don't tolerate: hate, insults, harassment, spamming.
+If something concerns you — open an issue or contact directly.
 
 ---
 
 ## Contact
 
-Autor / Maintainer: **Mac_** (mpieniak01)
-Email / kontakt w GitHub – przez Issues / Discussions.
+Author / Maintainer: **Mac_** (mpieniak01)
+Email / contact on GitHub – through Issues / Discussions.
 
-Dzięki za wkład — każdy PR i pomysł pomaga rozwijać Venom!
+Thanks for contributing — every PR and idea helps develop Venom!

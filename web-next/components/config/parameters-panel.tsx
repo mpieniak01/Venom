@@ -98,7 +98,7 @@ export function ParametersPanel() {
         });
       }
     } catch (error) {
-      // TODO: Replace with proper error reporting service
+      // Log error locally
       console.error("Błąd pobierania konfiguracji:", error);
       setMessage({
         type: "error",
@@ -230,8 +230,8 @@ export function ParametersPanel() {
       {message && (
         <div
           className={`rounded-xl border p-4 ${message.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-300"
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            : "border-red-500/30 bg-red-500/10 text-red-300"
             }`}
         >
           {message.text}

@@ -36,6 +36,8 @@ import {
     useActiveHiddenPrompts,
 } from "@/hooks/use-api";
 
+import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
+
 import { useCockpitData } from "./use-cockpit-data";
 import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
 import { useCockpitLayout } from "./use-cockpit-layout";
@@ -256,19 +258,20 @@ export function useCockpitLogic(
                 });
             }
         });
-    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory]);
+    }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
 
     // Sync feedback from history to local state
     useEffect(() => {
-        const updates: Record<string, any> = {};
+        interface FeedbackValue { rating?: "up" | "down" | null; comment?: string }
+        const updates: Record<string, FeedbackValue> = {};
 
         // 1. From history list
         if (data.history) {
-            data.history.forEach((item: any) => {
+            data.history.forEach((item) => {
                 if (item.feedback && item.request_id) {
                     updates[item.request_id] = {
-                        rating: item.feedback.rating,
-                        comment: item.feedback.comment
+                        rating: item.feedback.rating as "up" | "down",
+                        comment: item.feedback.comment ?? undefined
                     };
                 }
             });
@@ -278,8 +281,8 @@ export function useCockpitLogic(
         const detail = interactive.state.historyDetail;
         if (detail && detail.feedback && detail.request_id) {
             updates[detail.request_id] = {
-                rating: detail.feedback.rating,
-                comment: detail.feedback.comment
+                rating: detail.feedback.rating as "up" | "down",
+                comment: detail.feedback.comment ?? undefined
             };
         }
 
@@ -322,7 +325,7 @@ export function useCockpitLogic(
     const historyMessages = useMemo(() => {
         const resolvedHistory =
             localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
-        let deduped: any[] = [];
+        let deduped: SessionHistoryEntry[] = [];
 
         if (resolvedHistory.length > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -406,7 +409,7 @@ export function useCockpitLogic(
             };
         });
 
-    }, [localSessionHistory, sessionHistory, sessionEntryKey, taskStreams]);
+    }, [localSessionHistory, sessionHistory, taskStreams]);
 
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed
@@ -517,7 +520,13 @@ export function useCockpitLogic(
                 (s.details && (s.details.includes("hidden_prompts") || s.details.includes("hiddenPrompts")))
             );
 
-            let meta: any = null;
+            interface ContextPreviewMeta {
+                preview: string | null;
+                truncated: boolean;
+                hiddenPrompts: number | null;
+                mode: string | null;
+            }
+            let meta: ContextPreviewMeta | null = null;
 
             if (contextStep?.details) {
                 const details = contextStep.details.trim();
@@ -591,7 +600,7 @@ export function useCockpitLogic(
                 const hiddenMatch = hiddenStep.details.match(/hidden_prompts:?\s*(\d+)/i) ||
                     hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
                 if (hiddenMatch) {
-                    if (!meta) meta = { preview: null, truncated: false, mode: null };
+                    if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
                     meta.hiddenPrompts = parseInt(hiddenMatch[1], 10);
                 }
             }

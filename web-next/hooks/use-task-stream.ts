@@ -20,10 +20,7 @@ export type TaskStreamEvent = {
   llmStatus?: string | null;
   llmRuntimeError?: string | null;
   context?: Record<string, unknown> | null;
-  contextUsed?: {
-    lessons?: string[];
-    memory_entries?: string[];
-  } | null;
+  contextUsed?: Record<string, unknown> | null;
 };
 
 export type TaskStreamState = {
@@ -76,19 +73,19 @@ const defaultState: TaskStreamState = {
 
 const TERMINAL_STATUSES: TaskStatus[] = ["COMPLETED", "FAILED", "LOST"];
 
-function extractRuntime(payload: Record<string, any>) {
-  const runtime = (payload.active_runtime || payload.runtime || {}) as Record<string, any>;
+function extractRuntime(payload: Record<string, unknown>) {
+  const runtime = (payload.active_runtime || payload.runtime || {}) as Record<string, unknown>;
   return {
     provider: (payload.llm_provider || runtime.provider || null) as string | null,
     model: (payload.llm_model || runtime.model || null) as string | null,
     endpoint: (payload.llm_endpoint || runtime.endpoint || null) as string | null,
     status: (payload.llm_status || runtime.status || null) as string | null,
     error: (payload.llm_error || runtime.error || null) as string | null,
-    context: (payload.context || runtime.context || null) as Record<string, any> | null,
+    context: (payload.context || runtime.context || null) as Record<string, unknown> | null,
   };
 }
 
-function normalizeStatus(status: any): TaskStatus | null {
+function normalizeStatus(status: unknown): TaskStatus | null {
   if (!status) return null;
   const s = String(status).toUpperCase();
   if (TERMINAL_STATUSES.includes(s as TaskStatus)) return s as TaskStatus;
@@ -108,7 +105,7 @@ function mergeLogs(existing: string[], incoming: string[]): string[] {
   return result;
 }
 
-function safeParse(data: string): Record<string, any> {
+function safeParse(data: string): Record<string, unknown> {
   try {
     return JSON.parse(data);
   } catch {
@@ -184,6 +181,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       setLastEvent(event);
       onEventRef.current?.(event);
       if (typeof window !== "undefined") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const win = window as any;
         win.__lastTaskStreamEvent = event;
         win.__taskStreamEvents = [...(win.__taskStreamEvents ?? []), event].slice(-25);
@@ -214,7 +212,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
           error: "SSE connection lost, using polling.",
         });
 
-        const runtime = extractRuntime(task as any);
+        const runtime = extractRuntime(task as unknown as Record<string, unknown>);
         emitEvent({
           taskId,
           event: status === "COMPLETED" ? "task_finished" : "task_update",
@@ -273,14 +271,14 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
       if (queued) updateStateById(taskId, queued);
     };
 
-    const handlePayload = (taskId: string, eventName: TaskStreamEventName, payload: Record<string, any>) => {
+    const handlePayload = (taskId: string, eventName: TaskStreamEventName, payload: Record<string, unknown>) => {
       const status = normalizeStatus(payload.status);
       const logs = Array.isArray(payload.logs) ? payload.logs.map(String) : undefined;
       const result = typeof payload.result === "string" || payload.result === null ? payload.result : undefined;
       const timestamp = typeof payload.timestamp === "string" ? payload.timestamp : null;
-      const derivedTaskId = payload.task_id || taskId;
+      const derivedTaskId = (payload.task_id as string) || taskId;
       const runtime = extractRuntime(payload);
-      const contextUsed = payload.context_used || null;
+      const contextUsed = (payload.context_used as Record<string, unknown>) || null;
 
       const entry: TaskStreamEvent = {
         taskId: derivedTaskId,
@@ -288,7 +286,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         status,
         logs,
         result,
-        timestamp,
+        timestamp: timestamp as string | null,
         llmProvider: runtime.provider,
         llmModel: runtime.model,
         llmEndpoint: runtime.endpoint,
@@ -300,7 +298,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
 
       if (eventName === "heartbeat") {
         scheduleUpdate(taskId, {
-          heartbeatAt: timestamp ?? new Date().toISOString(),
+          heartbeatAt: (timestamp as string | null) ?? new Date().toISOString(),
           connected: true,
           error: null,
           llmProvider: runtime.provider,
@@ -317,7 +315,7 @@ export function useTaskStream(taskIds: string[], options?: UseTaskStreamOptions)
         status: status ?? null,
         logs,
         result: result ?? null,
-        lastEventAt: timestamp ?? new Date().toISOString(),
+        lastEventAt: (timestamp as string | null) ?? new Date().toISOString(),
         connected: true,
         error: null,
         llmProvider: runtime.provider,

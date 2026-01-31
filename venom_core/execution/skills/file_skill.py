@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Annotated, Optional
 
-import aiofiles
+import aiofiles  # type: ignore[import-untyped]
 from semantic_kernel.functions import kernel_function
 
 from venom_core.execution.skills.base_skill import BaseSkill, async_safe_action

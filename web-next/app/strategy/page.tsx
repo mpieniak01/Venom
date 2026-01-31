@@ -596,7 +596,7 @@ export default function StrategyPage() {
                         >
                           <p className="font-semibold text-white">{task.title}</p>
                           <p className="text-hint">
-                            {task.description || "Brak opisu."} • {task.status || "TODO"}
+                            {task.description || "Brak opisu."} • {task.status || "UNKNOWN"}
                           </p>
                         </div>
                       ))}

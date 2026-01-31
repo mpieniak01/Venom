@@ -203,7 +203,7 @@ class McpManagerSkill(BaseSkill):
                         tools_list.append(
                             McpToolMetadata(
                                 name=tool.name,
-                                description=tool.description,
+                                description=tool.description or "",
                                 input_schema=tool.inputSchema,
                             )
                         )

@@ -30,9 +30,7 @@ logger = get_logger(__name__)
 
 # Staramy się opcjonalnie załadować TavilyClient aby testy mogły go mockować
 try:  # pragma: no cover - zależne od środowiska
-    from tavily import (
-        TavilyClient as _ImportedTavilyClient,  # type: ignore[import-untyped]
-    )
+    from tavily import TavilyClient as _ImportedTavilyClient  # type: ignore
 except Exception:  # pragma: no cover
     _ImportedTavilyClient = None
 

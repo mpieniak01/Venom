@@ -5,7 +5,12 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from venom_core.api.dependencies import get_lessons_store
+from venom_core.api.dependencies import (
+    get_lessons_store,
+    get_session_store,
+    get_state_manager,
+    get_vector_store,
+)
 from venom_core.config import SETTINGS
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager
@@ -49,53 +54,14 @@ class MemorySearchRequest(BaseModel):
     collection: str = "default"
 
 
-# Dependency - będzie ustawione w main.py
-_vector_store = None
-_state_manager = None
-_lessons_store = None
-_embedding_service = None
-_session_store = None
-
-
-def set_dependencies(
-    vector_store, state_manager=None, lessons_store=None, session_store=None
-):
-    """Ustaw zależności dla routera."""
-    global _vector_store
-    global _state_manager
-    global _lessons_store
-    global _embedding_service
-    global _session_store
-    _vector_store = vector_store
-    _state_manager = state_manager
-    _lessons_store = lessons_store
-    _session_store = session_store
-    try:
-        _embedding_service = vector_store.embedding_service
-    except Exception:
-        _embedding_service = None
-
-
-def _ensure_vector_store():
-    global _vector_store
-    if _vector_store is not None:
-        return _vector_store
-    try:
-        from venom_core.memory.vector_store import VectorStore
-
-        _vector_store = VectorStore()
-        logger.info("VectorStore zainicjalizowany leniwie w API")
-    except Exception as e:
-        logger.warning(f"Nie udało się zainicjalizować VectorStore: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="VectorStore nie jest dostępny. Upewnij się, że dependencies są zainstalowane.",
-        ) from e
-    return _vector_store
+# Modele i Stałe
+DEFAULT_USER_ID = "user_default"
 
 
 @router.post("/ingest", response_model=MemoryIngestResponse, status_code=201)
-async def ingest_to_memory(request: MemoryIngestRequest):
+async def ingest_to_memory(
+    request: MemoryIngestRequest, vector_store=Depends(get_vector_store)
+):
     """
     Zapisuje tekst do pamięci wektorowej.
 
@@ -111,8 +77,6 @@ async def ingest_to_memory(request: MemoryIngestRequest):
     try:
         if not request.text or not request.text.strip():
             raise HTTPException(status_code=400, detail="Tekst nie może być pusty")
-
-        vector_store = _ensure_vector_store()
 
         # Zapisz do pamięci
         metadata: dict[str, object] = {"category": request.category}
@@ -157,7 +121,9 @@ async def ingest_to_memory(request: MemoryIngestRequest):
 
 
 @router.post("/search")
-async def search_memory(request: MemorySearchRequest):
+async def search_memory(
+    request: MemorySearchRequest, vector_store=Depends(get_vector_store)
+):
     """
     Wyszukuje informacje w pamięci wektorowej.
 
@@ -176,8 +142,6 @@ async def search_memory(request: MemorySearchRequest):
                 status_code=400,
                 detail="Zapytanie nie może być puste (pusty prompt niedozwolony)",
             )
-
-        vector_store = _ensure_vector_store()
 
         results = vector_store.search(
             query=request.query,
@@ -206,14 +170,18 @@ async def search_memory(request: MemorySearchRequest):
 
 
 @router.delete("/session/{session_id}")
-async def clear_session_memory(session_id: str):
+async def clear_session_memory(
+    session_id: str,
+    vector_store=Depends(get_vector_store),
+    state_manager=Depends(get_state_manager),
+    session_store=Depends(get_session_store),
+):
     """
     Czyści pamięć sesyjną: wektory z tagiem session_id oraz historię/streszczenia w StateManager.
     """
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id jest wymagane")
 
-    vector_store = _ensure_vector_store()
     deleted_vectors = 0
     try:
         deleted_vectors = vector_store.delete_by_metadata({"session_id": session_id})
@@ -222,10 +190,10 @@ async def clear_session_memory(session_id: str):
         logger.warning(f"Nie udało się usunąć wpisów sesyjnych z pamięci: {e}")
 
     cleared_tasks = 0
-    if _state_manager:
-        cleared_tasks = _state_manager.clear_session_context(session_id)
-    if _session_store:
-        _session_store.clear_session(session_id)
+    if state_manager:
+        cleared_tasks = state_manager.clear_session_context(session_id)
+    if session_store:
+        session_store.clear_session(session_id)
 
     return {
         "status": "success",
@@ -237,15 +205,15 @@ async def clear_session_memory(session_id: str):
 
 
 @router.get("/session/{session_id}")
-async def get_session_memory(session_id: str):
+async def get_session_memory(session_id: str, session_store=Depends(get_session_store)):
     """Zwraca historię i streszczenie sesji z SessionStore."""
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id jest wymagane")
-    if not _session_store:
+    if not session_store:
         raise HTTPException(status_code=503, detail="SessionStore nie jest dostępny")
 
-    history = _session_store.get_history(session_id)
-    summary = _session_store.get_summary(session_id)
+    history = session_store.get_history(session_id)
+    summary = session_store.get_summary(session_id)
     return {
         "status": "success",
         "session_id": session_id,
@@ -256,11 +224,10 @@ async def get_session_memory(session_id: str):
 
 
 @router.delete("/global")
-async def clear_global_memory():
+async def clear_global_memory(vector_store=Depends(get_vector_store)):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
-    vector_store = _ensure_vector_store()
     try:
         deleted = vector_store.delete_by_metadata({"user_id": DEFAULT_USER_ID})
         # Jeśli nie znaleziono nic do usunięcia (np. stare wpisy bez metadanych user_id),
@@ -293,12 +260,16 @@ async def memory_graph(
     mode: str = Query(
         "default", description="Tryb grafu: default lub flow (sekwencja)"
     ),
+    vector_store=Depends(get_vector_store),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
     """
     try:
-        vector_store = _ensure_vector_store()
+        _ = vector_store  # Ensure it is used
+    except Exception:
+        pass
     except HTTPException as exc:  # pragma: no cover
         logger.warning(f"Memory graph unavailable: {exc.detail}")
         return {
@@ -395,9 +366,9 @@ async def memory_graph(
 
     lesson_nodes = []
     lesson_edges = []
-    if include_lessons and _lessons_store:
+    if include_lessons and lessons_store:
         try:
-            for lesson_id, lesson in (_lessons_store.lessons or {}).items():
+            for lesson_id, lesson in (lessons_store.lessons or {}).items():
                 label = getattr(lesson, "title", None) or lesson_id
                 lesson_nodes.append(
                     {
@@ -470,12 +441,13 @@ async def memory_graph(
 
 @router.post("/entry/{entry_id}/pin")
 async def pin_memory_entry(
-    entry_id: str, pinned: bool = Query(True, description="Czy oznaczyć pinned")
+    entry_id: str,
+    pinned: bool = Query(True, description="Czy oznaczyć pinned"),
+    vector_store=Depends(get_vector_store),
 ):
     """
     Ustawia flagę pinned dla wpisu pamięci (w oparciu o LanceDB).
     """
-    vector_store = _ensure_vector_store()
     try:
         ok = vector_store.update_metadata(entry_id, {"pinned": bool(pinned)})
         if not ok:
@@ -491,11 +463,10 @@ async def pin_memory_entry(
 
 
 @router.delete("/entry/{entry_id}")
-async def delete_memory_entry(entry_id: str):
+async def delete_memory_entry(entry_id: str, vector_store=Depends(get_vector_store)):
     """
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
     """
-    vector_store = _ensure_vector_store()
     try:
         deleted = vector_store.delete_entry(entry_id)
         if deleted == 0:
@@ -619,8 +590,6 @@ async def flush_semantic_cache():
             SEMANTIC_CACHE_COLLECTION_NAME,
         )
 
-        _ensure_vector_store()
-
         # Używamy wipe_collection na konkretnej kolekcji
         # Metoda wipe_collection w VectorStore domyślnie czyści self.collection_name,
         # więc musimy upewnić się, że działamy na odpowiedniej.
@@ -628,7 +597,6 @@ async def flush_semantic_cache():
         # Bezpieczniej będzie użyć delete_by_metadata(filter={}) na tej kolekcji lub delete_collection.
         # Sprawdźmy implementation VectorStore.wipe_collection...
         # Wg routes/memory.py: vector_store.wipe_collection()
-
         # Ale semantic cache to INNA kolekcja niż 'default'.
         # VectorStore inicjalizuje się z default collection.
         # Żeby wyczyścić semantic cache, musimy tymczasowo zmienić kolekcję lub użyć dedykowanej metody.
@@ -636,10 +604,8 @@ async def flush_semantic_cache():
         # Zobaczmy czy w memory.py jest coś co zmienia kolekcję.
         # Nie widać.
         # Zróbmy to bezpiecznie: delete_by_metadata({}) na kolekcji cache.
-
         # UWAGA: VectorStore API może nie wspierać collection_name w delete_by_metadata.
         # W takim razie zainicjalizujmy VectorStore explicite dla tej kolekcji.
-
         from venom_core.memory.vector_store import VectorStore
 
         cache_store = VectorStore(collection_name=SEMANTIC_CACHE_COLLECTION_NAME)

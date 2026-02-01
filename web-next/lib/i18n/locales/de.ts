@@ -373,6 +373,39 @@ export const de = {
       complexLabel: "Complex (Planung)",
     },
     newChat: "Neuer Chat",
+    header: {
+      eyebrow: "Befehlskonsole",
+      title: "Cockpit AI",
+      description: "Operativer Chat mit Orchestrator und Laufzeitprotokollen.",
+    },
+    fullscreen: {
+      off: "Vollbild deaktivieren",
+      on: "Vollbild aktivieren",
+    },
+    status: {
+      prod: "Prod",
+      lab: "Lab Modus",
+    },
+    responseLabel: "Antwort {{text}}",
+    suggestions: {
+      eyebrow: "Schnelle Prompt-Vorschläge",
+      hint: "Klicken zum Ausfüllen des Chats",
+    },
+    feedback: {
+      refining: "Verfeinerungsrunde gestartet: {{taskId}}",
+      refiningPending: "Feedback gespeichert, Verfeinerungsrunde startet in Kürze.",
+      success: "Feedback gespeichert. Vielen Dank!",
+      error: "Feedback konnte nicht gespeichert werden.",
+      noLlm: "Kein aktives Modell für das Feintuning.",
+      tuningSaved: "Generierungsparameter gespeichert.",
+      tuningError: "Parameter konnten nicht gespeichert werden.",
+      schemaError: "Modellkonfiguration konnte nicht geladen werden:",
+    },
+    response: {
+      avg: "Durchschnitt der letzten {{count}} Antworten: {{avg}}s",
+      noData: "Keine historischen Daten",
+      notAvailable: "k/A",
+    },
   },
   brain: {
     title: "Wissensgraph",

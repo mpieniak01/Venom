@@ -10,12 +10,16 @@ from venom_core.api.dependencies import (
     get_vector_store,
 )
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.config_manager import config_manager as _config_manager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 DEFAULT_USER_ID = "user_default"
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
+
+# Back-compat for tests that patch memory_routes.config_manager
+config_manager = _config_manager
 
 # Globalne referencje dla testów
 _vector_store = None

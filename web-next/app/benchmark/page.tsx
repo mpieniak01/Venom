@@ -9,8 +9,10 @@ import { BenchmarkResults } from "@/components/benchmark/benchmark-results";
 import { useModels } from "@/hooks/use-api";
 import { useBenchmark } from "@/hooks/use-benchmark";
 import type { BenchmarkConfig } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
 
 export default function BenchmarkPage() {
+  const t = useTranslation();
   const { data: modelsData, loading: modelsLoading } = useModels(15000);
 
   // Use the custom hook for real API interaction
@@ -39,24 +41,24 @@ export default function BenchmarkPage() {
       <SectionHeading
         as="h1"
         size="lg"
-        eyebrow="Benchmark Control"
-        title="Panel Benchmarkingu"
-        description="Testuj wydajność modeli i porównaj ich parametry (czas odpowiedzi, tokens/sec, użycie VRAM)"
+        eyebrow={t("benchmark.page.eyebrow")}
+        title={t("benchmark.page.title")}
+        description={t("benchmark.page.description")}
         rightSlot={<Gauge className="page-heading-icon" />}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Konfigurator */}
         <Panel
-          eyebrow="Krok 1"
-          title="Konfiguracja testu"
-          description="Wybierz runtime, modele i liczbę pytań"
+          eyebrow={t("benchmark.steps.config.eyebrow")}
+          title={t("benchmark.steps.config.title")}
+          description={t("benchmark.steps.config.description")}
         >
           {modelsLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
               <span className="ml-3 text-sm text-zinc-400">
-                Ładowanie modeli...
+                {t("benchmark.loading")}
               </span>
             </div>
           ) : (
@@ -70,9 +72,9 @@ export default function BenchmarkPage() {
 
         {/* Console / Logi */}
         <Panel
-          eyebrow="Krok 2"
-          title="Postęp wykonania"
-          description="Podgląd na żywo logów z testów"
+          eyebrow={t("benchmark.steps.console.eyebrow")}
+          title={t("benchmark.steps.console.title")}
+          description={t("benchmark.steps.console.description")}
         >
           <BenchmarkConsole logs={logs} isRunning={status === "running"} />
         </Panel>
@@ -80,9 +82,9 @@ export default function BenchmarkPage() {
 
       {/* Wyniki */}
       <Panel
-        eyebrow="Krok 3"
-        title="Wyniki porównawcze"
-        description="Tabela z metrykami wydajności dla testowanych modeli"
+        eyebrow={t("benchmark.steps.results.eyebrow")}
+        title={t("benchmark.steps.results.title")}
+        description={t("benchmark.steps.results.description")}
       >
         <BenchmarkResults currentResults={results} />
       </Panel>

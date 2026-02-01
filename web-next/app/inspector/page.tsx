@@ -31,6 +31,8 @@ import { HistoryList } from "@/components/history/history-list";
 import { formatRelativeTime } from "@/lib/date";
 import { statusTone } from "@/lib/status";
 import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
+import { useTranslation } from "@/lib/i18n";
+import { getTranslatedStatus } from "@/lib/status-helper";
 
 function sanitizeMermaidDiagram(value: string) {
   const cleaned = value.replace(/\r?\n/g, "\n");
@@ -69,6 +71,7 @@ function decorateExecutionFailed(container: HTMLDivElement) {
 }
 
 export default function InspectorPage() {
+  const t = useTranslation();
   const {
     data: history,
     refresh: refreshHistory,
@@ -78,7 +81,13 @@ export default function InspectorPage() {
   const DEFAULT_DIAGRAM = [
     "sequenceDiagram",
     "    autonumber",
-    "    Note over User: Wybierz request z listy",
+    "    Note over User: " + t("inspector.panels.diagram.defaultNote").replace("Note over User: ", ""), // Strip prefix if key includes it, or just use key content if key is only message.
+    // Wait, key is "Note over User: Wybierz request z listy" which includes mermaid syntax?
+    // Let's check pl.ts. "defaultNote": "Note over User: Wybierz request z listy".
+    // So distinct localized string is simpler.
+    // Actually, pl.ts says: defaultNote: "Note over User: Wybierz request z listy"
+    // So I can just use t("inspector.panels.diagram.defaultNote")
+    t("inspector.panels.diagram.defaultNote"),
   ].join("\n");
   const [diagram, setDiagram] = useState<string>(DEFAULT_DIAGRAM);
   const [diagramLoading, setDiagramLoading] = useState(false);
@@ -144,22 +153,22 @@ export default function InspectorPage() {
   const latencyCards = useMemo(
     () => [
       {
-        label: "Średni SLA",
+        label: t("inspector.latency.avgSla"),
         value: formatDuration(inspectorStats.avgDuration),
-        hint: "czas wykonania requestu",
+        hint: t("inspector.latency.reqDuration"),
       },
       {
-        label: "Aktywne śledzenia",
+        label: t("inspector.latency.activeTracing"),
         value: inspectorStats.processing.toString(),
-        hint: `z ${inspectorStats.total} logów`,
+        hint: t("inspector.latency.logsCount", { total: inspectorStats.total }),
       },
       {
-        label: "Kroki (filtr)",
+        label: t("inspector.latency.stepsFilter"),
         value: filteredSteps.length.toString(),
-        hint: `${stepsCount} w bieżącym flow`,
+        hint: t("inspector.latency.stepsInFlow", { count: stepsCount }),
       },
     ],
-    [filteredSteps.length, inspectorStats.avgDuration, inspectorStats.processing, inspectorStats.total, stepsCount],
+    [filteredSteps.length, inspectorStats.avgDuration, inspectorStats.processing, inspectorStats.total, stepsCount, t],
   );
   useEffect(() => {
     refreshHistory();
@@ -191,13 +200,13 @@ export default function InspectorPage() {
       .catch((err) => {
         console.error("Mermaid import failed:", err);
         if (!cancelled) {
-          setMermaidError("Nie udało się załadować biblioteki Mermaid.");
+          setMermaidError(t("inspector.panels.diagram.errorLibrary"));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!mermaidApi || mermaidInitializedRef.current) {
@@ -278,7 +287,7 @@ export default function InspectorPage() {
           });
           if (!cancelled) {
             setMermaidError(
-              "Diagram uproszczony – oryginał zawierał niedozwolone znaki.",
+              t("inspector.panels.diagram.simplified"),
             );
           }
           return;
@@ -293,7 +302,7 @@ export default function InspectorPage() {
         console.error("Mermaid render error:", err);
         if (!cancelled) {
           setMermaidError(
-            "Nie udało się wyrenderować diagramu – spróbuj ponownie lub sprawdź, czy RequestTracer działa.",
+            t("inspector.panels.diagram.errorRender"),
           );
         }
       }
@@ -308,7 +317,7 @@ export default function InspectorPage() {
     return () => {
       cancelled = true;
     };
-  }, [diagram, mermaidReloadKey, mermaidApi]);
+  }, [diagram, mermaidReloadKey, mermaidApi, t]);
 
   useEffect(() => {
     if (!filteredSteps.length) {
@@ -361,7 +370,7 @@ export default function InspectorPage() {
     } catch (flowError) {
       console.error("Flow trace error:", flowError);
       setDetailError(
-        flowError instanceof Error ? flowError.message : "Nie udało się pobrać przepływu.",
+        flowError instanceof Error ? flowError.message : t("inspector.panels.diagram.errorRender"), // Using similar error message or generic one
       );
       try {
         const detail = await fetchHistoryDetail(requestId);
@@ -371,12 +380,12 @@ export default function InspectorPage() {
       } catch (historyError) {
         console.error("Fallback detail error:", historyError);
         setSteps([]);
-        setDiagram("graph TD\nE[Błąd ładowania]");
+        setDiagram(t("inspector.panels.diagram.fallback"));
       }
     } finally {
       setDiagramLoading(false);
     }
-  }, [DEFAULT_DIAGRAM]);
+  }, [DEFAULT_DIAGRAM, t]);
 
   useEffect(() => {
     if (historyLoading) return;
@@ -404,9 +413,9 @@ export default function InspectorPage() {
   return (
     <div className="space-y-6 pb-10">
       <SectionHeading
-        eyebrow="Inspector / Diagnostyka"
-        title="Analiza śladów"
-        description="RequestTracer + Mermaid: natychmiastowy podgląd przepływu, kroków i kondycji kolejki."
+        eyebrow={t("inspector.page.eyebrow")}
+        title={t("inspector.page.title")}
+        description={t("inspector.page.description")}
         as="h1"
         size="lg"
         rightSlot={
@@ -423,27 +432,27 @@ export default function InspectorPage() {
       <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <HeroStat
           icon={<Activity className="h-4 w-4 text-emerald-300" />}
-          label="Skuteczność"
+          label={t("inspector.stats.successRate")}
           primary={`${inspectorStats.successRate}%`}
-          hint={`${inspectorStats.completed} zakończonych`}
+          hint={t("inspector.stats.completed", { count: inspectorStats.completed })}
         />
         <HeroStat
           icon={<Layers className="h-4 w-4 text-violet-300" />}
-          label="Historia requestów"
+          label={t("inspector.stats.history")}
           primary={inspectorStats.total.toString()}
-          hint={`${inspectorStats.processing} aktywnych śledzeń`}
+          hint={t("inspector.stats.activeTracing", { count: inspectorStats.processing })}
         />
         <HeroStat
           icon={<TimerReset className="h-4 w-4 text-sky-300" />}
-          label="Śr. czas realizacji"
+          label={t("inspector.stats.avgDuration")}
           primary={formatDuration(inspectorStats.avgDuration)}
-          hint="ostatnie 50"
+          hint={t("inspector.stats.last50")}
         />
         <HeroStat
           icon={<Radar className="h-4 w-4 text-indigo-300" />}
-          label="Aktywne zadania"
+          label={t("inspector.stats.activeTasks")}
           primary={inspectorStats.activeTasks.toString()}
-          hint={`${taskBreakdown.find((b) => b.status === "PROCESSING")?.count ?? 0} procesowanych`}
+          hint={t("inspector.stats.processing", { count: taskBreakdown.find((b) => b.status === "PROCESSING")?.count ?? 0 })}
         />
       </div>
 
@@ -454,15 +463,14 @@ export default function InspectorPage() {
       </div>
 
       <div
-        className={`grid gap-6 ${
-          flowFullscreen ? "grid-cols-1" : "xl:grid-cols-[360px_minmax(0,1fr)]"
-        }`}
+        className={`grid gap-6 ${flowFullscreen ? "grid-cols-1" : "xl:grid-cols-[360px_minmax(0,1fr)]"
+          }`}
       >
         {!flowFullscreen && (
           <aside className="space-y-4">
             <Panel
-              title="Kolejka requestów"
-              description="Ostatnie 50 historii RequestTracer."
+              title={t("inspector.panels.queue.title")}
+              description={t("inspector.panels.queue.description")}
               action={
                 <Button
                   variant="outline"
@@ -471,7 +479,7 @@ export default function InspectorPage() {
                   disabled={historyRefreshPending}
                 >
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  {historyRefreshPending ? "Odświeżam…" : "Odśwież"}
+                  {historyRefreshPending ? t("inspector.actions.refreshing") : t("inspector.actions.refresh")}
                 </Button>
               }
             >
@@ -480,26 +488,26 @@ export default function InspectorPage() {
                   entries={history}
                   selectedId={selectedId}
                   onSelect={(entry) => handleHistorySelect(entry.request_id)}
-                  emptyTitle="Brak historii do wyświetlenia"
-                  emptyDescription="Wyślij zadanie, aby zobaczyć przepływ w historii."
+                  emptyTitle={t("inspector.panels.queue.emptyTitle")}
+                  emptyDescription={t("inspector.panels.queue.emptyDesc")}
                 />
               </div>
             </Panel>
 
             <Panel
-              title="Task telemetry"
-              description="Status agentów oczekujących na wykonanie."
+              title={t("inspector.panels.telemetry.title")}
+              description={t("inspector.panels.telemetry.description")}
             >
               <TaskStatusBreakdown
-                title="Task telemetry"
-                datasetLabel="Zadania w obserwacji"
-                totalLabel="Aktywne"
+                title={t("inspector.panels.telemetry.title")}
+                datasetLabel={t("inspector.panels.telemetry.dataset")}
+                totalLabel={t("inspector.panels.telemetry.active")}
                 totalValue={inspectorStats.activeTasks}
                 entries={taskBreakdown.map((entry) => ({
                   label: entry.status,
                   value: entry.count,
                 }))}
-                emptyMessage="Taski pojawią się, gdy kolejka uruchomi nowe zadania."
+                emptyMessage={t("inspector.panels.telemetry.empty")}
               />
             </Panel>
           </aside>
@@ -507,18 +515,18 @@ export default function InspectorPage() {
 
         <section className="space-y-6">
           <Panel
-            title="Diagnoza przepływu"
+            title={t("inspector.panels.diagram.title")}
             action={
               <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-400">
                 <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
                   <span>
-                    Wybrany request:{" "}
+                    {t("inspector.panels.diagram.selected")}{" "}
                     <span className="font-semibold text-white">{selectedId ?? "—"}</span>
                   </span>
                   {detailError && <span className="text-rose-300">{detailError}</span>}
                 </div>
                 <IconButton
-                  label={flowFullscreen ? "Wyłącz pełny ekran" : "Pełny ekran"}
+                  label={flowFullscreen ? t("inspector.actions.exitFullscreen") : t("inspector.actions.fullscreen")}
                   size="xs"
                   variant="outline"
                   className="border-white/10 text-white"
@@ -537,22 +545,22 @@ export default function InspectorPage() {
                 return (
                   <>
                     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                      <IconButton label="Przybliż" icon={<ZoomIn className="h-4 w-4" />} onClick={() => zoomIn()} />
-                    <IconButton label="Oddal" icon={<ZoomOut className="h-4 w-4" />} onClick={() => zoomOut()} />
-                    <IconButton label="Resetuj" icon={<RotateCcw className="h-4 w-4" />} onClick={() => resetTransform()} />
-                  </div>
+                      <IconButton label={t("inspector.actions.zoomIn")} icon={<ZoomIn className="h-4 w-4" />} onClick={() => zoomIn()} />
+                      <IconButton label={t("inspector.actions.zoomOut")} icon={<ZoomOut className="h-4 w-4" />} onClick={() => zoomOut()} />
+                      <IconButton label={t("inspector.actions.reset")} icon={<RotateCcw className="h-4 w-4" />} onClick={() => resetTransform()} />
+                    </div>
                     <div className="relative rounded-[28px] box-muted p-4">
                       {diagramLoading && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[28px] bg-black/70 text-sm text-white">
                           <Loader2 className="h-5 w-5 animate-spin text-emerald-300" />
-                          Ładuję kroki…
+                          {t("inspector.panels.diagram.loading")}
                         </div>
                       )}
                       {mermaidError && (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-[28px] bg-black/80 px-6 text-center text-sm text-rose-200">
                           <p>{mermaidError}</p>
                           <Button variant="outline" size="sm" onClick={() => setMermaidReloadKey((key) => key + 1)}>
-                            Spróbuj ponownie
+                            {t("inspector.actions.tryAgain")}
                           </Button>
                         </div>
                       )}
@@ -567,7 +575,7 @@ export default function InspectorPage() {
                           />
                           {!selectedId && !diagramLoading && (
                             <div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-500">
-                              Wybierz request z listy, aby zbudować przepływ.
+                              {t("inspector.panels.diagram.selectHint")}
                             </div>
                           )}
                           {!diagramLoading && (detailError || mermaidError || steps.length === 0) && (
@@ -575,7 +583,7 @@ export default function InspectorPage() {
                               <p>
                                 {detailError ||
                                   mermaidError ||
-                                  "Brak kroków do pokazania – sprawdź, czy RequestTracer działa na porcie 8000."}
+                                  t("inspector.panels.diagram.noSteps")}
                               </p>
                               {detailError && (
                                 <Button
@@ -584,7 +592,7 @@ export default function InspectorPage() {
                                   onClick={() => handleHistorySelect(selectedId as string, true)}
                                   disabled={!selectedId}
                                 >
-                                  Spróbuj ponownie
+                                  {t("inspector.actions.tryAgain")}
                                 </Button>
                               )}
                             </div>
@@ -600,13 +608,13 @@ export default function InspectorPage() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Panel
-              title="Kroki RequestTracer"
-              description="Przefiltruj i wybierz krok, aby zobaczyć telemetrię."
+              title={t("inspector.panels.steps.title")}
+              description={t("inspector.panels.steps.description")}
               action={
                 <div className="flex flex-col gap-2 text-xs sm:flex-row">
                   <input
                     type="text"
-                    placeholder="Filtruj kroki..."
+                    placeholder={t("inspector.panels.steps.filterPlaceholder")}
                     value={stepFilter}
                     onChange={(e) => setStepFilter(e.target.value)}
                     className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-1 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500/40"
@@ -617,14 +625,14 @@ export default function InspectorPage() {
                       checked={contractOnly}
                       onChange={(e) => setContractOnly(e.target.checked)}
                     />
-                    Tylko kontrakty
+                    {t("inspector.panels.steps.contractsOnly")}
                   </label>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleCopySteps(filteredSteps, setCopyMessage)}
                   >
-                    Kopiuj JSON
+                    {t("inspector.actions.copyJson")}
                   </Button>
                 </div>
               }
@@ -636,8 +644,8 @@ export default function InspectorPage() {
                 {filteredSteps.length === 0 && (
                   <EmptyState
                     icon={<ListFilter className="h-4 w-4" />}
-                    title="Brak kroków – wybierz request"
-                    description="Kroki pojawią się po załadowaniu szczegółów requestu."
+                    title={t("inspector.panels.steps.emptyTitle")}
+                    description={t("inspector.panels.steps.emptyDesc")}
                     className="text-sm"
                   />
                 )}
@@ -647,18 +655,17 @@ export default function InspectorPage() {
                     onClick={() => setFocusedIndex(idx)}
                     variant="ghost"
                     size="sm"
-                    className={`list-row w-full text-left text-sm transition ${
-                      focusedIndex === idx
-                        ? "border-violet-400/60 bg-violet-500/10"
-                        : "border-white/10 bg-white/5"
-                    }`}
+                    className={`list-row w-full text-left text-sm transition ${focusedIndex === idx
+                      ? "border-violet-400/60 bg-violet-500/10"
+                      : "border-white/10 bg-white/5"
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-white">{step.component || "Nieznany komponent"}</p>
+                        <p className="font-semibold text-white">{step.component || t("inspector.panels.steps.unknownComponent")}</p>
                         <p className="text-hint">{step.action || step.details || "—"}</p>
                       </div>
-                      {step.status && <Badge tone={statusTone(step.status)}>{step.status}</Badge>}
+                      {step.status && <Badge tone={statusTone(step.status)}>{getTranslatedStatus(step.status, t)}</Badge>}
                     </div>
                     {step.timestamp && (
                       <p className="mt-1 text-caption">
@@ -671,38 +678,38 @@ export default function InspectorPage() {
             </Panel>
 
             <Panel
-              title="Telemetria requestu"
-              description="Status, czas i szczegóły aktualnego przepływu."
+              title={t("inspector.panels.details.title")}
+              description={t("inspector.panels.details.description")}
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <StatCard
-                  label="Status"
+                  label={t("inspector.panels.details.status")}
                   value={liveSelectedStatus}
                   hint={
                     streamForSelected?.connected
                       ? "Aktualizowane strumieniem SSE"
                       : selectedRequest
-                        ? `Zakończone: ${formatRelativeTime(selectedRequest.finished_at)}`
-                        : "Wybierz request z listy"
+                        ? `${t("inspector.stats.completed", { count: "" }).replace("0 ", "").trim()}: ${formatRelativeTime(selectedRequest.finished_at)}`
+                        : t("inspector.panels.diagram.selectHint")
                   }
                   accent="purple"
                 />
                 <StatCard
-                  label="Czas wykonania"
+                  label={t("inspector.panels.details.executionTime")}
                   value={formatDuration(selectedRequest?.duration_seconds ?? null)}
                   hint={`Start: ${formatTimestamp(selectedRequest?.created_at)}`}
                   accent="blue"
                 />
                 <StatCard
-                  label="Łączna liczba kroków"
+                  label={t("inspector.panels.details.totalSteps")}
                   value={steps.length}
-                  hint={`Po filtrze: ${filteredSteps.length}`}
+                  hint={`${t("inspector.latency.stepsFilter")}: ${filteredSteps.length}`}
                   accent="green"
                 />
                 <StatCard
-                  label="Wskaźnik awarii"
+                  label={t("inspector.panels.details.failureRate")}
                   value={`${inspectorStats.failed}`}
-                  hint="Fail w ostatnich requestach"
+                  hint={t("inspector.panels.details.failureHint")}
                   accent="purple"
                 />
               </div>
@@ -738,47 +745,47 @@ export default function InspectorPage() {
               )}
               <div className="mt-4 rounded-2xl box-base p-4">
                 <p className="text-xs uppercase tracking-wide text-zinc-500">
-                  Wybrany krok
+                  {t("inspector.panels.details.selectedStep")}
                 </p>
                 <h3 className="heading-h3 mt-2">
                   {focusedStep?.component ?? "—"}
                 </h3>
                 <p className="text-sm text-zinc-300">
-                  {focusedStep?.action || focusedStep?.details || "Kliknij krok, aby zobaczyć treść."}
+                  {focusedStep?.action || focusedStep?.details || t("inspector.panels.details.clickToView")}
                 </p>
                 <dl className="mt-3 grid gap-3 text-xs text-zinc-400 sm:grid-cols-2">
                   <div>
                     <dt className="text-caption">
-                      Status
+                      {t("inspector.panels.details.status")}
                     </dt>
                     <dd className="text-white">
-                      {focusedStep?.status ?? "—"}
+                      {focusedStep?.status ? getTranslatedStatus(focusedStep.status, t) : "—"}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-caption">
-                      Timestamp
+                      {t("inspector.panels.details.timestamp")}
                     </dt>
                     <dd>{focusedStep?.timestamp ? formatTimestamp(focusedStep.timestamp) : "—"}</dd>
                   </div>
                   <div className="sm:col-span-2">
                     <dt className="text-caption">
-                      Detale
+                      {t("inspector.panels.details.details")}
                     </dt>
                     <dd className="text-zinc-300">
-                      {focusedStep?.details ?? "Brak dodatkowych danych."}
+                      {focusedStep?.details ?? t("inspector.panels.details.noData")}
                     </dd>
                   </div>
                 </dl>
                 <div className="mt-3">
-                  <p className="text-caption">JSON kroku</p>
+                  <p className="text-caption">{t("inspector.panels.details.stepJson")}</p>
                   <div className="mt-2 rounded-2xl box-muted p-3 text-xs text-emerald-50">
                     {focusedStep ? (
                       <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
                         {JSON.stringify(focusedStep, null, 2)}
                       </pre>
                     ) : (
-                      <p className="text-hint">Kliknij krok, aby zobaczyć surowe dane.</p>
+                      <p className="text-hint">{t("inspector.panels.details.clickRaw")}</p>
                     )}
                   </div>
                 </div>

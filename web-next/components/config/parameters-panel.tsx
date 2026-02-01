@@ -219,7 +219,7 @@ export function ParametersPanel() {
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-hint">Ładowanie konfiguracji...</div>
+        <div className="text-hint">{t("config.parameters.loading")}</div>
       </div>
     );
   }

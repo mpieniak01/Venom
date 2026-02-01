@@ -24,7 +24,7 @@ const jetBrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Venom Cockpit Next",
   description:
-    "Next.js frontend dla Venom: Cockpit, Flow Inspector, Brain i War Room.",
+    "Next.js frontend for Venom: Cockpit, Flow Inspector, Brain and War Room.",
 };
 
 export default function RootLayout({

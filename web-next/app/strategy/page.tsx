@@ -26,6 +26,7 @@ import { TaskStatusBreakdown } from "@/components/tasks/task-status-breakdown";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date";
 import type { RoadmapResponse, Task } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
 
 const ROADMAP_CACHE_KEY = "strategy-roadmap-cache";
 const REPORT_CACHE_KEY = "strategy-status-report";
@@ -50,6 +51,7 @@ const safeNumber = (payload: string | null): number | null => {
 };
 
 export default function StrategyPage() {
+  const t = useTranslation();
   const { data: liveRoadmap, refresh: refreshRoadmap, error: roadmapError } = useRoadmap();
   const { data: liveTasks, loading: liveTasksLoading } = useTasks();
   const { data: timelineHistory, loading: timelineLoading } = useHistory(10);
@@ -112,7 +114,7 @@ export default function StrategyPage() {
       } catch (err) {
         if (!silent) {
           const message =
-            err instanceof Error ? err.message : "Nie udało się pobrać raportu.";
+            err instanceof Error ? err.message : t("strategy.messages.reportError");
           setStatusReport(message);
           showToast("error", message);
         }
@@ -122,7 +124,7 @@ export default function StrategyPage() {
         }
       }
     },
-    [persistStatusReport, showToast],
+    [persistStatusReport, showToast, t],
   );
 
   useEffect(() => {
@@ -216,7 +218,7 @@ export default function StrategyPage() {
       return task;
     });
   }, [liveTasks, strategyStreams]);
-  const liveTaskStats = useMemo(() => buildLiveTaskStats(mergedLiveTasks), [mergedLiveTasks]);
+  const liveTaskStats = useMemo(() => buildLiveTaskStats(mergedLiveTasks, t), [mergedLiveTasks, t]);
   const timelineEntries = useMemo(
     () =>
       timelineEntriesRaw.map((entry) => {
@@ -240,31 +242,31 @@ export default function StrategyPage() {
   const summaryCards = useMemo(
     () => [
       {
-        label: "Postęp wizji",
+        label: t("strategy.kpi.visionProgress"),
         value: `${visionProgress.toFixed(1)}%`,
         percent: visionProgress,
-        description: "Roadmap vision progress",
+        description: t("strategy.kpi.visionDesc"),
         tone: "violet" as const,
-        source: "Roadmapa",
+        source: t("strategy.kpi.source"),
       },
       {
-        label: "Milestones",
+        label: t("strategy.kpi.milestones"),
         value: `${kpis?.milestones_completed ?? 0} / ${kpis?.milestones_total ?? 0}`,
         percent: milestonesRaw,
-        description: "Incomplete milestones",
+        description: t("strategy.kpi.milestonesDesc"),
         tone: "indigo" as const,
-        source: "Roadmapa",
+        source: t("strategy.kpi.source"),
       },
       {
-        label: "Tasks",
+        label: t("strategy.kpi.tasks"),
         value: `${kpis?.tasks_completed ?? 0} / ${kpis?.tasks_total ?? 0}`,
         percent: tasksRaw,
-        description: "Execution tasks",
+        description: t("strategy.kpi.tasksDesc"),
         tone: "emerald" as const,
-        source: "Roadmapa",
+        source: t("strategy.kpi.source"),
       },
     ],
-    [visionProgress, kpis, milestonesRaw, tasksRaw],
+    [visionProgress, kpis, milestonesRaw, tasksRaw, t],
   );
 
   const roadmapDataStatus = calculateDataSourceStatus(
@@ -283,7 +285,7 @@ export default function StrategyPage() {
 
   const handleCreateRoadmap = async () => {
     if (!visionInput.trim()) {
-      setActionMessage("Podaj opis wizji.");
+      setActionMessage(t("strategy.messages.visionPayload"));
       return;
     }
     setCreating(true);
@@ -297,7 +299,7 @@ export default function StrategyPage() {
     } catch (err) {
       showToast(
         "error",
-        err instanceof Error ? err.message : "Nie udało się utworzyć roadmapy.",
+        err instanceof Error ? err.message : t("strategy.messages.roadmapError"),
       );
     } finally {
       setCreating(false);
@@ -309,12 +311,12 @@ export default function StrategyPage() {
   };
 
   const handleStartCampaign = async () => {
-    if (!confirm("😳 Na pewno uruchomić kampanię? Wyśle to żądanie do API."))
+    if (!confirm(t("strategy.messages.campaignConfirm")))
       return;
     setActionMessage(null);
     try {
       const res = await startCampaign();
-      showToast("success", res.message || "Kampania wystartowała (patrz logi).");
+      showToast("success", res.message || t("strategy.messages.campaignSuccess"));
       // Automatycznie odśwież dane po uruchomieniu kampanii
       if (campaignRefreshTimer.current) {
         clearTimeout(campaignRefreshTimer.current);
@@ -326,7 +328,7 @@ export default function StrategyPage() {
     } catch (err) {
       showToast(
         "error",
-        err instanceof Error ? err.message : "Nie udało się uruchomić kampanii.",
+        err instanceof Error ? err.message : t("strategy.messages.campaignError"),
       );
     }
   };
@@ -334,9 +336,9 @@ export default function StrategyPage() {
   return (
     <div className="space-y-8 pb-10">
       <SectionHeading
-        eyebrow="War Room"
-        title="Strategia i roadmapa"
-        description="`/api/roadmap` + Strategy Agent — wizja, kampanie, status Executive."
+        eyebrow={t("strategy.page.eyebrow")}
+        title={t("strategy.page.title")}
+        description={t("strategy.page.description")}
         as="h1"
         size="lg"
         rightSlot={
@@ -365,13 +367,13 @@ export default function StrategyPage() {
       )}
       <div className="glass-panel flex flex-wrap gap-3 border border-white/10 p-6 shadow-card">
         <Button variant="primary" size="sm" onClick={() => refreshRoadmap()}>
-          🔄 Odśwież Roadmapę
+          🔄 {t("strategy.actions.refresh")}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setShowVisionForm((prev) => !prev)}>
-          ✨ {showVisionForm ? "Ukryj" : "Zdefiniuj"} Wizję
+          ✨ {showVisionForm ? t("strategy.actions.hideVision") : t("strategy.actions.defineVision")}
         </Button>
         <Button variant="outline" size="sm" onClick={handleStartCampaign}>
-          🚀 Uruchom Kampanię
+          🚀 {t("strategy.actions.startCampaign")}
         </Button>
         <Button
           variant="outline"
@@ -379,17 +381,17 @@ export default function StrategyPage() {
           onClick={handleStatusReport}
           disabled={reportLoading}
         >
-          📊 {reportLoading ? "Ładuję..." : "Raport Statusu"}
+          📊 {reportLoading ? t("strategy.actions.loading") : t("strategy.actions.statusReport")}
         </Button>
         {actionMessage && <p className="text-hint">{actionMessage}</p>}
       </div>
 
       {showVisionForm && (
-        <Panel title="Nowa wizja" description="Utwórz roadmapę na bazie swojej wizji (/api/roadmap/create).">
+        <Panel title={t("strategy.panels.newVision.title")} description={t("strategy.panels.newVision.description")}>
           <div className="space-y-3">
             <textarea
               className="min-h-[120px] w-full rounded-2xl box-base p-3 text-sm text-white outline-none focus:border-violet-500/40"
-              placeholder="Opisz wizję produktową..."
+              placeholder={t("strategy.panels.newVision.placeholder")}
               value={visionInput}
               onChange={(e) => setVisionInput(e.target.value)}
             />
@@ -399,7 +401,7 @@ export default function StrategyPage() {
               disabled={creating}
               onClick={handleCreateRoadmap}
             >
-              {creating ? "Tworzenie..." : "Utwórz roadmapę"}
+              {creating ? t("strategy.actions.creating") : t("strategy.actions.createRoadmap")}
             </Button>
           </div>
         </Panel>
@@ -421,8 +423,8 @@ export default function StrategyPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel
-          title="Wizja"
-          description="Migawka magazynu celów"
+          title={t("strategy.panels.vision.title")}
+          description={t("strategy.panels.vision.description")}
           action={
             <DataSourceIndicator
               status={roadmapDataStatus}
@@ -438,27 +440,27 @@ export default function StrategyPage() {
               </div>
               <MarkdownPreview content={roadmapData.vision.description} />
               <div>
-                <p className="text-caption">Postęp wizji</p>
+                <p className="text-caption">{t("strategy.panels.vision.progress")}</p>
                 <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
               </div>
             </div>
           ) : roadmapError ? (
             <EmptyState
               icon={<span className="text-lg">⚠️</span>}
-              title="Backend niedostępny"
-              description="Nie udało się pobrać roadmapy. Sprawdź czy backend działa i odśwież stronę."
+              title={t("strategy.panels.vision.backendError")}
+              description={t("strategy.panels.vision.backendErrorDesc")}
             />
           ) : (
             <EmptyState
               icon={<span className="text-lg">✨</span>}
-              title="Brak zdefiniowanej wizji"
-              description="Skorzystaj z formularza powyżej, aby utworzyć roadmapę."
+              title={t("strategy.panels.vision.noVision")}
+              description={t("strategy.panels.vision.noVisionDesc")}
             />
           )}
         </Panel>
         <Panel
-          title="Raport statusu"
-          description="Ostatni snapshot z `/api/roadmap/status`."
+          title={t("strategy.panels.report.title")}
+          description={t("strategy.panels.report.description")}
           action={
             <DataSourceIndicator
               status={reportDataStatus}
@@ -471,27 +473,27 @@ export default function StrategyPage() {
           ) : (
             <EmptyState
               icon={<span className="text-lg">📊</span>}
-              title="Brak raportu"
-              description="Kliknij „Raport Statusu”, aby pobrać aktualny stan kampanii."
+              title={t("strategy.panels.report.emptyTitle")}
+              description={t("strategy.panels.report.emptyDesc")}
             />
           )}
         </Panel>
-        <Panel title="Podsumowanie zadań" description="Statusy tasków z milestones.">
+        <Panel title={t("strategy.panels.tasks.title")} description={t("strategy.panels.tasks.description")}>
           <TaskStatusBreakdown
-            title="Stany zadań"
+            title={t("strategy.panels.tasks.title")}
             datasetLabel="Milestones summary"
-            totalLabel="Łącznie"
+            totalLabel={t("common.total")}
             totalValue={taskSummary.reduce((acc, entry) => acc + entry.value, 0)}
             entries={taskSummary.map((entry) => ({ label: entry.name, value: entry.value }))}
-            emptyMessage="Brak zadań w roadmapie."
+            emptyMessage={t("strategy.panels.tasks.empty")}
           />
         </Panel>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Live KPIs" description="/api/v1/tasks – bieżące operacje agentów.">
+        <Panel title={t("strategy.panels.liveKpis.title")} description={t("strategy.panels.liveKpis.description")}>
           {liveTasksLoading ? (
-            <p className="text-hint">Ładuję metryki zadań…</p>
+            <p className="text-hint">{t("strategy.panels.liveKpis.loading")}</p>
           ) : liveTaskStats.length ? (
             <div className="grid gap-3 sm:grid-cols-3">
               {liveTaskStats.map((stat) => (
@@ -501,19 +503,19 @@ export default function StrategyPage() {
           ) : (
             <EmptyState
               icon={<span className="text-lg">🛰️</span>}
-              title="Brak danych o zadaniach"
-              description="Gdy agenci uruchomią nowe zadania, pojawią się tutaj statystyki."
+              title={t("strategy.panels.liveKpis.emptyTitle")}
+              description={t("strategy.panels.liveKpis.emptyDesc")}
             />
           )}
         </Panel>
 
-        <Panel title="Timeline KPI" description="/api/v1/history – ostatnie przepływy.">
-          {timelineLoading && <p className="text-hint">Ładuję historię requestów…</p>}
+        <Panel title={t("strategy.panels.timeline.title")} description={t("strategy.panels.timeline.description")}>
+          {timelineLoading && <p className="text-hint">{t("strategy.panels.timeline.loading")}</p>}
           {!timelineLoading && timelineEntries.length === 0 ? (
             <EmptyState
               icon={<span className="text-lg">🕒</span>}
-              title="Brak historii"
-              description="Wyślij zadanie lub odśwież backend, by wypełnić timeline."
+              title={t("strategy.panels.timeline.emptyTitle")}
+              description={t("strategy.panels.timeline.emptyDesc")}
             />
           ) : (
             <div className="space-y-3">
@@ -538,12 +540,12 @@ export default function StrategyPage() {
         </Panel>
       </div>
 
-      <Panel title="Milestones" description="Accordion + progress dla kluczowych etapów.">
+      <Panel title={t("strategy.panels.milestones.title")} description={t("strategy.panels.milestones.description")}>
         {milestones.length === 0 ? (
           <EmptyState
             icon={<span className="text-lg">🏁</span>}
-            title="Brak kamieni milowych"
-            description="Utwórz wizję lub dodaj kamienie, aby zobaczyć postęp."
+            title={t("strategy.panels.milestones.emptyTitle")}
+            description={t("strategy.panels.milestones.emptyDesc")}
           />
         ) : (
           <Accordion type="multiple" className="space-y-3">
@@ -572,14 +574,14 @@ export default function StrategyPage() {
                         <div>
                           <p className="text-sm font-semibold">{milestone.title}</p>
                           <p className="text-hint">
-                            Postęp {progressValue.toFixed(1)}% • Priorytet {milestone.priority ?? "-"}
+                            {t("strategy.panels.milestones.progress")} {progressValue.toFixed(1)}% • {t("strategy.panels.milestones.priority")} {milestone.priority ?? "-"}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <Badge tone={statusTone(milestone.status)}>{milestone.status ?? "n/a"}</Badge>
                         <p className="text-hint">
-                          {completedTasks}/{totalTasks} zadań
+                          {t("strategy.panels.milestones.tasksCount", { completed: completedTasks, total: totalTasks })}
                         </p>
                       </div>
                     </div>
@@ -588,7 +590,7 @@ export default function StrategyPage() {
                     <GradientProgress value={progressValue} tone="indigo" className="mb-3" />
                     <p className="text-hint">{milestone.description}</p>
                     <div className="mt-3 space-y-2 text-xs text-zinc-300">
-                      {(milestone.tasks || []).length === 0 && <p className="text-hint">Brak zadań.</p>}
+                      {(milestone.tasks || []).length === 0 && <p className="text-hint">{t("strategy.panels.milestones.noTasks")}</p>}
                       {(milestone.tasks || []).map((task, idx) => (
                         <div
                           key={`${milestone.title}-${idx}`}
@@ -596,7 +598,7 @@ export default function StrategyPage() {
                         >
                           <p className="font-semibold text-white">{task.title}</p>
                           <p className="text-hint">
-                            {task.description || "Brak opisu."} • {task.status || "UNKNOWN"}
+                            {task.description || t("strategy.panels.milestones.noDesc")} • {task.status || "UNKNOWN"}
                           </p>
                         </div>
                       ))}
@@ -609,14 +611,15 @@ export default function StrategyPage() {
         )}
       </Panel>
 
-      <Panel title="Pełny raport" description="/api/roadmap (pole report)">
-        <MarkdownPreview content={roadmapData?.report} emptyState="Brak raportu." />
+      <Panel title={t("strategy.panels.fullReport.title")} description={t("strategy.panels.fullReport.description")}>
+        <MarkdownPreview content={roadmapData?.report} emptyState={t("strategy.panels.fullReport.empty")} />
       </Panel>
     </div>
   );
 }
 
-function buildLiveTaskStats(tasks: Task[] | null | undefined) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildLiveTaskStats(tasks: Task[] | null | undefined, t: (path: string, options?: any) => string) {
   const list = tasks ?? [];
   const total = list.length;
 
@@ -636,21 +639,21 @@ function buildLiveTaskStats(tasks: Task[] | null | undefined) {
 
   return [
     {
-      label: "Aktywne",
+      label: t("strategy.liveStats.active"),
       value: inProgress,
-      hint: `z ${total} zadań`,
+      hint: t("strategy.liveStats.activeHint", { total }),
       accent: "violet" as const,
     },
     {
-      label: "W kolejce",
+      label: t("strategy.liveStats.queued"),
       value: queued,
-      hint: "oczekuje na wykonanie",
+      hint: t("strategy.liveStats.queuedHint"),
       accent: "blue" as const,
     },
     {
-      label: "Niepowodzenia",
+      label: t("strategy.liveStats.failed"),
       value: failed,
-      hint: "ostatnie incydenty",
+      hint: t("strategy.liveStats.failedHint"),
       accent: "indigo" as const,
     },
   ];

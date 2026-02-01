@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQueueStatus } from "@/hooks/use-api";
 import { useTelemetryFeed } from "@/hooks/use-telemetry";
+import { useTranslation } from "@/lib/i18n";
 
 type StatusTone = "success" | "warning" | "danger" | "neutral";
 
@@ -16,6 +17,7 @@ type StatusRow = {
 export function SystemStatusPanel() {
   const { data: queue, error: queueError } = useQueueStatus(10000);
   const { connected } = useTelemetryFeed(5);
+  const t = useTranslation();
 
   const statuses: StatusRow[] = useMemo(() => {
     const hasQueue = Boolean(queue);
@@ -32,34 +34,34 @@ export function SystemStatusPanel() {
     return [
       {
         id: "api",
-        label: "API",
-        hint: hasQueue ? "/api/v1/*" : queueError ?? "Oczekiwanie na odpowiedź...",
+        label: t("systemStatus.api"),
+        hint: hasQueue ? "/api/v1/*" : queueError ?? t("systemStatus.hints.waiting"),
         tone: apiTone,
       },
       {
         id: "queue",
-        label: "Kolejka",
+        label: t("systemStatus.queue"),
         hint: hasQueue
-          ? `Aktywne ${queue?.active ?? 0} • Oczekujące ${queue?.pending ?? 0}`
-          : "Brak danych kolejki",
+          ? t("systemStatus.hints.queueDetails", { active: queue?.active ?? 0, pending: queue?.pending ?? 0 })
+          : t("systemStatus.hints.queueEmpty"),
         tone: queueTone,
       },
       {
         id: "ws",
-        label: "Kanał WS",
+        label: t("systemStatus.ws"),
         hint: connected
-          ? "Telemetria live"
+          ? t("systemStatus.hints.wsLive")
           : hasQueue
-            ? "WS nieaktywny"
-            : "Kanał /ws/events",
+            ? t("systemStatus.hints.wsInactive")
+            : t("systemStatus.hints.wsChannel"),
         tone: wsTone,
       },
     ];
-  }, [connected, queue, queueError]);
+  }, [connected, queue, queueError, t]);
 
   return (
     <div className="surface-card p-4 text-sm text-zinc-100" data-testid="system-status-panel">
-      <p className="eyebrow">STATUS SYSTEMU</p>
+      <p className="eyebrow">{t("systemStatus.title")}</p>
       <div className="mt-3 space-y-3">
         {statuses.map((status) => (
           <div

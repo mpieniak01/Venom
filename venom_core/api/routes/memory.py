@@ -94,16 +94,18 @@ def _normalize_lessons_for_graph(
             )
             if isinstance(raw_lesson, dict):
                 raw_lesson["id"] = lesson_id
-                lessons.append(raw_lesson)
+                lessons.append(dict(raw_lesson))
         return lessons
     if isinstance(raw_lessons, list):
         for entry in raw_lessons[:limit]:
             if isinstance(entry, dict):
-                lessons.append(entry)
+                lessons.append(dict(entry))
             elif allow_fallback and hasattr(entry, "to_dict"):
-                lessons.append(entry.to_dict())
+                raw_entry = entry.to_dict()
+                if isinstance(raw_entry, dict):
+                    lessons.append(dict(raw_entry))
             elif allow_fallback and hasattr(entry, "__dict__"):
-                lessons.append(vars(entry))
+                lessons.append(dict(vars(entry)))
         return lessons
     return lessons
 

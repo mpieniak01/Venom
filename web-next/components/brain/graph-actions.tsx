@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Layers, Scan } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type GraphActionButtonsProps = {
   onFit: () => void;
@@ -11,16 +12,17 @@ type GraphActionButtonsProps = {
 };
 
 export function GraphActionButtons({ onFit, onScan, scanning, scanMessage }: GraphActionButtonsProps) {
+  const t = useTranslation();
   return (
     <div className="flex flex-col items-end gap-2 rounded-2xl border border-white/10 bg-black/70 px-4 py-3 text-sm text-white backdrop-blur">
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={onFit}>
           <Layers className="h-4 w-4" />
-          Dopasuj
+          {t("brain.graph.fit")}
         </Button>
         <Button variant="primary" size="sm" disabled={scanning} onClick={onScan}>
           <Scan className="h-4 w-4" />
-          {scanning ? "Skanuję..." : "Skanuj graf"}
+          {scanning ? t("brain.graph.scanning") : t("brain.graph.scan")}
         </Button>
       </div>
       {scanMessage && (

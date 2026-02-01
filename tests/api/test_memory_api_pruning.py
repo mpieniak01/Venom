@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from venom_core.api.dependencies import get_lessons_store
@@ -19,8 +20,12 @@ def get_mock_lessons_store():
     return mock
 
 
-# Dependency override
-app.dependency_overrides[get_lessons_store] = get_mock_lessons_store
+@pytest.fixture(autouse=True)
+def override_dependencies():
+    app.dependency_overrides[get_lessons_store] = get_mock_lessons_store
+    yield
+    app.dependency_overrides.pop(get_lessons_store, None)
+
 
 client = TestClient(app)
 

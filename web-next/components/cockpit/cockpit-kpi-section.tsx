@@ -9,6 +9,7 @@ import type { TokenSample } from "@/components/cockpit/token-types";
 import { Bot } from "lucide-react";
 import { memo, useEffect, useState } from "react";
 import type { Metrics } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
 
 type QueueSnapshot = {
   active?: number | null;
@@ -40,7 +41,12 @@ const formatSystemClock = (date: Date) =>
     second: "2-digit",
   });
 
-const SystemTimeStat = memo(function SystemTimeStat() {
+type SystemTimeStatProps = {
+  label: string;
+  hint: string;
+};
+
+const SystemTimeStat = memo(function SystemTimeStat({ label, hint }: SystemTimeStatProps) {
   const [systemTime, setSystemTime] = useState(() => formatSystemClock(new Date()));
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -49,7 +55,7 @@ const SystemTimeStat = memo(function SystemTimeStat() {
     return () => window.clearInterval(timer);
   }, []);
 
-  return <StatCard label="Czas" value={systemTime} hint="Aktualny czas systemowy" />;
+  return <StatCard label={label} value={systemTime} hint={hint} suppressHydrationWarning />;
 });
 
 const formatUptime = (totalSeconds: number) => {
@@ -75,35 +81,40 @@ export function CockpitKpiSection({
   totalTokens,
   showReferenceSections,
 }: CockpitKpiSectionProps) {
+  const t = useTranslation();
+
   return (
     <>
       <Panel
-        eyebrow="System KPIs"
-        title="Status operacyjny"
-        description="Najważniejsze liczby backendu."
+        eyebrow={t("cockpit.metrics.title")}
+        title={t("cockpit.metrics.statusTitle")}
+        description={t("cockpit.metrics.statusDescription")}
         className="kpi-panel"
       >
         <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
           <StatCard
-            label="Zadania"
+            label={t("cockpit.metrics.kpi.tasks")}
             value={metrics?.tasks?.created ?? "—"}
-            hint="Łącznie utworzonych"
+            hint={t("cockpit.metrics.labels.created")}
           />
           <StatCard
-            label="Skuteczność"
+            label={t("cockpit.metrics.labels.quality")}
             value={successRate !== null ? `${successRate}%` : "—"}
-            hint="Aktualna skuteczność"
+            hint={t("cockpit.metrics.labels.currentQuality")}
             accent="green"
           />
-          <SystemTimeStat />
+          <SystemTimeStat
+            label={t("cockpit.metrics.labels.time")}
+            hint={t("cockpit.metrics.labels.systemTime")}
+          />
           <StatCard
-            label="Kolejka"
+            label={t("cockpit.metrics.kpi.queue")}
             value={queue ? `${queue.active ?? 0} / ${queue.limit ?? "∞"}` : "—"}
-            hint="Aktywne / limit"
+            hint={t("cockpit.metrics.labels.activeLimit")}
             accent="blue"
           />
           <StatCard
-            label="Jakość"
+            label={t("cockpit.metrics.labels.quality")}
             value={feedbackScore !== null ? `${feedbackScore}%` : "—"}
             hint={`${feedbackUp} 👍 / ${feedbackDown} 👎`}
             accent="violet"
@@ -113,28 +124,28 @@ export function CockpitKpiSection({
       {showReferenceSections && (
         <div className="grid gap-6">
           <Panel
-            eyebrow="KPI kolejki"
-            title="Skuteczność operacji"
-            description="Monitoruj SLA tasków i uptime backendu."
+            eyebrow={t("cockpit.metrics.queue.eyebrow")}
+            title={t("cockpit.metrics.queue.title")}
+            description={t("cockpit.metrics.queue.description")}
             className="kpi-panel"
           >
             {metricsLoading && !metrics ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-400">
-                Ładuję metryki zadań…
+                {t("cockpit.metrics.queue.loading")}
               </div>
             ) : successRate === null ? (
               <EmptyState
                 icon={<Bot className="h-4 w-4" />}
-                title="Brak danych SLA"
-                description="Po uruchomieniu zadań i aktualizacji /metrics pojawi się trend skuteczności."
+                title={t("cockpit.metrics.queue.emptyTitle")}
+                description={t("cockpit.metrics.queue.emptyDescription")}
               />
             ) : (
               <CockpitMetricCard
                 primaryValue={`${successRate}%`}
                 secondaryLabel={
                   tasksCreated > 0
-                    ? `${tasksCreated.toLocaleString("pl-PL")} zadań`
-                    : "Brak zadań"
+                    ? `${tasksCreated.toLocaleString("pl-PL")} ${t("cockpit.metrics.queue.tasksSuffix")}`
+                    : t("cockpit.metrics.queue.noTasks")
                 }
                 progress={successRate}
                 footer={`Uptime: ${metrics?.uptime_seconds !== undefined
@@ -145,14 +156,14 @@ export function CockpitKpiSection({
             )}
           </Panel>
           <Panel
-            eyebrow="KPI kolejki"
-            title="Zużycie tokenów"
-            description="Trend prompt/completion/cached."
+            eyebrow={t("cockpit.metrics.tokens.eyebrow")}
+            title={t("cockpit.metrics.tokens.title")}
+            description={t("cockpit.metrics.tokens.description")}
             className="kpi-panel"
           >
             {tokenMetricsLoading ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-400">
-                Ładuję statystyki tokenów…
+                {t("cockpit.metrics.tokens.loading")}
               </div>
             ) : (
               <CockpitTokenCard
@@ -160,12 +171,12 @@ export function CockpitKpiSection({
                 splits={
                   tokenSplits.length > 0
                     ? tokenSplits
-                    : [{ label: "Brak danych", value: 0 }]
+                    : [{ label: t("cockpit.metrics.tokens.noData"), value: 0 }]
                 }
                 chartSlot={
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-caption">Trend próbek</p>
+                      <p className="text-caption">{t("cockpit.metrics.tokens.trend")}</p>
                       <Badge
                         tone={
                           tokenTrendDelta !== null && tokenTrendDelta < 0
@@ -178,11 +189,11 @@ export function CockpitKpiSection({
                     </div>
                     {tokenHistory.length < 2 ? (
                       <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
-                        Za mało danych, poczekaj na kolejne odczyty `/metrics/tokens`.
+                        {t("cockpit.metrics.tokens.insufficientData")}
                       </p>
                     ) : (
                       <div className="rounded-2xl box-subtle p-4">
-                        <p className="text-caption">Przebieg ostatnich próbek</p>
+                        <p className="text-caption">{t("cockpit.metrics.tokens.history")}</p>
                         <div className="mt-3 h-32">
                           <TokenChart history={tokenHistory} height={128} />
                         </div>

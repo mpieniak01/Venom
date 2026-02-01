@@ -6,11 +6,15 @@ type LessonStatsProps = {
   entries: LessonStatEntry[];
 };
 
+import { useTranslation } from "@/lib/i18n";
+
 export function LessonStats({ entries }: LessonStatsProps) {
+  const t = useTranslation();
+
   if (!entries.length) {
     return (
       <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-2 text-hint">
-        Brak statystyk Lessons.
+        {t("brain.lessons.noStats")}
       </p>
     );
   }

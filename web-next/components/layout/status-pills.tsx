@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQueueStatus, useMetrics, useTasks } from "@/hooks/use-api";
 import type { Metrics, QueueStatus, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 
 export type StatusPillsInitialData = {
   queue?: QueueStatus | null;
@@ -33,29 +34,31 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
   const queueActive = queueData?.active ?? 0;
   const queuePending = queueData?.pending ?? 0;
 
+  const t = useTranslation();
+
   const pills = useMemo(
     () => [
       {
         id: "queue",
-        label: "Kolejka",
+        label: t("mobileNav.systemStatus.queue"),
         value: queueAvailable ? `${queueActive}/${queueData?.limit ?? "∞"}` : "—",
-        hint: queuePendingLoading ? "Ładuję dane..." : queueAvailable ? `${queuePending} oczekujących` : "Brak danych",
+        hint: queuePendingLoading ? t("mobileNav.systemStatus.loading") : queueAvailable ? `${queuePending} ${t("mobileNav.systemStatus.pending")}` : t("mobileNav.systemStatus.noData"),
         tone: queueAvailable ? (queueData?.paused ? "warning" : "success") : "neutral",
         loading: queuePendingLoading,
       },
       {
         id: "success",
-        label: "Skuteczność",
+        label: t("mobileNav.systemStatus.efficiency"),
         value: metricsAvailable ? `${successRate}%` : "—",
-        hint: metricsPendingLoading ? "Ładuję dane..." : metricsAvailable ? "ostatnie zadania" : "Metryki offline",
+        hint: metricsPendingLoading ? t("mobileNav.systemStatus.loading") : metricsAvailable ? t("mobileNav.systemStatus.lastTasks") : t("mobileNav.systemStatus.offline"),
         tone: metricsAvailable ? (successRate > 70 ? "success" : "danger") : "neutral",
         loading: metricsPendingLoading,
       },
       {
         id: "tasks",
-        label: "Zadania",
+        label: t("mobileNav.systemStatus.tasks"),
         value: tasksAvailable ? activeTasks : "—",
-        hint: tasksPendingLoading ? "Ładuję dane..." : tasksAvailable ? "aktywnych" : "Brak danych",
+        hint: tasksPendingLoading ? t("mobileNav.systemStatus.loading") : tasksAvailable ? t("mobileNav.systemStatus.active") : t("mobileNav.systemStatus.noData"),
         tone: tasksAvailable ? (activeTasks > 0 ? "warning" : "neutral") : "neutral",
         loading: tasksPendingLoading,
       },
@@ -73,6 +76,7 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
       queuePendingLoading,
       metricsPendingLoading,
       tasksPendingLoading,
+      t,
     ],
   );
 
@@ -93,15 +97,15 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
                   : "status-pill--neutral",
           )}
         >
-          <span className="text-caption">{pill.label}</span>
-          <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`}>
+          <span className="text-caption" suppressHydrationWarning>{pill.label}</span>
+          <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`} suppressHydrationWarning>
             {pill.loading ? (
-              <span className="text-sm">Ładuje…</span>
+              <span className="text-sm" suppressHydrationWarning>{t("mobileNav.systemStatus.loading")}</span>
             ) : (
               pill.value
             )}
           </span>
-          <span className="text-hint text-white/70">{pill.hint}</span>
+          <span className="text-hint text-white/70" suppressHydrationWarning>{pill.hint}</span>
         </div>
       ))}
     </div>

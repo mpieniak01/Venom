@@ -36,6 +36,14 @@ async function waitForSessionReady(page: Page) {
   );
 }
 
+async function waitForHydration(page: Page) {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.hydrated === "true",
+    undefined,
+    { timeout: 10000 },
+  );
+}
+
 async function waitForCockpitReady(page: Page) {
   await page.getByTestId("cockpit-send-button").waitFor({ state: "visible", timeout: 10000 });
 }
@@ -45,6 +53,7 @@ test.describe("Chat mode routing", () => {
     await page.addInitScript(() => {
       const bootId = "boot-test";
       const sessionId = "session-test";
+      window.localStorage.setItem("venom-language", "pl");
       window.localStorage.setItem("venom-session-id", sessionId);
       window.localStorage.setItem("venom-backend-boot-id", bootId);
       window.localStorage.setItem("venom-next-build-id", "test-build");
@@ -191,6 +200,7 @@ test.describe("Chat mode routing", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForSessionReady(page);
+    await waitForHydration(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Normal");
     await page.getByTestId("cockpit-prompt-input").fill("Test normal");
@@ -243,6 +253,7 @@ test.describe("Chat mode routing", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForSessionReady(page);
+    await waitForHydration(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Direct");
     await page.getByTestId("cockpit-prompt-input").fill("Test direct");
@@ -334,6 +345,7 @@ test.describe("Chat mode routing", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForSessionReady(page);
+    await waitForHydration(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Normal");
     const chatHistory = page.getByTestId("cockpit-chat-history");
@@ -453,6 +465,7 @@ test.describe("Chat mode routing", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForSessionReady(page);
+    await waitForHydration(page);
     await waitForCockpitReady(page);
     await selectChatMode(page, "Complex");
     await page.getByTestId("cockpit-prompt-input").fill("Test complex");

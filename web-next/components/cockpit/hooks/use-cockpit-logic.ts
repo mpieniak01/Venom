@@ -50,12 +50,22 @@ type Interactive = ReturnType<typeof useCockpitInteractiveState>;
 type Layout = ReturnType<typeof useCockpitLayout>;
 
 
-export function useCockpitLogic(
-    data: Data,
-    interactive: Interactive,
-    layout: Layout,
-    chatScrollRef: React.RefObject<HTMLDivElement>
-) {
+const mapRole = (role: string | undefined): "user" | "assistant" => {
+    if (role === "assistant") return "assistant";
+    return "user"; // Fallback for "user", "system", or unknown
+};
+
+export function useCockpitLogic({
+    data,
+    interactive,
+    layout,
+    chatScrollRef,
+}: {
+    data: Data;
+    interactive: Interactive;
+    layout: Layout;
+    chatScrollRef: React.RefObject<HTMLDivElement>;
+}) {
     const { sessionId, resetSession } = useSession();
     const { pushToast } = useToast();
     const { connected: telemetryConnected, entries: telemetryEntries } =
@@ -399,10 +409,10 @@ export function useCockpitLogic(
 
             return {
                 bubbleId: uniqueId,
-                role: entry.role === "assistant" ? "assistant" : "user",
+                role: mapRole(entry.role),
                 text: entry.content || "",
-                requestId: entry.request_id,
-                timestamp: entry.timestamp,
+                requestId: entry.request_id ?? null,
+                timestamp: entry.timestamp ?? "", // Timestamp is string, usually required, let's check
                 pending: entry.pending || false,
                 status: entry.status || null,
                 contextUsed: entry.contextUsed ?? null,

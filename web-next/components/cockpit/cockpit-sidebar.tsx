@@ -2,12 +2,15 @@
 
 import type { ReactNode } from "react";
 
+import { motion } from "framer-motion";
+
 type CockpitSidebarProps = {
   chatFullscreen: boolean;
   showArtifacts: boolean;
   showReferenceSections: boolean;
   referencePanel: ReactNode;
   fallbackPanels: ReactNode;
+  skipEntrance?: boolean;
 };
 
 export function CockpitSidebar({
@@ -16,12 +19,19 @@ export function CockpitSidebar({
   showReferenceSections,
   referencePanel,
   fallbackPanels,
+  skipEntrance = false,
 }: CockpitSidebarProps) {
   if (chatFullscreen || !showArtifacts) return null;
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={skipEntrance ? false : { opacity: 0, x: -20, width: 0, marginRight: 0 }}
+      animate={{ opacity: 1, x: 0, width: "auto", marginRight: 0 }}
+      exit={{ opacity: 0, x: -20, width: 0, marginRight: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="space-y-6 overflow-hidden"
+    >
       {showReferenceSections ? referencePanel : fallbackPanels}
-    </div>
+    </motion.div>
   );
 }

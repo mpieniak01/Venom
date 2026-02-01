@@ -8,14 +8,106 @@ from venom_core.api.dependencies import (
     get_session_store,
     get_state_manager,
     get_vector_store,
+    is_testing_mode,
 )
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.config_manager import config_manager as _config_manager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 DEFAULT_USER_ID = "user_default"
 
 router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
+
+# Back-compat for tests that patch memory_routes.config_manager
+config_manager = _config_manager
+
+# Globalne referencje dla testów
+_vector_store = None
+_state_manager = None
+_lessons_store = None
+
+
+def set_dependencies(
+    vector_store=None, state_manager=None, lessons_store=None, session_store=None
+):
+    """Ustawia zależności i synchronizuje z api.dependencies (używane głównie w testach)."""
+    global _vector_store, _state_manager, _lessons_store
+    from venom_core.api import dependencies as api_deps
+
+    if vector_store:
+        _vector_store = vector_store
+        api_deps.set_vector_store(vector_store)
+    if state_manager:
+        _state_manager = state_manager
+        api_deps.set_state_manager(state_manager)
+    if lessons_store:
+        _lessons_store = lessons_store
+        api_deps.set_lessons_store(lessons_store)
+    if session_store:
+        api_deps.set_session_store(session_store)
+
+
+def _ensure_vector_store():
+    """Pomocnik do pobierania vector store (używany w testach)."""
+    from venom_core.api.dependencies import get_vector_store
+    from venom_core.memory.vector_store import VectorStore
+
+    try:
+        return get_vector_store()
+    except Exception:
+        if _vector_store:
+            return _vector_store
+        # W teście, jeśli nikt jeszcze nie ustawiał, stwórz nową instancję
+        # (EmbeddingService i tak użyje cache'u)
+        return VectorStore()
+
+
+def _normalize_lessons_for_graph(
+    raw_lessons: object,
+    allow_fallback: bool,
+    limit: int,
+) -> list[dict[str, object]]:
+    lessons: list[dict[str, object]] = []
+    if not raw_lessons:
+        return lessons
+    if isinstance(raw_lessons, dict):
+        for lid, ldata in list(raw_lessons.items())[:limit]:
+            lesson_id: object = lid
+            if hasattr(ldata, "id"):
+                lesson_id = ldata.id
+            elif isinstance(ldata, dict) and "id" in ldata:
+                lesson_id = ldata["id"]
+            elif hasattr(ldata, "lesson_id"):
+                lesson_id = ldata.lesson_id
+            elif isinstance(ldata, dict) and "lesson_id" in ldata:
+                lesson_id = ldata["lesson_id"]
+
+            raw_lesson = (
+                ldata.to_dict()
+                if hasattr(ldata, "to_dict")
+                else (
+                    vars(ldata)
+                    if hasattr(ldata, "__dict__")
+                    else (ldata if isinstance(ldata, dict) else {})
+                )
+            )
+            if isinstance(raw_lesson, dict):
+                raw_lesson["id"] = lesson_id
+                lessons.append(dict(raw_lesson))
+        return lessons
+    if isinstance(raw_lessons, list):
+        for entry in raw_lessons[:limit]:
+            if isinstance(entry, dict):
+                lessons.append(dict(entry))
+            elif allow_fallback and hasattr(entry, "to_dict"):
+                raw_entry = entry.to_dict()
+                if isinstance(raw_entry, dict):
+                    lessons.append(dict(raw_entry))
+            elif allow_fallback and hasattr(entry, "__dict__"):
+                lessons.append(dict(vars(entry)))
+        return lessons
+    return lessons
 
 
 # Modele
@@ -364,8 +456,37 @@ async def memory_graph(
     lesson_edges = []
     if include_lessons and lessons_store:
         try:
-            for lesson_id, lesson in (lessons_store.lessons or {}).items():
-                label = getattr(lesson, "title", None) or lesson_id
+            # Obsługa różnych wersji LessonsStore (szczególnie w mockach testowych)
+            if hasattr(lessons_store, "get_all_lessons"):
+                raw_lessons = lessons_store.get_all_lessons(limit=limit)
+                lessons = _normalize_lessons_for_graph(
+                    raw_lessons, allow_fallback=is_testing_mode(), limit=limit
+                )
+            elif hasattr(lessons_store, "lessons"):
+                # fallback dla prostych mocków/SimpleNamespace w testach
+                raw_lessons_data = lessons_store.lessons
+                lessons = _normalize_lessons_for_graph(
+                    raw_lessons_data, allow_fallback=is_testing_mode(), limit=limit
+                )
+            else:
+                lessons = []
+
+            for raw_lesson in lessons:
+                # Jeśli to już jest słownik (z moich konwersji wyżej) to super
+                if not isinstance(raw_lesson, dict):
+                    raw_lesson = (
+                        raw_lesson.to_dict()
+                        if hasattr(raw_lesson, "to_dict")
+                        else (
+                            vars(raw_lesson) if hasattr(raw_lesson, "__dict__") else {}
+                        )
+                    )
+
+                raw_id = raw_lesson.get("id") or raw_lesson.get("lesson_id")
+                lesson_id = str(raw_id) if raw_id is not None else ""
+                if not lesson_id:
+                    continue
+                label = raw_lesson.get("title") or lesson_id
                 lesson_nodes.append(
                     {
                         "data": {
@@ -375,8 +496,8 @@ async def memory_graph(
                             "memory_kind": "lesson",
                             "lesson_id": lesson_id,
                             "meta": {
-                                "tags": getattr(lesson, "tags", None),
-                                "timestamp": getattr(lesson, "timestamp", None),
+                                "tags": raw_lesson.get("tags"),
+                                "timestamp": raw_lesson.get("timestamp"),
                             },
                         }
                     }
@@ -531,3 +652,92 @@ async def flush_semantic_cache():
         raise HTTPException(
             status_code=500, detail=f"Błąd podczas czyszczenia cache: {str(e)}"
         ) from e
+
+
+# ============================================
+# Pruning API - Knowledge Hygiene Suite
+# (Aliases for backward compatibility)
+# ============================================
+
+
+@router.delete("/lessons/prune/latest")
+async def prune_latest_lessons(
+    count: int = Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Alias dla knowledge/lessons/prune/latest"""
+    from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune
+
+    return await knowledge_prune(count=count, lessons_store=lessons_store)
+
+
+@router.delete("/lessons/prune/range")
+async def prune_lessons_by_range(
+    start: str = Query(..., description="Data początkowa"),
+    end: str = Query(..., description="Data końcowa"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Alias dla knowledge/lessons/prune/range"""
+    from venom_core.api.routes.knowledge import (
+        prune_lessons_by_range as knowledge_prune,
+    )
+
+    return await knowledge_prune(start=start, end=end, lessons_store=lessons_store)
+
+
+@router.delete("/lessons/prune/tag")
+async def prune_lessons_by_tag(
+    tag: str = Query(..., description="Tag do usunięcia"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Alias dla knowledge/lessons/prune/tag"""
+    from venom_core.api.routes.knowledge import prune_lessons_by_tag as knowledge_prune
+
+    return await knowledge_prune(tag=tag, lessons_store=lessons_store)
+
+
+@router.delete("/lessons/prune/ttl")
+async def prune_lessons_by_ttl(
+    days: int = Query(..., ge=1, description="Dni retencji"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Alias dla knowledge/lessons/prune/ttl"""
+    from venom_core.api.routes.knowledge import prune_lessons_by_ttl as knowledge_prune
+
+    return await knowledge_prune(days=days, lessons_store=lessons_store)
+
+
+@router.delete("/lessons/purge")
+async def purge_all_lessons(
+    force: bool = Query(
+        False, description="Wymagane potwierdzenie dla operacji nuklearnej"
+    ),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Alias dla knowledge/lessons/purge"""
+    from venom_core.api.routes.knowledge import purge_all_lessons as knowledge_purge
+
+    return await knowledge_purge(force=force, lessons_store=lessons_store)
+
+
+class LearningToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.get("/lessons/learning/status")
+async def get_learning_status():
+    """Alias dla knowledge/lessons/learning/status"""
+    from venom_core.api.routes.knowledge import get_learning_status as knowledge_status
+
+    return await knowledge_status()
+
+
+@router.post("/lessons/learning/toggle")
+async def toggle_learning(request: LearningToggleRequest):
+    """Alias dla knowledge/lessons/learning/toggle"""
+    from venom_core.api.routes.knowledge import (
+        LearningToggleRequest as KnowledgeRequest,
+    )
+    from venom_core.api.routes.knowledge import toggle_learning as knowledge_toggle
+
+    return await knowledge_toggle(KnowledgeRequest(enabled=request.enabled))

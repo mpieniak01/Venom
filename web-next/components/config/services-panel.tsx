@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Play, Square, RotateCw, Zap, Layout, Cpu, Activity, Plug, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, useLanguage } from "@/lib/i18n";
 import { VenomWebSocket } from "@/lib/ws-client";
 
 interface ServiceInfo {
@@ -55,6 +55,7 @@ interface StorageSnapshot {
 
 export function ServicesPanel() {
   const t = useTranslation();
+  const { language } = useLanguage();
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
   const [history, setHistory] = useState<ActionHistory[]>([]);
@@ -73,7 +74,7 @@ export function ServicesPanel() {
         console.warn("Błąd sieci przy pobieraniu statusu usług:", error);
         setMessage({
           type: "error",
-          text: "Brak połączenia z API statusu usług.",
+          text: t("config.services.status.apiStatusError"),
         });
         return null;
       });
@@ -83,7 +84,7 @@ export function ServicesPanel() {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
-          errorText || `Nie udało się pobrać statusu usług (HTTP ${response.status})`;
+          errorText || `${t("config.services.status.apiStatusError")} (HTTP ${response.status})`;
         console.warn("Błąd pobierania statusu (HTTP):", response.status, errorText);
         setMessage({ type: "error", text: errorMessage });
         return;
@@ -93,19 +94,19 @@ export function ServicesPanel() {
       if (data.status === "success") {
         setServices(data.services);
       } else {
-        const errorMessage = data.message || "Nie udało się pobrać statusu usług";
+        const errorMessage = data.message || t("config.services.status.apiStatusError");
         setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
       console.warn("Błąd pobierania statusu:", error);
       setMessage({
         type: "error",
-        text: "Wystąpił błąd podczas pobierania statusu usług",
+        text: t("config.services.status.apiStatusError"),
       });
     } finally {
       setServicesLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -113,7 +114,7 @@ export function ServicesPanel() {
         console.warn("Błąd sieci przy pobieraniu historii akcji:", error);
         setMessage({
           type: "error",
-          text: "Brak połączenia z API historii akcji.",
+          text: t("config.services.history.apiHistoryError"),
         });
         return null;
       });
@@ -123,7 +124,7 @@ export function ServicesPanel() {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
-          errorText || `Nie udało się pobrać historii akcji (HTTP ${response.status})`;
+          errorText || `${t("config.services.history.apiHistoryError")} (HTTP ${response.status})`;
         console.error("Błąd pobierania historii (HTTP):", response.status, errorText);
         setMessage({ type: "error", text: errorMessage });
         return;
@@ -133,25 +134,24 @@ export function ServicesPanel() {
       if (data.status === "success") {
         setHistory(data.history);
       } else {
-        const errorMessage = data.message || "Nie udało się pobrać historii akcji";
+        const errorMessage = data.message || t("config.services.history.apiHistoryError");
         setMessage({ type: "error", text: errorMessage });
       }
     } catch (error) {
       console.error("Błąd pobierania historii:", error);
       setMessage({
         type: "error",
-        text: "Wystąpił błąd podczas pobierania historii akcji",
+        text: t("config.services.history.apiHistoryError"),
       });
     }
-  }, []);
+  }, [t]);
 
   const fetchStorageSnapshot = useCallback(async () => {
     setStorageLoading(true);
     setStorageError(null);
     try {
-      const response = await fetch("/api/v1/system/storage").catch((error) => {
-        console.warn("Błąd sieci przy pobieraniu danych storage:", error);
-        setStorageError("Brak połączenia z API storage.");
+      const response = await fetch("/api/v1/system/storage").catch(() => {
+        setStorageError(t("config.services.storage.apiError"));
         return null;
       });
 
@@ -162,7 +162,7 @@ export function ServicesPanel() {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
-          errorText || `Nie udało się pobrać danych storage (HTTP ${response.status})`;
+          errorText || `${t("config.services.storage.apiError")} (HTTP ${response.status})`;
         setStorageError(errorMessage);
         return;
       }
@@ -172,16 +172,16 @@ export function ServicesPanel() {
       if (data.status === "success") {
         setStorageSnapshot(data);
       } else {
-        setStorageError(data.message || "Nie udało się pobrać danych storage.");
+        setStorageError(data.message || t("config.services.storage.apiError"));
       }
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : "Błąd pobierania danych storage.";
+        error instanceof Error ? error.message : t("config.services.storage.apiError");
       setStorageError(errorMessage);
     } finally {
       setStorageLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchStatus();
@@ -249,7 +249,7 @@ export function ServicesPanel() {
     } catch (error) {
       setMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Błąd komunikacji z API",
+        text: error instanceof Error ? error.message : t("config.services.status.apiStatusError"),
       });
     } finally {
       setActionInProgress(null);
@@ -277,7 +277,7 @@ export function ServicesPanel() {
     } catch (error) {
       setMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Błąd komunikacji z API",
+        text: error instanceof Error ? error.message : t("config.services.status.apiStatusError"),
       });
     } finally {
       setLoading(false);
@@ -336,16 +336,12 @@ export function ServicesPanel() {
   };
 
   const getDisplayName = (raw: string) => {
-    const name = raw.toLowerCase();
-    if (name === "backend") return "Backend API";
-    if (name === "ui") return "Next.js UI";
-    if (name === "llm_ollama") return "Ollama";
-    if (name === "llm_vllm") return "vLLM";
-    if (name === "background_tasks") return "Background Tasks";
-    if (name === "mcp engine") return "MCP Engine";
-    if (name === "semantic kernel") return "Semantic Kernel";
-    if (name === "local llm") return "Local LLM";
-    // Fallback: zamiana podkreśleń na spacje + kapitalizacja pierwszej litery
+    const key = raw.toLowerCase().replace(/\s+/g, "_");
+    const translated = t(`config.services.names.${key}`);
+    if (translated && translated !== `config.services.names.${key}`) {
+      return translated;
+    }
+    // Fallback: replacement of underscores with spaces + capitalization of the first letter
     const pretty = raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
     return pretty;
   };
@@ -367,7 +363,8 @@ export function ServicesPanel() {
     if (!value) return "—";
     const parsed = Date.parse(value);
     if (Number.isNaN(parsed)) return value;
-    return new Date(parsed).toLocaleString("pl-PL");
+    const locale = language === "pl" ? "pl-PL" : language === "de" ? "de-DE" : "en-US";
+    return new Date(parsed).toLocaleString(locale);
   };
 
   return (
@@ -465,16 +462,16 @@ export function ServicesPanel() {
                 {/* Info */}
                 <div className="mb-3 grid grid-cols-3 gap-2 text-xs">
                   <div>
-                    <p className="text-zinc-500">PID</p>
+                    <p className="text-zinc-500">{t("config.services.info.pid")}</p>
                     <p className="font-mono text-[11px] text-white">{service.pid || "—"}</p>
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <p className="text-zinc-500">Port</p>
+                      <p className="text-zinc-500">{t("config.services.info.port")}</p>
                       <p className="font-mono text-[11px] text-white">{service.port || "—"}</p>
                     </div>
                     <div>
-                      <p className="text-zinc-500">RAM</p>
+                      <p className="text-zinc-500">{t("config.services.info.ram")}</p>
                       <p className="font-mono text-[11px] text-white">
                         {isRunning ? `${service.memory_mb.toFixed(0)} MB` : "—"}
                       </p>
@@ -482,13 +479,13 @@ export function ServicesPanel() {
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <p className="text-zinc-500">Uptime</p>
+                      <p className="text-zinc-500">{t("config.services.info.uptime")}</p>
                       <p className="font-mono text-[11px] text-white">
                         {formatUptime(service.uptime_seconds)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-zinc-500">CPU</p>
+                      <p className="text-zinc-500">{t("config.services.info.cpu")}</p>
                       <p className="font-mono text-[11px] text-white">
                         {isRunning ? `${service.cpu_percent.toFixed(1)}%` : "—"}
                       </p>
@@ -651,7 +648,9 @@ export function ServicesPanel() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white">{item.name}</p>
+                      <p className="text-sm font-semibold text-white">
+                        {t(`config.services.storage.items.${item.name}`) || item.name}
+                      </p>
                       <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
                         {item.kind}
                       </p>
@@ -669,10 +668,10 @@ export function ServicesPanel() {
 
       {/* History */}
       <div className="glass-panel rounded-2xl box-subtle p-6">
-        <h2 className="mb-4 heading-h2">Historia akcji</h2>
+        <h2 className="mb-4 heading-h2">{t("config.services.history.title")}</h2>
         <div className="space-y-2">
           {history.length === 0 ? (
-            <p className="text-sm text-zinc-500">Brak historii</p>
+            <p className="text-sm text-zinc-500">{t("config.services.history.empty")}</p>
           ) : (
             history.map((entry, idx) => (
               <div
@@ -686,13 +685,13 @@ export function ServicesPanel() {
                   />
                   <div>
                     <p className="text-sm font-medium text-white">
-                      {entry.service} → {entry.action}
+                      {getDisplayName(entry.service)} → {t(`config.services.actions.${entry.action.toLowerCase()}`) || entry.action}
                     </p>
                     <p className="text-xs text-zinc-500">{entry.message}</p>
                   </div>
                 </div>
                 <p className="text-xs text-zinc-600">
-                  {new Date(entry.timestamp).toLocaleTimeString("pl-PL")}
+                  {new Date(entry.timestamp).toLocaleTimeString(language === "pl" ? "pl-PL" : "en-US")}
                 </p>
               </div>
             ))

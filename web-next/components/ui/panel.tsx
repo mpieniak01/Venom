@@ -36,9 +36,10 @@ type StatCardProps = {
   value: string | number;
   hint?: string;
   accent?: StatCardAccent;
+  suppressHydrationWarning?: boolean;
 };
 
-export function StatCard({ label, value, hint, accent = "purple" }: StatCardProps) {
+export function StatCard({ label, value, hint, accent = "purple", suppressHydrationWarning }: StatCardProps) {
   const accentPalette: Record<StatCardAccent, string> = {
     purple: "from-purple-500/25 to-purple-500/5 border-purple-500/30",
     green: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30",
@@ -56,7 +57,7 @@ export function StatCard({ label, value, hint, accent = "purple" }: StatCardProp
       <p className="text-xs uppercase tracking-wide text-[--color-muted]">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-white" suppressHydrationWarning={suppressHydrationWarning}>{value}</p>
       {hint && <p className="mt-1 text-hint">{hint}</p>}
     </div>
   );

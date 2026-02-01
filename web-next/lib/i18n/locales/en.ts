@@ -372,6 +372,40 @@ export const en = {
       normalLabel: "Normal (standard)",
       complexLabel: "Complex (planning)",
     },
+    newChat: "New Chat",
+    header: {
+      eyebrow: "Command Console",
+      title: "Cockpit AI",
+      description: "Operational chat with Orchestrator and runtime logs.",
+    },
+    fullscreen: {
+      off: "Disable fullscreen",
+      on: "Enable fullscreen",
+    },
+    status: {
+      prod: "Prod",
+      lab: "Lab Mode",
+    },
+    responseLabel: "Response {{text}}",
+    suggestions: {
+      eyebrow: "Quick prompt suggestions",
+      hint: "Click to fill chat",
+    },
+    feedback: {
+      refining: "Started refinement round: {{taskId}}",
+      refiningPending: "Feedback saved, refinement round will start shortly.",
+      success: "Feedback saved. Thank you!",
+      error: "Failed to save feedback.",
+      noLlm: "No active model for tuning.",
+      tuningSaved: "Generation parameters saved.",
+      tuningError: "Failed to save parameters.",
+      schemaError: "Failed to fetch model configuration:",
+    },
+    response: {
+      avg: "Average of last {{count}} responses: {{avg}}s",
+      noData: "No historical data",
+      notAvailable: "n/a",
+    },
   },
   brain: {
     title: "Knowledge Graph",

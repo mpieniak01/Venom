@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { GenerationParams, HistoryRequestDetail } from "@/lib/types";
+import type { GenerationParams, HistoryRequestDetail, GenerationSchema } from "@/lib/types";
 import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
-import type { GenerationSchema } from "@/components/ui/dynamic-parameter-form";
 import type { ChatComposerHandle } from "@/components/cockpit/cockpit-chat-thread";
 import { useChatSend } from "@/components/cockpit/cockpit-chat-send";
+import { useTranslation } from "@/lib/i18n";
 
 type ActiveServerInfo = {
   active_server?: string | null;
@@ -179,6 +179,7 @@ export function useCockpitChatUi({
   pinnedLogs,
   setExportingPinned,
 }: CockpitChatUiParams) {
+  const t = useTranslation();
   const lastChatScrollTop = useRef(0);
   const didInitialChatScroll = useRef(false);
   const programmaticChatScroll = useRef(false);
@@ -254,11 +255,11 @@ export function useCockpitChatUi({
         if (rating === "down") {
           updateFeedbackState(requestId, {
             message: response.follow_up_task_id
-              ? `Uruchomiono rundę doprecyzowania: ${response.follow_up_task_id}`
-              : "Feedback zapisany, runda doprecyzowania wystartuje po chwili.",
+              ? t("cockpit.feedback.refining", { taskId: response.follow_up_task_id })
+              : t("cockpit.feedback.refiningPending"),
           });
         } else {
-          updateFeedbackState(requestId, { message: "Feedback zapisany. Dziękuję!" });
+          updateFeedbackState(requestId, { message: t("cockpit.feedback.success") });
         }
         refreshHistory();
         refreshTasks();
@@ -267,7 +268,7 @@ export function useCockpitChatUi({
           message:
             error instanceof Error
               ? error.message
-              : "Nie udało się zapisać feedbacku.",
+              : t("cockpit.feedback.error"),
         });
       } finally {
         setFeedbackSubmittingId(null);
@@ -292,7 +293,7 @@ export function useCockpitChatUi({
       Math.max(responseDurations.length, 1)
       : null;
   const responseBadgeText =
-    lastResponseDurationMs !== null ? `${(lastResponseDurationMs / 1000).toFixed(1)}s` : "n/d";
+    lastResponseDurationMs !== null ? `${(lastResponseDurationMs / 1000).toFixed(1)}s` : t("cockpit.response.notAvailable");
   const responseBadgeTone =
     lastResponseDurationMs === null
       ? "neutral"
@@ -301,8 +302,11 @@ export function useCockpitChatUi({
         : "warning";
   const responseBadgeTitle =
     averageResponseDurationMs !== null
-      ? `Średnia z ostatnich ${responseDurations.length} odpowiedzi: ${(averageResponseDurationMs / 1000).toFixed(1)}s`
-      : "Brak danych historycznych";
+      ? t("cockpit.response.avg", {
+        count: responseDurations.length,
+        avg: (averageResponseDurationMs / 1000).toFixed(1)
+      })
+      : t("cockpit.response.noData");
   const handleSend = useChatSend({
     labMode,
     chatMode,
@@ -351,7 +355,7 @@ export function useCockpitChatUi({
         setGenerationParams(config.current_values as GenerationParams);
       }
     } catch (err) {
-      console.error("Nie udało się pobrać konfiguracji modelu:", err);
+      console.error(t("cockpit.feedback.schemaError"), err);
       setModelSchema(null);
     } finally {
       setLoadingSchema(false);
@@ -361,7 +365,7 @@ export function useCockpitChatUi({
   const handleApplyTuning = useCallback(async () => {
     const activeModelName = models?.active?.model;
     if (!activeModelName) {
-      pushToast("Brak aktywnego modelu do strojenia.", "warning");
+      pushToast(t("cockpit.feedback.noLlm"), "warning");
       return;
     }
     setTuningSaving(true);
@@ -373,10 +377,10 @@ export function useCockpitChatUi({
           number | string | boolean | null | undefined
         >,
       });
-      pushToast("Zapisano parametry generacji.", "success");
+      pushToast(t("cockpit.feedback.tuningSaved"), "success");
     } catch (err) {
       pushToast(
-        err instanceof Error ? err.message : "Nie udało się zapisać parametrów.",
+        err instanceof Error ? err.message : t("cockpit.feedback.tuningError"),
         "error",
       );
     } finally {

@@ -372,6 +372,40 @@ export const pl = {
       normalLabel: "Normal (standard)",
       complexLabel: "Complex (planowanie)",
     },
+    newChat: "Nowy czat",
+    header: {
+      eyebrow: "Konsola dowodzenia",
+      title: "Cockpit AI",
+      description: "Chat operacyjny z Orchestratora i logami runtime.",
+    },
+    fullscreen: {
+      off: "Wyłącz pełny ekran",
+      on: "Włącz pełny ekran",
+    },
+    status: {
+      prod: "Prod",
+      lab: "Lab Mode",
+    },
+    responseLabel: "Odpowiedź {{text}}",
+    suggestions: {
+      eyebrow: "Sugestie szybkich promptów",
+      hint: "Kliknij, aby wypełnić chat",
+    },
+    feedback: {
+      refining: "Uruchomiono rundę doprecyzowania: {{taskId}}",
+      refiningPending: "Feedback zapisany, runda doprecyzowania wystartuje po chwili.",
+      success: "Feedback zapisany. Dziękuję!",
+      error: "Nie udało się zapisać feedbacku.",
+      noLlm: "Brak aktywnego modelu do strojenia.",
+      tuningSaved: "Zapisano parametry generacji.",
+      tuningError: "Nie udało się zapisać parametrów.",
+      schemaError: "Nie udało się pobrać konfiguracji modelu:",
+    },
+    response: {
+      avg: "Średnia z ostatnich {{count}} odpowiedzi: {{avg}}s",
+      noData: "Brak danych historycznych",
+      notAvailable: "n/d",
+    },
   },
   brain: {
     title: "Graf Wiedzy",

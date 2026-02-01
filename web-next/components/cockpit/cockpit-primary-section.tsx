@@ -1,7 +1,9 @@
 "use client";
 
-import type { ComponentProps, ComponentPropsWithRef, RefObject } from "react";
+import { AnimatePresence } from "framer-motion";
 import { CockpitActions } from "@/components/cockpit/cockpit-actions";
+import { useEffect, useState } from "react";
+import type { ComponentProps, ComponentPropsWithRef, RefObject } from "react";
 import {
   ChatComposer,
   CockpitChatThread,
@@ -71,6 +73,11 @@ export function CockpitPrimarySection({
   historyPanelProps,
   metricsProps,
 }: CockpitPrimarySectionProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const hiddenPromptsPanel = <CockpitHiddenPromptsPanel {...hiddenPromptsPanelProps} />;
   const historyRequestsPanel = <CockpitHistoryPanel {...historyPanelProps} />;
 
@@ -81,18 +88,22 @@ export function CockpitPrimarySection({
         : "lg:grid-cols-[minmax(0,360px)_1fr] xl:grid-cols-[minmax(0,440px)_1fr] 2xl:grid-cols-[minmax(0,520px)_1fr]"
         }`}
     >
-      <CockpitSidebar
-        chatFullscreen={chatFullscreen}
-        showArtifacts={showArtifacts}
-        showReferenceSections={showReferenceSections}
-        referencePanel={<CockpitLlmOpsPanel {...llmOpsPanelProps} />}
-        fallbackPanels={(
-          <>
-            {historyRequestsPanel}
-            {hiddenPromptsPanel}
-          </>
-        )}
-      />
+      <AnimatePresence initial={false}>
+        <CockpitSidebar
+          key="cockpit-sidebar"
+          chatFullscreen={chatFullscreen}
+          showArtifacts={showArtifacts}
+          showReferenceSections={showReferenceSections}
+          referencePanel={<CockpitLlmOpsPanel {...llmOpsPanelProps} />}
+          fallbackPanels={(
+            <>
+              {historyRequestsPanel}
+              {hiddenPromptsPanel}
+            </>
+          )}
+          skipEntrance={!mounted}
+        />
+      </AnimatePresence>
       <div className="space-y-6">
         <CockpitChatConsole
           chatFullscreen={chatFullscreen}

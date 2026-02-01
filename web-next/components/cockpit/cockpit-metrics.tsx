@@ -29,6 +29,8 @@ type CockpitMetricsProps = {
   telemetryFeed: TelemetryFeedEntry[];
 };
 
+import { useTranslation } from "@/lib/i18n";
+
 export function CockpitMetrics({
   metrics,
   metricsLoading,
@@ -47,6 +49,7 @@ export function CockpitMetrics({
   showReferenceSections,
   telemetryFeed,
 }: CockpitMetricsProps) {
+  const t = useTranslation();
   return (
     <>
       <CockpitKpiSection

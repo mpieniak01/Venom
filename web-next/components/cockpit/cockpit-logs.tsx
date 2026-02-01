@@ -11,6 +11,7 @@ import type { LogEntryType } from "@/lib/logs";
 import type { Task } from "@/lib/types";
 import { statusTone } from "@/lib/status";
 import { Inbox } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type CockpitLogsProps = {
   connected: boolean;
@@ -37,27 +38,29 @@ export function CockpitLogs({
   onClearPinnedLogs,
   tasksPreview,
 }: CockpitLogsProps) {
+  const t = useTranslation();
+
   return (
     <>
       <Panel
-        title="Live Feed"
-        description="/ws/events stream – ostatnie logi operacyjne"
+        title={t("cockpit.logs.title")}
+        description={t("cockpit.logs.description")}
         action={
           <Badge tone={connected ? "success" : "warning"}>
-            {connected ? "Połączono" : "Brak sygnału"}
+            {connected ? t("topBar.connected") : t("topBar.offline")}
           </Badge>
         }
       >
         <div className="space-y-4">
           <input
             className="w-full rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white outline-none placeholder:text-zinc-500"
-            placeholder="Filtruj logi..."
+            placeholder={t("cockpit.logs.filterPlaceholder")}
             value={logFilter}
             onChange={(event) => onLogFilterChange(event.target.value)}
           />
           <div className="terminal internal-scroll h-64 overflow-y-auto rounded-2xl border border-emerald-500/15 p-4 text-xs shadow-inner shadow-emerald-400/10">
             {logEntries.length === 0 && (
-              <p className="text-emerald-200/70">Oczekiwanie na logi...</p>
+              <p className="text-emerald-200/70">{t("cockpit.logs.waiting")}</p>
             )}
             {logEntries
               .filter((entry) => {
@@ -83,10 +86,10 @@ export function CockpitLogs({
               <div className="flex flex-wrap items-center gap-3">
                 <div>
                   <p className="text-caption text-emerald-200/80">
-                    Przypięte logi
+                    {t("cockpit.logs.pinned.title")}
                   </p>
                   <p className="text-sm text-emerald-100/80">
-                    Najważniejsze zdarzenia z kanału /ws/events.
+                    {t("cockpit.logs.pinned.description")}
                   </p>
                 </div>
                 <div className="ml-auto flex flex-wrap gap-2">
@@ -97,7 +100,7 @@ export function CockpitLogs({
                     disabled={exportingPinned}
                     onClick={onExportPinnedLogs}
                   >
-                    {exportingPinned ? "Eksportuję..." : "Eksportuj JSON"}
+                    {exportingPinned ? t("cockpit.logs.pinned.exporting") : t("cockpit.logs.pinned.export")}
                   </Button>
                   <Button
                     variant="danger"
@@ -105,7 +108,7 @@ export function CockpitLogs({
                     className="px-3"
                     onClick={onClearPinnedLogs}
                   >
-                    Wyczyść
+                    {t("cockpit.logs.pinned.clear")}
                   </Button>
                 </div>
               </div>
@@ -123,15 +126,15 @@ export function CockpitLogs({
         </div>
       </Panel>
       <Panel
-        title="Aktywne zadania"
-        description="Podgląd ostatnich requestów /api/v1/tasks."
+        title={t("cockpit.tasks.title")}
+        description={t("cockpit.tasks.description")}
       >
         <div className="space-y-3">
           {tasksPreview.length === 0 && (
             <EmptyState
               icon={<Inbox className="h-4 w-4" />}
-              title="Brak zadań"
-              description="Wyślij nowe polecenie, aby pojawiło się na liście."
+              title={t("cockpit.tasks.emptyTitle")}
+              description={t("cockpit.tasks.emptyDescription")}
             />
           )}
           {tasksPreview.map((task, index) => (

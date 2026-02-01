@@ -157,10 +157,10 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
             className="flex flex-wrap items-center gap-x-4 gap-y-1 text-hint"
             data-testid="status-bar-resources"
           >
-            <span className="font-semibold text-white">{t("statusBar.resourcesLabel")}:</span>
+            <span className="font-semibold text-white" suppressHydrationWarning>{t("statusBar.resourcesLabel")}:</span>
             {resourceItems.map((item) => (
               <span key={item.key} className="flex items-center gap-1">
-                <span className="text-zinc-400">{item.label}</span>
+                <span className="text-zinc-400" suppressHydrationWarning>{item.label}</span>
                 <span className="text-white">{item.value}</span>
               </span>
             ))}
@@ -169,7 +169,7 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
             className="flex flex-wrap items-center gap-2 text-sm text-zinc-300 lg:justify-end lg:text-right"
             aria-live="polite"
           >
-            <span>{t("statusBar.versionLabel")}:</span>
+            <span suppressHydrationWarning>{t("statusBar.versionLabel")}:</span>
             {commitValue ? (
               <Button
                 type="button"
@@ -183,16 +183,17 @@ export function SystemStatusBar({ initialData }: { initialData?: SystemStatusIni
                 {versionDisplay}
               </Button>
             ) : (
-              <span data-testid="status-bar-version" className="font-semibold text-white">
+              <span data-testid="status-bar-version" className="font-semibold text-white" suppressHydrationWarning>
                 {versionDisplay}
               </span>
             )}
             <span className="text-zinc-600">•</span>
-            <span>{t("statusBar.repoLabel")}:</span>
+            <span suppressHydrationWarning>{t("statusBar.repoLabel")}:</span>
             <span
               data-testid="status-bar-repo"
               className={cn(repoTone, "cursor-help")}
               title={repoTitle}
+              suppressHydrationWarning
             >
               {gitLoading ? (
                 <span className="text-emerald-300">…</span>

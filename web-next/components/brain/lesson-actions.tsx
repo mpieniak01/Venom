@@ -2,6 +2,7 @@
 
 import type { TagEntry } from "@/components/brain/types";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 
 type LessonActionsProps = {
   tags: TagEntry[];
@@ -12,6 +13,7 @@ type LessonActionsProps = {
 const PRESET_TAGS = ["agent", "memory", "analysis", "ops"];
 
 export function LessonActions({ tags, activeTag, onSelect }: LessonActionsProps) {
+  const t = useTranslation();
   const mergedTags = mergeTags(tags);
   return (
     <div className="flex flex-wrap gap-2 text-xs">
@@ -20,7 +22,7 @@ export function LessonActions({ tags, activeTag, onSelect }: LessonActionsProps)
         variant={activeTag === null ? "primary" : "outline"}
         onClick={() => onSelect(null)}
       >
-        Wszystkie
+        {t("brain.lessons.filterAll")}
       </Button>
       {mergedTags.map((tag) => (
         <Button

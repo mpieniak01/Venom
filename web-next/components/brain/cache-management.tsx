@@ -2,6 +2,7 @@
 
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 import { Loader2, Database, Eraser } from "lucide-react";
 import { useState } from "react";
 import { flushSemanticCache, clearGlobalMemory } from "@/hooks/use-api";

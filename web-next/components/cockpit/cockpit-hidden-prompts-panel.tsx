@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { formatRelativeTime } from "@/lib/date";
 import { Inbox } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type CockpitHiddenPromptsPanelProps = {
   hiddenScoreFilter: number;
@@ -46,20 +47,24 @@ export function CockpitHiddenPromptsPanel({
   activeHiddenKeys,
   activeHiddenMap,
   activeForIntent,
+  // Hidden Prompts Specific
   hiddenPrompts,
   hiddenLoading,
   hiddenError,
+  // Active Hidden Prompts Specific
   activeHiddenLoading,
   activeHiddenError,
   onSetActiveHiddenPrompt,
 }: CockpitHiddenPromptsPanelProps) {
+  const t = useTranslation();
+
   return (
     <Panel
-      title="Hidden prompts"
-      description={`Agregaty prompt → odpowiedź z /learning/hidden-prompts (score ≥ ${hiddenScoreFilter}).`}
+      title={t("cockpit.hidden.title")}
+      description={t("cockpit.hidden.description", { score: hiddenScoreFilter })}
     >
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-        <label className="text-caption">Filtry</label>
+        <label className="text-caption">{t("cockpit.hidden.filters.title")}</label>
         <select
           className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-white"
           value={hiddenIntentFilter}
@@ -67,7 +72,7 @@ export function CockpitHiddenPromptsPanel({
         >
           {hiddenIntentOptions.map((intent) => (
             <option key={`intent-${intent}`} value={intent}>
-              {intent === "all" ? "Wszystkie intencje" : intent}
+              {intent === "all" ? t("cockpit.hidden.filters.allIntents") : intent}
             </option>
           ))}
         </select>
@@ -78,7 +83,7 @@ export function CockpitHiddenPromptsPanel({
         >
           {[1, 2, 3].map((value) => (
             <option key={`score-${value}`} value={String(value)}>
-              Score ≥ {value}
+              {t("cockpit.hidden.filters.score", { value })}
             </option>
           ))}
         </select>
@@ -118,7 +123,7 @@ export function CockpitHiddenPromptsPanel({
           disabled={hiddenIntentFilter === "all" || selectableHiddenPrompts.length === 0}
         >
           <option value="">
-            {hiddenIntentFilter === "all" ? "Wybierz intencję" : "Brak aktywnego"}
+            {hiddenIntentFilter === "all" ? t("cockpit.hidden.filters.selectIntent") : t("cockpit.hidden.filters.noActive")}
           </option>
           {selectableHiddenPrompts.map((entry, idx) => {
             const key = entry.prompt_hash ?? entry.prompt ?? `${idx}`;
@@ -131,7 +136,7 @@ export function CockpitHiddenPromptsPanel({
         </select>
         {activeHiddenKeys.size > 0 && (
           <span className="pill-badge text-emerald-100">
-            Aktywne: {activeHiddenKeys.size}
+            {t("cockpit.hidden.activeCount", { count: activeHiddenKeys.size })}
           </span>
         )}
       </div>
@@ -185,7 +190,7 @@ export function CockpitHiddenPromptsPanel({
                       });
                     }}
                   >
-                    {isActive ? "Wyłącz" : "Aktywuj"}
+                    {isActive ? t("cockpit.hidden.actions.deactivate") : t("cockpit.hidden.actions.activate")}
                   </Button>
                 </div>
               </div>
@@ -195,14 +200,14 @@ export function CockpitHiddenPromptsPanel({
       ) : (
         <EmptyState
           icon={<Inbox className="h-4 w-4" />}
-          title="Brak hidden prompts"
-          description="Pojawią się po ocenach z kciukiem w górę."
+          title={t("cockpit.hidden.empty.title")}
+          description={t("cockpit.hidden.empty.description")}
         />
       )}
-      {hiddenLoading && <p className="mt-2 text-hint">Ładowanie hidden prompts...</p>}
+      {hiddenLoading && <p className="mt-2 text-hint">{t("cockpit.hidden.loading")}</p>}
       {hiddenError && <p className="mt-2 text-xs text-rose-300">{hiddenError}</p>}
       {activeHiddenLoading && (
-        <p className="mt-2 text-hint">Ładowanie aktywnych wpisów...</p>
+        <p className="mt-2 text-hint">{t("cockpit.hidden.activeLoading")}</p>
       )}
       {activeHiddenError && (
         <p className="mt-2 text-xs text-rose-300">{activeHiddenError}</p>

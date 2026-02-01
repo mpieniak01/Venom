@@ -70,6 +70,7 @@ export function Sidebar() {
   const [selectedAutonomy, setSelectedAutonomy] = useState<string>("");
   const [localAutonomy, setLocalAutonomy] = useState<AutonomySnapshot | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [isSynced, setIsSynced] = useState(false);
   const t = useTranslation();
 
   const resolveAutonomyDetails = useCallback(
@@ -155,6 +156,9 @@ export function Sidebar() {
         // ignore corrupted storage
       }
     }
+    // Enable transitions after initial state sync
+    const timer = setTimeout(() => setIsSynced(true), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -219,7 +223,8 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card transition-all duration-300 ease-in-out lg:flex overflow-y-auto overflow-x-hidden",
+        "glass-panel fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-white/5 bg-black/25 py-6 text-zinc-100 shadow-card lg:flex overflow-y-auto overflow-x-hidden",
+        isSynced && "transition-all duration-300 ease-in-out",
         collapsed ? "w-24 px-3" : "w-72 px-5",
       )}
       data-testid="sidebar"
@@ -230,7 +235,7 @@ export function Sidebar() {
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-xl">
               🐍
             </div>
-            <div className={cn("transition-all duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 overflow-hidden" : "max-w-[200px] opacity-100 ml-3")}>
+            <div className={cn(isSynced && "transition-all duration-300 ease-in-out", collapsed ? "max-w-0 opacity-0 overflow-hidden" : "max-w-[200px] opacity-100 ml-3")}>
               <div className="flex items-center gap-2 whitespace-nowrap">
                 <p className="eyebrow">
                   {t("sidebar.brand.caption")}
@@ -239,7 +244,7 @@ export function Sidebar() {
               </div>
             </div>
           </div>
-          <div className={cn("transition-all duration-300", collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100 w-auto")}>
+          <div className={cn(isSynced && "transition-all duration-300", collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100 w-auto")}>
             <button
               type="button"
               aria-label={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
@@ -252,7 +257,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        <div className={cn("flex justify-center transition-all duration-300", collapsed ? "max-h-12 opacity-100" : "max-h-0 opacity-0 overflow-hidden")}>
+        <div className={cn("flex justify-center", isSynced && "transition-all duration-300", collapsed ? "max-h-12 opacity-100" : "max-h-0 opacity-0 overflow-hidden")}>
           <button
             type="button"
             aria-label={t("sidebar.expand")}
@@ -265,7 +270,7 @@ export function Sidebar() {
       </div>
       <nav className="mt-8 space-y-5">
         <div>
-          <div className={cn("transition-all duration-300 ease-in-out", collapsed ? "opacity-0 max-h-0 overflow-hidden" : "opacity-100 max-h-12 mb-3")}>
+          <div className={cn(isSynced && "transition-all duration-300 ease-in-out", collapsed ? "opacity-0 max-h-0 overflow-hidden" : "opacity-100 max-h-12 mb-3")}>
             <p className="eyebrow">
               {t("sidebar.modulesTitle")}
             </p>
@@ -282,7 +287,8 @@ export function Sidebar() {
                   title={label}
                   aria-label={label}
                   className={cn(
-                    "flex w-full items-center rounded-2xl border text-sm font-medium transition-all duration-300 ease-in-out pointer-events-auto",
+                    "flex w-full items-center rounded-2xl border text-sm font-medium pointer-events-auto",
+                    isSynced && "transition-all duration-300 ease-in-out",
                     collapsed ? "justify-center px-0 py-3" : "px-4 py-2",
                     active
                       ? "border-emerald-300/60 bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-200 shadow-neon"
@@ -292,7 +298,7 @@ export function Sidebar() {
                   aria-current={active ? "page" : undefined}
                 >
                   <Icon className={cn("h-4 w-4 shrink-0 transition-colors", active ? "text-emerald-300" : "text-zinc-400")} />
-                  <span className={cn("transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden", collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[200px] opacity-100 ml-3")}>
+                  <span className={cn(isSynced && "transition-all duration-300 ease-in-out", "whitespace-nowrap overflow-hidden", collapsed ? "max-w-0 opacity-0 ml-0" : "max-w-[200px] opacity-100 ml-3")}>
                     {label}
                   </span>
                 </Link>
@@ -301,7 +307,7 @@ export function Sidebar() {
           </div>
         </div>
       </nav>
-      <div className={cn("mt-auto transition-all duration-300 ease-in-out", collapsed ? "opacity-0 translate-y-4 pointer-events-none overflow-hidden max-h-0" : "opacity-100 translate-y-0 max-h-[1000px]")}>
+      <div className={cn("mt-auto", isSynced && "transition-all duration-300 ease-in-out", collapsed ? "opacity-0 translate-y-4 pointer-events-none overflow-hidden max-h-0" : "opacity-100 translate-y-0 max-h-[1000px]")}>
         <div className="space-y-5 pt-8">
           <SystemStatusPanel />
 

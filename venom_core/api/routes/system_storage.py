@@ -41,30 +41,30 @@ async def get_storage_snapshot():
         disk_root_mount = Path("/")
         total_root, used_root, free_root = shutil.disk_usage(disk_root_mount)
         entries = [
-            {"name": "Modele LLM", "path": "models", "kind": "models"},
-            {"name": "Modele cache", "path": "models_cache", "kind": "cache"},
-            {"name": "Logi", "path": "logs", "kind": "logs"},
-            {"name": "Dane: timelines", "path": "data/timelines", "kind": "data"},
-            {"name": "Dane: memory", "path": "data/memory", "kind": "data"},
-            {"name": "Dane: audio", "path": "data/audio", "kind": "data"},
-            {"name": "Dane: learning", "path": "data/learning", "kind": "data"},
+            {"name": "llm_models", "path": "models", "kind": "models"},
+            {"name": "llm_cache", "path": "models_cache", "kind": "cache"},
+            {"name": "logs", "path": "logs", "kind": "logs"},
+            {"name": "timelines", "path": "data/timelines", "kind": "data"},
+            {"name": "memory", "path": "data/memory", "kind": "data"},
+            {"name": "audio", "path": "data/audio", "kind": "data"},
+            {"name": "learning", "path": "data/learning", "kind": "data"},
             {
-                "name": "MCP: Repozytoria narzędzi",
+                "name": "mcp_repos",
                 "path": "workspace/venom_core/skills/mcp/_repos",
                 "kind": "mcp",
             },
             {
-                "name": "MCP: Wygenerowane skille",
+                "name": "mcp_custom",
                 "path": "workspace/venom_core/skills/custom",
                 "kind": "mcp",
             },
             {
-                "name": "Build: web-next/.next",
+                "name": "next_build",
                 "path": "web-next/.next",
                 "kind": "build",
             },
             {
-                "name": "Deps: web-next/node_modules",
+                "name": "node_modules",
                 "path": "web-next/node_modules",
                 "kind": "deps",
             },
@@ -103,9 +103,9 @@ async def get_storage_snapshot():
             else:
                 size_bytes = size
 
-            if entry["name"] == "Dane: timelines" and dreams_size > 0:
+            if entry["name"] == "timelines" and dreams_size > 0:
                 size_bytes = max(0, size_bytes - dreams_size)
-                entry["name"] = "Dane: timelines (user/core)"
+                entry["name"] = "timelines_user"
 
             total_items_size += size_bytes
             items.append(
@@ -121,7 +121,7 @@ async def get_storage_snapshot():
             total_items_size += dreams_size
             items.append(
                 {
-                    "name": "Dane: dreaming (timelines)",
+                    "name": "dreaming",
                     "path": str(timelines_path / "dream_*"),
                     "size_bytes": dreams_size,
                     "kind": "data",
@@ -131,7 +131,7 @@ async def get_storage_snapshot():
         items.insert(
             0,
             {
-                "name": "Katalog venom (repo)",
+                "name": "project_root",
                 "path": str(PROJECT_ROOT),
                 "size_bytes": total_items_size,
                 "kind": "project",
@@ -154,7 +154,7 @@ async def get_storage_snapshot():
         items.insert(
             1,
             {
-                "name": "Kod (repo, bez modeli/deps/build/logs/data)",
+                "name": "code_only",
                 "path": str(PROJECT_ROOT),
                 "size_bytes": code_size,
                 "kind": "code",

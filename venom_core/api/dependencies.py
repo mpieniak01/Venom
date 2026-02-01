@@ -79,7 +79,6 @@ def get_orchestrator() -> Orchestrator:
     Raises:
         RuntimeError: Jeśli orchestrator nie został zainicjalizowany
     """
-    global _orchestrator
     if _orchestrator is None:
         raise RuntimeError("Orchestrator nie jest dostępny")
     return _orchestrator

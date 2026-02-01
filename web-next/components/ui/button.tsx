@@ -12,6 +12,7 @@ export type ButtonVariant =
   | "ghost"
   | "subtle"
   | "warning"
+  | "amber"
   | "danger";
 export type ButtonSize = "xs" | "sm" | "md";
 
@@ -46,6 +47,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     subtle: "border border-white/5 bg-white/5 text-white hover:border-violet-500/40",
     warning:
       "border border-amber-500/40 bg-amber-500/10 text-amber-100 hover:border-amber-500/60",
+    amber:
+      "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-500/50 hover:bg-amber-500/20",
     danger:
       "border border-rose-500/40 bg-rose-500/10 text-rose-100 hover:border-rose-500/60",
   }[variant];

@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from venom_core.agents.documenter import DocumenterAgent
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.agents.operator import OperatorAgent
+from venom_core.api import dependencies as api_deps
 from venom_core.api.audio_stream import AudioStreamHandler
 
 # Import routers
@@ -785,6 +786,21 @@ def setup_router_dependencies():
     logger.info(
         f"Setting system dependencies. Orchestrator: {orchestrator is not None}"
     )
+
+    # Set global dependencies in api/dependencies.py
+    if orchestrator:
+        api_deps.set_orchestrator(orchestrator)
+    if state_manager:
+        api_deps.set_state_manager(state_manager)
+    if vector_store:
+        api_deps.set_vector_store(vector_store)
+    if graph_store:
+        api_deps.set_graph_store(graph_store)
+    if lessons_store:
+        api_deps.set_lessons_store(lessons_store)
+    if session_store:
+        api_deps.set_session_store(session_store)
+
     if service_monitor:
         service_monitor.set_orchestrator(orchestrator)
 
@@ -805,9 +821,6 @@ def setup_router_dependencies():
     # UWAGA: Endpointy metrics mogą zwracać szacunkowe dane, dopóki TokenEconomist nie zostanie dodany.
     # TODO: Zainicjalizować TokenEconomist i przekazać tutaj, gdy będzie dostępny (np. po dodaniu obsługi w lifespan).
     metrics_routes.set_dependencies(token_economist=None)
-    memory_routes.set_dependencies(
-        vector_store, state_manager, lessons_store, session_store
-    )
     llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
     knowledge_routes.set_dependencies(graph_store, lessons_store)

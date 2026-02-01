@@ -3,24 +3,19 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
+from venom_core.api.dependencies import get_graph_store, get_lessons_store
+from venom_core.config import SETTINGS
+from venom_core.memory.graph_store import CodeGraphStore
+from venom_core.memory.lessons_store import LessonsStore
+from venom_core.services.config_manager import config_manager
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge"])
-
-# Dependencies - będą ustawione w main.py
-_graph_store = None
-_lessons_store = None
-
-
-def set_dependencies(graph_store, lessons_store):
-    """Ustaw zależności dla routera."""
-    global _graph_store, _lessons_store
-    _graph_store = graph_store
-    _lessons_store = lessons_store
 
 
 @router.get("/knowledge/graph")
@@ -31,6 +26,7 @@ async def get_knowledge_graph(
         le=5000,
         description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
     ),
+    graph_store: CodeGraphStore = Depends(get_graph_store),
 ):
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
@@ -53,7 +49,7 @@ async def get_knowledge_graph(
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
     # Jeśli graph_store nie jest dostępny lub jest pusty, zwróć mock data
-    if _graph_store is None or _graph_store.graph.number_of_nodes() == 0:
+    if graph_store is None or graph_store.graph.number_of_nodes() == 0:
         logger.info("Graph store pusty lub niedostępny, zwracam mock data")
         return _get_mock_knowledge_graph()
 
@@ -63,7 +59,7 @@ async def get_knowledge_graph(
         edges = []
 
         # Dodaj węzły
-        for node_id, node_data in _graph_store.graph.nodes(data=True):
+        for node_id, node_data in graph_store.graph.nodes(data=True):
             node_type = node_data.get("type", "unknown")
             node_name = node_data.get("name", node_id)
 
@@ -104,7 +100,7 @@ async def get_knowledge_graph(
         allowed_ids = {n["data"]["id"] for n in nodes}
         # Dodaj krawędzie
         edge_id = 0
-        for source, target, edge_data in _graph_store.graph.edges(data=True):
+        for source, target, edge_data in graph_store.graph.edges(data=True):
             if allowed_ids and (source not in allowed_ids or target not in allowed_ids):
                 continue
             edge_type = edge_data.get("type", "RELATED")
@@ -272,7 +268,7 @@ def _get_mock_knowledge_graph():
 
 
 @router.get("/graph/summary")
-async def get_graph_summary():
+async def get_graph_summary(graph_store: CodeGraphStore = Depends(get_graph_store)):
     """
     Zwraca podsumowanie grafu kodu.
 
@@ -288,18 +284,15 @@ async def get_graph_summary():
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
-    if _graph_store is None:
-        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
-
     try:
-        summary = _graph_store.get_graph_summary()
+        summary = graph_store.get_graph_summary()
         nodes = summary.get("total_nodes")
         edges = summary.get("total_edges")
         last_updated = None
         try:
-            if _graph_store.graph_file.exists():
+            if graph_store.graph_file.exists():
                 last_updated = datetime.fromtimestamp(
-                    _graph_store.graph_file.stat().st_mtime, tz=timezone.utc
+                    graph_store.graph_file.stat().st_mtime, tz=timezone.utc
                 ).isoformat()
         except Exception as e:
             logger.debug("Nie można odczytać statystyk pliku grafu: %s", e)
@@ -325,7 +318,9 @@ async def get_graph_summary():
 
 
 @router.get("/graph/file/{file_path:path}")
-async def get_file_graph_info(file_path: str):
+async def get_file_graph_info(
+    file_path: str, graph_store: CodeGraphStore = Depends(get_graph_store)
+):
     """
     Zwraca informacje o pliku w grafie.
 
@@ -338,11 +333,8 @@ async def get_file_graph_info(file_path: str):
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
-    if _graph_store is None:
-        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
-
     try:
-        info = _graph_store.get_file_info(file_path)
+        info = graph_store.get_file_info(file_path)
         if info is None:
             raise HTTPException(
                 status_code=404, detail=f"Plik {file_path} nie istnieje w grafie"
@@ -356,7 +348,9 @@ async def get_file_graph_info(file_path: str):
 
 
 @router.get("/graph/impact/{file_path:path}")
-async def get_impact_analysis(file_path: str):
+async def get_impact_analysis(
+    file_path: str, graph_store: CodeGraphStore = Depends(get_graph_store)
+):
     """
     Analizuje wpływ zmian w pliku.
 
@@ -369,11 +363,8 @@ async def get_impact_analysis(file_path: str):
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
-    if _graph_store is None:
-        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
-
     try:
-        impact = _graph_store.get_impact_analysis(file_path)
+        impact = graph_store.get_impact_analysis(file_path)
         if impact is None or "error" in impact:
             raise HTTPException(
                 status_code=404, detail=f"Plik {file_path} nie istnieje w grafie"
@@ -387,7 +378,7 @@ async def get_impact_analysis(file_path: str):
 
 
 @router.post("/graph/scan")
-async def trigger_graph_scan():
+async def trigger_graph_scan(graph_store: CodeGraphStore = Depends(get_graph_store)):
     """
     Uruchamia skanowanie grafu kodu.
 
@@ -397,11 +388,8 @@ async def trigger_graph_scan():
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny
     """
-    if _graph_store is None:
-        raise HTTPException(status_code=503, detail="CodeGraphStore nie jest dostępny")
-
     try:
-        stats = _graph_store.scan_workspace()
+        stats = graph_store.scan_workspace()
         if isinstance(stats, dict) and "error" in stats:
             raise HTTPException(
                 status_code=500, detail=f"Błąd podczas skanowania: {stats['error']}"
@@ -417,7 +405,11 @@ async def trigger_graph_scan():
 
 
 @router.get("/lessons")
-async def get_lessons(limit: int = 10, tags: Optional[str] = None):
+async def get_lessons(
+    limit: int = 10,
+    tags: Optional[str] = None,
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
     """
     Pobiera listę lekcji.
 
@@ -431,15 +423,12 @@ async def get_lessons(limit: int = 10, tags: Optional[str] = None):
     Raises:
         HTTPException: 503 jeśli LessonsStore nie jest dostępny
     """
-    if _lessons_store is None:
-        raise HTTPException(status_code=503, detail="LessonsStore nie jest dostępny")
-
     try:
         if tags:
             tag_list = [t.strip() for t in tags.split(",")]
-            lessons = _lessons_store.get_lessons_by_tags(tag_list)
+            lessons = lessons_store.get_lessons_by_tags(tag_list)
         else:
-            lessons = _lessons_store.get_all_lessons(limit=limit)
+            lessons = lessons_store.get_all_lessons(limit=limit)
 
         # Konwertuj do dict
         lessons_data = [lesson.to_dict() for lesson in lessons]
@@ -455,7 +444,7 @@ async def get_lessons(limit: int = 10, tags: Optional[str] = None):
 
 
 @router.get("/lessons/stats")
-async def get_lessons_stats():
+async def get_lessons_stats(lessons_store: LessonsStore = Depends(get_lessons_store)):
     """
     Zwraca statystyki magazynu lekcji.
 
@@ -465,12 +454,205 @@ async def get_lessons_stats():
     Raises:
         HTTPException: 503 jeśli LessonsStore nie jest dostępny
     """
-    if _lessons_store is None:
-        raise HTTPException(status_code=503, detail="LessonsStore nie jest dostępny")
-
     try:
-        stats = _lessons_store.get_statistics()
+        stats = lessons_store.get_statistics()
         return {"status": "success", "stats": stats}
     except Exception as e:
         logger.exception("Błąd podczas pobierania statystyk lekcji")
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+
+
+# --- Lesson Management Endpoints (moved from memory.py) ---
+
+
+@router.delete("/lessons/prune/latest")
+async def prune_latest_lessons(
+    count: int = Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """
+    Usuwa n najnowszych lekcji z magazynu.
+    """
+    try:
+        deleted = lessons_store.delete_last_n(count)
+        logger.info(f"Pruning: Usunięto {deleted} najnowszych lekcji")
+        return {
+            "status": "success",
+            "message": f"Usunięto {deleted} najnowszych lekcji",
+            "deleted": deleted,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas usuwania najnowszych lekcji")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas usuwania lekcji: {str(e)}"
+        ) from e
+
+
+@router.delete("/lessons/prune/range")
+async def prune_lessons_by_range(
+    start: str = Query(
+        ..., description="Data początkowa w formacie ISO 8601 (np. 2024-01-01T00:00:00)"
+    ),
+    end: str = Query(
+        ..., description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)"
+    ),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """
+    Usuwa lekcje z podanego zakresu czasu.
+    """
+    try:
+        # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
+        # Workaround for Python < 3.11 which doesn't handle 'Z' suffix in fromisoformat
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Błędny format daty. Użyj ISO 8601: {str(e)}",
+        ) from e
+
+    try:
+        deleted = lessons_store.delete_by_time_range(start_dt, end_dt)
+        logger.info(f"Pruning: Usunięto {deleted} lekcji z zakresu {start} - {end}")
+        return {
+            "status": "success",
+            "message": f"Usunięto {deleted} lekcji z zakresu {start} - {end}",
+            "deleted": deleted,
+            "start": start,
+            "end": end,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas usuwania lekcji po zakresie czasu")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas usuwania lekcji: {str(e)}"
+        ) from e
+
+
+@router.delete("/lessons/prune/tag")
+async def prune_lessons_by_tag(
+    tag: str = Query(..., description="Tag do wyszukania i usunięcia"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """
+    Usuwa lekcje zawierające dany tag.
+    """
+    try:
+        deleted = lessons_store.delete_by_tag(tag)
+        logger.info(f"Pruning: Usunięto {deleted} lekcji z tagiem '{tag}'")
+        return {
+            "status": "success",
+            "message": f"Usunięto {deleted} lekcji z tagiem '{tag}'",
+            "deleted": deleted,
+            "tag": tag,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas usuwania lekcji po tagu")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas usuwania lekcji: {str(e)}"
+        ) from e
+
+
+@router.delete("/lessons/purge")
+async def purge_all_lessons(
+    force: bool = Query(
+        False, description="Wymagane potwierdzenie dla operacji nuklearnej"
+    ),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """
+    Czyści całą bazę lekcji (opcja nuklearna).
+    """
+    if not force:
+        raise HTTPException(
+            status_code=400,
+            detail="Operacja wymaga potwierdzenia. Ustaw parametr force=true",
+        )
+
+    try:
+        lesson_count = len(lessons_store.lessons)
+        success = lessons_store.clear_all()
+        if not success:
+            raise HTTPException(
+                status_code=500, detail="Nie udało się wyczyścić bazy lekcji"
+            )
+        logger.warning(
+            f"💣 PURGE: Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)"
+        )
+        return {
+            "status": "success",
+            "message": f"💣 Wyczyszczono całą bazę lekcji ({lesson_count} lekcji)",
+            "deleted": lesson_count,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas czyszczenia bazy lekcji")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas czyszczenia bazy: {str(e)}"
+        ) from e
+
+
+@router.delete("/lessons/prune/ttl")
+async def prune_lessons_by_ttl(
+    days: int = Query(..., ge=1, description="Liczba dni retencji (TTL)"),
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Usuwa lekcje starsze niż TTL w dniach."""
+    try:
+        deleted = lessons_store.prune_by_ttl(days)
+        return {
+            "status": "success",
+            "message": f"Usunięto {deleted} lekcji starszych niż {days} dni",
+            "deleted": deleted,
+            "days": days,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas usuwania lekcji po TTL")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas usuwania lekcji: {str(e)}"
+        ) from e
+
+
+@router.post("/lessons/dedupe")
+async def dedupe_lessons(
+    lessons_store: LessonsStore = Depends(get_lessons_store),
+):
+    """Deduplikuje lekcje na podstawie podpisu treści."""
+    try:
+        removed = lessons_store.dedupe_lessons()
+        return {
+            "status": "success",
+            "message": f"Usunięto {removed} zduplikowanych lekcji",
+            "removed": removed,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas deduplikacji lekcji")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas deduplikacji lekcji: {str(e)}"
+        ) from e
+
+
+@router.get("/lessons/learning/status")
+async def get_learning_status():
+    """Zwraca status globalnego zapisu lekcji."""
+    return {"status": "success", "enabled": SETTINGS.ENABLE_META_LEARNING}
+
+
+class LearningToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/lessons/learning/toggle")
+async def toggle_learning(request: LearningToggleRequest):
+    """Włącza/wyłącza globalny zapis lekcji."""
+    try:
+        SETTINGS.ENABLE_META_LEARNING = request.enabled
+        config_manager.update_config({"ENABLE_META_LEARNING": request.enabled})
+        return {
+            "status": "success",
+            "enabled": SETTINGS.ENABLE_META_LEARNING,
+        }
+    except Exception as e:
+        logger.exception("Błąd podczas zmiany stanu uczenia")
+        raise HTTPException(
+            status_code=500, detail=f"Błąd podczas zmiany stanu: {str(e)}"
+        ) from e

@@ -544,7 +544,7 @@ export function ServicesPanel() {
                 ) : (
                   <div className="rounded-lg bg-blue-500/10 p-2 border border-blue-500/30">
                     <p className="text-[11px] text-blue-300 text-center">
-                      Kontrolowane przez konfigurację
+                      {t("config.services.managedByConfig")}
                     </p>
                   </div>
                 )}
@@ -556,7 +556,7 @@ export function ServicesPanel() {
 
       {/* Storage */}
       <div className="glass-panel rounded-2xl box-subtle p-6">
-        <h2 className="mb-4 heading-h2">Koszty dysku</h2>
+        <h2 className="mb-4 heading-h2">{t("config.services.storage.title")}</h2>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-zinc-200">
             {storageSnapshot?.disk_root ? (
@@ -568,7 +568,7 @@ export function ServicesPanel() {
                     storageSnapshot.disk_root!.used_bytes ?? Math.max(total - free, 0);
                   return (
                     <span>
-                      Użycie (WSL root):{" "}
+                      {t("config.services.storage.wslUsage")}:{" "}
                       <span className="font-semibold text-white">
                         {formatBytes(used)}
                       </span>
@@ -577,31 +577,31 @@ export function ServicesPanel() {
                 })()}
                 {storageSnapshot.disk ? (
                   <div className="mt-1 pt-1 border-t border-white/5 text-xs text-zinc-400">
-                    Dysk fizyczny:{" "}
+                    {t("config.services.storage.physical")}:{" "}
                     <span className="font-semibold text-white">
                       {formatBytes(storageSnapshot.disk.total_bytes)}
                     </span>
                     <span className="mx-2 opacity-40">|</span>
-                    Użycie: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                    {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
                     <span className="mx-2 opacity-40">|</span>
-                    Wolne: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                    {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
                   </div>
                 ) : null}
               </div>
             ) : storageSnapshot?.disk ? (
               <span className="text-sm">
-                Dysk fizyczny:{" "}
+                {t("config.services.storage.physical")}:{" "}
                 <span className="font-semibold text-white">
                   {formatBytes(storageSnapshot.disk.total_bytes)}
                 </span>
                 <span className="mx-2 text-zinc-600">|</span>
                 <span className="text-xs text-zinc-400">
-                  Użycie: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
-                  {" "}/ Wolne: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
+                  {t("config.services.storage.used")}: <span className="text-white">{formatBytes(storageSnapshot.disk.used_bytes)}</span>
+                  {" "}/ {t("config.services.storage.free")}: <span className="text-emerald-400">{formatBytes(storageSnapshot.disk.free_bytes)}</span>
                 </span>
               </span>
             ) : (
-              <span>Brak danych o dysku.</span>
+              <span>{t("config.services.storage.noData")}</span>
             )}
           </div>
           <Button
@@ -611,12 +611,12 @@ export function ServicesPanel() {
             onClick={fetchStorageSnapshot}
             disabled={storageLoading}
           >
-            {storageLoading ? "Odświeżam..." : "Odśwież"}
+            {storageLoading ? t("config.services.storage.refreshing") : t("config.services.storage.refresh")}
           </Button>
         </div>
         {storageSnapshot?.refreshed_at ? (
           <p className="mt-2 text-xs text-zinc-500">
-            Ostatnie sprawdzenie: {formatStorageTimestamp(storageSnapshot.refreshed_at)}
+            {t("config.services.storage.lastCheck")}: {formatStorageTimestamp(storageSnapshot.refreshed_at)}
           </p>
         ) : null}
         {storageError ? (

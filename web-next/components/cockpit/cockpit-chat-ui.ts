@@ -274,7 +274,7 @@ export function useCockpitChatUi({
         setFeedbackSubmittingId(null);
       }
     },
-    [feedbackByRequest, refreshHistory, refreshTasks, sendFeedback, setFeedbackSubmittingId, updateFeedbackState],
+    [feedbackByRequest, refreshHistory, refreshTasks, sendFeedback, setFeedbackSubmittingId, updateFeedbackState, t],
   );
   const handleFeedbackClick = useCallback(
     (requestId: string, rating: "up" | "down") => {
@@ -360,7 +360,7 @@ export function useCockpitChatUi({
     } finally {
       setLoadingSchema(false);
     }
-  }, [fetchModelConfig, models, setGenerationParams, setLoadingSchema, setModelSchema, setTuningOpen]);
+  }, [fetchModelConfig, models, setGenerationParams, setLoadingSchema, setModelSchema, setTuningOpen, t]);
 
   const handleApplyTuning = useCallback(async () => {
     const activeModelName = models?.active?.model;
@@ -386,7 +386,7 @@ export function useCockpitChatUi({
     } finally {
       setTuningSaving(false);
     }
-  }, [generationParams, models, pushToast, setTuningSaving, updateModelConfig]);
+  }, [generationParams, models, pushToast, setTuningSaving, updateModelConfig, t]);
 
   const handleExportPinnedLogs = useCallback(async () => {
     if (pinnedLogs.length === 0) return;

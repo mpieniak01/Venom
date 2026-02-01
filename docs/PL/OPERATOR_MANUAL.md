@@ -16,6 +16,7 @@ Wyobraź sobie Timelines jako **punkty zapisu w grze** lub **alternatywne wersje
 *   **Po co to jest?** Venom pozwala Ci bezpiecznie eksperymentować. Zanim wprowadzisz ryzykowne zmiany w kodzie, system (lub Ty ręcznie) tworzy "migawkę" (snapshot) obecnego stanu.
 *   **Jak to działa dla Ciebie?** Jeśli eksperyment się nie uda, możesz natychmiast cofnąć się do punktu wyjścia, nie tracąc działającego systemu.
 *   **User/Core Timelines**: To są Twoje "główne" zapisy – backupy przed refactoringiem, punkty kontrolne projektu. Są cenne i zazwyczaj chcesz je zachować.
+*   **Przykład Użycia**: Planujesz duży refactoring nawigacji. Tworzysz Timeline o nazwie "przed-refactorem-nav". Jeśli w połowie pracy kod przestanie się kompilować, jednym kliknięciem przywracasz stan "przed-refactorem-nav".
 
 ### 🌙 Dreams (Sny)
 Sny to proces **samodoskonalenia** Venoma w czasie wolnym.
@@ -23,6 +24,7 @@ Sny to proces **samodoskonalenia** Venoma w czasie wolnym.
 *   **Co to jest?** Gdy nie używasz systemu (lub w nocy), Venom analizuje swoją bazę wiedzy i wymyśla hipotetyczne problemy programistyczne, a następnie próbuje je rozwiązać.
 *   **Po co?** Każdy rozwiązany "sen" staje się nową umiejętnością (lekcją), którą Venom może wykorzystać w przyszłości, pomagając Tobie.
 *   **Dream Timelines**: Każdy sen odbywa się w odizolowanej linii czasowej, aby nie zaśmiecać Twojego głównego projektu. Te dane mogą zajmować dużo miejsca, ale są w pełni odtwarzalne (można je bezpiecznie usuwać).
+*   **Przykład**: Venom zauważył, że wczoraj miałeś problem z konfiguracją Nginx. W nocy "przyśnił" sobie scenariusz naprawy pliku `nginx.conf`, przetestował go w izolacji i teraz "wie", jak to zrobić poprawnie, gdy zapytasz o to jutro.
 
 ---
 
@@ -89,6 +91,44 @@ Jeśli dysponujesz:
 
 **ZALECENIE: Wybierz vLLM.**
 Oferuje on bezkonkurencyjną szybkość (tokeny na sekundę), ale jest bardzo wymagający („chciwy”) na pamięć. Na słabszych konfiguracjach może powodować niestabilność systemu.
+
+---
+
+## 5. Panel Konfiguracji: Parametry Systemu
+
+Oprócz zarządzania kosztami dysku i usługami, zakładka `Parametry` w `/config` pozwala na sterowanie zachowaniem agentów.
+
+*   **Tryb AI (AI Mode)**: Decyduje, czy Venom działa w pełni lokalnie ("Local"), czy hybrydowo ("Hybrid" - np. ciężkie zadania w chmurze). Domyślnie: **Local**.
+*   **Hive (Przetwarzanie rozproszone)**: Włącza/wyłącza architekturę rozproszoną (Queue Worker).
+*   **Shadow (Desktop Awareness)**: Jeśli włączone, agent działający w tle monitoruje zdarzenia systemowe, próbując proaktywnie wykrywać problemy.
+*   **Ghost (GUI Automation)**: Zezwala Venomowi na sterowanie myszką i klawiaturą (RPA). **Domyślnie wyłączone** ze względów bezpieczeństwa.
+
+> [!TIP]
+> Zmieniając parametry (np. wyłączając Shadow), system może wymagać restartu, aby zwolnić zasoby.
+
+---
+
+## 6. Rozwiązywanie Problemów (Troubleshooting)
+
+Typowe sytuacje, które możesz napotkać jako Operator:
+
+### 🔴 System nie odpowiada ("Connection Refused")
+*   **Przyczyna**: Kontener dockera (`venom-backend`) nie działa lub się restartuje.
+*   **Rozwiązanie**: Sprawdź logi w terminalu. Upewnij się, że Docker Desktop jest uruchomiony. W ostateczności wykonaj `docker-compose restart`.
+
+### 🟡 Model "mieli" w nieskończoność (Timeout)
+*   **Przyczyna**: Wybrany model jest zbyt duży dla Twojej karty graficznej (vLLM OOM) lub zbyt wolny (CPU).
+*   **Rozwiązanie**:
+    1.  Przełącz Runtime na **Ollama** w `/config`.
+    2.  Wybierz mniejszy model (np. `gemma:2b` lub `llama3:8b-quantized`).
+
+### 🟠 Brak miejsca na dysku
+*   **Przyczyna**: Nagromadzenie "Snów" (Dream Timelines) lub cache modeli.
+*   **Rozwiązanie**: Wejdź w `/config` -> Usługi -> Storage i wyczyść sekcję **Dreams** oraz **Cache**.
+
+### ⚪ Interface jest po angielsku, mimo że chcę Polski
+*   **Przyczyna**: Ustawienia przeglądarki lub brak zapisanego wyboru.
+*   **Rozwiązanie**: Kliknij ikonę flagi/języka w pasku bocznym (Sidebar) i wybierz "PL". Ustawienie zostanie zapamiętane.
 
 ---
 

@@ -823,7 +823,6 @@ def setup_router_dependencies():
     metrics_routes.set_dependencies(token_economist=None)
     llm_simple_routes.set_dependencies(request_tracer)
     git_routes.set_dependencies(git_skill)
-    knowledge_routes.set_dependencies(graph_store, lessons_store)
     agents_routes.set_dependencies(
         gardener_agent, shadow_agent, file_watcher, documenter_agent, orchestrator
     )

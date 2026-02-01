@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { cn } from "@/lib/utils";
 import { Calendar } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 export function CalendarHome() {
+  const t = useTranslation();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function CalendarHome() {
 
       if (!response.ok) {
         if (response.status === 503) {
-          setError("Google Calendar nie jest skonfigurowany. Sprawdź konfigurację ENABLE_GOOGLE_CALENDAR.");
+          setError(t("calendar.errors.no_config"));
         } else {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -36,11 +38,11 @@ export function CalendarHome() {
       const data: EventsResponse = await response.json();
       setEvents(data.events);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Błąd podczas pobierania wydarzeń");
+      setError(err instanceof Error ? err.message : t("calendar.errors.fetch_failed"));
     } finally {
       setLoading(false);
     }
-  }, [timeRangeHours]);
+  }, [timeRangeHours, t]);
 
   const handleCreateEvent = async (eventData: CreateEventRequest) => {
     try {
@@ -72,9 +74,9 @@ export function CalendarHome() {
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Kalendarz"
-        title="📅 Kalendarz"
-        description="Synchronizacja z Google Calendar i planowanie zadań"
+        eyebrow={t("calendar.page.eyebrow")}
+        title={t("calendar.page.title")}
+        description={t("calendar.page.description")}
         as="h1"
         size="lg"
         rightSlot={
@@ -85,7 +87,7 @@ export function CalendarHome() {
               size="sm"
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
-              {showForm ? "Anuluj" : "+ Nowy termin"}
+              {showForm ? t("calendar.actions.cancel") : t("calendar.actions.new_event")}
             </Button>
             <Calendar className="page-heading-icon" />
           </div>
@@ -105,7 +107,7 @@ export function CalendarHome() {
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           )}
         >
-          8h
+          {t("calendar.filters.hours_8")}
         </Button>
         <Button
           onClick={() => setTimeRangeHours(24)}
@@ -118,7 +120,7 @@ export function CalendarHome() {
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           )}
         >
-          Dziś
+          {t("calendar.filters.today")}
         </Button>
         <Button
           onClick={() => setTimeRangeHours(168)}
@@ -131,7 +133,7 @@ export function CalendarHome() {
               : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
           )}
         >
-          Tydzień
+          {t("calendar.filters.week")}
         </Button>
       </div>
 
@@ -152,7 +154,7 @@ export function CalendarHome() {
       {/* Loading State */}
       {loading && !error && (
         <div className="flex items-center justify-center py-12">
-          <div className="text-zinc-400">Ładowanie wydarzeń...</div>
+          <div className="text-zinc-400">{t("calendar.loading")}</div>
         </div>
       )}
 

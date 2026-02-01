@@ -398,12 +398,12 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     const source = lessons?.lessons ?? [];
     return source.slice(0, 6).map((lesson, index) => ({
       id: lesson.id ?? `${lesson.title ?? "lesson"}-${lesson.created_at ?? index}`,
-      title: lesson.title ?? "Operacja grafu",
-      summary: lesson.summary || "Brak dodatkowych informacji.",
+      title: lesson.title ?? t("brain.recentOperations.defaultTitle"),
+      summary: lesson.summary || t("brain.recentOperations.defaultSummary"),
       timestamp: lesson.created_at || null,
       tags: lesson.tags ?? [],
     }));
-  }, [lessons?.lessons]);
+  }, [lessons?.lessons, t]);
   const lessonTags = useMemo(() => aggregateTags(lessons?.lessons || []), [lessons]);
   const filteredLessons = useMemo(() => {
     if (!activeTag) return lessons?.lessons || [];
@@ -565,10 +565,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     try {
       setMemoryActionPending(entryId);
       await pinMemoryEntry(entryId, pinned);
-      pushToast(pinned ? "Przypięto wpis pamięci." : "Odepnieto wpis pamięci.", "success");
+      pushToast(pinned ? t("brain.toasts.pinSuccess") : t("brain.toasts.unpinSuccess"), "success");
       memoryGraphPoll.refresh();
     } catch (err) {
-      pushToast("Nie udało się zmienić stanu pinned.", "error");
+      pushToast(t("brain.toasts.pinError"), "error");
       console.error("Nie udało się zmienić stanu pinned:", err);
     } finally {
       setMemoryActionPending(null);
@@ -576,16 +576,16 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   };
 
   const handleDeleteMemory = async (entryId: string) => {
-    const confirmed = window.confirm("Czy na pewno usunąć ten wpis pamięci?");
+    const confirmed = window.confirm(t("brain.toasts.deleteConfirm"));
     if (!confirmed) return;
     try {
       setMemoryActionPending(entryId);
       await deleteMemoryEntry(entryId);
       clearSelection();
       memoryGraphPoll.refresh();
-      pushToast("Usunięto wpis pamięci.", "success");
+      pushToast(t("brain.toasts.deleteSuccess"), "success");
     } catch (err) {
-      pushToast("Nie udało się usunąć wpisu pamięci.", "error");
+      pushToast(t("brain.toasts.deleteError"), "error");
       console.error("Nie udało się usunąć wpisu pamięci:", err);
     } finally {
       setMemoryActionPending(null);
@@ -594,19 +594,19 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
 
   const handleClearSessionMemory = async () => {
     if (!memorySessionFilter.trim()) {
-      pushToast("Podaj session_id do wyczyszczenia.", "warning");
+      pushToast(t("brain.toasts.missingSessionId"), "warning");
       return;
     }
     try {
       setMemoryWipePending(true);
       const resp = await clearSessionMemory(memorySessionFilter.trim());
-      pushToast(`Wyczyszczono sesję ${resp.session_id} (wektorów: ${resp.deleted_vectors}).`, "success");
+      pushToast(t("brain.toasts.clearSessionSuccess", { id: resp.session_id, num: resp.deleted_vectors }), "success");
       setMemoryGraphOverride({ elements: { nodes: [], edges: [] }, stats: { nodes: 0, edges: 0 } });
       await memoryGraphPoll.refresh();
       await refreshSummary();
       setMemoryGraphOverride(null);
     } catch (err) {
-      pushToast("Nie udało się wyczyścić pamięci sesji.", "error");
+      pushToast(t("brain.toasts.clearSessionError"), "error");
       console.error(err);
     } finally {
       setMemoryWipePending(false);
@@ -626,11 +626,11 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     setScanMessage(null);
     try {
       const res = await triggerGraphScan();
-      setScanMessage(res.message || "Skanowanie uruchomione.");
+      setScanMessage(res.message || t("brain.toasts.scanStarted"));
       refreshSummary();
     } catch (err) {
       setScanMessage(
-        err instanceof Error ? err.message : "Nie udało się uruchomić skanu.",
+        err instanceof Error ? err.message : t("brain.toasts.scanError"),
       );
     } finally {
       setScanning(false);
@@ -639,7 +639,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
 
   const handleFileFetch = async (mode: "info" | "impact") => {
     if (!filePath.trim()) {
-      setFileMessage("Podaj ścieżkę pliku.");
+      setFileMessage(t("brain.file.missingPath"));
       return;
     }
     setFileLoading(true);
@@ -649,18 +649,18 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         const res = await fetchGraphFileInfo(filePath.trim());
         setFileInfo(res.file_info || null);
         if (!res.file_info) {
-          setFileMessage("Brak informacji o pliku.");
+          setFileMessage(t("brain.file.noInfo"));
         }
       } else {
         const res = await fetchGraphImpact(filePath.trim());
         setImpactInfo(res.impact || null);
         if (!res.impact) {
-          setFileMessage("Brak danych impact.");
+          setFileMessage(t("brain.file.noImpact"));
         }
       }
     } catch (err) {
       setFileMessage(
-        err instanceof Error ? err.message : "Nie udało się pobrać danych dla pliku.",
+        err instanceof Error ? err.message : t("brain.file.fetchError"),
       );
     } finally {
       setFileLoading(false);
@@ -673,6 +673,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       if (!cyRef.current || !mergedGraph?.elements) return;
       if (!preparedElements) return;
       const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
+      if (!cyRef.current) return;
       const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
       const styles = [
         {
@@ -805,9 +806,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   return (
     <div className="space-y-6 pb-10">
       <SectionHeading
-        eyebrow="Brain / Graf wiedzy"
-        title="Siatka wiedzy"
-        description="Pełnoekranowy podgląd pamięci Venoma z filtrami agentów i lekcji."
+        eyebrow="Brain / Knowledge Graph"
+        title={t("brain.home.title")}
+        description={t("brain.home.description")}
         as="h1"
         size="lg"
         rightSlot={<Brain className="page-heading-icon" />}
@@ -846,8 +847,8 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">{t("brain.stats.nodes")}: {summaryNodes}</Badge>
         <Badge tone="neutral">{t("brain.stats.edges")}: {summaryEdges}</Badge>
-        <Badge tone="warning">Aktualizacja: {summaryUpdated ?? "—"}</Badge>
-        <Badge tone="neutral">Źródło: {activeTab === "repo" ? "Knowledge" : "Pamięć"}</Badge>
+        <Badge tone="warning">{t("brain.home.updated")}: {summaryUpdated ?? "—"}</Badge>
+        <Badge tone="neutral">{t("brain.home.source")}: {activeTab === "repo" ? t("brain.home.knowledge") : t("brain.home.memory")}</Badge>
         {activeTab === "memory" ? <Badge tone="neutral">Limit: {memoryLimit}</Badge> : null}
         <Badge tone="neutral">
           Render: {renderedNodes}/{sourceTotalNodes} • {renderedEdges}/{sourceTotalEdges}
@@ -868,13 +869,13 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
             />
             {isMemoryEmpty && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-black/70 via-black/60 to-black/70 text-center text-white">
-                <p className="text-sm uppercase tracking-[0.35em] text-zinc-400">Brak danych</p>
+                <p className="text-sm uppercase tracking-[0.35em] text-zinc-400">{t("brain.file.noData")}</p>
                 <p className="max-w-md text-lg font-semibold text-white">
-                  Pamięć jest pusta. Rozpocznij rozmowę lub skanuj graf, aby wczytać węzły.
+                  {t("brain.lessons.emptyDescription")}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <Button asChild size="sm" variant="secondary">
-                    <a href="/chat">Rozpocznij chat</a>
+                    <a href="/chat">{t("cockpit.newChat")}</a>
                   </Button>
                   <Button
                     size="sm"
@@ -899,8 +900,8 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 )}
                 <p>
                   {graphLoading || memoryLoading
-                    ? "Ładuję graf..."
-                    : "Brak danych z API grafu."}
+                    ? t("brain.graph.scanning")
+                    : t("brain.file.noData")}
                 </p>
                 {(graphError || memoryGraphError) && (
                   <Button
@@ -954,10 +955,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       checked={showMemoryLayer}
                       onChange={(e) => setShowMemoryLayer(e.target.checked)}
                     />
-                    <span>Warstwa pamięci (LanceDB)</span>
+                    <span>{t("brain.controls.memoryLayer")}</span>
                   </label>
                   {memoryGraph?.stats?.nodes ? (
-                    <Badge tone="neutral">Pamięć: {memoryGraph.stats.nodes} węzłów</Badge>
+                    <Badge tone="neutral">{t("brain.controls.memoryNodes", { count: memoryGraph.stats.nodes })}</Badge>
                   ) : null}
                   <label className="flex items-center gap-2">
                     <input
@@ -965,7 +966,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       checked={memoryOnlyPinned}
                       onChange={(e) => setMemoryOnlyPinned(e.target.checked)}
                     />
-                    <span>Tylko pinned</span>
+                    <span>{t("brain.controls.onlyPinned")}</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -973,7 +974,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       checked={includeLessons}
                       onChange={(e) => setIncludeLessons(e.target.checked)}
                     />
-                    <span>Dołącz lekcje</span>
+                    <span>{t("brain.controls.includeLessons")}</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -981,7 +982,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       checked={showEdgeLabels}
                       onChange={(e) => setShowEdgeLabels(e.target.checked)}
                     />
-                    <span>Etykiety krawędzi</span>
+                    <span>{t("brain.controls.edgeLabels")}</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -989,15 +990,15 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       checked={flowMode === "flow"}
                       onChange={(e) => setFlowMode(e.target.checked ? "flow" : "default")}
                     />
-                    <span>Tryb flow (sekwencja)</span>
+                    <span>{t("brain.controls.flowMode")}</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <span>Session</span>
+                    <span>{t("brain.controls.legendSession")}</span>
                     <input
                       type="text"
                       value={memorySessionFilter}
                       onChange={(e) => setMemorySessionFilter(e.target.value)}
-                      placeholder="session-id"
+                      placeholder={t("brain.controls.sessionIdPlaceholder")}
                       className="min-w-[140px] rounded border border-white/20 bg-black/40 px-2 py-1 text-[11px] text-white outline-none"
                     />
                   </div>
@@ -1022,7 +1023,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       disabled={memoryWipePending}
                       onClick={handleClearSessionMemory}
                     >
-                      {t("brain.actions.clearSession")}
+                      {t("brain.controls.clearSession")}
                     </Button>
                     <Button
                       size="xs"
@@ -1032,7 +1033,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                         memoryGraphPoll.refresh();
                       }}
                     >
-                      Odśwież pamięć
+                      {t("brain.controls.refreshMemory")}
                     </Button>
                     <Button
                       size="xs"
@@ -1049,7 +1050,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                         }
                       }}
                     >
-                      Odśwież projekcję
+                      {t("brain.controls.refreshProjection")}
                     </Button>
                   </div>
                 </div>
@@ -1060,7 +1061,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
 
           <div className="flex flex-wrap gap-3 text-xs text-white">
             <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
-              <span className="text-zinc-400">Legenda:</span>
+              <span className="text-zinc-400">{t("brain.controls.legend")}</span>
               {activeTab === "repo" ? (
                 <>
                   <span className="flex items-center gap-1">
@@ -1072,32 +1073,32 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 <>
                   <span className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-amber-400" />
-                    memory / fact
+                    {t("brain.controls.legendMemory")}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-sky-400" />
-                    session
+                    {t("brain.controls.legendSession")}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                    user
+                    {t("brain.controls.legendUser")}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-purple-500" />
-                    lesson
+                    {t("brain.controls.legendLesson")}
                   </span>
                 </>
               )}
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
-                zaznaczony / sąsiedzi
+                {t("brain.controls.legendSelected")}
               </span>
             </div>
             {activeTab === "memory" ? (
               <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/60 px-3 py-2">
-                <span className="text-zinc-400">Etykiety krawędzi:</span>
+                <span className="text-zinc-400">{t("brain.controls.edgeLabels")}:</span>
                 <span className="text-zinc-200">
-                  {showEdgeLabels ? "włączone (może spowolnić)" : "domyślnie ukryte"}
+                  {showEdgeLabels ? t("brain.controls.edgeLabels") : t("brain.controls.defaultHidden")}
                 </span>
               </div>
             ) : null}
@@ -1105,27 +1106,27 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
 
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="card-shell card-base p-4 text-sm">
-              <h4 className="heading-h4">Podsumowanie zaznaczenia</h4>
+              <h4 className="heading-h4">{t("brain.selection.title")}</h4>
               {selected ? (
                 <div className="mt-3 space-y-2 text-xs text-zinc-300">
                   <p>
-                    <span className="text-zinc-400">Węzeł:</span>{" "}
+                    <span className="text-zinc-400">{t("brain.selection.node")}:</span>{" "}
                     <span className="font-semibold text-white">
                       {String(selected.label || selected.id || "n/a")}
                     </span>
                   </p>
                   <p>
-                    <span className="text-zinc-400">Typ:</span>{" "}
+                    <span className="text-zinc-400">{t("brain.selection.type")}:</span>{" "}
                     <span className="font-semibold text-emerald-300">
                       {String((selected as Record<string, unknown>)?.type || "n/a")}
                     </span>
                   </p>
                   <p>
-                    <span className="text-zinc-400">Relacje:</span>{" "}
+                    <span className="text-zinc-400">{t("brain.selection.relations")}:</span>{" "}
                     <span className="font-semibold">{relations.length}</span>
                   </p>
                   <p className="text-hint">
-                    Kliknij „Szczegóły”, by zobaczyć pełne dane JSON oraz kierunki relacji.
+                    {t("brain.selection.hint")}
                   </p>
                   <Button
                     size="xs"
@@ -1136,17 +1137,17 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                       setDetailsSheetOpen(true);
                     }}
                   >
-                    Szczegóły
+                    {t("brain.selection.details")}
                   </Button>
                 </div>
               ) : (
                 <p className="mt-3 text-hint">
-                  Wybierz węzeł w grafie, aby zobaczyć jego podstawowe dane.
+                  {t("brain.selection.empty")}
                 </p>
               )}
             </div>
             <div className="card-shell card-base p-4 text-sm">
-              <h4 className="heading-h4">Relacje (podgląd)</h4>
+              <h4 className="heading-h4">{t("brain.relations.title")}</h4>
               {selected && relations.length > 0 ? (
                 <ul className="mt-3 space-y-2 text-xs">
                   {relations.slice(0, 5).map((rel) => (
@@ -1159,21 +1160,21 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                   ))}
                   {relations.length > 5 && (
                     <p className="text-caption">
-                      +{relations.length - 5} kolejnych relacji w panelu szczegółów.
+                      {t("brain.relations.more", { count: relations.length - 5 })}
                     </p>
                   )}
                 </ul>
               ) : (
                 <p className="mt-3 text-hint">
-                  Brak relacji (lub nie wybrano węzła).
+                  {t("brain.relations.empty")}
                 </p>
               )}
             </div>
             <div className="card-shell card-base p-4 text-sm">
-              <h4 className="heading-h4">Ostatnie operacje grafu</h4>
+              <h4 className="heading-h4">{t("brain.recentOperations.title")}</h4>
               {recentOperations.length === 0 ? (
                 <p className="mt-3 text-hint">
-                  Brak zarejestrowanych operacji. Uruchom skan lub odśwież lekcje.
+                  {t("brain.recentOperations.empty")}
                 </p>
               ) : (
                 <ul className="mt-3 space-y-2 text-xs text-zinc-300">
@@ -1212,17 +1213,17 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       {activeTab !== "hygiene" && (
         <>
           <Panel
-            title="Lekcje i operacje grafu"
-            description="LessonsStore + akcje skanowania grafu."
+            title={t("brain.lessons.panelTitle")}
+            description={t("brain.lessons.panelDescription")}
             action={
               <Button size="sm" variant="secondary" onClick={() => refreshLessons()}>
-                Odśwież lekcje
+                {t("brain.lessons.refresh")}
               </Button>
             }
           >
             <div className="space-y-4">
               <div className="rounded-2xl box-base p-4 text-sm text-white">
-                <h4 className="heading-h4">Statystyki Lessons</h4>
+                <h4 className="heading-h4">{t("brain.stats.title") || "Statystyki Lessons"}</h4>
                 {lessonStatsEntries.length > 0 ? (
                   <div className="mt-3">
                     <LessonStats entries={lessonStatsEntries} />
@@ -1230,23 +1231,23 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 ) : (
                   <EmptyState
                     icon={<Radar className="h-4 w-4" />}
-                    title="Brak statystyk"
-                    description="LessonsStore może być offline lub puste."
+                    title={t("brain.lessons.noStats")}
+                    description={t("brain.lessons.emptyDescription")}
                     className="mt-3 text-xs"
                   />
                 )}
               </div>
               <div>
-                <h4 className="heading-h4">Ostatnie lekcje</h4>
+                <h4 className="heading-h4">{t("brain.lessons.listTitle")}</h4>
                 <LessonActions tags={lessonTags} activeTag={activeTag} onSelect={setActiveTag} />
                 <div className="mt-3">
-                  <LessonList lessons={filteredLessons} emptyMessage="Lekcje pojawią się po zapisaniu nowych wpisów w LessonsStore." />
+                  <LessonList lessons={filteredLessons} emptyMessage={t("brain.lessons.emptyDescription")} />
                 </div>
               </div>
             </div>
           </Panel>
 
-          <Panel title="Analiza pliku" description="Pobierz informacje z grafu (file info / impact).">
+          <Panel title={t("brain.file.title")} description={t("brain.file.description")}>
             <div className="space-y-4">
               <FileAnalysisForm
                 filePath={filePath}

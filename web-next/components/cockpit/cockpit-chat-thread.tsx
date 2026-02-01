@@ -226,14 +226,14 @@ export const ChatComposer = memo(
         <div className={controlsWrapperClassName}>
           <div className={selectsRowClassName}>
             <div className={controlStackClassName}>
-              <label className={labelClassName}>Serwer</label>
+              <label className={labelClassName}>{t("cockpit.models.server")}</label>
               <SelectMenu
                 value={selectedLlmServer}
                 options={llmServerOptions}
                 onChange={setSelectedLlmServer}
-                ariaLabel="Wybierz serwer LLM"
+                ariaLabel={t("cockpit.actions.selectServer")}
                 buttonTestId="llm-server-select"
-                placeholder="Wybierz serwer"
+                placeholder={t("cockpit.models.chooseServer")}
                 buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
@@ -250,7 +250,7 @@ export const ChatComposer = memo(
                   : undefined
               }
             >
-              <label className={labelClassName}>Model</label>
+              <label className={labelClassName}>{t("cockpit.models.model")}</label>
               <SelectMenu
                 value={selectedLlmModel}
                 options={llmModelOptions}
@@ -260,21 +260,21 @@ export const ChatComposer = memo(
                     onActivateModel?.(value);
                   }
                 }}
-                ariaLabel="Wybierz model LLM (czat)"
+                ariaLabel={t("cockpit.actions.selectModel")}
                 buttonTestId="llm-model-select"
-                placeholder="Brak modeli"
+                placeholder={t("cockpit.models.noModels")}
                 disabled={!hasModels}
                 buttonClassName="w-full justify-between rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs text-white whitespace-nowrap overflow-hidden text-ellipsis"
                 menuClassName="w-full max-h-72 overflow-y-auto"
               />
             </div>
             <div className={controlStackClassName}>
-              <label className={labelClassName}>Tryb</label>
+              <label className={labelClassName}>{t("cockpit.modes.mode")}</label>
               <SelectMenu
                 value={chatMode}
                 options={chatModeOptions}
                 onChange={(value) => setChatMode(value as ChatMode)}
-                ariaLabel="Wybierz tryb czatu"
+                ariaLabel={t("cockpit.actions.selectMode")}
                 buttonTestId="chat-mode-select"
                 menuTestId="chat-mode-menu"
                 optionTestIdPrefix="chat-mode-option"
@@ -290,7 +290,7 @@ export const ChatComposer = memo(
                 checked={labMode}
                 onChange={(event) => setLabMode(event.target.checked)}
               />
-              Lab Mode (nie zapisuj lekcji)
+              {t("cockpit.modes.labMode")}
             </label>
             <div className={actionsClassName}>
               <Button
@@ -298,7 +298,7 @@ export const ChatComposer = memo(
                 size="sm"
                 onClick={onOpenTuning}
                 className="border-emerald-400/40 bg-emerald-500/10 text-emerald-200 hover:border-emerald-300/70 hover:bg-emerald-500/20 hover:text-white"
-                title="Dostosuj parametry generacji"
+                title={t("cockpit.actions.tuning")}
               >
                 <Settings className="h-4 w-4 mr-1" />
                 {tuningLabel}
@@ -309,7 +309,7 @@ export const ChatComposer = memo(
                 onClick={() => setDraft("")}
                 className="text-zinc-300"
               >
-                Wyczyść
+                {t("cockpit.actions.clear")}
               </Button>
               <Button
                 onClick={handleSendClick}
@@ -319,7 +319,7 @@ export const ChatComposer = memo(
                 className="px-6"
                 data-testid="cockpit-send-button"
               >
-                {sending ? "Wysyłanie..." : "Wyślij"}
+                {sending ? t("cockpit.actions.sending") : t("cockpit.actions.send")}
               </Button>
             </div>
           </div>
@@ -358,12 +358,14 @@ export function CockpitChatThread({
   onFeedbackSubmit,
   onUpdateFeedbackState,
 }: CockpitChatThreadProps) {
+  const t = useTranslation();
+
   const content = useMemo(
     () => (
       <>
         {chatMessages.length === 0 && (
           <p className="text-sm text-zinc-500">
-            Brak historii – wyślij pierwsze zadanie.
+            {t("cockpit.history.empty")}
           </p>
         )}
         {chatMessages.map((msg) => {
@@ -381,7 +383,7 @@ export function CockpitChatThread({
             msg.role === "assistant" && requestId ? (
               <div className="flex items-center gap-2">
                 <IconButton
-                  label="Kciuk w górę"
+                  label={t("cockpit.feedback.up")}
                   variant="outline"
                   size="xs"
                   className={
@@ -406,7 +408,7 @@ export function CockpitChatThread({
                   }}
                 />
                 <IconButton
-                  label="Kciuk w dół"
+                  label={t("cockpit.feedback.down")}
                   variant="outline"
                   size="xs"
                   className={
@@ -443,7 +445,7 @@ export function CockpitChatThread({
                       onFeedbackSubmit(requestId);
                     }}
                   >
-                    {feedbackSubmittingId === requestId ? "Wysyłam..." : "Zapisz"}
+                    {feedbackSubmittingId === requestId ? t("cockpit.feedback.submitting") : t("cockpit.feedback.submit")}
                   </Button>
                 ) : null}
               </div>
@@ -456,7 +458,7 @@ export function CockpitChatThread({
               <>
                 <textarea
                   className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
-                  placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
+                  placeholder={t("cockpit.feedback.placeholder")}
                   value={feedbackState.comment || ""}
                   onChange={(event) =>
                     onUpdateFeedbackState(requestId, {
@@ -501,7 +503,7 @@ export function CockpitChatThread({
           );
         })}
         {historyLoading && (
-          <p className="text-hint">Odświeżam historię…</p>
+          <p className="text-hint">{t("cockpit.history.refreshing")}</p>
         )}
       </>
     ),
@@ -515,6 +517,7 @@ export function CockpitChatThread({
       onFeedbackSubmit,
       onUpdateFeedbackState,
       historyLoading,
+      t,
     ],
   );
 

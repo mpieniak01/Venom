@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n";
 
 type FileAnalysisFormProps = {
   filePath: string;
@@ -46,6 +47,7 @@ type FileAnalysisPanelProps = {
 };
 
 export function FileAnalysisPanel({ label, payload }: FileAnalysisPanelProps) {
+  const t = useTranslation();
   return (
     <div className="rounded-2xl box-muted p-4 text-xs text-muted">
       <p className="text-sm font-semibold text-white">{label}</p>
@@ -54,7 +56,7 @@ export function FileAnalysisPanel({ label, payload }: FileAnalysisPanelProps) {
           {JSON.stringify(payload, null, 2)}
         </pre>
       ) : (
-        <p className="mt-2 text-hint">Brak danych.</p>
+        <p className="mt-2 text-hint">{t("brain.file.noData")}</p>
       )}
     </div>
   );

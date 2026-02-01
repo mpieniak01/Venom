@@ -52,40 +52,40 @@ export function MobileNav() {
   const telemetryContent = useMemo(() => {
     if (telemetryTab === "queue") {
       return {
-        title: "Kolejka",
+        title: t("mobileNav.telemetry.queue"),
         rows: [
-          { label: "Aktywne", value: queue?.active ?? "—" },
-          { label: "Oczekujące", value: queue?.pending ?? "—" },
-          { label: "Limit", value: queue?.limit ?? "∞" },
+          { label: t("mobileNav.telemetry.rows.active"), value: queue?.active ?? "—" },
+          { label: t("mobileNav.telemetry.rows.pending"), value: queue?.pending ?? "—" },
+          { label: t("mobileNav.telemetry.rows.limit"), value: queue?.limit ?? "∞" },
         ],
         badge: queue?.paused
-          ? { tone: "warning" as const, text: "Wstrzymana" }
-          : { tone: "success" as const, text: "Aktywna" },
+          ? { tone: "warning" as const, text: t("mobileNav.telemetry.status.paused") }
+          : { tone: "success" as const, text: t("mobileNav.telemetry.status.active") },
       };
     }
     if (telemetryTab === "tasks") {
       return {
-        title: "Zadania",
+        title: t("mobileNav.telemetry.tasks"),
         rows: [
-          { label: "Nowe", value: metrics?.tasks?.created ?? 0 },
-          { label: "Skuteczność", value: metrics?.tasks?.success_rate ?? "—" },
-          { label: "Uptime", value: metrics?.uptime_seconds ? formatUptime(metrics.uptime_seconds) : "—" },
+          { label: t("mobileNav.telemetry.rows.new"), value: metrics?.tasks?.created ?? 0 },
+          { label: t("mobileNav.telemetry.rows.success"), value: metrics?.tasks?.success_rate ?? "—" },
+          { label: t("mobileNav.telemetry.rows.uptime"), value: metrics?.uptime_seconds ? formatUptime(metrics.uptime_seconds) : "—" },
         ],
-        badge: { tone: "neutral" as const, text: "Podgląd" },
+        badge: { tone: "neutral" as const, text: t("mobileNav.telemetry.status.preview") },
       };
     }
     return {
-      title: "WebSocket",
+      title: t("mobileNav.telemetry.ws"),
       rows: [
-        { label: "Status", value: connected ? "Połączono" : "Rozłączono" },
-        { label: "Logi", value: `${entries.length}` },
-        { label: "Ostatni", value: latestLogs[0] ? new Date(latestLogs[0].ts).toLocaleTimeString() : "—" },
+        { label: t("mobileNav.telemetry.rows.status"), value: connected ? t("mobileNav.telemetry.status.connected") : t("mobileNav.telemetry.status.disconnected") },
+        { label: t("mobileNav.telemetry.rows.logs"), value: `${entries.length}` },
+        { label: t("mobileNav.telemetry.rows.last"), value: latestLogs[0] ? new Date(latestLogs[0].ts).toLocaleTimeString() : "—" },
       ],
       badge: connected
-        ? { tone: "success" as const, text: "AKTYWNE" }
-        : { tone: "danger" as const, text: "BRAK" },
+        ? { tone: "success" as const, text: t("mobileNav.telemetry.status.live") }
+        : { tone: "danger" as const, text: t("mobileNav.telemetry.status.none") },
     };
-  }, [telemetryTab, queue, metrics, connected, entries.length, latestLogs]);
+  }, [telemetryTab, queue, metrics, connected, entries.length, latestLogs, t]);
 
   const handleCostToggle = async () => {
     setCostLoading(true);
@@ -120,9 +120,10 @@ export function MobileNav() {
         size="sm"
         onClick={() => setOpen(true)}
         aria-label={t("common.openNavigation")}
+        suppressHydrationWarning
       >
         <Menu className="h-4 w-4" />
-        {t("common.menu")}
+        <span suppressHydrationWarning>{t("common.menu")}</span>
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="glass-panel flex h-full max-w-md flex-col border-r border-white/10 bg-black/90 text-white">
@@ -168,7 +169,7 @@ export function MobileNav() {
           <section className="mt-6 card-shell card-base p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="eyebrow">Telemetria</p>
+                <p className="eyebrow">{t("mobileNav.telemetry.title")}</p>
                 <p className="text-base font-semibold">{telemetryContent.title}</p>
               </div>
               <Badge tone={telemetryContent.badge.tone}>{telemetryContent.badge.text}</Badge>
@@ -179,12 +180,11 @@ export function MobileNav() {
                   key={tab}
                   variant="ghost"
                   size="xs"
-                  className={`flex-1 rounded-full px-3 py-1.5 uppercase tracking-[0.3em] ${
-                    telemetryTab === tab ? "bg-emerald-500/20 text-white" : "text-zinc-400"
-                  }`}
+                  className={`flex-1 rounded-full px-3 py-1.5 uppercase tracking-[0.3em] ${telemetryTab === tab ? "bg-emerald-500/20 text-white" : "text-zinc-400"
+                    }`}
                   onClick={() => setTelemetryTab(tab)}
                 >
-                  {tab === "queue" ? "Kolejka" : tab === "tasks" ? "Zadania" : "WS"}
+                  {tab === "queue" ? t("mobileNav.telemetry.queue") : tab === "tasks" ? t("mobileNav.telemetry.tasks") : t("mobileNav.telemetry.ws")}
                 </Button>
               ))}
             </div>
@@ -201,12 +201,12 @@ export function MobileNav() {
           <section className="mt-4 card-shell bg-black/40 p-4">
             <div className="eyebrow flex items-center gap-2">
               <Terminal className="h-4 w-4 text-emerald-200" />
-              Mini terminal
+              {t("mobileNav.telemetry.miniTerminal")}
             </div>
             <div className="mt-3 max-h-32 overflow-y-auto text-xs font-mono text-zinc-300">
               {latestLogs.length === 0 && (
                 <p className="text-zinc-500">
-                  {connected ? "Czekam na logi..." : "Kanał rozłączony – brak logów."}
+                  {connected ? t("mobileNav.telemetry.logsWaiting") : t("mobileNav.telemetry.logsDisconnected")}
                 </p>
               )}
               {latestLogs.map((entry) => (
@@ -226,11 +226,11 @@ export function MobileNav() {
             <div className="card-shell bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Tryb kosztów</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{t("mobileNav.telemetry.costMode")}</p>
                   <p className="text-lg font-semibold">
-                    {costMode?.enabled ? "Pro (płatny)" : "Eco"}
+                    {costMode?.enabled ? t("sidebar.cost.pro") : t("sidebar.cost.eco")}
                   </p>
-                  <p className="text-xs text-zinc-400">Dostawca: {costMode?.provider ?? "brak"}</p>
+                  <p className="text-xs text-zinc-400">{t("mobileNav.telemetry.provider")}: {costMode?.provider ?? t("mobileNav.telemetry.noneProvider")}</p>
                 </div>
                 <Sparkles className="h-5 w-5 text-emerald-200" />
               </div>
@@ -241,19 +241,19 @@ export function MobileNav() {
                 disabled={costLoading}
                 onClick={handleCostToggle}
               >
-                {costLoading ? "Przełączam..." : `Przełącz na ${costMode?.enabled ? "Eco" : "Pro"}`}
+                {costLoading ? t("mobileNav.telemetry.switching") : `${t("mobileNav.telemetry.switchTo")} ${costMode?.enabled ? "Eco" : "Pro"}`}
               </Button>
             </div>
 
             <div className="card-shell bg-gradient-to-br from-violet-500/20 via-violet-500/5 to-transparent p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Autonomia</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{t("mobileNav.telemetry.autonomy")}</p>
                   <p className="text-lg font-semibold">
-                    {autonomy?.current_level_name ?? "Offline"}
+                    {autonomy?.current_level_name ?? t("mobileNav.telemetry.offline")}
                   </p>
                   <p className="text-xs text-zinc-400">
-                    Poziom {autonomy?.current_level ?? "?"} • {autonomy?.risk_level ?? "brak"}
+                    {t("mobileNav.telemetry.level")} {autonomy?.current_level ?? "?"} • {autonomy?.risk_level ?? t("mobileNav.telemetry.risk")}
                   </p>
                 </div>
                 <Shield className="h-5 w-5 text-violet-200" />
@@ -270,7 +270,7 @@ export function MobileNav() {
                 disabled={autonomyLoading}
               >
                 <option value="" disabled>
-                  {autonomy ? "Wybierz poziom" : "Brak połączenia z AutonomyGate"}
+                  {autonomy ? t("mobileNav.telemetry.select") : t("mobileNav.telemetry.noAutonomy")}
                 </option>
                 {AUTONOMY_LEVELS.map((level) => (
                   <option key={level.value} value={level.value}>
@@ -279,12 +279,12 @@ export function MobileNav() {
                 ))}
               </select>
               {autonomyLoading && (
-                <p className="mt-2 text-xs text-zinc-400">Aktualizuję poziom autonomii...</p>
+                <p className="mt-2 text-xs text-zinc-400">{t("mobileNav.telemetry.updatingAutonomy")}</p>
               )}
             </div>
 
             <div className="card-shell bg-black/40 p-3 text-center">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Język</p>
+              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">{t("mobileNav.telemetry.language")}</p>
               <div className="mt-2 flex justify-center">
                 <LanguageSwitcher className="justify-center" />
               </div>
@@ -298,15 +298,15 @@ export function MobileNav() {
             </div>
             <div className="mt-2 flex items-center gap-2 text-emerald-300">
               <Activity className="h-4 w-4" />
-              {connected ? "Kanał telemetryczny aktywny" : "Brak połączenia z WS"}
+              {connected ? t("mobileNav.telemetry.telemetryActive") : t("mobileNav.telemetry.noWsConnection")}
             </div>
             <div className="mt-2 flex items-center gap-2 text-sky-300">
               <ListChecks className="h-4 w-4" />
-              {metrics?.tasks?.created ?? 0} zadań w sesji
+              {metrics?.tasks?.created ?? 0} {t("mobileNav.telemetry.tasksInSession")}
             </div>
             <div className="mt-2 flex items-center gap-2 text-amber-200">
               <Radio className="h-4 w-4" />
-              Kolejka {queue?.paused ? "wstrzymana" : "aktywna"}
+              {t("mobileNav.telemetry.queue")} {queue?.paused ? t("mobileNav.telemetry.queuePaused") : t("mobileNav.telemetry.queueActive")}
             </div>
           </div>
         </SheetContent>

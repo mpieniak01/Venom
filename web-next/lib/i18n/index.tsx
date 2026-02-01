@@ -12,6 +12,13 @@ import {
 import { pl } from "./locales/pl";
 import { en } from "./locales/en";
 import { de } from "./locales/de";
+import dayjs from "dayjs";
+import "dayjs/locale/pl";
+import "dayjs/locale/en";
+import "dayjs/locale/de";
+import relativeTime from "dayjs/plugin/relativeTime";
+
+dayjs.extend(relativeTime);
 
 const STORAGE_KEY = "venom-language";
 
@@ -31,7 +38,7 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue>({
   language: "pl",
-  setLanguage: () => {},
+  setLanguage: () => { },
   t: (path: string) => path,
 });
 
@@ -58,6 +65,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    document.documentElement.dataset.hydrated = "true";
     const stored = window.localStorage.getItem(STORAGE_KEY) as LanguageCode | null;
     if (stored && stored in translations) {
       setLanguage(stored);
@@ -67,11 +75,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (browser && (browser === "en" || browser === "de")) {
       setLanguage(browser as LanguageCode);
     }
+    document.documentElement.dataset.hydrated = "true";
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, language);
+    dayjs.locale(language);
   }, [language]);
 
   const translate = useCallback(

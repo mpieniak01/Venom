@@ -413,47 +413,67 @@ class TestMemoryGraphAPI:
         )
         memory_routes.set_dependencies(vector_store, state_manager, lessons_store)
 
-        vector_store.upsert(
-            text="pinned fact",
-            metadata={
-                "session_id": "s1",
-                "user_id": "user_default",
-                "pinned": True,
-                "type": "fact",
-            },
-            id_override="mem-pinned",
-            chunk_text=False,
+        from venom_core.api.dependencies import (
+            get_lessons_store,
+            get_state_manager,
+            get_vector_store,
         )
-        vector_store.upsert(
-            text="other fact",
-            metadata={"session_id": "s2", "user_id": "user_default"},
-            id_override="mem-other",
-            chunk_text=False,
-        )
+        from venom_core.main import app
 
-        resp = client.get(
-            "/api/v1/memory/graph",
-            params={"limit": 50, "session_id": "s1", "only_pinned": True},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        node_ids = {n["data"]["id"] for n in data["elements"]["nodes"]}
-        assert "mem-pinned" in node_ids
-        assert "mem-other" not in node_ids
-        assert not any(
-            n["data"]["id"].startswith("lesson:") for n in data["elements"]["nodes"]
-        )
+        # Używamy oficjalnego mechanizmu FastAPI do nadpisywania zależności,
+        # co jest znacznie pewniejsze niż globalne zmienne w/api/dependencies.
+        app.dependency_overrides[get_vector_store] = lambda: vector_store
+        app.dependency_overrides[get_lessons_store] = lambda: lessons_store
+        app.dependency_overrides[get_state_manager] = lambda: state_manager
 
-        resp_with_lessons = client.get(
-            "/api/v1/memory/graph",
-            params={
-                "limit": 50,
-                "session_id": "s1",
-                "only_pinned": True,
-                "include_lessons": True,
-            },
-        )
-        assert resp_with_lessons.status_code == 200
-        data_with_lessons = resp_with_lessons.json()
-        lesson_ids = {n["data"]["id"] for n in data_with_lessons["elements"]["nodes"]}
-        assert "lesson:lesson-1" in lesson_ids
+        try:
+            vector_store.upsert(
+                text="pinned fact",
+                metadata={
+                    "session_id": "s1",
+                    "user_id": "user_default",
+                    "pinned": True,
+                    "type": "fact",
+                },
+                id_override="mem-pinned",
+                chunk_text=False,
+            )
+            vector_store.upsert(
+                text="other fact",
+                metadata={"session_id": "s2", "user_id": "user_default"},
+                id_override="mem-other",
+                chunk_text=False,
+            )
+
+            resp = client.get(
+                "/api/v1/memory/graph",
+                params={"limit": 50, "session_id": "s1", "only_pinned": True},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            node_ids = {n["data"]["id"] for n in data["elements"]["nodes"]}
+            assert "mem-pinned" in node_ids
+            assert "mem-other" not in node_ids
+            assert not any(
+                n["data"]["id"].startswith("lesson:") for n in data["elements"]["nodes"]
+            )
+
+            resp_with_lessons = client.get(
+                "/api/v1/memory/graph",
+                params={
+                    "limit": 50,
+                    "session_id": "s1",
+                    "only_pinned": True,
+                    "include_lessons": True,
+                },
+            )
+            assert resp_with_lessons.status_code == 200
+            data_with_lessons = resp_with_lessons.json()
+            lesson_ids = {
+                n["data"]["id"] for n in data_with_lessons["elements"]["nodes"]
+            }
+            assert "lesson:lesson-1" in lesson_ids
+        finally:
+            app.dependency_overrides.pop(get_vector_store, None)
+            app.dependency_overrides.pop(get_lessons_store, None)
+            app.dependency_overrides.pop(get_state_manager, None)

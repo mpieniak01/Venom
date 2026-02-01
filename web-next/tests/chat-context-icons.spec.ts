@@ -152,6 +152,9 @@ const installMockEventSource = async (page: Page, payloads: MockPayload[]) => {
 test.describe("Chat context icons", () => {
   test.beforeEach(async ({ page }) => {
     await registerBaseRoutes(page);
+    await page.addInitScript(() => {
+      window.localStorage.setItem("venom-language", "pl");
+    });
   });
 
   test("shows 🎓 and 🧠 when context_used has lessons and memory_entries", async ({ page }) => {
@@ -203,6 +206,11 @@ test.describe("Chat context icons", () => {
     });
 
     await page.goto("/");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.hydrated === "true",
+      undefined,
+      { timeout: 10000 },
+    );
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     await page.getByTestId("cockpit-prompt-input").fill("Sprawdz ikony");
@@ -258,6 +266,11 @@ test.describe("Chat context icons", () => {
     });
 
     await page.goto("/");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.hydrated === "true",
+      undefined,
+      { timeout: 10000 },
+    );
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     await page.getByTestId("cockpit-prompt-input").fill("Sprawdz brak ikon");

@@ -13,6 +13,7 @@ import { useCockpitContext } from "@/components/cockpit/cockpit-context";
 
 export function useCockpitSectionProps() {
   const { data, interactive, layout, logic, chatScrollRef } = useCockpitContext();
+  const t = useTranslation();
 
   const {
     chatFullscreen,
@@ -79,7 +80,7 @@ export function useCockpitSectionProps() {
   const hasModels = useMemo(() => ((data.models?.models?.length ?? 0) > 0), [data.models?.models]);
 
   const onOpenTuning = logic.chatUi.handleOpenTuning;
-  const tuningLabel = "Strojenie";
+  const tuningLabel = t("common.tuning");
 
   const onSuggestionClick = logic.chatUi.handleSuggestionClick;
   const onNewChat = logic.sessionActions.handleServerSessionReset;
@@ -121,18 +122,14 @@ export function useCockpitSectionProps() {
 
   const onLogFilterChange = interactive.setters.setLogFilter;
   const logEntries = logic.telemetry.entries;
-  const onTogglePin = useCallback((entryId: string) => {
+  const onTogglePin = useCallback((entry: LogEntryType) => {
     interactive.setters.setPinnedLogs((prev: LogEntryType[]) => {
-      if (prev.some(entry => entry.id === entryId)) {
-        return prev.filter(entry => entry.id !== entryId);
+      if (prev.some(e => e.id === entry.id)) {
+        return prev.filter(e => e.id !== entry.id);
       }
-      const entryToAdd = logEntries.find(e => e.id === entryId);
-      if (entryToAdd) {
-        return [...prev, entryToAdd];
-      }
-      return prev;
+      return [...prev, entry];
     });
-  }, [interactive.setters, logEntries]);
+  }, [interactive.setters]);
   const onExportPinnedLogs = logic.chatUi.handleExportPinnedLogs;
   const onClearPinnedLogs = useMemo(() => () => interactive.setters.setPinnedLogs([]), [interactive.setters]);
 
@@ -246,10 +243,8 @@ export function useCockpitSectionProps() {
   const detailFeedbackSubmittingId = feedbackSubmittingId;
   const onFeedbackSubmitDetail = onFeedbackSubmit;
 
-  // Use useTranslation from i18n
   // note: CockpitHome used const t = useTranslation();
   // We can import it here as we are a hook.
-  const t = useTranslation();
 
   const onResetGenerationParams = () => interactive.setters.setGenerationParams(null);
   const onApplyTuning = logic.chatUi.handleApplyTuning;
@@ -259,7 +254,13 @@ export function useCockpitSectionProps() {
   const responseBadgeText = logic.chatUi.responseBadgeText;
   const chatMessages = logic.chatUi.chatMessages || logic.historyMessages;
   const onChatScroll = logic.chatUi.handleChatScroll;
-  const promptPresets = PROMPT_PRESETS;
+  const promptPresets = useMemo(() => PROMPT_PRESETS.map(p => ({
+    id: p.id,
+    category: t(p.categoryKey),
+    description: t(p.descriptionKey),
+    prompt: t(p.promptKey),
+    icon: p.icon,
+  })), [t]);
 
   // --- Sub-props construction ---
 

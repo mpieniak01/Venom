@@ -8,6 +8,7 @@ test.describe("Cockpit streaming SSE", () => {
       window.localStorage.setItem("venom-session-id", "session-test");
       window.localStorage.setItem("venom-backend-boot-id", "boot-test");
       window.localStorage.setItem("venom-next-build-id", "test-build");
+      window.localStorage.setItem("venom-language", "pl");
     });
     await page.route("**/api/v1/system/status", async (route) => {
       await route.fulfill({
@@ -171,6 +172,11 @@ test.describe("Cockpit streaming SSE", () => {
     });
 
     await page.goto("/");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.hydrated === "true",
+      undefined,
+      { timeout: 10000 },
+    );
     const chatHistory = page.getByTestId("cockpit-chat-history");
     await chatHistory.scrollIntoViewIfNeeded();
     const textarea = page.getByTestId("cockpit-prompt-input");

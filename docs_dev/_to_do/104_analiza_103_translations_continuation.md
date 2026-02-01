@@ -257,3 +257,7 @@ Uwaga dot. MCP:
 ### 2026-02-01 (E2E: flake Awaryjne zatrzymanie)
 - Zidentyfikowano flaka w `smoke.spec.ts` wynikającego z kliknięcia przed pełną hydracją (SSR bez handlerów). Dodano `waitForHydration` przed kliknięciem w teście "Awaryjne zatrzymanie kolejki".
 - Re-test: `npm --prefix web-next run test:e2e:functional -- --workers=4 --grep "Awaryjne zatrzymanie"` → **passed**.
+
+### 2026-02-01 (pytest flake: lessons_governance)
+- Przywrócono `memory_routes.config_manager` (back-compat dla testów), aby test `test_toggle_learning_updates_settings` nie padał.
+- Re-test: `.venv/bin/pytest -q tests/test_lessons_governance.py::test_toggle_learning_updates_settings` → **passed**.

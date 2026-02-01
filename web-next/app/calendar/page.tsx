@@ -1,17 +1,17 @@
+"use client";
+
 import { Suspense } from "react";
 import { CalendarHome } from "@/components/calendar/calendar-home";
-
-export const metadata = {
-  title: "Calendar - Venom Cockpit",
-  description: "Calendar and Google Calendar synchronization",
-};
+import { useTranslation } from "@/lib/i18n";
 
 export default function CalendarPage() {
+  const t = useTranslation();
+
   return (
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <div className="text-hint">Loading calendar...</div>
+          <div className="text-hint">{t("common.loading")}</div>
         </div>
       }
     >

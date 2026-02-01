@@ -81,13 +81,7 @@ export default function InspectorPage() {
   const DEFAULT_DIAGRAM = [
     "sequenceDiagram",
     "    autonumber",
-    "    Note over User: " + t("inspector.panels.diagram.defaultNote").replace("Note over User: ", ""), // Strip prefix if key includes it, or just use key content if key is only message.
-    // Wait, key is "Note over User: Wybierz request z listy" which includes mermaid syntax?
-    // Let's check pl.ts. "defaultNote": "Note over User: Wybierz request z listy".
-    // So distinct localized string is simpler.
-    // Actually, pl.ts says: defaultNote: "Note over User: Wybierz request z listy"
-    // So I can just use t("inspector.panels.diagram.defaultNote")
-    t("inspector.panels.diagram.defaultNote"),
+    `    ${t("inspector.panels.diagram.defaultNote")}`,
   ].join("\n");
   const [diagram, setDiagram] = useState<string>(DEFAULT_DIAGRAM);
   const [diagramLoading, setDiagramLoading] = useState(false);
@@ -687,9 +681,9 @@ export default function InspectorPage() {
                   value={liveSelectedStatus}
                   hint={
                     streamForSelected?.connected
-                      ? "Aktualizowane strumieniem SSE"
+                      ? t("inspector.panels.details.liveHint")
                       : selectedRequest
-                        ? `${t("inspector.stats.completed", { count: "" }).replace("0 ", "").trim()}: ${formatRelativeTime(selectedRequest.finished_at)}`
+                        ? `${t("inspector.panels.details.completedLabel")}: ${formatRelativeTime(selectedRequest.finished_at)}`
                         : t("inspector.panels.diagram.selectHint")
                   }
                   accent="purple"
@@ -697,7 +691,9 @@ export default function InspectorPage() {
                 <StatCard
                   label={t("inspector.panels.details.executionTime")}
                   value={formatDuration(selectedRequest?.duration_seconds ?? null)}
-                  hint={`Start: ${formatTimestamp(selectedRequest?.created_at)}`}
+                  hint={t("inspector.panels.details.startHint", {
+                    timestamp: formatTimestamp(selectedRequest?.created_at),
+                  })}
                   accent="blue"
                 />
                 <StatCard

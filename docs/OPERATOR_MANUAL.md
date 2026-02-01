@@ -124,7 +124,7 @@ Typowe sytuacje, które możesz napotkać jako Operator:
 
 ### 🟠 Brak miejsca na dysku
 *   **Przyczyna**: Nagromadzenie "Snów" (Dream Timelines) lub cache modeli.
-*   **Rozwiązanie**: Wejdź w `/config` -> Usługi -> Storage i wyczyść sekcję **Drreams** oraz **Cache**.
+*   **Rozwiązanie**: Wejdź w `/config` -> Usługi -> Storage i wyczyść sekcję **Dreams** oraz **Cache**.
 
 ### ⚪ Interface jest po angielsku, mimo że chcę Polski
 *   **Przyczyna**: Ustawienia przeglądarki lub brak zapisanego wyboru.

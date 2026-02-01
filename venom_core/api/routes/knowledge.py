@@ -503,6 +503,7 @@ async def prune_lessons_by_range(
     """
     try:
         # Parsuj daty ISO 8601 (obsługa 'Z' suffix)
+        # Workaround for Python < 3.11 which doesn't handle 'Z' suffix in fromisoformat
         start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
         end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
     except ValueError as e:

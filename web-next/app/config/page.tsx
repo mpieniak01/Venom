@@ -1,17 +1,17 @@
+"use client";
+
 import { Suspense } from "react";
 import { ConfigHome } from "@/components/config/config-home";
-
-export const metadata = {
-  title: "Configuration - Venom Cockpit",
-  description: "Venom stack configuration and control panel",
-};
+import { useTranslation } from "@/lib/i18n";
 
 export default function ConfigPage() {
+  const t = useTranslation();
+
   return (
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <div className="text-zinc-400">Loading configuration...</div>
+          <div className="text-zinc-400">{t("common.loading")}</div>
         </div>
       }
     >

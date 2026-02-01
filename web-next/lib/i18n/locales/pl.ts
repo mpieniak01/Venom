@@ -10,10 +10,11 @@ export const pl = {
     running: "Działa",
     stopped: "Zatrzymany",
     pending: "Oczekujący",
-    completed: "Zakończony",
+    completed: "Zakończone",
     failed: "Błąd",
     unknown: "Nieznany",
     total: "Łącznie",
+    loading: "Ładowanie...",
   },
   topBar: {
     wsLabel: "WS",
@@ -816,6 +817,9 @@ export const pl = {
         noData: "Brak dodatkowych danych.",
         stepJson: "JSON kroku",
         clickRaw: "Kliknij krok, aby zobaczyć surowe dane.",
+        completedLabel: "Zakończone",
+        liveHint: "Aktualizowane strumieniem SSE",
+        startHint: "Start: {{timestamp}}",
       },
     },
     actions: {
@@ -828,6 +832,34 @@ export const pl = {
       zoomIn: "Przybliż",
       zoomOut: "Oddal",
       reset: "Resetuj",
+    },
+  },
+  docs: {
+    models: {
+      eyebrow: "Dokumentacja",
+      title: "Modele LLM",
+      description: "Krótka instrukcja dodawania modeli do Ollama i vLLM.",
+      ollama: {
+        title: "Ollama",
+        description: "Modele pobierane przez klienta Ollama i widoczne w Cockpit.",
+        step1: "Upewnij się, że serwer Ollama jest uruchomiony lokalnie.",
+        step2: "Pobierz model poleceniem: ",
+        step3: "Wróć do Cockpit i wybierz serwer Ollama oraz model.",
+      },
+      vllm: {
+        title: "vLLM",
+        description: "Modele w katalogu ./models lub /data/models widoczne dla vLLM.",
+        step1: "Skopiuj model do katalogu ./models lub /data/models.",
+        step2: "Uruchom serwer vLLM z odpowiednim modelem lub konfiguracja auto-load.",
+        step3: "W Cockpit wybierz serwer vLLM i aktywuj wybrany model.",
+      },
+      diagnostic: {
+        title: "Diagnostyka",
+        description: "Gdy model nie pojawia się na liście.",
+        tip1: "Sprawdź, czy endpoint serwera odpowiada (np. vLLM na 8001).",
+        tip2: "Zweryfikuj nazwę modelu w katalogu i zgodność z serwerem.",
+        tip3: "Odśwież panel serwerów LLM w Cockpit po zmianach.",
+      },
     },
   },
 };

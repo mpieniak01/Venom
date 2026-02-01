@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -31,6 +31,10 @@ export function HistoryList({
   variant = "full",
   viewAllHref,
 }: HistoryListProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const prepared = useMemo(() => {
     const source = entries || [];
     if (limit && limit > 0) {
@@ -90,7 +94,9 @@ export function HistoryList({
               )}
             >
               <div className="flex w-full flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.3em] text-emerald-200/70">
-                <span>{formatRelativeTime(item.created_at)}</span>
+                <span>
+                  {mounted ? formatRelativeTime(item.created_at) : item.created_at}
+                </span>
                 <span className="font-mono tracking-normal text-white">
                   #{item.request_id.slice(0, 10)}
                 </span>

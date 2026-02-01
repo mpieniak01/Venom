@@ -2,8 +2,8 @@ import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 
 export const metadata = {
-  title: "Modele LLM - Venom Cockpit",
-  description: "Instrukcja dodawania modeli dla Ollama i vLLM.",
+  title: "LLM Models - Venom Cockpit",
+  description: "Guide for adding models to Ollama and vLLM",
 };
 
 export default function LlmModelsDocsPage() {

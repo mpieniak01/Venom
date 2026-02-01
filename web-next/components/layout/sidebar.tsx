@@ -40,20 +40,7 @@ export const navItems = [
 ];
 
 const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];
-const AUTONOMY_LABELS: Record<number, string> = {
-  0: "Start",
-  10: "Monitor",
-  20: "Asystent",
-  30: "Hybryda",
-  40: "Pełny",
-};
-const AUTONOMY_DETAILS: Record<number, { name: string; risk: string; description: string }> = {
-  0: { name: "ISOLATED", risk: "zero", description: "Lokalny odczyt bez dostępu do sieci." },
-  10: { name: "CONNECTED", risk: "low", description: "Dostęp do internetu i darmowych API." },
-  20: { name: "FUNDED", risk: "medium", description: "Włączone płatne API / SOTA modele." },
-  30: { name: "BUILDER", risk: "high", description: "Prawo zapisu w repozytorium i refaktorów." },
-  40: { name: "ROOT", risk: "critical", description: "Pełny dostęp do shell/Dockera." },
-};
+
 
 type AutonomySnapshot = {
   level: number;
@@ -74,11 +61,29 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const t = useTranslation();
 
+  const getAutonomyDetails = (level: number) => {
+    const detailsMap: Record<number, { name: string; riskKey: string; descriptionKey: string }> = {
+      0: { name: "ISOLATED", riskKey: "zero", descriptionKey: "0" },
+      10: { name: "CONNECTED", riskKey: "low", descriptionKey: "10" },
+      20: { name: "FUNDED", riskKey: "medium", descriptionKey: "20" },
+      30: { name: "BUILDER", riskKey: "high", descriptionKey: "30" },
+      40: { name: "ROOT", riskKey: "critical", descriptionKey: "40" },
+    };
+    return detailsMap[level];
+  };
+
   const resolveAutonomyDetails = (level: number | null) => {
     if (level === null || level === undefined) return null;
-    const details = AUTONOMY_DETAILS[level];
+    const details = getAutonomyDetails(level);
     if (!details) return null;
-    return { level, ...details };
+    return {
+      level,
+      name: details.name,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      risk: t(`sidebar.autonomy.risks.${details.riskKey}` as any),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as any),
+    };
   };
 
   const autonomyInfo = useMemo(() => {
@@ -95,23 +100,22 @@ export function Sidebar() {
     return (
       resolveAutonomyDetails(fallbackLevel) ?? {
         level: null,
-        name: "Brak danych",
+        name: t("sidebar.autonomy.noData"),
         risk: "n/a",
-        description: "AutonomyGate offline.",
+        description: t("sidebar.autonomy.offline"),
       }
     );
-  }, [autonomy, localAutonomy, selectedAutonomy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autonomy, localAutonomy, selectedAutonomy, t]);
 
   const handleCostToggle = async () => {
     const targetState = !(costMode?.enabled ?? false);
     if (
       targetState &&
       typeof window !== "undefined" &&
-      !window.confirm(
-        "Tryb Paid (Pro) wykorzysta płatne API i zasoby. Czy chcesz kontynuować?",
-      )
+      !window.confirm(t("sidebar.messages.costConfirm"))
     ) {
-      setStatusMessage("Anulowano przełączenie trybu kosztów.");
+      setStatusMessage(t("sidebar.messages.costCancelled"));
       return;
     }
     setCostLoading(true);
@@ -119,10 +123,12 @@ export function Sidebar() {
     try {
       await setCostMode(targetState);
       refreshCost();
-      setStatusMessage(`Przełączono tryb na ${targetState ? "Pro (płatny)" : "Eco"}.`);
+      await setCostMode(targetState);
+      refreshCost();
+      setStatusMessage(t("sidebar.messages.costSuccess", { mode: targetState ? t("sidebar.cost.pro") : t("sidebar.cost.eco") }));
     } catch (error) {
       setStatusMessage(
-        error instanceof Error ? error.message : "Nie udało się przełączyć trybu kosztów.",
+        error instanceof Error ? error.message : t("sidebar.messages.costError"),
       );
     } finally {
       setCostLoading(false);
@@ -165,17 +171,19 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!autonomy) return;
+    const detailsComp = resolveAutonomyDetails(autonomy.current_level);
     const snapshot: AutonomySnapshot = {
       level: autonomy.current_level,
       name: autonomy.current_level_name,
       risk: autonomy.risk_level,
-      description: autonomy.description ?? AUTONOMY_DETAILS[autonomy.current_level]?.description ?? "AutonomyGate",
+      description: autonomy.description ?? detailsComp?.description ?? "AutonomyGate",
     };
     setLocalAutonomy(snapshot);
     setSelectedAutonomy(String(autonomy.current_level));
     if (typeof window !== "undefined") {
       window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autonomy]);
 
   const handleAutonomyChange = async (level: number) => {
@@ -185,7 +193,9 @@ export function Sidebar() {
     try {
       await setAutonomy(level);
       refreshAutonomy();
-      setStatusMessage(`Ustawiono poziom autonomii ${level}.`);
+      await setAutonomy(level);
+      refreshAutonomy();
+      setStatusMessage(t("sidebar.messages.autonomySuccess", { level }));
     } catch (error) {
       const fallback = resolveAutonomyDetails(level);
       if (fallback) {
@@ -197,7 +207,7 @@ export function Sidebar() {
       setStatusMessage(
         error instanceof Error
           ? error.message
-          : "Nie udało się zmienić poziomu autonomii (tryb offline).",
+          : t("sidebar.messages.autonomyError"),
       );
     } finally {
       setAutonomyLoading(null);
@@ -361,10 +371,11 @@ export function Sidebar() {
                 disabled={autonomyLoading !== null}
               >
                 <option value="" disabled>
-                  {autonomyInfo.level === null ? "Brak danych" : "Wybierz poziom"}
+                  {autonomyInfo.level === null ? t("sidebar.autonomy.noData") : t("sidebar.autonomy.select")}
                 </option>
                 {AUTONOMY_LEVELS.map((level) => {
-                  const label = AUTONOMY_LABELS[level] ?? `Poziom ${level}`;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const label = t(`sidebar.autonomy.levels.${level}` as any) ?? `Poziom ${level}`;
                   return (
                     <option key={level} value={level}>
                       {label}

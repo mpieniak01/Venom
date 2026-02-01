@@ -1,48 +1,51 @@
+"use client";
+
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
-
-export const metadata = {
-  title: "LLM Models - Venom Cockpit",
-  description: "Guide for adding models to Ollama and vLLM",
-};
+import { useTranslation } from "@/lib/i18n";
 
 export default function LlmModelsDocsPage() {
+  const t = useTranslation();
+
   return (
     <div className="space-y-6">
       <SectionHeading
-        eyebrow="Dokumentacja"
-        title="Modele LLM"
-        description="Krótka instrukcja dodawania modeli do Ollama i vLLM."
+        eyebrow={t("docs.models.eyebrow")}
+        title={t("docs.models.title")}
+        description={t("docs.models.description")}
         as="h1"
         size="lg"
       />
       <Panel
-        title="Ollama"
-        description="Modele pobierane przez klienta Ollama i widoczne w Cockpit."
+        title={t("docs.models.ollama.title")}
+        description={t("docs.models.ollama.description")}
       >
         <ol className="list-decimal space-y-2 pl-4 text-sm text-zinc-300">
-          <li>Upewnij się, że serwer Ollama jest uruchomiony lokalnie.</li>
+          <li>{t("docs.models.ollama.step1")}</li>
           <li>
-            Pobierz model poleceniem: <code>ollama pull gemma:2b</code>.
+            {t("docs.models.ollama.step2")} <code>ollama pull gemma:2b</code>.
           </li>
-          <li>Wróć do Cockpit i wybierz serwer Ollama oraz model.</li>
+          <li>{t("docs.models.ollama.step3")}</li>
         </ol>
       </Panel>
       <Panel
-        title="vLLM"
-        description="Modele w katalogu ./models lub /data/models widoczne dla vLLM."
+        title={t("docs.models.vllm.title")}
+        description={t("docs.models.vllm.description")}
       >
         <ol className="list-decimal space-y-2 pl-4 text-sm text-zinc-300">
-          <li>Skopiuj model do katalogu <code>./models</code> lub <code>/data/models</code>.</li>
-          <li>Uruchom serwer vLLM z odpowiednim modelem lub konfiguracja auto-load.</li>
-          <li>W Cockpit wybierz serwer vLLM i aktywuj wybrany model.</li>
+          <li>{t("docs.models.vllm.step1")}</li>
+          <li>{t("docs.models.vllm.step2")}</li>
+          <li>{t("docs.models.vllm.step3")}</li>
         </ol>
       </Panel>
-      <Panel title="Diagnostyka" description="Gdy model nie pojawia się na liście.">
+      <Panel
+        title={t("docs.models.diagnostic.title")}
+        description={t("docs.models.diagnostic.description")}
+      >
         <ul className="list-disc space-y-2 pl-4 text-sm text-zinc-300">
-          <li>Sprawdź, czy endpoint serwera odpowiada (np. vLLM na 8001).</li>
-          <li>Zweryfikuj nazwę modelu w katalogu i zgodność z serwerem.</li>
-          <li>Odśwież panel serwerów LLM w Cockpit po zmianach.</li>
+          <li>{t("docs.models.diagnostic.tip1")}</li>
+          <li>{t("docs.models.diagnostic.tip2")}</li>
+          <li>{t("docs.models.diagnostic.tip3")}</li>
         </ul>
       </Panel>
     </div>

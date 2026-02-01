@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Command,
   Brain,
@@ -39,6 +39,17 @@ export const navItems = [
   { href: "/config", label: "Konfiguracja", labelKey: "sidebar.nav.config", icon: Settings },
 ];
 
+const getAutonomyDetails = (level: number) => {
+  const detailsMap: Record<number, { name: string; riskKey: string; descriptionKey: string }> = {
+    0: { name: "ISOLATED", riskKey: "zero", descriptionKey: "0" },
+    10: { name: "CONNECTED", riskKey: "low", descriptionKey: "10" },
+    20: { name: "FUNDED", riskKey: "medium", descriptionKey: "20" },
+    30: { name: "BUILDER", riskKey: "high", descriptionKey: "30" },
+    40: { name: "ROOT", riskKey: "critical", descriptionKey: "40" },
+  };
+  return detailsMap[level];
+};
+
 const AUTONOMY_LEVELS = [0, 10, 20, 30, 40];
 
 
@@ -61,30 +72,22 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const t = useTranslation();
 
-  const getAutonomyDetails = (level: number) => {
-    const detailsMap: Record<number, { name: string; riskKey: string; descriptionKey: string }> = {
-      0: { name: "ISOLATED", riskKey: "zero", descriptionKey: "0" },
-      10: { name: "CONNECTED", riskKey: "low", descriptionKey: "10" },
-      20: { name: "FUNDED", riskKey: "medium", descriptionKey: "20" },
-      30: { name: "BUILDER", riskKey: "high", descriptionKey: "30" },
-      40: { name: "ROOT", riskKey: "critical", descriptionKey: "40" },
-    };
-    return detailsMap[level];
-  };
-
-  const resolveAutonomyDetails = (level: number | null) => {
-    if (level === null || level === undefined) return null;
-    const details = getAutonomyDetails(level);
-    if (!details) return null;
-    return {
-      level,
-      name: details.name,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      risk: t(`sidebar.autonomy.risks.${details.riskKey}` as any),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as any),
-    };
-  };
+  const resolveAutonomyDetails = useCallback(
+    (level: number | null) => {
+      if (level === null || level === undefined) return null;
+      const details = getAutonomyDetails(level);
+      if (!details) return null;
+      return {
+        level,
+        name: details.name,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        risk: t(`sidebar.autonomy.risks.${details.riskKey}` as any),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        description: t(`sidebar.autonomy.descriptions.${details.descriptionKey}` as any),
+      };
+    },
+    [t],
+  );
 
   const autonomyInfo = useMemo(() => {
     if (autonomy) {
@@ -105,8 +108,7 @@ export function Sidebar() {
         description: t("sidebar.autonomy.offline"),
       }
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autonomy, localAutonomy, selectedAutonomy, t]);
+  }, [autonomy, localAutonomy, selectedAutonomy, t, resolveAutonomyDetails]);
 
   const handleCostToggle = async () => {
     const targetState = !(costMode?.enabled ?? false);
@@ -123,9 +125,11 @@ export function Sidebar() {
     try {
       await setCostMode(targetState);
       refreshCost();
-      await setCostMode(targetState);
-      refreshCost();
-      setStatusMessage(t("sidebar.messages.costSuccess", { mode: targetState ? t("sidebar.cost.pro") : t("sidebar.cost.eco") }));
+      setStatusMessage(
+        t("sidebar.messages.costSuccess", {
+          mode: targetState ? t("sidebar.cost.pro") : t("sidebar.cost.eco"),
+        }),
+      );
     } catch (error) {
       setStatusMessage(
         error instanceof Error ? error.message : t("sidebar.messages.costError"),
@@ -176,23 +180,21 @@ export function Sidebar() {
       level: autonomy.current_level,
       name: autonomy.current_level_name,
       risk: autonomy.risk_level,
-      description: autonomy.description ?? detailsComp?.description ?? "AutonomyGate",
+      description:
+        autonomy.description ?? detailsComp?.description ?? "AutonomyGate",
     };
     setLocalAutonomy(snapshot);
     setSelectedAutonomy(String(autonomy.current_level));
     if (typeof window !== "undefined") {
       window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autonomy]);
+  }, [autonomy, resolveAutonomyDetails]);
 
   const handleAutonomyChange = async (level: number) => {
     if (autonomy?.current_level === level) return;
     setAutonomyLoading(level);
     setStatusMessage(null);
     try {
-      await setAutonomy(level);
-      refreshAutonomy();
       await setAutonomy(level);
       refreshAutonomy();
       setStatusMessage(t("sidebar.messages.autonomySuccess", { level }));

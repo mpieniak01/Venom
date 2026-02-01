@@ -24,7 +24,7 @@ class OllamaClient:
         self.endpoint = endpoint.rstrip("/")
 
     async def list_tags(self) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             try:
                 response = await client.get(f"{self.endpoint}/api/tags")
                 response.raise_for_status()
@@ -36,7 +36,7 @@ class OllamaClient:
     async def search_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Przeszukuje modele na ollama.com (scraping)."""
         url = "https://ollama.com/search"
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             try:
                 response = await client.get(url, params={"q": query})
                 response.raise_for_status()
@@ -172,7 +172,7 @@ class HuggingFaceClient:
 
     async def fetch_blog_feed(self, limit: int) -> List[Dict[str, Any]]:
         url = "https://huggingface.co/blog/feed.xml"
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(url)
             response.raise_for_status()
             payload = response.text
@@ -187,7 +187,7 @@ class HuggingFaceClient:
         else:
             target_month = datetime.now().strftime("%Y-%m")
         url = f"https://huggingface.co/papers/month/{target_month}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(url)
             response.raise_for_status()
             payload = response.text

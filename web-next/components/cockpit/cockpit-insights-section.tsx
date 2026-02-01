@@ -13,6 +13,7 @@ import { IntegrationMatrix } from "@/components/cockpit/integration-matrix";
 import { MacroCard } from "@/components/cockpit/macro-card";
 import { CockpitQueue } from "@/components/cockpit/cockpit-queue";
 import { ResourceMetricCard } from "@/components/cockpit/cockpit-metric-cards";
+import { useTranslation } from "@/lib/i18n";
 import type {
   FeedbackLogsResponse,
   HistoryRequest,
@@ -141,6 +142,8 @@ export function CockpitInsightsSection({
   onRunMacro,
   onOpenQuickActions,
 }: CockpitInsightsSectionProps) {
+  const t = useTranslation();
+
   if (chatFullscreen || !showArtifacts) {
     return null;
   }
@@ -151,19 +154,19 @@ export function CockpitInsightsSection({
         <>
           <section className="grid gap-6">
             <Panel
-              title="Zasoby"
-              description="Śledź wykorzystanie CPU/GPU/RAM/VRAM/Dysk oraz koszt sesji."
+              title={t("cockpit.insights.resources.title")}
+              description={t("cockpit.insights.resources.description")}
             >
               <div className="grid gap-3 sm:grid-cols-3">
                 <ResourceMetricCard
                   label="CPU"
                   value={cpuUsageValue}
-                  hint="Średnie obciążenie modeli"
+                  hint={t("cockpit.insights.resources.cpuHint")}
                 />
                 <ResourceMetricCard
                   label="GPU"
                   value={gpuUsageValue}
-                  hint="Wskaźnik wykorzystania akceleratora"
+                  hint={t("cockpit.insights.resources.gpuHint")}
                 />
                 <ResourceMetricCard
                   label="RAM"
@@ -179,12 +182,12 @@ export function CockpitInsightsSection({
                 <ResourceMetricCard
                   label="VRAM"
                   value={vramValue}
-                  hint="Aktywny model/GPU"
+                  hint={t("cockpit.insights.resources.vramHint")}
                 />
-                <ResourceMetricCard label="Dysk" value={diskValue} hint={diskPercent ?? ""} />
+                <ResourceMetricCard label={t("cockpit.insights.resources.title")} value={diskValue} hint={diskPercent ?? ""} />
               </div>
               <div className="mt-4 flex items-center justify-between rounded-2xl box-muted px-4 py-3 text-xs text-zinc-400">
-                <span className="uppercase tracking-[0.35em]">Koszt sesji</span>
+                <span className="uppercase tracking-[0.35em]">{t("cockpit.insights.resources.sessionCost")}</span>
                 <span className="text-base font-semibold text-white">{sessionCostValue}</span>
               </div>
             </Panel>
@@ -198,14 +201,14 @@ export function CockpitInsightsSection({
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    Agenci
+                    {t("cockpit.insights.agents.eyebrow")}
                   </p>
-                  <h2 className="heading-h2">Aktywność systemowa</h2>
+                  <h2 className="heading-h2">{t("cockpit.insights.agents.title")}</h2>
                 </div>
               </header>
               <div className="flex flex-wrap gap-2 text-xs">
-                <Badge tone="neutral">Węzły: {graphNodes}</Badge>
-                <Badge tone="neutral">Krawędzie: {graphEdges}</Badge>
+                <Badge tone="neutral">{t("cockpit.insights.agents.nodes")}: {graphNodes}</Badge>
+                <Badge tone="neutral">{t("cockpit.insights.agents.edges")}: {graphEdges}</Badge>
               </div>
               <div className="space-y-3">
                 {agentDeck.map((svc) => (
@@ -216,7 +219,7 @@ export function CockpitInsightsSection({
                     <div>
                       <p className="font-semibold text-white">{svc.name}</p>
                       <p className="text-xs text-zinc-500">
-                        {svc.detail ?? "Brak opisu"}
+                        {svc.detail ?? t("common.noDescription")}
                       </p>
                     </div>
                     <Badge tone={serviceTone(svc.status)}>{svc.status}</Badge>
@@ -239,8 +242,8 @@ export function CockpitInsightsSection({
       <div className="grid gap-6 lg:grid-cols-2">
         {showReferenceSections && (
           <Panel
-            title="Historia requestów"
-            description="Ostatnie /api/v1/history/requests – kliknij, by odczytać szczegóły."
+            title={t("cockpit.history.title")}
+            description={t("cockpit.history.description")}
           >
             <HistoryList
               entries={history}
@@ -249,24 +252,24 @@ export function CockpitInsightsSection({
               onSelect={(entry) => onSelectHistory(entry)}
               variant="preview"
               viewAllHref="/inspector"
-              emptyTitle="Brak historii"
-              emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
+              emptyTitle={t("cockpit.history.emptyTitle")}
+              emptyDescription={t("cockpit.history.emptyDescription")}
             />
             {loadingHistory && (
-              <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
+              <p className="mt-2 text-hint">{t("cockpit.history.loading")}</p>
             )}
             {historyError && (
               <p className="mt-2 text-xs text-rose-300">{historyError}</p>
             )}
             <p className="mt-2 text-caption">
-              Kliknij element listy, aby otworzyć panel boczny „Szczegóły requestu”.
+              {t("cockpit.selection.hint")}
             </p>
           </Panel>
         )}
         {showSharedSections && (
           <Panel
-            title="Logi nauki"
-            description="Ostatnie wpisy LLM-only z `/api/v1/learning/logs`."
+            title={t("cockpit.insights.learning.title")}
+            description={t("cockpit.insights.learning.description")}
           >
             {learningLogs?.items?.length ? (
               <div className="space-y-3">
@@ -277,13 +280,13 @@ export function CockpitInsightsSection({
                   >
                     <div className="flex flex-wrap items-center gap-2 text-caption">
                       <Badge tone={entry.success ? "success" : "danger"}>
-                        {entry.success ? "OK" : "Błąd"}
+                        {entry.success ? "OK" : t("cockpit.chatStatus.failed")}
                       </Badge>
                       <span>{entry.intent ?? "—"}</span>
                       <span>{formatRelativeTime(entry.timestamp)}</span>
                     </div>
                     <p className="mt-2 text-sm text-white">
-                      {(entry.need ?? "Brak opisu potrzeby.").slice(0, 160)}
+                      {(entry.need ?? t("common.noDescription")).slice(0, 160)}
                     </p>
                     {entry.error && (
                       <p className="mt-2 text-hint text-rose-300">
@@ -296,12 +299,12 @@ export function CockpitInsightsSection({
             ) : (
               <EmptyState
                 icon={<Inbox className="h-4 w-4" />}
-                title="Brak logów nauki"
-                description="LLM-only zapisy pojawią się po pierwszych odpowiedziach."
+                title={t("cockpit.insights.learning.emptyTitle")}
+                description={t("cockpit.insights.learning.emptyDescription")}
               />
             )}
             {learningLoading && (
-              <p className="mt-2 text-hint">Ładowanie logów nauki...</p>
+              <p className="mt-2 text-hint">{t("cockpit.insights.learning.loading")}</p>
             )}
             {learningError && (
               <p className="mt-2 text-xs text-rose-300">{learningError}</p>
@@ -310,8 +313,8 @@ export function CockpitInsightsSection({
         )}
         {showSharedSections && (
           <Panel
-            title="Feedback"
-            description="Ostatnie oceny użytkowników z `/api/v1/feedback/logs`."
+            title={t("cockpit.insights.feedback.title")}
+            description={t("cockpit.insights.feedback.description")}
           >
             {feedbackLogs?.items?.length ? (
               <div className="space-y-3">
@@ -328,7 +331,7 @@ export function CockpitInsightsSection({
                       <span>{formatRelativeTime(entry.timestamp)}</span>
                     </div>
                     <p className="mt-2 text-sm text-white">
-                      {(entry.prompt ?? "Brak promptu.").slice(0, 160)}
+                      {(entry.prompt ?? t("common.noDescription")).slice(0, 160)}
                     </p>
                     {entry.comment && (
                       <p className="mt-2 text-hint">
@@ -341,12 +344,12 @@ export function CockpitInsightsSection({
             ) : (
               <EmptyState
                 icon={<Inbox className="h-4 w-4" />}
-                title="Brak feedbacku"
-                description="Oceny pojawią się po pierwszych rundach."
+                title={t("cockpit.insights.feedback.emptyTitle")}
+                description={t("cockpit.insights.feedback.emptyDescription")}
               />
             )}
             {feedbackLoading && (
-              <p className="mt-2 text-hint">Ładowanie feedbacku...</p>
+              <p className="mt-2 text-hint">{t("cockpit.insights.feedback.loading")}</p>
             )}
             {feedbackError && (
               <p className="mt-2 text-xs text-rose-300">{feedbackError}</p>
@@ -365,8 +368,8 @@ export function CockpitInsightsSection({
 
       {showSharedSections && showArtifacts && (
         <Panel
-          title="Makra Cockpitu"
-          description="Najczęściej używane polecenia wysyłane jednym kliknięciem."
+          title={t("cockpit.insights.macros.title")}
+          description={t("cockpit.insights.macros.description")}
           action={
             <div className="flex flex-col gap-3 rounded-2xl box-base p-3 text-xs text-white">
               <form
@@ -379,7 +382,7 @@ export function CockpitInsightsSection({
                     {
                       id: `custom-${customMacros.length + 1}`,
                       label: newMacro.label.trim(),
-                      description: newMacro.description.trim() || "Makro użytkownika",
+                      description: newMacro.description.trim() || t("cockpit.insights.macros.desc"),
                       content: newMacro.content.trim(),
                       custom: true,
                     },
@@ -387,10 +390,10 @@ export function CockpitInsightsSection({
                   setNewMacro({ label: "", description: "", content: "" });
                 }}
               >
-                <p className="text-caption text-zinc-400">Dodaj makro</p>
+                <p className="text-caption text-zinc-400">{t("cockpit.insights.macros.add")}</p>
                 <input
                   className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                  placeholder="Nazwa"
+                  placeholder={t("cockpit.insights.macros.name")}
                   value={newMacro.label}
                   onChange={(event) =>
                     setNewMacro({ ...newMacro, label: event.target.value })
@@ -398,7 +401,7 @@ export function CockpitInsightsSection({
                 />
                 <input
                   className="rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                  placeholder="Opis"
+                  placeholder={t("cockpit.insights.macros.desc")}
                   value={newMacro.description}
                   onChange={(event) =>
                     setNewMacro({ ...newMacro, description: event.target.value })
@@ -406,14 +409,14 @@ export function CockpitInsightsSection({
                 />
                 <textarea
                   className="min-h-[60px] rounded-xl border border-white/10 bg-black/30 px-2 py-1 text-white outline-none placeholder:text-zinc-500"
-                  placeholder="Treść polecenia / prompt"
+                  placeholder={t("cockpit.insights.macros.content")}
                   value={newMacro.content}
                   onChange={(event) =>
                     setNewMacro({ ...newMacro, content: event.target.value })
                   }
                 />
                 <Button type="submit" size="xs" variant="outline" className="px-3">
-                  Dodaj makro
+                  {t("cockpit.insights.macros.submit")}
                 </Button>
               </form>
               {customMacros.length > 0 && (
@@ -424,7 +427,7 @@ export function CockpitInsightsSection({
                   className="px-3"
                   onClick={() => setCustomMacros([])}
                 >
-                  Resetuj makra użytkownika
+                  {t("cockpit.insights.macros.reset")}
                 </Button>
               )}
             </div>
@@ -442,9 +445,9 @@ export function CockpitInsightsSection({
                 onRemove={
                   macro.custom
                     ? () =>
-                        setCustomMacros(
-                          customMacros.filter((item) => item.id !== macro.id)
-                        )
+                      setCustomMacros(
+                        customMacros.filter((item) => item.id !== macro.id)
+                      )
                     : undefined
                 }
               />
@@ -457,27 +460,27 @@ export function CockpitInsightsSection({
         <>
           <Panel
             title="Task Insights"
-            description="Podsumowanie statusów i ostatnich requestów /history/requests."
+            description={t("cockpit.history.description")}
           >
             <div className="grid gap-4 md:grid-cols-2">
               <TaskStatusBreakdown
-                title="Statusy"
-                datasetLabel="Ostatnie 50 historii"
-                totalLabel="Historia"
+                title={t("cockpit.metrics.statusTitle")}
+                datasetLabel={t("cockpit.history.title")}
+                totalLabel={t("common.total")}
                 totalValue={(history || []).length}
                 entries={historyStatusEntries}
-                emptyMessage="Brak historii do analizy."
+                emptyMessage={t("cockpit.history.emptyDescription")}
               />
               <RecentRequestList requests={history} />
             </div>
           </Panel>
 
           <Panel
-            title="Zarządzanie kolejką"
-            description="Stan kolejki i szybkie akcje – zarządzaj z jednego miejsca."
+            title={t("cockpit.insights.queue.title")}
+            description={t("cockpit.insights.queue.description")}
             action={
               <Badge tone={queue?.paused ? "warning" : "success"}>
-                {queue?.paused ? "Wstrzymana" : "Aktywna"}
+                {queue?.paused ? t("cockpit.insights.queue.paused") : t("cockpit.insights.queue.active")}
               </Badge>
             }
           >
@@ -485,7 +488,7 @@ export function CockpitInsightsSection({
               <QueueStatusCard queue={queue} loading={queueLoading && !queue} />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Akcje dostępne w panelu Quick Actions.
+                  {t("cockpit.insights.queue.quickActions")}
                 </p>
                 <Button
                   variant="secondary"
@@ -493,7 +496,7 @@ export function CockpitInsightsSection({
                   className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 text-emerald-100 hover:border-emerald-400/60"
                   onClick={onOpenQuickActions}
                 >
-                  ⚡ Otwórz Quick Actions
+                  {t("cockpit.insights.queue.openQuickActions")}
                 </Button>
               </div>
             </div>

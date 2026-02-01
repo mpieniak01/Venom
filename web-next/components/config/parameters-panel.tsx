@@ -77,7 +77,7 @@ export function ParametersPanel() {
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
         const errorMessage =
-          errorText || `Nie udało się pobrać konfiguracji (HTTP ${response.status})`;
+          errorText || `${t("config.parameters.messages.fetchError")} (HTTP ${response.status})`;
         console.error("Błąd pobierania konfiguracji (HTTP):", response.status, errorText);
         setMessage({
           type: "error",
@@ -91,7 +91,7 @@ export function ParametersPanel() {
         setConfig(data.config);
         setOriginalConfig(data.config);
       } else {
-        const errorMessage = data.message || "Nie udało się pobrać konfiguracji";
+        const errorMessage = data.message || t("config.parameters.messages.fetchError");
         setMessage({
           type: "error",
           text: errorMessage,
@@ -102,7 +102,7 @@ export function ParametersPanel() {
       console.error("Błąd pobierania konfiguracji:", error);
       setMessage({
         type: "error",
-        text: "Wystąpił błąd podczas pobierania konfiguracji",
+        text: t("config.parameters.messages.fetchError"),
       });
     } finally {
       setLoading(false);
@@ -127,7 +127,7 @@ export function ParametersPanel() {
 
   const handleSave = async () => {
     if (!hasChanges()) {
-      setMessage({ type: "error", text: "Brak zmian do zapisania" });
+      setMessage({ type: "error", text: t("config.parameters.messages.noChanges") });
       return;
     }
 
@@ -159,7 +159,7 @@ export function ParametersPanel() {
     } catch (error) {
       setMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Błąd komunikacji z API",
+        text: error instanceof Error ? error.message : t("config.parameters.messages.saveError"),
       });
     } finally {
       setSaving(false);
@@ -183,10 +183,12 @@ export function ParametersPanel() {
     return (
       <div key={key} className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-zinc-300">{key}</label>
+          <label className="text-sm font-medium text-zinc-300">
+            {key.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}
+          </label>
           {secret && (
             <IconButton
-              label={showValue ? "Ukryj wartość" : "Pokaż wartość"}
+              label={showValue ? t("config.parameters.sections.secrets.hide") : t("config.parameters.sections.secrets.show")}
               icon={showValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               variant="ghost"
               size="xs"
@@ -280,8 +282,8 @@ export function ParametersPanel() {
 
       {/* AI Mode Section */}
       {renderSection(
-        "Tryb AI",
-        "Konfiguracja modeli AI: lokalny, hybrydowy lub cloud",
+        t("config.parameters.sections.aiMode.title"),
+        t("config.parameters.sections.aiMode.description"),
         [
           "AI_MODE",
           "LLM_SERVICE_TYPE",
@@ -303,8 +305,8 @@ export function ParametersPanel() {
 
       {/* LLM Server Commands */}
       {renderSection(
-        "Komendy serwera LLM",
-        "Komendy do uruchamiania/zatrzymywania serwerów Ollama i vLLM",
+        t("config.parameters.sections.commands.title"),
+        t("config.parameters.sections.commands.description"),
         [
           "VLLM_START_COMMAND",
           "VLLM_STOP_COMMAND",
@@ -317,8 +319,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "vLLM – zaawansowane",
-        "Ścieżki modeli i limity dla runtime vLLM",
+        t("config.parameters.sections.vllm_advanced.title"),
+        t("config.parameters.sections.vllm_advanced.description"),
         [
           "VLLM_MODEL_PATH",
           "VLLM_SERVED_MODEL_NAME",
@@ -328,8 +330,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Routing i kontekst",
-        "Strategia podsumowań oraz kompresja kontekstu",
+        t("config.parameters.sections.routing.title"),
+        t("config.parameters.sections.routing.description"),
         [
           "ENABLE_CONTEXT_COMPRESSION",
           "MAX_CONTEXT_TOKENS",
@@ -337,15 +339,15 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Prompty",
-        "Katalogi promptów",
+        t("config.parameters.sections.prompts.title"),
+        t("config.parameters.sections.prompts.description"),
         ["PROMPTS_DIR"]
       )}
 
       {/* Hive Configuration */}
       {renderSection(
-        "Hive - Przetwarzanie rozproszone",
-        "Konfiguracja architektury rozproszonej z Redis message broker",
+        t("config.parameters.sections.hive.title"),
+        t("config.parameters.sections.hive.description"),
         [
           "ENABLE_HIVE",
           "HIVE_URL",
@@ -364,8 +366,8 @@ export function ParametersPanel() {
 
       {/* Nexus Configuration */}
       {renderSection(
-        "Nexus - Distributed Mesh",
-        "Master-Worker architecture dla zdalnych węzłów",
+        t("config.parameters.sections.nexus.title"),
+        t("config.parameters.sections.nexus.description"),
         [
           "ENABLE_NEXUS",
           "NEXUS_SHARED_TOKEN",
@@ -376,8 +378,8 @@ export function ParametersPanel() {
 
       {/* Background Tasks */}
       {renderSection(
-        "Zadania w tle",
-        "Automatyczne zadania: dokumentacja, refaktoryzacja, konsolidacja pamięci",
+        t("config.parameters.sections.tasks.title"),
+        t("config.parameters.sections.tasks.description"),
         [
           "VENOM_PAUSE_BACKGROUND_TASKS",
           "ENABLE_AUTO_DOCUMENTATION",
@@ -393,15 +395,15 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Sandbox / Docker",
-        "Ustawienia sandboxa i obrazu bazowego",
+        t("config.parameters.sections.sandbox.title"),
+        t("config.parameters.sections.sandbox.description"),
         ["ENABLE_SANDBOX", "DOCKER_IMAGE_NAME"]
       )}
 
       {/* Shadow Agent */}
       {renderSection(
-        "Shadow - Desktop Awareness",
-        "Agent świadomości desktopowej i proaktywnego działania",
+        t("config.parameters.sections.shadow.title"),
+        t("config.parameters.sections.shadow.description"),
         [
           "ENABLE_PROACTIVE_MODE",
           "ENABLE_DESKTOP_SENSOR",
@@ -414,8 +416,8 @@ export function ParametersPanel() {
 
       {/* Ghost Agent */}
       {renderSection(
-        "Ghost - Visual GUI Automation",
-        "Agent automatyzacji GUI (RPA)",
+        t("config.parameters.sections.ghost.title"),
+        t("config.parameters.sections.ghost.description"),
         [
           "ENABLE_GHOST_AGENT",
           "GHOST_MAX_STEPS",
@@ -428,8 +430,8 @@ export function ParametersPanel() {
 
       {/* Audio Interface */}
       {renderSection(
-        "Avatar - Audio Interface",
-        "Interfejs audio: rozpoznawanie mowy i synteza głosu",
+        t("config.parameters.sections.avatar.title"),
+        t("config.parameters.sections.avatar.description"),
         [
           "ENABLE_AUDIO_INTERFACE",
           "WHISPER_MODEL_SIZE",
@@ -441,8 +443,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Integracje zewnętrzne",
-        "Klucze i tokeny dla integracji (HF, GitHub, Slack/Discord, Tavily)",
+        t("config.parameters.sections.integrations.title"),
+        t("config.parameters.sections.integrations.description"),
         [
           "ENABLE_HF_INTEGRATION",
           "HF_TOKEN",
@@ -457,8 +459,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Kalendarz",
-        "Integracja Google Calendar",
+        t("config.parameters.sections.calendar.title"),
+        t("config.parameters.sections.calendar.description"),
         [
           "ENABLE_GOOGLE_CALENDAR",
           "GOOGLE_CALENDAR_CREDENTIALS_PATH",
@@ -469,8 +471,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "IoT Bridge (Rider-Pi)",
-        "Parametry połączenia z Raspberry Pi / IoT",
+        t("config.parameters.sections.iot.title"),
+        t("config.parameters.sections.iot.description"),
         [
           "ENABLE_IOT_BRIDGE",
           "RIDER_PI_HOST",
@@ -484,8 +486,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Academy (Fine-tuning)",
-        "Parametry treningu/fine-tuningu modeli",
+        t("config.parameters.sections.academy.title"),
+        t("config.parameters.sections.academy.description"),
         [
           "ENABLE_ACADEMY",
           "ACADEMY_TRAINING_DIR",
@@ -504,8 +506,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Symulacje",
-        "Warstwa THE_SIMULACRUM",
+        t("config.parameters.sections.simulations.title"),
+        t("config.parameters.sections.simulations.description"),
         [
           "ENABLE_SIMULATION",
           "SIMULATION_CHAOS_ENABLED",
@@ -518,8 +520,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Launchpad / Media",
-        "Deployment i generowanie obrazów",
+        t("config.parameters.sections.launchpad.title"),
+        t("config.parameters.sections.launchpad.description"),
         [
           "ENABLE_LAUNCHPAD",
           "DEPLOYMENT_SSH_KEY_PATH",
@@ -535,8 +537,8 @@ export function ParametersPanel() {
       )}
 
       {renderSection(
-        "Dreamer",
-        "Parametry systemu śnienia (THE_DREAMER)",
+        t("config.parameters.sections.dreamer.title"),
+        t("config.parameters.sections.dreamer.description"),
         [
           "ENABLE_DREAMING",
           "DREAMING_IDLE_THRESHOLD_MINUTES",
@@ -555,7 +557,7 @@ export function ParametersPanel() {
           <div>
             {hasChanges() && (
               <p className="text-sm text-yellow-300">
-                Masz niezapisane zmiany ({getChangedKeys().length} parametrów)
+                {t("config.parameters.unsavedChanges", { count: getChangedKeys().length })}
               </p>
             )}
           </div>
@@ -565,11 +567,11 @@ export function ParametersPanel() {
               disabled={!hasChanges() || saving}
               variant="secondary"
             >
-              Resetuj
+              {t("config.parameters.buttons.reset")}
             </Button>
             <Button onClick={handleSave} disabled={!hasChanges() || saving}>
               <Save className="mr-2 h-4 w-4" />
-              {saving ? "Zapisywanie..." : "Zapisz konfigurację"}
+              {saving ? t("config.parameters.buttons.saving") : t("config.parameters.buttons.save")}
             </Button>
           </div>
         </div>

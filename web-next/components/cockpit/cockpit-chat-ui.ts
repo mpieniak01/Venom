@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { GenerationParams, HistoryRequestDetail, GenerationSchema } from "@/lib/types";
 import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
-import type { ChatComposerHandle } from "@/components/cockpit/cockpit-chat-thread";
+import type { ChatMessage, ChatComposerHandle } from "@/components/cockpit/cockpit-chat-thread";
 import { useChatSend } from "@/components/cockpit/cockpit-chat-send";
 import { useTranslation } from "@/lib/i18n";
 
@@ -22,7 +22,7 @@ type FeedbackState = {
 };
 
 type CockpitChatUiParams = {
-  chatMessages: Array<{ role?: string; requestId?: string; pending?: boolean }>;
+  chatMessages: ChatMessage[];
   chatScrollRef: React.RefObject<HTMLDivElement>;
   feedbackByRequest: Record<string, FeedbackState>;
   setFeedbackByRequest: React.Dispatch<React.SetStateAction<Record<string, FeedbackState>>>;

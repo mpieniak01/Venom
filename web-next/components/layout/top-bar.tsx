@@ -84,7 +84,7 @@ export function TopBar({ initialStatusData }: { initialStatusData?: StatusPillsI
             data-testid="topbar-command-center"
           >
             <Sparkles className="h-4 w-4 text-violet-300" />
-            <span className="text-xs uppercase tracking-wider">
+            <span className="text-xs uppercase tracking-wider" suppressHydrationWarning>
               {t("topBar.commandCenter")}
             </span>
           </Button>
@@ -140,7 +140,7 @@ function TopBarIconAction({
       )}
     >
       {icon}
-      <span className="hidden md:inline-flex">{label}</span>
+      <span className="hidden md:inline-flex" suppressHydrationWarning>{label}</span>
     </Button>
   );
 }

@@ -89,21 +89,21 @@ export function SelectMenu({
       setMenuStyle(
         menuWidth === "content"
           ? {
-              position: "fixed",
-              top: rect.bottom + 8,
-              left: rect.left,
-              minWidth: rect.width,
-              maxWidth: "90vw",
-              width: "max-content",
-              zIndex: 80,
-            }
+            position: "fixed",
+            top: rect.bottom + 8,
+            left: rect.left,
+            minWidth: rect.width,
+            maxWidth: "90vw",
+            width: "max-content",
+            zIndex: 80,
+          }
           : {
-              position: "fixed",
-              top: rect.bottom + 8,
-              left: rect.left,
-              width: rect.width,
-              zIndex: 80,
-            },
+            position: "fixed",
+            top: rect.bottom + 8,
+            left: rect.left,
+            width: rect.width,
+            zIndex: 80,
+          },
       );
     };
     updatePosition();
@@ -129,6 +129,7 @@ export function SelectMenu({
         aria-label={ariaLabel}
         data-testid={buttonTestId}
         disabled={disabled}
+        suppressHydrationWarning
       >
         {renderButton ? (
           renderButton(currentOption)

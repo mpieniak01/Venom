@@ -17,11 +17,6 @@ interface CockpitProviderProps {
 }
 
 export function CockpitProvider({ initialData, variant = "reference", children }: CockpitProviderProps) {
-    const [isClientReady, setIsClientReady] = useState(false);
-
-    useEffect(() => {
-        setIsClientReady(true);
-    }, []);
 
     // 1. Layout State
     const layout = useCockpitLayout(variant);
@@ -34,11 +29,8 @@ export function CockpitProvider({ initialData, variant = "reference", children }
 
     // 4. Logic & Effects
     const chatScrollRef = useRef<HTMLDivElement>(null!);
-    const logic = useCockpitLogic(data, interactive, layout, chatScrollRef);
+    const logic = useCockpitLogic({ data, interactive, layout, chatScrollRef });
 
-    if (!isClientReady) {
-        return <div className="p-8 text-muted-foreground">Ładowanie kokpitu...</div>;
-    }
 
     return (
         <CockpitContext.Provider value={{ data, layout, interactive, logic, chatScrollRef }}>

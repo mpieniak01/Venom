@@ -2,6 +2,7 @@
 
 import { Panel } from "@/components/ui/panel";
 import { HistoryList } from "@/components/history/history-list";
+import { useTranslation } from "@/lib/i18n";
 
 import type { HistoryRequest } from "@/lib/types";
 
@@ -20,10 +21,12 @@ export function CockpitHistoryPanel({
   loadingHistory,
   historyError,
 }: CockpitHistoryPanelProps) {
+  const t = useTranslation();
+
   return (
     <Panel
-      title="Historia requestów"
-      description="Najnowsze zadania użytkownika z /api/v1/history/requests."
+      title={t("cockpit.history.title")}
+      description={t("cockpit.history.description")}
     >
       <HistoryList
         entries={history}
@@ -32,11 +35,11 @@ export function CockpitHistoryPanel({
         onSelect={(entry) => onSelect(entry)}
         variant="preview"
         viewAllHref="/inspector"
-        emptyTitle="Brak historii"
-        emptyDescription="Historia requestów pojawi się po wysłaniu zadań."
+        emptyTitle={t("cockpit.history.emptyTitle")}
+        emptyDescription={t("cockpit.history.emptyDescription")}
       />
       {loadingHistory && (
-        <p className="mt-2 text-hint">Ładowanie szczegółów...</p>
+        <p className="mt-2 text-hint">{t("cockpit.history.loading")}</p>
       )}
       {historyError && (
         <p className="mt-2 text-xs text-rose-300">{historyError}</p>

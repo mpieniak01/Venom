@@ -372,6 +372,7 @@ export const en = {
       normalLabel: "Normal (standard)",
       complexLabel: "Complex (planning)",
     },
+    newChat: "New chat",
   },
   brain: {
     title: "Knowledge Graph",

@@ -17,15 +17,9 @@ HttpError: type[Exception]
 
 try:
     from google.auth.transport.requests import Request as _Request
-    from google_auth_oauthlib.flow import (
-        InstalledAppFlow as _InstalledAppFlow,  # type: ignore[import-untyped]
-    )
-    from googleapiclient.discovery import (
-        build as _build,  # type: ignore[import-untyped]
-    )
-    from googleapiclient.errors import (
-        HttpError as _HttpError,  # type: ignore[import-untyped]
-    )
+    from google_auth_oauthlib.flow import InstalledAppFlow as _InstalledAppFlow
+    from googleapiclient.discovery import build as _build
+    from googleapiclient.errors import HttpError as _HttpError
 
     _GOOGLE_CALENDAR_AVAILABLE = True
     _GOOGLE_CALENDAR_IMPORT_ERROR = None

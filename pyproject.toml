@@ -38,6 +38,13 @@ warn_unused_configs = true
 disable_error_code = ["annotation-unchecked"]
 exclude = "(^|/)(models|models_cache|node_modules|web|web-next|\\.venv|venv|\\.mypy_cache|\\.ruff_cache|\\.git)(/|$)"
 
+[[tool.mypy.overrides]]
+module = [
+    "google_auth_oauthlib.*",
+    "googleapiclient.*",
+]
+ignore_missing_imports = true
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]

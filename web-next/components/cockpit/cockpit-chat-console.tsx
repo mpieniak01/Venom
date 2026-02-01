@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { CockpitPanel3D } from "@/components/cockpit/cockpit-panel-3d";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type ChatPreset = {
   readonly id: string;
@@ -33,6 +34,7 @@ type CockpitChatConsoleProps = {
   showSharedSections: boolean;
   promptPresets: ReadonlyArray<ChatPreset>;
   onSuggestionClick: (prompt: string) => void;
+  onNewChat: () => void;
 };
 
 export function CockpitChatConsole({
@@ -52,12 +54,15 @@ export function CockpitChatConsole({
   showSharedSections,
   promptPresets,
   onSuggestionClick,
+  onNewChat,
 }: CockpitChatConsoleProps) {
+  const t = useTranslation();
+
   return (
     <div className="space-y-6">
       <CockpitPanel3D fullscreen={chatFullscreen}>
         <IconButton
-          label={chatFullscreen ? "Wyłącz pełny ekran" : "Włącz pełny ekran"}
+          label={chatFullscreen ? t("cockpit.fullscreen.off") : t("cockpit.fullscreen.on")}
           size="xs"
           variant="outline"
           className="absolute right-6 top-6 z-20 border-white/10 text-white pointer-events-auto"
@@ -71,19 +76,27 @@ export function CockpitChatConsole({
           onClick={onToggleFullscreen}
         />
         <SectionHeading
-          eyebrow="Command Console"
-          title="Cockpit AI"
-          description="Chat operacyjny z Orchestratora i logami runtime."
+          eyebrow={t("cockpit.header.eyebrow")}
+          title={t("cockpit.header.title")}
+          description={t("cockpit.header.description")}
           as="h2"
           size="md"
           className="items-center"
           rightSlot={
             <div className="flex flex-wrap items-center gap-2 pr-10">
+              <Button
+                variant="amber"
+                size="xs"
+                onClick={onNewChat}
+              >
+                <RefreshCw className="mr-1.5 h-3 w-3" />
+                {t("cockpit.newChat")}
+              </Button>
               <Badge tone={labMode ? "warning" : "success"}>
-                {labMode ? "Lab Mode" : "Prod"}
+                {labMode ? t("cockpit.status.lab") : t("cockpit.status.prod")}
               </Badge>
               <Badge tone={responseBadgeTone} title={responseBadgeTitle}>
-                Odpowiedź {responseBadgeText}
+                {t("cockpit.responseLabel", { text: responseBadgeText })}
               </Badge>
             </div>
           }
@@ -111,9 +124,9 @@ export function CockpitChatConsole({
       {!chatFullscreen && showSharedSections && showArtifacts && (
         <div className="mt-4 space-y-3 rounded-2xl box-base px-4 py-4 text-sm text-zinc-300">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-caption">Sugestie szybkich promptów</p>
+            <p className="text-caption">{t("cockpit.suggestions.eyebrow")}</p>
             <span className="text-caption text-zinc-600">
-              Kliknij, aby wypełnić chat
+              {t("cockpit.suggestions.hint")}
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

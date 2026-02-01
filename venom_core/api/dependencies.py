@@ -8,6 +8,7 @@ from venom_core.core.state_manager import StateManager
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.memory.vector_store import VectorStore
+from venom_core.services.session_store import SessionStore
 
 # Globalne referencje do serwisów (inicjalizowane w lifespan)
 _orchestrator: Optional[Orchestrator] = None
@@ -15,6 +16,7 @@ _state_manager: Optional[StateManager] = None
 _vector_store: Optional[VectorStore] = None
 _graph_store: Optional[CodeGraphStore] = None
 _lessons_store: Optional[LessonsStore] = None
+_session_store: Optional[SessionStore] = None
 
 
 def set_orchestrator(orchestrator: Orchestrator):
@@ -45,6 +47,12 @@ def set_lessons_store(lessons_store: LessonsStore):
     """Ustaw globalną instancję lessons store."""
     global _lessons_store
     _lessons_store = lessons_store
+
+
+def set_session_store(session_store: SessionStore):
+    """Ustaw globalną instancję session store."""
+    global _session_store
+    _session_store = session_store
 
 
 @lru_cache()
@@ -111,7 +119,6 @@ def get_graph_store() -> CodeGraphStore:
     return _graph_store
 
 
-@lru_cache()
 def get_lessons_store() -> LessonsStore:
     """
     Pobierz instancję LessonsStore (dependency injection).
@@ -125,3 +132,19 @@ def get_lessons_store() -> LessonsStore:
     if _lessons_store is None:
         raise RuntimeError("LessonsStore nie jest dostępny")
     return _lessons_store
+
+
+@lru_cache()
+def get_session_store() -> SessionStore:
+    """
+    Pobierz instancję SessionStore (dependency injection).
+
+    Returns:
+        SessionStore: Instancja session store
+
+    Raises:
+        RuntimeError: Jeśli session store nie został zainicjalizowany
+    """
+    if _session_store is None:
+        raise RuntimeError("SessionStore nie jest dostępny")
+    return _session_store

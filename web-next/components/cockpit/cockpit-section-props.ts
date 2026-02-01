@@ -82,6 +82,7 @@ export function useCockpitSectionProps() {
   const tuningLabel = "Strojenie";
 
   const onSuggestionClick = logic.chatUi.handleSuggestionClick;
+  const onNewChat = logic.sessionActions.handleServerSessionReset;
 
   const llmServersLoading = data.loading.llmServers;
   const llmServers = useMemo(() => data.llmServers || [], [data.llmServers]);
@@ -581,6 +582,7 @@ export function useCockpitSectionProps() {
     message,
     promptPresets,
     onSuggestionClick,
+    onNewChat,
     llmOpsPanelProps,
     hiddenPromptsPanelProps,
     historyPanelProps,
@@ -597,6 +599,7 @@ export function useCockpitSectionProps() {
     message,
     metricsProps,
     onChatScroll,
+    onNewChat,
     onSuggestionClick,
     promptPresets,
     quickActionsOpen,

@@ -14,7 +14,8 @@ Jedno wydanie łączące pierwotny zakres i18n z zadania 103 oraz stabilizacje o
 
 2) API + stabilizacja testów
 - Dependency overrides w testach; cleanup fixtures dla memory/lessons.
-- Kompatybilne parsowanie lekcji w grafie pamięci (mock-safe, dict-friendly).
+- Usunięcie auto‑init orchestratora w testach — zależności są wstrzykiwane jawnie.
+- Kompatybilne parsowanie lekcji w grafie pamięci (helper + fallback tylko w trybie testowym).
 - Naprawione błędy mypy w mapowaniu lekcji w grafie pamięci.
 
 3) Stabilizacja E2E
@@ -30,6 +31,7 @@ Jedno wydanie łączące pierwotny zakres i18n z zadania 103 oraz stabilizacje o
 - web-next/hooks/use-task-stream.ts
 - web-next/lib/i18n/index.tsx
 - web-next/tests/*.spec.ts (smoke, chat-mode-routing, chat-context-icons, streaming)
+- venom_core/api/dependencies.py
 - venom_core/api/routes/memory.py
 - tests/test_core_nervous_system.py
 - config/pytest-groups/light.txt

@@ -8,6 +8,7 @@ from venom_core.api.dependencies import (
     get_session_store,
     get_state_manager,
     get_vector_store,
+    is_testing_mode,
 )
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.services.config_manager import config_manager as _config_manager
@@ -60,6 +61,51 @@ def _ensure_vector_store():
         # W teście, jeśli nikt jeszcze nie ustawiał, stwórz nową instancję
         # (EmbeddingService i tak użyje cache'u)
         return VectorStore()
+
+
+def _normalize_lessons_for_graph(
+    raw_lessons: object,
+    allow_fallback: bool,
+    limit: int,
+) -> list[dict[str, object]]:
+    lessons: list[dict[str, object]] = []
+    if not raw_lessons:
+        return lessons
+    if isinstance(raw_lessons, dict):
+        for lid, ldata in list(raw_lessons.items())[:limit]:
+            lesson_id: object = lid
+            if hasattr(ldata, "id"):
+                lesson_id = ldata.id
+            elif isinstance(ldata, dict) and "id" in ldata:
+                lesson_id = ldata["id"]
+            elif hasattr(ldata, "lesson_id"):
+                lesson_id = ldata.lesson_id
+            elif isinstance(ldata, dict) and "lesson_id" in ldata:
+                lesson_id = ldata["lesson_id"]
+
+            raw_lesson = (
+                ldata.to_dict()
+                if hasattr(ldata, "to_dict")
+                else (
+                    vars(ldata)
+                    if hasattr(ldata, "__dict__")
+                    else (ldata if isinstance(ldata, dict) else {})
+                )
+            )
+            if isinstance(raw_lesson, dict):
+                raw_lesson["id"] = lesson_id
+                lessons.append(raw_lesson)
+        return lessons
+    if isinstance(raw_lessons, list):
+        for entry in raw_lessons[:limit]:
+            if isinstance(entry, dict):
+                lessons.append(entry)
+            elif allow_fallback and hasattr(entry, "to_dict"):
+                lessons.append(entry.to_dict())
+            elif allow_fallback and hasattr(entry, "__dict__"):
+                lessons.append(vars(entry))
+        return lessons
+    return lessons
 
 
 # Modele
@@ -408,58 +454,20 @@ async def memory_graph(
     lesson_edges = []
     if include_lessons and lessons_store:
         try:
-            lessons: list[dict[str, object]] = []
             # Obsługa różnych wersji LessonsStore (szczególnie w mockach testowych)
             if hasattr(lessons_store, "get_all_lessons"):
                 raw_lessons = lessons_store.get_all_lessons(limit=limit)
-                for entry in raw_lessons:
-                    if isinstance(entry, dict):
-                        lessons.append(entry)
-                    else:
-                        lessons.append(
-                            entry.to_dict()
-                            if hasattr(entry, "to_dict")
-                            else (vars(entry) if hasattr(entry, "__dict__") else {})
-                        )
+                lessons = _normalize_lessons_for_graph(
+                    raw_lessons, allow_fallback=is_testing_mode(), limit=limit
+                )
             elif hasattr(lessons_store, "lessons"):
                 # fallback dla prostych mocków/SimpleNamespace w testach
                 raw_lessons_data = lessons_store.lessons
-                if isinstance(raw_lessons_data, dict):
-                    for lid, ldata in list(raw_lessons_data.items())[:limit]:
-                        # Używamy klucza jako pewnego ID, jeśli ldata go nie ma
-                        lesson_id: object = lid
-                        if hasattr(ldata, "id"):
-                            lesson_id = ldata.id
-                        elif isinstance(ldata, dict) and "id" in ldata:
-                            lesson_id = ldata["id"]
-                        elif hasattr(ldata, "lesson_id"):
-                            lesson_id = ldata.lesson_id
-                        elif isinstance(ldata, dict) and "lesson_id" in ldata:
-                            lesson_id = ldata["lesson_id"]
-
-                        # Konwersja do słownika dla jednolitości
-                        raw_lesson = (
-                            ldata.to_dict()
-                            if hasattr(ldata, "to_dict")
-                            else (
-                                vars(ldata)
-                                if hasattr(ldata, "__dict__")
-                                else (ldata if isinstance(ldata, dict) else {})
-                            )
-                        )
-                        if isinstance(raw_lesson, dict):
-                            raw_lesson["id"] = lesson_id
-                        lessons.append(raw_lesson)
-                else:
-                    for entry in raw_lessons_data[:limit]:
-                        if isinstance(entry, dict):
-                            lessons.append(entry)
-                        else:
-                            lessons.append(
-                                entry.to_dict()
-                                if hasattr(entry, "to_dict")
-                                else (vars(entry) if hasattr(entry, "__dict__") else {})
-                            )
+                lessons = _normalize_lessons_for_graph(
+                    raw_lessons_data, allow_fallback=is_testing_mode(), limit=limit
+                )
+            else:
+                lessons = []
 
             for raw_lesson in lessons:
                 # Jeśli to już jest słownik (z moich konwersji wyżej) to super

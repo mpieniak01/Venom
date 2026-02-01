@@ -486,7 +486,7 @@ export const de = {
           description: "Schlüssel und Token für Integrationen (HF, GitHub, Slack/Discord, Tavily)",
         },
         calendar: {
-          title: "Kalendarz",
+          title: "Kalender",
           description: "Google Calendar Integration",
         },
         iot: {

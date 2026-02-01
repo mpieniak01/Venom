@@ -80,15 +80,8 @@ def get_orchestrator() -> Orchestrator:
         RuntimeError: Jeśli orchestrator nie został zainicjalizowany
     """
     global _orchestrator
-    global _orchestrator
     if _orchestrator is None:
-        if is_testing_mode():
-            # Prowizoryczna inicjalizacja dla testów
-            sm = get_state_manager()
-            ss = get_session_store()
-            _orchestrator = Orchestrator(state_manager=sm, session_store=ss)
-        else:
-            raise RuntimeError("Orchestrator nie jest dostępny")
+        raise RuntimeError("Orchestrator nie jest dostępny")
     return _orchestrator
 
 

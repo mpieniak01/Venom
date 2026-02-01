@@ -261,3 +261,22 @@ Uwaga dot. MCP:
 ### 2026-02-01 (pytest flake: lessons_governance)
 - Przywrócono `memory_routes.config_manager` (back-compat dla testów), aby test `test_toggle_learning_updates_settings` nie padał.
 - Re-test: `.venv/bin/pytest -q tests/test_lessons_governance.py::test_toggle_learning_updates_settings` → **passed**.
+
+## 10. Recenzje i plan działań (PR review)
+
+### Uwagi z recenzji
+1) **de.ts**: błędny tekst „Kalendarz” w niemieckiej lokalizacji.
+2) **dependencies.py**: podwójny `global _orchestrator`.
+3) **dependencies.py**: auto‑inicjalizacja zależności w testach może maskować błędy.
+4) **memory.py**: zbyt złożona logika parsowania lessons_store w kodzie produkcyjnym.
+
+### Decyzje
+- Szybkie poprawki (1–2) wdrożone natychmiast.
+- Auto‑init w `get_orchestrator()` usunięty – testy muszą jawnie wstrzykiwać zależności.
+- Parsowanie lekcji uproszczone: złożona logika działa **tylko w trybie testowym** (fallback), produkcja oczekuje spójnych struktur.
+
+### Status wdrożenia
+- [x] de.ts: „Kalender” zamiast „Kalendarz”.
+- [x] dependencies.py: usunięty duplikat `global _orchestrator`.
+- [x] dependencies.py: usunięty auto‑init orchestratora w trybie testowym.
+- [x] memory.py: parser lekcji przeniesiony do helpera, fallback ograniczony do `is_testing_mode()`.

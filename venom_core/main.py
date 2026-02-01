@@ -848,6 +848,14 @@ def setup_router_dependencies():
 # orchestratora i zależności routerów, żeby uniknąć 503 Service Unavailable.
 if TESTING_MODE and orchestrator is None:
     try:
+        # Prowizoryczna inicjalizacja dla testów (bez lifespan)
+        if vector_store is None:
+            vector_store = VectorStore()
+        if graph_store is None:
+            graph_store = CodeGraphStore()
+        if lessons_store is None:
+            lessons_store = LessonsStore(vector_store=vector_store)
+
         orchestrator = Orchestrator(
             state_manager,
             event_broadcaster=event_broadcaster,
@@ -857,7 +865,7 @@ if TESTING_MODE and orchestrator is None:
         )
         setup_router_dependencies()
         logger.info(
-            "Tryb testowy: orchestrator i zależności routerów zainicjalizowane bez lifespan"
+            "Tryb testowy: orchestrator i magazyny zainicjalizowane bez lifespan"
         )
     except Exception as e:  # pragma: no cover - log zamiast crash w teście
         logger.warning(

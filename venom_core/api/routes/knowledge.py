@@ -17,6 +17,22 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge"])
 
+_graph_store = None
+_lessons_store = None
+
+
+def set_dependencies(graph_store=None, lessons_store=None):
+    """Ustawia zależności i synchronizuje z api.dependencies (używane głównie w testach)."""
+    global _graph_store, _lessons_store
+    from venom_core.api import dependencies as api_deps
+
+    if graph_store:
+        _graph_store = graph_store
+        api_deps.set_graph_store(graph_store)
+    if lessons_store:
+        _lessons_store = lessons_store
+        api_deps.set_lessons_store(lessons_store)
+
 
 @router.get("/knowledge/graph")
 async def get_knowledge_graph(
@@ -51,7 +67,7 @@ async def get_knowledge_graph(
     # Jeśli graph_store nie jest dostępny lub jest pusty, zwróć mock data
     if graph_store is None or graph_store.graph.number_of_nodes() == 0:
         logger.info("Graph store pusty lub niedostępny, zwracam mock data")
-        return _get_mock_knowledge_graph()
+        return _get_mock_knowledge_graph(limit=limit)
 
     try:
         # Konwertuj NetworkX graph do formatu Cytoscape
@@ -126,144 +142,157 @@ async def get_knowledge_graph(
     except Exception:
         logger.exception("Błąd podczas konwersji grafu do formatu Cytoscape")
         # W przypadku błędu zwróć mock data jako fallback
-        return _get_mock_knowledge_graph()
+        return _get_mock_knowledge_graph(limit=limit)
 
 
-def _get_mock_knowledge_graph():
+def _get_mock_knowledge_graph(limit: int = 500):
     """
     Zwraca przykładowe dane grafu wiedzy do testowania UI.
+
+    Args:
+        limit: Maksymalna liczba węzłów do zwrócenia
 
     Returns:
         Mock graph w formacie Cytoscape
     """
+    all_nodes = [
+        {"data": {"id": "agent1", "label": "Orchestrator", "type": "agent"}},
+        {"data": {"id": "agent2", "label": "Coder Agent", "type": "agent"}},
+        {"data": {"id": "agent3", "label": "Tester Agent", "type": "agent"}},
+        {"data": {"id": "file1", "label": "main.py", "type": "file"}},
+        {"data": {"id": "file2", "label": "config.py", "type": "file"}},
+        {"data": {"id": "file3", "label": "api/routes.py", "type": "file"}},
+        {
+            "data": {
+                "id": "memory1",
+                "label": "Lesson: Error Handling",
+                "type": "memory",
+            }
+        },
+        {
+            "data": {
+                "id": "memory2",
+                "label": "Lesson: Code Quality",
+                "type": "memory",
+            }
+        },
+        {
+            "data": {
+                "id": "memory3",
+                "label": "Lesson: Testing Strategy",
+                "type": "memory",
+            }
+        },
+        {"data": {"id": "file4", "label": "utils/logger.py", "type": "file"}},
+    ]
+
+    nodes = all_nodes[:limit]
+    allowed_ids = {n["data"]["id"] for n in nodes}
+
+    all_edges = [
+        {
+            "data": {
+                "id": "e1",
+                "source": "agent1",
+                "target": "agent2",
+                "type": "DELEGATES",
+                "label": "DELEGATES",
+            }
+        },
+        {
+            "data": {
+                "id": "e2",
+                "source": "agent1",
+                "target": "agent3",
+                "type": "DELEGATES",
+                "label": "DELEGATES",
+            }
+        },
+        {
+            "data": {
+                "id": "e3",
+                "source": "agent2",
+                "target": "file1",
+                "type": "EDITS",
+                "label": "EDITS",
+            }
+        },
+        {
+            "data": {
+                "id": "e4",
+                "source": "agent2",
+                "target": "file3",
+                "type": "EDITS",
+                "label": "EDITS",
+            }
+        },
+        {
+            "data": {
+                "id": "e5",
+                "source": "agent3",
+                "target": "file2",
+                "type": "READS",
+                "label": "READS",
+            }
+        },
+        {
+            "data": {
+                "id": "e6",
+                "source": "file1",
+                "target": "file2",
+                "type": "IMPORTS",
+                "label": "IMPORTS",
+            }
+        },
+        {
+            "data": {
+                "id": "e7",
+                "source": "file3",
+                "target": "file4",
+                "type": "IMPORTS",
+                "label": "IMPORTS",
+            }
+        },
+        {
+            "data": {
+                "id": "e8",
+                "source": "agent2",
+                "target": "memory2",
+                "type": "LEARNS",
+                "label": "LEARNS",
+            }
+        },
+        {
+            "data": {
+                "id": "e9",
+                "source": "agent1",
+                "target": "memory1",
+                "type": "LEARNS",
+                "label": "LEARNS",
+            }
+        },
+        {
+            "data": {
+                "id": "e10",
+                "source": "agent3",
+                "target": "memory3",
+                "type": "LEARNS",
+                "label": "LEARNS",
+            }
+        },
+    ]
+
+    edges = [
+        e
+        for e in all_edges
+        if e["data"]["source"] in allowed_ids and e["data"]["target"] in allowed_ids
+    ]
+
     return {
         "status": "success",
         "mock": True,
-        "elements": {
-            "nodes": [
-                {"data": {"id": "agent1", "label": "Orchestrator", "type": "agent"}},
-                {"data": {"id": "agent2", "label": "Coder Agent", "type": "agent"}},
-                {"data": {"id": "agent3", "label": "Tester Agent", "type": "agent"}},
-                {"data": {"id": "file1", "label": "main.py", "type": "file"}},
-                {"data": {"id": "file2", "label": "config.py", "type": "file"}},
-                {"data": {"id": "file3", "label": "api/routes.py", "type": "file"}},
-                {
-                    "data": {
-                        "id": "memory1",
-                        "label": "Lesson: Error Handling",
-                        "type": "memory",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "memory2",
-                        "label": "Lesson: Code Quality",
-                        "type": "memory",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "memory3",
-                        "label": "Lesson: Testing Strategy",
-                        "type": "memory",
-                    }
-                },
-                {"data": {"id": "file4", "label": "utils/logger.py", "type": "file"}},
-            ],
-            "edges": [
-                {
-                    "data": {
-                        "id": "e1",
-                        "source": "agent1",
-                        "target": "agent2",
-                        "type": "DELEGATES",
-                        "label": "DELEGATES",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e2",
-                        "source": "agent1",
-                        "target": "agent3",
-                        "type": "DELEGATES",
-                        "label": "DELEGATES",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e3",
-                        "source": "agent2",
-                        "target": "file1",
-                        "type": "EDITS",
-                        "label": "EDITS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e4",
-                        "source": "agent2",
-                        "target": "file3",
-                        "type": "EDITS",
-                        "label": "EDITS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e5",
-                        "source": "agent3",
-                        "target": "file2",
-                        "type": "READS",
-                        "label": "READS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e6",
-                        "source": "file1",
-                        "target": "file2",
-                        "type": "IMPORTS",
-                        "label": "IMPORTS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e7",
-                        "source": "file3",
-                        "target": "file4",
-                        "type": "IMPORTS",
-                        "label": "IMPORTS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e8",
-                        "source": "agent2",
-                        "target": "memory2",
-                        "type": "LEARNS",
-                        "label": "LEARNS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e9",
-                        "source": "agent1",
-                        "target": "memory1",
-                        "type": "LEARNS",
-                        "label": "LEARNS",
-                    }
-                },
-                {
-                    "data": {
-                        "id": "e10",
-                        "source": "agent3",
-                        "target": "memory3",
-                        "type": "LEARNS",
-                        "label": "LEARNS",
-                    }
-                },
-            ],
-        },
-        "stats": {"nodes": 10, "edges": 10},
+        "elements": {"nodes": nodes, "edges": edges},
+        "stats": {"nodes": len(nodes), "edges": len(edges)},
     }
 
 

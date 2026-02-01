@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Save, Eye, EyeOff, AlertTriangle, Info, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -65,11 +65,8 @@ export function ParametersPanel() {
   const [showSecrets, setShowSecrets] = useState<{ [key: string]: boolean }>({});
   const [restartRequired, setRestartRequired] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchConfig();
-  }, []);
 
-  const fetchConfig = async () => {
+  const fetchConfig = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch("/api/v1/config/runtime");
@@ -107,7 +104,11 @@ export function ParametersPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
 
   const handleChange = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));

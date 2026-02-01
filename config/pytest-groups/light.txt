@@ -1,10 +1,11 @@
-tests/test_memory.py
 tests/test_watcher.py
+tests/test_session_summary_llm.py
 tests/test_hardware_bridge.py
 tests/test_core_nervous_system.py
 tests/test_ghost_agent.py
 tests/test_orchestrator_intent.py
-tests/test_session_summary_llm.py
+tests/test_dream_engine.py
+tests/test_memory.py
 tests/test_memory_api.py
 tests/api/test_memory_api_pruning.py
 tests/test_agent_improvements.py
@@ -49,7 +50,6 @@ tests/test_dispatcher.py
 tests/test_docker_habitat.py
 tests/test_docs_skill.py
 tests/test_documenter.py
-tests/test_dream_engine.py
 tests/test_energy_manager.py
 tests/test_evolution_basic.py
 tests/test_evolution_coordinator.py

@@ -1,12 +1,11 @@
 """Testy integracyjne dla systemu zadań Venom Core Nervous System V1."""
 
-import asyncio
+import time
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import ASGITransport, AsyncClient
 
 from venom_core.main import app, state_manager
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
@@ -118,57 +117,66 @@ def test_get_all_tasks(client, clear_state):
     assert all("content" in task for task in data)
 
 
-@pytest.mark.asyncio
-async def test_task_execution_lifecycle(clear_state):
-    """Test pełnego cyklu życia zadania - integracyjny test asynchroniczny."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        # Utwórz zadanie
-        create_response = await ac.post(
-            "/api/v1/tasks", json={"content": "Zadanie do przetworzenia"}
-        )
-        assert create_response.status_code == 201
-        task_id = create_response.json()["task_id"]
+def test_task_execution_lifecycle(client, clear_state):
+    """Test pełnego cyklu życia zadania - integracyjny test synchroniczny."""
+    # Utwórz zadanie
+    create_response = client.post(
+        "/api/v1/tasks", json={"content": "Zadanie do przetworzenia"}
+    )
+    assert create_response.status_code == 201
+    task_id = create_response.json()["task_id"]
 
-        # Sprawdź status początkowy (PENDING lub już PROCESSING)
-        get_response = await ac.get(f"/api/v1/tasks/{task_id}")
-        task_data = get_response.json()
-        assert task_data["status"] in ["PENDING", "PROCESSING"]
+    # Sprawdź status początkowy (PENDING lub już PROCESSING)
+    get_response = client.get(f"/api/v1/tasks/{task_id}")
+    task_data = get_response.json()
+    assert task_data["status"] in ["PENDING", "PROCESSING"]
 
-        # Poczekaj na zakończenie wykonania (MVP używa sleep(2))
-        await asyncio.sleep(3)
+    # Poczekaj na zakończenie wykonania (MVP używa sleep(2))
+    time.sleep(3)
 
-        # Sprawdź status końcowy (COMPLETED)
-        final_response = await ac.get(f"/api/v1/tasks/{task_id}")
-        final_data = final_response.json()
+    # Sprawdź status końcowy (COMPLETED)
+    final_response = client.get(f"/api/v1/tasks/{task_id}")
+    final_data = final_response.json()
 
-        assert final_data["status"] == "COMPLETED"
-        assert final_data["result"] is not None
-        assert "Przetworzono" in final_data["result"]
-        assert len(final_data["logs"]) > 0
+    assert final_data["status"] == "COMPLETED"
+    assert final_data["result"] is not None
+    assert "Przetworzono" in final_data["result"]
+    assert len(final_data["logs"]) > 0
 
 
-@pytest.mark.asyncio
-async def test_multiple_tasks_concurrent(clear_state):
+def test_multiple_tasks_concurrent(client, clear_state):
     """Test równoczesnego przetwarzania wielu zadań."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        # Utwórz kilka zadań jednocześnie
-        task_ids = []
-        for i in range(5):
-            response = await ac.post("/api/v1/tasks", json={"content": f"Zadanie {i}"})
-            task_ids.append(response.json()["task_id"])
+    # Utwórz kilka zadań jednocześnie
+    task_ids = []
+    for i in range(5):
+        response = client.post("/api/v1/tasks", json={"content": f"Zadanie {i}"})
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert "task_id" in payload
+        task_ids.append(payload["task_id"])
 
-        # Poczekaj na zakończenie
-        await asyncio.sleep(3)
-
-        # Sprawdź czy wszystkie zadania zostały przetworzone
+    # Poczekaj na zakończenie (polling, żeby uniknąć flakiness)
+    timeout_s = 10.0
+    deadline = time.monotonic() + timeout_s
+    while True:
+        all_completed = True
         for task_id in task_ids:
-            response = await ac.get(f"/api/v1/tasks/{task_id}")
+            response = client.get(f"/api/v1/tasks/{task_id}")
             data = response.json()
-            assert data["status"] == "COMPLETED"
+            if data["status"] != "COMPLETED":
+                all_completed = False
+                break
+        if all_completed:
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.2)
+
+    # Sprawdź czy wszystkie zadania zostały przetworzone
+    for task_id in task_ids:
+        response = client.get(f"/api/v1/tasks/{task_id}")
+        data = response.json()
+        assert data["status"] == "COMPLETED"
 
 
 def test_invalid_task_request(client, clear_state):
@@ -178,28 +186,22 @@ def test_invalid_task_request(client, clear_state):
     assert response.status_code == 422  # Unprocessable Entity
 
 
-@pytest.mark.asyncio
-async def test_task_logs(clear_state):
+def test_task_logs(client, clear_state):
     """Test czy zadanie zapisuje logi podczas wykonania."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        # Utwórz zadanie
-        create_response = await ac.post(
-            "/api/v1/tasks", json={"content": "Zadanie z logami"}
-        )
-        task_id = create_response.json()["task_id"]
+    # Utwórz zadanie
+    create_response = client.post("/api/v1/tasks", json={"content": "Zadanie z logami"})
+    task_id = create_response.json()["task_id"]
 
-        # Poczekaj na zakończenie
-        await asyncio.sleep(3)
+    # Poczekaj na zakończenie
+    time.sleep(3)
 
-        # Sprawdź logi
-        response = await ac.get(f"/api/v1/tasks/{task_id}")
-        data = response.json()
+    # Sprawdź logi
+    response = client.get(f"/api/v1/tasks/{task_id}")
+    data = response.json()
 
-        assert len(data["logs"]) >= 2  # Minimum: start i zakończenie
-        assert any("uruchomione" in log.lower() for log in data["logs"])
-        assert any(
-            "zakończono" in log.lower() or "przetwarzanie" in log.lower()
-            for log in data["logs"]
-        )
+    assert len(data["logs"]) >= 2  # Minimum: start i zakończenie
+    assert any("uruchomione" in log.lower() for log in data["logs"])
+    assert any(
+        "zakończono" in log.lower() or "przetwarzanie" in log.lower()
+        for log in data["logs"]
+    )

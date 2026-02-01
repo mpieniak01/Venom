@@ -39,6 +39,7 @@ type CockpitPrimarySectionProps = {
   message: string | null;
   promptPresets: ReadonlyArray<{ id: string; category: string; description: string; prompt: string; icon: string }>;
   onSuggestionClick: (prompt: string) => void;
+  onNewChat: () => void;
   llmOpsPanelProps: LlmOpsPanelProps;
   hiddenPromptsPanelProps: HiddenPromptsPanelProps;
   historyPanelProps: HistoryPanelProps;
@@ -64,6 +65,7 @@ export function CockpitPrimarySection({
   message,
   promptPresets,
   onSuggestionClick,
+  onNewChat,
   llmOpsPanelProps,
   hiddenPromptsPanelProps,
   historyPanelProps,
@@ -75,8 +77,8 @@ export function CockpitPrimarySection({
   return (
     <section
       className={`grid gap-6 ${chatFullscreen
-          ? "lg:grid-cols-1"
-          : "lg:grid-cols-[minmax(0,360px)_1fr] xl:grid-cols-[minmax(0,440px)_1fr] 2xl:grid-cols-[minmax(0,520px)_1fr]"
+        ? "lg:grid-cols-1"
+        : "lg:grid-cols-[minmax(0,360px)_1fr] xl:grid-cols-[minmax(0,440px)_1fr] 2xl:grid-cols-[minmax(0,520px)_1fr]"
         }`}
     >
       <CockpitSidebar
@@ -114,6 +116,7 @@ export function CockpitPrimarySection({
           showSharedSections={showSharedSections}
           promptPresets={promptPresets}
           onSuggestionClick={onSuggestionClick}
+          onNewChat={onNewChat}
         />
         <CockpitMetrics {...metricsProps} />
       </div>

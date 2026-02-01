@@ -181,3 +181,4 @@ tests/test_api_caching.py
 tests/test_service_monitor_streaming.py
 tests/test_base_skill.py
 tests/test_model_discovery.py
+tests/test_new_chat_session_api.py

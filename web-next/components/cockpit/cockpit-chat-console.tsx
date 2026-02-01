@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { CockpitPanel3D } from "@/components/cockpit/cockpit-panel-3d";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 
 type ChatPreset = {
   readonly id: string;
@@ -33,6 +34,7 @@ type CockpitChatConsoleProps = {
   showSharedSections: boolean;
   promptPresets: ReadonlyArray<ChatPreset>;
   onSuggestionClick: (prompt: string) => void;
+  onNewChat: () => void;
 };
 
 export function CockpitChatConsole({
@@ -52,7 +54,10 @@ export function CockpitChatConsole({
   showSharedSections,
   promptPresets,
   onSuggestionClick,
+  onNewChat,
 }: CockpitChatConsoleProps) {
+  const t = useTranslation();
+
   return (
     <div className="space-y-6">
       <CockpitPanel3D fullscreen={chatFullscreen}>
@@ -79,6 +84,15 @@ export function CockpitChatConsole({
           className="items-center"
           rightSlot={
             <div className="flex flex-wrap items-center gap-2 pr-10">
+              <Button
+                variant="outline"
+                size="xs"
+                className="border-amber-500/30 bg-amber-500/10 text-amber-200 hover:border-amber-500/50 hover:bg-amber-500/20"
+                onClick={onNewChat}
+              >
+                <RefreshCw className="mr-1.5 h-3 w-3" />
+                {t("cockpit.newChat")}
+              </Button>
               <Badge tone={labMode ? "warning" : "success"}>
                 {labMode ? "Lab Mode" : "Prod"}
               </Badge>

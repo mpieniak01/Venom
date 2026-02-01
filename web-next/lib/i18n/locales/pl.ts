@@ -372,6 +372,7 @@ export const pl = {
       normalLabel: "Normal (standard)",
       complexLabel: "Complex (planowanie)",
     },
+    newChat: "Nowy czat",
   },
   brain: {
     title: "Graf Wiedzy",

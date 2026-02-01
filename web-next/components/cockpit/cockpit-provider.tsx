@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { CockpitContext } from "./cockpit-context";
 export { useCockpitContext } from "./cockpit-context";

@@ -22,6 +22,17 @@ except Exception:  # pragma: no cover
 
 router = APIRouter(prefix="/api/v1/learning", tags=["learning"])
 
+
+def set_dependencies(orchestrator=None, state_manager=None, request_tracer=None):
+    """Ustawia zależności (używane głównie w testach)."""
+    from venom_core.api import dependencies as api_deps
+
+    if orchestrator:
+        api_deps.set_orchestrator(orchestrator)
+    if state_manager:
+        api_deps.set_state_manager(state_manager)
+
+
 LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 
 

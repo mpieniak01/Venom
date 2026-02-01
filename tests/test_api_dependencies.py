@@ -17,6 +17,7 @@ def clear_dependency_caches():
     deps.set_vector_store(None)
     deps.set_graph_store(None)
     deps.set_lessons_store(None)
+    deps.set_session_store(None)
     yield
     deps.get_orchestrator.cache_clear()
     deps.get_state_manager.cache_clear()
@@ -25,7 +26,9 @@ def clear_dependency_caches():
     deps.get_lessons_store.cache_clear()
 
 
-def test_getters_raise_when_missing():
+def test_getters_raise_when_missing(monkeypatch):
+    # Wyłączamy tryb testowy dla tej jednej funkcji, żeby sprawdzić rzucanie błędów
+    monkeypatch.setattr(deps, "is_testing_mode", lambda: False)
     with pytest.raises(RuntimeError):
         deps.get_orchestrator()
     with pytest.raises(RuntimeError):
@@ -36,6 +39,8 @@ def test_getters_raise_when_missing():
         deps.get_graph_store()
     with pytest.raises(RuntimeError):
         deps.get_lessons_store()
+    with pytest.raises(RuntimeError):
+        deps.get_session_store()
 
 
 def test_setters_and_getters_return_instances():

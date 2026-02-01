@@ -20,7 +20,6 @@ export function FileAnalysisForm({
   onImpact,
   message,
 }: FileAnalysisFormProps) {
-  const t = useTranslation();
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">

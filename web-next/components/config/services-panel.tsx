@@ -106,7 +106,7 @@ export function ServicesPanel() {
     } finally {
       setServicesLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -144,13 +144,13 @@ export function ServicesPanel() {
         text: t("config.services.history.apiHistoryError"),
       });
     }
-  }, []);
+  }, [t]);
 
   const fetchStorageSnapshot = useCallback(async () => {
     setStorageLoading(true);
     setStorageError(null);
     try {
-      const response = await fetch("/api/v1/system/storage").catch((error) => {
+      const response = await fetch("/api/v1/system/storage").catch(() => {
         setStorageError(t("config.services.storage.apiError"));
         return null;
       });
@@ -181,7 +181,7 @@ export function ServicesPanel() {
     } finally {
       setStorageLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchStatus();

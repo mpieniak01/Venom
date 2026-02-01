@@ -1,4 +1,18 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function waitForHydration(page: Page) {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.hydrated === "true",
+    undefined,
+    { timeout: 10000 },
+  );
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("venom-language", "pl");
+  });
+});
 
 test.describe("Venom Next Cockpit Smoke", () => {
   test("Slash command /gpt potwierdza przelaczenie runtime i wysyla zadanie", async ({ page }) => {
@@ -179,6 +193,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
     });
 
     await page.goto("/chat");
+    await waitForHydration(page);
     const panicButton = page.getByRole("button", { name: /Awaryjne zatrzymanie/i });
     await expect(panicButton).toBeVisible();
     await panicButton.click();

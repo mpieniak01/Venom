@@ -102,7 +102,11 @@ function mergeLogs(existing: string[], incoming: string[]): string[] {
   return result;
 }
 
-function safeParse(data: string): Record<string, unknown> {
+function safeParse(data: unknown): Record<string, unknown> {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  if (typeof data !== "string") return {};
   try {
     const parsed = JSON.parse(data);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {

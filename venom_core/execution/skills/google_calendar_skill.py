@@ -8,6 +8,7 @@ from typing import Annotated, Any, Optional
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
+from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
 
 Request: Any
@@ -74,10 +75,16 @@ class GoogleCalendarSkill:
                               IMPORTANT: Must be a separate calendar ID, NOT 'primary'
                               to ensure Safe Layering (write-only to Venom calendar)
         """
-        self.credentials_path = (
-            credentials_path or SETTINGS.GOOGLE_CALENDAR_CREDENTIALS_PATH
+        self.credentials_path = self._resolve_calendar_path(
+            credentials_path,
+            SETTINGS.GOOGLE_CALENDAR_CREDENTIALS_PATH,
+            "google_calendar_credentials.json",
         )
-        self.token_path = token_path or SETTINGS.GOOGLE_CALENDAR_TOKEN_PATH
+        self.token_path = self._resolve_calendar_path(
+            token_path,
+            SETTINGS.GOOGLE_CALENDAR_TOKEN_PATH,
+            "google_calendar_token.json",
+        )
         self.venom_calendar_id = venom_calendar_id or SETTINGS.VENOM_CALENDAR_ID
         self.service = None
         self.credentials_available = False
@@ -112,6 +119,24 @@ class GoogleCalendarSkill:
                 f"GoogleCalendarSkill: Nie udało się zainicjalizować: {e}. "
                 "Skill nie jest aktywny - graceful degradation."
             )
+
+    @staticmethod
+    def _resolve_calendar_path(
+        override_path: Optional[str],
+        default_path: str,
+        filename: str,
+    ) -> str:
+        if override_path:
+            return override_path
+        normalized = Path(default_path).as_posix()
+        if normalized in (
+            f"./config/{filename}",
+            f"config/{filename}",
+            f"./data/config/{filename}",
+            f"data/config/{filename}",
+        ):
+            return str(resolve_config_path(filename))
+        return default_path
 
     def _initialize_service(self):
         """

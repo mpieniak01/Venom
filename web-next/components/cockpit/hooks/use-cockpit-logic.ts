@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
 import { useToast } from "@/components/ui/toast";
 import { useLanguage } from "@/lib/i18n";
+import { orderHistoryEntriesByRequestId } from "./history-order";
 import {
     useSessionHistoryState,
     useHiddenPromptState,
@@ -398,10 +399,9 @@ export function useCockpitLogic({
             }
         });
 
-        // Ensure sorting by timestamp
-        deduped.sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+        const ordered = orderHistoryEntriesByRequestId(deduped);
 
-        return deduped.map((entry, index) => {
+        return ordered.map((entry, index) => {
             const fallbackId = `msg-${index}-${entry.timestamp}`;
             const uniqueId = entry.request_id
                 ? `${entry.request_id}-${entry.role}`

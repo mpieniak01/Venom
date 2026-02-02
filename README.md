@@ -22,6 +22,28 @@ Venom is transforming from a simple command executor into an **autonomous engine
 - 🗺️ **Memory Visualization** - Memory layer (LessonsStore + LanceDB) in `/brain` view, with session/pinned filtering and pin/delete actions
 - 🛠️ **Services Panel** - `/config` shows real statuses of local stack (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + Full/Light/LLM OFF profiles
 
+## 🖼️ UI Preview (snapshots)
+
+### 🧠 Knowledge Grid — memory & knowledge visualization
+<p align="center">
+  <img src="./docs/assets/wiedza.jpeg" width="900" />
+</p>
+
+### 🧪 Trace Analysis — request flow & orchestration diagnostics
+<p align="center">
+  <img src="./docs/assets/diagram.jpeg" width="900" />
+</p>
+
+### ⚙️ Configuration — runtime services & launch profiles
+<p align="center">
+  <img src="./docs/assets/konfiguracja.jpg" width="900" />
+</p>
+
+### 🎛️ AI Command Center — operational cockpit & session history
+<p align="center">
+  <img src="./docs/assets/chat.jpeg" width="900" />
+</p>
+
 ### 🎯 Usage Examples
 
 ```python

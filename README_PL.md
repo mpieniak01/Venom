@@ -22,6 +22,28 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
 - 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
 
+## 🖼️ Podgląd interfejsu
+
+### 🧠 Knowledge Grid — wizualizacja pamięci i wiedzy
+<p align="center">
+  <img src="./docs/assets/wiedza.jpeg" width="900" />
+</p>
+
+### 🧪 Trace Analysis — analiza przepływu żądań i orkiestracji
+<p align="center">
+  <img src="./docs/assets/diagram.jpeg" width="900" />
+</p>
+
+### ⚙️ Konfiguracja — usługi runtime i profile uruchomieniowe
+<p align="center">
+  <img src="./docs/assets/konfiguracja.jpg" width="900" />
+</p>
+
+### 🎛️ AI Command Center — konsola operacyjna i historia sesji
+<p align="center">
+  <img src="./docs/assets/chat.jpeg" width="900" />
+</p>
+
 ### 🎯 Przykłady użycia
 
 ```python

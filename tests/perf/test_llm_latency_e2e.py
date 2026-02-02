@@ -114,7 +114,7 @@ async def test_llm_latency_e2e():
     first_tokens: List[float] = []
     totals: List[float] = []
     for idx in range(REPEATS):
-        prompt = f"Latency test {model_to_use} #{idx}: podaj liczbę PI do 5 miejsc."
+        prompt = f"Latency test {model_to_use} #{idx}: odpowiedz krótko OK."
         first_token, total = await _measure_latency(prompt)
         first_tokens.append(first_token)
         totals.append(total)

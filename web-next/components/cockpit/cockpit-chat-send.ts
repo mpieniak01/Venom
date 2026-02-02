@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { useTranslation } from "@/lib/i18n";
 import type { GenerationParams, HistoryRequestDetail } from "@/lib/types";
 import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
 import { parseSlashCommand } from "@/lib/slash-commands";
@@ -129,6 +130,7 @@ export function useChatSend({
   scrollChatToBottom,
   autoScrollEnabled,
 }: ChatSendParams) {
+  const t = useTranslation();
   return useCallback(async (payload: string) => {
     const parsed = parseSlashCommand(payload);
     const trimmed = parsed.cleaned.trim();
@@ -513,7 +515,8 @@ export function useChatSend({
           });
         }
 
-        setMessage(`Wysłano zadanie: ${resolvedId ?? "w toku…"}`);
+        const displayId = resolvedId ?? t("cockpit.chatMessages.taskPendingId");
+        setMessage(t("cockpit.chatMessages.taskSent", { id: displayId }));
         await Promise.all([
           refreshTasks(),
           refreshQueue(),
@@ -523,7 +526,7 @@ export function useChatSend({
       } catch (err) {
         dropOptimisticRequest(clientId);
         setMessage(
-          err instanceof Error ? err.message : "Nie udało się wysłać zadania",
+          err instanceof Error ? err.message : t("cockpit.chatMessages.taskSendError"),
         );
       } finally {
         setSending(false);
@@ -557,6 +560,7 @@ export function useChatSend({
     sendSimpleChatStream,
     sendTask,
     sessionId,
+    t,
     labMode,
     setLastResponseDurationMs,
     setLocalSessionHistory,

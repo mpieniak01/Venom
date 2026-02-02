@@ -1043,6 +1043,10 @@ export const de = {
       papers: {
         title: "PAPERS",
         subtitle: "Daily Papers von HuggingFace.",
+        refreshAction: "Papers aktualisieren",
+        defaultTitle: "Neue Publikation",
+        noPreview: "Keine Vorschau verfugbar.",
+        fetchError: "Papers konnten nicht geladen werden.",
       },
     },
     toasts: {

@@ -1031,6 +1031,10 @@ export const pl = {
       papers: {
         title: "PAPERS",
         subtitle: "Daily Papers z HuggingFace.",
+        refreshAction: "Odśwież papers",
+        defaultTitle: "Nowa publikacja",
+        noPreview: "Brak zajawki w podglądzie.",
+        fetchError: "Nie udało się pobrać papers.",
       },
     },
     toasts: {

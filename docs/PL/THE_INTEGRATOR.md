@@ -237,8 +237,8 @@ TAVILY_API_KEY=
 
 # Google Calendar (opcjonalne)
 ENABLE_GOOGLE_CALENDAR=false
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./config/google_calendar_token.json
 VENOM_CALENDAR_ID=venom_work_calendar
 VENOM_CALENDAR_NAME=Venom Work
 

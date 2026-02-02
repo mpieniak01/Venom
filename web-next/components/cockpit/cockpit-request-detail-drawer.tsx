@@ -237,19 +237,20 @@ export function CockpitRequestDetailDrawer({
       <SheetContent className="max-h-[90vh] overflow-y-auto pr-2">
         <SheetHeader>
           <SheetTitle>
-            Szczegóły requestu {historyDetail?.request_id ?? selectedRequestId ?? ""}
+            {t("cockpit.requestDetails.drawerTitle")}{" "}
+            {historyDetail?.request_id ?? selectedRequestId ?? ""}
           </SheetTitle>
           <SheetDescription>
-            {"Dane z `/api/v1/history/requests` – kliknięcie w czat lub listę historii otwiera ten panel."}
+            {t("cockpit.requestDetails.drawerDescription")}
           </SheetDescription>
         </SheetHeader>
         {!historyDetail && !loadingHistory && !historyError && (
           <p className="text-sm text-zinc-500">
-            Wybierz request z Cockpitu, aby zobaczyć szczegóły.
+            {t("cockpit.requestDetails.emptyHint")}
           </p>
         )}
         {loadingHistory && (
-          <p className="text-sm text-zinc-400">Ładuję szczegóły requestu...</p>
+          <p className="text-sm text-zinc-400">{t("cockpit.requestDetails.loading")}</p>
         )}
         {historyError && (
           <p className="text-sm text-rose-300">{historyError}</p>
@@ -258,12 +259,12 @@ export function CockpitRequestDetailDrawer({
           <>
             <div className="mt-4 rounded-2xl box-base p-4">
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                Prompt
+                {t("cockpit.requestDetails.promptTitle")}
               </p>
               <div className="mt-2 text-sm text-white">
                 <MarkdownPreview
                   content={historyDetail.prompt}
-                  emptyState="Brak promptu dla tego requestu."
+                  emptyState={t("cockpit.requestDetails.promptEmpty")}
                 />
               </div>
             </div>
@@ -274,12 +275,14 @@ export function CockpitRequestDetailDrawer({
               payloadContextUsed) && (
                 <div className="mt-4 rounded-2xl box-muted p-4">
                   <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                    Payload do modelu
+                    {t("cockpit.requestDetails.payloadTitle")}
                   </p>
                   <div className="mt-3 grid gap-3 text-xs text-zinc-300">
                     {payloadSessionMeta && (
                       <div>
-                        <p className="text-zinc-500">Kontekst sesji</p>
+                        <p className="text-zinc-500">
+                          {t("cockpit.requestDetails.sessionContext")}
+                        </p>
                         <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
                           {JSON.stringify(payloadSessionMeta, null, 2)}
                         </pre>
@@ -287,7 +290,9 @@ export function CockpitRequestDetailDrawer({
                     )}
                     {payloadForcedRoute && (
                       <div>
-                        <p className="text-zinc-500">Routing wymuszony</p>
+                        <p className="text-zinc-500">
+                          {t("cockpit.requestDetails.forcedRouting")}
+                        </p>
                         <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
                           {JSON.stringify(payloadForcedRoute, null, 2)}
                         </pre>
@@ -295,7 +300,9 @@ export function CockpitRequestDetailDrawer({
                     )}
                     {payloadGenerationParams && (
                       <div>
-                        <p className="text-zinc-500">Parametry generacji</p>
+                        <p className="text-zinc-500">
+                          {t("cockpit.requestDetails.generationParams")}
+                        </p>
                         <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
                           {JSON.stringify(payloadGenerationParams, null, 2)}
                         </pre>
@@ -303,7 +310,9 @@ export function CockpitRequestDetailDrawer({
                     )}
                     {payloadContextUsed && (
                       <div>
-                        <p className="text-zinc-500">Uzyty kontekst</p>
+                        <p className="text-zinc-500">
+                          {t("cockpit.requestDetails.contextUsed")}
+                        </p>
                         <pre className="mt-1 whitespace-pre-wrap break-words text-zinc-100">
                           {JSON.stringify(payloadContextUsed, null, 2)}
                         </pre>
@@ -312,15 +321,17 @@ export function CockpitRequestDetailDrawer({
                     {contextPreviewMeta && (
                       <div>
                         <div className="flex flex-wrap items-center gap-2 text-zinc-400">
-                          <span>Podglad kontekstu</span>
+                          <span>{t("cockpit.requestDetails.contextPreview")}</span>
                           {contextPreviewMeta.hiddenPrompts !== null && (
                             <Badge tone="neutral">
-                              hidden: {contextPreviewMeta.hiddenPrompts}
+                              {t("cockpit.requestDetails.hiddenLabel")}:{" "}
+                              {contextPreviewMeta.hiddenPrompts}
                             </Badge>
                           )}
                           {contextPreviewMeta.mode && (
                             <Badge tone="neutral">
-                              tryb: {contextPreviewMeta.mode}
+                              {t("cockpit.requestDetails.modeLabel")}:{" "}
+                              {contextPreviewMeta.mode}
                             </Badge>
                           )}
                         </div>
@@ -329,11 +340,13 @@ export function CockpitRequestDetailDrawer({
                             {contextPreviewMeta.preview}
                           </pre>
                         ) : (
-                          <p className="mt-2 text-zinc-500">Brak podgladu kontekstu.</p>
+                          <p className="mt-2 text-zinc-500">
+                            {t("cockpit.requestDetails.contextPreviewEmpty")}
+                          </p>
                         )}
                         {contextPreviewMeta.truncated && (
                           <p className="mt-2 text-[11px] text-zinc-500">
-                            Podglad skrócony (limit logowania).
+                            {t("cockpit.requestDetails.contextPreviewTruncated")}
                           </p>
                         )}
                       </div>
@@ -344,27 +357,31 @@ export function CockpitRequestDetailDrawer({
             {(requestModeLabel || simpleResponse || runtimeErrorMeta) && (
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                  Diagnostyka requestu
+                  {t("cockpit.requestDetails.diagnosticsTitle")}
                 </p>
                 <div className="mt-3 space-y-3 text-xs text-zinc-300">
                   {requestModeLabel && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-zinc-500">Tryb:</span>
+                      <span className="text-zinc-500">
+                        {t("cockpit.requestDetails.modeLabel")}:
+                      </span>
                       <Badge tone="neutral">{requestModeLabel}</Badge>
                     </div>
                   )}
                   {simpleResponse && (
                     <div>
-                      <p className="text-zinc-500">Odpowiedz (SimpleMode)</p>
+                      <p className="text-zinc-500">
+                        {t("cockpit.requestDetails.simpleResponse")}
+                      </p>
                       <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                         <MarkdownPreview
                           content={simpleResponse.text}
-                          emptyState="Brak odpowiedzi."
+                          emptyState={t("cockpit.requestDetails.responseEmpty")}
                         />
                       </div>
                       {simpleResponse.truncated && (
                         <p className="mt-2 text-[11px] text-zinc-500">
-                          Odpowiedz skrocona (limit logowania).
+                          {t("cockpit.requestDetails.responseTruncated")}
                         </p>
                       )}
                     </div>
@@ -372,7 +389,9 @@ export function CockpitRequestDetailDrawer({
                   {runtimeErrorMeta && (
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-zinc-500">Błąd runtime</span>
+                        <span className="text-zinc-500">
+                          {t("cockpit.requestDetails.runtimeError")}
+                        </span>
                         {runtimeErrorMeta.errorClass && (
                           <Badge tone="danger">{runtimeErrorMeta.errorClass}</Badge>
                         )}
@@ -391,7 +410,7 @@ export function CockpitRequestDetailDrawer({
                       )}
                       {runtimeErrorMeta.promptContextTruncated && (
                         <p className="mt-2 text-[11px] text-zinc-500">
-                          Podglad kontekstu skrocony.
+                          {t("cockpit.requestDetails.contextTruncated")}
                         </p>
                       )}
                     </div>
@@ -402,12 +421,14 @@ export function CockpitRequestDetailDrawer({
             {(historyDetail.model || historyDetail.llm_provider || historyDetail.llm_endpoint) && (
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                  Model Info
+                  {t("cockpit.requestDetails.modelInfoTitle")}
                 </p>
                 <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
                   {(historyDetail.model || historyDetail.llm_model) && (
                     <div className="overflow-hidden">
-                      <span className="block truncate text-zinc-500">Model</span>
+                      <span className="block truncate text-zinc-500">
+                        {t("cockpit.requestDetails.modelLabel")}
+                      </span>
                       <div className="text-sm text-zinc-100 truncate" title={historyDetail.model || historyDetail.llm_model || ""}>
                         {historyDetail.model || historyDetail.llm_model}
                       </div>
@@ -415,7 +436,9 @@ export function CockpitRequestDetailDrawer({
                   )}
                   {historyDetail.llm_provider && (
                     <div className="overflow-hidden">
-                      <span className="block truncate text-zinc-500">Serwer / Provider</span>
+                      <span className="block truncate text-zinc-500">
+                        {t("cockpit.requestDetails.providerLabel")}
+                      </span>
                       <div className="text-sm text-zinc-100 truncate" title={historyDetail.llm_provider}>
                         {historyDetail.llm_provider}
                       </div>
@@ -423,7 +446,9 @@ export function CockpitRequestDetailDrawer({
                   )}
                   {historyDetail.llm_endpoint && (
                     <div className="overflow-hidden">
-                      <span className="block truncate text-zinc-500">Endpoint</span>
+                      <span className="block truncate text-zinc-500">
+                        {t("cockpit.requestDetails.endpointLabel")}
+                      </span>
                       <div className="text-sm text-zinc-100 truncate" title={historyDetail.llm_endpoint}>
                         {historyDetail.llm_endpoint}
                       </div>
@@ -431,7 +456,9 @@ export function CockpitRequestDetailDrawer({
                   )}
                   {historyDetail.llm_runtime_id && (
                     <div className="overflow-hidden">
-                      <span className="block truncate text-zinc-500">Runtime ID</span>
+                      <span className="block truncate text-zinc-500">
+                        {t("cockpit.requestDetails.runtimeIdLabel")}
+                      </span>
                       <div className="text-sm text-zinc-100 truncate font-mono" title={historyDetail.llm_runtime_id}>
                         {historyDetail.llm_runtime_id.slice(0, 8)}...
                       </div>
@@ -443,11 +470,13 @@ export function CockpitRequestDetailDrawer({
             {uiTimingEntry && (
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                  UI timings
+                  {t("cockpit.requestDetails.uiTimingsTitle")}
                 </p>
                 <div className="mt-2 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
                   <div>
-                    <span className="text-zinc-400">submit → historia</span>
+                    <span className="text-zinc-400">
+                      {t("cockpit.requestDetails.uiTimingHistory")}
+                    </span>
                     <div className="text-sm text-white">
                       {uiTimingEntry.historyMs !== undefined
                         ? `${Math.round(uiTimingEntry.historyMs)} ms`
@@ -531,7 +560,7 @@ export function CockpitRequestDetailDrawer({
             {selectedRequestId && (
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
-                  <span>Feedback</span>
+                  <span>{t("cockpit.requestDetails.feedbackTitle")}</span>
                 </div>
                 <div className="mt-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -551,7 +580,7 @@ export function CockpitRequestDetailDrawer({
                         onFeedbackSubmit(selectedRequestId, { rating: "up" });
                       }}
                     >
-                      Kciuk w górę
+                      {t("cockpit.requestDetails.feedbackUp")}
                     </Button>
                     <Button
                       size="xs"
@@ -564,13 +593,13 @@ export function CockpitRequestDetailDrawer({
                         onUpdateFeedbackState(selectedRequestId, { rating: "down" })
                       }
                     >
-                      Kciuk w dół
+                      {t("cockpit.requestDetails.feedbackDown")}
                     </Button>
                   </div>
                   {feedbackByRequest[selectedRequestId]?.rating === "down" && (
                     <textarea
                       className="mt-3 min-h-[80px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
-                      placeholder="Opisz krótko, co było nie tak i czego oczekujesz."
+                      placeholder={t("cockpit.requestDetails.feedbackPlaceholder")}
                       value={feedbackByRequest[selectedRequestId]?.comment || ""}
                       onChange={(event) =>
                         onUpdateFeedbackState(selectedRequestId, {
@@ -591,8 +620,8 @@ export function CockpitRequestDetailDrawer({
                         onClick={() => onFeedbackSubmit(selectedRequestId)}
                       >
                         {feedbackSubmittingId === selectedRequestId
-                          ? "Wysyłam..."
-                          : "Wyślij feedback"}
+                          ? t("cockpit.requestDetails.feedbackSubmitting")
+                          : t("cockpit.requestDetails.feedbackSubmit")}
                       </Button>
                     )}
                     {feedbackByRequest[selectedRequestId]?.message && (
@@ -608,7 +637,7 @@ export function CockpitRequestDetailDrawer({
               <div className="mt-4 rounded-2xl box-muted p-4">
                 <div className="flex items-center justify-between">
                   <h4 className="heading-h4">
-                    Logi zadania ({selectedTask.logs.length})
+                    {t("cockpit.requestDetails.taskLogsTitle", { count: selectedTask.logs.length })}
                   </h4>
                 </div>
                 <div className="mt-3 max-h-[180px] space-y-2 overflow-y-auto pr-2 text-xs text-zinc-300">
@@ -626,7 +655,7 @@ export function CockpitRequestDetailDrawer({
             <div className="mt-4 space-y-2 rounded-2xl box-muted p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h4 className="heading-h4">
-                  Kroki RequestTracer ({historyDetail.steps?.length ?? 0})
+                  {t("cockpit.requestDetails.stepsTitle", { count: historyDetail.steps?.length ?? 0 })}
                 </h4>
                 <div className="flex flex-wrap gap-2 text-xs">
                   {copyStepsMessage && (
@@ -637,13 +666,13 @@ export function CockpitRequestDetailDrawer({
                     size="xs"
                     onClick={onCopyDetailSteps}
                   >
-                    Kopiuj JSON
+                    {t("cockpit.requestDetails.copyJson")}
                   </Button>
                 </div>
               </div>
               <div className="max-h-[45vh] space-y-2 overflow-y-auto pr-2">
                 {(historyDetail.steps || []).length === 0 && (
-                  <p className="text-hint">Brak kroków do wyświetlenia.</p>
+                  <p className="text-hint">{t("cockpit.requestDetails.noSteps")}</p>
                 )}
                 {(historyDetail.steps || []).map((step, idx) => (
                   <div
@@ -652,14 +681,14 @@ export function CockpitRequestDetailDrawer({
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-white">
-                        {step.component || "step"}
+                        {step.component || t("cockpit.requestDetails.stepFallback")}
                       </span>
                       {step.status && (
                         <Badge tone={statusTone(step.status)}>{step.status}</Badge>
                       )}
                     </div>
                     <p className="text-xs text-zinc-400">
-                      {step.action || step.details || "Brak opisu kroku."}
+                      {step.action || step.details || t("cockpit.requestDetails.stepNoDescription")}
                     </p>
                     {step.timestamp && (
                       <p className="text-caption">
@@ -678,7 +707,7 @@ export function CockpitRequestDetailDrawer({
                   onOpenChange(false);
                 }}
               >
-                Zamknij
+                {t("cockpit.requestDetails.close")}
               </Button>
             </div>
           </>

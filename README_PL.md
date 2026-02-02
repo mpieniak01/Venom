@@ -425,8 +425,8 @@ SLACK_WEBHOOK_URL=https://...       # Opcjonalne
 HF_TOKEN=                           # Opcjonalne (Hugging Face)
 TAVILY_API_KEY=                     # Opcjonalne (Tavily Search)
 ENABLE_GOOGLE_CALENDAR=false        # Opcjonalne
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./config/google_calendar_token.json
 ENABLE_ISSUE_POLLING=false          # Włącz automatyczne odpytywanie zgłoszeń Issue
 ```
 
@@ -791,7 +791,7 @@ takie jak `models/` i `models_cache/`.
   - [x] Powiadomienia Discord/Slack
   - [x] Proces Issue → PR
 
-### 🚧 v1.1 (planowane)
+### 🚧 v1.2 (planowane)
 - [ ] Odpytywanie w tle dla zgłoszeń GitHub Issues
 - [ ] Panel dashboardu dla integracji zewnętrznych
 - [ ] Rekurencyjne streszczanie długich dokumentów
@@ -899,6 +899,5 @@ python examples/nexus_demo.py
 Projekt jest udostępniany na licencji MIT. Zobacz plik [`LICENSE`](LICENSE), aby uzyskać więcej informacji.
 
 Copyright (c) 2025-2026 Maciej Pieniak
-Wszelkie prawa są zastrzeżone przez autora do odwołania.
 
 ---

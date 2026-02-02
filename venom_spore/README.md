@@ -169,7 +169,7 @@ Operacje na plikach w workspace węzła.
     "skill_name": "FileSkill",
     "method_name": "read_file",
     "parameters": {
-        "path": "data/config.txt"
+        "path": "config/config.txt"
     }
 }
 

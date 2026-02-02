@@ -988,6 +988,10 @@ export const en = {
       papers: {
         title: "PAPERS",
         subtitle: "Daily Papers from HuggingFace.",
+        refreshAction: "Refresh papers",
+        defaultTitle: "New paper",
+        noPreview: "No preview available.",
+        fetchError: "Failed to fetch papers.",
       },
     },
     toasts: {

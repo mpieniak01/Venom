@@ -189,6 +189,11 @@ class HuggingFaceClient:
         url = f"https://huggingface.co/papers/month/{target_month}"
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(url)
+            if response.is_redirect and response.headers.get("location"):
+                redirect_url = response.headers["location"]
+                if redirect_url.startswith("/"):
+                    redirect_url = f"https://huggingface.co{redirect_url}"
+                response = await client.get(redirect_url)
             response.raise_for_status()
             payload = response.text
 

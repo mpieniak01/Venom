@@ -141,13 +141,13 @@ export function ConversationBubble({
         } ${isSelected ? "ring-2 ring-violet-400/60" : ""} ${pending ? "cursor-wait opacity-95" : ""}`}
     >
       <div className="flex items-center justify-between text-caption">
-        <span>{isUser ? "Operacja" : "Venom"}</span>
+        <span>{isUser ? t("cockpit.chatLabels.user") : "Venom"}</span>
         <span>{new Date(timestamp).toLocaleTimeString()}</span>
       </div>
       <div className="mt-3 text-[15px] leading-relaxed text-white">
         {showComputationLabel && (
           <p className="mb-2 text-xs uppercase tracking-[0.35em] text-emerald-200/80">
-            Wynik obliczeń
+            {t("cockpit.chatLabels.computationResult")}
           </p>
         )}
         {showTyping ? (
@@ -160,7 +160,7 @@ export function ConversationBubble({
             </span>
           </p>
         ) : (
-          <MarkdownPreview content={text} emptyState="Brak treści." mode="final" />
+          <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
         )}
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
@@ -189,12 +189,12 @@ export function ConversationBubble({
               <Badge tone="neutral">{modeLabelText}</Badge>
             )}
             {contextUsed?.lessons && contextUsed.lessons.length > 0 && (
-              <Badge tone="neutral" title="Użyto lekcji">
+              <Badge tone="neutral" title={t("cockpit.chatLabels.lessonsUsed")}>
                 🎓 {contextUsed.lessons.length}
               </Badge>
             )}
             {contextUsed?.memory_entries && contextUsed.memory_entries.length > 0 && (
-              <Badge tone="neutral" title="Użyto pamięci długoterminowej">
+              <Badge tone="neutral" title={t("cockpit.chatLabels.memoryUsed")}>
                 🧠 {contextUsed.memory_entries.length}
               </Badge>
             )}
@@ -209,7 +209,7 @@ export function ConversationBubble({
                     onSelect?.();
                   }}
                 >
-                  Szczegóły ↗
+                  {t("cockpit.chatLabels.detailsLink")}
                 </button>
               </span>
             )}

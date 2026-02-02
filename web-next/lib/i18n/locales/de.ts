@@ -544,6 +544,19 @@ export const de = {
       queued: "In Warteschlange",
       streamError: "Stream-Fehler",
     },
+    chatLabels: {
+      user: "Benutzer",
+      computationResult: "Rechenergebnis",
+      emptyContent: "Kein Inhalt.",
+      lessonsUsed: "Lektionen verwendet",
+      memoryUsed: "Langzeitgedächtnis verwendet",
+      detailsLink: "Details ↗",
+    },
+    chatMessages: {
+      taskSent: "Aufgabe gesendet: {{id}}",
+      taskPendingId: "in Bearbeitung…",
+      taskSendError: "Aufgabe konnte nicht gesendet werden",
+    },
     chatMode: {
       direct: "Direct",
       normal: "Normal",

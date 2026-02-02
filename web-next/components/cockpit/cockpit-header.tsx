@@ -1,21 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useTranslation } from "@/lib/i18n";
 import { Command } from "lucide-react";
 
-type CockpitHeaderProps = {
-  showReferenceSections: boolean;
-  showArtifacts: boolean;
-  onToggleArtifacts: () => void;
-};
-
-export function CockpitHeader({
-  showReferenceSections,
-  showArtifacts,
-  onToggleArtifacts,
-}: CockpitHeaderProps) {
+export function CockpitHeader() {
   const t = useTranslation();
 
   return (
@@ -31,18 +20,6 @@ export function CockpitHeader({
       size="lg"
       rightSlot={
         <div className="flex items-center gap-3">
-          {!showReferenceSections && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-zinc-200"
-              onClick={onToggleArtifacts}
-            >
-              {showArtifacts
-                ? t("cockpit.header.togglePanels.hide")
-                : t("cockpit.header.togglePanels.show")}
-            </Button>
-          )}
           <Command className="page-heading-icon" />
         </div>
       }

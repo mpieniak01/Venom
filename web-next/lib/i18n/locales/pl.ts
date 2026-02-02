@@ -553,6 +553,19 @@ export const pl = {
       queued: "W kolejce",
       streamError: "Błąd strumienia",
     },
+    chatLabels: {
+      user: "Użytkownik",
+      computationResult: "Wynik obliczeń",
+      emptyContent: "Brak treści.",
+      lessonsUsed: "Użyto lekcji",
+      memoryUsed: "Użyto pamięci długoterminowej",
+      detailsLink: "Szczegóły ↗",
+    },
+    chatMessages: {
+      taskSent: "Wysłano zadanie: {{id}}",
+      taskPendingId: "w toku…",
+      taskSendError: "Nie udało się wysłać zadania",
+    },
     chatMode: {
       direct: "Direct",
       normal: "Normal",

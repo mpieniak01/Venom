@@ -55,8 +55,8 @@ Chat Agent: [wywołuje memorize("Użytkownik pije kawę o 8:00", tags=["preferen
 ```bash
 # W .env
 ENABLE_GOOGLE_CALENDAR=true
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./config/google_calendar_token.json
 VENOM_CALENDAR_ID=your_calendar_id  # NIE 'primary', osobny kalendarz
 ```
 

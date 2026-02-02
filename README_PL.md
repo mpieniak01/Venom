@@ -425,8 +425,8 @@ SLACK_WEBHOOK_URL=https://...       # Opcjonalne
 HF_TOKEN=                           # Opcjonalne (Hugging Face)
 TAVILY_API_KEY=                     # Opcjonalne (Tavily Search)
 ENABLE_GOOGLE_CALENDAR=false        # Opcjonalne
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./config/google_calendar_token.json
 ENABLE_ISSUE_POLLING=false          # Włącz automatyczne odpytywanie zgłoszeń Issue
 ```
 

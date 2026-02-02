@@ -114,7 +114,6 @@ export const pl = {
       queue: "Kolejka",
       tasks: "Zadania",
       ws: "WS",
-      language: "Język",
       rows: {
         active: "Aktywne",
         pending: "Oczekujące",

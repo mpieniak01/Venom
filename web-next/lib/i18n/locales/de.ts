@@ -114,7 +114,6 @@ export const de = {
       queue: "Warteschlange",
       tasks: "Aufgaben",
       ws: "WS",
-      language: "Sprache",
       rows: {
         active: "Aktiv",
         pending: "Ausstehend",

@@ -12,6 +12,7 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.config import SETTINGS
+from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -347,9 +348,7 @@ class TokenEconomist:
             Dict z cennikiem lub None jeśli wczytanie się nie powiodło
         """
         if pricing_file is None:
-            # Domyślna ścieżka do pricing.yaml
-            project_root = Path(__file__).parent.parent.parent
-            pricing_path = project_root / "data" / "config" / "pricing.yaml"
+            pricing_path = resolve_config_path("pricing.yaml")
         else:
             pricing_path = Path(pricing_file)
 

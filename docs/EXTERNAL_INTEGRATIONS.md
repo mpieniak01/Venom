@@ -37,7 +37,7 @@ Model and dataset exploration:
 
 Calendar integration:
 - read and write events (write-only to the Venom calendar),
-- OAuth2 credentials in `data/config/*`.
+- OAuth2 credentials in `config/*`.
 
 ### 5. IntegratorAgent 1.0 (`venom_core/agents/integrator.py`)
 
@@ -81,8 +81,8 @@ TAVILY_API_KEY=
 
 # Google Calendar (optional)
 ENABLE_GOOGLE_CALENDAR=false
-GOOGLE_CALENDAR_CREDENTIALS_PATH=./data/config/google_calendar_credentials.json
-GOOGLE_CALENDAR_TOKEN_PATH=./data/config/google_calendar_token.json
+GOOGLE_CALENDAR_CREDENTIALS_PATH=./config/google_calendar_credentials.json
+GOOGLE_CALENDAR_TOKEN_PATH=./config/google_calendar_token.json
 VENOM_CALENDAR_ID=venom_work_calendar
 VENOM_CALENDAR_NAME=Venom Work
 

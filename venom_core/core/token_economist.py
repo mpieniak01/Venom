@@ -342,7 +342,7 @@ class TokenEconomist:
         Wczytuje cennik z pliku YAML.
 
         Args:
-            pricing_file: Ścieżka do pliku YAML (domyślnie data/config/pricing.yaml)
+            pricing_file: Ścieżka do pliku YAML (domyślnie config/pricing.yaml)
 
         Returns:
             Dict z cennikiem lub None jeśli wczytanie się nie powiodło

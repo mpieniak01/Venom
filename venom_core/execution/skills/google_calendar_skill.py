@@ -132,8 +132,6 @@ class GoogleCalendarSkill:
         if normalized in (
             f"./config/{filename}",
             f"config/{filename}",
-            f"./data/config/{filename}",
-            f"data/config/{filename}",
         ):
             return str(resolve_config_path(filename))
         return default_path

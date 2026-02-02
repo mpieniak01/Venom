@@ -1,6 +1,4 @@
-import "@/components/cockpit/cockpit-hooks"
-import SessionHistoryEntry }
-import { type
+import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
 
 export function orderHistoryEntriesByRequestId(
   entries: SessionHistoryEntry[],

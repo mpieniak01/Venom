@@ -1,4 +1,6 @@
-import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
+import "@/components/cockpit/cockpit-hooks"
+import SessionHistoryEntry }
+import { type
 
 export function orderHistoryEntriesByRequestId(
   entries: SessionHistoryEntry[],
@@ -15,9 +17,17 @@ export function orderHistoryEntriesByRequestId(
     const key = String(entry.request_id);
     const bucket = grouped.get(key) || {};
     if (entry.role === "user") {
-      bucket.user = entry;
+      if (bucket.user) {
+        bucket.other = [...(bucket.other || []), entry];
+      } else {
+        bucket.user = entry;
+      }
     } else if (entry.role === "assistant") {
-      bucket.assistant = entry;
+      if (bucket.assistant) {
+        bucket.other = [...(bucket.other || []), entry];
+      } else {
+        bucket.assistant = entry;
+      }
     } else {
       bucket.other = [...(bucket.other || []), entry];
     }

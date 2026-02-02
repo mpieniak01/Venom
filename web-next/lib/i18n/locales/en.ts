@@ -114,7 +114,6 @@ export const en = {
       queue: "Queue",
       tasks: "Tasks",
       ws: "WS",
-      language: "Language",
       rows: {
         active: "Active",
         pending: "Pending",

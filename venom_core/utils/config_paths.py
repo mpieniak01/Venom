@@ -16,5 +16,9 @@ def resolve_config_path(
 ) -> Path:
     """
     Resolve config file path.
+
+    Returns the path under ``prefer_dir`` without checking for existence.
+    Callers must validate the file exists (e.g. ``path.exists()``) and
+    handle missing files appropriately.
     """
     return Path(prefer_dir) / filename

@@ -1,6 +1,10 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { orderHistoryEntriesByRequestId } from "../components/cockpit/hooks/history-order";
+import "../components/cockpit/hooks/history-order"
+import "node:assert/strict"
+import "node:test"
+import assert
+import it }
+import { describe
+import { orderHistoryEntriesByRequestId }
 
 describe("orderHistoryEntriesByRequestId", () => {
   it("keeps user/assistant pairs together per request_id", () => {
@@ -65,5 +69,38 @@ describe("orderHistoryEntriesByRequestId", () => {
     const ordered = orderHistoryEntriesByRequestId(entries);
 
     assert.deepStrictEqual(ordered.map((e) => e.content), ["Q1", "A1", "stream"]);
+  });
+
+  it("keeps duplicate roles without dropping them", () => {
+    const entries = [
+      {
+        role: "user",
+        request_id: "r1",
+        timestamp: "2026-02-02T10:00:00Z",
+        content: "Q1",
+      },
+      {
+        role: "user",
+        request_id: "r1",
+        timestamp: "2026-02-02T10:00:01Z",
+        content: "Q1b",
+      },
+      {
+        role: "assistant",
+        request_id: "r1",
+        timestamp: "2026-02-02T10:00:05Z",
+        content: "A1",
+      },
+      {
+        role: "assistant",
+        request_id: "r1",
+        timestamp: "2026-02-02T10:00:06Z",
+        content: "A1b",
+      },
+    ];
+
+    const ordered = orderHistoryEntriesByRequestId(entries);
+
+    assert.deepStrictEqual(ordered.map((e) => e.content), ["Q1", "A1", "Q1b", "A1b"]);
   });
 });

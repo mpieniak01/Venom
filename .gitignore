@@ -25,9 +25,6 @@ config/env-history/
 config/google_calendar_credentials.json
 config/google_calendar_token.json
 
-# Google Calendar OAuth credentials and tokens
-data/config/google_calendar_credentials.json
-data/config/google_calendar_token.json
 
 .venom.pid
 .vllm.pid

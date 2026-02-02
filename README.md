@@ -726,7 +726,7 @@ such as `models/` and `models_cache/`.
   - [x] Discord/Slack notifications
   - [x] Issue → PR process
 
-### 🚧 v1.1 (planned)
+### 🚧 v1.2 (planned)
 - [ ] Background polling for GitHub Issues
 - [ ] Dashboard panel for external integrations
 - [ ] Recursive summarization of long documents

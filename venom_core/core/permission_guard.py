@@ -1,6 +1,5 @@
 """Moduł: permission_guard - AutonomyGate - system kontroli uprawnień agenta."""
 
-from pathlib import Path
 from typing import Dict, Optional
 
 try:  # pragma: no cover - zależne od środowiska
@@ -8,6 +7,7 @@ try:  # pragma: no cover - zależne od środowiska
 except ImportError:  # pragma: no cover
     yaml = None
 
+from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -117,7 +117,7 @@ class PermissionGuard:
 
     def _load_autonomy_matrix(self):
         """Ładuje macierz autonomii z pliku YAML."""
-        config_path = Path("data/config/autonomy_matrix.yaml")
+        config_path = resolve_config_path("autonomy_matrix.yaml")
 
         if yaml is None:
             raise RuntimeError("Brak zależności PyYAML (pip install PyYAML)")
@@ -165,7 +165,7 @@ class PermissionGuard:
 
     def _load_skill_permissions(self):
         """Ładuje mapowanie skillów na poziomy uprawnień z pliku YAML."""
-        config_path = Path("data/config/skill_permissions.yaml")
+        config_path = resolve_config_path("skill_permissions.yaml")
 
         if yaml is None:
             raise RuntimeError("Brak zależności PyYAML (pip install PyYAML)")

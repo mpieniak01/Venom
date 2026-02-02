@@ -54,7 +54,8 @@ export function ConversationBubble({
   const showComputationLabel =
     !isUser && !showTyping && isComputationContent(text);
   const disabled = pending || !onSelect;
-  const typingText = text.trim().length > 0 ? text : "Generuję odpowiedź";
+  const typingText =
+    text.trim().length > 0 ? text : t("cockpit.chatLabels.generating");
   const [visibleText, setVisibleText] = useState(text);
   const typingTimerRef = useRef<number | null>(null);
   useEffect(() => {

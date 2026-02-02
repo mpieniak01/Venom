@@ -135,8 +135,10 @@ class Settings(BaseSettings):
 
     # Konfiguracja Google Calendar Integration
     ENABLE_GOOGLE_CALENDAR: bool = False  # Włącz integrację z Google Calendar
-    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = "./data/config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
-    GOOGLE_CALENDAR_TOKEN_PATH: str = "./data/config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
+    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = (
+        "./config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
+    )
+    GOOGLE_CALENDAR_TOKEN_PATH: str = "./config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
     VENOM_CALENDAR_ID: str = (
         "venom_work_calendar"  # ID kalendarza Venoma (write-only, NOT 'primary')
     )
@@ -373,7 +375,7 @@ class Settings(BaseSettings):
     # Rezerwa tokenów dla podsumowania przy kompresji
     RESERVE_TOKENS_FOR_SUMMARY: int = 500
     # Ścieżka do pliku z cennikiem tokenów (YAML)
-    PRICING_FILE_PATH: str = "./data/config/pricing.yaml"
+    PRICING_FILE_PATH: str = "./config/pricing.yaml"
 
     # ===== MODEL ROUTER CONFIGURATION =====
     # Próg bezpieczeństwa kosztów (USD)

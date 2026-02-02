@@ -6,10 +6,10 @@ priorytetyzując prywatność i zerowy koszt operacyjny.
 """
 
 from enum import Enum
-from pathlib import Path
 
 from venom_core.config import SETTINGS
 from venom_core.core.token_economist import TokenEconomist
+from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -61,9 +61,7 @@ class HybridModelRouter:
         if token_economist:
             self.token_economist = token_economist
         else:
-            pricing_file = (
-                Path(__file__).parent.parent.parent / "data" / "config" / "pricing.yaml"
-            )
+            pricing_file = resolve_config_path("pricing.yaml")
             self.token_economist = TokenEconomist(pricing_file=str(pricing_file))
 
         logger.info(

@@ -278,6 +278,6 @@ Key tests:
 
 - **Backend Code**: `venom_core/core/permission_guard.py`
 - **Frontend Code**: `web/static/js/app.js` (AutonomyGate section)
-- **Configuration**: `data/config/autonomy_matrix.yaml`, `data/config/skill_permissions.yaml`
+- **Configuration**: `config/autonomy_matrix.yaml`, `config/skill_permissions.yaml`
 - **Tests**: `tests/test_permission_guard.py`
 - **API**: `venom_core/api/routes/system.py` (`/api/v1/system/autonomy` endpoints)

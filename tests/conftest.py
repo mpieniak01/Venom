@@ -199,8 +199,10 @@ class FakeVectorStore:
         for entry in self.entries:
             if collection_name and entry["collection"] != collection_name:
                 continue
-            # Poor man's full text search for testing
-            if query.lower() in entry["text"].lower():
+            # Poor man's full text search for testing: check if all query words are present
+            query_words = query.lower().split()
+            text_lower = entry["text"].lower()
+            if all(word in text_lower for word in query_words):
                 results.append(
                     {"text": entry["text"], "metadata": entry["metadata"], "score": 1.0}
                 )

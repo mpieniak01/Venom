@@ -42,8 +42,7 @@ lint:
 format:
 	black . && isort .
 
-test:
-	pytest
+test: pytest
 
 test-unit:
 	pytest -k "not performance and not smoke"

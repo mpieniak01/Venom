@@ -1,0 +1,505 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VENOM OS // Unified Config</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- 1. DESIGN TOKENS --- */
+        :root {
+            --bg-dark: #030407;
+            --bg-panel: rgba(16, 20, 28, 0.75);
+
+            --bg-gradient-body: radial-gradient(
+                circle at 60% -20%,
+                #1e2a45 0%,
+                #0f1319 45%,
+                #030407 100%
+            );
+
+            --primary: #00ff9d;
+            --primary-dim: rgba(0, 255, 157, 0.1);
+            --secondary: #00b8ff;
+            --danger: #ff0055;
+            --warning: #ffcc00;
+
+            --border-glass: 1px solid rgba(255, 255, 255, 0.06);
+            --font-ui: 'Inter', sans-serif;
+            --font-tech: 'JetBrains Mono', monospace;
+        }
+
+        /* --- GLOBAL RESET --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; scrollbar-width: thin; scrollbar-color: var(--secondary) var(--bg-dark); }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: var(--bg-gradient-body);
+            background-attachment: fixed;
+            color: white;
+            font-family: var(--font-ui);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Noise Texture */
+        body::before {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+            pointer-events: none; z-index: 0; opacity: 0.6;
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+        ::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 2px; }
+
+        /* --- LAYOUT: 2 COLUMNS --- */
+
+        /* 1. LEFT SIDEBAR (COMMAND COLUMN) */
+        .sidebar {
+            width: 340px;
+            background: rgba(5, 6, 8, 0.95); /* Nieco ciemniejszy dla kontrastu */
+            backdrop-filter: blur(20px);
+            border-right: var(--border-glass);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            flex-shrink: 0;
+            height: 100vh;
+        }
+
+        .sidebar-header {
+            padding: 25px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .brand {
+            font-family: var(--font-tech);
+            font-weight: 800;
+            font-size: 1.5rem;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+        .brand span { color: var(--primary); text-shadow: 0 0 15px rgba(0, 255, 157, 0.4); }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        /* Navigation */
+        .nav-section-title {
+            color: #555; font-size: 0.7rem; text-transform: uppercase;
+            margin-bottom: 10px; font-family: var(--font-tech); letter-spacing: 1px;
+        }
+
+        .navbar-link {
+            display: flex; align-items: center; padding: 12px 15px; margin-bottom: 5px;
+            color: #94a3b8; text-decoration: none; border-radius: 4px;
+            font-family: var(--font-tech); font-size: 0.85rem; transition: 0.2s;
+            border: 1px solid transparent;
+        }
+        .navbar-link:hover, .navbar-link.active {
+            background: var(--primary-dim); color: var(--primary);
+            border-color: rgba(0, 255, 157, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 157, 0.1);
+        }
+        .navbar-icon { margin-right: 12px; }
+
+        /* Telemetry Panel */
+        .telemetry-panel {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 250px;
+        }
+
+        .panel-tabs {
+            display: flex;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .tab-button {
+            flex: 1; padding: 10px 0; background: transparent; border: none;
+            color: #666; cursor: pointer; font-family: var(--font-tech); font-size: 0.7rem;
+            transition: 0.3s;
+        }
+        .tab-button.active { color: var(--secondary); background: rgba(0, 184, 255, 0.05); }
+
+        .tab-content { display: none; padding: 15px; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Mini Terminal */
+        .mini-terminal {
+            font-family: var(--font-tech); font-size: 0.7rem; color: #888;
+            height: 150px; overflow-y: auto;
+            border-left: 1px solid rgba(255,255,255,0.1); padding-left: 10px;
+        }
+
+        /* SIDEBAR FOOTER - ZGRUPOWANA KONFIGURACJA */
+        .sidebar-footer {
+            padding: 20px;
+            background: rgba(0,0,0,0.6);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .config-row {
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .autonomy-select {
+            width: 100%; background: #050608; border: 1px solid #333;
+            color: var(--secondary); padding: 8px; font-family: var(--font-tech); font-size: 0.75rem;
+            border-radius: 2px; cursor: pointer;
+        }
+
+        /* Cost Switch w Sidebarze */
+        .toggle-switch { position: relative; width: 32px; height: 16px; background: #333; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        .toggle-dot { position: absolute; height: 12px; width: 12px; left: 2px; bottom: 2px; background: #888; border-radius: 50%; transition: 0.3s; }
+        #costModeToggle:checked + .toggle-switch { background: var(--secondary); }
+        #costModeToggle:checked + .toggle-switch .toggle-dot { transform: translateX(16px); background: white; }
+
+
+        /* 2. MAIN WORKSPACE (RIGHT COLUMN) */
+        .main-workspace {
+            flex: 1;
+            padding: 30px 40px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: hidden;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header (Simplified) */
+        .top-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+
+        .repo-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.03); padding: 5px 12px; border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.05);
+            font-family: var(--font-tech); font-size: 0.8rem; color: #ccc;
+        }
+
+        /* --- CARDS WITH TOP FLARE --- */
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .flare-card {
+            background: var(--bg-panel);
+            backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255,255,255,0.03);
+            border-right: 1px solid rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            border-radius: 2px;
+            padding: 20px;
+            position: relative;
+        }
+
+        .flare-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--primary) 20%, var(--primary) 80%, transparent 100%);
+            box-shadow: 0 0 15px var(--primary);
+            opacity: 0.8;
+        }
+        .flare-card.secondary::before {
+             background: linear-gradient(90deg, transparent 0%, var(--secondary) 20%, var(--secondary) 80%, transparent 100%);
+             box-shadow: 0 0 15px var(--secondary);
+        }
+        .flare-card.danger::before {
+             background: linear-gradient(90deg, transparent 0%, var(--danger) 20%, var(--danger) 80%, transparent 100%);
+             box-shadow: 0 0 15px var(--danger);
+        }
+
+        .card-label {
+            font-family: var(--font-tech); font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px;
+            display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+        }
+        .pixel-dot { width: 4px; height: 4px; background: currentColor; box-shadow: 0 0 5px currentColor; }
+
+        .card-value { font-family: var(--font-tech); font-size: 2.2rem; font-weight: 400; color: white; }
+
+        /* Console Area */
+        .console-wrapper {
+            flex: 1;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 4px;
+            display: flex; flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+        .console-wrapper::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        }
+
+        .chat-container {
+            flex: 1; padding: 25px; overflow-y: auto;
+            font-size: 0.95rem; line-height: 1.6; color: #ddd;
+        }
+
+        .input-area {
+            background: rgba(10, 12, 16, 0.95);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding: 20px;
+        }
+
+        #taskInput {
+            width: 100%; background: #050505; border: 1px solid #333; color: var(--primary);
+            font-family: var(--font-tech); padding: 15px; border-radius: 2px; outline: none; resize: none;
+            transition: 0.3s;
+        }
+        #taskInput:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0,255,157,0.1); }
+
+        .btn-venom {
+            background: transparent; border: 1px solid var(--primary); color: var(--primary);
+            font-family: var(--font-tech); font-size: 0.8rem; padding: 8px 24px; cursor: pointer;
+            transition: 0.3s; text-transform: uppercase;
+        }
+        .btn-venom:hover { background: rgba(0,255,157,0.1); box-shadow: 0 0 15px rgba(0,255,157,0.2); }
+
+        /* Chips */
+        .chip-grid { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .chip {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+            padding: 8px 16px; font-size: 0.8rem; color: #aaa; cursor: pointer; transition: 0.2s;
+        }
+        .chip:hover { border-color: var(--secondary); color: white; background: rgba(0, 184, 255, 0.1); }
+
+        /* Helper Classes & Modals */
+        .hidden { display: none !important; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(5px); }
+        .modal-content { background: #0f1319; border: 1px solid var(--secondary); padding: 30px; width: 400px; box-shadow: 0 0 30px rgba(0,184,255,0.15); }
+
+    </style>
+</head>
+<body id="venomBody">
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand">VENOM <span>OS</span></div>
+            <div style="font-family: var(--font-tech); font-size: 0.65rem; color: #555; margin-top: 5px;">
+                v1.4.1 // UNIFIED
+            </div>
+        </div>
+
+        <div class="sidebar-content">
+            <nav>
+                <div class="nav-section-title">Core Modules</div>
+                <a href="/" class="navbar-link active"><span class="navbar-icon">🏠</span> Cockpit</a>
+                <a href="/strategy" class="navbar-link"><span class="navbar-icon">🎯</span> War Room</a>
+                <a href="/flow-inspector" class="navbar-link"><span class="navbar-icon">🔀</span> Flow Inspector</a>
+                <a href="/brain" class="navbar-link"><span class="navbar-icon">🧠</span> The Brain</a>
+            </nav>
+
+            <div>
+                <div class="nav-section-title">Telemetry</div>
+                <div class="telemetry-panel">
+                    <div class="panel-tabs">
+                        <button class="tab-button active" data-tab="feed">FEED</button>
+                        <button class="tab-button" data-tab="voice">VOICE</button>
+                        <button class="tab-button" data-tab="sys">SYS</button>
+                    </div>
+
+                    <div class="tab-content active" id="feedTab">
+                        <div class="mini-terminal" id="liveFeed">
+                            <div style="color: var(--primary); margin-bottom: 5px;">> System initialized.</div>
+                            <div style="opacity: 0.5;">> Waiting for tasks...</div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="voiceTab">
+                        <div style="text-align: center; padding: 20px;">
+                            <button id="micButton" style="width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--secondary); background: transparent; color: white;">🎤</button>
+                            <div id="audioStatusText" style="font-size: 0.7rem; color: #666; margin-top: 10px;">Disconnected</div>
+                            <div class="hidden" id="transcriptionText"></div>
+                            <canvas id="visualizerCanvas" width="200" height="40" style="margin-top: 10px; opacity: 0.5;"></canvas>
+                        </div>
+                    </div>
+
+                     <div class="tab-content" id="sysTab">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px;">
+                            <span style="color: #888;">Tasks</span><span style="font-family: var(--font-tech); color: var(--secondary);" id="metricTasks">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 8px;">
+                            <span style="color: #888;">Uptime</span><span style="font-family: var(--font-tech); color: white;" id="metricUptime">0s</span>
+                        </div>
+                        <div id="liveTerminal" class="hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="nav-section-title" style="margin-bottom: 5px;">System Configuration</div>
+
+            <div>
+                <label for="autonomyLevel" style="font-size: 0.65rem; color: #666; display: block; margin-bottom: 4px;">SECURITY LEVEL</label>
+                <select id="autonomyLevel" class="autonomy-select">
+                    <option value="0">🟢 ISOLATED</option>
+                    <option value="10">🔵 CONNECTED</option>
+                    <option value="20">🟡 FUNDED</option>
+                    <option value="40">🔴 ROOT</option>
+                </select>
+            </div>
+
+            <div class="config-row">
+                <span id="costModeLabel" style="font-size: 0.75rem; color: #ccc; font-family: var(--font-tech);">ECO MODE</span>
+                <label>
+                    <input type="checkbox" id="costModeToggle" style="display:none;">
+                    <div class="toggle-switch"><div class="toggle-dot"></div></div>
+                </label>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-workspace">
+
+        <header class="top-header">
+            <div style="color: var(--primary); font-family: var(--font-tech); font-size: 0.9rem;">
+                // DASHBOARD CONTROL
+            </div>
+
+            <div class="repo-status" id="repoStatus">
+                <div class="repo-badge">
+                    <span id="repoBranch">🌿 main</span>
+                    <span style="color: #444; margin: 0 8px;">|</span>
+                    <span id="repoChanges">🟢 Clean</span>
+                </div>
+                <button id="syncRepoBtn" class="hidden"></button>
+                <button id="undoChangesBtn" class="hidden"></button>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="flare-card">
+                <div class="card-label"><div class="pixel-dot" style="color: var(--primary);"></div> Active Tasks</div>
+                <div class="card-value">
+                    <span id="queueActive">0</span><span style="font-size: 1.2rem; color: #444;"> / <span id="queueLimit">5</span></span>
+                </div>
+                <button id="pauseResumeBtn" class="hidden" data-state="running"></button>
+                <button id="emergencyStopBtn" class="hidden"></button>
+            </div>
+
+            <div class="flare-card secondary">
+                <div class="card-label"><div class="pixel-dot" style="color: var(--secondary);"></div> Queue Pending</div>
+                <div class="card-value" id="queuePending">0</div>
+                <button id="purgeQueueBtn" style="font-size: 0.6rem; background: none; border: none; color: #555; cursor: pointer; margin-top: 5px;">[ PURGE ]</button>
+            </div>
+
+            <div class="flare-card danger">
+                <div class="card-label"><div class="pixel-dot" style="color: var(--warning);"></div> Session Cost</div>
+                <div class="card-value" style="color: var(--warning);" id="sessionCost">$0.00</div>
+            </div>
+        </div>
+
+        <div class="console-wrapper">
+            <div style="padding: 10px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between;">
+                <span style="font-family: var(--font-tech); font-size: 0.7rem; color: #555;">COMMAND INTERFACE</span>
+                <button id="clearWidgetsBtn" style="background: none; border: none; color: #444; cursor: pointer; font-size: 0.7rem;">CLEAR</button>
+            </div>
+
+            <div class="chat-container" id="chatMessages">
+                <div class="welcome-message">
+                    <h3 style="font-weight: 300; margin-bottom: 10px;">SYSTEM READY.</h3>
+                    <p style="color: #666; font-size: 0.9rem;">Awaiting operator input...</p>
+                    <div class="chip-grid">
+                        <div class="chip" data-suggestion="Stwórz logo">🎨 Create Logo</div>
+                        <div class="chip" data-suggestion="Sprawdź serwery">☁️ DevOps Check</div>
+                        <div class="chip" data-suggestion="Research AI">🧠 Deep Research</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="widgetsGrid" class="hidden" style="padding: 20px; border-top: 1px dashed #333;"></div>
+
+            <div class="input-area">
+                <div style="display: flex; gap: 10px;">
+                    <textarea id="taskInput" rows="1" placeholder="Enter command..."></textarea>
+                    <button id="sendButton" class="btn-venom">EXECUTE</button>
+                </div>
+                <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                    <input type="checkbox" id="labModeCheckbox">
+                    <span style="font-size: 0.75rem; color: #555;">Lab Mode (No Save)</span>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="integrationsMatrix" class="hidden"></div>
+    <div id="activeOperations" class="hidden"></div>
+    <div id="iotStatus" class="hidden"></div>
+    <div id="jobsList" class="hidden"></div>
+    <div id="modelsVramUsage" class="hidden"></div>
+    <div id="modelsGpuUsage" class="hidden"></div>
+    <div id="historyTableBody" class="hidden"></div>
+    <button id="refreshJobsBtn" class="hidden"></button>
+    <button id="refreshHistory" class="hidden"></button>
+    <div id="connectionStatus" class="hidden"></div>
+    <div id="statusText" class="hidden"></div>
+
+    <div id="costModeModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--warning); margin-bottom: 10px;">💸 ENABLE PRO MODE?</h2>
+            <div style="display: flex; gap: 10px;">
+                <button id="confirmCostMode" class="btn-venom">CONFIRM</button>
+                <button id="cancelCostMode" class="btn-venom" style="border-color: var(--danger); color: var(--danger);">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="autonomyModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--danger); margin-bottom: 10px;">🚫 ACCESS DENIED</h2>
+            <p id="autonomyErrorMessage" style="color: #aaa; margin-bottom: 20px;"></p>
+            <div style="display: flex; gap: 10px;">
+                <button id="increaseAutonomyBtn" class="btn-venom">AUTHORIZE</button>
+                <button id="cancelAutonomyBtn" class="btn-venom" style="border-color: #555; color: #555;">DENY</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab + 'Tab').classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

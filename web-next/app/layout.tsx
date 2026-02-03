@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBarWrapper, TopBarSkeleton } from "@/components/layout/top-bar-wrapper";
 import { SystemStatusBarWrapper, SystemStatusBarSkeleton } from "@/components/layout/system-status-bar-wrapper";
@@ -9,8 +9,8 @@ import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
@@ -34,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pl" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${jetBrains.variable} antialiased`}>
+      <body className={`${inter.variable} ${jetBrains.variable} font-sans antialiased`}>
         <Providers>
           <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(0,184,255,0.18),_transparent_55%)] text-zinc-100">
             <div className="pointer-events-none absolute inset-0 opacity-60 blur-3xl">

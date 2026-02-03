@@ -1,10 +1,6 @@
-import "../components/cockpit/hooks/history-order"
-import "node:assert/strict"
-import "node:test"
-import assert
-import it }
-import { describe
-import { orderHistoryEntriesByRequestId }
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { orderHistoryEntriesByRequestId } from "../components/cockpit/hooks/history-order";
 
 describe("orderHistoryEntriesByRequestId", () => {
   it("keeps user/assistant pairs together per request_id", () => {

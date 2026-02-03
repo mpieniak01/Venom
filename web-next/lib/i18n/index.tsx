@@ -39,7 +39,7 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue>({
   language: "pl",
   setLanguage: () => { },
-  t: (path: string) => path,
+  t: (path: string, _replacements?: Record<string, string | number>) => path,
 });
 
 function resolvePath(locale: Record<string, unknown>, path: string): string | null {

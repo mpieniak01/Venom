@@ -37,7 +37,7 @@ export function SectionHeading({
     <div className={cn("page-heading flex flex-wrap items-start justify-between gap-4", className)}>
       <div>
         {normalizedEyebrow && <p className="page-heading-eyebrow">{normalizedEyebrow}</p>}
-        <HeadingTag className={cn("page-heading-title", sizeMap[size])}>{title}</HeadingTag>
+        <HeadingTag className={cn("page-heading-title font-sans", sizeMap[size])}>{title}</HeadingTag>
         {description && <p className="page-heading-desc">{description}</p>}
       </div>
       {rightSlot}

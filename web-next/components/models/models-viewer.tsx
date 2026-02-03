@@ -333,7 +333,7 @@ export const ModelsViewer = () => {
     setSearchResults((prev) => ({ ...prev, loading: true, error: null, performed: true }));
     try {
       const response = await apiFetch<ModelCatalogResponse>(
-        `/ api / v1 / models / search ? query = ${encodeURIComponent(searchQuery)}& provider=${searchProvider}& limit=12`
+        `/api/v1/models/search?query=${encodeURIComponent(searchQuery)}&provider=${searchProvider}&limit=12`
       );
       if (response && response.success) {
         setSearchResults({
@@ -363,11 +363,11 @@ export const ModelsViewer = () => {
   };
 
   const newsBlogCacheKey = useMemo(
-    () => `models - blog - hf - ${language} `,
+    () => `models-blog-hf-${language}`,
     [language],
   );
   const newsPapersCacheKey = useMemo(
-    () => `models - papers - hf - ${language} `,
+    () => `models-papers-hf-${language}`,
     [language],
   );
 
@@ -499,7 +499,7 @@ export const ModelsViewer = () => {
   };
 
   const handleInstall = async (entry: ModelCatalogEntry) => {
-    const key = `install:${entry.provider}:${entry.model_name} `;
+    const key = `install:${entry.provider}:${entry.model_name}`;
     try {
       setPending(key, true);
       await installRegistryModel({
@@ -507,7 +507,7 @@ export const ModelsViewer = () => {
         provider: entry.provider,
         runtime: entry.runtime,
       });
-      pushToast(`Instalacja rozpoczęta: ${entry.model_name} `, "info");
+      pushToast(`Instalacja rozpoczęta: ${entry.model_name}`, "info");
       await Promise.all([operations.refresh(), installed.refresh()]);
     } catch {
       pushToast("Nie udało się rozpocząć instalacji.", "error");
@@ -517,7 +517,7 @@ export const ModelsViewer = () => {
   };
 
   const handleActivate = async (model: ModelInfo) => {
-    const key = `activate:${model.name} `;
+    const key = `activate:${model.name}`;
     try {
       setPending(key, true);
       const runtime = getRuntimeForProvider(model.provider ?? model.source ?? undefined);
@@ -525,7 +525,7 @@ export const ModelsViewer = () => {
         await setActiveLlmServer(runtime);
       }
       await switchModel(model.name);
-      pushToast(`Aktywowano: ${model.name} `, "success");
+      pushToast(`Aktywowano: ${model.name}`, "success");
       await installed.refresh();
     } catch {
       pushToast("Nie udało się aktywować modelu.", "error");
@@ -535,11 +535,11 @@ export const ModelsViewer = () => {
   };
 
   const handleRemove = async (model: ModelInfo) => {
-    const key = `remove:${model.name} `;
+    const key = `remove:${model.name}`;
     try {
       setPending(key, true);
       await removeRegistryModel(model.name);
-      pushToast(`Usuwanie rozpoczęte: ${model.name} `, "warning");
+      pushToast(`Usuwanie rozpoczęte: ${model.name}`, "warning");
       await Promise.all([installed.refresh(), operations.refresh()]);
     } catch {
       pushToast("Nie udało się usunąć modelu.", "error");
@@ -735,7 +735,7 @@ export const ModelsViewer = () => {
         }>;
         stale?: boolean;
         error?: string | null;
-      }>(`/ api / v1 / models / news ? provider = huggingface & lang=${language} `);
+      }>(`/api/v1/models/news?provider=huggingface&lang=${language}`);
       const payload = {
         items: response.items ?? [],
         stale: response.stale,
@@ -765,7 +765,7 @@ export const ModelsViewer = () => {
         stale?: boolean;
         error?: string | null;
       }>(
-        `/ api / v1 / models / news ? provider = huggingface & type=papers & lang=${language}& limit=3`,
+        `/api/v1/models/news?provider=huggingface&type=papers&lang=${language}&limit=3`,
       );
       const payload = {
         items: response.items ?? [],
@@ -979,13 +979,11 @@ export const ModelsViewer = () => {
                   <div className="mt-6 grid gap-4 lg:grid-cols-2">
                     {searchResults.data.map((model) => (
                       <CatalogCard
-                        key={`${model.provider} -${model.model_name} `}
+                        key={`${model.provider}-${model.model_name}`}
                         model={model}
                         actionLabel={t("models.actions.install")}
                         pending={
-                          pendingActions[
-                          `install:${model.provider}:${model.model_name} `
-                          ]
+                          pendingActions[`install:${model.provider}:${model.model_name}`]
                         }
                         onAction={() => handleInstall(model)}
                       />
@@ -1040,7 +1038,7 @@ export const ModelsViewer = () => {
                   <div className="flex flex-col">
                     {newsItemsSorted.slice(0, 5).map((item, index) => (
                       <div
-                        key={`${item.title ?? "news"} -${index} `}
+                        key={`${item.title ?? "news"}-${index}`}
                         className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 py-2.5 last:border-b-0 last:pb-0 first:pt-0"
                       >
                         <p className="min-w-0 flex-1 text-sm font-medium text-slate-200 line-clamp-1">
@@ -1093,7 +1091,7 @@ export const ModelsViewer = () => {
                 ) : (
                   papersItemsSorted.slice(0, 3).map((item, index) => (
                     <div
-                      key={`${item.title ?? "paper"} -${index} `}
+                      key={`${item.title ?? "paper"}-${index}`}
                       className="flex h-full flex-col rounded-2xl border border-white/10 bg-black/30 p-4 text-sm"
                     >
                       <div className="flex flex-1 flex-col">
@@ -1162,7 +1160,7 @@ export const ModelsViewer = () => {
                             key={model.model_name}
                             model={model}
                             actionLabel={t("models.actions.install")}
-                            pending={pendingActions[`install:${model.provider}:${model.model_name} `]}
+                            pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
                             onAction={() => handleInstall(model)}
                           />
                         ))}
@@ -1185,7 +1183,7 @@ export const ModelsViewer = () => {
                             key={model.model_name}
                             model={model}
                             actionLabel={t("models.actions.install")}
-                            pending={pendingActions[`install:${model.provider}:${model.model_name} `]}
+                            pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
                             onAction={() => handleInstall(model)}
                           />
                         ))}
@@ -1219,7 +1217,7 @@ export const ModelsViewer = () => {
                             key={model.model_name}
                             model={model}
                             actionLabel="Zainstaluj"
-                            pending={pendingActions[`install:${model.provider}:${model.model_name} `]}
+                            pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
                             onAction={() => handleInstall(model)}
                           />
                         ))}
@@ -1237,7 +1235,7 @@ export const ModelsViewer = () => {
                             key={model.model_name}
                             model={model}
                             actionLabel="Zainstaluj"
-                            pending={pendingActions[`install:${model.provider}:${model.model_name} `]}
+                            pending={pendingActions[`install:${model.provider}:${model.model_name}`]}
                             onAction={() => handleInstall(model)}
                           />
                         ))}
@@ -1282,8 +1280,8 @@ export const ModelsViewer = () => {
                               <InstalledCard
                                 key={model.name}
                                 model={model}
-                                pendingActivate={pendingActions[`activate:${model.name} `]}
-                                pendingRemove={pendingActions[`remove:${model.name} `]}
+                                pendingActivate={pendingActions[`activate:${model.name}`]}
+                                pendingRemove={pendingActions[`remove:${model.name}`]}
                                 onActivate={() => handleActivate(model)}
                                 onRemove={
                                   allowRemoveProviders.has(model.provider ?? model.source ?? "")
@@ -1310,8 +1308,8 @@ export const ModelsViewer = () => {
                               <InstalledCard
                                 key={model.name}
                                 model={model}
-                                pendingActivate={pendingActions[`activate:${model.name} `]}
-                                pendingRemove={pendingActions[`remove:${model.name} `]}
+                                pendingActivate={pendingActions[`activate:${model.name}`]}
+                                pendingRemove={pendingActions[`remove:${model.name}`]}
                                 onActivate={() => handleActivate(model)}
                                 onRemove={
                                   allowRemoveProviders.has(model.provider ?? model.source ?? "")

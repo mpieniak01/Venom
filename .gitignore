@@ -85,8 +85,8 @@ next-dev.log
 :memory:
 models_cache/
 
-# Drafts documentation
-# docs_dev/
+# Drafts documentation (to be removed from gitignore after completion)
+docs_dev/
 
 # Local benchmark outputs
 data/benchmarks/

@@ -901,7 +901,7 @@ export const ModelsViewer = () => {
                       await switchModel(selectedModel);
                     }
                     pushToast(t("models.runtime.activated", { model: selectedModel, server: selectedServer }), "success");
-                    await Promise.all([activeServer.refresh(), installed.refresh(), activeServer.refresh()]);
+                    await Promise.all([activeServer.refresh(), installed.refresh()]);
                   } catch (error) {
                     pushToast("Nie udało się aktywować modelu", "error");
                     console.error(error);

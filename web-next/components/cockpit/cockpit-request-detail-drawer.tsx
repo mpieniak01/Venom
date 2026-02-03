@@ -52,7 +52,7 @@ type CockpitRequestDetailDrawerProps = {
     requestId: string,
     patch: Partial<FeedbackState>,
   ) => void;
-  t: (key: string) => string;
+  t: (key: string, replacements?: Record<string, string | number>) => string;
 };
 
 export function CockpitRequestDetailDrawer({

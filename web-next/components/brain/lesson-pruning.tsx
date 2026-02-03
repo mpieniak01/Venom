@@ -1,6 +1,7 @@
 "use client";
 
 import { useLessonPruning, useLessonsStats } from "@/hooks/use-api";
+import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Loader2, Trash2, Calendar, Tag, RefreshCw } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/confirm-dialog";
 
 export function LessonPruningPanel() {
+    const t = useTranslation();
     const { pruneByTTL, pruneByTag, dedupeLessons, purgeLessons, pruneLatest } = useLessonPruning();
     const { data: stats, refresh: refreshStats } = useLessonsStats();
     const { pushToast } = useToast();
@@ -47,12 +49,12 @@ export function LessonPruningPanel() {
         try {
             const result = await actionFn();
             pushToast(
-                `Sukces: usunięto ${result.deleted}, pozostało: ${result.remaining}`,
+                `${t("brain.hygiene.opSuccess")} (${result.deleted}, ${result.remaining})`,
                 "success"
             );
             refreshStats();
         } catch (err) {
-            pushToast(`Błąd podczas ${actionName}`, "error");
+            pushToast(`${t("brain.hygiene.opError")} (${actionName})`, "error");
             console.error(err);
         } finally {
             setLoadingActions(prev => {
@@ -71,13 +73,13 @@ export function LessonPruningPanel() {
                 {/* Statistics Card */}
                 <div className="bg-black/20 border border-white/10 rounded-2xl p-4">
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium text-zinc-400">Statystyki Lekcji</h3>
+                        <h3 className="text-sm font-medium text-zinc-400">{t("brain.hygiene.lessonStats")}</h3>
                     </div>
                     <div>
                         <div className="text-2xl font-bold text-white mb-2">
                             {stats?.stats?.total_lessons ?? "—"}
                         </div>
-                        <p className="text-xs text-zinc-500 mb-4">Wszystkich lekcji w bazie</p>
+                        <p className="text-xs text-zinc-500 mb-4">{t("brain.hygiene.totalLessons")}</p>
                         <div className="flex flex-wrap gap-2">
                             {stats?.stats?.tag_distribution ? (
                                 Object.entries(stats.stats.tag_distribution)
@@ -89,7 +91,7 @@ export function LessonPruningPanel() {
                                         </Badge>
                                     ))
                             ) : (
-                                <span className="text-xs text-zinc-600">Brak tagów</span>
+                                <span className="text-xs text-zinc-600">{t("brain.hygiene.noTags")}</span>
                             )}
                         </div>
                     </div>
@@ -98,8 +100,8 @@ export function LessonPruningPanel() {
                 {/* Maintenance Card */}
                 <div className="bg-black/20 border border-white/10 rounded-2xl p-4 col-span-2">
                     <div className="mb-4">
-                        <h3 className="text-sm font-medium text-zinc-400">Automatyczna Higiena</h3>
-                        <p className="text-xs text-zinc-500">Operacje porządkowe dla bazy wiedzy</p>
+                        <h3 className="text-sm font-medium text-zinc-400">{t("brain.hygiene.autoHygiene")}</h3>
+                        <p className="text-xs text-zinc-500">{t("brain.hygiene.autoHygieneDesc")}</p>
                     </div>
                     <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 border border-white/5 rounded-lg bg-white/5">
@@ -108,16 +110,16 @@ export function LessonPruningPanel() {
                                     <RefreshCw className="h-4 w-4" />
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium text-white">Deduplikacja</div>
-                                    <div className="text-xs text-zinc-500">Usuwa identyczne lekcje (tytuł + treść)</div>
+                                    <div className="text-sm font-medium text-white">{t("brain.hygiene.deduplication")}</div>
+                                    <div className="text-xs text-zinc-500">{t("brain.hygiene.deduplicationDesc")}</div>
                                 </div>
                             </div>
                             <Button
                                 size="sm" variant="outline"
-                                disabled={isActionLoading("Deduplikacja")}
-                                onClick={() => handleAction("Deduplikacja", dedupeLessons)}
+                                disabled={isActionLoading(t("brain.hygiene.deduplication"))}
+                                onClick={() => handleAction(t("brain.hygiene.deduplication"), dedupeLessons)}
                             >
-                                {isActionLoading("Deduplikacja") ? <Loader2 className="h-4 w-4 animate-spin" /> : "Uruchom"}
+                                {isActionLoading(t("brain.hygiene.deduplication")) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.run")}
                             </Button>
                         </div>
 
@@ -127,16 +129,16 @@ export function LessonPruningPanel() {
                                     <Trash2 className="h-4 w-4" />
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium text-white">Nuke All (Purge)</div>
-                                    <div className="text-xs text-zinc-500">Usuwa WSZYSTKIE lekcje bezpowrotnie</div>
+                                    <div className="text-sm font-medium text-white">{t("brain.hygiene.nuke")}</div>
+                                    <div className="text-xs text-zinc-500">{t("brain.hygiene.nukeDesc")}</div>
                                 </div>
                             </div>
                             <Button
                                 size="sm" variant="danger"
-                                disabled={isActionLoading("Purge All")}
-                                onClick={() => handleAction("Purge All", purgeLessons)}
+                                disabled={isActionLoading(t("brain.hygiene.nuke"))}
+                                onClick={() => handleAction(t("brain.hygiene.nuke"), purgeLessons)}
                             >
-                                {isActionLoading("Purge All") ? <Loader2 className="h-4 w-4 animate-spin" /> : "Wyczyść"}
+                                {isActionLoading(t("brain.hygiene.nuke")) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.clear")}
                             </Button>
                         </div>
                     </div>
@@ -147,75 +149,75 @@ export function LessonPruningPanel() {
                 {/* Prune by TTL */}
                 <div className="space-y-3">
                     <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
-                        <Calendar className="h-4 w-4" /> Według Wieku
+                        <Calendar className="h-4 w-4" /> {t("brain.hygiene.byAge")}
                     </h3>
                     <div className="flex gap-2">
                         <input
-                            placeholder="Dni (np. 30)"
+                            placeholder={t("brain.hygiene.daysPlaceholder")}
                             value={ttlDays}
                             onChange={e => setTtlDays(e.target.value)}
                             className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
                         />
                         <Button
                             variant="secondary"
-                            disabled={isActionLoading(`Usuń starsze niż ${ttlDays} dni`) || !ttlDays}
-                            onClick={() => handleAction(`Usuń starsze niż ${ttlDays} dni`, () => pruneByTTL(Number(ttlDays)))}
+                            disabled={isActionLoading(`${t("brain.hygiene.remove")} > ${ttlDays}d`) || !ttlDays}
+                            onClick={() => handleAction(`${t("brain.hygiene.remove")} > ${ttlDays}d`, () => pruneByTTL(Number(ttlDays)))}
                         >
-                            {isActionLoading(`Usuń starsze niż ${ttlDays} dni`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`${t("brain.hygiene.remove")} > ${ttlDays}d`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
-                        Usuwa lekcje starsze niż podana liczba dni.
+                        {t("brain.hygiene.byAgeDesc")}
                     </p>
                 </div>
 
                 {/* Prune by Tag */}
                 <div className="space-y-3">
                     <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
-                        <Tag className="h-4 w-4" /> Według Tagu
+                        <Tag className="h-4 w-4" /> {t("brain.hygiene.byTag")}
                     </h3>
                     <div className="flex gap-2">
                         <input
-                            placeholder="Nazwa tagu"
+                            placeholder={t("brain.hygiene.tagName")}
                             value={tagToPrune}
                             onChange={e => setTagToPrune(e.target.value)}
                             className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
                         />
                         <Button
                             variant="secondary"
-                            disabled={isActionLoading(`Usuń tag #${tagToPrune}`) || !tagToPrune}
-                            onClick={() => handleAction(`Usuń tag #${tagToPrune}`, () => pruneByTag(tagToPrune))}
+                            disabled={isActionLoading(`${t("brain.hygiene.remove")} #${tagToPrune}`) || !tagToPrune}
+                            onClick={() => handleAction(`${t("brain.hygiene.remove")} #${tagToPrune}`, () => pruneByTag(tagToPrune))}
                         >
-                            {isActionLoading(`Usuń tag #${tagToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`${t("brain.hygiene.remove")} #${tagToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
-                        Usuwa wszystkie lekcje oznaczone danym tagiem.
+                        {t("brain.hygiene.byTagDesc")}
                     </p>
                 </div>
 
                 {/* Prune Latest */}
                 <div className="space-y-3">
                     <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
-                        <Trash2 className="h-4 w-4" /> Ostatnie Wpisy
+                        <Trash2 className="h-4 w-4" /> {t("brain.hygiene.recentEntries")}
                     </h3>
                     <div className="flex gap-2">
                         <input
-                            placeholder="Liczba (np. 5)"
+                            placeholder={t("brain.hygiene.countPlaceholder")}
                             value={countToPrune}
                             onChange={e => setCountToPrune(e.target.value)}
                             className="flex-1 bg-black/20 border border-white/10 rounded-md px-3 py-1 text-sm text-white focus:outline-none focus:border-white/30"
                         />
                         <Button
                             variant="secondary"
-                            disabled={isActionLoading(`Usuń ${countToPrune} ostatnich`) || !countToPrune}
-                            onClick={() => handleAction(`Usuń ${countToPrune} ostatnich`, () => pruneLatest(Number(countToPrune)))}
+                            disabled={isActionLoading(`${t("brain.hygiene.remove")} ${countToPrune}`) || !countToPrune}
+                            onClick={() => handleAction(`${t("brain.hygiene.remove")} ${countToPrune}`, () => pruneLatest(Number(countToPrune)))}
                         >
-                            {isActionLoading(`Usuń ${countToPrune} ostatnich`) ? <Loader2 className="h-4 w-4 animate-spin" /> : "Usuń"}
+                            {isActionLoading(`${t("brain.hygiene.remove")} ${countToPrune}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : t("brain.hygiene.remove")}
                         </Button>
                     </div>
                     <p className="text-xs text-zinc-500">
-                        Usuwa N ostatnio dodanych lekcji (cofanie zmian).
+                        {t("brain.hygiene.recentEntriesDesc")}
                     </p>
                 </div>
             </div>
@@ -223,17 +225,17 @@ export function LessonPruningPanel() {
             {/* Confirmation Dialog */}
             <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
                 <ConfirmDialogContent>
-                    <ConfirmDialogTitle>Potwierdzenie operacji</ConfirmDialogTitle>
+                    <ConfirmDialogTitle>{t("brain.hygiene.confirmTitle")}</ConfirmDialogTitle>
                     <ConfirmDialogDescription>
-                        Czy na pewno chcesz wykonać operację: <strong>{confirmDialog.actionName}</strong>?
+                        {t("brain.hygiene.confirmAction", { action: confirmDialog.actionName })}
                         <br />
-                        Ta operacja może być nieodwracalna.
+                        <strong>{t("brain.hygiene.irreversible")}</strong>
                     </ConfirmDialogDescription>
                     <ConfirmDialogActions
                         onConfirm={executeAction}
                         onCancel={() => setConfirmDialog({ open: false, actionName: "", actionFn: null })}
-                        confirmLabel="Tak, wykonaj"
-                        cancelLabel="Anuluj"
+                        confirmLabel={t("brain.hygiene.confirmYes")}
+                        cancelLabel={t("brain.hygiene.confirmNo")}
                         confirmVariant="danger"
                     />
                 </ConfirmDialogContent>

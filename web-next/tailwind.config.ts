@@ -23,7 +23,7 @@ const config: Config = {
         terminal: "#050b0f",
       },
       fontFamily: {
-        sans: "var(--font-geist-sans)",
+        sans: "var(--font-inter)",
         mono: "var(--font-jetbrains)",
       },
       borderRadius: {

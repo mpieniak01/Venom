@@ -16,6 +16,8 @@ data/user_lexicon/
 data/feedback/
 data/learning/
 data/benchmarks/
+data/vector_store/
+data/models_test/
 
 # Chronos timelines and snapshots
 data/timelines/
@@ -40,6 +42,7 @@ perf-artifacts/
 perf-results/
 data/audio/
 models/
+!web-next/components/models/
 
 # Custom skills - generated dynamically, keep only README
 venom_core/execution/skills/custom/*.py

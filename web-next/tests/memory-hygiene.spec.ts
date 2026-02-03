@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("Brain Hygiene Tab", () => {
+    test.beforeEach(async ({ page }) => {
+        // Force English for deterministic testing
+        await page.addInitScript(() => {
+            window.localStorage.setItem("venom-language", "en");
+        });
+    });
+
     test("should be accessible from Brain view", async ({ page }) => {
         // 1. Go to Brain
         await page.goto("/brain");
@@ -15,8 +22,8 @@ test.describe("Brain Hygiene Tab", () => {
         await hygieneTab.click();
 
         // 4. Verify panel content loads
-        await expect(page.getByText("Statystyki Lekcji")).toBeVisible();
-        await expect(page.getByText("Automatyczna Higiena")).toBeVisible();
+        await expect(page.getByText("Lesson Statistics")).toBeVisible();
+        await expect(page.getByText("Auto Hygiene")).toBeVisible();
     });
 
     test("should display pruning controls", async ({ page }) => {
@@ -24,11 +31,11 @@ test.describe("Brain Hygiene Tab", () => {
         await page.getByTestId("hygiene-tab").click();
 
         // Check for specific buttons/inputs
-        await expect(page.getByPlaceholder("Dni (np. 30)")).toBeVisible();
-        await expect(page.getByPlaceholder("Nazwa tagu")).toBeVisible();
+        await expect(page.getByPlaceholder("Days (e.g. 30)")).toBeVisible();
+        await expect(page.getByPlaceholder("Tag name")).toBeVisible();
 
-        // Verify actions buttons exist
-        await expect(page.getByRole("button", { name: "Deduplikacja" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Nuke All" })).toBeVisible();
+        // Verify actions buttons exist (using button text, not label)
+        await expect(page.getByRole("button", { name: "Run" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
     });
 });

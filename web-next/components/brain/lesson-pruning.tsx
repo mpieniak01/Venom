@@ -223,12 +223,11 @@ export function LessonPruningPanel() {
             </div>
 
             {/* Confirmation Dialog */}
-            {/* Confirmation Dialog */}
             <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}>
                 <ConfirmDialogContent>
                     <ConfirmDialogTitle>{t("brain.hygiene.confirmTitle")}</ConfirmDialogTitle>
                     <ConfirmDialogDescription>
-                        {t("brain.hygiene.confirmAction").replace("{{action}}", confirmDialog.actionName)}
+                        {t("brain.hygiene.confirmAction", { action: confirmDialog.actionName })}
                         <br />
                         <strong>{t("brain.hygiene.irreversible")}</strong>
                     </ConfirmDialogDescription>

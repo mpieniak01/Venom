@@ -332,8 +332,13 @@ export const ModelsViewer = () => {
     if (!searchQuery.trim()) return;
     setSearchResults((prev) => ({ ...prev, loading: true, error: null, performed: true }));
     try {
+      const params = new URLSearchParams({
+        query: searchQuery,
+        provider: searchProvider,
+        limit: "12",
+      });
       const response = await apiFetch<ModelCatalogResponse>(
-        `/api/v1/models/search?query=${encodeURIComponent(searchQuery)}&provider=${searchProvider}&limit=12`
+        `/api/v1/models/search?${params.toString()}`
       );
       if (response && response.success) {
         setSearchResults({
@@ -725,6 +730,10 @@ export const ModelsViewer = () => {
   const refreshNews = async () => {
     setNewsHf((prev) => ({ ...prev, loading: true, error: null }));
     try {
+      const params = new URLSearchParams({
+        provider: "huggingface",
+        lang: language,
+      });
       const response = await apiFetch<{
         items: Array<{
           title?: string | null;
@@ -735,7 +744,7 @@ export const ModelsViewer = () => {
         }>;
         stale?: boolean;
         error?: string | null;
-      }>(`/api/v1/models/news?provider=huggingface&lang=${language}`);
+      }>(`/api/v1/models/news?${params.toString()}`);
       const payload = {
         items: response.items ?? [],
         stale: response.stale,
@@ -754,6 +763,12 @@ export const ModelsViewer = () => {
   const refreshPapers = async () => {
     setPapersHf((prev) => ({ ...prev, loading: true, error: null }));
     try {
+      const params = new URLSearchParams({
+        provider: "huggingface",
+        type: "papers",
+        lang: language,
+        limit: "3",
+      });
       const response = await apiFetch<{
         items: Array<{
           title?: string | null;
@@ -765,7 +780,7 @@ export const ModelsViewer = () => {
         stale?: boolean;
         error?: string | null;
       }>(
-        `/api/v1/models/news?provider=huggingface&type=papers&lang=${language}&limit=3`,
+        `/api/v1/models/news?${params.toString()}`,
       );
       const payload = {
         items: response.items ?? [],

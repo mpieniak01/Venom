@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("Brain Hygiene Tab", () => {
+    test.beforeEach(async ({ page }) => {
+        // Force English for deterministic testing
+        await page.addInitScript(() => {
+            window.localStorage.setItem("venom-language", "en");
+        });
+    });
+
     test("should be accessible from Brain view", async ({ page }) => {
         // 1. Go to Brain
         await page.goto("/brain");

@@ -10,9 +10,11 @@ test.describe("Internationalization (i18n)", () => {
         // Wait for hydration/rendering
         await expect(page.getByTestId("topbar-command-center")).toBeVisible();
 
-        // 2. Ensure PL state (Default might be EN in headless)
-        await page.waitForTimeout(1000); // Wait for hydration
-        const topbarText = await page.getByTestId("topbar-command-center").textContent();
+        // 2. Ensure we wait for hydration/readiness by checking for any valid topbar text
+        const topbar = page.getByTestId("topbar-command-center");
+        await expect(topbar).not.toHaveText(""); // Wait until it has any text
+
+        const topbarText = await topbar.textContent();
         if (topbarText?.includes("Command Center")) {
             // Switch to PL
             await page.getByRole("button", { name: /Switch language/i }).click();

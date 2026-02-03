@@ -40,6 +40,7 @@ perf-artifacts/
 perf-results/
 data/audio/
 models/
+!web-next/components/models/
 
 # Custom skills - generated dynamically, keep only README
 venom_core/execution/skills/custom/*.py

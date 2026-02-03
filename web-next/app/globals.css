@@ -8,12 +8,10 @@
 :root {
   /* TŁO */
   --bg-dark: #031627;
-  --bg-gradient-body: radial-gradient(
-    circle at 45% 0%,
-    #031627 0%,
-    #041120 45%,
-    #051b2d 100%
-  );
+  --bg-gradient-body: radial-gradient(circle at 45% 0%,
+      #031627 0%,
+      #041120 45%,
+      #051b2d 100%);
 
   /* PANELE */
   --bg-panel: rgba(3, 10, 23, 0.92);
@@ -49,14 +47,12 @@
   --shadow-card: 0 4px 30px rgba(0, 0, 0, 0.5);
 
   /* PANEL FLARE (Rozświetlenie boksów) */
-  --panel-highlight: linear-gradient(
-      90deg,
+  --panel-highlight: linear-gradient(90deg,
       transparent 0%,
       rgba(0, 255, 157, 0.0) 20%,
       rgba(0, 255, 157, 0.8) 50%,
       rgba(0, 255, 157, 0.0) 80%,
-      transparent 100%
-  );
+      transparent 100%);
 
   /* UKŁAD */
   --sidebar-width-expanded: 18rem;
@@ -92,17 +88,21 @@
 }
 
 @keyframes typing-dot-pulse {
+
   0%,
   60%,
   100% {
     opacity: 0.2;
   }
+
   30% {
     opacity: 0.9;
   }
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 /* =========================================
    2. TŁO I STRUKTURA
@@ -122,25 +122,49 @@ body {
 }
 
 body::before {
-  content: ""; position: fixed; inset: 0;
+  content: "";
+  position: fixed;
+  inset: 0;
   background-image: var(--noise-image);
-  opacity: 0.04; mix-blend-mode: overlay;
-  pointer-events: none; z-index: 9999;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 9999;
 }
 
 body::after {
-  content: ""; position: fixed; inset: 0;
+  content: "";
+  position: fixed;
+  inset: 0;
   background: radial-gradient(circle at center, transparent 40%, #000000 120%);
-  pointer-events: none; z-index: -1;
+  pointer-events: none;
+  z-index: -1;
 }
 
-a { color: inherit; text-decoration: none; cursor: pointer; }
+a {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
 
 /* Scrollbary */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: var(--secondary); }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
 
 /* =========================================
    3. PANELE (BOX FOCUS)
@@ -156,10 +180,21 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   overflow: hidden;
 }
 
-.glass-panel.fixed { position: fixed; }
-.glass-panel.sticky { position: sticky; }
-.glass-panel.absolute { position: absolute; }
-.glass-panel.allow-overflow { overflow: visible; }
+.glass-panel.fixed {
+  position: fixed;
+}
+
+.glass-panel.sticky {
+  position: sticky;
+}
+
+.glass-panel.absolute {
+  position: absolute;
+}
+
+.glass-panel.allow-overflow {
+  overflow: visible;
+}
 
 .surface-card {
   background: var(--surface-muted);
@@ -433,7 +468,9 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 
 /* Obrys */
 .glass-panel::before {
-  content: ""; position: absolute; inset: 0;
+  content: "";
+  position: absolute;
+  inset: 0;
   border-radius: inherit;
   border: 1px solid rgba(255, 255, 255, 0.05);
   pointer-events: none;
@@ -443,7 +480,10 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 .glass-panel::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; top: 0; height: 1px;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
   background: var(--panel-highlight);
   box-shadow: 0 0 15px var(--primary-glow);
   opacity: 1;
@@ -455,65 +495,55 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 /* =========================================
    4. SIDEBAR (BEZPIECZNIK)
    ========================================= */
-.sidebar, aside {
+.sidebar,
+aside {
   background-color: var(--bg-sidebar) !important;
   backdrop-filter: none !important;
   border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-left: none !important;
   border-radius: 0 !important;
 }
-aside.glass-panel::after, nav.glass-panel::after { display: none !important; }
 
-/* =========================================
-   5. SEKCJA NAGŁÓWKA (POPRAWIONA)
-   ========================================= */
-
-/* 1. Mały napis "// DASHBOARD CONTROL" -> NEON ZIELONY */
-main .space-y-10 > .flex > div:first-child > p.uppercase {
-    color: var(--primary);
-    text-shadow: 0 0 15px var(--primary-glow); /* Glow */
-    letter-spacing: 3px;
-    font-weight: 700;
-    font-family: var(--font-tech);
+aside.glass-panel::after,
+nav.glass-panel::after {
+  display: none !important;
 }
 
-/* 2. Główny Tytuł "Centrum Dowodzenia AI" -> CZYSTA BIEL (bez neonu) */
-main .space-y-10 > .flex > div:first-child > h1 {
-     color: #ffffff; /* Biały */
-     text-shadow: none; /* Brak poświaty */
-     font-family: var(--font-tech);
-     font-weight: 600;
-     letter-spacing: -1px;
-}
 
-/* Opis pod spodem -> Szary */
-main .space-y-10 > .flex > div:first-child > p.text-zinc-400 {
-    color: #888;
-}
 
 /* Reszta nagłówków w panelach -> Biała */
-.glass-panel h1, .glass-panel h2, .glass-panel h3,
-.rounded-panel h1, .rounded-panel h2, .rounded-panel h3,
+.glass-panel h1,
+.glass-panel h2,
+.glass-panel h3,
+.rounded-panel h1,
+.rounded-panel h2,
+.rounded-panel h3,
 section h3 {
-    color: #ffffff;
-    text-shadow: none;
+  color: #ffffff;
+  text-shadow: none;
 }
 
 /* =========================================
    6. DETALE UI
    ========================================= */
-.font-tech, code, pre, .text-xs {
+.font-tech,
+code,
+pre,
+.text-xs {
   font-family: var(--font-tech);
 }
 
-input, textarea {
+input,
+textarea {
   background-color: #050608 !important;
   border: 1px solid #27272a !important;
   color: var(--primary) !important;
   font-family: var(--font-tech) !important;
   border-radius: 4px !important;
 }
-input:focus, textarea:focus {
+
+input:focus,
+textarea:focus {
   border-color: var(--primary) !important;
   outline: none !important;
   box-shadow: 0 0 10px rgba(0, 255, 157, 0.2) !important;

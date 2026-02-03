@@ -20,20 +20,22 @@ export function FileAnalysisForm({
   onImpact,
   message,
 }: FileAnalysisFormProps) {
+  const t = useTranslation();
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <input
           className="w-full flex-1 rounded-2xl box-base px-3 py-2 text-sm text-white outline-none focus:border-[--color-accent]"
-          placeholder="venom_core/api/routes/system.py"
+          placeholder={t("brain.file.placeholder")}
           value={filePath}
           onChange={(e) => onPathChange(e.target.value)}
         />
         <Button variant="outline" size="sm" disabled={loading} onClick={onFileInfo}>
-          ℹ️ Info
+          ℹ️ {t("brain.file.info")}
         </Button>
         <Button variant="outline" size="sm" disabled={loading} onClick={onImpact}>
-          🌐 Impact
+          🌐 {t("brain.file.impact")}
         </Button>
       </div>
       {message && <p className="text-hint">{message}</p>}

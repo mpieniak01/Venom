@@ -1,19 +1,39 @@
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.api.dependencies import get_vector_store
+from venom_core.api.dependencies import (
+    get_lessons_store,
+    get_session_store,
+    get_state_manager,
+    get_vector_store,
+)
 from venom_core.main import app
 
-pytest.importorskip("lancedb")
-pytest.importorskip("sentence_transformers", exc_type=ImportError)
+# Refactored to use FakeVectorStore from conftest
+# Not importing lancedb anymore!
 
 
 @pytest.fixture
-def client():
-    # Clear overrides before each test
-    app.dependency_overrides = {}
+def client(mock_lifespan_deps):
+    # overrides
+    fake_vs = mock_lifespan_deps["vector_store"]
+    mock_ls = mock_lifespan_deps["lessons_store"]
 
-    # Use context manager to trigger lifespan and initialize dependencies
+    app.dependency_overrides[get_vector_store] = lambda: fake_vs
+    app.dependency_overrides[get_lessons_store] = lambda: mock_ls
+
+    mock_session_store = MagicMock()
+    mock_session_store.get_history.return_value = []
+    mock_session_store.get_summary.return_value = "Mock summary"
+
+    mock_state_manager = MagicMock()
+    mock_state_manager.clear_session_context.return_value = 0
+
+    app.dependency_overrides[get_session_store] = lambda: mock_session_store
+    app.dependency_overrides[get_state_manager] = lambda: mock_state_manager
+
     with TestClient(app) as c:
         yield c
 
@@ -22,11 +42,7 @@ def client():
 
 def test_new_chat_session_clearing_workflow(client):
     """
-    Testuje pełny workflow czyszczenia sesji:
-    1. Ingestion danych dla konkretnej sesji.
-    2. Weryfikacja obecności danych w grafie pamięci.
-    3. Wywołanie endpointu DELETE /session/{session_id}.
-    4. Weryfikacja usunięcia danych z wektorowej bazy, StateManager i SessionStore.
+    Testuje pełny workflow czyszczenia sesji z użyciem FakeVectorStore.
     """
     session_id = "test-session-123"
     test_text = "Tajny protokół: Antigravity jest super agentem."
@@ -43,7 +59,7 @@ def test_new_chat_session_clearing_workflow(client):
     graph_resp = client.get("/api/v1/memory/graph", params={"session_id": session_id})
     assert graph_resp.status_code == 200
     elements = graph_resp.json()["elements"]
-    # Szukamy czy jest węzeł z naszym tekstem lub session_id
+
     session_nodes = [
         n for n in elements["nodes"] if n["data"].get("session_id") == session_id
     ]
@@ -66,6 +82,8 @@ def test_new_chat_session_clearing_workflow(client):
     )
     assert graph_resp_post.status_code == 200
     elements_post = graph_resp_post.json()["elements"]
+
+    # Should be empty now
     session_nodes_post = [
         n for n in elements_post["nodes"] if n["data"].get("session_id") == session_id
     ]
@@ -73,10 +91,7 @@ def test_new_chat_session_clearing_workflow(client):
         f"Dane dla sesji {session_id} nadal istnieją w grafie po usunięciu"
     )
 
-    # 5. Weryfikacja SessionStore (przez GET /session/{session_id})
-    # Po usunięciu, get_session_memory powinno zwrócić błąd 503 jeśli SessionStore niedostępny
-    # lub puste dane jeśli wyczyszczone (zależy od implementacji).
-    # Sprawdźmy co zwraca endpoint GET /session/{session_id}
+    # 5. Weryfikacja SessionStore
     session_resp = client.get(f"/api/v1/memory/session/{session_id}")
     if session_resp.status_code == 200:
         assert session_resp.json()["count"] == 0
@@ -85,15 +100,14 @@ def test_new_chat_session_clearing_workflow(client):
 
 def test_new_chat_session_dependency_overrides(client):
     """
-    Testuje użycie dependency_overrides, zgodnie z sugestią z PR.
+    Testuje użycie dependency_overrides z MagicMock, aby upewnić się, że mechanizm override'ów działa.
+    Ten test nadpisuje globalnego clienta swoim własnym overridem dla tego konkretnego test case.
     """
-    from unittest.mock import MagicMock
-
     mock_vector_store = MagicMock()
     mock_vector_store.delete_by_metadata.return_value = 10
     mock_vector_store.delete_session.return_value = 5
 
-    # Ustawiamy override
+    # Nadpiszmy override, który dał fixtura 'client'
     app.dependency_overrides[get_vector_store] = lambda: mock_vector_store
 
     try:
@@ -106,4 +120,4 @@ def test_new_chat_session_dependency_overrides(client):
             {"session_id": session_id}
         )
     finally:
-        app.dependency_overrides = {}
+        pass

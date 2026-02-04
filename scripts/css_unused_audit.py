@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Heuristic audit for unused CSS classes/ids in legacy templates and JS."""
+"""Heuristic audit for unused CSS classes/ids in web-next."""
 
 from __future__ import annotations
 

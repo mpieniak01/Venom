@@ -24,7 +24,6 @@ This document describes Venom's new runtime architecture: **FastAPI** runs as st
 3. **Environment variables**:
    | Name | Purpose | Default value |
    |-------|---------|---------------|
-   | `SERVE_LEGACY_UI` | Whether FastAPI serves old Jinja UI (`web/`). Set `False` during migration. | `True` |
    | `NEXT_PUBLIC_API_BASE` | Base API URL used by Next (CSR). | `http://localhost:8000` |
    | `NEXT_PUBLIC_WS_BASE` | WebSocket endpoint for `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Proxy target in `next.config.ts` (SSR). | `http://localhost:8000` |
@@ -45,13 +44,6 @@ This document describes Venom's new runtime architecture: **FastAPI** runs as st
 4. Starts `next start` on port 3000.
 5. `make stop` works the same way (stops `next start` also via `pkill -f`).
 
-## Legacy Fallback
-
-- For regression purposes, old FastAPI panel can be left:
-  - `SERVE_LEGACY_UI=True` – FastAPI still mounts Jinja templates (`/`, `/cockpit`, etc.) on port 8000.
-  - Setting `False` makes backend expose only `/api`, `/ws`, `/docs`.
-  - In README we described that old panel is treated as "reference solution" and shouldn't be run with Next on same port.
-
 ## Monitoring and Logs
 
 - `make status` – reports if processes are alive (PID + ports).
@@ -64,14 +56,13 @@ This document describes Venom's new runtime architecture: **FastAPI** runs as st
 1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`
 2. **Frontend**: `npm --prefix web-next run lint && npm --prefix web-next run build`
 3. **E2E Next**: `npm --prefix web-next run test:e2e`
-4. **Next vs legacy chat comparison**: `npm --prefix web-next run test:perf`
+4. **Next chat latency**: `npm --prefix web-next run test:perf`
 5. **Locust (optional)**: `./scripts/run-locust.sh` and run scenario from panel (default `http://127.0.0.1:8089`)
 
 ## Deployment Checklist
 
-- [ ] Variable `SERVE_LEGACY_UI` set according to mode (prod → `False`).
 - [ ] `make start-prod` works and returns links to backend and UI.
 - [ ] Proxy (nginx/docker-compose) redirects `/api` and `/ws` to FastAPI and rest to Next.
 - [ ] `npm --prefix web-next run test:e2e` passes on prod build.
-- [ ] `npm --prefix web-next run test:perf` shows latency < budget (default 4s for legacy, 5s for Next).
+- [ ] `npm --prefix web-next run test:perf` shows latency < budget (default 15s).
 - [ ] `pytest tests/perf/test_chat_pipeline.py -m performance` passes (SSE task_update → task_finished < 25s).

@@ -272,8 +272,7 @@ make stop
 ```
 
 - backend runs on `http://localhost:8000` (REST/SSE/WS),
-- Next.js serves UI on `http://localhost:3000`,
-- `SERVE_LEGACY_UI=True` flag runs old FastAPI panel on port 8000 (fallback/reference solution).
+- Next.js serves UI on `http://localhost:3000`.
 
 ### 🔧 Launch Profiles (light mode)
 
@@ -664,8 +663,8 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 - `npm --prefix web-next run test:e2e` — Playwright on prod build.
 
 ### Response Time and Chat Performance
-- `npm --prefix web-next run test:perf` — Playwright comparing Next Cockpit and old panel (`PERF_NEXT_BASE_URL` / `PERF_LEGACY_BASE_URL`, HTML report goes to `test-results/perf-report`).
-- Available env vars: `PERF_NEXT_LATENCY_BUDGET`, `PERF_LEGACY_LATENCY_BUDGET` (default 5000ms/6000ms) and `PERF_*_RESPONSE_TIMEOUT` if limits need to be relaxed on slower machines.
+- `npm --prefix web-next run test:perf` — Playwright measuring Next Cockpit latency (HTML report goes to `test-results/perf-report`).
+- Available env vars: `PERF_NEXT_LATENCY_BUDGET` (default 15000ms) and `PERF_*_RESPONSE_TIMEOUT` if limits need to be relaxed on slower machines.
 - `pytest tests/perf/test_chat_pipeline.py -m performance` — backend pipeline (time to `task_finished` + batch).
 - `./scripts/run-locust.sh` — start Locust panel (`http://127.0.0.1:8089`) and manual API load.
 - `./scripts/archive-perf-results.sh` — dump `test-results/`, Playwright/Locust reports to `perf-artifacts/<timestamp>/`.

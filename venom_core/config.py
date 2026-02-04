@@ -3,7 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env")
+    # Ignore unknown env vars in local .env without failing startup/tests.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     APP_NAME: str = "Venom Meta-Intelligence"
     ENV: str = "development"
@@ -12,7 +13,6 @@ class Settings(BaseSettings):
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
-    SERVE_LEGACY_UI: bool = True  # Serwuj stare szablony FastAPI (Cockpit/Strategy)
 
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"

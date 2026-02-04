@@ -3,18 +3,12 @@
 /**
  * Simple preflight check for E2E tests.
  * Verifies that required services (Next Cockpit) are reachable before Playwright runs.
- * Legacy Cockpit is optional: if unavailable, we print a warning.
  */
 
 const DEFAULT_HOST = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
 const DEFAULT_PORT = process.env.PLAYWRIGHT_PORT ?? "3000";
 const defaultNextUrl = process.env.PERF_NEXT_BASE_URL ?? `http://${DEFAULT_HOST}:${DEFAULT_PORT}`;
-const legacyUrl = process.env.PERF_LEGACY_BASE_URL ?? "http://localhost:8000";
-
-const targets = [
-  { name: "Next Cockpit", url: defaultNextUrl, required: true },
-  { name: "Legacy Cockpit", url: legacyUrl, required: false },
-];
+const targets = [{ name: "Next Cockpit", url: defaultNextUrl, required: true }];
 
 const timeoutMs = 3000;
 

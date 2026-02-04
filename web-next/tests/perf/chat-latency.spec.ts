@@ -29,20 +29,20 @@ const targets: TargetConfig[] = [
     responseTimeoutMs: Number(process.env.PERF_NEXT_RESPONSE_TIMEOUT ?? "20000"),
     latencyBudgetMs: Number(process.env.PERF_NEXT_LATENCY_BUDGET ?? "15000"),
   },
-  {
-    name: "Legacy Cockpit",
-    url: process.env.PERF_LEGACY_BASE_URL ?? "http://localhost:8000",
-    promptSelector: "#taskInput",
-    sendSelector: "#sendButton",
-    responseSelector: ".chat-messages .message.assistant",
-    responseTimeoutMs: Number(process.env.PERF_LEGACY_RESPONSE_TIMEOUT ?? "20000"),
-    latencyBudgetMs: Number(process.env.PERF_LEGACY_LATENCY_BUDGET ?? "6000"),
-    optional: true,
-  },
 ];
 
 async function measureLatency(page: Page, target: TargetConfig) {
   await page.goto(target.url);
+  const promptLocator = page.locator(target.promptSelector);
+  try {
+    await promptLocator.first().waitFor({ state: "visible", timeout: 3_000 });
+  } catch (error) {
+    if (target.optional) {
+      test.skip(true, `${target.name} pominięty: brak selektora ${target.promptSelector}`);
+      return;
+    }
+    throw error;
+  }
   const prompt = `Benchmark latency ${Date.now()}`;
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
@@ -51,6 +51,10 @@ async function measureLatency(page: Page, target: TargetConfig) {
     // Attempt to fill with a shorter timeout (5s) to allow for error diagnosis within the test limit
     await page.fill(target.promptSelector, prompt, { timeout: 5_000 });
   } catch (error) {
+    if (target.optional) {
+      test.skip(true, `${target.name} pominięty: brak pola promptu (${target.promptSelector})`);
+      return;
+    }
     // 1. Check for application crash (Error Boundary)
     const errorBoundary = page.locator('[data-testid="app-error"]');
     if (await errorBoundary.count() > 0) {

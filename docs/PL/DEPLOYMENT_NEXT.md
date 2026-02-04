@@ -24,7 +24,6 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 3. **Zmienne środowiskowe**:
    | Nazwa | Przeznaczenie | Wartość domyślna |
    |-------|---------------|------------------|
-   | `SERVE_LEGACY_UI` | Czy FastAPI serwuje stary Jinja UI (`web/`). Przy migracji ustaw `False`. | `True` |
    | `NEXT_PUBLIC_API_BASE` | Bazowy URL API używany przez Next (CSR). | `http://localhost:8000` |
    | `NEXT_PUBLIC_WS_BASE` | Endpoint WebSocket dla `/ws/events`. | `ws://localhost:8000/ws/events` |
    | `API_PROXY_TARGET` | Cel proxy w `next.config.ts` (SSR). | `http://localhost:8000` |
@@ -45,13 +44,6 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 4. Startuje `next start` na porcie 3000.
 5. `make stop` działa tak samo (zatrzymuje `next start` też przez `pkill -f`).
 
-## Legacy fallback
-
-- Na potrzeby regresji można zostawić stary panel FastAPI:
-  - `SERVE_LEGACY_UI=True` – FastAPI nadal montuje szablony Jinja (`/`, `/cockpit`, itp.) na porcie 8000.
-  - Ustawienie `False` powoduje, że backend expose wyłącznie `/api`, `/ws`, `/docs`.
-  - W README opisaliśmy, że stary panel traktowany jest jako „rozwiązanie referencyjne” i nie powinien być uruchamiany razem z Nextem w tym samym porcie.
-
 ## Monitorowanie i logi
 
 - `make status` – informuje czy procesy żyją (PID + porty).
@@ -64,14 +56,13 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`
 2. **Frontend**: `npm --prefix web-next run lint && npm --prefix web-next run build`
 3. **E2E Next**: `npm --prefix web-next run test:e2e`
-4. **Porównanie czatu Next vs legacy**: `npm --prefix web-next run test:perf`
+4. **Latencja czatu Next**: `npm --prefix web-next run test:perf`
 5. **Locust (opcjonalnie)**: `./scripts/run-locust.sh` i odpalenie scenariusza z panelu (domyślnie `http://127.0.0.1:8089`)
 
 ## Checklist wdrożeniowy
 
-- [ ] Zmienna `SERVE_LEGACY_UI` ustawiona zgodnie z trybem (prod → `False`).
 - [ ] `make start-prod` działa i zwraca linki do backendu i UI.
 - [ ] Proxy (nginx/docker-compose) przekierowuje `/api` i `/ws` na FastAPI oraz resztę na Next.
 - [ ] `npm --prefix web-next run test:e2e` przechodzi na buildzie prod.
-- [ ] `npm --prefix web-next run test:perf` wykazuje latency < budżet (domyślnie 4s dla legacy, 5s dla Next).
+- [ ] `npm --prefix web-next run test:perf` wykazuje latency < budżet (domyślnie 15s).
 - [ ] `pytest tests/perf/test_chat_pipeline.py -m performance` przechodzi (SSE task_update → task_finished < 25s).

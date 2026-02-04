@@ -185,66 +185,11 @@ def validate_researcher_agent():
 
 
 def validate_frontend():
-    """Validate frontend badge implementation."""
+    """Validate frontend badge implementation (legacy UI removed)."""
     print("=" * 80)
-    print("Validating Frontend...")
+    print("Skipping Frontend validation (legacy UI removed).")
     print("=" * 80)
-
-    app_js_path = Path("web/static/js/app.js")
-    with open(app_js_path, "r") as f:
-        code = f.read()
-
-    # Check for research-source-badge class
-    ensure("research-source-badge" in code, "❌ Missing research-source-badge class")
-    print("✓ research-source-badge class exists")
-
-    # Check for google_grounding badge
-    ensure("google_grounding" in code, "❌ Missing google_grounding badge")
-    print("✓ google_grounding badge exists")
-
-    # Check for duckduckgo badge
-    ensure("duckduckgo" in code, "❌ Missing duckduckgo badge")
-    print("✓ duckduckgo badge exists")
-
-    # Check for emoji icons
-    ensure("🌍" in code and "🦆" in code, "❌ Missing emoji icons")
-    print("✓ Emoji icons exist (🌍 🦆)")
-
-    # Check for CSS classes (styles moved to app.css)
-    ensure("google-grounded" in code, "❌ Missing google-grounded CSS class usage")
-    print("✓ google-grounded CSS class usage exists")
-
-    ensure("web-search" in code, "❌ Missing web-search CSS class usage")
-    print("✓ web-search CSS class usage exists")
-
-    # Check for metadata parameter in addChatMessage
-    ensure(
-        "metadata = null" in code or "metadata" in code,
-        "❌ Missing metadata parameter in addChatMessage",
-    )
-    print("✓ metadata parameter in addChatMessage exists")
-
-    # Validate CSS file
-    css_path = Path("web/static/css/app.css")
-    with open(css_path, "r") as f:
-        css_code = f.read()
-
-    ensure(
-        ".research-source-badge" in css_code,
-        "❌ Missing research-source-badge CSS class",
-    )
-    print("✓ research-source-badge CSS class exists in app.css")
-
-    ensure(".google-grounded" in css_code, "❌ Missing google-grounded CSS class")
-    print("✓ google-grounded CSS class exists in app.css")
-
-    ensure("#1e40af" in css_code, "❌ Missing Google Grounded badge color in CSS")
-    print("✓ Google Grounded badge color exists in CSS (#1e40af)")
-
-    ensure("#6b7280" in css_code, "❌ Missing Web Search badge color in CSS")
-    print("✓ Web Search badge color exists in CSS (#6b7280)")
-
-    print("✅ Frontend validation passed!\n")
+    print("✅ Frontend validation skipped.\n")
 
 
 def validate_tests():
@@ -370,7 +315,7 @@ def main():
         print("✓ Router: RESEARCH routing logic implemented")
         print("✓ KernelBuilder: enable_grounding parameter added")
         print("✓ ResearcherAgent: grounding sources formatting")
-        print("✓ Frontend: Badge rendering (🌍 Google, 🦆 DuckDuckGo)")
+        print("✓ Frontend: skipped (legacy UI removed)")
         print("✓ Tests: Unit tests for all components")
         print("✓ Documentation: Complete integration guide")
 

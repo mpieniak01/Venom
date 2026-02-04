@@ -8,10 +8,9 @@ Dokument opisuje jak zmierzyć wydajność pipeline’u czatu Venoma w dwóch ob
 ## Wymagania
 - Uruchomiony backend (`make start-dev` lub `make start-prod`).
 - Uruchomiony Next (`make start-dev` / `make start-prod`).
-- Stary panel FastAPI dostępny na porcie 8000 (tylko do testu porównawczego) – jeśli `SERVE_LEGACY_UI=False`, odpal tymczasowo z `True`.
 - Node 18.19+ (Playwright) i Python środowiska testowego (`pip install -r requirements.txt` + `pip install locust`).
 
-## Playwright: porównanie UI
+## Playwright: latencja UI
 
 Plik: `web-next/tests/perf/chat-latency.spec.ts`
 Konfiguracja: `web-next/playwright.perf.config.ts`
@@ -21,10 +20,10 @@ npm --prefix web-next run test:perf
 ```
 
 Test:
-1. Otwiera Next Cockpit i Legacy Cockpit.
+1. Otwiera Next Cockpit.
 2. Wysyła prompt „benchmark latency”.
 3. Oczekuje na nowy bąbelek odpowiedzi i mierzy czas.
-4. Sprawdza budżety (Next ≤ ~5s, Legacy ≤ 4s – wartości konfigurowalne).
+4. Sprawdza budżet (domyślnie ≤ 15s – wartości konfigurowalne).
 
 Artefakty (screenshoty/wideo) zapisują się do `web-next/test-results/` i są ignorowane przez git.
 
@@ -77,7 +76,6 @@ Tworzy `perf-artifacts/<timestamp>/` i kopiuje:
 
 ## Uwagi
 - Repozytorium jest lokalnym eksperymentem – artefakty testów NIE są szyfrowane, ale są ignorowane (`.gitignore`) i przechowywane lokalnie.
-- Gdy Next ma działać bez legacy UI, pamiętaj aby uruchamiać test `Legacy Cockpit` tylko przy włączonym `SERVE_LEGACY_UI=True`.
 - Wydajnościowe testy nie są jeszcze podpięte pod CI – wykonujemy je ręcznie przed wydaniem.
 
 ## Referencyjne wyniki (ostatni przebieg)

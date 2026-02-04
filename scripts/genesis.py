@@ -6,9 +6,6 @@ STRUCTURE = {
     ".": [".env", "requirements.txt", "README.md"],
     "docs": ["VENOM_DIAGRAM.md", "VENOM_MASTER_VISION_V2.md"],
     "data/memory": ["lessons_learned.json"],
-    "web/templates": ["base.html", "index.html"],
-    "web/static/css": ["app.css"],
-    "web/static/js": ["app.js"],
     "tests": ["test_healthz.py", "__init__.py"],
     "logs": [],  # katalog na logi Venoma
     "workspace": [],  # root na workspace (zgodnie z config.WORKSPACE_ROOT)
@@ -56,18 +53,12 @@ STRUCTURE = {
 CONTENTS = {
     "venom_core/main.py": """
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import logger
 
 # Inicjalizacja Aplikacji (Organizmu)
 app = FastAPI(title="Venom", version="2.0.0")
-
-# Montowanie zasobów statycznych
-app.mount("/static", StaticFiles(directory="web/static"), name="static")
-templates = Jinja2Templates(directory="web/templates")
 
 
 @app.on_event("startup")
@@ -82,11 +73,8 @@ async def health_check():
 
 
 @app.get("/")
-async def dashboard(request: Request):
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "name": "Venom"},
-    )
+async def root(request: Request):
+    return {"name": "Venom", "status": "ok"}
 """,
     "venom_core/config.py": """
 import os

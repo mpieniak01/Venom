@@ -4,14 +4,13 @@
 
 Flow Inspector is a real-time visualization tool for Venom system's decision-making processes. It helps understand why the system made a specific decision (e.g., selected a particular agent, entered Council mode).
 
-### Available versions:
+### Available version:
 
-1. **Flow Inspector (legacy)** (`/flow-inspector`) - basic version in legacy UI (FastAPI).
-2. **Inspector (web-next)** (`/inspector`) - target version in Next.js:
-   - React + Mermaid
-   - diagram zoom/pan (`react-zoom-pan-pinch`)
-   - telemetry panel and step filter
-   - full error data (`error_code`, `error_details`)
+**Inspector (web-next)** (`/inspector`) - version in Next.js:
+- React + Mermaid
+- diagram zoom/pan (`react-zoom-pan-pinch`)
+- telemetry panel and step filter
+- full error data (`error_code`, `error_details`)
 
 ## ✨ Main Features
 
@@ -26,7 +25,6 @@ Flow Inspector is a real-time visualization tool for Venom system's decision-mak
 
 Navigate to Flow Inspector by clicking the link in navigation:
 
-- **🔀 Flow Inspector (legacy)**: `http://localhost:8000/flow-inspector`
 - **🔍 Inspector (web-next)**: `http://localhost:3000/inspector`
 
 ### 2. Interactive Inspector - Advanced features
@@ -62,7 +60,7 @@ Navigate to Flow Inspector by clicking the link in navigation:
 - Emoji 🔀 in description
 - Additional information in details panel
 
-### 3. Selecting task for analysis (both versions)
+### 3. Selecting task for analysis
 
 In "📋 Select task for analysis" section you'll see list of recent tasks:
 
@@ -101,9 +99,7 @@ Decision Gates are highlighted with **orange background** and have **🔀 Decisi
 
 ### 4. Auto-refresh
 
-**Flow Inspector (basic):** If task is still in progress (PROCESSING), automatically refreshes data every 3 seconds.
-
-**Interactive Inspector:** Requires manual refresh with button.
+Requires manual refresh with button.
 
 ## 🔒 Security
 

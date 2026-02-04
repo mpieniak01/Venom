@@ -4,14 +4,13 @@
 
 Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom w czasie rzeczywistym. Pozwala zrozumieć, dlaczego system podjął daną decyzję (np. wybrał konkretnego agenta, wszedł w tryb The Council).
 
-### Dostępne wersje:
+### Dostępna wersja:
 
-1. **Flow Inspector (legacy)** (`/flow-inspector`) - podstawowa wersja w legacy UI (FastAPI).
-2. **Inspector (web-next)** (`/inspector`) - docelowa wersja w Next.js:
-   - React + Mermaid
-   - zoom/pan na diagramie (`react-zoom-pan-pinch`)
-   - panel telemetryczny i filtr kroków
-   - pełne dane błędu (`error_code`, `error_details`)
+**Inspector (web-next)** (`/inspector`) - wersja w Next.js:
+- React + Mermaid
+- zoom/pan na diagramie (`react-zoom-pan-pinch`)
+- panel telemetryczny i filtr kroków
+- pełne dane błędu (`error_code`, `error_details`)
 
 ## ✨ Główne Funkcje
 
@@ -26,7 +25,6 @@ Flow Inspector to narzędzie do wizualizacji procesów decyzyjnych systemu Venom
 
 Przejdź do Flow Inspector klikając na link w nawigacji:
 
-- **🔀 Flow Inspector (legacy)**: `http://localhost:8000/flow-inspector`
 - **🔍 Inspector (web-next)**: `http://localhost:3000/inspector`
 
 ### 2. Interactive Inspector - Zaawansowane funkcje
@@ -62,7 +60,7 @@ Przejdź do Flow Inspector klikając na link w nawigacji:
 - Emoji 🔀 w opisie
 - Dodatkowe informacje w panelu szczegółów
 
-### 3. Wybór zadania do analizy (obie wersje)
+### 3. Wybór zadania do analizy
 
 W sekcji "📋 Wybierz zadanie do analizy" zobaczysz listę ostatnich zadań:
 
@@ -101,9 +99,7 @@ Decision Gates są wyróżnione **pomarańczowym tłem** i mają badge **🔀 De
 
 ### 4. Auto-refresh
 
-**Flow Inspector (podstawowy):** Jeśli zadanie jest nadal w trakcie (PROCESSING), automatycznie odświeża dane co 3 sekundy.
-
-**Interactive Inspector:** Wymaga ręcznego odświeżenia przyciskiem.
+Wymaga ręcznego odświeżenia przyciskiem.
 
 ## 🔒 Bezpieczeństwo
 

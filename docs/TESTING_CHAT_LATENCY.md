@@ -8,10 +8,9 @@ This document describes how to measure Venom chat pipeline performance in two ar
 ## Requirements
 - Running backend (`make start-dev` or `make start-prod`).
 - Running Next (`make start-dev` / `make start-prod`).
-- Old FastAPI panel available on port 8000 (for comparison test only) – if `SERVE_LEGACY_UI=False`, temporarily run with `True`.
 - Node 18.19+ (Playwright) and Python test environment (`pip install -r requirements.txt` + `pip install locust`).
 
-## Playwright: UI Comparison
+## Playwright: UI Latency
 
 File: `web-next/tests/perf/chat-latency.spec.ts`
 Configuration: `web-next/playwright.perf.config.ts`
@@ -21,10 +20,10 @@ npm --prefix web-next run test:perf
 ```
 
 Test:
-1. Opens Next Cockpit and Legacy Cockpit.
+1. Opens Next Cockpit.
 2. Sends prompt "benchmark latency".
 3. Waits for new response bubble and measures time.
-4. Checks budgets (Next ≤ ~5s, Legacy ≤ 4s – configurable values).
+4. Checks budget (default ≤ 15s – configurable values).
 
 Artifacts (screenshots/video) are saved to `web-next/test-results/` and ignored by git.
 
@@ -77,7 +76,6 @@ Creates `perf-artifacts/<timestamp>/` and copies:
 
 ## Notes
 - Repository is local experiment – test artifacts are NOT encrypted, but are ignored (`.gitignore`) and stored locally.
-- When Next should run without legacy UI, remember to run `Legacy Cockpit` test only with `SERVE_LEGACY_UI=True` enabled.
 - Performance tests are not yet hooked to CI – we run them manually before release.
 
 ## Reference Results (Last Run)

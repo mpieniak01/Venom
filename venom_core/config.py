@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
-    SERVE_LEGACY_UI: bool = True  # Serwuj stare szablony FastAPI (Cockpit/Strategy)
 
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"

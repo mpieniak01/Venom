@@ -18,8 +18,6 @@ NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
-SERVE_LEGACY_DEV ?= True
-SERVE_LEGACY_PROD ?= True
 BACKEND_LOG ?= logs/backend.log
 WEB_LOG ?= logs/web-next.log
 VLLM_ENDPOINT ?= http://127.0.0.1:8001
@@ -153,10 +151,8 @@ _start:
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@if [ "$(START_MODE)" = "prod" ]; then \
 		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
-		export SERVE_LEGACY_UI=$(SERVE_LEGACY_PROD); \
 	else \
 		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
-		export SERVE_LEGACY_UI=$(SERVE_LEGACY_DEV); \
 	fi; \
 	echo "▶️  Uruchamiam Venom backend (uvicorn na $(HOST):$(PORT))"; \
 	: > $(BACKEND_LOG); \
@@ -302,7 +298,6 @@ api:
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@echo "▶️  Uruchamiam Venom API (produkcyjny, bez --reload) na $(HOST):$(PORT)"
 	: > $(BACKEND_LOG)
-	export SERVE_LEGACY_UI=$(SERVE_LEGACY_PROD); \
 	setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
 	echo $$! > $(PID_FILE)
 	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"
@@ -318,7 +313,6 @@ api-dev:
 	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
 	@echo "▶️  Uruchamiam Venom API (developerski, z --reload) na $(HOST):$(PORT)"
 	: > $(BACKEND_LOG)
-	export SERVE_LEGACY_UI=$(SERVE_LEGACY_DEV); \
 	setsid $(UVICORN) $(API_APP) --host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS) >> $(BACKEND_LOG) 2>&1 & \
 	echo $$! > $(PID_FILE)
 	@echo "✅ Venom API wystartował z PID $$(cat $(PID_FILE))"

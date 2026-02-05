@@ -53,3 +53,12 @@ Endpoint paths remain unchanged. Refactor concerns only code structure.
 
 ## Chat routing (consistency note)
 Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `docs/CHAT_SESSION.md`.
+
+## Performance Optimizations (v2026-02)
+### Fast Path (Template Response)
+- **Logic**: Static intents (`HELP_REQUEST`, `TIME_REQUEST`, `INFRA_STATUS`) bypass heavy context building (memory/history) for sub-100ms latency.
+- **Route**: `Orchestrator._run_task_fastpath`.
+
+### Background Processing
+- **ResultProcessor**: Non-critical operations (Vector Store upsert, RL logs) are offloaded to background tasks to unblock UI response.
+- **Debouncing**: `StateManager`, `RequestTracer`, and `SessionStore` use write-debouncing to minimize disk I/O.

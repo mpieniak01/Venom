@@ -38,6 +38,8 @@ class StateManager:
         self._state_file_path = Path(resolved_path)
         self._save_lock = asyncio.Lock()
         self._pending_saves: Set[asyncio.Task] = set()
+        self._save_task: Optional[asyncio.Task] = None
+        self._save_requested: bool = False
 
         # AutonomyGate - poziom autonomii (0, 10, 20, 30, 40)
         self.autonomy_level: int = 0  # Domyślnie ISOLATED
@@ -139,29 +141,45 @@ class StateManager:
                 logger.error(f"Błąd zapisu stanu do pliku: {e}")
 
     def _schedule_save(self) -> None:
-        """Planuje zapis stanu, obsługując brak event loop."""
+        """Planuje zapis stanu z mechanizmem debouncingu."""
+        self._save_requested = True
+
         try:
-            # Próbuj uzyskać aktywny event loop
+            # Sprawdź czy pętla zapisu już działa
+            if self._save_task and not self._save_task.done():
+                return
+
+            # Spróbuj uzyskać aktywny event loop
             try:
                 asyncio.get_running_loop()
-                # Jeśli loop działa, zaplanuj zapis i śledź zadanie
-                task = asyncio.create_task(self._save())
-                self._pending_saves.add(task)
-                task.add_done_callback(self._pending_saves.discard)
+                self._save_task = asyncio.create_task(self._process_save_queue())
             except RuntimeError:
-                # Brak uruchomionego loop - pomiń automatyczny zapis
                 logger.debug("Brak event loop - pomijam automatyczny zapis stanu")
         except Exception as e:
             logger.error(f"Błąd podczas planowania zapisu: {e}")
 
+    async def _process_save_queue(self) -> None:
+        """Pętla przetwarzająca żądania zapisu."""
+        # Krótkie opóźnienie dla grupowania zmian (burst handling)
+        await asyncio.sleep(0.2)
+
+        while self._save_requested:
+            self._save_requested = False
+            await self._save()
+
     async def shutdown(self) -> None:
-        """Czeka na zakończenie wszystkich oczekujących zapisów stanu."""
-        if self._pending_saves:
-            logger.info(
-                f"Oczekiwanie na zakończenie {len(self._pending_saves)} zapisów stanu..."
-            )
-            await asyncio.gather(*self._pending_saves, return_exceptions=True)
-            logger.info("Wszystkie zapisy stanu zakończone")
+        """Czeka na zakończenie pętli zapisu."""
+        if self._save_task and not self._save_task.done():
+            logger.info("Oczekiwanie na zakończenie zapisu stanu...")
+            # Wymuś zapis jeśli był requested
+            if self._save_requested:
+                await self._save()
+
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Zapisy stanu zakończone")
 
     def create_task(self, content: str) -> VenomTask:
         """

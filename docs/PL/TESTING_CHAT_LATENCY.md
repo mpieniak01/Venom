@@ -82,3 +82,4 @@ Tworzy `perf-artifacts/<timestamp>/` i kopiuje:
 | Data (UTC) | Test | Wynik |
 | --- | --- | --- |
 | 2026-01-05 | `tests/perf/chat-latency.spec.ts` (Next Cockpit) | PASS, 4.0s |
+| 2026-02-05 | `scripts/perf_check_help.py` (Fast Path Warm) | PASS, ~0.09s |

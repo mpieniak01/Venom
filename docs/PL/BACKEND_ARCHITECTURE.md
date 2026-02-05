@@ -53,3 +53,12 @@ Sciezki endpointow pozostaly bez zmian. Refaktor dotyczy tylko struktury kodu.
 
 ## Chat routing (uwaga spójności)
 Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w `docs/PL/CHAT_SESSION.md`.
+
+## Optymalizacje Wydajności (v2026-02)
+### Fast Path (Szablony)
+- **Logika**: Statyczne intencje (`HELP_REQUEST`, `TIME_REQUEST`, `INFRA_STATUS`) pomijają budowanie ciężkiego kontekstu (pamięć/historia) dla latencji poniżej 100ms.
+- **Trasa**: `Orchestrator._run_task_fastpath`.
+
+### Przetwarzanie w Tle (Background Processing)
+- **ResultProcessor**: Niekrytyczne operacje (zapis do Vector Store, logi RL) są przenoszone do zadań w tle (`asyncio.create_task`), aby odblokować UI.
+- **Debouncing**: `StateManager`, `RequestTracer` i `SessionStore` używają mechanizmu debounce dla operacji zapisu na dysk, minimalizując I/O.

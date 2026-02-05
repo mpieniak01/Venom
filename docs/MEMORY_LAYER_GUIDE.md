@@ -162,97 +162,162 @@ vector_store.add_text(
 results = vector_store.search("compose stack", limit=5)
 ```
 
-### 4. Memory Integration in Orchestrator
+### 4. GardenerAgent - Gardener Agent
 
-Memory is used in two ways:
+**Location:** `venom_core/agents/gardener.py`
 
-1. **Session memory** - short-term context (SessionStore)
-2. **Global memory** - long-term semantic memory (VectorStore + LessonsStore)
+The Gardener Agent runs in the background and automatically updates the knowledge graph when it detects changes in workspace files.
 
-Orchestrator builds context using:
-- recent session history
-- optional summary
-- conditional retrieval from vector memory
+#### Functions:
 
-### 5. SessionStore - Source of Truth
+- **File Monitoring:** Checking for changes in Python files.
+- **Auto-reindexing:** Automatic graph update after changes.
+- **Background Service:** Runs asynchronously without blocking the main thread.
+- **Manual Scanning:** Ability to trigger scanning on demand.
 
-**Location:** `venom_core/services/session_store.py`
+#### Example usage:
 
-SessionStore keeps the entire history for a given `session_id`.
+```python
+from venom_core.agents.gardener import GardenerAgent
+from venom_core.memory.graph_store import CodeGraphStore
 
-- Stored in `data/memory/session_store.json`
-- Used for conversation continuity
-- Cleared on backend restart (current behavior)
+# Initialization
+graph_store = CodeGraphStore()
+gardener = GardenerAgent(
+    graph_store=graph_store,
+    scan_interval=300  # Scan every 5 minutes
+)
 
-## Memory Flow
+# Start in the background
+await gardener.start()
 
-```
-User prompt
-   ↓
-SessionStore (history)
-   ↓
-VectorStore / LessonsStore (conditional)
-   ↓
-Orchestrator builds context
-   ↓
-LLM generates response
-```
+# Status
+status = gardener.get_status()
+print(f"Running: {status['is_running']}")
+print(f"Last scan: {status['last_scan_time']}")
 
-## Meta-Learning
+# Manual scan
+stats = gardener.trigger_manual_scan()
 
-Meta-learning uses LessonsStore to improve future behavior:
-
-- Records failures and resolutions
-- Suggests better strategies
-- Builds an internal knowledge loop
-
-### Example lesson entry
-
-```json
-{
-  "situation": "User asked for SSH key setup",
-  "action": "Provided generic steps",
-  "result": "User still had issues",
-  "feedback": "Include key permissions and ssh-add",
-  "tags": ["ssh", "permissions"]
-}
+# Stop
+await gardener.stop()
 ```
 
-## API Quick Reference
+#### API Endpoints:
 
-- `GET /api/v1/graph/summary`
-- `POST /api/v1/graph/scan`
-- `GET /api/v1/lessons`
-- `POST /api/v1/lessons`
-- `POST /api/v1/lessons/search`
-- `GET /api/v1/lessons/stats`
+- `GET /api/v1/gardener/status` - Gardener Agent status.
 
-## Operational Notes
+### 5. Semantic Cache (Hidden Prompts)
 
-- Memory features require `data/memory/` to be writable
-- VectorStore uses local disk (LanceDB) - no cloud dependency
-- If VectorStore is disabled, LessonsStore still works (without embeddings)
+**Location:** `venom_core/core/hidden_prompts.py`
 
-## Future Roadmap
+The Semantic Cache mechanism is used to optimize chat by remembering approved Question-Answer pairs and serving them for semantically similar queries without involving the LLM.
 
-- Auto-summary for long sessions
-- Session-only memory mode
-- TTL policies for lessons
-- User-facing memory controls
+#### Operation:
+1. **Exact Match:** First checks for an exact match in JSONL files.
+2. **Semantic Match:** If there is no exact match, it searches the vector database (LanceDB).
+3. **Threshold:** Accepts the result only when similarity (cosine similarity) exceeds `SEMANTIC_CACHE_THRESHOLD` (default 0.85).
 
-## Troubleshooting
+#### Configuration (constants.py):
+- `SEMANTIC_CACHE_THRESHOLD = 0.85`
+- `SEMANTIC_CACHE_COLLECTION_NAME = "hidden_prompts"`
 
-**Problem:** No lessons are saved
-- Check `data/memory/lessons_store.json` permissions
-- Ensure LessonsStore is initialized in `main.py`
+#### Integration:
+The cache uses `VectorStore` (the same class as Memory/Lessons) and the embedding model `sentence-transformers/all-MiniLM-L6-v2`.
 
-**Problem:** Vector search returns empty results
-- Ensure embeddings are generated (VectorStore init)
-- Verify LanceDB files exist in `data/memory/`
+### 6. Orchestrator - Meta-Learning Loop
 
-**Problem:** Session history missing
-- Check `session_store.json`
-- Confirm session_id handling in UI
+**Location:** `venom_core/core/orchestrator.py`
+
+The Orchestrator has been extended with a meta-learning mechanism:
+
+#### Pre-Flight Check:
+
+Before starting a task, the Orchestrator:
+1. Searches for relevant lessons from the past.
+2. Attaches them to the task context as warnings.
+3. The agent sees "I learned earlier..." in the prompt.
+
+#### Post-Task Reflection:
+
+After completing the task (success or failure), the Orchestrator:
+1. Analyzes results and logs.
+2. Creates a lesson from the experience.
+3. Saves it in LessonsStore.
+4. Indexes it for future searches.
+
+#### Configuration:
+
+```python
+# In venom_core/core/orchestrator.py
+ENABLE_META_LEARNING = True  # Enable/disable meta-learning
+MAX_LESSONS_IN_CONTEXT = 3   # How many lessons to attach to the prompt
+```
+
+#### Example flow:
+
+```
+Task 1: "Write code using library X"
+→ Venom generates code with an outdated method
+→ ERROR: Method X.old_method() not found
+→ Lesson saved: "Library X in version Y does not have the old_method() method"
+
+---
+
+Task 2 (New session): "Write code using library X"
+→ Pre-flight check finds the lesson
+→ Prompt contains: "📚 LESSONS: Watch out, the old_method() method does not exist in version Y"
+→ Venom immediately generates correct code with the new method
+→ SUCCESS ✅
+```
+
+## Dashboard - Visualization
+
+### New "Memory" Tab
+
+The Dashboard has been extended with a "🧠 Memory" tab with two sections:
+
+#### 1. Lessons (📚)
+
+- List of the last 10 lessons.
+- Coloring: green = success, red = failure.
+- Displays: situation, feedback, tags.
+- Refresh button.
+
+#### 2. Knowledge Graph (🕸️)
+
+- Graph statistics:
+  - Number of nodes.
+  - Number of edges.
+  - Files, classes, functions.
+- "Scan" button for manual update.
+
+### Access:
+
+1. Run Venom: `uvicorn venom_core.main:app --reload`
+2. Open browser: `http://localhost:8000`
+3. Switch to the "🧠 Memory" tab.
+
+## Tests
+
+### Running tests:
+
+```bash
+# All memory tests
+pytest tests/test_graph_store.py tests/test_lessons_store.py -v
+
+# Only graph_store
+pytest tests/test_graph_store.py -v
+
+# Only lessons_store
+pytest tests/test_lessons_store.py -v
+```
+
+### Test coverage:
+
+- **CodeGraphStore:** 11 unit tests.
+- **LessonsStore:** 16 unit tests.
+- **Total:** 27 tests, 100% pass rate.
 
 ## License
 

@@ -1,135 +1,135 @@
 > [!IMPORTANT]
-> **STATUS: DRAFT W OPRACOWANIU**
-> Ten dokument jest w trakcie tworzenia.
+> **STATUS: DRAFT IN PROGRESS**
+> This document is under development.
 
-# Podręcznik Operatora Venom (Operator Manual)
+# Venom Operator Manual
 
-Witaj w Podręczniku Operatora. Ten dokument służy do wyjaśnienia, jak korzystać z systemu Venom na co dzień, rozumieć wyświetlane wskaźniki i zarządzać jego zasobami. W przeciwieństwie do dokumentacji technicznej, skupiamy się tutaj na *użyteczności*, a nie *implementacji*.
+Welcome to the Operator Manual. This document explains how to use the Venom system daily, understand the displayed metrics, and manage its resources. Unlike technical documentation, we focus here on *usability*, not *implementation*.
 
-## 1. Kluczowe Pojęcia
+## 1. Key Concepts
 
-Aby efektywnie współpracować z Venomem, warto zrozumieć dwa fundamenty jego działania: **Timelines** (Linie Czasowe) oraz **Dreams** (Sny).
+To effectively collaborate with Venom, it is worth understanding two foundations of its operation: **Timelines** and **Dreams**.
 
-### ⏳ Timelines (Linie Czasowe)
-Wyobraź sobie Timelines jako **punkty zapisu w grze** lub **alternatywne wersje rzeczywistości**.
+### ⏳ Timelines
+Think of Timelines as **save points in a game** or **alternative versions of reality**.
 
-*   **Po co to jest?** Venom pozwala Ci bezpiecznie eksperymentować. Zanim wprowadzisz ryzykowne zmiany w kodzie, system (lub Ty ręcznie) tworzy "migawkę" (snapshot) obecnego stanu.
-*   **Jak to działa dla Ciebie?** Jeśli eksperyment się nie uda, możesz natychmiast cofnąć się do punktu wyjścia, nie tracąc działającego systemu.
-*   **User/Core Timelines**: To są Twoje "główne" zapisy – backupy przed refactoringiem, punkty kontrolne projektu. Są cenne i zazwyczaj chcesz je zachować.
-*   **Przykład Użycia**: Planujesz duży refactoring nawigacji. Tworzysz Timeline o nazwie "przed-refactorem-nav". Jeśli w połowie pracy kod przestanie się kompilować, jednym kliknięciem przywracasz stan "przed-refactorem-nav".
+*   **What is it for?** Venom allows you to experiment safely. Before making risky changes to the code, the system (or you manually) creates a "snapshot" of the current state.
+*   **How does it work for you?** If an experiment fails, you can immediately revert to the starting point without losing a working system.
+*   **User/Core Timelines**: These are your "main" saves – backups before refactoring, project checkpoints. They are valuable and you usually want to keep them.
+*   **Usage Example**: You plan a major refactoring of the navigation. You create a Timeline named "before-refactor-nav". If the code stops compiling halfway through, you restore the "before-refactor-nav" state with one click.
 
-### 🌙 Dreams (Sny)
-Sny to proces **samodoskonalenia** Venoma w czasie wolnym.
+### 🌙 Dreams
+Dreams are Venom's **self-improvement** process during downtime.
 
-*   **Co to jest?** Gdy nie używasz systemu (lub w nocy), Venom analizuje swoją bazę wiedzy i wymyśla hipotetyczne problemy programistyczne, a następnie próbuje je rozwiązać.
-*   **Po co?** Każdy rozwiązany "sen" staje się nową umiejętnością (lekcją), którą Venom może wykorzystać w przyszłości, pomagając Tobie.
-*   **Dream Timelines**: Każdy sen odbywa się w odizolowanej linii czasowej, aby nie zaśmiecać Twojego głównego projektu. Te dane mogą zajmować dużo miejsca, ale są w pełni odtwarzalne (można je bezpiecznie usuwać).
-*   **Przykład**: Venom zauważył, że wczoraj miałeś problem z konfiguracją Nginx. W nocy "przyśnił" sobie scenariusz naprawy pliku `nginx.conf`, przetestował go w izolacji i teraz "wie", jak to zrobić poprawnie, gdy zapytasz o to jutro.
-
----
-
-## 2. Panel Konfiguracji: Koszty Dysku
-
-W sekcji `/config` (Konfiguracja) znajdziesz panel **"Koszty dysku"**. Służy on do monitorowania zdrowia Twojego środowiska pracy.
-
-### Jak czytać wskaźniki?
-
-Panel dzieli dane na kilka kategorii. Oto najważniejsze z nich, o które możesz pytać:
-
-#### 🟣 Dane: dreaming (timelines)
-*   **Co to jest?**: Miejsce zajmowane na dysku przez **Sny** (historyczne symulacje treningowe).
-*   **Czy mogę to usunąć?**: **TAK**. To są dane "historyczne". Usunięcie ich nie zepsuje projektu, jedynie stracisz możliwość podejrzenia "jak Venom rozwiązał tamten konkretny sen" (ale wyciągnięta z niego wiedza/lekcja jest już zapisana w pamięci i pozostanie bezpieczna).
-*   **Zalecenie**: Jeśli brakuje Ci miejsca na dysku, to pierwszy kandydat do czyszczenia.
-
-#### 🔵 Dane: timelines (user/core)
-*   **Co to jest?**: Miejsce zajmowane przez **Twoje** punkty przywracania i backupy projektowe.
-*   **Czy mogę to usunąć?**: **OSTROŻNIE**. Usunięcie tych danych oznacza utratę możliwości cofnięcia się do starych wersji projektu. Rób to tylko dla starych, niepotrzebnych już checkpointów.
-
-#### 🟢 Modele LLM
-*   **Co to jest?**: Pliki "mózgów" (np. Gemma, Llama). Są bardzo duże (często kilkadziesiąt GB).
-*   **Czy mogę to usunąć?**: Jeśli usuniesz model, Venom pobierze go ponownie przy następnym uruchomieniu (co może potrwać i zużyć transfer).
-
-#### 🟡 Build / Cache (np. `web-next/.next`)
-*   **Co to jest?**: Pliki tymczasowe generowane przez aplikację, aby działała szybciej.
-*   **Czy mogę to usunąć?**: **TAK**. System odbuduje je sobie automatycznie w razie potrzeby. Bezpieczne do czyszczenia w razie awarii.
-
-### Zarządzanie Miejscem
-Jeśli wskaźnik użycia dysku świeci się na czerwono:
-1.  Sprawdź **Dane: dreaming (timelines)** – zazwyczaj to one rosną najszybciej.
-2.  Wyczyść stare cache (np. `.next`).
-3.  Przejrzyj swoje **User Timelines** i usuń bardzo stare eksperymenty.
+*   **What is it?** When you are not using the system (or at night), Venom analyzes its knowledge base and comes up with hypothetical programming problems, then tries to solve them.
+*   **Why?** Every solved "dream" becomes a new skill (lesson) that Venom can use in the future to help you.
+*   **Dream Timelines**: Every dream takes place in an isolated timeline so as not to clutter your main project. This data can take up a lot of space but is fully reproducible (can be safely deleted).
+*   **Example**: Venom noticed yesterday that you had a problem with Nginx configuration. At night, it "dreamt" a scenario of fixing the `nginx.conf` file, tested it in isolation, and now "knows" how to do it correctly when you ask about it tomorrow.
 
 ---
 
-## 3. Profile Wydajności (Runtime)
+## 2. Configuration Panel: Disk Costs
 
-W panelu konfiguracji możesz też przełączać tryby pracy Venoma (Profile):
+In the `/config` section, you will find the **"Disk Costs"** panel. It is used to monitor the health of your working environment.
 
-*   **⚡ Full Stack**: Uruchamia wszystko (AI, Backend, UI, Bazy). Do normalnej, pełnej pracy.
-*   **🍃 Light**: Uruchamia tylko Backend i UI. Oszczędza baterię/zasoby, gdy nie potrzebujesz generowania kodu przez AI (np. tylko przeglądasz pliki).
-*   **🛑 LLM OFF**: Całkowite wyłączenie modeli językowych. Przydatne na słabszych maszynach lub gdy chcesz pracować manualnie.
+### How to read the metrics?
+
+The panel divides data into several categories. Here are the most important ones you can ask about:
+
+#### 🟣 Data: dreaming (timelines)
+*   **What is it?**: Space occupied on the disk by **Dreams** (historical training simulations).
+*   **Can I delete it?**: **YES**. This is "historical" data. Deleting it will not break the project; you will only lose the ability to see "how Venom solved that specific dream" (but the knowledge/lesson learned from it is already saved in memory and will remain safe).
+*   **Recommendation**: If you are running out of disk space, this is the first candidate for cleaning.
+
+#### 🔵 Data: timelines (user/core)
+*   **What is it?**: Space occupied by **your** restore points and project backups.
+*   **Can I delete it?**: **CAREFULLY**. Deleting this data means losing the ability to revert to old versions of the project. Only do this for old, no longer needed checkpoints.
+
+#### 🟢 LLM Models
+*   **What is it?**: "Brain" files (e.g., Gemma, Llama). They are very large (often several dozen GB).
+*   **Can I delete it?**: If you delete a model, Venom will download it again the next time it starts (which may take time and consume data).
+
+#### 🟡 Build / Cache (e.g., `web-next/.next`)
+*   **What is it?**: Temporary files generated by the application to make it run faster.
+*   **Can I delete it?**: **YES**. The system will rebuild them automatically if needed. Safe to clean in case of an emergency.
+
+### Space Management
+If the disk usage indicator glows red:
+1.  Check **Data: dreaming (timelines)** – they usually grow the fastest.
+2.  Clear old caches (e.g., `.next`).
+3.  Review your **User Timelines** and delete very old experiments.
 
 ---
 
-## 4. Rekomendacje Sprzętowe (Hardware)
+## 3. Performance Profiles (Runtime)
 
-Wybór odpowiedniego silnika AI (Runtime) ma kluczowe znaczenie dla stabilności systemu, zwłaszcza na słabszym sprzęcie.
+In the configuration panel, you can also switch Venom's operation modes (Profiles):
 
-### 🐢 Ollama (Zalecane dla "Low-Spec")
-Jeśli Twój komputer ma:
-*   Mniej niż 16GB RAM.
-*   Słabą kartę graficzną (poniżej 8GB VRAM) lub zintegrowaną grafikę.
-*   Problemy ze stabilnością działania vLLM (błędy OOM, crashe).
-
-**ZALECENIE: Wybierz OLLAMA.**
-Jest to silnik zoptymalizowany pod kątem niskiego zużycia zasobów. Działa nieco wolniej, ale jest znacznie stabilniejszy i zużywa mniej pamięci VRAM/RAM niż vLLM. Idealny do pracy na laptopach i starszych stacjach roboczych.
-
-### 🚀 vLLM (Zalecane dla "High-Performance")
-Jeśli dysponujesz:
-*   Mocną kartą graficzną NVIDIA (np. RTX 3090/4090, A100).
-*   Dużą ilością pamięci VRAM (>12GB).
-
-**ZALECENIE: Wybierz vLLM.**
-Oferuje on bezkonkurencyjną szybkość (tokeny na sekundę), ale jest bardzo wymagający („chciwy”) na pamięć. Na słabszych konfiguracjach może powodować niestabilność systemu.
+*   **⚡ Full Stack**: Starts everything (AI, Backend, UI, Databases). For normal, full work.
+*   **🍃 Light**: Starts only Backend and UI. Saves battery/resources when you don't need AI code generation (e.g., just browsing files).
+*   **🛑 LLM OFF**: Completely disables language models. Useful on weaker machines or when you want to work manually.
 
 ---
 
-## 5. Panel Konfiguracji: Parametry Systemu
+## 4. Hardware Recommendations
 
-Oprócz zarządzania kosztami dysku i usługami, zakładka `Parametry` w `/config` pozwala na sterowanie zachowaniem agentów.
+Choosing the right AI engine (Runtime) is crucial for system stability, especially on weaker hardware.
 
-*   **Tryb AI (AI Mode)**: Decyduje, czy Venom działa w pełni lokalnie ("Local"), czy hybrydowo ("Hybrid" - np. ciężkie zadania w chmurze). Domyślnie: **Local**.
-*   **Hive (Przetwarzanie rozproszone)**: Włącza/wyłącza architekturę rozproszoną (Queue Worker).
-*   **Shadow (Desktop Awareness)**: Jeśli włączone, agent działający w tle monitoruje zdarzenia systemowe, próbując proaktywnie wykrywać problemy.
-*   **Ghost (GUI Automation)**: Zezwala Venomowi na sterowanie myszką i klawiaturą (RPA). **Domyślnie wyłączone** ze względów bezpieczeństwa.
+### 🐢 Ollama (Recommended for "Low-Spec")
+If your computer has:
+*   Less than 16GB RAM.
+*   A weak graphics card (below 8GB VRAM) or integrated graphics.
+*   Stability issues with vLLM (OOM errors, crashes).
+
+**RECOMMENDATION: Choose OLLAMA.**
+It is an engine optimized for low resource consumption. It runs slightly slower but is much more stable and uses less VRAM/RAM than vLLM. Ideal for working on laptops and older workstations.
+
+### 🚀 vLLM (Recommended for "High-Performance")
+If you have:
+*   A powerful NVIDIA graphics card (e.g., RTX 3090/4090, A100).
+*   A large amount of VRAM (>12GB).
+
+**RECOMMENDATION: Choose vLLM.**
+It offers unbeatable speed (tokens per second) but is very demanding ("greedy") on memory. On weaker configurations, it may cause system instability.
+
+---
+
+## 5. Configuration Panel: System Parameters
+
+In addition to managing disk costs and services, the `Parameters` tab in `/config` allows you to control agent behavior.
+
+*   **AI Mode**: Decides whether Venom works fully locally ("Local") or hybrid ("Hybrid" - e.g., heavy tasks in the cloud). Default: **Local**.
+*   **Hive (Distributed Processing)**: Enables/disables the distributed architecture (Queue Worker).
+*   **Shadow (Desktop Awareness)**: If enabled, a background agent monitors system events, trying to proactively detect problems.
+*   **Ghost (GUI Automation)**: Allows Venom to control the mouse and keyboard (RPA). **Disabled by default** for security reasons.
 
 > [!TIP]
-> Zmieniając parametry (np. wyłączając Shadow), system może wymagać restartu, aby zwolnić zasoby.
+> Changing parameters (e.g., disabling Shadow) may require a system restart to free up resources.
 
 ---
 
-## 6. Rozwiązywanie Problemów (Troubleshooting)
+## 6. Troubleshooting
 
-Typowe sytuacje, które możesz napotkać jako Operator:
+Typical situations you may encounter as an Operator:
 
-### 🔴 System nie odpowiada ("Connection Refused")
-*   **Przyczyna**: Kontener dockera (`venom-backend`) nie działa lub się restartuje.
-*   **Rozwiązanie**: Sprawdź logi w terminalu. Upewnij się, że Docker Desktop jest uruchomiony. W ostateczności wykonaj `docker-compose restart`.
+### 🔴 System not responding ("Connection Refused")
+*   **Cause**: The docker container (`venom-backend`) is not running or is restarting.
+*   **Solution**: Check the logs in the terminal. Make sure Docker Desktop is running. As a last resort, execute `docker-compose restart`.
 
-### 🟡 Model "mieli" w nieskończoność (Timeout)
-*   **Przyczyna**: Wybrany model jest zbyt duży dla Twojej karty graficznej (vLLM OOM) lub zbyt wolny (CPU).
-*   **Rozwiązanie**:
-    1.  Przełącz Runtime na **Ollama** w `/config`.
-    2.  Wybierz mniejszy model (np. `gemma:2b` lub `llama3:8b-quantized`).
+### 🟡 Model "grinds" indefinitely (Timeout)
+*   **Cause**: The selected model is too large for your graphics card (vLLM OOM) or too slow (CPU).
+*   **Solution**:
+    1.  Switch Runtime to **Ollama** in `/config`.
+    2.  Choose a smaller model (e.g., `gemma:2b` or `llama3:8b-quantized`).
 
-### 🟠 Brak miejsca na dysku
-*   **Przyczyna**: Nagromadzenie "Snów" (Dream Timelines) lub cache modeli.
-*   **Rozwiązanie**: Wejdź w `/config` -> Usługi -> Storage i wyczyść sekcję **Dreams** oraz **Cache**.
+### 🟠 Out of disk space
+*   **Cause**: Accumulation of Dreams (Dream Timelines) or model caches.
+*   **Solution**: Go to `/config` -> Services -> Storage and clear the **Dreams** and **Cache** sections.
 
-### ⚪ Interface jest po angielsku, mimo że chcę Polski
-*   **Przyczyna**: Ustawienia przeglądarki lub brak zapisanego wyboru.
-*   **Rozwiązanie**: Kliknij ikonę flagi/języka w pasku bocznym (Sidebar) i wybierz "PL". Ustawienie zostanie zapamiętane.
+### ⚪ Interface is in English, although I want Polish
+*   **Cause**: Browser settings or no saved choice.
+*   **Solution**: Click the flag/language icon in the Sidebar and select "PL". The setting will be remembered.
 
 ---
 
-*Dokument ten będzie rozwijany wraz z nowymi funkcjami systemu.*
+*This document will be updated as new system features are added.*

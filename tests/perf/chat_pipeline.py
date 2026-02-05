@@ -17,12 +17,31 @@ PIPELINE_CONCURRENCY = int(os.getenv("VENOM_PIPELINE_CONCURRENCY", "3"))
 PIPELINE_BATCH_BUDGET_SECONDS = float(os.getenv("VENOM_PIPELINE_BUDGET", "6.0"))
 
 
-async def submit_task(content: str, store_knowledge: bool = True) -> str:
+async def submit_task(
+    content: str,
+    store_knowledge: bool = True,
+    session_id: str | None = None,
+    forced_intent: str | None = None,
+    forced_tool: str | None = None,
+    forced_provider: str | None = None,
+) -> str:
     """Utwórz nowe zadanie i zwróć jego ID."""
     async with httpx.AsyncClient(timeout=30.0) as client:
+        payload: Dict[str, object] = {
+            "content": content,
+            "store_knowledge": store_knowledge,
+        }
+        if session_id:
+            payload["session_id"] = session_id
+        if forced_intent:
+            payload["forced_intent"] = forced_intent
+        if forced_tool:
+            payload["forced_tool"] = forced_tool
+        if forced_provider:
+            payload["forced_provider"] = forced_provider
         response = await client.post(
             TASKS_ENDPOINT,
-            json={"content": content, "store_knowledge": store_knowledge},
+            json=payload,
         )
         response.raise_for_status()
         data = response.json()

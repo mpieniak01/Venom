@@ -230,6 +230,22 @@ class RequestTracer:
             self._save_requested = False
             await self._save_traces_async()
 
+    async def shutdown(self) -> None:
+        """Czeka na zakończenie pętli zapisu."""
+        if self._save_task and not self._save_task.done():
+            logger.info("Oczekiwanie na zakończenie zapisu śladów...")
+            # Wymuś zapis, jeśli był żądany, i wyczyść flagę, aby uniknąć podwójnego zapisu
+            if self._save_requested:
+                self._save_requested = False
+                await self._save_traces_async()
+
+            try:
+                self._save_task.cancel()
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Zapisy śladów zakończone")
+
     def _save_traces(self) -> None:
         """Kompatybilność wsteczna - przekierowuje do schedule."""
         self._schedule_save()

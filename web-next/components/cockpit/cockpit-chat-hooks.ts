@@ -167,6 +167,15 @@ export function useOptimisticRequests<TDetail = unknown>(
     });
   }, []);
 
+  const resetOptimisticState = useCallback(() => {
+    setOptimisticRequests([]);
+    setSimpleStreams({});
+    setSimpleRequestDetails({});
+    uiTimingsRef.current.clear();
+    uiTimingKeyMapRef.current.clear();
+    setUiTimingsByRequest({});
+  }, []);
+
   const pruneOptimisticRequests = useCallback(
     (
       history: Array<{ request_id: string; status?: string | null; finished_at?: string | null; created_at?: string | null }> | null,
@@ -223,6 +232,7 @@ export function useOptimisticRequests<TDetail = unknown>(
     recordUiTiming,
     clearSimpleStream,
     pruneOptimisticRequests,
+    resetOptimisticState,
   };
 }
 

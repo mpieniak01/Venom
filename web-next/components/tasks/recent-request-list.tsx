@@ -15,7 +15,7 @@ export function RecentRequestList({
   limit = 5,
   emptyMessage = "Brak historii do analizy.",
 }: RecentRequestListProps) {
-  const items = (requests || []).slice(0, limit);
+  const items = (requests || []).slice(-limit);
 
   return (
     <div className="card-shell card-base p-4 text-sm">

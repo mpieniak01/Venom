@@ -27,6 +27,10 @@ async def test_tracer_persistence():
         # Weryfikacja zapisu w pamięci
         assert tracer.get_trace_count() == 1
 
+        # Czekamy na asynchroniczny zapis
+        # await asyncio.sleep(1.2) - zastąpione przez shutdown
+        await tracer.shutdown()
+
         # 3. Weryfikacja zapisu na dysku (bez asynchronii w save_traces - proste sprawdzenie)
         assert trace_path.exists()
         content = trace_path.read_text()

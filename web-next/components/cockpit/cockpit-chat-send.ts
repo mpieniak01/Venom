@@ -276,12 +276,12 @@ export function useChatSend({
                 (entry) =>
                   entry.request_id === simpleRequestId && entry.role === role,
               );
-              const timestamp = role === "assistant" ? new Date().toISOString() : createdTimestamp;
+              const timestamp = createdTimestamp;
               if (idx >= 0) {
                 next[idx] = {
                   ...next[idx],
                   content,
-                  timestamp,
+                  timestamp: next[idx].timestamp || timestamp,
                 };
               } else {
                 next.push({
@@ -361,7 +361,7 @@ export function useChatSend({
                 next[idx] = {
                   ...next[idx],
                   content,
-                  timestamp,
+                  timestamp: next[idx].timestamp || timestamp,
                 };
               } else {
                 next.push({

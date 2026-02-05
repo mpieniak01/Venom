@@ -10,6 +10,7 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 import httpx
 
+
 def _resolve_api_base() -> str:
     env_base = (
         os.getenv("VENOM_API_BASE")

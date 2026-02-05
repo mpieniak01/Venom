@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from venom_core.main import app, state_manager
 from venom_core.config import SETTINGS
+from venom_core.main import app, state_manager
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 
 
@@ -29,10 +29,13 @@ def mock_runtime_info():
 @pytest.fixture(autouse=True)
 def patch_runtime(mock_runtime_info):
     """Automatycznie patchuje runtime dla wszystkich testów."""
-    with patch(
-        "venom_core.utils.llm_runtime.get_active_llm_runtime",
-        return_value=mock_runtime_info,
-    ), patch.object(SETTINGS, "LLM_CONFIG_HASH", "abc123456789", create=True):
+    with (
+        patch(
+            "venom_core.utils.llm_runtime.get_active_llm_runtime",
+            return_value=mock_runtime_info,
+        ),
+        patch.object(SETTINGS, "LLM_CONFIG_HASH", "abc123456789", create=True),
+    ):
         yield
 
 

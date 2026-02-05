@@ -157,7 +157,7 @@ def test_get_all_traces_empty(tracer):
 
 
 def test_get_all_traces_returns_sorted(tracer):
-    """Test że traces są sortowane od najnowszych."""
+    """Test że traces są sortowane rosnąco po created_at."""
     import time
 
     id1 = uuid4()
@@ -172,9 +172,9 @@ def test_get_all_traces_returns_sorted(tracer):
 
     traces = tracer.get_all_traces()
     assert len(traces) == 3
-    # Najnowszy (Third) powinien być pierwszy
-    assert traces[0].request_id == id3
-    assert traces[2].request_id == id1
+    # Najstarszy (First) powinien być pierwszy
+    assert traces[0].request_id == id1
+    assert traces[2].request_id == id3
 
 
 def test_get_all_traces_with_limit(tracer):

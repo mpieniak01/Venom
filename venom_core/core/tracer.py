@@ -553,8 +553,8 @@ class RequestTracer:
         if status_filter:
             traces = [t for t in traces if t.status == status_filter]
 
-        # Sortuj od najnowszych
-        traces.sort(key=lambda t: t.created_at, reverse=True)
+        # Sortuj rosnąco (najstarsze -> najnowsze)
+        traces.sort(key=lambda t: t.created_at)
 
         # Zastosuj paginację
         return traces[offset : offset + limit]

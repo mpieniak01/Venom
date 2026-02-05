@@ -182,7 +182,7 @@ export default function StrategyPage() {
     [roadmapData?.milestones],
   );
   const timelineEntriesRaw = useMemo(
-    () => (timelineHistory ?? []).slice(0, 8),
+    () => (timelineHistory ?? []).slice(-8),
     [timelineHistory],
   );
   const trackedStrategyTaskIds = useMemo(() => {

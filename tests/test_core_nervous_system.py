@@ -149,7 +149,13 @@ def test_multiple_tasks_concurrent(client, clear_state):
     # Utwórz kilka zadań jednocześnie
     task_ids = []
     for i in range(5):
-        response = client.post("/api/v1/tasks", json={"content": f"Zadanie {i}"})
+        response = client.post(
+            "/api/v1/tasks",
+            json={
+                "content": f"Pomoc {i}",
+                "forced_intent": "HELP_REQUEST",
+            },
+        )
         assert response.status_code == 201, response.text
         payload = response.json()
         assert "task_id" in payload

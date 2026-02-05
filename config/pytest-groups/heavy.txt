@@ -1,7 +1,13 @@
 tests/perf/test_chat_pipeline.py
+tests/perf/test_fast_path_e2e.py
+tests/perf/test_latency_modes_e2e.py
+tests/perf/test_learning_logs_integrity_e2e.py
 tests/perf/test_llm_latency_e2e.py
 tests/perf/test_llm_runtime_direct.py
 tests/perf/test_llm_simple_e2e.py
+tests/perf/test_session_store_integrity_e2e.py
+tests/perf/test_state_integrity_e2e.py
+tests/perf/test_vector_memory_upsert_e2e.py
 tests/test_browser_skill.py
 tests/test_forge_integration.py
 tests/test_skills_enhancements.py

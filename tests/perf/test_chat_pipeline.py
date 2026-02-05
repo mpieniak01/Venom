@@ -29,6 +29,7 @@ async def test_chat_pipeline_smoke_latency():
     await _skip_if_backend_unavailable()
     duration, payload = await measure_task_duration(
         f"Smoke latency test {os.getpid()}",
+        forced_intent="HELP_REQUEST",
     )
     assert duration > 0, "Zadanie powinno zwrócić dodatni czas"
     timeout_msg = (
@@ -44,6 +45,7 @@ async def test_chat_pipeline_parallel_batch():
     max_duration, durations = await measure_concurrent_tasks(
         PIPELINE_CONCURRENCY,
         prefix=f"Parallel perf PID {os.getpid()}",
+        forced_intent="HELP_REQUEST",
     )
     assert max_duration <= PIPELINE_BATCH_BUDGET_SECONDS, (
         f"Maksymalny czas {max_duration:.2f}s przekroczył budżet "

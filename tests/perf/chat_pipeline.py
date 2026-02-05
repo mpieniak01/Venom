@@ -10,7 +10,19 @@ from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 import httpx
 
-API_BASE = os.getenv("VENOM_API_BASE", "http://localhost:8000")
+def _resolve_api_base() -> str:
+    env_base = (
+        os.getenv("VENOM_API_BASE")
+        or os.getenv("API_PROXY_TARGET")
+        or os.getenv("NEXT_PUBLIC_API_BASE")
+        or os.getenv("API_BASE_URL")
+    )
+    if env_base:
+        return env_base
+    return f"http://localhost:{os.getenv('APP_PORT', '8000')}"
+
+
+API_BASE = _resolve_api_base()
 TASKS_ENDPOINT = f"{API_BASE}/api/v1/tasks"
 STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "25"))
 PIPELINE_CONCURRENCY = int(os.getenv("VENOM_PIPELINE_CONCURRENCY", "3"))
@@ -33,8 +45,9 @@ async def submit_task(
         }
         if session_id:
             payload["session_id"] = session_id
-        if forced_intent:
-            payload["forced_intent"] = forced_intent
+        effective_intent = forced_intent or os.getenv("VENOM_FORCE_INTENT")
+        if effective_intent:
+            payload["forced_intent"] = effective_intent
         if forced_tool:
             payload["forced_tool"] = forced_tool
         if forced_provider:
@@ -48,15 +61,25 @@ async def submit_task(
         return str(data["task_id"])
 
 
-async def stream_task(task_id: str) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
+async def stream_task(
+    task_id: str,
+    timeout: float | None = None,
+) -> AsyncGenerator[Tuple[str, Dict[str, Any]], None]:
     """Strumieniuj zdarzenia SSE dla danego zadania."""
     stream_url = f"{TASKS_ENDPOINT}/{task_id}/stream"
-    async with httpx.AsyncClient(timeout=None) as client:
+    overall_timeout = timeout or STREAM_TIMEOUT
+    timeout_cfg = httpx.Timeout(connect=5.0, read=overall_timeout, write=5.0, pool=5.0)
+    start = time.perf_counter()
+    async with httpx.AsyncClient(timeout=timeout_cfg) as client:
         async with client.stream("GET", stream_url) as response:
             response.raise_for_status()
             event_name: str | None = None
             data_buffer: List[str] = []
             async for line in response.aiter_lines():
+                if time.perf_counter() - start > overall_timeout:
+                    raise TimeoutError(
+                        f"SSE przekroczyło timeout {overall_timeout}s (brak task_finished)",
+                    )
                 if line is None:
                     continue
                 stripped = line.strip()
@@ -75,28 +98,39 @@ async def stream_task(task_id: str) -> AsyncGenerator[Tuple[str, Dict[str, Any]]
                     data_buffer.append(stripped.split("data:", 1)[1].strip())
 
 
-async def measure_task_duration(content: str) -> Tuple[float, Dict[str, Any]]:
+async def measure_task_duration(
+    content: str,
+    forced_intent: str | None = None,
+) -> Tuple[float, Dict[str, Any]]:
     """Wyślij zadanie i zwróć czas do `task_finished` wraz z payloadem."""
-    task_id = await submit_task(content)
+    task_id = await submit_task(content, forced_intent=forced_intent)
     start = time.perf_counter()
-    async for event, payload in stream_task(task_id):
-        elapsed = time.perf_counter() - start
-        if event == "task_finished":
-            return elapsed, payload
-        if elapsed > STREAM_TIMEOUT:
-            raise TimeoutError(
-                f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (ostatnie zdarzenie: {event})",
-            )
+    try:
+        async with asyncio.timeout(STREAM_TIMEOUT):
+            async for event, payload in stream_task(task_id):
+                elapsed = time.perf_counter() - start
+                if event == "task_finished":
+                    return elapsed, payload
+    except TimeoutError as exc:
+        raise TimeoutError(
+            f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (brak task_finished)",
+        ) from exc
     raise RuntimeError("Stream zakończył się bez eventu task_finished")
 
 
 async def measure_concurrent_tasks(
     concurrency: int,
     prefix: str = "Parallel perf",
+    forced_intent: str | None = None,
 ) -> Tuple[float, List[float]]:
     """Uruchom wiele zadań równolegle i zwróć max + listę czasów."""
     tasks = [
-        asyncio.create_task(measure_task_duration(f"{prefix} #{idx}"))
+        asyncio.create_task(
+            measure_task_duration(
+                f"{prefix} #{idx}",
+                forced_intent=forced_intent,
+            ),
+        )
         for idx in range(concurrency)
     ]
     results = await asyncio.gather(*tasks)

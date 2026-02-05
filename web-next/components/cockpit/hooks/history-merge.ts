@@ -174,3 +174,17 @@ export function mergeHistoryFallbacks({
 
   return deduped;
 }
+
+export function filterHistoryAfterReset(
+  entries: SessionHistoryEntry[],
+  resetAtIso: string | null,
+): SessionHistoryEntry[] {
+  if (!resetAtIso) return entries;
+  const resetAt = new Date(resetAtIso).getTime();
+  if (!Number.isFinite(resetAt)) return entries;
+  return entries.filter((entry) => {
+    const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : NaN;
+    if (!Number.isFinite(ts)) return false;
+    return ts >= resetAt;
+  });
+}

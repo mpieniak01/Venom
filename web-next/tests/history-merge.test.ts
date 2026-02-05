@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { mergeHistoryFallbacks } from "../components/cockpit/hooks/history-merge";
+import { filterHistoryAfterReset, mergeHistoryFallbacks } from "../components/cockpit/hooks/history-merge";
 import { sessionEntryKey } from "../components/cockpit/cockpit-hooks";
 
 describe("mergeHistoryFallbacks", () => {
@@ -152,5 +152,32 @@ describe("mergeHistoryFallbacks", () => {
 
     const entry = merged.find((item) => item.role === "assistant" && item.request_id === "r4");
     assert.equal(entry?.content, "A4");
+  });
+
+  it("filters out entries older than reset timestamp", () => {
+    const entries = [
+      {
+        role: "user",
+        request_id: "r1",
+        content: "Q1",
+        timestamp: "2026-02-02T10:00:00Z",
+      },
+      {
+        role: "assistant",
+        request_id: "r1",
+        content: "A1",
+        timestamp: "2026-02-02T10:00:05Z",
+      },
+      {
+        role: "user",
+        request_id: "r2",
+        content: "Q2",
+        timestamp: "2026-02-02T10:10:00Z",
+      },
+    ];
+
+    const filtered = filterHistoryAfterReset(entries as any, "2026-02-02T10:05:00Z");
+
+    assert.deepStrictEqual(filtered.map((e) => e.request_id), ["r2"]);
   });
 });

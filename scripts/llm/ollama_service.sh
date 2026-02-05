@@ -61,20 +61,7 @@ stop() {
     return
   fi
 
-  if [ -f "$PID_FILE" ]; then
-    local pid
-    pid="$(cat "$PID_FILE")"
-    if kill -0 "$pid" 2>/dev/null; then
-      echo "Zatrzymuję Ollamę (PID $pid)"
-      kill "$pid" 2>/dev/null || true
-    fi
-    rm -f "$PID_FILE"
-  fi
-
-  # Graceful cleanup zombie processes
-  pkill -f "ollama serve" 2>/dev/null || true
-
-  # Explicitly unload model if Ollama is still running as a service
+  # Explicitly unload model if Ollama is still running (e.g. managed externally)
   if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
       echo "Zwalniam modelem z VRAM (unload)..."
       # Pobierz listę załadowanych modeli i wyślij unload dla każdego (lub próbuj z pustym promptem)
@@ -89,6 +76,19 @@ stop() {
           curl -s -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 || true
       done
   fi
+
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(cat "$PID_FILE")"
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "Zatrzymuję Ollamę (PID $pid)"
+      kill "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+  fi
+
+  # Graceful cleanup zombie processes
+  pkill -f "ollama serve" 2>/dev/null || true
 
   echo "Ollama zatrzymana"
 }

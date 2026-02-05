@@ -245,6 +245,7 @@ class RequestTracer:
                 self._save_task.cancel()
                 await self._save_task
             except asyncio.CancelledError:
+                # Normalne zachowanie podczas zamykania zadania
                 pass
             logger.info("Zapisy śladów zakończone")
 
@@ -265,6 +266,7 @@ class RequestTracer:
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
+                # Przechwytujemy wyjątek wynikający z anulowania zadania
                 pass
             self._watchdog_task = None
             logger.info("RequestTracer watchdog zatrzymany")

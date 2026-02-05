@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.tracer import TraceStatus
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class ResultProcessor:
             session_id=request.session_id,
         )
         self.orch.state_manager.add_log(
-            task_id, f"Zakończono przetwarzanie: {datetime.now().isoformat()}"
+            task_id, f"Zakończono przetwarzanie: {get_utc_now_iso()}"
         )
 
         # 5. Update Runtime Status
@@ -80,7 +80,7 @@ class ResultProcessor:
                 "llm_runtime": {
                     "status": "ready",
                     "error": None,
-                    "last_success_at": datetime.now().isoformat(),
+                    "last_success_at": get_utc_now_iso(),
                 }
             },
         )
@@ -194,7 +194,7 @@ class ResultProcessor:
     ) -> None:
         self.orch.state_manager.add_log(
             task_id,
-            f"Agent {agent_name} przetworzył zadanie - {datetime.now().isoformat()}",
+            f"Agent {agent_name} przetworzył zadanie - {get_utc_now_iso()}",
         )
         if self.orch.request_tracer:
             self.orch.request_tracer.add_step(

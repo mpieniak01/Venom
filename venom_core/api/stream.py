@@ -1,12 +1,12 @@
 """Moduł: stream - WebSocket server i EventBroadcaster dla real-time telemetry."""
 
 import asyncio
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -189,7 +189,7 @@ class EventBroadcaster:
             type=event_type,
             agent=agent,
             message=message,
-            timestamp=datetime.now().isoformat(),
+            timestamp=get_utc_now_iso(),
             data=data,
         )
 

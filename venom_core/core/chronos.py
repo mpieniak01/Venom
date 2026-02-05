@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from venom_core.config import SETTINGS
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -120,7 +121,7 @@ class ChronosEngine:
             ID utworzonego checkpointu
         """
         checkpoint_id = str(uuid.uuid4())[:8]
-        timestamp = datetime.now().isoformat()
+        timestamp = get_utc_now_iso()
 
         logger.info(
             f"Tworzenie checkpointu '{name}' (ID: {checkpoint_id}) na timeline: {timeline}"
@@ -496,7 +497,7 @@ class ChronosEngine:
         try:
             # Zapisz istotne zmienne środowiskowe
             env_config = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": get_utc_now_iso(),
                 "settings": {
                     "WORKSPACE_ROOT": str(self.workspace_root),
                     "MEMORY_ROOT": str(self.memory_root),

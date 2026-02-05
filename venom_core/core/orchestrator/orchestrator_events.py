@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -75,7 +75,7 @@ def set_runtime_error(orch: "Orchestrator", task_id: UUID, envelope: dict) -> No
             "llm_runtime": {
                 "status": "error",
                 "error": envelope,
-                "last_error_at": datetime.now().isoformat(),
+                "last_error_at": get_utc_now_iso(),
             }
         },
     )

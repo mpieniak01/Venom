@@ -1,11 +1,11 @@
 """Moduł: streaming_handler - obsługa streamingu odpowiedzi LLM."""
 
 import time
-from datetime import datetime
 from typing import Callable
 from uuid import UUID
 
 from venom_core.core import metrics as metrics_module
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -107,7 +107,7 @@ class StreamingHandler:
                 task_id,
                 {
                     "first_token": {
-                        "at": datetime.now().isoformat(),
+                        "at": get_utc_now_iso(),
                         "elapsed_ms": elapsed_ms,
                         "preview": preview_trimmed,
                     },

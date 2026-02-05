@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from venom_core.config import SETTINGS
 from venom_core.core.models import TaskRequest, TaskResponse, TaskStatus
+from venom_core.utils.helpers import get_utc_now, get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskResponse:
     """Create task, apply queue limits, and schedule execution."""
     orch._refresh_kernel_if_needed()
-    orch.last_activity = datetime.now()
+    orch.last_activity = get_utc_now()
 
     task = orch.state_manager.create_task(content=request.content)
 
@@ -49,7 +49,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
         )
         orch.request_tracer.set_llm_metadata(task.id, metadata=runtime_context.copy())
 
-    log_message = f"Zadanie uruchomione: {datetime.now().isoformat()}"
+    log_message = f"Zadanie uruchomione: {get_utc_now_iso()}"
     orch.state_manager.add_log(task.id, log_message)
 
     asyncio.create_task(

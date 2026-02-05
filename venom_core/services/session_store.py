@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
 
 from venom_core.config import SETTINGS
 from venom_core.utils.boot_id import BOOT_ID
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -70,7 +70,7 @@ class SessionStore:
             if self._max_entries and len(history) > self._max_entries:
                 history = history[-self._max_entries :]
             session["history"] = history
-            session["updated_at"] = datetime.now().isoformat()
+            session["updated_at"] = get_utc_now_iso()
             self._sessions[session_id] = session
             self._save()
 
@@ -95,7 +95,7 @@ class SessionStore:
         with self._lock:
             session = self._sessions.setdefault(session_id, {})
             session["summary"] = summary
-            session["updated_at"] = datetime.now().isoformat()
+            session["updated_at"] = get_utc_now_iso()
             self._sessions[session_id] = session
             self._save()
 

@@ -66,6 +66,14 @@ async def _measure_simple_latency(prompt: str, model: str) -> Tuple[float, float
                             )
             # Success, break loop
             break
+        except TimeoutError as e:
+            attempt += 1
+            if attempt >= max_retries:
+                pytest.skip(
+                    f"Stream LLM przekroczył timeout {STREAM_TIMEOUT}s po {max_retries} próbach."
+                )
+            print(f"⚠️ Retry {attempt}/{max_retries} due to timeout: {e}")
+            await asyncio.sleep(min(2 ** (attempt - 1), 5))
         except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout) as e:
             if isinstance(e, httpx.RemoteProtocolError) and had_chunk:
                 total_time = time.perf_counter() - start

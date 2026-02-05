@@ -133,6 +133,19 @@ export function ConversationBubble({
     return modeLabel;
   })();
   const footerClickable = !disabled && !pending && !isUser;
+  const timeLabel = (() => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("pl-PL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: "UTC",
+    }).format(date);
+  })();
+
   return (
     <div
       data-testid={isUser ? "conversation-bubble-user" : "conversation-bubble-assistant"}
@@ -143,7 +156,7 @@ export function ConversationBubble({
     >
       <div className="flex items-center justify-between text-caption">
         <span>{isUser ? t("cockpit.chatLabels.user") : "Venom"}</span>
-        <span>{new Date(timestamp).toLocaleTimeString()}</span>
+        <span>{timeLabel}</span>
       </div>
       <div className="mt-3 text-[15px] leading-relaxed text-white">
         {showComputationLabel && (

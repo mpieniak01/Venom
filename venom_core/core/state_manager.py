@@ -173,6 +173,7 @@ class StateManager:
             logger.info("Oczekiwanie na zakończenie zapisu stanu...")
             # Wymuś zapis jeśli był requested
             if self._save_requested:
+                self._save_requested = False
                 await self._save()
 
             try:

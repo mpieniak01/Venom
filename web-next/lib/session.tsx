@@ -22,7 +22,13 @@ const getBuildId = () => {
   return nextData?.buildId ?? "unknown";
 };
 
-const createSessionId = () => `session-${Date.now()}`;
+const createSessionId = () => {
+  const rand =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `session-${Date.now()}-${rand}`;
+};
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionIdState] = useState<string>("");

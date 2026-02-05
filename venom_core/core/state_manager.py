@@ -3,7 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from venom_core.config import SETTINGS
@@ -37,7 +37,6 @@ class StateManager:
         )
         self._state_file_path = Path(resolved_path)
         self._save_lock = asyncio.Lock()
-        self._pending_saves: Set[asyncio.Task] = set()
         self._save_task: Optional[asyncio.Task] = None
         self._save_requested: bool = False
 
@@ -132,9 +131,12 @@ class StateManager:
                     "autonomy_level": self.autonomy_level,
                 }
 
-                # Zapisz do pliku
-                with open(self._state_file_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+                def _write_state() -> None:
+                    with open(self._state_file_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+                # Zapisz do pliku poza pętlą event loop
+                await asyncio.to_thread(_write_state)
 
                 logger.debug(f"Stan zapisany do {self._state_file_path}")
             except Exception as e:
@@ -182,6 +184,8 @@ class StateManager:
                 await self._save_task
             except asyncio.CancelledError:
                 logger.info("Zadanie zapisu stanu zostało anulowane podczas zamykania")
+            finally:
+                self._save_task = None
             logger.info("Zapisy stanu zakończone")
 
     def create_task(self, content: str) -> VenomTask:

@@ -27,4 +27,16 @@ async def test_fast_path_execution():
     # but here we can only check latency or result content).
     # Since we can't easily check backend logs from client test without file access,
     # we rely on the fact that result is correct.
-    assert "Coder" in finished["result"] or "Venom" in finished["result"]
+    result_text = finished["result"].lower()
+    help_markers = (
+        "pomoc",
+        "pomog",
+        "umiejetn",
+        "umiejętn",
+        "mozliw",
+        "możliw",
+        "potraf",
+        "mogę",
+        "moge",
+    )
+    assert any(marker in result_text for marker in help_markers)

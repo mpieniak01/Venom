@@ -242,11 +242,12 @@ class RequestTracer:
                 await self._save_traces_async()
 
             try:
-                self._save_task.cancel()
                 await self._save_task
             except asyncio.CancelledError:
                 # Normalne zachowanie podczas zamykania zadania
                 pass
+            finally:
+                self._save_task = None
             logger.info("Zapisy śladów zakończone")
 
     def _save_traces(self) -> None:

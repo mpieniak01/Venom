@@ -3,10 +3,12 @@
 > [!IMPORTANT]
 > **Implementation Status:** The development of the "Dream Engine" concept has been officially postponed to **Venom 2.0**.
 > In the current version (v1.0), this system is disabled by default (`ENABLE_DREAMING=False`), and this documentation serves as a reference for future work.
+>
+> **Planned Feature:** All sections below describe intended behavior and planned APIs for Venom 2.0. Examples are illustrative and not currently executable in v1.0.
 
 ## Introduction
 
-**THE DREAMER** (Synthetic Experience Replay & Imagination Engine) is a revolutionary "active dreaming" system in Venom. During idle time or night hours, Venom uses the knowledge acquired by the Oracle to generate hypothetical programming scenarios, solves them in an isolated environment, and, upon success, automatically adds these experiences to its training set.
+**THE DREAMER** (Synthetic Experience Replay & Imagination Engine) will be an "active dreaming" system in Venom. During idle time or night hours, Venom will use the knowledge acquired by the Oracle to generate hypothetical programming scenarios, solve them in an isolated environment, and, upon success, automatically add these experiences to its training set.
 
 ## Architecture
 

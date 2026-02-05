@@ -39,6 +39,7 @@ import {
 } from "@/hooks/use-api";
 
 import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
+import { mergeHistoryFallbacks } from "@/components/cockpit/hooks/history-merge";
 
 import { useCockpitData } from "./use-cockpit-data";
 import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
@@ -335,37 +336,14 @@ export function useCockpitLogic({
     const { language } = useLanguage();
 
     const historyMessages = useMemo(() => {
-        const resolvedHistory =
-            localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
-        let deduped: SessionHistoryEntry[] = [];
-
-        if (resolvedHistory.length > 0) {
-            const seenMap = new Map<string, SessionHistoryEntry>();
-            resolvedHistory.forEach((entry) => {
-                const key = sessionEntryKey(entry);
-                const existing = seenMap.get(key);
-                if (!existing) {
-                    seenMap.set(key, entry);
-                    return;
-                }
-
-                const existingTimestamp = existing.timestamp ?? entry.timestamp;
-                const existingContentLength = existing.content?.length ?? 0;
-                const nextContentLength = entry.content?.length ?? 0;
-                const shouldUpdateContent = nextContentLength > existingContentLength;
-
-                if (shouldUpdateContent) {
-                    seenMap.set(key, {
-                        ...existing,
-                        ...entry,
-                        timestamp: existingTimestamp,
-                    });
-                } else if (!existing.timestamp && entry.timestamp) {
-                    seenMap.set(key, { ...existing, timestamp: entry.timestamp });
-                }
-            });
-            deduped = Array.from(seenMap.values());
-        }
+        let deduped = mergeHistoryFallbacks({
+            sessionHistory,
+            localSessionHistory,
+            historyRequests: data.history,
+            tasks: data.tasks,
+            sessionId,
+            sessionEntryKey,
+        });
 
         // Merge streams
         Object.entries(taskStreams).forEach(([taskId, stream]) => {
@@ -428,7 +406,7 @@ export function useCockpitLogic({
             };
         });
 
-    }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey]);
+    }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey, data.history, data.tasks, sessionId]);
 
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed

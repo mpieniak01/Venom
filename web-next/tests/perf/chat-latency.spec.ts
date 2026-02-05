@@ -31,7 +31,35 @@ const targets: TargetConfig[] = [
   },
 ];
 
+const defaultApiBase =
+  process.env.PERF_API_BASE ??
+  process.env.VENOM_API_BASE ??
+  "http://127.0.0.1:8000";
+
+async function isBackendHealthy() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${defaultApiBase}/healthz`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function measureLatency(page: Page, target: TargetConfig) {
+  const backendOk = await isBackendHealthy();
+  if (!backendOk) {
+    test.skip(
+      true,
+      `Backend niedostępny pod ${defaultApiBase} (healthz). Pomijam test UI.`,
+    );
+    return;
+  }
   await page.goto(target.url);
   const promptLocator = page.locator(target.promptSelector);
   try {
@@ -78,21 +106,30 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const start = performance.now();
   let latency: number | null = null;
 
-  const expectedCount = initialResponses + 1;
+  const timeoutMs = target.responseTimeoutMs ?? 30_000;
   try {
-    await expect
-      .poll(async () => responseLocator.count(), {
-        timeout: target.responseTimeoutMs ?? 30_000,
-        message: `${target.name}: brak nowej odpowiedzi w strumieniu`,
-      })
-      .toBeGreaterThanOrEqual(expectedCount);
-
-    latency = performance.now() - start;
+    const deadline = Date.now() + timeoutMs;
+    let baseline = initialResponses;
+    while (Date.now() < deadline) {
+      const count = await responseLocator.count();
+      if (count > baseline) {
+        latency = performance.now() - start;
+        break;
+      }
+      if (count < baseline) {
+        // Session reset or history cleared; adjust baseline to current count.
+        baseline = count;
+      }
+      await page.waitForTimeout(200);
+    }
+    if (latency === null) {
+      throw new Error(`${target.name}: brak nowej odpowiedzi w strumieniu`);
+    }
   } catch (error) {
     if (target.optional) {
       test.skip(
         true,
-        `${target.name} pominięty: brak odpowiedzi w ${target.responseTimeoutMs ?? 20_000}ms`,
+        `${target.name} pominięty: brak odpowiedzi w ${timeoutMs}ms`,
       );
       return;
     }

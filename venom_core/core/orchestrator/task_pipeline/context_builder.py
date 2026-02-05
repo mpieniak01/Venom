@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
@@ -12,6 +11,7 @@ from venom_core.core.orchestrator.constants import (
     MAX_HIDDEN_PROMPTS_IN_CONTEXT,
 )
 from venom_core.core.slash_commands import parse_slash_command, resolve_forced_intent
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.text import trim_to_char_limit
@@ -288,7 +288,7 @@ class ContextBuilder:
             task_id, TaskStatus.COMPLETED, result=result_text
         )
         self.orch.state_manager.add_log(
-            task_id, f"Zakończono test wydajności: {datetime.now().isoformat()}"
+            task_id, f"Zakończono test wydajności: {get_utc_now_iso()}"
         )
 
         if self.orch.request_tracer:

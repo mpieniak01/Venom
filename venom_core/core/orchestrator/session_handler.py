@@ -1,6 +1,5 @@
 """Obsługa kontekstu sesji i historii w Orchestrator."""
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 from uuid import UUID
 
@@ -11,6 +10,7 @@ from venom_core.core.models import ContextUsed, TaskRequest
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.services.session_store import SessionStore
 from venom_core.services.translation_service import translation_service
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.llm_runtime import get_active_llm_runtime
 from venom_core.utils.logger import get_logger
 from venom_core.utils.text import trim_to_char_limit
@@ -122,7 +122,7 @@ class SessionHandler:
                 "content": short_content,
                 "session_id": session_id,
                 "request_id": str(task_id),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": get_utc_now_iso(),
             }
             if was_trimmed:
                 entry["original_length"] = len(content)

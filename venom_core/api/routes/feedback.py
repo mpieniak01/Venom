@@ -1,7 +1,6 @@
 """Moduł: routes/feedback - Endpointy API dla feedbacku użytkownika."""
 
 import json
-from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Optional
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from venom_core.core import metrics as metrics_module
 from venom_core.core.models import TaskRequest
+from venom_core.utils.helpers import get_utc_now_iso
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -106,7 +106,7 @@ async def submit_feedback(payload: FeedbackRequest):
 
     entry = {
         "task_id": str(payload.task_id),
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": get_utc_now_iso(),
         "rating": payload.rating,
         "comment": payload.comment,
         "prompt": prompt,
@@ -156,7 +156,7 @@ async def submit_feedback(payload: FeedbackRequest):
         ).hexdigest()
         hidden_prompt_entry = {
             "task_id": str(payload.task_id),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": get_utc_now_iso(),
             "intent": entry.get("intent"),
             "prompt": prompt,
             "approved_response": result,

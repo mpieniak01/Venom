@@ -69,6 +69,7 @@ In chat UI there are three modes. Retention mechanisms and semantic cache implem
 - **Critical path:** UI → LLM → UI (shortest).
 - **Logging:** RequestTracer with `session_id`, prompt and response (SimpleMode).
 - **Use case:** reference for TTFT and typing.
+- **TTFT Optimization**: Uses `keep_alive` parameter for Ollama to prevent model loading delays (~1s warm vs ~7s cold).
 
 ### 2) Normal (standard)
 - **Routing:** orchestrator + intent classification + standard logs.

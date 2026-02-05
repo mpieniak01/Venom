@@ -61,4 +61,7 @@ Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `do
 
 ### Background Processing
 - **ResultProcessor**: Non-critical operations (Vector Store upsert, RL logs) are offloaded to background tasks to unblock UI response.
+### Backend IO / Storage
 - **Debouncing**: `StateManager`, `RequestTracer`, and `SessionStore` use write-debouncing to minimize disk I/O.
+- **Ollama Optimization**: Added `LLM_KEEP_ALIVE` setting to prevent model unloading, significantly reducing TTFT in Direct mode.
+- **Clean Shutdown**: `make stop` explicitly unloads models from VRAM using `keep_alive: 0`, ensuring system returns to a clean state.

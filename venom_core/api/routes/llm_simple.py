@@ -113,6 +113,9 @@ async def stream_simple_chat(request: SimpleChatRequest):
         "messages": messages,
         "stream": True,
     }
+    if runtime.provider == "ollama":
+        payload["keep_alive"] = SETTINGS.LLM_KEEP_ALIVE
+
     if request.max_tokens is not None:
         payload["max_tokens"] = request.max_tokens
     if request.temperature is not None:

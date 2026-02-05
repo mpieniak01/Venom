@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     LLM_WARMUP_PROMPT: str = "Ping."
     LLM_WARMUP_TIMEOUT_SECONDS: float = 5.0
     LLM_WARMUP_MAX_TOKENS: int = 8
+    LLM_KEEP_ALIVE: str = "5m"  # Domyślny keep_alive dla Ollama (np. 5m, 1h, -1)
     SIMPLE_MODE_SYSTEM_PROMPT: str = "Odpowiadaj po polsku."
 
     # Konfiguracja Hybrid AI Mode (Local First + Cloud Options)

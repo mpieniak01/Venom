@@ -61,4 +61,7 @@ Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w 
 
 ### Przetwarzanie w Tle (Background Processing)
 - **ResultProcessor**: Niekrytyczne operacje (zapis do Vector Store, logi RL) są przenoszone do zadań w tle (`asyncio.create_task`), aby odblokować UI.
+### Backend IO / Storage
 - **Debouncing**: `StateManager`, `RequestTracer` i `SessionStore` używają mechanizmu debounce dla operacji zapisu na dysk, minimalizując I/O.
+- **Optymalizacja Ollama**: Dodano ustawienie `LLM_KEEP_ALIVE`, aby zapobiec wyładowywaniu modelu, co znacząco skraca TTFT w trybie Direct.
+- **Czyste Zatrzymanie**: Polecenie `make stop` jawnie wyładowuje modele z VRAM za pomocą `keep_alive: 0`, przywracając system do stanu idealnego.

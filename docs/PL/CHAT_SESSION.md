@@ -69,6 +69,7 @@ W UI czatu są trzy tryby. Mechanizmy retencji i semantic cache wdrożone w zada
 - **Ścieżka krytyczna:** UI → LLM → UI (najkrótsza).
 - **Logowanie:** RequestTracer z `session_id`, prompt i response (SimpleMode).
 - **Zastosowanie:** referencja dla TTFT i maszynopisania.
+- **Optymalizacja TTFT**: Wykorzystuje parametr `keep_alive` dla Ollama, aby uniknąć opóźnień ładowania modelu (~1s warm vs ~7s cold).
 
 ### 2) Normal (standard)
 - **Routing:** orkiestrator + klasyfikacja intencji + standardowe logi.

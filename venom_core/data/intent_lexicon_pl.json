@@ -57,7 +57,7 @@
         "kim jesteś"
       ],
       "regex": [
-        ".*(pomoc).*"
+        ".*(pomoc|help|potrafisz|umiesz|mozliwosci|możliwości|umiejetnosci|umiejętności).*"
       ]
     },
     "STATUS_REPORT": {

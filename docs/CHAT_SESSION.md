@@ -62,13 +62,14 @@ This document describes how chat works, what data it collects, where it stores i
 - This prevents wrong redirections (e.g., definition question as HELP_REQUEST) and keeps chat as conversation.
 
 ## Chat Work Modes (manual switch)
-In chat UI there are three modes. This doesn't duplicate architecture – it's strategy control.
+In chat UI there are three modes. Retention mechanisms and semantic cache implemented in tasks 088/090 are fully active in **DIRECT** and **NORMAL** modes. **COMPLEX** mode uses the same data but has its own orchestration strategy.
 
 ### 1) Direct (direct)
 - **Routing:** no orchestrator, no tools, no planning.
 - **Critical path:** UI → LLM → UI (shortest).
 - **Logging:** RequestTracer with `session_id`, prompt and response (SimpleMode).
 - **Use case:** reference for TTFT and typing.
+- **TTFT Optimization**: Uses `keep_alive` parameter for Ollama to prevent model loading delays (~1s warm vs ~7s cold).
 
 ### 2) Normal (standard)
 - **Routing:** orchestrator + intent classification + standard logs.
@@ -100,6 +101,15 @@ Goal: everything besides sending prompt and first chunk should work in backgroun
   - session entries in `state_dump.json`,
   - session memory in vector memory (if tagged with `session_id`).
 - Global vector memory is not cleared automatically.
+
+## Retention Management (Memory Hygiene)
+The system provides dedicated API endpoints for managing the lifecycle of knowledge (Lessons):
+- **Pruning by TTL:** Remove lessons older than N days.
+- **Pruning by Count:** Keep only the last N lessons.
+- **Pruning by Tag:** Remove thematic groups (e.g., after a library refactoring).
+- **Global Wipe:** Full clearing of long-term memory.
+
+These operations are crucial for maintaining context quality over time. The interface for these operations is located in the **Brain -> Hygiene** panel.
 
 ## Token Consequences
 - Summary and vector memory increase prompt length only when enabled.

@@ -39,6 +39,7 @@ import {
 } from "@/hooks/use-api";
 
 import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
+import { filterHistoryAfterReset, mergeHistoryFallbacks } from "@/components/cockpit/hooks/history-merge";
 
 import { useCockpitData } from "./use-cockpit-data";
 import { useCockpitInteractiveState } from "./use-cockpit-interactive-state";
@@ -149,6 +150,63 @@ export function useCockpitLogic({
         refreshHistory: data.refresh.history,
     });
 
+    const pendingResetSessionRef = useRef<string | null>(null);
+    const resetAtRef = useRef<string | null>(null);
+    const resetKey = sessionId ? `venom-session-reset-at:${sessionId}` : null;
+
+    useEffect(() => {
+        if (!resetKey) return;
+        try {
+            const stored = window.sessionStorage.getItem(resetKey);
+            resetAtRef.current = stored || null;
+        } catch {
+            resetAtRef.current = null;
+        }
+    }, [resetKey]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const handleReset = (evt: Event) => {
+            const detail = (evt as CustomEvent<{ sessionId?: string | null }>).detail;
+            pendingResetSessionRef.current = detail?.sessionId ?? null;
+            const resetAt = new Date().toISOString();
+            resetAtRef.current = resetAt;
+            if (detail?.sessionId) {
+                try {
+                    window.sessionStorage.setItem(
+                        `venom-session-reset-at:${detail.sessionId}`,
+                        resetAt,
+                    );
+                } catch {
+                    // ignore storage errors
+                }
+            }
+            setLocalSessionHistory([]);
+            if (interactive?.optimistic?.resetOptimisticState) {
+                interactive.optimistic.resetOptimisticState();
+            }
+            interactive.setters.setSelectedRequestId(null);
+            interactive.setters.setSelectedTask(null);
+            interactive.setters.setHistoryDetail(null);
+            interactive.setters.setHistoryError(null);
+            hydratedRefs.current.clear();
+            try {
+                if (typeof window !== "undefined" && window.sessionStorage) {
+                    const keys = Object.keys(window.sessionStorage);
+                    keys.forEach((key) => {
+                        if (key.startsWith("venom-session-history:")) {
+                            window.sessionStorage.removeItem(key);
+                        }
+                    });
+                }
+            } catch {
+                // ignore storage errors
+            }
+        };
+        window.addEventListener("venom-session-reset", handleReset);
+        return () => window.removeEventListener("venom-session-reset", handleReset);
+    }, [interactive.optimistic, interactive.setters, setLocalSessionHistory]);
+
     // Hidden Prompts
     const [hiddenIntentFilter, setHiddenIntentFilter] = useState("all");
     const [hiddenScoreFilter, setHiddenScoreFilter] = useState(1);
@@ -172,9 +230,14 @@ export function useCockpitLogic({
     });
 
     // Tracking & Streams
+    const historyForTracking = useMemo(() => {
+        if (!data.history) return data.history;
+        if (!sessionId) return [];
+        return data.history.filter((entry) => entry.session_id === sessionId);
+    }, [data.history, sessionId]);
     const trackedRequestIds = useTrackedRequestIds({
         optimisticRequests: interactive.optimistic.optimisticRequests,
-        history: data.history,
+        history: historyForTracking,
         selectedRequestId: interactive.state.selectedRequestId,
     });
 
@@ -224,6 +287,7 @@ export function useCockpitLogic({
     const hydratedRefs = useRef<Set<string>>(new Set());
     useEffect(() => {
         if (!data.history) return;
+        if (!sessionId) return;
 
         // Find tasks that are COMPLETED in history but don't have a corresponding message in session history
         // or the message is empty.
@@ -249,6 +313,13 @@ export function useCockpitLogic({
                 // It is NOT in history, and NOT in stream. Hydrate it.
                 hydratedRefs.current.add(stringKeyId);
                 fetchTaskDetail(stringKeyId).then(taskDetail => {
+                    const detailSession =
+                        typeof (taskDetail as { context_history?: { session?: { session_id?: string } } }).context_history?.session?.session_id === "string"
+                            ? (taskDetail as { context_history?: { session?: { session_id?: string } } }).context_history?.session?.session_id
+                            : null;
+                    if (detailSession && detailSession !== sessionId) {
+                        return;
+                    }
                     if (taskDetail.result) {
                         setLocalSessionHistory(prev => {
                             // Double check existence to avoid dups
@@ -335,28 +406,24 @@ export function useCockpitLogic({
     const { language } = useLanguage();
 
     const historyMessages = useMemo(() => {
-        const resolvedHistory =
-            localSessionHistory.length > 0 ? localSessionHistory : sessionHistory;
-        let deduped: SessionHistoryEntry[] = [];
-
-        if (resolvedHistory.length > 0) {
-            const seenMap = new Map<string, SessionHistoryEntry>();
-            resolvedHistory.forEach((entry) => {
-                const key = sessionEntryKey(entry);
-                const existing = seenMap.get(key);
-                if (!existing) {
-                    seenMap.set(key, entry);
-                } else if (entry.timestamp && existing.timestamp) {
-                    // Dedup logic simplified
-                    if (new Date(entry.timestamp) > new Date(existing.timestamp)) {
-                        seenMap.set(key, entry);
-                    }
-                } else if (entry.timestamp && !existing.timestamp) {
-                    seenMap.set(key, entry);
-                }
-            });
-            deduped = Array.from(seenMap.values());
+        if (pendingResetSessionRef.current) {
+            if (sessionId && pendingResetSessionRef.current === sessionId) {
+                pendingResetSessionRef.current = null;
+            } else {
+                return [];
+            }
         }
+        if (!sessionId) {
+            return [];
+        }
+        let deduped = mergeHistoryFallbacks({
+            sessionHistory,
+            localSessionHistory,
+            historyRequests: data.history,
+            tasks: data.tasks,
+            sessionId,
+            sessionEntryKey,
+        });
 
         // Merge streams
         Object.entries(taskStreams).forEach(([taskId, stream]) => {
@@ -399,6 +466,7 @@ export function useCockpitLogic({
             }
         });
 
+        deduped = filterHistoryAfterReset(deduped, resetAtRef.current);
         const ordered = orderHistoryEntriesByRequestId(deduped);
 
         return ordered.map((entry, index) => {
@@ -419,7 +487,7 @@ export function useCockpitLogic({
             };
         });
 
-    }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey]);
+    }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey, data.history, data.tasks, sessionId]);
 
     const chatUi = useCockpitChatUi({
         chatMessages: historyMessages, // Use computed

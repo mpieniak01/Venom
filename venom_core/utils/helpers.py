@@ -10,6 +10,7 @@ Wszystkie funkcje posiadają:
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -401,3 +402,14 @@ def get_file_size(file_path: Union[str, Path]) -> Optional[int]:
     except Exception as e:
         logger.error(f"Błąd podczas pobierania rozmiaru pliku {file_path}: {e}")
         return None
+
+
+def get_utc_now() -> datetime:
+    """Returns current UTC time with timezone awareness."""
+    return datetime.now(timezone.utc)
+
+
+def get_utc_now_iso() -> str:
+    """Returns current UTC time in ISO 8601 format with 'Z' suffix."""
+    # replace +00:00 with Z for ISO 8601 compatibility
+    return get_utc_now().isoformat().replace("+00:00", "Z")

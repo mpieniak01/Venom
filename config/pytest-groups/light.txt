@@ -1,7 +1,4 @@
-tests/test_watcher.py
 tests/test_session_summary_llm.py
-tests/test_hardware_bridge.py
-tests/test_core_nervous_system.py
 tests/test_ghost_agent.py
 tests/test_orchestrator_intent.py
 tests/test_dream_engine.py
@@ -182,3 +179,9 @@ tests/test_service_monitor_streaming.py
 tests/test_base_skill.py
 tests/test_model_discovery.py
 tests/test_new_chat_session_api.py
+tests/test_config_paths.py
+tests/test_dispatcher_audit_fixes.py
+tests/test_history_order_api.py
+tests/test_lesson_management_api.py
+tests/verify_acceptance_criteria.py
+tests/integration/verify_backend.py

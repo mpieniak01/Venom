@@ -109,6 +109,8 @@ POST /api/v1/system/autonomy
 GET /api/v1/system/autonomy/levels
 ```
 
+> **Ostrzeżenie dotyczące bezpieczeństwa:** Endpointy kontroli autonomii powinny być chronione autentykacją i ograniczone do localhost lub zaufanych sieci. Nieograniczony dostęp pozwala dowolnemu wywołującemu na podniesienie poziomu autonomii do ROOT, co omija wszystkie kontrole uprawnień dotyczące dostępu do sieci, zapisu plików i wykonywania komend shell.
+
 ### Frontend
 
 #### 1. Selektor Autonomii

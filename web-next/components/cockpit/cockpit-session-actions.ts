@@ -23,27 +23,40 @@ export function useCockpitSessionActions({
 }: CockpitSessionActionsParams) {
   const handleSessionReset = useCallback(() => {
     const newSession = resetSession();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("venom-session-reset", {
+          detail: { sessionId: newSession },
+        }),
+      );
+    }
     setMessage(`Nowa sesja chat: ${newSession}`);
   }, [resetSession, setMessage]);
 
   const handleServerSessionReset = useCallback(async () => {
-    if (!sessionId) {
-      const newSession = resetSession();
-      setMessage(`Nowa sesja chat: ${newSession}`);
-      return;
+    const previousSession = sessionId;
+    const newSession = resetSession();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("venom-session-reset", {
+          detail: { sessionId: newSession },
+        }),
+      );
     }
+    setMessage(`Nowa sesja chat: ${newSession}`);
+    if (!previousSession) return;
     setMemoryAction("session");
     try {
-      await clearSessionMemory(sessionId);
+      await clearSessionMemory(previousSession);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Nie udało się zresetować sesji serwera";
-      setMessage(msg);
-      return;
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Nie udało się zresetować sesji serwera";
+      pushToast(msg, "warning");
     } finally {
       setMemoryAction(null);
     }
-    const newSession = resetSession();
-    setMessage(`Nowa sesja chat: ${newSession}`);
   }, [clearSessionMemory, resetSession, sessionId, setMemoryAction, setMessage]);
 
   const handleClearSessionMemory = useCallback(async () => {

@@ -101,6 +101,9 @@ class RequestTracer:
             self._trace_file_path.parent.mkdir(parents=True, exist_ok=True)
             self._load_traces()
 
+        self._save_task: Optional[asyncio.Task] = None
+        self._save_requested: bool = False
+
     def _load_traces(self) -> None:
         """Ładuje ślady z pliku JSON."""
         if not self._trace_file_path or not self._trace_file_path.exists():
@@ -172,8 +175,8 @@ class RequestTracer:
         except Exception as e:
             logger.error(f"Błąd podczas ładowania śladów: {e}")
 
-    def _save_traces(self) -> None:
-        """Zapisuje ślady do pliku JSON."""
+    async def _save_traces_async(self) -> None:
+        """Zapisuje ślady do pliku JSON (asynchronicznie)."""
         if not self._trace_file_path:
             return
 
@@ -182,16 +185,74 @@ class RequestTracer:
             with self._traces_lock:
                 traces_list = [t.model_dump(mode="json") for t in self._traces.values()]
 
-            # Zapisz do pliku tymczasowego
-            temp_path = self._trace_file_path.with_suffix(".tmp")
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(traces_list, f, ensure_ascii=False, indent=2)
-
-            # Atomowa zamiana
-            temp_path.replace(self._trace_file_path)
+            # Zapisz do pliku tymczasowego (w executorze aby nie blokować pętli)
+            # Używamy run_in_executor dla operacji plikowych
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, self._write_file, traces_list, self._trace_file_path
+            )
 
         except Exception as e:
             logger.error(f"Błąd podczas zapisywania śladów: {e}")
+
+    def _write_file(self, data: list, path: Path):
+        """Synchroniczny zapis pliku (do uruchomienia w executorze)."""
+        temp_path = path.with_suffix(".tmp")
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        temp_path.replace(path)
+
+    def _schedule_save(self) -> None:
+        """Planuje zapis śladów z mechanizmem debouncingu."""
+        self._save_requested = True
+
+        try:
+            # Sprawdź czy pętla zapisu już działa
+            if self._save_task and not self._save_task.done():
+                return
+
+            # Spróbuj uzyskać aktywny event loop
+            try:
+                asyncio.get_running_loop()
+                self._save_task = asyncio.create_task(self._process_save_queue())
+            except RuntimeError:
+                # Fallback dla braku loopa (np. testy synchroniczne) - wykonaj sync
+                # self._save_traces_sync() # Opcjonalnie, ale może blokować
+                pass
+        except Exception as e:
+            logger.error(f"Błąd podczas planowania zapisu trace: {e}")
+
+    async def _process_save_queue(self) -> None:
+        """Pętla przetwarzająca żądania zapisu."""
+        await asyncio.sleep(1.0)  # Debounce 1s (dłuższy dla tracerów)
+
+        while True:
+            self._save_requested = False
+            await self._save_traces_async()
+            if not self._save_requested:
+                break
+
+    async def shutdown(self) -> None:
+        """Czeka na zakończenie pętli zapisu."""
+        if self._save_task and not self._save_task.done():
+            logger.info("Oczekiwanie na zakończenie zapisu śladów...")
+            # Wymuś zapis, jeśli był żądany, i wyczyść flagę, aby uniknąć podwójnego zapisu
+            if self._save_requested:
+                self._save_requested = False
+                await self._save_traces_async()
+
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                # Normalne zachowanie podczas zamykania zadania
+                pass
+            finally:
+                self._save_task = None
+            logger.info("Zapisy śladów zakończone")
+
+    def _save_traces(self) -> None:
+        """Kompatybilność wsteczna - przekierowuje do schedule."""
+        self._schedule_save()
 
     async def start_watchdog(self):
         """Uruchamia watchdog do monitorowania zagubionych zadań."""
@@ -206,6 +267,7 @@ class RequestTracer:
             try:
                 await self._watchdog_task
             except asyncio.CancelledError:
+                # Przechwytujemy wyjątek wynikający z anulowania zadania
                 pass
             self._watchdog_task = None
             logger.info("RequestTracer watchdog zatrzymany")
@@ -491,8 +553,8 @@ class RequestTracer:
         if status_filter:
             traces = [t for t in traces if t.status == status_filter]
 
-        # Sortuj od najnowszych
-        traces.sort(key=lambda t: t.created_at, reverse=True)
+        # Sortuj rosnąco (najstarsze -> najnowsze)
+        traces.sort(key=lambda t: t.created_at)
 
         # Zastosuj paginację
         return traces[offset : offset + limit]

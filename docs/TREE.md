@@ -49,6 +49,7 @@
 └── venom_core/                  # Python package – Venom organism
     ├── __init__.py
     ├── main.py                  # FastAPI, /healthz, / (UI), layer binding
+    ├── config.py                # Settings (Pydantic): paths, models, ENV
     ├── core/                    # [LAYER 1: META] – BRAIN
     │   ├── __init__.py
     │   ├── orchestrator.py      # task lifecycle (Orchestrator pipeline)

@@ -21,6 +21,17 @@ type HistoryListProps = {
   viewAllHref?: string;
 };
 
+export function selectHistoryWindow(
+  entries: HistoryRequest[] | null | undefined,
+  limit?: number,
+) {
+  const source = entries || [];
+  if (limit && limit > 0) {
+    return source.slice(-limit);
+  }
+  return source;
+}
+
 export function HistoryList({
   entries,
   limit,
@@ -36,11 +47,7 @@ export function HistoryList({
     setMounted(true);
   }, []);
   const prepared = useMemo(() => {
-    const source = entries || [];
-    if (limit && limit > 0) {
-      return source.slice(0, limit);
-    }
-    return source;
+    return selectHistoryWindow(entries, limit);
   }, [entries, limit]);
 
   const remaining =

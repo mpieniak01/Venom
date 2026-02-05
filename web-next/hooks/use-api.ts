@@ -276,12 +276,26 @@ export function useTasks(intervalMs = 5000) {
   );
 }
 
+export function sortHistoryByCreatedAtAsc(history: HistoryRequest[]): HistoryRequest[] {
+  return [...history].sort((a, b) => {
+    const aTime = new Date(a.created_at ?? 0).getTime();
+    const bTime = new Date(b.created_at ?? 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return (a.request_id || "").localeCompare(b.request_id || "");
+  });
+}
+
 export function useHistory(limit = 50, intervalMs = 10000) {
-  return usePolling<HistoryRequest[]>(
+  const snapshot = usePolling<HistoryRequest[]>(
     `history-${limit}`,
     () => apiFetch(`/api/v1/history/requests?limit=${limit}`),
     intervalMs,
   );
+  const ordered = useMemo(() => {
+    if (!snapshot.data) return snapshot.data;
+    return sortHistoryByCreatedAtAsc(snapshot.data);
+  }, [snapshot.data]);
+  return { ...snapshot, data: ordered };
 }
 
 export async function fetchHistoryDetail(requestId: string) {

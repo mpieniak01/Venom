@@ -53,3 +53,15 @@ Endpoint paths remain unchanged. Refactor concerns only code structure.
 
 ## Chat routing (consistency note)
 Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `docs/CHAT_SESSION.md`.
+
+## Performance Optimizations (v2026-02)
+### Fast Path (Template Response)
+- **Logic**: Static intents (`HELP_REQUEST`, `TIME_REQUEST`, `INFRA_STATUS`) bypass heavy context building (memory/history) for sub-100ms latency.
+- **Route**: `Orchestrator._run_task_fastpath`.
+
+### Background Processing
+- **ResultProcessor**: Non-critical operations (Vector Store upsert, RL logs) are offloaded to background tasks to unblock UI response.
+### Backend IO / Storage
+- **Debouncing**: `StateManager`, `RequestTracer`, and `SessionStore` use write-debouncing to minimize disk I/O.
+- **Ollama Optimization**: Added `LLM_KEEP_ALIVE` setting to prevent model unloading, significantly reducing TTFT in Direct mode.
+- **Clean Shutdown**: `make stop` explicitly unloads models from VRAM using `keep_alive: 0`, ensuring system returns to a clean state.

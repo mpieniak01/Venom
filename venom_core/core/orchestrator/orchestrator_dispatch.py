@@ -21,6 +21,7 @@ from .constants import (
     HISTORY_SUMMARY_TRIGGER_MSGS,
     LEARNING_LOG_PATH,
     MAX_LEARNING_SNIPPET,
+    STATIC_INTENTS,
     SUMMARY_STRATEGY_DEFAULT,
 )
 
@@ -71,38 +72,25 @@ async def run_task(
 
         # --- 1. Request Preprocessing ---
         await orch.context_builder.preprocess_request(task_id, request)
-        context = request.content  # Update context after slash commands
+        request_content = request.content  # Update context after slash commands
 
-        # --- 2. Build Context ---
-        if orch._is_perf_test_prompt(context):
+        # --- 1.5. Perf Test Shortcut (Early) ---
+        if orch._is_perf_test_prompt(request_content):
             await orch._complete_perf_test_task(task_id)
             logger.info("Zadanie %s zakończone w trybie perf-test", task_id)
             return
 
-        context = await orch.context_builder.build_context(task_id, request, fast_path)
-
-        # Capture generation params log
-        if request.generation_params:
-            orch.state_manager.update_context(
-                task_id, {"generation_params": request.generation_params}
-            )
-            logger.info(
-                "Zapisano parametry generacji dla zadania %s: %s",
-                task_id,
-                request.generation_params,
-            )
-
-        # --- 3. Intent & Validation ---
+        # --- 2. Intent Classification (Early) ---
         orch.validator.validate_forced_tool(
             task_id, request.forced_tool, request.forced_intent
         )
 
-        intent_context = request.content if orch._testing_mode else context
         if request.forced_intent:
             intent = request.forced_intent
             intent_debug = {"source": "forced", "intent": request.forced_intent}
         else:
-            intent = await orch.intent_manager.classify_intent(intent_context)
+            # Optimize: Classify on request content instead of full context
+            intent = await orch.intent_manager.classify_intent(request_content)
             intent_debug = getattr(orch.intent_manager, "last_intent_debug", {})
 
         # Intent Debug Logging
@@ -120,6 +108,31 @@ async def run_task(
                     status="ok",
                     details=details,
                 )
+
+        # --- 3. Build Context (Conditional) ---
+        if intent in STATIC_INTENTS:
+            # Fast Path: Skip heavy context building for templates
+            context = request_content
+            logger.info(f"Fast path: Skipping context build for intent {intent}")
+            orch.state_manager.add_log(
+                task_id, "🚀 Fast Path: Pominięto budowanie kontekstu"
+            )
+        else:
+            # Normal Path: Full context with history/memory
+            context = await orch.context_builder.build_context(
+                task_id, request, fast_path
+            )
+
+        # Capture generation params log
+        if request.generation_params:
+            orch.state_manager.update_context(
+                task_id, {"generation_params": request.generation_params}
+            )
+            logger.info(
+                "Zapisano parametry generacji dla zadania %s: %s",
+                task_id,
+                request.generation_params,
+            )
 
         # NON-LLM tracing metadata
         if (

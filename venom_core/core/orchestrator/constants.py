@@ -28,6 +28,9 @@ SUMMARY_STRATEGY_DEFAULT = "llm_with_fallback"  # lub "heuristic_only"
 SEMANTIC_CACHE_THRESHOLD = 0.85
 SEMANTIC_CACHE_COLLECTION_NAME = "hidden_prompts"
 
+# Fast-Path Configuration
+STATIC_INTENTS = {"HELP_REQUEST", "TIME_REQUEST", "INFRA_STATUS"}
+
 # Alias dla kompatybilności z testami i innymi modułami
 MAX_REPAIR_ATTEMPTS = CODE_REVIEW_MAX_REPAIR_ATTEMPTS
 COUNCIL_COLLABORATION_KEYWORDS = COUNCIL_KEYWORDS

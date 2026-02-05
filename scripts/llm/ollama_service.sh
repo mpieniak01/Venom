@@ -61,6 +61,22 @@ stop() {
     return
   fi
 
+  # Explicitly unload model if Ollama is still running (e.g. managed externally)
+  if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+      echo "Zwalniam modelem z VRAM (unload)..."
+      # Pobierz listę załadowanych modeli i wyślij unload dla każdego (lub próbuj z pustym promptem)
+      # Najprostszy sposób to wysłanie pustego promptu z keep_alive: 0 do aktywnego modelu
+      # W tym systemie SETTINGS.LLM_MODEL_NAME jest źródłem prawdy.
+      # Ale skrypt bash nie ma łatwego dostępu do pydantic settings.
+      # Spróbujemy pobić wszystkie załadowane modele przez /api/generate z keep_alive:0
+      local loaded_models
+      loaded_models=$(curl -s http://localhost:11434/api/ps | grep -oP '"name":"\K[^"]+' || true)
+      for m in $loaded_models; do
+          echo "Wyładowuję model: $m"
+          curl -s -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null 2>&1 || true
+      done
+  fi
+
   if [ -f "$PID_FILE" ]; then
     local pid
     pid="$(cat "$PID_FILE")"
@@ -73,6 +89,7 @@ stop() {
 
   # Graceful cleanup zombie processes
   pkill -f "ollama serve" 2>/dev/null || true
+
   echo "Ollama zatrzymana"
 }
 

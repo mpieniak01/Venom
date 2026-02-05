@@ -163,9 +163,11 @@ class StateManager:
         # Krótkie opóźnienie dla grupowania zmian (burst handling)
         await asyncio.sleep(0.2)
 
-        while self._save_requested:
+        while True:
             self._save_requested = False
             await self._save()
+            if not self._save_requested:
+                break
 
     async def shutdown(self) -> None:
         """Czeka na zakończenie pętli zapisu."""
@@ -179,7 +181,7 @@ class StateManager:
             try:
                 await self._save_task
             except asyncio.CancelledError:
-                pass
+                logger.info("Zadanie zapisu stanu zostało anulowane podczas zamykania")
             logger.info("Zapisy stanu zakończone")
 
     def create_task(self, content: str) -> VenomTask:

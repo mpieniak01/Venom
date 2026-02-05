@@ -21,6 +21,7 @@ from .constants import (
     HISTORY_SUMMARY_TRIGGER_MSGS,
     LEARNING_LOG_PATH,
     MAX_LEARNING_SNIPPET,
+    STATIC_INTENTS,
     SUMMARY_STRATEGY_DEFAULT,
 )
 
@@ -109,8 +110,6 @@ async def run_task(
                 )
 
         # --- 3. Build Context (Conditional) ---
-        STATIC_INTENTS = {"HELP_REQUEST", "TIME_REQUEST", "INFRA_STATUS"}
-
         if intent in STATIC_INTENTS:
             # Fast Path: Skip heavy context building for templates
             context = request_content

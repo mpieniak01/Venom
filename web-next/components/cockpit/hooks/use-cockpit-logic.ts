@@ -346,13 +346,22 @@ export function useCockpitLogic({
                 const existing = seenMap.get(key);
                 if (!existing) {
                     seenMap.set(key, entry);
-                } else if (entry.timestamp && existing.timestamp) {
-                    // Dedup logic simplified
-                    if (new Date(entry.timestamp) > new Date(existing.timestamp)) {
-                        seenMap.set(key, entry);
-                    }
-                } else if (entry.timestamp && !existing.timestamp) {
-                    seenMap.set(key, entry);
+                    return;
+                }
+
+                const existingTimestamp = existing.timestamp ?? entry.timestamp;
+                const existingContentLength = existing.content?.length ?? 0;
+                const nextContentLength = entry.content?.length ?? 0;
+                const shouldUpdateContent = nextContentLength > existingContentLength;
+
+                if (shouldUpdateContent) {
+                    seenMap.set(key, {
+                        ...existing,
+                        ...entry,
+                        timestamp: existingTimestamp,
+                    });
+                } else if (!existing.timestamp && entry.timestamp) {
+                    seenMap.set(key, { ...existing, timestamp: entry.timestamp });
                 }
             });
             deduped = Array.from(seenMap.values());

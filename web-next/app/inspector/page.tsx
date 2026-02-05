@@ -385,7 +385,7 @@ export default function InspectorPage() {
     if (historyLoading) return;
     if (!history || history.length === 0) return;
     if (selectedId) return;
-    handleHistorySelect(history[0].request_id);
+    handleHistorySelect(history[history.length - 1].request_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyLoading, history, selectedId]);
 

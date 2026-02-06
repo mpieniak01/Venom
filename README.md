@@ -688,6 +688,7 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 - **Snyk (periodic scan):** dependency and container security scanning is executed periodically to catch newly disclosed CVEs.
 - **CI Lite:** fast checks on every PR (lint + selected unit tests) to keep feedback loop short.
 - **Docker package flow:** `docker-sanity` validates builds on PR; package publishing (`docker-publish`) runs only on `v*` tags or manual trigger.
+- **Docker Minimal network policy:** LAN testing from another machine is supported by default; run only in trusted/private networks.
 
 What this means for contributors and agents:
 - Keep functions small and readable (avoid high cognitive complexity).

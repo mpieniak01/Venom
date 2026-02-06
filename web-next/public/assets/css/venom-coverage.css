@@ -1,0 +1,181 @@
+/* Venom Coverage Theme - Dark Mode */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --venom-bg: #09090b;
+  --venom-surface: #18181b;
+  --venom-border: #27272a;
+  --venom-text: #e4e4e7;
+  --venom-text-dim: #a1a1aa;
+  --venom-primary: #10b981; /* Emerald 500 */
+  --venom-primary-dim: #059669;
+  --venom-danger: #ef4444;
+  --venom-danger-dim: #b91c1c;
+  --venom-accent: #8b5cf6; /* Violet */
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  background-color: var(--venom-bg) !important;
+  color: var(--venom-text) !important;
+  line-height: 1.6;
+}
+
+/* Header Styling */
+header {
+  background: var(--venom-surface) !important;
+  border-bottom: 1px solid var(--venom-border) !important;
+  padding: 1rem 0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+header h1 {
+  font-weight: 600 !important;
+  color: var(--venom-text) !important;
+}
+
+header .pc_cov {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--venom-border);
+  padding: 0.2em 0.5em;
+  border-radius: 6px;
+  color: var(--venom-primary);
+}
+
+/* Navigation Buttons */
+header h2 a.button {
+  background: var(--venom-bg) !important;
+  border: 1px solid var(--venom-border) !important;
+  color: var(--venom-text-dim) !important;
+  border-radius: 6px !important;
+  padding: 0.5em 1em !important;
+  transition: all 0.2s ease;
+}
+
+header h2 a.button:hover {
+  background: var(--venom-border) !important;
+  color: var(--venom-text) !important;
+  text-decoration: none !important;
+}
+
+header h2 a.button.current {
+  background: var(--venom-primary-dim) !important;
+  color: white !important;
+  border-color: var(--venom-primary) !important;
+}
+
+/* Data Tables */
+table.index {
+  margin-top: 2rem;
+  width: 100%;
+}
+
+#index th {
+  background: var(--venom-surface) !important;
+  color: var(--venom-text-dim) !important;
+  border-bottom: 2px solid var(--venom-border) !important;
+  padding: 1em !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+#index td {
+  border-bottom: 1px solid var(--venom-border) !important;
+  padding: 0.75em 1em !important;
+  color: var(--venom-text) !important;
+}
+
+#index tr.region:hover {
+  background: var(--venom-surface) !important;
+}
+
+#index td.name a {
+  color: var(--venom-text) !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  transition: color 0.1s;
+}
+
+#index td.name a:hover {
+  color: var(--venom-primary) !important;
+  text-decoration: none !important;
+}
+
+/* Coverage Bars/Colors */
+.pc_cov {
+    color: var(--venom-primary) !important;
+}
+
+td.right[data-ratio*=" 100%"] { color: var(--venom-primary) !important; }
+td.right[data-ratio^="9"] { color: var(--venom-primary-dim) !important; }
+td.right[data-ratio^="8"] { color: #facc15 !important; } /* Yellow */
+td.right[data-ratio^="7"] { color: #fb923c !important; } /* Orange */
+td.right[data-ratio^="6"],
+td.right[data-ratio^="5"],
+td.right[data-ratio^="4"],
+td.right[data-ratio^="3"],
+td.right[data-ratio^="2"],
+td.right[data-ratio^="1"],
+td.right[data-ratio^="0"] { color: var(--venom-danger) !important; }
+
+/* Code View */
+#source {
+  background: var(--venom-bg) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+#source p .n {
+  background: var(--venom-surface) !important;
+  color: var(--venom-text-dim) !important;
+  border-right: 1px solid var(--venom-border);
+}
+
+#source p .t {
+  color: var(--venom-text) !important;
+}
+
+#source p.mis .t {
+  background: rgba(239, 68, 68, 0.15) !important;
+  box-shadow: inset 4px 0 0 var(--venom-danger);
+}
+
+#source p.run .t {
+  background: rgba(16, 185, 129, 0.1) !important;
+  box-shadow: inset 4px 0 0 var(--venom-primary);
+}
+
+#source p.par .t {
+  background: rgba(234, 179, 8, 0.1) !important;
+  box-shadow: inset 4px 0 0 #eab308;
+}
+
+/* Syntax Highlighting overrides */
+.str, .fst { color: #a5b4fc !important; } /* Light Indigo */
+.k, .kn, .kp, .kr, .kt { color: #f472b6 !important; } /* Pink */
+.c1, .md, .c { color: #71717a !important; font-style: italic; } /* Zinc 500 */
+.nf, .fm { color: #60a5fa !important; } /* Blue */
+
+/* Filter & Controls */
+#filter_container #filter {
+  background: var(--venom-surface) !important;
+  border: 1px solid var(--venom-border) !important;
+  color: var(--venom-text) !important;
+  border-radius: 6px;
+  padding: 0.5em 1em;
+}
+
+/* Scroll Marker */
+#scroll_marker {
+    background: var(--venom-surface) !important;
+    border-left: 1px solid var(--venom-border) !important;
+}
+#scroll_marker .marker {
+    background: var(--venom-text-dim) !important;
+}
+
+/* Footer */
+footer {
+    display: none; /* Hide default footer */
+}

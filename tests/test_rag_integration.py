@@ -89,7 +89,8 @@ class TestRAGWorkflow:
     def test_memorize_long_text(self, memory_skill):
         """Test zapamiętywania długiego tekstu (z automatycznym chunkingiem)."""
         # Utwórz długi tekst dokumentacji
-        long_text = """
+        long_text = (
+            """
         Venom to zaawansowany system agentów AI.
 
         Architektura składa się z kilku warstw:
@@ -105,7 +106,9 @@ class TestRAGWorkflow:
         - LibrarianAgent: zarządzanie plikami
 
         System używa Semantic Kernel od Microsoft jako framework orkiestracji.
-        """ * 5  # Powielamy aby tekst był długi
+        """
+            * 5
+        )  # Powielamy aby tekst był długi
 
         result = memory_skill.memorize(long_text, category="documentation")
 

@@ -51,9 +51,9 @@ async def test_service_status_broadcast():
         await asyncio.sleep(0.5)
 
         # Verify broadcast_event was called
-        assert (
-            mock_broadcaster.broadcast_event.called
-        ), "broadcast_event should have been called"
+        assert mock_broadcaster.broadcast_event.called, (
+            "broadcast_event should have been called"
+        )
 
         # Check call arguments
         found = False
@@ -65,6 +65,6 @@ async def test_service_status_broadcast():
                     found = True
                     break
 
-        assert (
-            found
-        ), f"SERVICE_STATUS_UPDATE event for 'test_api' was not broadcasted. Calls: {mock_broadcaster.broadcast_event.call_args_list}"
+        assert found, (
+            f"SERVICE_STATUS_UPDATE event for 'test_api' was not broadcasted. Calls: {mock_broadcaster.broadcast_event.call_args_list}"
+        )

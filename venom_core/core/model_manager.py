@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import httpx
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from venom_core.utils.logger import get_logger
 
@@ -963,13 +963,14 @@ PARAMETER top_k 40
 
                 if vram_used_values:
                     max_index = vram_used_values.index(max(vram_used_values))
-                    metrics["vram_usage_mb"] = round(vram_used_values[max_index], 2)
+                    vram_usage_mb = round(float(vram_used_values[max_index]), 2)
+                    metrics["vram_usage_mb"] = vram_usage_mb
                     if max_index < len(vram_total_values):
                         total_mb = vram_total_values[max_index]
                         metrics["vram_total_mb"] = round(total_mb, 2)
                         if total_mb > 0:
                             metrics["vram_usage_percent"] = round(
-                                (metrics["vram_usage_mb"] / total_mb) * 100, 2
+                                (vram_usage_mb / total_mb) * 100, 2
                             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             # nvidia-smi nie jest dostępne lub wystąpił błąd - ignorujemy

@@ -118,13 +118,15 @@ async def test_analyze_test_failure(guardian_agent):
     """Test analizy błędu testu."""
     # Mockuj odpowiedź LLM
     mock_response = MagicMock()
-    mock_response.__str__ = lambda _: """
+    mock_response.__str__ = (
+        lambda _: """
 FILE: test.py
 LINE: 10
 ERROR: Test failed
 CAUSE: Wrong logic
 ACTION: Fix the code
 """
+    )
 
     guardian_agent.chat_service.get_chat_message_content = AsyncMock(
         return_value=mock_response

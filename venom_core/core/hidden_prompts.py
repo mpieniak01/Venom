@@ -190,7 +190,7 @@ def aggregate_hidden_prompts(
 
     items = [item for item in aggregated.values() if item["score"] >= min_score]
     items.sort(
-        key=lambda item: (item.get("score", 0), item.get("last_timestamp") or ""),
+        key=lambda item: (item.get("last_timestamp") or "", item.get("score", 0)),
         reverse=True,
     )
     return items[:limit]

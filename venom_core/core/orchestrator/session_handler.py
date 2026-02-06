@@ -19,6 +19,7 @@ from .constants import (
     DEFAULT_USER_ID,
     HISTORY_SUMMARY_TRIGGER_CHARS,
     HISTORY_SUMMARY_TRIGGER_MSGS,
+    SESSION_FULL_HISTORY_LIMIT,
     SESSION_HISTORY_LIMIT,
     SUMMARY_MAX_CHARS,
     SUMMARY_MODEL_MAX_TOKENS,
@@ -131,15 +132,16 @@ class SessionHandler:
             full_history.append(entry)
 
             trimmed = history[-SESSION_HISTORY_LIMIT:]
+            trimmed_full = full_history[-SESSION_FULL_HISTORY_LIMIT:]
             task.context_history["session_history"] = trimmed
-            task.context_history["session_history_full"] = full_history
+            task.context_history["session_history_full"] = trimmed_full
             if session_id and self.session_store:
                 self.session_store.append_message(session_id, entry)
             self.state_manager.update_context(
                 task_id,
                 {
                     "session_history": trimmed,
-                    "session_history_full": full_history,
+                    "session_history_full": trimmed_full,
                 },
             )
         except Exception as exc:  # pragma: no cover

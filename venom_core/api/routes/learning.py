@@ -83,7 +83,7 @@ async def get_learning_logs(
     except Exception:
         return {"count": 0, "items": []}
 
-    return {"count": len(items), "items": list(reversed(items))}
+    return {"count": len(items), "items": items}
 
 
 @router.get("/hidden-prompts")

@@ -640,6 +640,7 @@ make run
 - [External Integrations](docs/EXTERNAL_INTEGRATIONS.md)
 - [Guardian - Security](docs/GUARDIAN_GUIDE.md)
 - [QA Delivery](docs/QA_DELIVERY_GUIDE.md)
+- [Docker Minimal Packaging (sanity + publish)](docs/DEPLOYMENT_NEXT.md)
 
 ### Collaboration
 - [Contribution Guide](docs/CONTRIBUTING.md)
@@ -686,6 +687,7 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 - **SonarCloud (PR gate):** every pull request is analyzed for bugs, vulnerabilities, code smells, duplications and maintainability issues.
 - **Snyk (periodic scan):** dependency and container security scanning is executed periodically to catch newly disclosed CVEs.
 - **CI Lite:** fast checks on every PR (lint + selected unit tests) to keep feedback loop short.
+- **Docker package flow:** `docker-sanity` validates builds on PR; package publishing (`docker-publish`) runs only on `v*` tags or manual trigger.
 
 What this means for contributors and agents:
 - Keep functions small and readable (avoid high cognitive complexity).

@@ -10,6 +10,7 @@ __pycache__
 *.pyd
 .env
 .env.*
+!.env.example
 node_modules
 web-next/node_modules
 models

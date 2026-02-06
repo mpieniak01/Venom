@@ -1,3 +1,5 @@
+# CI lite = tylko szybkie testy unit/logiki, bez integracji/e2e.
+# Pełny pakiet testów uruchamiany lokalnie.
 tests/test_session_store.py
 tests/test_models_utils_security.py
 tests/test_helpers.py

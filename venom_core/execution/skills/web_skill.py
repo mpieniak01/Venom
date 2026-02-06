@@ -4,13 +4,31 @@ from importlib import import_module
 from typing import Annotated, Any, Optional
 
 import httpx
-import trafilatura
-from bs4 import BeautifulSoup
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
 from venom_core.utils.helpers import extract_secret_value
 from venom_core.utils.logger import get_logger
+
+_trafilatura: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    import trafilatura as _trafilatura_module
+
+    _trafilatura = _trafilatura_module
+except Exception:  # pragma: no cover
+    pass
+
+trafilatura: Any = _trafilatura
+
+_beautiful_soup_cls: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    from bs4 import BeautifulSoup as _BeautifulSoupClass
+
+    _beautiful_soup_cls = _BeautifulSoupClass
+except Exception:  # pragma: no cover
+    pass
+
+BeautifulSoup: Any = _beautiful_soup_cls
 
 _DDGS: Any = None
 try:  # pragma: no cover - zależne od środowiska
@@ -29,10 +47,11 @@ DDGS: Any = _DDGS
 logger = get_logger(__name__)
 
 # Staramy się opcjonalnie załadować TavilyClient aby testy mogły go mockować
+_ImportedTavilyClient: Any = None
 try:  # pragma: no cover - zależne od środowiska
-    from tavily import TavilyClient as _ImportedTavilyClient  # type: ignore
+    _ImportedTavilyClient = getattr(import_module("tavily"), "TavilyClient", None)
 except Exception:  # pragma: no cover
-    _ImportedTavilyClient = None
+    pass
 
 # Wystaw symbol na poziomie modułu (nawet jeśli None), aby patchowanie było możliwe
 TavilyClient = _ImportedTavilyClient
@@ -214,8 +233,14 @@ class WebSearchSkill:
         logger.info(f"WebScrape: pobieranie tekstu z {url}")
 
         try:
+            if trafilatura is None and BeautifulSoup is None:
+                return (
+                    "❌ Brak bibliotek do scrapowania (trafilatura/beautifulsoup4). "
+                    "Doinstaluj zależności aby użyć scrape_text."
+                )
+
             # Najpierw spróbuj trafilatura (lepsze czyszczenie)
-            downloaded = trafilatura.fetch_url(url)
+            downloaded = trafilatura.fetch_url(url) if trafilatura is not None else None
             if downloaded:
                 text = trafilatura.extract(
                     downloaded,
@@ -240,6 +265,12 @@ class WebSearchSkill:
             logger.warning(
                 f"Trafilatura nie zwróciła wyników dla {url}, próbuję BeautifulSoup"
             )
+
+            if BeautifulSoup is None:
+                return (
+                    "❌ Brak biblioteki beautifulsoup4. "
+                    "Doinstaluj zależności aby użyć fallback scrape_text."
+                )
 
             response = httpx.get(url, timeout=10, follow_redirects=True)
             response.raise_for_status()

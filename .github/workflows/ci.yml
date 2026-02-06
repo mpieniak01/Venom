@@ -9,6 +9,10 @@ jobs:
   backend-lite:
     name: Backend lite (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -25,13 +29,17 @@ jobs:
           pip install -r requirements-ci-lite.txt
 
       - name: Run lightweight backend tests
+        timeout-minutes: 10
         run: |
           make audit-ci-lite
           make test-ci-lite
 
   frontend-lite:
-    name: Frontend lite (lint + unit)
+    name: Frontend lite (lint + few unit tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CI: "true"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -47,7 +55,9 @@ jobs:
         run: npm --prefix web-next ci
 
       - name: Lint
+        timeout-minutes: 5
         run: npm --prefix web-next run lint
 
-      - name: Unit tests
-        run: npm --prefix web-next run test:unit
+      - name: Unit tests (ci-lite)
+        timeout-minutes: 5
+        run: npm --prefix web-next run test:unit:ci-lite

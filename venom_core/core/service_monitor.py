@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger

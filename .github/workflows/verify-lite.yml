@@ -1,0 +1,51 @@
+name: Verify Lite
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend-lite:
+    name: Backend lite (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run lightweight backend tests
+        run: make test-ci-light
+
+  frontend-lite:
+    name: Frontend lite (lint + unit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.19.1"
+          cache: npm
+          cache-dependency-path: web-next/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix web-next ci
+
+      - name: Lint
+        run: npm --prefix web-next run lint
+
+      - name: Unit tests
+        run: npm --prefix web-next run test:unit

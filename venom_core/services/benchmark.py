@@ -11,6 +11,7 @@ Odpowiada za:
 import asyncio
 import json
 import random
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -28,6 +29,9 @@ from venom_core.core.service_monitor import ServiceHealthMonitor
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+_BENCHMARK_ID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+)
 
 
 class BenchmarkStatus(str, Enum):
@@ -240,6 +244,10 @@ class BenchmarkService:
 
     def delete_benchmark(self, benchmark_id: str) -> bool:
         """Usuwa benchmark z pamięci i dysku."""
+        if not _BENCHMARK_ID_PATTERN.match(benchmark_id):
+            logger.warning("Odrzucono nieprawidłowy benchmark_id: %s", benchmark_id)
+            return False
+
         if benchmark_id in self.jobs:
             del self.jobs[benchmark_id]
 

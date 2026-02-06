@@ -139,6 +139,17 @@ def test_get_benchmark_status_not_found(benchmark_service):
     assert status is None
 
 
+def test_delete_benchmark_rejects_invalid_id(benchmark_service):
+    """Nieprawidlowy benchmark_id (path traversal) powinien byc odrzucony."""
+    safe_file = benchmark_service.storage_dir / "safe-id.json"
+    safe_file.write_text("{}", encoding="utf-8")
+
+    deleted = benchmark_service.delete_benchmark("../../etc/passwd")
+
+    assert deleted is False
+    assert safe_file.exists()
+
+
 def test_list_benchmarks(benchmark_service):
     """Test listowania benchmarków."""
     from venom_core.services.benchmark import BenchmarkJob

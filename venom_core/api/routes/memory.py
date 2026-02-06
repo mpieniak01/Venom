@@ -1,5 +1,7 @@
 """Moduł: routes/memory - Endpointy API dla pamięci wektorowej."""
 
+from typing import Annotated, Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -148,7 +150,8 @@ DEFAULT_USER_ID = "user_default"
 
 @router.post("/ingest", response_model=MemoryIngestResponse, status_code=201)
 async def ingest_to_memory(
-    request: MemoryIngestRequest, vector_store=Depends(get_vector_store)
+    request: MemoryIngestRequest,
+    vector_store: Annotated[Any, Depends(get_vector_store)],
 ):
     """
     Zapisuje tekst do pamięci wektorowej.
@@ -210,7 +213,8 @@ async def ingest_to_memory(
 
 @router.post("/search")
 async def search_memory(
-    request: MemorySearchRequest, vector_store=Depends(get_vector_store)
+    request: MemorySearchRequest,
+    vector_store: Annotated[Any, Depends(get_vector_store)],
 ):
     """
     Wyszukuje informacje w pamięci wektorowej.
@@ -260,9 +264,9 @@ async def search_memory(
 @router.delete("/session/{session_id}")
 async def clear_session_memory(
     session_id: str,
-    vector_store=Depends(get_vector_store),
-    state_manager=Depends(get_state_manager),
-    session_store=Depends(get_session_store),
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    state_manager: Annotated[Any, Depends(get_state_manager)],
+    session_store: Annotated[Any, Depends(get_session_store)],
 ):
     """
     Czyści pamięć sesyjną: wektory z tagiem session_id oraz historię/streszczenia w StateManager.
@@ -293,7 +297,10 @@ async def clear_session_memory(
 
 
 @router.get("/session/{session_id}")
-async def get_session_memory(session_id: str, session_store=Depends(get_session_store)):
+async def get_session_memory(
+    session_id: str,
+    session_store: Annotated[Any, Depends(get_session_store)],
+):
     """Zwraca historię i streszczenie sesji z SessionStore."""
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id jest wymagane")
@@ -312,7 +319,7 @@ async def get_session_memory(session_id: str, session_store=Depends(get_session_
 
 
 @router.delete("/global")
-async def clear_global_memory(vector_store=Depends(get_vector_store)):
+async def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
@@ -337,19 +344,17 @@ async def clear_global_memory(vector_store=Depends(get_vector_store)):
 
 @router.get("/graph")
 async def memory_graph(
-    limit: int = Query(200, ge=1, le=500),
-    session_id: str = Query("", description="Opcjonalny filtr po session_id"),
-    only_pinned: bool = Query(
-        False, description="Zwracaj tylko wpisy z meta pinned=true"
-    ),
-    include_lessons: bool = Query(
-        False, description="Czy dołączyć lekcje z LessonsStore"
-    ),
-    mode: str = Query(
-        "default", description="Tryb grafu: default lub flow (sekwencja)"
-    ),
-    vector_store=Depends(get_vector_store),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    session_id: Annotated[str, Query(description="Opcjonalny filtr po session_id")] = "",
+    only_pinned: Annotated[
+        bool, Query(description="Zwracaj tylko wpisy z meta pinned=true")
+    ] = False,
+    include_lessons: Annotated[
+        bool, Query(description="Czy dołączyć lekcje z LessonsStore")
+    ] = False,
+    mode: Annotated[str, Query(description="Tryb grafu: default lub flow (sekwencja)")] = "default",
 ):
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
@@ -559,8 +564,8 @@ async def memory_graph(
 @router.post("/entry/{entry_id}/pin")
 async def pin_memory_entry(
     entry_id: str,
-    pinned: bool = Query(True, description="Czy oznaczyć pinned"),
-    vector_store=Depends(get_vector_store),
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+    pinned: Annotated[bool, Query(description="Czy oznaczyć pinned")] = True,
 ):
     """
     Ustawia flagę pinned dla wpisu pamięci (w oparciu o LanceDB).
@@ -580,7 +585,10 @@ async def pin_memory_entry(
 
 
 @router.delete("/entry/{entry_id}")
-async def delete_memory_entry(entry_id: str, vector_store=Depends(get_vector_store)):
+async def delete_memory_entry(
+    entry_id: str,
+    vector_store: Annotated[Any, Depends(get_vector_store)],
+):
     """
     Usuwa wpis pamięci (oraz wszystkie jego fragmenty).
     """
@@ -662,8 +670,8 @@ async def flush_semantic_cache():
 
 @router.delete("/lessons/prune/latest")
 async def prune_latest_lessons(
-    count: int = Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    count: Annotated[int, Query(ge=1, description="Liczba najnowszych lekcji do usunięcia")],
 ):
     """Alias dla knowledge/lessons/prune/latest"""
     from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune
@@ -673,9 +681,9 @@ async def prune_latest_lessons(
 
 @router.delete("/lessons/prune/range")
 async def prune_lessons_by_range(
-    start: str = Query(..., description="Data początkowa"),
-    end: str = Query(..., description="Data końcowa"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    start: Annotated[str, Query(description="Data początkowa")],
+    end: Annotated[str, Query(description="Data końcowa")],
 ):
     """Alias dla knowledge/lessons/prune/range"""
     from venom_core.api.routes.knowledge import (
@@ -687,8 +695,8 @@ async def prune_lessons_by_range(
 
 @router.delete("/lessons/prune/tag")
 async def prune_lessons_by_tag(
-    tag: str = Query(..., description="Tag do usunięcia"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    tag: Annotated[str, Query(description="Tag do usunięcia")],
 ):
     """Alias dla knowledge/lessons/prune/tag"""
     from venom_core.api.routes.knowledge import prune_lessons_by_tag as knowledge_prune
@@ -698,8 +706,8 @@ async def prune_lessons_by_tag(
 
 @router.delete("/lessons/prune/ttl")
 async def prune_lessons_by_ttl(
-    days: int = Query(..., ge=1, description="Dni retencji"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    days: Annotated[int, Query(ge=1, description="Dni retencji")],
 ):
     """Alias dla knowledge/lessons/prune/ttl"""
     from venom_core.api.routes.knowledge import prune_lessons_by_ttl as knowledge_prune
@@ -709,10 +717,10 @@ async def prune_lessons_by_ttl(
 
 @router.delete("/lessons/purge")
 async def purge_all_lessons(
-    force: bool = Query(
-        False, description="Wymagane potwierdzenie dla operacji nuklearnej"
-    ),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+    force: Annotated[
+        bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
+    ] = False,
 ):
     """Alias dla knowledge/lessons/purge"""
     from venom_core.api.routes.knowledge import purge_all_lessons as knowledge_purge

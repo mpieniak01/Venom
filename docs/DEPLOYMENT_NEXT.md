@@ -71,8 +71,9 @@ Published images:
 - `ghcr.io/<owner>/venom-frontend`
 
 Security note (MVP default):
-- `compose/compose.minimal.yml` publishes ports only on host loopback (`127.0.0.1`), so services are not exposed to LAN by default.
-- If you need remote access, use a reverse proxy and add authentication/authorization before exposing backend endpoints.
+- `compose/compose.minimal.yml` publishes ports on host interfaces to allow testing from another computer in LAN.
+- Mandatory condition: run this profile only in a trusted/private network.
+- Do not expose these ports directly to public Internet. If remote/public access is needed, place a reverse proxy in front and add authentication/authorization.
 
 Default tags:
 - always: `sha-<short_sha>`

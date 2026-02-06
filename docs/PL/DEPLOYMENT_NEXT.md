@@ -71,8 +71,9 @@ Publikowane obrazy:
 - `ghcr.io/<owner>/venom-frontend`
 
 Uwaga bezpieczeństwa (domyślnie dla MVP):
-- `compose/compose.minimal.yml` publikuje porty tylko na pętli lokalnej hosta (`127.0.0.1`), więc usługi nie są domyślnie wystawione do LAN.
-- Jeśli potrzebujesz dostępu zdalnego, użyj reverse proxy i dodaj uwierzytelnienie/autoryzację przed wystawieniem endpointów backendu.
+- `compose/compose.minimal.yml` publikuje porty na interfejsach hosta, aby umożliwić testy z innego komputera w LAN.
+- Warunek konieczny: uruchamiaj ten profil wyłącznie w zaufanej/prywatnej sieci.
+- Nie wystawiaj tych portów bezpośrednio do Internetu. Dla dostępu publicznego użyj reverse proxy i dodaj uwierzytelnienie/autoryzację.
 
 Domyślne tagi:
 - zawsze: `sha-<short_sha>`

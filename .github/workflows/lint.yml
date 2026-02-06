@@ -1,11 +1,7 @@
 name: Lint Venom
 
 on:
-  # tylko PR-y na main
-  pull_request:
-    branches: [ main ]
-
-  # opcjonalnie: ręczne odpalenie z UI
+  # ręczne odpalenie z UI (lint nie dubluje verify-lite na PR)
   workflow_dispatch:
 
 jobs:

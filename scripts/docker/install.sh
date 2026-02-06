@@ -163,7 +163,11 @@ print_step "Starting minimal stack"
 compose_cmd up -d
 
 print_step "Waiting for health checks"
-wait_http "http://127.0.0.1:11434/api/tags" 180
+if ! wait_http "http://127.0.0.1:11434/api/tags" 180; then
+  echo "[ERROR] Ollama endpoint did not become ready. Last logs:" >&2
+  compose_cmd logs --tail=120 ollama >&2 || true
+  exit 1
+fi
 wait_http "http://127.0.0.1:8000/api/v1/system/status" 240
 wait_http "http://127.0.0.1:3000" 240
 

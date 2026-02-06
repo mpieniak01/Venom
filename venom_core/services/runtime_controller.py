@@ -16,7 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from venom_core.config import SETTINGS
 from venom_core.services.process_monitor import ProcessMonitor

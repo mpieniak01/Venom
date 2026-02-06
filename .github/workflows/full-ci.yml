@@ -9,6 +9,10 @@ jobs:
   backend:
     name: Backend (pytest + lint)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,6 +32,9 @@ jobs:
   frontend:
     name: Frontend (Next.js)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

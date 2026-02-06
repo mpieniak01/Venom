@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Dict, Optional
 
-import psutil  # type: ignore[import-untyped]
+import psutil
 
 from venom_core.utils.logger import get_logger
 
@@ -130,7 +130,13 @@ class ProcessMonitor:
         try:
             # Sprawdzamy wyłącznie połączenia TCP (kind="tcp")
             for conn in psutil.net_connections(kind="tcp"):
-                if conn.status == "LISTEN" and conn.laddr.port == port:
+                local_addr = conn.laddr
+                local_port = getattr(local_addr, "port", None)
+                if local_port is None and isinstance(local_addr, tuple):
+                    if len(local_addr) >= 2 and isinstance(local_addr[1], int):
+                        local_port = local_addr[1]
+
+                if conn.status == "LISTEN" and local_port == port:
                     return True
             return False
         except (PermissionError, psutil.AccessDenied):

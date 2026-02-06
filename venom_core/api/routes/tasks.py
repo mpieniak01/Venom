@@ -3,7 +3,7 @@
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -325,14 +325,12 @@ async def get_all_tasks():
 
 @router.get("/history/requests", response_model=list[HistoryRequestSummary])
 async def get_request_history(
-    limit: int = Query(
-        default=50, ge=1, le=1000, description="Maksymalna liczba wyników"
-    ),
-    offset: int = Query(default=0, ge=0, description="Offset dla paginacji"),
-    status: Optional[str] = Query(
-        default=None,
-        description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)",
-    ),
+    limit: Annotated[int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")] = 50,
+    offset: Annotated[int, Query(ge=0, description="Offset dla paginacji")] = 0,
+    status: Annotated[
+        Optional[str],
+        Query(description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)"),
+    ] = None,
 ):
     """
     Pobiera listę requestów z historii (paginowana).

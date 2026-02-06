@@ -3,6 +3,9 @@
 
 echo "🛑 Zatrzymuję stos Venom (Web, Backend, LLM)..."
 
+# 0. Zatrzymaj potencjalnie wiszące procesy startowe make
+pkill -f "make --no-print-directory _start" 2>/dev/null || true
+
 # 1. Frontend (Next.js)
 if [ -f .web-next.pid ]; then
     WPID=$(cat .web-next.pid)
@@ -36,11 +39,19 @@ pkill -9 -f "ray::" 2>/dev/null || true
 
 # 5. Czyszczenie portów
 if command -v lsof >/dev/null 2>&1; then
-    for port in 8000 3000; do
+    for port in 8000 3000 11434 8001; do
         pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
         if [ -n "$pids" ]; then
             echo "⚠️  Zwalniam port $port (PIDs: $pids)"
             kill $pids 2>/dev/null || true
+        fi
+    done
+elif command -v fuser >/dev/null 2>&1; then
+    for port in 8000 3000 11434 8001; do
+        pids=$(fuser -n tcp "$port" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            echo "⚠️  Zwalniam port $port przez fuser (PIDs: $pids)"
+            fuser -k -n tcp "$port" >/dev/null 2>&1 || true
         fi
     done
 fi

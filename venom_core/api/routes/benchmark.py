@@ -1,6 +1,6 @@
 """Moduł: routes/benchmark - Endpointy API dla benchmarkingu modeli."""
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -158,7 +158,7 @@ async def get_benchmark_status(benchmark_id: str):
 
 
 @router.get("/list")
-async def list_benchmarks(limit: int = Query(default=10, ge=1, le=100)):
+async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
     """
     Lista ostatnich benchmarków.
 

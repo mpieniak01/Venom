@@ -139,9 +139,7 @@ class Settings(BaseSettings):
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = (
         "./config/google_calendar_credentials.json"  # Ścieżka do OAuth2 credentials
     )
-    GOOGLE_CALENDAR_TOKEN_PATH: str = (
-        "./config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
-    )
+    GOOGLE_CALENDAR_TOKEN_PATH: str = "./config/google_calendar_token.json"  # Ścieżka do OAuth2 token (auto-generated)
     VENOM_CALENDAR_ID: str = (
         "venom_work_calendar"  # ID kalendarza Venoma (write-only, NOT 'primary')
     )

@@ -6,6 +6,14 @@
 
 System Venom składa się z 34 wyspecjalizowanych agentów, każdy odpowiedzialny za konkretny obszar funkcjonalności. Poniżej znajdziesz pełną listę z opisami i linkami do szczegółowej dokumentacji.
 
+## Standardy jakości dla kodu agentów
+
+- Zmiany w agentach powinny przechodzić CI Lite na PR (szybki lint + wybrane testy unit).
+- SonarCloud działa jako obowiązkowa bramka jakości dla PR.
+- Snyk jest uruchamiany okresowo do monitorowania ryzyk w zależnościach i kontenerach.
+- Rozszerzając agentów, utrzymuj czytelną logikę i typowanie (`mypy venom_core` powinno być zielone).
+- Unikaj martwych gałęzi/placeholderów; ścieżki błędów mają być jawne i testowalne.
+
 ## Kategorie Agentów
 
 ### 🏗️ Planowanie i Architektura

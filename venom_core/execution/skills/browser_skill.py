@@ -2,14 +2,16 @@
 
 import time
 from pathlib import Path
-from typing import Annotated, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Literal, Optional
 from urllib.parse import urlparse
 
-from playwright.async_api import Browser, Page, async_playwright
 from semantic_kernel.functions import kernel_function
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from playwright.async_api import Browser, Page
 
 logger = get_logger(__name__)
 
@@ -43,14 +45,22 @@ class BrowserSkill:
 
         # Playwright context - będzie zainicjalizowany przy pierwszym użyciu
         self._playwright = None
-        self._browser: Optional[Browser] = None
-        self._page: Optional[Page] = None
+        self._browser: Optional["Browser"] = None
+        self._page: Optional["Page"] = None
 
         logger.info("BrowserSkill zainicjalizowany")
 
     async def _ensure_browser(self):
         """Upewnia się, że przeglądarka jest uruchomiona."""
         if self._browser is None:
+            try:
+                from playwright.async_api import async_playwright
+            except ImportError as e:
+                logger.error(
+                    "Playwright nie jest zainstalowany. Zainstaluj 'playwright'."
+                )
+                raise RuntimeError("Playwright is not installed") from e
+
             self._playwright = await async_playwright().start()
             # Uruchom headless Chromium
             self._browser = await self._playwright.chromium.launch(
@@ -84,7 +94,7 @@ class BrowserSkill:
 
         logger.info("Przeglądarka zamknięta")
 
-    def _require_page(self) -> Page:
+    def _require_page(self) -> "Page":
         """Zwraca aktywną stronę lub podnosi błąd, gdy przeglądarka nie jest gotowa."""
         if not self._page:
             raise RuntimeError("Przeglądarka nie jest zainicjalizowana")

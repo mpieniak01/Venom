@@ -42,7 +42,7 @@ export async function GET(
       const html = contents.toString("utf-8");
       const withBase = html.replace(
         "<head>",
-        '<head>\n    <base href="/test/">'
+        '<head>\n    <base href="/test/">\n    <link rel="stylesheet" href="/assets/css/venom-coverage.css">'
       );
       contents = Buffer.from(withBase, "utf-8");
     }

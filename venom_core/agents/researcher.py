@@ -15,8 +15,6 @@ from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.agents.base import BaseAgent
-from venom_core.execution.skills.github_skill import GitHubSkill
-from venom_core.execution.skills.huggingface_skill import HuggingFaceSkill
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
@@ -146,13 +144,28 @@ PAMIĘTAJ: Jesteś BADACZEM, nie programistą. Dostarczasz wiedzę, nie piszesz 
         self.kernel.add_plugin(self.web_skill, plugin_name="WebSearchSkill")
 
         if not self._testing_mode:
-            # Zarejestruj GitHubSkill
-            github_skill = GitHubSkill()
-            self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
+            # Integracje zewnętrzne są opcjonalne w profilach lite.
+            try:
+                from venom_core.execution.skills.github_skill import GitHubSkill
 
-            # Zarejestruj HuggingFaceSkill
-            hf_skill = HuggingFaceSkill()
-            self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
+                github_skill = GitHubSkill()
+                self.kernel.add_plugin(github_skill, plugin_name="GitHubSkill")
+            except ImportError as e:
+                logger.warning(
+                    f"GitHubSkill niedostępny (brak zależności PyGithub): {e}"
+                )
+
+            try:
+                from venom_core.execution.skills.huggingface_skill import (
+                    HuggingFaceSkill,
+                )
+
+                hf_skill = HuggingFaceSkill()
+                self.kernel.add_plugin(hf_skill, plugin_name="HuggingFaceSkill")
+            except ImportError as e:
+                logger.warning(
+                    f"HuggingFaceSkill niedostępny (brak huggingface_hub): {e}"
+                )
 
         # Zarejestruj MemorySkill
         memory_skill = MemorySkill()

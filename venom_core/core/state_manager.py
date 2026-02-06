@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 # Maksymalny rozmiar pliku stanu w bajtach (10 MB)
 MAX_STATE_FILE_SIZE = 10 * 1024 * 1024
+MAX_TASKS = 1000
 STATE_META_PATH = Path("./data/memory/state_meta.json")
 
 
@@ -173,7 +174,6 @@ class StateManager:
 
     def _prune_tasks_if_needed(self) -> None:
         """Usuwa najstarsze zadania jeśli przekroczono limity."""
-        MAX_TASKS = 1000
 
         if len(self._tasks) <= MAX_TASKS:
             return

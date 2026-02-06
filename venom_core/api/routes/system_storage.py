@@ -6,12 +6,12 @@ import asyncio
 import os
 import shutil
 import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import cast
 
 from fastapi import APIRouter, HTTPException
 
+from venom_core.utils.helpers import get_utc_now
 from venom_core.utils.logger import get_logger
 from venom_core.utils.ttl_cache import TTLCache
 
@@ -185,7 +185,7 @@ def _get_storage_data_sync() -> dict:
 
     return {
         "status": "success",
-        "refreshed_at": datetime.now().isoformat(),
+        "refreshed_at": get_utc_now().isoformat(),
         "disk": {
             "total_bytes": total_physical,
             "used_bytes": used_physical,

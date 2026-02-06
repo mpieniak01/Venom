@@ -4,7 +4,7 @@
 # --- CORE ---
 fastapi>=0.112.0
 uvicorn[standard]
-pydantic>=2.12,<3.0
+pydantic>=2.0,<2.12
 python-dotenv
 loguru
 aiofiles

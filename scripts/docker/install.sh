@@ -90,6 +90,7 @@ require_cmd() {
 
 compose_cmd() {
   OLLAMA_IMAGE="$OLLAMA_IMAGE" OLLAMA_MODEL="$MODEL" docker compose -f "$COMPOSE_FILE" "$@"
+  return $?
 }
 
 wait_http() {

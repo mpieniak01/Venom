@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -11,6 +12,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+_SAFE_MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._/\-:]+$")
 
 
 def _get_config_manager():
@@ -23,6 +25,17 @@ def resolve_model_provider(models: List[dict], model_name: str):
         if model.get("name") == model_name:
             return model.get("provider") or model.get("source")
     return None
+
+
+def _normalize_model_name_for_fs(model_name: str) -> str | None:
+    """Zwraca bezpieczną nazwę modelu do operacji na filesystemie."""
+    if not model_name:
+        return None
+    if not _SAFE_MODEL_NAME_PATTERN.match(model_name):
+        return None
+    if ".." in model_name or model_name.startswith("/"):
+        return None
+    return model_name.strip()
 
 
 def update_last_model(provider: str, new_model: str):
@@ -118,8 +131,13 @@ def validate_generation_params(
 
 
 def read_ollama_manifest_params(model_name: str) -> Dict[str, Any]:
-    base_name, _, tag = model_name.rpartition(":")
-    repo = base_name if base_name else model_name
+    safe_model_name = _normalize_model_name_for_fs(model_name)
+    if not safe_model_name:
+        logger.warning("Odrzucono nieprawidłową nazwę modelu: %s", model_name)
+        return {}
+
+    base_name, _, tag = safe_model_name.rpartition(":")
+    repo = base_name if base_name else safe_model_name
     tag = tag or "latest"
     manifest_path = (
         Path("models") / "manifests" / "registry.ollama.ai" / "library" / repo / tag
@@ -151,12 +169,14 @@ def read_ollama_manifest_params(model_name: str) -> Dict[str, Any]:
 
 def read_vllm_generation_config(model_name: str) -> Dict[str, Any]:
     candidates = []
-    if model_name:
-        model_path = Path(model_name)
-        if model_path.exists():
-            candidates.append(model_path)
-        candidates.append(Path("models") / model_name)
-        candidates.append(Path("models") / model_name.split("/")[-1])
+    safe_model_name = _normalize_model_name_for_fs(model_name)
+    if model_name and not safe_model_name:
+        logger.warning("Odrzucono nieprawidłową nazwę modelu: %s", model_name)
+        return {}
+
+    if safe_model_name:
+        candidates.append(Path("models") / safe_model_name)
+        candidates.append(Path("models") / safe_model_name.split("/")[-1])
 
     vllm_path = Path(SETTINGS.VLLM_MODEL_PATH or "")
     if vllm_path.exists():

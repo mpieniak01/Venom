@@ -63,9 +63,9 @@ def test_new_chat_session_clearing_workflow(client):
     session_nodes = [
         n for n in elements["nodes"] if n["data"].get("session_id") == session_id
     ]
-    assert len(session_nodes) > 0, (
-        f"Nie znaleziono danych dla sesji {session_id} w grafie"
-    )
+    assert (
+        len(session_nodes) > 0
+    ), f"Nie znaleziono danych dla sesji {session_id} w grafie"
 
     # 3. Wywołanie czyszczenia sesji
     delete_resp = client.delete(f"/api/v1/memory/session/{session_id}")
@@ -87,9 +87,9 @@ def test_new_chat_session_clearing_workflow(client):
     session_nodes_post = [
         n for n in elements_post["nodes"] if n["data"].get("session_id") == session_id
     ]
-    assert len(session_nodes_post) == 0, (
-        f"Dane dla sesji {session_id} nadal istnieją w grafie po usunięciu"
-    )
+    assert (
+        len(session_nodes_post) == 0
+    ), f"Dane dla sesji {session_id} nadal istnieją w grafie po usunięciu"
 
     # 5. Weryfikacja SessionStore
     session_resp = client.get(f"/api/v1/memory/session/{session_id}")

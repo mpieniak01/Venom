@@ -16,6 +16,7 @@ WEB_PID_FILE ?= .web-next.pid
 NEXT_DEV_ENV ?= NEXT_MODE=dev NEXT_DISABLE_TURBOPACK=1 NEXT_TELEMETRY_DISABLED=1
 NEXT_PROD_ENV ?= NEXT_MODE=prod NEXT_TELEMETRY_DISABLED=1
 START_MODE ?= dev
+ALLOW_DEGRADED_START ?= 1
 UVICORN_DEV_FLAGS ?= --reload
 UVICORN_PROD_FLAGS ?= --no-server-header
 BACKEND_LOG ?= logs/backend.log
@@ -101,30 +102,41 @@ _start:
 	@$(MAKE) --no-print-directory clean-ports >/dev/null || true
 	@active_server=$$(awk -F= '/^ACTIVE_LLM_SERVER=/{print $$2}' .env 2>/dev/null | tr -d '\r' | tr '[:upper:]' '[:lower:]'); \
 	if [ -z "$$active_server" ]; then active_server="vllm"; fi; \
-	if [ "$$active_server" = "ollama" ]; then \
-		echo "▶️  Uruchamiam Ollama..."; \
-		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-		$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
-		echo "⏳ Czekam na Ollama (/api/tags)..."; \
-		ollama_ready=""; \
-		for attempt in {1..90}; do \
-			if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then \
-				ollama_ready="yes"; \
-				echo "✅ Ollama gotowy"; \
-				break; \
+		if [ "$$active_server" = "ollama" ]; then \
+			echo "▶️  Uruchamiam Ollama..."; \
+			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			$(MAKE) --no-print-directory ollama-start >/dev/null || true; \
+			echo "⏳ Czekam na Ollama (/api/tags)..."; \
+			ollama_fatal=""; \
+			ollama_ready=""; \
+			for attempt in {1..90}; do \
+				if curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1; then \
+					ollama_ready="yes"; \
+					echo "✅ Ollama gotowy"; \
+					break; \
+				fi; \
+				if [ -f "logs/ollama.log" ] && grep -Eiq "Error: listen tcp .*:11434|operation not permitted|address already in use" "logs/ollama.log"; then \
+					echo "❌ Ollama zakończyła start błędem (sprawdź logs/ollama.log)"; \
+					ollama_fatal="yes"; \
+					break; \
+				fi; \
+				sleep 1; \
+			done; \
+			if [ -z "$$ollama_ready" ]; then \
+				if [ -z "$$ollama_fatal" ]; then echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; fi; \
+				if [ -f "logs/ollama.log" ]; then \
+					echo "ℹ️  Ostatnie logi Ollama:"; \
+					tail -n 40 "logs/ollama.log" || true; \
+				fi; \
+				if [ "$(ALLOW_DEGRADED_START)" = "1" ]; then \
+					echo "⚠️  Tryb degradowany: kontynuuję start bez LLM (ALLOW_DEGRADED_START=1)"; \
+					$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+				else \
+					$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
+					exit 1; \
+				fi; \
 			fi; \
-			sleep 1; \
-		done; \
-		if [ -z "$$ollama_ready" ]; then \
-			echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; \
-			if [ -f "logs/ollama.log" ]; then \
-				echo "ℹ️  Ostatnie logi Ollama:"; \
-				tail -n 40 "logs/ollama.log" || true; \
-			fi; \
-			$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
-			exit 1; \
-		fi; \
-	else \
+		else \
 		echo "▶️  Uruchamiam vLLM..."; \
 		$(MAKE) --no-print-directory ollama-stop >/dev/null || true; \
 		$(MAKE) --no-print-directory vllm-start >/dev/null || true; \
@@ -162,17 +174,17 @@ _start:
 	@echo "⏳ Czekam na backend (/api/v1/system/status)..."
 	@backend_ready=""; \
 	for attempt in {1..60}; do \
-		if [ -f "$(PID_FILE)" ]; then \
-			PID=$$(cat $(PID_FILE)); \
-			if ! kill -0 $$PID 2>/dev/null; then \
-				echo "❌ Backend nie wystartował (proces $$PID nie działa)"; \
-				break; \
-			fi; \
-		fi; \
 		if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
 			backend_ready="yes"; \
 			echo "✅ Backend gotowy"; \
 			break; \
+		fi; \
+		if [ -f "$(PID_FILE)" ]; then \
+			PID=$$(cat $(PID_FILE)); \
+			if ! kill -0 $$PID 2>/dev/null; then \
+				echo "⚠️  Proces startowy backendu $$PID nie działa"; \
+				break; \
+			fi; \
 		fi; \
 		sleep 1; \
 	done; \
@@ -272,17 +284,23 @@ status:
 	fi
 
 clean-ports:
-	@if ! command -v lsof >/dev/null 2>&1; then \
-		echo "ℹ️  lsof nie jest dostępny – pomijam czyszczenie portów"; \
-	else \
-		for PORT_TO_CHECK in $(PORTS_TO_CLEAN); do \
+	@for PORT_TO_CHECK in $(PORTS_TO_CLEAN); do \
+		if command -v lsof >/dev/null 2>&1; then \
 			PIDS=$$(lsof -ti tcp:$$PORT_TO_CHECK 2>/dev/null || true); \
 			if [ -n "$$PIDS" ]; then \
 				echo "⚠️  Port $$PORT_TO_CHECK zajęty przez $$PIDS – kończę procesy"; \
 				kill $$PIDS 2>/dev/null || true; \
 			fi; \
-		done; \
-	fi
+		elif command -v fuser >/dev/null 2>&1; then \
+			PIDS=$$(fuser -n tcp $$PORT_TO_CHECK 2>/dev/null || true); \
+			if [ -n "$$PIDS" ]; then \
+				echo "⚠️  Port $$PORT_TO_CHECK zajęty przez $$PIDS – kończę procesy (fuser)"; \
+				fuser -k -n tcp $$PORT_TO_CHECK >/dev/null 2>&1 || true; \
+			fi; \
+		else \
+			echo "ℹ️  Brak lsof/fuser – pomijam czyszczenie portu $$PORT_TO_CHECK"; \
+		fi; \
+	done
 
 # =============================================================================
 # Profil lekki (Light Profile) - komponenty do uruchamiania osobno

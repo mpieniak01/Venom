@@ -2,6 +2,11 @@
 
 This document defines the official way to publish Docker images for Venom Minimal MVP.
 
+## Quick Answer
+
+- Yes: in manual mode you use a real button in GitHub UI: `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
+- For tag mode: first make sure commit is on `main`, then create and push tag `vX.Y.Z`. Pushing the tag starts publish automatically.
+
 ## Scope
 
 - Backend image: `ghcr.io/<owner>/venom-backend`
@@ -28,12 +33,16 @@ Use this mode for a stable package release.
 git checkout main
 git pull --ff-only
 ```
-2. Create and push release tag:
+2. If needed, push latest commit on `main`:
+```bash
+git push origin main
+```
+3. Create and push release tag:
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
-3. GitHub Actions runs `Docker Publish (Minimal)` automatically.
+4. GitHub Actions runs `Docker Publish (Minimal)` automatically.
 
 Tags pushed to GHCR:
 - `sha-<short_sha>`
@@ -44,13 +53,14 @@ Tags pushed to GHCR:
 
 Use this mode to publish an ad hoc package without creating a release tag.
 
-1. Open: GitHub `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
-2. Branch must be `main`.
-3. Required input:
-   - `confirm_publish=true`
-4. Optional inputs:
-   - `custom_tag` (example: `rc1`, `mvp-test`)
-   - `push_latest=true` only if you intentionally want to move `latest`.
+1. Open repository in GitHub.
+2. Go to `Actions` tab.
+3. Select workflow: `Docker Publish (Minimal)`.
+4. Click `Run workflow` (top-right).
+5. Choose branch: `main`.
+6. Set required input: `confirm_publish=true`.
+7. Optional: set `custom_tag`, `push_latest`.
+8. Click green `Run workflow` button to start.
 
 Typical tags in manual mode:
 - always: `sha-<short_sha>`

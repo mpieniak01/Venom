@@ -1,0 +1,41 @@
+name: Docker Sanity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "compose/**"
+      - "scripts/docker/**"
+      - ".dockerignore"
+      - ".github/workflows/docker-sanity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    name: Validate Docker Minimal MVP
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Validate compose file
+        run: docker compose -f compose/compose.minimal.yml config > /dev/null
+
+      - name: Validate shell scripts syntax
+        run: |
+          bash -n scripts/docker/install.sh
+          bash -n scripts/docker/stack.sh
+          bash -n scripts/docker/logs.sh
+          bash -n scripts/docker/shell.sh
+
+      - name: Build backend image
+        run: docker build -f docker/backend.Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -f docker/frontend.Dockerfile .

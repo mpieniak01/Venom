@@ -1,0 +1,72 @@
+name: venom-minimal
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: venom-ollama-minimal
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    container_name: venom-backend-minimal
+    environment:
+      ENV: production
+      AI_MODE: LOCAL
+      ACTIVE_LLM_SERVER: ollama
+      LLM_SERVICE_TYPE: local
+      LLM_LOCAL_ENDPOINT: http://ollama:11434/v1
+      LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
+      SUMMARY_STRATEGY: heuristic_only
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - venom-data:/app/data
+      - venom-workspace:/app/workspace
+      - venom-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/system/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    container_name: venom-frontend-minimal
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      NEXT_PUBLIC_WS_BASE: ws://localhost:8000/ws/events
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  venom-data:
+  venom-workspace:
+  venom-logs:

@@ -80,6 +80,25 @@ docker pull ghcr.io/<owner>/venom-backend:<tag>
 docker pull ghcr.io/<owner>/venom-frontend:<tag>
 ```
 
+## End-user Run (from published images)
+
+After publishing, end users should use release compose and helper script:
+
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+
+# optional overrides:
+# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:vX.Y.Z
+# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:vX.Y.Z
+# export OLLAMA_MODEL=gemma3:1b
+# export VENOM_ENABLE_GPU=auto
+
+scripts/docker/run-release.sh start
+```
+
+This flow uses prebuilt backend/frontend images from GHCR and pulls local Ollama model on first start.
+
 ## Rollback / Recovery
 
 If wrong package was published:

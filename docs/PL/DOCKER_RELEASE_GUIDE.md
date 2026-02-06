@@ -80,6 +80,25 @@ docker pull ghcr.io/<owner>/venom-backend:<tag>
 docker pull ghcr.io/<owner>/venom-frontend:<tag>
 ```
 
+## Uruchomienie dla użytkownika końcowego (z gotowych obrazów)
+
+Po publikacji użytkownik końcowy powinien używać compose release i skryptu pomocniczego:
+
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+
+# opcjonalne nadpisania:
+# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:vX.Y.Z
+# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:vX.Y.Z
+# export OLLAMA_MODEL=gemma3:1b
+# export VENOM_ENABLE_GPU=auto
+
+scripts/docker/run-release.sh start
+```
+
+Ten flow używa gotowych obrazów backend/frontend z GHCR i przy pierwszym starcie dociąga lokalny model Ollama.
+
 ## Rollback / recovery
 
 Jeśli wypchniesz błędną paczkę:

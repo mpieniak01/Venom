@@ -745,6 +745,38 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 
 > Wyniki testów NIE trafiają do repo (ignorujemy `**/test-results/`, `perf-artifacts/`, `playwright-report/`, itd.) – dzięki temu przechowujesz je lokalnie bez ryzyka ujawnienia danych.
 
+## 📦 Paczka Docker (użytkownik końcowy)
+
+Jeśli chcesz uruchomić Venoma z gotowych obrazów (bez lokalnego builda), użyj compose release:
+
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+
+# opcjonalne nadpisania:
+# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:v1.2.0
+# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:v1.2.0
+# export OLLAMA_MODEL=gemma3:1b
+
+scripts/docker/run-release.sh start
+```
+
+Przydatne komendy:
+
+```bash
+scripts/docker/run-release.sh status
+scripts/docker/run-release.sh restart
+scripts/docker/run-release.sh stop
+scripts/docker/logs.sh
+```
+
+Opcjonalny tryb GPU:
+
+```bash
+export VENOM_ENABLE_GPU=auto   # domyślnie; fallback do CPU gdy brak runtime
+scripts/docker/run-release.sh restart
+```
+
 ## 🛠️ Narzędzia deweloperskie
 
 ### Bramy jakości i bezpieczeństwa

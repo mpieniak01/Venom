@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 class SessionStore:
     """Stores chat history/summary per session_id with optional persistence."""
 
-    def __init__(self, store_path: Optional[str] = None, max_entries: int = 500):
+    def __init__(self, store_path: Optional[str] = None, max_entries: int = 1000):
         self._lock = Lock()
         resolved = store_path or str(Path(SETTINGS.MEMORY_ROOT) / "session_store.json")
         self._store_path = Path(resolved)
@@ -33,12 +33,10 @@ class SessionStore:
             with self._store_path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
             if data.get("boot_id") != BOOT_ID:
-                logger.info(
-                    "SessionStore boot_id mismatch - clearing persisted sessions"
+                logger.debug(
+                    "SessionStore boot_id mismatch - updating boot_id while preserving sessions"
                 )
-                self._sessions = {}
-                self._save()
-                return
+                # Nie czyścimy sesji, po prostu pozwalamy mechanizmowi _save zapisać nowy boot_id później
             sessions = data.get("sessions", {}) or {}
             if isinstance(sessions, dict):
                 self._sessions = sessions

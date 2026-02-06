@@ -32,7 +32,7 @@ def _seed_trace(tracer: RequestTracer, created_at: datetime) -> str:
     return str(trace_id)
 
 
-def test_history_requests_sorted_ascending_by_created_at(client, tracer):
+def test_history_requests_sorted_descending_by_created_at(client, tracer):
     t1 = datetime(2026, 2, 2, 10, 0, 0)
     t2 = datetime(2026, 2, 2, 10, 1, 0)
     t3 = datetime(2026, 2, 2, 10, 2, 0)
@@ -47,4 +47,4 @@ def test_history_requests_sorted_ascending_by_created_at(client, tracer):
     data = response.json()
     created = [item["created_at"] for item in data]
 
-    assert created == sorted(created)
+    assert created == sorted(created, reverse=True)

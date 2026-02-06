@@ -375,6 +375,23 @@ async def lifespan(app: FastAPI):
             )
             logger.info("Zadanie check_health zarejestrowane (COMING SOON)")
 
+        if request_tracer:
+
+            async def _cleanup_traces_wrapper():
+                try:
+                    # Czyść ślady starsze niż 7 dni
+                    await asyncio.to_thread(request_tracer.clear_old_traces, days=7)
+                except Exception as e:
+                    logger.warning(f"Błąd podczas czyszczenia śladów: {e}")
+
+            background_scheduler.add_interval_job(
+                func=_cleanup_traces_wrapper,
+                minutes=1440,  # Raz na dobę
+                job_id="cleanup_traces",
+                description="Czyszczenie starych śladów żądań (retencja 7 dni)",
+            )
+            logger.info("Zadanie cleanup_traces zarejestrowane (retencja 7 dni)")
+
     except Exception as e:
         logger.warning(f"Nie udało się uruchomić BackgroundScheduler: {e}")
         background_scheduler = None

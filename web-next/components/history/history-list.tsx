@@ -27,7 +27,7 @@ export function selectHistoryWindow(
 ) {
   const source = entries || [];
   if (limit && limit > 0) {
-    return source.slice(-limit);
+    return source.slice(0, limit);
   }
   return source;
 }

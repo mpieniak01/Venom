@@ -71,7 +71,7 @@ def test_session_store_preserves_source_labels(tmp_path: Path):
     assert [h["content"] for h in history] == ["foo", "bar"]
 
 
-def test_session_store_boot_id_mismatch_clears(tmp_path: Path):
+def test_session_store_boot_id_mismatch_preserves_sessions(tmp_path: Path):
     store_path = tmp_path / "session_store.json"
     payload = {
         "boot_id": "stale-boot-id",
@@ -80,7 +80,16 @@ def test_session_store_boot_id_mismatch_clears(tmp_path: Path):
     store_path.write_text(json.dumps(payload), encoding="utf-8")
 
     store = SessionStore(store_path=str(store_path))
-    assert store.get_history("s1") == []
+    # Sessions should be preserved!
+    assert [h["content"] for h in store.get_history("s1")] == ["a"]
 
-    saved = json.loads(store_path.read_text(encoding="utf-8"))
-    assert saved["boot_id"] == BOOT_ID
+    # boot_id in file is still old because we didn't call _save yet (it's called on mutations)
+    saved_old = json.loads(store_path.read_text(encoding="utf-8"))
+    assert saved_old["boot_id"] == "stale-boot-id"
+
+    # Trigger save
+    store.set_summary("s1", "new summary")
+
+    # Now it should be updated
+    saved_new = json.loads(store_path.read_text(encoding="utf-8"))
+    assert saved_new["boot_id"] == BOOT_ID

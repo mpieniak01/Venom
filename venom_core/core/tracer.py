@@ -2,15 +2,16 @@
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from venom_core.utils.helpers import get_utc_now
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,11 +32,20 @@ class TraceStep(BaseModel):
 
     component: str = Field(description="Nazwa komponentu (Agent, Skill, Router)")
     action: str = Field(description="Akcja wykonana przez komponent")
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=get_utc_now)
     status: str = Field(default="ok", description="Status kroku (ok, error)")
     details: Optional[str] = Field(
         default=None, description="Dodatkowe szczegóły (błąd, wynik)"
     )
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def ensure_utc(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class RequestTrace(BaseModel):
@@ -48,10 +58,10 @@ class RequestTrace(BaseModel):
         default=None,
         description="Identyfikator sesji czatu (jeśli dostępny)",
     )
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=get_utc_now)
     finished_at: Optional[datetime] = None
     steps: List[TraceStep] = Field(default_factory=list)
-    last_activity: datetime = Field(default_factory=datetime.now)
+    last_activity: datetime = Field(default_factory=get_utc_now)
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_endpoint: Optional[str] = None
@@ -67,6 +77,17 @@ class RequestTrace(BaseModel):
     error_stage: Optional[str] = None
     error_retryable: Optional[bool] = None
     feedback: Optional[dict] = None
+
+    @field_validator("created_at", "finished_at", "last_activity", mode="before")
+    @classmethod
+    def ensure_utc(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        if isinstance(v, str):
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class RequestTracer:
@@ -285,7 +306,7 @@ class RequestTracer:
 
     async def _check_lost_requests(self):
         """Sprawdza i oznacza zadania, które przekroczyły timeout."""
-        now = datetime.now()
+        now = get_utc_now()
         updated = False
 
         # Create a snapshot of traces to avoid holding lock during iteration
@@ -385,7 +406,7 @@ class RequestTracer:
                 component=component, action=action, status=status, details=details
             )
             trace.steps.append(step)
-            trace.last_activity = datetime.now()
+            trace.last_activity = get_utc_now()
 
         # Zapisz asynchronicznie (tutaj uproszczenie do synchronicznego zapisu dla bezpieczeństwa danych)
         # W środowisku produkcyjnym o dużym obciążeniu warto rozważyć kolejkowanie zapisu
@@ -412,11 +433,11 @@ class RequestTracer:
                 return
 
             trace.status = status
-            trace.last_activity = datetime.now()
+            trace.last_activity = get_utc_now()
 
             # Ustaw finished_at dla stanów końcowych
             if status in (TraceStatus.COMPLETED, TraceStatus.FAILED, TraceStatus.LOST):
-                trace.finished_at = datetime.now()
+                trace.finished_at = get_utc_now()
 
         self._save_traces()
         logger.debug(f"Zaktualizowano status trace {request_id}: {status}")
@@ -440,7 +461,7 @@ class RequestTracer:
             trace.forced_provider = forced_provider
             if forced_intent:
                 trace.forced_intent = forced_intent
-            trace.last_activity = datetime.now()
+            trace.last_activity = get_utc_now()
 
         self._save_traces()
 
@@ -514,7 +535,7 @@ class RequestTracer:
                 )
                 return
             trace.feedback = feedback
-            trace.last_activity = datetime.now()
+            trace.last_activity = get_utc_now()
 
         self._save_traces()
         logger.debug(f"Zaktualizowano feedback dla trace {request_id}")
@@ -553,8 +574,8 @@ class RequestTracer:
         if status_filter:
             traces = [t for t in traces if t.status == status_filter]
 
-        # Sortuj rosnąco (najstarsze -> najnowsze)
-        traces.sort(key=lambda t: t.created_at)
+        # Sortuj malejąco (najnowsze -> najstarsze)
+        traces.sort(key=lambda t: t.created_at, reverse=True)
 
         # Zastosuj paginację
         return traces[offset : offset + limit]
@@ -576,7 +597,7 @@ class RequestTracer:
         Args:
             days: Liczba dni - ślady starsze zostaną usunięte
         """
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = get_utc_now() - timedelta(days=days)
         updated = False
 
         with self._traces_lock:

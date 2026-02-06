@@ -58,10 +58,12 @@ Chat modes (Direct/Normal/Complex) and routing/intent rules are described in `do
 ### Fast Path (Template Response)
 - **Logic**: Static intents (`HELP_REQUEST`, `TIME_REQUEST`, `INFRA_STATUS`) bypass heavy context building (memory/history) for sub-100ms latency.
 - **Route**: `Orchestrator._run_task_fastpath`.
+- **UTC Standardization**: All internal timestamps are forced to UTC in `tracer.py` and `models.py` to ensure consistency across services and correct UI "relative time" labels.
 
 ### Background Processing
 - **ResultProcessor**: Non-critical operations (Vector Store upsert, RL logs) are offloaded to background tasks to unblock UI response.
 ### Backend IO / Storage
 - **Debouncing**: `StateManager`, `RequestTracer`, and `SessionStore` use write-debouncing to minimize disk I/O.
+- **Session Persistence**: `SessionStore` preserves chat history across backend restarts by updating `boot_id` instead of clearing sessions.
 - **Ollama Optimization**: Added `LLM_KEEP_ALIVE` setting to prevent model unloading, significantly reducing TTFT in Direct mode.
 - **Clean Shutdown**: `make stop` explicitly unloads models from VRAM using `keep_alive: 0`, ensuring system returns to a clean state.

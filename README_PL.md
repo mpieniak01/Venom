@@ -18,7 +18,7 @@ Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inż
 - 👍👎 **Pętla jakości** - informacje zwrotne użytkownika + logi i metryki jakości odpowiedzi
 - 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
 - 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
-- 💬 **Ciągłość czatu** - spójna historia sesji per `session_id` (SessionStore) z resetem po restarcie backendu
+- 💬 **Ciągłość czatu** - spójna historia sesji per `session_id` (SessionStore), zachowywana po restartach backendu i podczas nawigacji
 - 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
 - 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
 

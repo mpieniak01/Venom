@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 # Maksymalny rozmiar pliku stanu w bajtach (10 MB)
 MAX_STATE_FILE_SIZE = 10 * 1024 * 1024
+MAX_TASKS = 1000
 STATE_META_PATH = Path("./data/memory/state_meta.json")
 
 
@@ -171,6 +172,27 @@ class StateManager:
             if not self._save_requested:
                 break
 
+    def _prune_tasks_if_needed(self) -> None:
+        """Usuwa najstarsze zadania jeśli przekroczono limity."""
+
+        if len(self._tasks) <= MAX_TASKS:
+            return
+
+        # Sortuj po created_at
+        sorted_tasks = sorted(
+            self._tasks.values(), key=lambda t: t.created_at, reverse=True
+        )
+
+        # Zachowaj tylko MAX_TASKS najnowszych
+        kept_tasks = sorted_tasks[:MAX_TASKS]
+        removed_count = len(self._tasks) - len(kept_tasks)
+
+        if removed_count > 0:
+            self._tasks = {t.id: t for t in kept_tasks}
+            logger.info(
+                f"Pruning StateManager: usunięto {removed_count} najstarszych zadań (limit {MAX_TASKS})"
+            )
+
     async def shutdown(self) -> None:
         """Czeka na zakończenie pętli zapisu."""
         if self._save_task and not self._save_task.done():
@@ -200,6 +222,7 @@ class StateManager:
         """
         task = VenomTask(content=content)
         self._tasks[task.id] = task
+        self._prune_tasks_if_needed()
         logger.info(f"Utworzono zadanie {task.id} ze statusem {task.status}")
 
         # Zapisz stan asynchronicznie
@@ -224,9 +247,11 @@ class StateManager:
         Pobiera wszystkie zadania.
 
         Returns:
-            Lista wszystkich zadań
+            Lista wszystkich zadań posortowana od najnowszych
         """
-        return list(self._tasks.values())
+        tasks = list(self._tasks.values())
+        tasks.sort(key=lambda t: t.created_at, reverse=True)
+        return tasks
 
     def clear_session_context(self, session_id: str) -> int:
         """

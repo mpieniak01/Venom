@@ -6,14 +6,14 @@ This document describes how chat works, what data it collects, where it stores i
 - Chat works in `web-next` UI (Cockpit AI) and sends tasks to FastAPI backend (QueueManager).
 - Conversation context is built on backend side based on session history and metadata.
 - Conversation continuity is maintained within `session_id`.
-- Backend restart forces new session (UI generates new `session_id`).
+- Backend restart **preserves** active sessions (SessionStore updates `boot_id` without wiping data).
 
 ## Session ID (UI)
 - `session_id` is generated on UI side and saved in `localStorage`:
   - `venom-session-id` (active session identifier),
   - `venom-next-build-id` (Next.js build),
   - `venom-backend-boot-id` (backend boot).
-- UI compares `boot_id` with backend. When different, session is reset.
+- UI compares `boot_id` with backend. When different, session details in UI are refreshed, but the history remains if `session_id` matches.
 
 ## Data Sources and Stores
 ### SessionStore (source of truth)
@@ -116,7 +116,9 @@ These operations are crucial for maintaining context quality over time. The inte
 - By default summary is not generated automatically; created on request or with clear trigger.
 
 ## Current Approach
-- Session reset after backend restart is intentional (boot_id). This behavior can be changed if need arises to maintain session after restart.
+- Session persistence after backend restart is now the default (since v2026-02). System updates state identifiers while preserving historical context in `session_store.json`.
+- All timestamps (Tracer, SessionStore) are standardized to **UTC** to ensure correct sorting and "relative time" labels in the UI.
+- Increased limits: `SessionStore` max entries (1000), Orchestrator full history buffer (500).
 - Vector memory is global and persistent; not cleared per-session. In future, additional "session-only" mode or TTL rules may be introduced.
 - Summary is generated only on request/trigger. Possible to switch to auto-summary for long sessions, at token cost.
 - Memory retrieval is conditional (heuristics). In future this can be controlled configuratively or per-model.

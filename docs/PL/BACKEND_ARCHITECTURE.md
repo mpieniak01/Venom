@@ -58,10 +58,12 @@ Tryby czatu (Direct/Normal/Complex) oraz zasady routingu/intencji są opisane w 
 ### Fast Path (Szablony)
 - **Logika**: Statyczne intencje (`HELP_REQUEST`, `TIME_REQUEST`, `INFRA_STATUS`) pomijają budowanie ciężkiego kontekstu (pamięć/historia) dla latencji poniżej 100ms.
 - **Trasa**: `Orchestrator._run_task_fastpath`.
+- **Standaryzacja UTC**: Wszystkie wewnętrzne znaczniki czasu są wymuszane do UTC w `tracer.py` i `models.py`, co zapewnia spójność między usługami i poprawne etykiety "czasu relatywnego" w UI.
 
 ### Przetwarzanie w Tle (Background Processing)
 - **ResultProcessor**: Niekrytyczne operacje (zapis do Vector Store, logi RL) są przenoszone do zadań w tle (`asyncio.create_task`), aby odblokować UI.
 ### Backend IO / Storage
 - **Debouncing**: `StateManager`, `RequestTracer` i `SessionStore` używają mechanizmu debounce dla operacji zapisu na dysk, minimalizując I/O.
+- **Trwałość Sesji**: `SessionStore` zachowuje historię czatu po restartach backendu poprzez aktualizację `boot_id` zamiast czyszczenia sesji.
 - **Optymalizacja Ollama**: Dodano ustawienie `LLM_KEEP_ALIVE`, aby zapobiec wyładowywaniu modelu, co znacząco skraca TTFT w trybie Direct.
 - **Czyste Zatrzymanie**: Polecenie `make stop` jawnie wyładowuje modele z VRAM za pomocą `keep_alive: 0`, przywracając system do stanu idealnego.

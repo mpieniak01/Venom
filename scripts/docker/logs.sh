@@ -21,6 +21,16 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! docker compose version >/dev/null 2>&1; then
+  echo "[ERROR] Docker Compose plugin ('docker compose') is not available." >&2
+  exit 1
+fi
+
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  echo "[ERROR] Missing compose file: $COMPOSE_FILE" >&2
+  exit 1
+fi
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0

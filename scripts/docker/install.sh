@@ -88,6 +88,10 @@ require_cmd() {
   return 0
 }
 
+compose_cmd() {
+  OLLAMA_IMAGE="$OLLAMA_IMAGE" OLLAMA_MODEL="$MODEL" docker compose -f "$COMPOSE_FILE" "$@"
+}
+
 wait_http() {
   local url=${1:-}
   local timeout=${2:-180}
@@ -149,13 +153,13 @@ fi
 print_disk_hint
 
 print_step "Pulling remote images (Ollama and base layers)"
-OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" pull
+compose_cmd pull
 
 print_step "Building Venom images (backend + frontend)"
-OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" build backend frontend
+compose_cmd build backend frontend
 
 print_step "Starting minimal stack"
-OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" up -d
+compose_cmd up -d
 
 print_step "Waiting for health checks"
 wait_http "http://127.0.0.1:11434/api/tags" 180
@@ -164,7 +168,7 @@ wait_http "http://127.0.0.1:3000" 240
 
 if [[ "$SKIP_MODEL_PULL" -eq 0 ]]; then
   print_step "Pulling Ollama model: $MODEL"
-  OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" exec -T ollama ollama pull "$MODEL"
+  compose_cmd exec -T ollama ollama pull "$MODEL"
 fi
 
 print_step "Done"

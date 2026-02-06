@@ -10,9 +10,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements-ci-lite.txt /tmp/requirements-ci-lite.txt
+COPY requirements-docker-minimal.txt /tmp/requirements-docker-minimal.txt
 RUN python -m pip install --upgrade pip \
-    && pip install -r /tmp/requirements-ci-lite.txt
+    && pip install -r /tmp/requirements-docker-minimal.txt
 
 COPY venom_core /app/venom_core
 COPY config /app/config

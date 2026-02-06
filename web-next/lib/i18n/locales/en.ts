@@ -694,7 +694,7 @@ export const en = {
     header: {
       eyebrow: "Command Console",
       title: "Cockpit AI",
-      description: "Operational chat with Orchestrator and runtime logs.",
+      description: "Operational chat with Orchestrator, runtime logs, and persistent session history.",
       togglePanels: {
         hide: "Hide panels",
         show: "Show panels",

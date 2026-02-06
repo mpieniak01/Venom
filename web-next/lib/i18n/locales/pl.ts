@@ -702,7 +702,7 @@ export const pl = {
     header: {
       eyebrow: "Konsola dowodzenia",
       title: "Cockpit AI",
-      description: "Chat operacyjny z Orchestratora i logami runtime.",
+      description: "Operacyjny czat z Orchestratora, logi runtime oraz trwała historia sesji.",
       togglePanels: {
         hide: "Ukryj panele",
         show: "Pokaż panele",

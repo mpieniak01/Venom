@@ -16,6 +16,8 @@ import {
 import type { HiddenPromptEntry } from "@/lib/types";
 import type { TaskExtraContext, ForcedRoute } from "@/hooks/use-api";
 
+const MAX_SESSION_HISTORY_ENTRIES = 500;
+
 type ModelsPayload = {
   providers?: Record<string, Array<{ name?: string; provider?: string | null }>>;
   models?: Array<{ name?: string; provider?: string | null }>;
@@ -265,10 +267,8 @@ export function useSessionHistoryState({
     }
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!bootId) return;
-    setLocalSessionHistory([]);
-  }, [bootId]);
+  // The effect clearing history on bootId was removed to preserve continuity during navigation.
+  // Loading from cache is handled by the effect below, which reacts to sessionHistoryStorageKey.
 
   useEffect(() => {
     if (!sessionId) return;
@@ -297,7 +297,7 @@ export function useSessionHistoryState({
     if (!sessionId) return;
     if (!sessionHistory.length) return;
     setLocalSessionHistory((prev) => {
-      if (prev.length === 0) return sessionHistory;
+      if (prev.length === 0) return sessionHistory.slice(-MAX_SESSION_HISTORY_ENTRIES);
       const keys = new Set(prev.map(sessionEntryKey));
       const merged = [...prev];
       sessionHistory.forEach((entry) => {
@@ -307,7 +307,7 @@ export function useSessionHistoryState({
           merged.push(entry);
         }
       });
-      return merged;
+      return merged.slice(-MAX_SESSION_HISTORY_ENTRIES);
     });
   }, [sessionHistory, sessionId]);
 

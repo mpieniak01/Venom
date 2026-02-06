@@ -35,7 +35,9 @@ services:
       SUMMARY_STRATEGY: heuristic_only
     depends_on:
       ollama:
-        condition: service_healthy
+        # Do not hard-block startup on healthcheck here.
+        # Health is verified explicitly by installer/CI via HTTP checks.
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:

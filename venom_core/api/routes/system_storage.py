@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from fastapi import APIRouter, HTTPException
 
@@ -127,7 +128,9 @@ def _get_storage_data_sync() -> dict:
     for item in items:
         if item["name"] == "timelines" and dreams_size > 0:
             # Nie odejmujemy jeśli to by miało dać < 0
-            item["size_bytes"] = max(0, item["size_bytes"] - dreams_size)
+            size_val = item.get("size_bytes", 0)
+            current_size = int(size_val) if isinstance(size_val, (int, float)) else 0
+            item["size_bytes"] = max(0, current_size - dreams_size)
             item["name"] = "timelines_user"
         final_items.append(item)
 
@@ -176,7 +179,7 @@ def _get_storage_data_sync() -> dict:
         },
     )
 
-    final_items.sort(key=lambda x: x.get("size_bytes", 0), reverse=True)
+    final_items.sort(key=lambda x: cast(int, x.get("size_bytes", 0) or 0), reverse=True)
 
     return {
         "status": "success",

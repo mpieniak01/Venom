@@ -51,6 +51,38 @@ This document describes Venom's new runtime architecture: **FastAPI** runs as st
 - `web-next/.next/standalone` – build output (not committed).
 - `scripts/archive-perf-results.sh` – helper backup of Playwright/pytest/Locust results from `perf-artifacts/` directory.
 
+## Docker Minimal Packages (Build and Publish)
+
+For Docker onboarding MVP we use two workflows:
+
+1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)
+   - runs on PRs touching Docker files,
+   - validates compose + shell scripts + image build,
+   - does **not** publish images.
+
+2. **`docker-publish`** (`.github/workflows/docker-publish.yml`)
+   - publishes GHCR images only on:
+     - git tag push matching `v*` (release mode), or
+     - manual run (`workflow_dispatch`).
+   - avoids package rebuild/publish on every small commit.
+
+Published images:
+- `ghcr.io/<owner>/venom-backend`
+- `ghcr.io/<owner>/venom-frontend`
+
+Default tags:
+- always: `sha-<short_sha>`
+- on release tag: `<git_tag>` + `latest`
+- manual run: optional `custom_tag` (+ optional `latest`)
+
+Example release flow:
+```bash
+git checkout main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Post-Deployment Tests
 
 1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`

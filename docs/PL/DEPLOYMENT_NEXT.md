@@ -51,6 +51,38 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 - `web-next/.next/standalone` – output buildu (nie commitujemy).
 - `scripts/archive-perf-results.sh` – pomocniczy backup wyników Playwright/pytest/Locust z katalogu `perf-artifacts/`.
 
+## Paczki Docker Minimal (build i publikacja)
+
+Dla dockerowego onboardingu MVP używamy dwóch workflow:
+
+1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)
+   - uruchamia się na PR-ach dotykających plików Docker,
+   - waliduje compose + skrypty shell + build obrazów,
+   - **nie** publikuje obrazów.
+
+2. **`docker-publish`** (`.github/workflows/docker-publish.yml`)
+   - publikuje obrazy do GHCR tylko gdy:
+     - wypchniesz tag `v*` (tryb release), albo
+     - uruchomisz workflow ręcznie (`workflow_dispatch`).
+   - dzięki temu nie publikujemy paczek po każdym drobnym commicie.
+
+Publikowane obrazy:
+- `ghcr.io/<owner>/venom-backend`
+- `ghcr.io/<owner>/venom-frontend`
+
+Domyślne tagi:
+- zawsze: `sha-<short_sha>`
+- na tagu release: `<git_tag>` + `latest`
+- przy uruchomieniu ręcznym: opcjonalny `custom_tag` (+ opcjonalny `latest`)
+
+Przykładowy flow release:
+```bash
+git checkout main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Testy po wdrożeniu
 
 1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`

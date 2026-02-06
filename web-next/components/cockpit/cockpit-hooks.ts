@@ -297,7 +297,7 @@ export function useSessionHistoryState({
     if (!sessionId) return;
     if (!sessionHistory.length) return;
     setLocalSessionHistory((prev) => {
-      if (prev.length === 0) return sessionHistory;
+      if (prev.length === 0) return sessionHistory.slice(-500);
       const keys = new Set(prev.map(sessionEntryKey));
       const merged = [...prev];
       sessionHistory.forEach((entry) => {
@@ -307,7 +307,7 @@ export function useSessionHistoryState({
           merged.push(entry);
         }
       });
-      return merged;
+      return merged.slice(-500);
     });
   }, [sessionHistory, sessionId]);
 

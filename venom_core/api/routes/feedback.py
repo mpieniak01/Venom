@@ -214,4 +214,4 @@ async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> di
     except Exception:
         return {"count": 0, "items": []}
 
-    return {"count": len(items), "items": list(reversed(items))}
+    return {"count": len(items), "items": items}

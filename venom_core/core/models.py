@@ -1,11 +1,13 @@
 """Modele danych dla systemu zadań Venom."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from venom_core.utils.helpers import get_utc_now
 
 
 class TaskStatus(str, Enum):
@@ -33,7 +35,7 @@ class VenomTask(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     content: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now())
+    created_at: datetime = Field(default_factory=get_utc_now)
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[str] = None
     logs: List[str] = Field(default_factory=list)
@@ -43,6 +45,17 @@ class VenomTask(BaseModel):
     context_used: Optional[ContextUsed] = Field(
         default=None, description="Metadane użytego kontekstu (lekcje, pamięć)"
     )
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def ensure_utc(cls, v: Any) -> Any:
+        if v is None:
+            return v
+        if isinstance(v, str):
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.astimezone(timezone.utc)
+        return v
 
 
 class TaskExtraContext(BaseModel):

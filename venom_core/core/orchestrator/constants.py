@@ -17,6 +17,7 @@ LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 MAX_LEARNING_SNIPPET = 1200
 MAX_HIDDEN_PROMPTS_IN_CONTEXT = 2
 SESSION_HISTORY_LIMIT = 12  # Maksymalna liczba wpisów historii sesji
+SESSION_FULL_HISTORY_LIMIT = 100  # Bufor dla streszczenia sesji
 MAX_CONTEXT_CHARS = 8000  # Przybliżony budżet znaków dla promptu
 HISTORY_SUMMARY_TRIGGER_MSGS = 20
 HISTORY_SUMMARY_TRIGGER_CHARS = 5000

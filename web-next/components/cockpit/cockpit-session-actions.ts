@@ -57,7 +57,7 @@ export function useCockpitSessionActions({
     } finally {
       setMemoryAction(null);
     }
-  }, [clearSessionMemory, resetSession, sessionId, setMemoryAction, setMessage]);
+  }, [clearSessionMemory, resetSession, sessionId, setMemoryAction, setMessage, pushToast]);
 
   const handleClearSessionMemory = useCallback(async () => {
     if (!sessionId) return;

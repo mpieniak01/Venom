@@ -24,6 +24,7 @@ describe("mergeHistoryFallbacks", () => {
     const merged = mergeHistoryFallbacks({
       sessionHistory,
       localSessionHistory: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       historyRequests: historyRequests as any,
       tasks: [],
       sessionId: null,
@@ -55,6 +56,7 @@ describe("mergeHistoryFallbacks", () => {
       sessionHistory,
       localSessionHistory: [],
       historyRequests: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tasks: tasks as any,
       sessionId: null,
       sessionEntryKey,
@@ -85,6 +87,7 @@ describe("mergeHistoryFallbacks", () => {
       sessionHistory,
       localSessionHistory: [],
       historyRequests: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tasks: tasks as any,
       sessionId: "session-current",
       sessionEntryKey,
@@ -114,6 +117,7 @@ describe("mergeHistoryFallbacks", () => {
     const merged = mergeHistoryFallbacks({
       sessionHistory,
       localSessionHistory: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       historyRequests: historyRequests as any,
       tasks: [],
       sessionId: "session-current",
@@ -145,6 +149,7 @@ describe("mergeHistoryFallbacks", () => {
       sessionHistory,
       localSessionHistory: [],
       historyRequests: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tasks: tasks as any,
       sessionId: null,
       sessionEntryKey,
@@ -176,6 +181,7 @@ describe("mergeHistoryFallbacks", () => {
       },
     ];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filtered = filterHistoryAfterReset(entries as any, "2026-02-02T10:05:00Z");
 
     assert.deepStrictEqual(filtered.map((e) => e.request_id), ["r2"]);

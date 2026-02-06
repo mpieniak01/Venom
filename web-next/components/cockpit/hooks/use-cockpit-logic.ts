@@ -38,7 +38,6 @@ import {
     setActiveHiddenPrompt,
 } from "@/hooks/use-api";
 
-import { type SessionHistoryEntry } from "@/components/cockpit/cockpit-hooks";
 import { filterHistoryAfterReset, mergeHistoryFallbacks } from "@/components/cockpit/hooks/history-merge";
 
 import { useCockpitData } from "./use-cockpit-data";

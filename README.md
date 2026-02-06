@@ -18,7 +18,7 @@ Venom is transforming from a simple command executor into an **autonomous engine
 - 👍👎 **Quality Loop** - User feedback + logs and response quality metrics
 - 🧠 **Hidden Prompts** - Approved responses as context shortcuts
 - 🧭 **Runtime LLM Selection** - Ollama/vLLM + active model controlled from panel
-- 💬 **Chat Continuity** - Consistent session history per `session_id` (SessionStore) with reset after backend restart
+- 💬 **Chat Continuity** - Consistent session history per `session_id` (SessionStore), preserved across backend restarts and page navigation
 - 🗺️ **Memory Visualization** - Memory layer (LessonsStore + LanceDB) in `/brain` view, with session/pinned filtering and pin/delete actions
 - 🛠️ **Services Panel** - `/config` shows real statuses of local stack (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + Full/Light/LLM OFF profiles
 

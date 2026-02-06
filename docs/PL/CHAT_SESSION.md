@@ -6,14 +6,14 @@ Dokument opisuje, jak dziala chat, jakie dane zbiera, gdzie je przechowuje i jak
 - Chat dziala w UI `web-next` (Cockpit AI) i wysyla zadania do backendu FastAPI (QueueManager).
 - Kontekst rozmowy jest budowany po stronie backendu na podstawie historii sesji i metadanych.
 - Ciaglosc rozmowy jest utrzymywana w ramach `session_id`.
-- Restart backendu wymusza nowa sesje (UI generuje nowe `session_id`).
+- Restart backendu **zachowuje** aktywne sesje (SessionStore aktualizuje `boot_id` bez czyszczenia danych).
 
 ## Id sesji (UI)
 - `session_id` jest generowany po stronie UI i zapisywany w `localStorage`:
   - `venom-session-id` (aktywny identyfikator sesji),
   - `venom-next-build-id` (build Next.js),
   - `venom-backend-boot-id` (boot backendu).
-- UI porownuje `boot_id` z backendu. Gdy jest inny, sesja jest resetowana.
+- UI porownuje `boot_id` z backendu. Gdy jest inny, odświeża metadane, ale zachowuje historię jeśli `session_id` się nie zmienił.
 
 ## Źródła danych i magazyny
 ### SessionStore (źródło prawdy)
@@ -124,7 +124,10 @@ Te operacje są kluczowe dla utrzymania jakości kontekstu w czasie. Interfejs d
 - Domyslnie summary nie jest generowane automatycznie; powstaje na zadanie lub przy jasnym triggerze.
 
 ## Obecne podejscie
-- Reset sesji po restarcie backendu jest celowy (boot_id). To zachowanie moze zostac zmienione, jesli pojawi sie potrzeba podtrzymania sesji po restarcie.
+- Trwałość sesji po restarcie backendu jest teraz domyślna (od v2026-02). System aktualizuje identyfikatory stanu, zachowując kontekst historyczny w `session_store.json`.
+- Wszystkie znaczniki czasu (Tracer, SessionStore) są ustandaryzowane do **UTC**, co eliminuje błędy sortowania i etykiet "czasu relatywnego" w UI.
+- Zwiększone limity: `SessionStore` max entries (1000), bufor pełnej historii orkiestratora (500).
+- Naprawiono błąd "kasowania przy nawigacji": teraz przejście między podstronami UI nie czyści okna czatu (dane ładowane z `sessionStorage`).
 - Pamięć wektorowa jest globalna i trwała; nie jest kasowana per‑sesja. W przyszlosci moze zostac wprowadzony dodatkowy tryb „session‑only” lub reguly TTL.
 - Summary jest generowane tylko na zadanie/trigger. Mozliwe jest przestawienie na auto‑summary dla dlugich sesji, kosztem tokenow.
 - Retrieval z pamieci jest warunkowy (heurystyki). W przyszlosci mozna to sterowac konfiguracyjnie lub per‑model.

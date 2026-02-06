@@ -30,7 +30,7 @@ SHELL := /bin/bash
 PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 
 .PHONY: lint format test install-hooks start start-dev start-prod stop restart status clean-ports \
-	pytest e2e test-optimal \
+	pytest e2e test-optimal test-ci-light \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
 	monitor mcp-clean mcp-status
@@ -67,6 +67,11 @@ e2e:
 	bash scripts/run-e2e-optimal.sh
 
 test-optimal: pytest e2e
+
+test-ci-light:
+	@PYTEST_BIN="pytest"; \
+	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
+	$$PYTEST_BIN -q $$(cat config/pytest-groups/ci-light.txt)
 
 install-hooks:
 	pre-commit install

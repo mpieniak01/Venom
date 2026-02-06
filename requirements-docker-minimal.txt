@@ -19,6 +19,7 @@ tqdm==4.67.1
 psutil==5.9.8
 bleach
 gitpython==3.1.46
+PyGithub==2.8.1
 networkx==3.6.1
 pyautogen>=0.2.0
 

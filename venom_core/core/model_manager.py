@@ -1,12 +1,14 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import psutil
@@ -96,6 +98,20 @@ class ModelManager:
         self.active_version: Optional[str] = None
 
         logger.info(f"ModelManager zainicjalizowany (models_dir={self.models_dir})")
+
+    def _resolve_ollama_tags_url(self) -> str:
+        """
+        Zwraca URL /api/tags dla Ollama zgodny z aktualnym runtime.
+
+        W Dockerze endpoint bywa ustawiony jako http://ollama:11434/v1,
+        a lokalnie często http://localhost:11434/v1.
+        """
+        endpoint = os.getenv("LLM_LOCAL_ENDPOINT", "http://localhost:11434/v1")
+        parsed = urlparse(endpoint)
+        if parsed.scheme and parsed.netloc:
+            base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+            return f"{base}/api/tags"
+        return "http://localhost:11434/api/tags"
 
     def register_version(
         self,
@@ -617,7 +633,7 @@ PARAMETER top_k 40
         live_query_success = False
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get("http://localhost:11434/api/tags")
+                response = await client.get(self._resolve_ollama_tags_url())
                 if response.status_code == 200:
                     live_query_success = True
                     ollama_data = response.json()

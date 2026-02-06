@@ -53,6 +53,9 @@ This document describes Venom's new runtime architecture: **FastAPI** runs as st
 
 ## Docker Minimal Packages (Build and Publish)
 
+Detailed step-by-step release procedure:
+- `docs/DOCKER_RELEASE_GUIDE.md`
+
 For Docker onboarding MVP we use two workflows:
 
 1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)

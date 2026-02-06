@@ -53,6 +53,9 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 
 ## Paczki Docker Minimal (build i publikacja)
 
+Szczegółowa procedura wydania krok po kroku:
+- `docs/PL/DOCKER_RELEASE_GUIDE.md`
+
 Dla dockerowego onboardingu MVP używamy dwóch workflow:
 
 1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)

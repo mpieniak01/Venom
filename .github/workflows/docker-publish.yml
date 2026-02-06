@@ -1,0 +1,115 @@
+name: Docker Publish (Minimal)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      custom_tag:
+        description: "Optional extra tag (e.g. mvp-1, rc1)"
+        required: false
+        default: ""
+      push_latest:
+        description: "Also publish :latest"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish backend/frontend images to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            dockerfile: docker/backend.Dockerfile
+          - component: frontend
+            dockerfile: docker/frontend.Dockerfile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${{ github.repository_owner }}/venom-${{ matrix.component }}"
+          short_sha="${GITHUB_SHA::7}"
+
+          tags=("${image}:sha-${short_sha}")
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            git_tag="${GITHUB_REF#refs/tags/}"
+            tags+=("${image}:${git_tag}")
+            tags+=("${image}:latest")
+          fi
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            custom_tag="${{ inputs.custom_tag }}"
+            if [[ -n "${custom_tag}" ]]; then
+              tags+=("${image}:${custom_tag}")
+            fi
+            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+              tags+=("${image}:latest")
+            fi
+          fi
+
+          # Remove duplicates while preserving order
+          uniq_tags=()
+          for tag in "${tags[@]}"; do
+            skip=0
+            for seen in "${uniq_tags[@]}"; do
+              if [[ "${seen}" == "${tag}" ]]; then
+                skip=1
+                break
+              fi
+            done
+            if [[ "${skip}" -eq 0 ]]; then
+              uniq_tags+=("${tag}")
+            fi
+          done
+
+          {
+            echo "tags<<EOF"
+            for tag in "${uniq_tags[@]}"; do
+              echo "${tag}"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Will publish tags:"
+          printf '  - %s\n' "${uniq_tags[@]}"
+
+      - name: Build and push ${{ matrix.component }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

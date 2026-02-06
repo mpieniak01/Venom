@@ -1,5 +1,12 @@
 # Venom v1.0 🐍
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+
+[![CI](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml/badge.svg)](
+https://github.com/mpieniak01/Venom/actions/workflows/ci.yml
+)
+[![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](
+https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom
+)
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 
@@ -674,6 +681,18 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 
 ## 🛠️ Development Tools
 
+### Quality and Security Gates
+
+- **SonarCloud (PR gate):** every pull request is analyzed for bugs, vulnerabilities, code smells, duplications and maintainability issues.
+- **Snyk (periodic scan):** dependency and container security scanning is executed periodically to catch newly disclosed CVEs.
+- **CI Lite:** fast checks on every PR (lint + selected unit tests) to keep feedback loop short.
+
+What this means for contributors and agents:
+- Keep functions small and readable (avoid high cognitive complexity).
+- Prefer explicit typing and pass `mypy venom_core`.
+- Avoid unused blocks/imports and dead code.
+- Treat warnings from `ruff`, `mypy`, and Sonar as release blockers for new code.
+
 ### Pre-commit Hooks
 
 ```bash
@@ -761,6 +780,7 @@ Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) to learn 
 - **Commit messages:** Conventional Commits (feat, fix, docs, test, refactor)
 - **Style:** Black + Ruff + isort (automatic via pre-commit)
 - **Tests:** Required for new features
+- **Quality gates:** SonarCloud must pass on PR; security baseline is continuously monitored with periodic Snyk scans
 
 ## 🌐 THE NEXUS: Distributed Architecture
 

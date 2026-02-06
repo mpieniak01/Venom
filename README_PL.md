@@ -1,5 +1,12 @@
 # Venom v1.0 🐍
 
+[![CI](https://github.com/mpieniak01/Venom/actions/workflows/ci.yml/badge.svg)](
+https://github.com/mpieniak01/Venom/actions/workflows/ci.yml
+)
+[![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](
+https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
+
 > **| [English Documentation Available](README.md)**
 
 **Venom wersja desktop – system meta-inteligencji** — Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
@@ -738,6 +745,18 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 
 ## 🛠️ Narzędzia deweloperskie
 
+### Bramy jakości i bezpieczeństwa
+
+- **SonarCloud (bramka PR):** każdy pull request jest analizowany pod kątem bugów, podatności, code smelli, duplikacji i utrzymywalności.
+- **Snyk (skan okresowy):** skan zależności i bezpieczeństwa kontenerów uruchamiany cyklicznie, aby wychwytywać nowe CVE.
+- **CI Lite:** szybkie checki na każdym PR (lint + wybrane testy unit), żeby skrócić pętlę informacji zwrotnej.
+
+Co to oznacza dla contributorów i agentów:
+- Pisz mniejsze, czytelne funkcje (unikaj wysokiej złożoności kognitywnej).
+- Stosuj jawne typowanie i utrzymuj `mypy venom_core` na zielono.
+- Usuwaj nieużywane importy/bloki i martwy kod.
+- Traktuj ostrzeżenia `ruff`, `mypy` i Sonara jako blokery dla nowego kodu.
+
 ### Hooki pre-commit
 
 ```bash
@@ -825,6 +844,7 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/PL/CONTRIBUTING.md), a
 - **Wiadomości commitów:** Conventional Commits (feat, fix, docs, test, refactor)
 - **Styl:** Black + Ruff + isort (automatyczne przez pre-commit)
 - **Testy:** Wymagane dla nowych funkcjonalności
+- **Bramki jakości:** SonarCloud musi przejść na PR; baza bezpieczeństwa jest monitorowana okresowymi skanami Snyk
 
 
 ## 🌐 THE NEXUS: architektura rozproszona

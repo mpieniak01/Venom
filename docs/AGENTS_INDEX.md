@@ -8,6 +8,14 @@ The Venom system consists of 34 specialized agents, each responsible for a speci
 
 > **Note:** This index has been translated to English. Individual agent documentation files (THE_*.md) are currently being translated. Links to untranslated files may not work yet.
 
+## Quality standards for agent code
+
+- Agent changes are expected to pass CI Lite on PR (fast lint + selected unit tests).
+- SonarCloud is used as a mandatory PR quality gate.
+- Snyk security scanning is executed periodically for dependency/container risk tracking.
+- When extending agents, keep logic readable and typed (`mypy venom_core` should stay green).
+- Avoid dead branches/placeholders and keep failure paths explicit and testable.
+
 ## Agent Categories
 
 ### 🏗️ Planning and Architecture

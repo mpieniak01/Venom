@@ -3,7 +3,7 @@
 import asyncio
 import os
 import re
-from typing import TYPE_CHECKING, Any, List, Tuple
+from typing import Any, List, Tuple
 
 from semantic_kernel import Kernel
 from semantic_kernel.connectors.ai.function_choice_behavior import (
@@ -18,9 +18,6 @@ from venom_core.agents.base import BaseAgent
 from venom_core.execution.skills.web_skill import WebSearchSkill
 from venom_core.memory.memory_skill import MemorySkill
 from venom_core.utils.logger import get_logger
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 

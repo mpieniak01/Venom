@@ -49,7 +49,17 @@ Dziękujemy, że chcesz pomóc w rozwoju projektu! Poniżej znajdziesz zasady, w
 
 - Wszystkie nowo dodawane funkcjonalności muszą mieć testy (pytest).
 - Testy wrzucamy do katalogu `/tests`.
-- CI będzie sprawdzał: lint → testy → format → raport coverage.
+- CI Lite na PR najpierw sprawdza szybkie bramki jakości (lint + wybrane testy unit).
+- SonarCloud jest wymaganą bramką PR (bugi, podatności, code smell, utrzymywalność, duplikacje).
+- Snyk jest uruchamiany okresowo, aby wychwytywać nowe CVE w zależnościach i kontenerach.
+
+### Checklist jakości przed PR
+
+- Uruchom `pre-commit run --all-files`.
+- Uruchom `mypy venom_core`.
+- Utrzymuj prostą logikę funkcji (unikaj wysokiej złożoności kognitywnej i rozbudowanych bloków warunkowych).
+- Usuwaj martwy kod, nieużywane importy i placeholdery.
+- Traktuj uwagi `ruff`, `mypy` i Sonara jako blokery dla nowych zmian.
 
 ---
 

@@ -20,11 +20,44 @@ class SessionStore:
 
     def __init__(self, store_path: Optional[str] = None, max_entries: int = 1000):
         self._lock = Lock()
-        resolved = store_path or str(Path(SETTINGS.MEMORY_ROOT) / "session_store.json")
-        self._store_path = Path(resolved)
+        self._store_path = self._resolve_store_path(store_path)
         self._max_entries = max_entries
         self._sessions: Dict[str, Dict[str, object]] = {}
         self._load()
+
+    @staticmethod
+    def _is_within(path: Path, parent: Path) -> bool:
+        try:
+            path.relative_to(parent)
+            return True
+        except ValueError:
+            return False
+
+    def _resolve_store_path(self, store_path: Optional[str]) -> Path:
+        default_path = (
+            Path(SETTINGS.MEMORY_ROOT).resolve() / "session_store.json"
+        ).resolve()
+        if not store_path:
+            return default_path
+
+        candidate = Path(store_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path(SETTINGS.MEMORY_ROOT).resolve() / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+
+        memory_root = Path(SETTINGS.MEMORY_ROOT).resolve()
+        tmp_root = Path("/tmp").resolve()
+        if self._is_within(candidate, memory_root) or self._is_within(
+            candidate, tmp_root
+        ):
+            return candidate
+
+        logger.warning(
+            "Odrzucono store_path poza dozwolonym zakresem (MEMORY_ROOT,/tmp): %s; używam domyślnej ścieżki",
+            candidate,
+        )
+        return default_path
 
     def _load(self) -> None:
         if not self._store_path.exists():

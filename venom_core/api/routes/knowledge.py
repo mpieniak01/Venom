@@ -1,7 +1,7 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -36,13 +36,15 @@ def set_dependencies(graph_store=None, lessons_store=None):
 
 @router.get("/knowledge/graph")
 async def get_knowledge_graph(
-    limit: int = Query(
-        500,
-        ge=1,
-        le=5000,
-        description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
-    ),
-    graph_store: CodeGraphStore = Depends(get_graph_store),
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=5000,
+            description="Maksymalna liczba węzłów do zwrócenia (pozostałe są odfiltrowane)",
+        ),
+    ] = 500,
 ):
     """
     Zwraca graf wiedzy w formacie Cytoscape Elements JSON.
@@ -297,7 +299,9 @@ def _get_mock_knowledge_graph(limit: int = 500):
 
 
 @router.get("/graph/summary")
-async def get_graph_summary(graph_store: CodeGraphStore = Depends(get_graph_store)):
+async def get_graph_summary(
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+):
     """
     Zwraca podsumowanie grafu kodu.
 
@@ -348,7 +352,7 @@ async def get_graph_summary(graph_store: CodeGraphStore = Depends(get_graph_stor
 
 @router.get("/graph/file/{file_path:path}")
 async def get_file_graph_info(
-    file_path: str, graph_store: CodeGraphStore = Depends(get_graph_store)
+    file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
     """
     Zwraca informacje o pliku w grafie.
@@ -378,7 +382,7 @@ async def get_file_graph_info(
 
 @router.get("/graph/impact/{file_path:path}")
 async def get_impact_analysis(
-    file_path: str, graph_store: CodeGraphStore = Depends(get_graph_store)
+    file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
     """
     Analizuje wpływ zmian w pliku.
@@ -407,7 +411,9 @@ async def get_impact_analysis(
 
 
 @router.post("/graph/scan")
-async def trigger_graph_scan(graph_store: CodeGraphStore = Depends(get_graph_store)):
+async def trigger_graph_scan(
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+):
     """
     Uruchamia skanowanie grafu kodu.
 
@@ -435,9 +441,9 @@ async def trigger_graph_scan(graph_store: CodeGraphStore = Depends(get_graph_sto
 
 @router.get("/lessons")
 async def get_lessons(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: int = 10,
     tags: Optional[str] = None,
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Pobiera listę lekcji.
@@ -473,7 +479,9 @@ async def get_lessons(
 
 
 @router.get("/lessons/stats")
-async def get_lessons_stats(lessons_store: LessonsStore = Depends(get_lessons_store)):
+async def get_lessons_stats(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+):
     """
     Zwraca statystyki magazynu lekcji.
 
@@ -496,8 +504,8 @@ async def get_lessons_stats(lessons_store: LessonsStore = Depends(get_lessons_st
 
 @router.delete("/lessons/prune/latest")
 async def prune_latest_lessons(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     count: int = Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Usuwa n najnowszych lekcji z magazynu.
@@ -519,13 +527,13 @@ async def prune_latest_lessons(
 
 @router.delete("/lessons/prune/range")
 async def prune_lessons_by_range(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: str = Query(
         ..., description="Data początkowa w formacie ISO 8601 (np. 2024-01-01T00:00:00)"
     ),
     end: str = Query(
         ..., description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)"
     ),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Usuwa lekcje z podanego zakresu czasu.
@@ -560,8 +568,8 @@ async def prune_lessons_by_range(
 
 @router.delete("/lessons/prune/tag")
 async def prune_lessons_by_tag(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: str = Query(..., description="Tag do wyszukania i usunięcia"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Usuwa lekcje zawierające dany tag.
@@ -584,10 +592,10 @@ async def prune_lessons_by_tag(
 
 @router.delete("/lessons/purge")
 async def purge_all_lessons(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     force: bool = Query(
         False, description="Wymagane potwierdzenie dla operacji nuklearnej"
     ),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """
     Czyści całą bazę lekcji (opcja nuklearna).
@@ -622,8 +630,8 @@ async def purge_all_lessons(
 
 @router.delete("/lessons/prune/ttl")
 async def prune_lessons_by_ttl(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: int = Query(..., ge=1, description="Liczba dni retencji (TTL)"),
-    lessons_store: LessonsStore = Depends(get_lessons_store),
 ):
     """Usuwa lekcje starsze niż TTL w dniach."""
     try:
@@ -643,7 +651,7 @@ async def prune_lessons_by_ttl(
 
 @router.post("/lessons/dedupe")
 async def dedupe_lessons(
-    lessons_store: LessonsStore = Depends(get_lessons_store),
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
     """Deduplikuje lekcje na podstawie podpisu treści."""
     try:

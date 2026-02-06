@@ -1,12 +1,7 @@
-"""Moduł: message_broker - infrastruktura kolejkowania zadań (Redis + ARQ).
-
-UWAGA BEZPIECZEŃSTWA: Szczegółowe informacje dotyczące bezpieczeństwa (pickle,
-Redis, architektura Hive) znajdują się w dokumentacji: docs/THE_HIVE.md (sekcja Security).
-"""
+"""Modul: message_broker - infrastruktura kolejkowania zadan (Redis + ARQ)."""
 
 import asyncio
 import json
-import pickle
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -156,7 +151,7 @@ class MessageBroker:
                 port=self.redis_settings.port,
                 db=self.redis_settings.database,
                 password=self.redis_settings.password,
-                decode_responses=False,  # Używamy pickle dla złożonych obiektów
+                decode_responses=False,  # Przechowujemy binarne payloady JSON
             )
 
             # Test połączenia
@@ -240,7 +235,7 @@ class MessageBroker:
                 else SETTINGS.HIVE_BACKGROUND_QUEUE
             )
 
-            # Enqueue task do ARQ (używamy pickle dla serializacji)
+            # Enqueue task do ARQ
             await self.arq_pool.enqueue_job(
                 task_type,
                 task_id,
@@ -262,7 +257,8 @@ class MessageBroker:
             return
 
         key = f"venom:task:{task.task_id}"
-        data = pickle.dumps(task)
+        payload = task.to_dict()
+        data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         # TTL: 24 godziny
         await self.redis_client.setex(key, 86400, data)
 
@@ -287,9 +283,25 @@ class MessageBroker:
         key = f"venom:task:{task_id}"
         data = await self.redis_client.get(key)
         if data:
-            task = pickle.loads(data)
-            self._task_registry[task_id] = task
-            return task
+            try:
+                decoded = data.decode("utf-8") if isinstance(data, bytes) else str(data)
+                task_payload = json.loads(decoded)
+                if not isinstance(task_payload, dict):
+                    logger.warning(
+                        "Nieprawidlowy format task payload w Redis dla task_id=%s",
+                        task_id,
+                    )
+                    return None
+                task = TaskMessage.from_dict(task_payload)
+                self._task_registry[task_id] = task
+                return task
+            except Exception as exc:
+                logger.warning(
+                    "Nie udalo sie odczytac task payload z Redis dla task_id=%s: %s",
+                    task_id,
+                    exc,
+                )
+                return None
 
         return None
 

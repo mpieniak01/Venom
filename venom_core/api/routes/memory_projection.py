@@ -1,6 +1,7 @@
 """Endpoint projekcji embeddingów do 2D."""
 
 import importlib
+from typing import Annotated
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
@@ -31,7 +32,7 @@ def set_dependencies(vector_store):
 
 
 @router.post("/embedding-project")
-async def project_embeddings(limit: int = Query(200, ge=2, le=1000)):
+async def project_embeddings(limit: Annotated[int, Query(ge=2, le=1000)] = 200):
     """Prosta projekcja embeddingów do 2D (PCA) i zapis x,y w metadanych."""
     if _vector_store is None or _embedding_service is None:
         raise HTTPException(

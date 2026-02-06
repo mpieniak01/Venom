@@ -2,7 +2,7 @@
 
 import asyncio
 import importlib
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -113,7 +113,7 @@ async def list_trending_models(provider: str, limit: int = 12):
 
 @router.get("/models/search")
 async def search_models(
-    query: str = Query(..., min_length=2),
+    query: Annotated[str, Query(min_length=2)],
     provider: str = "huggingface",
     limit: int = 10,
 ):

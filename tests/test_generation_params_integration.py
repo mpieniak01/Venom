@@ -145,9 +145,9 @@ class TestGenerationParamsIntegration:
         response_long_text = str(response_long).strip()
 
         # Odpowiedź z większym max_tokens powinna być dłuższa
-        assert len(response_long_text) > len(response_short_text), (
-            "Większy max_tokens powinien dawać dłuższą odpowiedź"
-        )
+        assert len(response_long_text) > len(
+            response_short_text
+        ), "Większy max_tokens powinien dawać dłuższą odpowiedź"
 
     @pytest.mark.skipif(
         not LOCAL_LLM_AVAILABLE,
@@ -177,16 +177,16 @@ class TestGenerationParamsIntegration:
 
         # Dla Ollama sprawdź specyficzne mapowanie
         if "ollama" in provider.lower():
-            assert "num_predict" in adapted, (
-                "Ollama powinien używać num_predict zamiast max_tokens"
-            )
+            assert (
+                "num_predict" in adapted
+            ), "Ollama powinien używać num_predict zamiast max_tokens"
             assert adapted["num_predict"] == 1024
         # Dla vLLM sprawdź mapowanie
         elif "vllm" in provider.lower() or provider.lower() == "local":
             assert "max_tokens" in adapted, "vLLM powinien używać max_tokens"
-            assert "repetition_penalty" in adapted, (
-                "vLLM powinien używać repetition_penalty"
-            )
+            assert (
+                "repetition_penalty" in adapted
+            ), "vLLM powinien używać repetition_penalty"
 
     def test_generation_params_in_task_request(self):
         """

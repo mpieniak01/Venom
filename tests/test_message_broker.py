@@ -1,5 +1,6 @@
 """Testy dla message_broker - infrastruktura kolejkowania zadań."""
 
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
@@ -240,3 +241,67 @@ async def test_retry_task_max_retries():
     result = await broker.retry_task("task_123")
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_store_task_info_uses_json_serialization():
+    """Task info powinien byc zapisywany jako jawny JSON (bez pickle)."""
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    task = TaskMessage("task_json_1", "test", {"k": "v"})
+
+    await broker._store_task_info(task)
+
+    broker.redis_client.setex.assert_awaited_once()
+    args, _ = broker.redis_client.setex.await_args
+    assert args[0] == "venom:task:task_json_1"
+    assert args[1] == 86400
+    raw = args[2]
+    assert isinstance(raw, bytes)
+    payload = json.loads(raw.decode("utf-8"))
+    assert payload["task_id"] == "task_json_1"
+    assert payload["payload"] == {"k": "v"}
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_from_redis_json_payload():
+    """Broker powinien poprawnie odczytywac TaskMessage z JSON z Redis."""
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    encoded = json.dumps(
+        {
+            "task_id": "redis_task_1",
+            "task_type": "test",
+            "payload": {"k": "v"},
+            "priority": "background",
+            "created_at": datetime.now().isoformat(),
+            "timeout": 30,
+            "max_retries": 2,
+            "attempt": 0,
+            "assigned_node": None,
+            "started_at": None,
+            "completed_at": None,
+            "result": None,
+            "error": None,
+            "status": "pending",
+        }
+    ).encode("utf-8")
+    broker.redis_client.get = AsyncMock(return_value=encoded)
+
+    task = await broker.get_task_status("redis_task_1")
+
+    assert task is not None
+    assert task.task_id == "redis_task_1"
+    assert task.payload == {"k": "v"}
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_returns_none_for_invalid_redis_payload():
+    """Uszkodzony payload z Redis nie powinien crashowac brokera."""
+    broker = MessageBroker()
+    broker.redis_client = AsyncMock()
+    broker.redis_client.get = AsyncMock(return_value=b"not-json")
+
+    task = await broker.get_task_status("broken_task")
+
+    assert task is None

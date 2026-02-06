@@ -347,14 +347,18 @@ async def memory_graph(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
-    session_id: Annotated[str, Query(description="Opcjonalny filtr po session_id")] = "",
+    session_id: Annotated[
+        str, Query(description="Opcjonalny filtr po session_id")
+    ] = "",
     only_pinned: Annotated[
         bool, Query(description="Zwracaj tylko wpisy z meta pinned=true")
     ] = False,
     include_lessons: Annotated[
         bool, Query(description="Czy dołączyć lekcje z LessonsStore")
     ] = False,
-    mode: Annotated[str, Query(description="Tryb grafu: default lub flow (sekwencja)")] = "default",
+    mode: Annotated[
+        str, Query(description="Tryb grafu: default lub flow (sekwencja)")
+    ] = "default",
 ):
     """
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
@@ -671,7 +675,9 @@ async def flush_semantic_cache():
 @router.delete("/lessons/prune/latest")
 async def prune_latest_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    count: Annotated[int, Query(ge=1, description="Liczba najnowszych lekcji do usunięcia")],
+    count: Annotated[
+        int, Query(ge=1, description="Liczba najnowszych lekcji do usunięcia")
+    ],
 ):
     """Alias dla knowledge/lessons/prune/latest"""
     from venom_core.api.routes.knowledge import prune_latest_lessons as knowledge_prune

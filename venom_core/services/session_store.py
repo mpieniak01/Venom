@@ -34,7 +34,9 @@ class SessionStore:
             return False
 
     def _resolve_store_path(self, store_path: Optional[str]) -> Path:
-        default_path = (Path(SETTINGS.MEMORY_ROOT).resolve() / "session_store.json").resolve()
+        default_path = (
+            Path(SETTINGS.MEMORY_ROOT).resolve() / "session_store.json"
+        ).resolve()
         if not store_path:
             return default_path
 
@@ -46,7 +48,9 @@ class SessionStore:
 
         memory_root = Path(SETTINGS.MEMORY_ROOT).resolve()
         tmp_root = Path("/tmp").resolve()
-        if self._is_within(candidate, memory_root) or self._is_within(candidate, tmp_root):
+        if self._is_within(candidate, memory_root) or self._is_within(
+            candidate, tmp_root
+        ):
             return candidate
 
         logger.warning(

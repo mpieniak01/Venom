@@ -64,6 +64,10 @@ For Docker onboarding MVP we use two workflows:
    - publishes GHCR images only on:
      - git tag push matching `v*` (release mode), or
      - manual run (`workflow_dispatch`).
+   - accidental-release guards:
+     - manual publish requires `confirm_publish=true`,
+     - manual publish is allowed only from `main`,
+     - tag publish requires strict semver tag (`vMAJOR.MINOR.PATCH`) and tag commit that belongs to `main` history.
    - avoids package rebuild/publish on every small commit.
 
 Published images:

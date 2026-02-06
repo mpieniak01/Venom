@@ -6,6 +6,11 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      confirm_publish:
+        description: "Safety switch: set to true to allow publishing"
+        required: true
+        default: false
+        type: boolean
       custom_tag:
         description: "Optional extra tag (e.g. mvp-1, rc1)"
         required: false
@@ -25,8 +30,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  preflight:
+    name: Release preflight checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate manual publish guard
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm_publish }}" != "true" ]]; then
+            echo "[ERROR] Manual publish blocked: confirm_publish must be true." >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "[ERROR] Manual publish allowed only from main branch." >&2
+            echo "[INFO] Current ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Validate tag format and ancestry
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "[ERROR] Release tag must match v<major>.<minor>.<patch> (e.g. v1.2.3)." >&2
+            echo "[INFO] Got tag: ${tag}" >&2
+            exit 1
+          fi
+
+          git fetch origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "[ERROR] Tag commit is not on top of main history." >&2
+            exit 1
+          fi
+
   publish:
     name: Publish backend/frontend images to GHCR
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

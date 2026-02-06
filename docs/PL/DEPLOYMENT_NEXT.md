@@ -64,6 +64,10 @@ Dla dockerowego onboardingu MVP używamy dwóch workflow:
    - publikuje obrazy do GHCR tylko gdy:
      - wypchniesz tag `v*` (tryb release), albo
      - uruchomisz workflow ręcznie (`workflow_dispatch`).
+   - zabezpieczenia przed przypadkowym wydaniem:
+     - manualny publish wymaga `confirm_publish=true`,
+     - manualny publish działa tylko z gałęzi `main`,
+     - publish po tagu wymaga ścisłego semver (`vMAJOR.MINOR.PATCH`) i commita należącego do historii `main`.
    - dzięki temu nie publikujemy paczek po każdym drobnym commicie.
 
 Publikowane obrazy:

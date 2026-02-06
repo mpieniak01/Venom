@@ -26,6 +26,8 @@ types-psutil
 types-bleach
 types-aiofiles
 bleach
+gitpython
+networkx
 pyautogen>=0.2.0
 
 # --- INFRASTRUCTURE (Mocked/Optional in Lite) ---

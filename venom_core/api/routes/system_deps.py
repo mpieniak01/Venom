@@ -24,7 +24,15 @@ def set_dependencies(
     hardware_bridge=None,
     orchestrator=None,
 ) -> None:
-    global _background_scheduler, _service_monitor, _state_manager, _llm_controller, _model_manager, _request_tracer, _hardware_bridge, _orchestrator
+    global \
+        _background_scheduler, \
+        _service_monitor, \
+        _state_manager, \
+        _llm_controller, \
+        _model_manager, \
+        _request_tracer, \
+        _hardware_bridge, \
+        _orchestrator
     _background_scheduler = background_scheduler
     _service_monitor = service_monitor
     _state_manager = state_manager

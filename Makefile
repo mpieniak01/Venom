@@ -68,10 +68,14 @@ e2e:
 
 test-optimal: pytest e2e
 
-test-ci-light:
+test-ci-lite:
 	@PYTEST_BIN="pytest"; \
 	if [ -x "$(VENV)/bin/pytest" ]; then PYTEST_BIN="$(VENV)/bin/pytest"; fi; \
-	$$PYTEST_BIN -q $$(cat config/pytest-groups/ci-light.txt)
+	$$PYTEST_BIN -q $$(cat config/pytest-groups/ci-lite.txt)
+
+audit-ci-lite:
+	@echo "🔍 Audyt zależności w testach CI Lite..."
+	@python3 scripts/audit_lite_deps.py
 
 install-hooks:
 	pre-commit install

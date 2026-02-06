@@ -19,9 +19,29 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
-PROJECT_ROOT = next(
-    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
-)
+
+def _detect_project_root() -> Path:
+    """
+    Wykrywa root projektu.
+
+    Kolejność:
+    1. katalog nadrzędny zawierający pyproject.toml,
+    2. /app (runtime Dockera),
+    3. bieżący katalog roboczy.
+    """
+    this_file = Path(__file__).resolve()
+    for parent in this_file.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+
+    docker_app = Path("/app")
+    if docker_app.exists():
+        return docker_app
+
+    return Path.cwd()
+
+
+PROJECT_ROOT = _detect_project_root()
 _storage_cache = TTLCache[dict](ttl_seconds=3600.0)  # Zwiększony TTL do 1h
 
 

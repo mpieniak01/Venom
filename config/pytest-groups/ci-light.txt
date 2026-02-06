@@ -1,3 +1,7 @@
 tests/test_session_store.py
 tests/test_models_utils_security.py
-tests/test_message_broker.py
+tests/test_helpers.py
+tests/test_config_paths.py
+tests/test_text_utils.py
+tests/test_generation_schema.py
+tests/test_api_dependencies.py

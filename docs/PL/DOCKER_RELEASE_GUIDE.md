@@ -2,6 +2,11 @@
 
 Ten dokument opisuje oficjalny proces publikacji obrazów Docker dla Venom Minimal MVP.
 
+## Szybka odpowiedź
+
+- Tak: w trybie manualnym masz przycisk w GitHub UI: `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
+- W trybie tagu: commit musi być na `main`, potem tworzysz i wysyłasz tag `vX.Y.Z`. Sam push taga uruchamia publikację.
+
 ## Zakres
 
 - Obraz backendu: `ghcr.io/<owner>/venom-backend`
@@ -28,12 +33,16 @@ Używaj tego trybu do stabilnego wydania.
 git checkout main
 git pull --ff-only
 ```
-2. Utwórz i wypchnij tag release:
+2. Jeśli trzeba, wypchnij najnowszy commit na `main`:
+```bash
+git push origin main
+```
+3. Utwórz i wypchnij tag release:
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
-3. GitHub Actions automatycznie uruchomi `Docker Publish (Minimal)`.
+4. GitHub Actions automatycznie uruchomi `Docker Publish (Minimal)`.
 
 Tagi publikowane do GHCR:
 - `sha-<short_sha>`
@@ -44,13 +53,14 @@ Tagi publikowane do GHCR:
 
 Używaj tego trybu, gdy chcesz wypchnąć paczkę bez tworzenia tagu release.
 
-1. Otwórz: GitHub `Actions` -> `Docker Publish (Minimal)` -> `Run workflow`.
-2. Gałąź musi być `main`.
-3. Wymagane wejście:
-   - `confirm_publish=true`
-4. Opcjonalne wejścia:
-   - `custom_tag` (np. `rc1`, `mvp-test`)
-   - `push_latest=true` tylko jeśli świadomie chcesz przesunąć `latest`.
+1. Otwórz repozytorium w GitHub.
+2. Wejdź w zakładkę `Actions`.
+3. Wybierz workflow: `Docker Publish (Minimal)`.
+4. Kliknij `Run workflow` (prawy górny róg).
+5. Wybierz branch: `main`.
+6. Ustaw wymagane pole: `confirm_publish=true`.
+7. Opcjonalnie ustaw: `custom_tag`, `push_latest`.
+8. Kliknij zielony przycisk `Run workflow`, aby uruchomić publikację.
 
 Typowe tagi w trybie manualnym:
 - zawsze: `sha-<short_sha>`

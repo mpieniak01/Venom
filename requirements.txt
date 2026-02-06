@@ -1,4 +1,4 @@
-# VENOM – requirements.txt (v1.1)
+# VENOM – requirements.txt (v1.2, stabilized base)
 # Zalecany Python: 3.10 lub 3.11 (GraphRAG bywa niestabilny na 3.12)
 # Użyj: pip install -r requirements.txt
 
@@ -8,34 +8,38 @@ pyautogen>=0.2.0        # Microsoft AutoGen (Standardowa, stabilna wersja)
 flaml[automl]           # Optymalizacja parametrów (silnik pod AutoGen)
 
 # API / orkiestracja zewnętrzna
-fastapi                 # API Orchestratora
-uvicorn[standard]       # Serwer ASGI (zawiera uvloop - kluczowe dla wydajności na WSL2)
+fastapi==0.128.0        # API Orchestratora (pin zgodny z profilem CI Lite)
+uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
 
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
-semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (nowsza wersja; wymaga walidacji kompatybilności)
+# UWAGA: nie pinujemy tu do 1.39.2, bo ta wersja wymusza openai<2 i openapi-core<0.20.
+# W full stack używamy openai>=2.x (przez graphrag/litellm), więc resolver musi dobrać nowszy SK.
+semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (dobór wersji kompatybilnej przez resolver)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych
-httpx                   # Nowoczesny klient HTTP (lepszy support dla async niż requests)
-aiofiles                # Async file I/O (zapobiega blokowaniu event loopa FastAPI)
+httpx==0.28.1           # Nowoczesny klient HTTP (pin zgodny z profilem CI Lite)
+aiofiles==25.1.0        # Async file I/O (pin zgodny z profilem CI Lite)
 
 
 # --- VENOM METABOLISM: ONNX RUNTIME (Inference Engine) ---
 
-# UWAGA: Upewnij się, że masz zainstalowane CUDA Toolkit w WSL2 dla wersji -gpu
-onnxruntime-gpu         # Silnik wykonawczy (zmień na 'onnxruntime', jeśli tylko CPU)
+# UWAGA: Upewnij się, że masz zainstalowane CUDA Toolkit w WSL2 dla wersji -gpu.
+# Na macOS używamy CPU wheels, bo onnxruntime-gpu jest niedostępne.
+onnxruntime-gpu; platform_system != "Darwin"  # Domyślnie Linux/Windows
+onnxruntime; platform_system == "Darwin"      # Fallback dla macOS
 onnx>=1.14.0            # Standard wymiany modeli
 optimum                 # Hugging Face Optimum (Interface do ONNX)
 accelerate              # Zarządzanie pamięcią przy ładowaniu dużych modeli
-protobuf>=3.20.2        # Kluczowe: zapobiega konfliktom między ONNX a innymi libami
+protobuf>=4.25.3,<6.0.0 # Stabilny zakres pod ONNX + SDK Google
 
 
 # --- VENOM HIPPOCAMPUS: PAMIĘĆ (Knowledge Graph) ---
 
 graphrag==2.7.0         # Microsoft GraphRAG (Pamięć długotrwała) - pin dla stabilnego resolvera
-networkx                # Analiza grafów
+networkx==3.6.1         # Analiza grafów (pin zgodny z profilem CI Lite)
 lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego resolvera
 # uvloop jest instalowany z uvicorn[standard], ale warto wiedzieć, że GraphRAG go lubi.
 
@@ -87,24 +91,25 @@ tiktoken                # Tokenizer (wymagany przez AutoGen/SK przy modelach GPT
 
 # --- VENOM INFRASTRUCTURE & UTILS ---
 
-python-dotenv           # Zmienne środowiskowe (.env)
-pydantic>=2.12,<3.0     # Walidacja (nowsza wersja; wymaga walidacji kompatybilności z SK)
+python-dotenv==1.2.1    # Zmienne środowiskowe (.env) (pin zgodny z profilem CI Lite)
+pydantic==2.11.10       # Walidacja (pin zgodny z profilem CI Lite i FastAPI)
+pydantic-settings==2.10.1  # Settings loader używany przez runtime
 numpy<2.0.0             # KRYTYCZNE: NumPy 2.0 łamie onnxruntime i numba (używaną przez GraphRAG)
 pandas                  # Analiza danych
-colorama                # Kolory w terminalu
-rich                    # Piękne logi i paski postępu
-loguru                  # Nowoczesne logowanie błędów
-tqdm                    # Paski postępu
+colorama==0.4.6         # Kolory w terminalu (pin zgodny z profilem CI Lite)
+rich==13.7.1            # Piękne logi i paski postępu (pin zgodny z profilem CI Lite)
+loguru==0.7.3           # Nowoczesne logowanie błędów (pin zgodny z profilem CI Lite)
+tqdm==4.67.1            # Paski postępu (pin zgodny z profilem CI Lite)
 docker                  # Docker SDK dla Python (Docker Sandbox)
-gitpython               # Git operations (Git Skill)
+gitpython==3.1.46       # Git operations (Git Skill) (pin zgodny z profilem CI Lite)
 apscheduler             # Advanced Python Scheduler (background jobs)
 watchdog                # File system monitoring
 radon                   # Code complexity analysis
-psutil                  # System and process utilities (monitoring CPU, memory)
-websockets              # WebSocket client/server (dla The Nexus)
+psutil==5.9.8           # System and process utilities (pin zgodny z profilem CI Lite)
+websockets==15.0.1      # WebSocket client/server (pin zgodny z profilem CI Lite)
 
 # Task Queue & Message Broker (THE_HIVE)
-redis>=5.0.0            # Redis client for message broker
+redis==5.3.1            # Redis client for message broker (pin zgodny z profilem CI Lite)
 arq>=0.26.0             # Async Redis Queue (lightweight, FastAPI-friendly)
 
 # Audio & Voice Interface (THE_AVATAR)
@@ -132,10 +137,10 @@ mss>=9.0.1              # Fast screenshot library
 
 # --- VENOM DEV TOOLS (Jakość Kodu) ---
 
-pytest                  # Testy
-pytest-asyncio          # Obsługa testów asynchronicznych
+pytest==9.0.2           # Testy (pin zgodny z profilem CI Lite)
+pytest-asyncio==1.3.0   # Obsługa testów asynchronicznych (pin zgodny z profilem CI Lite)
 pytest-cov>=7.0.0       # Raporty pokrycia testami
-pytest-xdist>=3.6.1
+pytest-xdist==3.8.0
 locust                  # Testy wydajnościowe HTTP/SSE
 ruff                    # Linter (zastępuje flake8/black)
 mypy                    # Statyczne typowanie

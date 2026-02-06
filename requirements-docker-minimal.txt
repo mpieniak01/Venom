@@ -1,0 +1,32 @@
+# Venom Docker Minimal runtime dependencies
+# Intentionally excludes test/type-only packages used in CI tooling.
+
+# Core API/runtime
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+pydantic==2.11.10
+pydantic-settings==2.10.1
+python-dotenv==1.2.1
+loguru==0.7.3
+aiofiles==25.1.0
+httpx==0.28.1
+aiohttp==3.13.3
+
+# Utilities used by runtime code paths
+colorama==0.4.6
+rich==13.7.1
+tqdm==4.67.1
+psutil==5.9.8
+bleach
+gitpython==3.1.46
+PyGithub==2.8.1
+networkx==3.6.1
+pyautogen>=0.2.0
+watchdog
+
+# Runtime infrastructure
+numpy<2.0.0
+semantic-kernel==1.39.2
+redis==5.3.1
+arq>=0.26.0
+websockets==15.0.1

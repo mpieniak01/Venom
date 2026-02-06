@@ -51,6 +51,50 @@ Ten dokument opisuje nową architekturę uruchomieniową Venoma: **FastAPI** dzi
 - `web-next/.next/standalone` – output buildu (nie commitujemy).
 - `scripts/archive-perf-results.sh` – pomocniczy backup wyników Playwright/pytest/Locust z katalogu `perf-artifacts/`.
 
+## Paczki Docker Minimal (build i publikacja)
+
+Szczegółowa procedura wydania krok po kroku:
+- `docs/PL/DOCKER_RELEASE_GUIDE.md`
+
+Dla dockerowego onboardingu MVP używamy dwóch workflow:
+
+1. **`docker-sanity`** (`.github/workflows/docker-sanity.yml`)
+   - uruchamia się na PR-ach dotykających plików Docker,
+   - waliduje compose + skrypty shell + build obrazów,
+   - **nie** publikuje obrazów.
+
+2. **`docker-publish`** (`.github/workflows/docker-publish.yml`)
+   - publikuje obrazy do GHCR tylko gdy:
+     - wypchniesz tag `v*` (tryb release), albo
+     - uruchomisz workflow ręcznie (`workflow_dispatch`).
+   - zabezpieczenia przed przypadkowym wydaniem:
+     - manualny publish wymaga `confirm_publish=true`,
+     - manualny publish działa tylko z gałęzi `main`,
+     - publish po tagu wymaga ścisłego semver (`vMAJOR.MINOR.PATCH`) i commita należącego do historii `main`.
+   - dzięki temu nie publikujemy paczek po każdym drobnym commicie.
+
+Publikowane obrazy:
+- `ghcr.io/<owner>/venom-backend`
+- `ghcr.io/<owner>/venom-frontend`
+
+Uwaga bezpieczeństwa (domyślnie dla MVP):
+- `compose/compose.minimal.yml` publikuje porty na interfejsach hosta, aby umożliwić testy z innego komputera w LAN.
+- Warunek konieczny: uruchamiaj ten profil wyłącznie w zaufanej/prywatnej sieci.
+- Nie wystawiaj tych portów bezpośrednio do Internetu. Dla dostępu publicznego użyj reverse proxy i dodaj uwierzytelnienie/autoryzację.
+
+Domyślne tagi:
+- zawsze: `sha-<short_sha>`
+- na tagu release: `<git_tag>` + `latest`
+- przy uruchomieniu ręcznym: opcjonalny `custom_tag` (+ opcjonalny `latest`)
+
+Przykładowy flow release:
+```bash
+git checkout main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Testy po wdrożeniu
 
 1. **Backend**: `pytest` + `pytest tests/perf/test_chat_pipeline.py -m performance`

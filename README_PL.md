@@ -673,6 +673,8 @@ make run
 - [Integracje zewnętrzne](docs/PL/EXTERNAL_INTEGRATIONS.md)
 - [Guardian - Bezpieczeństwo](docs/PL/GUARDIAN_GUIDE.md)
 - [QA Delivery](docs/PL/QA_DELIVERY_GUIDE.md)
+- [Pakietowanie Docker Minimal (sanity + publish)](docs/PL/DEPLOYMENT_NEXT.md)
+- [Przewodnik wydawania paczek Docker](docs/PL/DOCKER_RELEASE_GUIDE.md)
 
 ### Współpraca
 - [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)
@@ -750,6 +752,8 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 - **SonarCloud (bramka PR):** każdy pull request jest analizowany pod kątem bugów, podatności, code smelli, duplikacji i utrzymywalności.
 - **Snyk (skan okresowy):** skan zależności i bezpieczeństwa kontenerów uruchamiany cyklicznie, aby wychwytywać nowe CVE.
 - **CI Lite:** szybkie checki na każdym PR (lint + wybrane testy unit), żeby skrócić pętlę informacji zwrotnej.
+- **Przepływ paczek Docker:** `docker-sanity` waliduje buildy na PR; publikacja paczek (`docker-publish`) działa tylko na tagach `v*` lub manualnie.
+- **Polityka sieci dla Docker Minimal:** testy z innego komputera w LAN są domyślnie wspierane; uruchamiaj wyłącznie w zaufanej/prywatnej sieci.
 
 Co to oznacza dla contributorów i agentów:
 - Pisz mniejsze, czytelne funkcje (unikaj wysokiej złożoności kognitywnej).

@@ -81,7 +81,7 @@ def test_perform_analysis_logic(ux_analyst):
     assert summary["total_sessions"] == 2
     assert summary["successful_sessions"] == 1
     assert summary["rage_quits"] == 1
-    assert summary["avg_frustration"] == 7.5
+    assert summary["avg_frustration"] == pytest.approx(7.5)
 
     top_problems = result["top_problems"]
     assert len(top_problems) == 1
@@ -90,11 +90,11 @@ def test_perform_analysis_logic(ux_analyst):
     heatmap = result["frustration_heatmap"]
     # Junior failed, so failure_rate should be 100%
     junior_metric = next(h for h in heatmap if h["persona"] == "Junior")
-    assert junior_metric["failure_rate"] == 100.0
+    assert junior_metric["failure_rate"] == pytest.approx(100.0)
 
     # Senior succeeded, failure_rate 0%
     senior_metric = next(h for h in heatmap if h["persona"] == "Senior")
-    assert senior_metric["failure_rate"] == 0.0
+    assert senior_metric["failure_rate"] == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio

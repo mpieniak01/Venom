@@ -606,7 +606,7 @@ make run
 ### Architecture and Vision
 - [System Architecture](docs/VENOM_MASTER_VISION_V1.md)
 - [Backend Architecture](docs/BACKEND_ARCHITECTURE.md)
-- [Distributed Architecture (The Hive)](docs/THE_HIVE.md)
+- [Distributed Architecture (The Hive / Nexus)](docs/THE_HIVE.md)
 - [Intent Recognition System](docs/INTENT_RECOGNITION.md)
 - [Hybrid AI Engine](docs/HYBRID_AI_ENGINE.md)
 
@@ -782,53 +782,6 @@ Contributions are welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) to learn 
 - **Tests:** Required for new features
 - **Quality gates:** SonarCloud must pass on PR; security baseline is continuously monitored with periodic Snyk scans
 
-## 🌐 THE NEXUS: Distributed Architecture
-
-**Experimental (v1.0.x):** Venom can operate as a **Central Node (Nexus)** managing a swarm of remote instances ("Spores"). Stabilization is planned for v1.1.
-
-### Distributed mesh features:
-- 🔗 **Master-worker architecture** - Nexus (brain) + Spores (executors)
-- 📡 **WebSocket communication** - fast, bidirectional
-- 🔍 **mDNS service discovery** - automatic node discovery in local network (venom.local)
-- ⚖️ **Load balancing** - automatic selection of least loaded node
-- 🔄 **Hot-plugging** - dynamic adding/removing nodes
-- 💓 **Health checks and failover** - automatic offline detection
-
-### Usage Example:
-
-```bash
-# 1. Run Venom in Nexus mode
-export ENABLE_NEXUS=true
-export NEXUS_SHARED_TOKEN=your-secret-token
-cd venom_core && python main.py
-
-# 2. Run Venom Spore on remote machine
-cd venom_spore
-export SPORE_NEXUS_HOST=venom.local  # or 192.168.1.10
-export SPORE_SHARED_TOKEN=your-secret-token
-python main.py
-
-# 3. Check connected nodes
-curl http://localhost:8000/api/v1/nodes
-
-# 4. Execute task on remote node
-curl -X POST http://localhost:8000/api/v1/nodes/{node_id}/execute \
-  -H "Content-Type: application/json" \
-  -d '{"skill_name": "ShellSkill", "method_name": "run", "parameters": {"command": "ls"}}'
-```
-
-### Docker Compose Demo:
-```bash
-# Run swarm simulation (2 Docker nodes)
-docker-compose -f docker-compose.spores.yml up
-
-# Run demo
-python examples/nexus_demo.py
-```
-
-📖 **Full documentation:** [venom_spore/README.md](venom_spore/README.md)
-📖 **Hive Architecture:** [docs/THE_HIVE.md](docs/THE_HIVE.md)
-
 ## 👥 Team
 
 - **Development Lead:** mpieniak01
@@ -840,6 +793,7 @@ python examples/nexus_demo.py
 - Microsoft Semantic Kernel
 - Microsoft AutoGen
 - OpenAI / Anthropic / Google AI
+- pytest
 - Open Source Community
 
 ---

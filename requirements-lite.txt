@@ -1,0 +1,38 @@
+# VENOM – requirements-lite.txt
+# Lightweight dependencies for CI/testing without heavy ML/GPU libs
+
+# --- CORE ---
+fastapi
+uvicorn[standard]
+pydantic>=2.12,<3.0
+python-dotenv
+loguru
+aiofiles
+httpx
+
+# --- TESTING ---
+pytest
+pytest-asyncio
+pytest-cov>=7.0.0
+pytest-xdist>=3.6.1
+
+# --- UTILS ---
+colorama
+rich
+tqdm
+psutil
+types-psutil
+types-bleach
+types-aiofiles
+bleach
+pyautogen>=0.2.0
+
+# --- INFRASTRUCTURE (Mocked/Optional in Lite) ---
+numpy<2.0.0
+semantic-kernel>=1.39.2
+redis>=5.0.0
+arq>=0.26.0
+websockets
+
+# Note: Heavy libs (transformers, onnxruntime, graphrag, etc.) are excluded.
+# Tests relying on them should be skipped or mocked in 'light' profile.

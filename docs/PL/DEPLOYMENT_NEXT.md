@@ -70,6 +70,10 @@ Publikowane obrazy:
 - `ghcr.io/<owner>/venom-backend`
 - `ghcr.io/<owner>/venom-frontend`
 
+Uwaga bezpieczeństwa (domyślnie dla MVP):
+- `compose/compose.minimal.yml` publikuje porty tylko na pętli lokalnej hosta (`127.0.0.1`), więc usługi nie są domyślnie wystawione do LAN.
+- Jeśli potrzebujesz dostępu zdalnego, użyj reverse proxy i dodaj uwierzytelnienie/autoryzację przed wystawieniem endpointów backendu.
+
 Domyślne tagi:
 - zawsze: `sha-<short_sha>`
 - na tagu release: `<git_tag>` + `latest`

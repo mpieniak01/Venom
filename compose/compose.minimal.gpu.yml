@@ -1,0 +1,13 @@
+services:
+  ollama:
+    # Compose GPU override for local hosts with NVIDIA runtime/toolkit.
+    gpus: all
+    environment:
+      OLLAMA_VULKAN: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

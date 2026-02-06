@@ -1,0 +1,72 @@
+name: Docker Sanity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "compose/**"
+      - "scripts/docker/**"
+      - ".dockerignore"
+      - ".github/workflows/docker-sanity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    name: Validate Docker Minimal MVP
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Validate compose file
+        run: docker compose -f compose/compose.minimal.yml config > /dev/null
+
+      - name: Validate shell scripts syntax
+        run: |
+          bash -n scripts/docker/install.sh
+          bash -n scripts/docker/stack.sh
+          bash -n scripts/docker/logs.sh
+          bash -n scripts/docker/shell.sh
+
+      - name: Build backend image
+        run: docker build -f docker/backend.Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -f docker/frontend.Dockerfile .
+
+      - name: Smoke test (stack up + health endpoints)
+        run: |
+          set -euo pipefail
+          trap 'echo "Smoke failed - dumping container status/logs"; docker compose -f compose/compose.minimal.yml ps; docker compose -f compose/compose.minimal.yml logs --tail=120 ollama backend frontend || true' ERR
+          docker compose -f compose/compose.minimal.yml up -d --build
+
+          wait_http() {
+            local url="$1"
+            local timeout="${2:-180}"
+            local elapsed=0
+            local interval=5
+
+            until curl -fsS "$url" >/dev/null 2>&1; do
+              sleep "$interval"
+              elapsed=$((elapsed + interval))
+              echo "Waiting for $url (${elapsed}s/${timeout}s)"
+              if [[ "$elapsed" -ge "$timeout" ]]; then
+                echo "Timeout for $url" >&2
+                return 1
+              fi
+            done
+          }
+
+          wait_http "http://127.0.0.1:11434/api/tags" 180
+          wait_http "http://127.0.0.1:8000/healthz" 240
+          wait_http "http://127.0.0.1:3000" 240
+
+      - name: Cleanup stack
+        if: always()
+        run: docker compose -f compose/compose.minimal.yml down --remove-orphans --volumes

@@ -657,6 +657,38 @@ source .venv/bin/activate || true
 pytest
 ```
 
+## 📦 Docker Package (End User)
+
+If you want to run Venom from published images (without local build), use release compose:
+
+```bash
+git clone https://github.com/mpieniak01/Venom.git
+cd Venom
+
+# optional overrides:
+# export BACKEND_IMAGE=ghcr.io/<owner>/venom-backend:v1.2.0
+# export FRONTEND_IMAGE=ghcr.io/<owner>/venom-frontend:v1.2.0
+# export OLLAMA_MODEL=gemma3:1b
+
+scripts/docker/run-release.sh start
+```
+
+Useful commands:
+
+```bash
+scripts/docker/run-release.sh status
+scripts/docker/run-release.sh restart
+scripts/docker/run-release.sh stop
+scripts/docker/logs.sh
+```
+
+Optional GPU mode:
+
+```bash
+export VENOM_ENABLE_GPU=auto   # default; falls back to CPU if runtime is missing
+scripts/docker/run-release.sh restart
+```
+
 ## 🔬 Tests and Benchmarks
 
 Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md). Most important commands:

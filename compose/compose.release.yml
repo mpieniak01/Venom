@@ -1,0 +1,73 @@
+name: venom-release
+
+# End-user profile:
+# - pulls prebuilt backend/frontend images from GHCR
+# - starts Ollama locally
+# - intended for trusted/private networks only
+services:
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    container_name: venom-ollama-release
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/mpieniak01/venom-backend:v1.2.0}
+    container_name: venom-backend-release
+    environment:
+      ENV: production
+      AI_MODE: LOCAL
+      ACTIVE_LLM_SERVER: ollama
+      LLM_SERVICE_TYPE: local
+      LLM_LOCAL_ENDPOINT: http://ollama:11434/v1
+      LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
+      SUMMARY_STRATEGY: heuristic_only
+    depends_on:
+      ollama:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - venom-data:/app/data
+      - venom-workspace:/app/workspace
+      - venom-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/mpieniak01/venom-frontend:v1.2.0}
+    container_name: venom-frontend-release
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+      NEXT_PUBLIC_WS_BASE: ws://localhost:8000/ws/events
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  venom-data:
+  venom-workspace:
+  venom-logs:

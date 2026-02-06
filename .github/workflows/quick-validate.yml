@@ -1,0 +1,60 @@
+name: Quick Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quick-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quick-validator:
+    name: Quick validator (syntax + CI-lite deps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python syntax smoke
+        run: python -m compileall -q venom_core scripts tests
+
+      - name: CI-lite dependency audit (static)
+        run: >
+          python scripts/audit_lite_deps.py
+          --requirements requirements-ci-lite.txt
+          --config config/pytest-groups/ci-lite.txt
+
+      - name: Frontend manifest sanity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          pkg = Path("web-next/package.json")
+          data = json.loads(pkg.read_text(encoding="utf-8"))
+
+          required_scripts = {"lint", "test:unit:ci-lite"}
+          scripts = set(data.get("scripts", {}).keys())
+          missing = sorted(required_scripts - scripts)
+          if missing:
+              raise SystemExit(f"Missing npm scripts in {pkg}: {', '.join(missing)}")
+
+          print("Frontend manifest OK")
+          PY

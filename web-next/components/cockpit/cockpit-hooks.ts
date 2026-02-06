@@ -265,10 +265,8 @@ export function useSessionHistoryState({
     }
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!bootId) return;
-    setLocalSessionHistory([]);
-  }, [bootId]);
+  // Efekt czyszczący historię przy bootId został usunięty, aby zachować ciągłość przy nawigacji.
+  // Za ladowanie z cache odpowiada efekt poniżej, który reaguje na sessionHistoryStorageKey.
 
   useEffect(() => {
     if (!sessionId) return;

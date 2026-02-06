@@ -8,7 +8,9 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _run_audit(tmp_path: Path, import_smoke: bool = False) -> subprocess.CompletedProcess:
+def _run_audit(
+    tmp_path: Path, import_smoke: bool = False
+) -> subprocess.CompletedProcess:
     repo_root = Path(__file__).resolve().parents[1]
     script_path = repo_root / "scripts" / "audit_lite_deps.py"
     cmd = [sys.executable, str(script_path)]

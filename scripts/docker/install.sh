@@ -5,6 +5,8 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/compose/compose.minimal.yml"
 MODEL_DEFAULT="gemma3:4b"
 MODEL="$MODEL_DEFAULT"
+OLLAMA_IMAGE_DEFAULT="ollama/ollama:latest"
+OLLAMA_IMAGE="$OLLAMA_IMAGE_DEFAULT"
 QUICK=0
 SKIP_MODEL_PULL=0
 
@@ -15,6 +17,7 @@ Usage: $(basename "$0") [options]
 Options:
   --quick             Run with defaults (no prompts)
   --model <name>      Ollama model to pull (default: ${MODEL_DEFAULT})
+  --ollama-image <i>  Ollama image tag (default: ${OLLAMA_IMAGE_DEFAULT})
   --skip-model-pull   Do not pull model during install
   -h, --help          Show this help
 USAGE
@@ -30,6 +33,14 @@ while [ "$#" -gt 0 ]; do
       MODEL=${1:-}
       if [ -z "$MODEL" ]; then
         echo "[ERROR] --model requires a value." >&2
+        exit 1
+      fi
+      ;;
+    --ollama-image)
+      shift
+      OLLAMA_IMAGE=${1:-}
+      if [ -z "$OLLAMA_IMAGE" ]; then
+        echo "[ERROR] --ollama-image requires a value." >&2
         exit 1
       fi
       ;;
@@ -89,7 +100,7 @@ wait_http() {
 
 print_disk_hint() {
   local avail_gb
-  avail_gb=$(df -BG "$ROOT_DIR" | awk 'NR==2 {gsub(/G/, "", $4); print $4}')
+  avail_gb=$(df -Pk "$ROOT_DIR" | awk 'NR==2 {print int($4/1024/1024)}')
   echo "[INFO] Estimated download: ~5.5-9.5 GB"
   echo "[INFO] Estimated post-install size: ~7-13 GB"
   echo "[INFO] Recommended free disk: >=20 GB (safe: 25 GB)"
@@ -121,13 +132,13 @@ fi
 print_disk_hint
 
 print_step "Pulling remote images (Ollama and base layers)"
-docker compose -f "$COMPOSE_FILE" pull
+OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" pull
 
 print_step "Building Venom images (backend + frontend)"
-docker compose -f "$COMPOSE_FILE" build backend frontend
+OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" build backend frontend
 
 print_step "Starting minimal stack"
-docker compose -f "$COMPOSE_FILE" up -d
+OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" up -d
 
 print_step "Waiting for health checks"
 wait_http "http://127.0.0.1:11434/api/tags" 180
@@ -136,7 +147,7 @@ wait_http "http://127.0.0.1:3000" 240
 
 if [ "$SKIP_MODEL_PULL" -eq 0 ]; then
   print_step "Pulling Ollama model: $MODEL"
-  docker compose -f "$COMPOSE_FILE" exec -T ollama ollama pull "$MODEL"
+  OLLAMA_IMAGE="$OLLAMA_IMAGE" docker compose -f "$COMPOSE_FILE" exec -T ollama ollama pull "$MODEL"
 fi
 
 print_step "Done"

@@ -45,7 +45,8 @@ services:
       - venom-workspace:/app/workspace
       - venom-logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/system/status"]
+      # Liveness check: keep it independent from optional subsystems.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
       interval: 15s
       timeout: 5s
       retries: 10

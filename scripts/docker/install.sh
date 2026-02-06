@@ -168,7 +168,7 @@ if ! wait_http "http://127.0.0.1:11434/api/tags" 180; then
   compose_cmd logs --tail=120 ollama >&2 || true
   exit 1
 fi
-wait_http "http://127.0.0.1:8000/api/v1/system/status" 240
+wait_http "http://127.0.0.1:8000/healthz" 240
 wait_http "http://127.0.0.1:3000" 240
 
 if [[ "$SKIP_MODEL_PULL" -eq 0 ]]; then

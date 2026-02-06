@@ -43,6 +43,7 @@ jobs:
       - name: Smoke test (stack up + health endpoints)
         run: |
           set -euo pipefail
+          trap 'echo "Smoke failed - dumping container status/logs"; docker compose -f compose/compose.minimal.yml ps; docker compose -f compose/compose.minimal.yml logs --tail=120 ollama backend frontend || true' ERR
           docker compose -f compose/compose.minimal.yml up -d --build
 
           wait_http() {
@@ -63,7 +64,7 @@ jobs:
           }
 
           wait_http "http://127.0.0.1:11434/api/tags" 180
-          wait_http "http://127.0.0.1:8000/api/v1/system/status" 240
+          wait_http "http://127.0.0.1:8000/healthz" 240
           wait_http "http://127.0.0.1:3000" 240
 
       - name: Cleanup stack

@@ -325,11 +325,15 @@ async def get_all_tasks():
 
 @router.get("/history/requests", response_model=list[HistoryRequestSummary])
 async def get_request_history(
-    limit: Annotated[int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")] = 50,
+    limit: Annotated[
+        int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")
+    ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset dla paginacji")] = 0,
     status: Annotated[
         Optional[str],
-        Query(description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)"),
+        Query(
+            description="Filtr po statusie (PENDING, PROCESSING, COMPLETED, FAILED, LOST)"
+        ),
     ] = None,
 ):
     """

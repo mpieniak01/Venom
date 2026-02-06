@@ -153,14 +153,12 @@ async def test_parse_intent_llm_fallback_json_with_markdown(dispatcher, mock_ker
     # Mock LLM response z markdown code blocks
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """```json
+    mock_response.__str__ = lambda self: """```json
 {
   "action": "edit",
   "targets": ["config.py"]
 }
 ```"""
-    )
     mock_service.get_chat_message_content = AsyncMock(return_value=mock_response)
     mock_kernel.get_service = MagicMock(return_value=mock_service)
 

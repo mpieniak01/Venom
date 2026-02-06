@@ -98,4 +98,6 @@ def test_session_store_boot_id_mismatch_preserves_sessions(tmp_path: Path):
 
 def test_session_store_rejects_path_outside_allowed_roots():
     store = SessionStore(store_path="/etc/venom/session_store.json")
-    assert store._store_path == Path(SETTINGS.MEMORY_ROOT).resolve() / "session_store.json"
+    assert (
+        store._store_path == Path(SETTINGS.MEMORY_ROOT).resolve() / "session_store.json"
+    )

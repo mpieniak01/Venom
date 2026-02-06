@@ -299,7 +299,9 @@ def _get_mock_knowledge_graph(limit: int = 500):
 
 
 @router.get("/graph/summary")
-async def get_graph_summary(graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]):
+async def get_graph_summary(
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+):
     """
     Zwraca podsumowanie grafu kodu.
 
@@ -409,7 +411,9 @@ async def get_impact_analysis(
 
 
 @router.post("/graph/scan")
-async def trigger_graph_scan(graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]):
+async def trigger_graph_scan(
+    graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
+):
     """
     Uruchamia skanowanie grafu kodu.
 
@@ -475,7 +479,9 @@ async def get_lessons(
 
 
 @router.get("/lessons/stats")
-async def get_lessons_stats(lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)]):
+async def get_lessons_stats(
+    lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
+):
     """
     Zwraca statystyki magazynu lekcji.
 

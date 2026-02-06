@@ -641,6 +641,7 @@ make run
 - [Guardian - Security](docs/GUARDIAN_GUIDE.md)
 - [QA Delivery](docs/QA_DELIVERY_GUIDE.md)
 - [Docker Minimal Packaging (sanity + publish)](docs/DEPLOYMENT_NEXT.md)
+- [Docker Package Release Guide](docs/DOCKER_RELEASE_GUIDE.md)
 
 ### Collaboration
 - [Contribution Guide](docs/CONTRIBUTING.md)

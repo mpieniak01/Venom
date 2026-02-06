@@ -674,6 +674,7 @@ make run
 - [Guardian - Bezpieczeństwo](docs/PL/GUARDIAN_GUIDE.md)
 - [QA Delivery](docs/PL/QA_DELIVERY_GUIDE.md)
 - [Pakietowanie Docker Minimal (sanity + publish)](docs/PL/DEPLOYMENT_NEXT.md)
+- [Przewodnik wydawania paczek Docker](docs/PL/DOCKER_RELEASE_GUIDE.md)
 
 ### Współpraca
 - [Przewodnik współpracy](docs/PL/CONTRIBUTING.md)

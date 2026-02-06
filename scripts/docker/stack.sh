@@ -15,6 +15,7 @@ Commands:
   status     Show stack status
   pull       Pull remote images (e.g. Ollama)
 USAGE
+  return 0
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -22,7 +23,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -f "$COMPOSE_FILE" ]; then
+if [[ ! -f "$COMPOSE_FILE" ]]; then
   echo "[ERROR] Missing compose file: $COMPOSE_FILE" >&2
   exit 1
 fi

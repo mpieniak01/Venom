@@ -13,6 +13,7 @@ Examples:
   $(basename "$0") backend
   $(basename "$0") backend frontend
 USAGE
+  return 0
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -20,12 +21,12 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   docker compose -f "$COMPOSE_FILE" logs -f --tail 200
 else
   docker compose -f "$COMPOSE_FILE" logs -f --tail 200 "$@"

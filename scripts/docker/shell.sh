@@ -13,6 +13,7 @@ Examples:
   $(basename "$0") frontend
   $(basename "$0") ollama
 USAGE
+  return 0
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -21,7 +22,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 service=${1:-}
-if [ -z "$service" ] || [ "$service" = "-h" ] || [ "$service" = "--help" ]; then
+if [[ -z "$service" || "$service" == "-h" || "$service" == "--help" ]]; then
   usage
   exit 1
 fi
@@ -31,6 +32,6 @@ docker compose -f "$COMPOSE_FILE" exec "$service" /bin/bash
 status=$?
 set -e
 
-if [ "$status" -ne 0 ]; then
+if [[ "$status" -ne 0 ]]; then
   docker compose -f "$COMPOSE_FILE" exec "$service" /bin/sh
 fi

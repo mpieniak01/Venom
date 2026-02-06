@@ -14,7 +14,9 @@ uvicorn[standard]==0.40.0  # Serwer ASGI (pin zgodny z profilem CI Lite)
 
 # --- VENOM HANDS: WARSTWA WYKONAWCZA (Execution) ---
 
-semantic-kernel==1.39.2 # Microsoft Semantic Kernel (pin sprawdzony w CI Lite)
+# UWAGA: nie pinujemy tu do 1.39.2, bo ta wersja wymusza openai<2 i openapi-core<0.20.
+# W full stack używamy openai>=2.x (przez graphrag/litellm), więc resolver musi dobrać nowszy SK.
+semantic-kernel>=1.39.2 # Microsoft Semantic Kernel (dobór wersji kompatybilnej przez resolver)
 mcp>=1.0.0              # Model Context Protocol SDK (Official Client)
 aiohttp>=3.13.3         # Async HTTP (wymagane przez wiele pluginów SK) – aktualizacja pod CVE dot. throttlingu
 urllib3>=2.6.3          # HTTP klient – aktualizacja pod CVE dot. kompresji danych

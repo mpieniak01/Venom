@@ -1,10 +1,12 @@
 """Moduł: platform_skill - integracje z platformami zewnętrznymi (GitHub, Discord, Slack)."""
 
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated, Optional
 
 import httpx
-from github import Auth, Github, GithubException
 from semantic_kernel.functions import kernel_function
+
+if TYPE_CHECKING:
+    from github import Github
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
@@ -66,9 +68,11 @@ class PlatformSkill:
                 self.slack_webhook = None
 
         # Inicjalizuj klienta GitHub jeśli token dostępny
-        self.github_client = None
+        self.github_client: Optional["Github"] = None
         if self.github_token:
             try:
+                from github import Auth, Github
+
                 self.github_client = Github(auth=Auth.Token(self.github_token))
                 # Maskuj token w logach (zabezpieczenie przed krótkimi tokenami)
                 if len(self.github_token) > 8:
@@ -79,6 +83,10 @@ class PlatformSkill:
                     masked_token = "***"
                 logger.info(
                     f"PlatformSkill: GitHub client zainicjalizowany (token: {masked_token})"
+                )
+            except ImportError:
+                logger.warning(
+                    "PlatformSkill: Biblioteka 'PyGithub' nie jest zainstalowana. Funkcje GitHub niedostępne."
                 )
             except Exception as e:
                 logger.error(f"Błąd inicjalizacji GitHub client: {e}")
@@ -163,13 +171,13 @@ class PlatformSkill:
 
             return result
 
-        except GithubException as e:
-            error_msg = (
-                f"❌ Błąd GitHub API: {e.status} - {e.data.get('message', str(e))}"
-            )
-            logger.error(error_msg)
-            return error_msg
         except Exception as e:
+            # Handle PyGithub exceptions by name to avoid importing the class
+            if type(e).__name__ == "GithubException":
+                error_msg = f"❌ Błąd GitHub API: {getattr(e, 'status', 'Unknown')} - {getattr(e, 'data', {}).get('message', str(e))}"
+                logger.error(error_msg)
+                return error_msg
+
             error_msg = f"❌ Błąd podczas pobierania Issues: {str(e)}"
             logger.error(error_msg)
             return error_msg
@@ -228,13 +236,12 @@ class PlatformSkill:
             logger.info(f"Pobrano szczegóły Issue #{issue_number}")
             return result
 
-        except GithubException as e:
-            error_msg = (
-                f"❌ Błąd GitHub API: {e.status} - {e.data.get('message', str(e))}"
-            )
-            logger.error(error_msg)
-            return error_msg
         except Exception as e:
+            if type(e).__name__ == "GithubException":
+                error_msg = f"❌ Błąd GitHub API: {getattr(e, 'status', 'Unknown')} - {getattr(e, 'data', {}).get('message', str(e))}"
+                logger.error(error_msg)
+                return error_msg
+
             error_msg = f"❌ Błąd podczas pobierania Issue: {str(e)}"
             logger.error(error_msg)
             return error_msg
@@ -283,13 +290,12 @@ class PlatformSkill:
             logger.info(f"Utworzono PR #{pr.number}: {title}")
             return result
 
-        except GithubException as e:
-            error_msg = (
-                f"❌ Błąd GitHub API: {e.status} - {e.data.get('message', str(e))}"
-            )
-            logger.error(error_msg)
-            return error_msg
         except Exception as e:
+            if type(e).__name__ == "GithubException":
+                error_msg = f"❌ Błąd GitHub API: {getattr(e, 'status', 'Unknown')} - {getattr(e, 'data', {}).get('message', str(e))}"
+                logger.error(error_msg)
+                return error_msg
+
             error_msg = f"❌ Błąd podczas tworzenia PR: {str(e)}"
             logger.error(error_msg)
             return error_msg
@@ -328,13 +334,12 @@ class PlatformSkill:
             logger.info(f"Dodano komentarz do Issue #{issue_number}")
             return result
 
-        except GithubException as e:
-            error_msg = (
-                f"❌ Błąd GitHub API: {e.status} - {e.data.get('message', str(e))}"
-            )
-            logger.error(error_msg)
-            return error_msg
         except Exception as e:
+            if type(e).__name__ == "GithubException":
+                error_msg = f"❌ Błąd GitHub API: {getattr(e, 'status', 'Unknown')} - {getattr(e, 'data', {}).get('message', str(e))}"
+                logger.error(error_msg)
+                return error_msg
+
             error_msg = f"❌ Błąd podczas dodawania komentarza: {str(e)}"
             logger.error(error_msg)
             return error_msg

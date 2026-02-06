@@ -78,10 +78,9 @@ async def test_create_tool_success(toolmaker):
         assert result == mock_code
 
         # Verify file write interaction
-        toolmaker.file_skill.write_file.assert_called_once()
-        args = toolmaker.file_skill.write_file.call_args
-        assert args[0][0] == "custom/my_tool.py"  # Path
-        assert args[0][1] == mock_code  # Content
+        toolmaker.file_skill.write_file.assert_called_once_with(
+            "custom/my_tool.py", mock_code
+        )
 
 
 @pytest.mark.asyncio
@@ -117,9 +116,8 @@ async def test_create_test_success(toolmaker):
         assert success is True
         assert result == mock_test_code
 
-        toolmaker.file_skill.write_file.assert_called_once()
-        assert "custom/test_my_tool.py" in str(
-            toolmaker.file_skill.write_file.call_args
+        toolmaker.file_skill.write_file.assert_called_once_with(
+            "custom/test_my_tool.py", mock_test_code
         )
 
 

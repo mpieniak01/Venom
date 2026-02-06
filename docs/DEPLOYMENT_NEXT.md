@@ -70,6 +70,10 @@ Published images:
 - `ghcr.io/<owner>/venom-backend`
 - `ghcr.io/<owner>/venom-frontend`
 
+Security note (MVP default):
+- `compose/compose.minimal.yml` publishes ports only on host loopback (`127.0.0.1`), so services are not exposed to LAN by default.
+- If you need remote access, use a reverse proxy and add authentication/authorization before exposing backend endpoints.
+
 Default tags:
 - always: `sha-<short_sha>`
 - on release tag: `<git_tag>` + `latest`

@@ -44,7 +44,7 @@ class TraceStep(BaseModel):
         if isinstance(v, str):
             v = datetime.fromisoformat(v.replace("Z", "+00:00"))
         if isinstance(v, datetime) and v.tzinfo is None:
-            return v.astimezone(timezone.utc)
+            return v.replace(tzinfo=timezone.utc)
         return v
 
 
@@ -86,7 +86,7 @@ class RequestTrace(BaseModel):
         if isinstance(v, str):
             v = datetime.fromisoformat(v.replace("Z", "+00:00"))
         if isinstance(v, datetime) and v.tzinfo is None:
-            return v.astimezone(timezone.utc)
+            return v.replace(tzinfo=timezone.utc)
         return v
 
 

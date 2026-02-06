@@ -3,7 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-PROJECT_ROOT = Path("/home/ubuntu/venom")
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 
 def _dir_size_bytes(path: Path) -> int:

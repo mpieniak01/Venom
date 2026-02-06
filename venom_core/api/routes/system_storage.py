@@ -19,7 +19,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = next(
+    p for p in Path(__file__).resolve().parents if (p / "pyproject.toml").exists()
+)
 _storage_cache = TTLCache[dict](ttl_seconds=3600.0)  # Zwiększony TTL do 1h
 
 

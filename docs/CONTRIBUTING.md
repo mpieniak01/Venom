@@ -49,7 +49,17 @@ Thank you for wanting to help develop the project! Below you'll find guidelines,
 
 - All newly added functionality must have tests (pytest).
 - Tests go into the `/tests` directory.
-- CI will check: lint → tests → format → coverage report.
+- CI Lite on PR checks fast quality gates first (lint + selected unit tests).
+- SonarCloud is a required PR gate (bugs, vulnerabilities, code smells, maintainability, duplication).
+- Snyk scans are run periodically to catch newly disclosed dependency/container CVEs.
+
+### Quality checklist before PR
+
+- Run `pre-commit run --all-files`.
+- Run `mypy venom_core`.
+- Keep functions simple (avoid high cognitive complexity and large conditional blocks).
+- Remove dead code, unused imports, and placeholder blocks.
+- Treat `ruff`, `mypy`, and Sonar findings as blockers for new changes.
 
 ---
 

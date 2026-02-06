@@ -105,6 +105,59 @@ class WebSearchSkill:
                 "WebSearchSkill zainicjalizowany z DuckDuckGo (brak TAVILY_API_KEY)"
             )
 
+    def _truncate_scraped_text(self, text: str) -> str:
+        if len(text) > MAX_SCRAPED_TEXT_LENGTH:
+            return text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
+        return text
+
+    def _scrape_with_trafilatura(self, url: str) -> str | None:
+        if trafilatura is None:
+            return None
+
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return None
+
+        text = trafilatura.extract(
+            downloaded,
+            include_comments=False,
+            include_tables=True,
+            no_fallback=False,
+        )
+        if not text or not text.strip():
+            return None
+
+        text = self._truncate_scraped_text(text)
+        logger.info(f"WebScrape: pobrano {len(text)} znaków z {url} (trafilatura)")
+        return f"Treść ze strony {url}:\n\n{text}"
+
+    def _scrape_with_beautifulsoup(self, url: str) -> str:
+        if BeautifulSoup is None:
+            return (
+                "❌ Brak biblioteki beautifulsoup4. "
+                "Doinstaluj zależności aby użyć fallback scrape_text."
+            )
+
+        response = httpx.get(url, timeout=10, follow_redirects=True)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        for script in soup(["script", "style", "nav", "footer", "header"]):
+            script.decompose()
+
+        text = soup.get_text(separator="\n", strip=True)
+        text = "\n".join(line.strip() for line in text.split("\n") if line.strip())
+        text = self._truncate_scraped_text(text)
+
+        if not text.strip():
+            return (
+                f"Strona {url} nie zawiera wystarczającej ilości tekstu "
+                "lub jest niedostępna."
+            )
+
+        logger.info(f"WebScrape: pobrano {len(text)} znaków z {url} (BeautifulSoup)")
+        return f"Treść ze strony {url}:\n\n{text}"
+
     @kernel_function(
         name="search",
         description="Wyszukuje informacje w Internecie używając Tavily AI Search (jeśli skonfigurowany) lub DuckDuckGo. "
@@ -239,66 +292,15 @@ class WebSearchSkill:
                     "Doinstaluj zależności aby użyć scrape_text."
                 )
 
-            # Najpierw spróbuj trafilatura (lepsze czyszczenie)
-            downloaded = trafilatura.fetch_url(url) if trafilatura is not None else None
-            if downloaded:
-                text = trafilatura.extract(
-                    downloaded,
-                    include_comments=False,
-                    include_tables=True,
-                    no_fallback=False,
-                )
-
-                if text and text.strip():
-                    # Ogranicz długość
-                    if len(text) > MAX_SCRAPED_TEXT_LENGTH:
-                        text = (
-                            text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
-                        )
-
-                    logger.info(
-                        f"WebScrape: pobrano {len(text)} znaków z {url} (trafilatura)"
-                    )
-                    return f"Treść ze strony {url}:\n\n{text}"
+            text = self._scrape_with_trafilatura(url)
+            if text is not None:
+                return text
 
             # Fallback do BeautifulSoup jeśli trafilatura zawiodła
             logger.warning(
                 f"Trafilatura nie zwróciła wyników dla {url}, próbuję BeautifulSoup"
             )
-
-            if BeautifulSoup is None:
-                return (
-                    "❌ Brak biblioteki beautifulsoup4. "
-                    "Doinstaluj zależności aby użyć fallback scrape_text."
-                )
-
-            response = httpx.get(url, timeout=10, follow_redirects=True)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.content, "html.parser")
-
-            # Usuń skrypty, style, itp.
-            for script in soup(["script", "style", "nav", "footer", "header"]):
-                script.decompose()
-
-            # Pobierz tekst
-            text = soup.get_text(separator="\n", strip=True)
-
-            # Usuń puste linie
-            lines = [line.strip() for line in text.split("\n") if line.strip()]
-            text = "\n".join(lines)
-
-            # Ogranicz długość
-            if len(text) > MAX_SCRAPED_TEXT_LENGTH:
-                text = text[:MAX_SCRAPED_TEXT_LENGTH] + "\n\n[...tekst obcięty...]"
-
-            if not text.strip():
-                return f"Strona {url} nie zawiera wystarczającej ilości tekstu lub jest niedostępna."
-
-            logger.info(
-                f"WebScrape: pobrano {len(text)} znaków z {url} (BeautifulSoup)"
-            )
-            return f"Treść ze strony {url}:\n\n{text}"
+            return self._scrape_with_beautifulsoup(url)
 
         except httpx.TimeoutException:
             logger.error(f"Timeout podczas pobierania {url}")

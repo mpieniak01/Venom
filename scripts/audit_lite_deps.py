@@ -131,37 +131,37 @@ def _is_type_checking_guard(node: ast.AST) -> bool:
     return False
 
 
-def _is_optional_import_try(node: ast.Try) -> bool:
-    if not node.handlers:
-        return False
+OPTIONAL_IMPORT_EXCEPTIONS = {
+    "ImportError",
+    "ModuleNotFoundError",
+    "Exception",
+    "BaseException",
+}
 
-    for handler in node.handlers:
-        if handler.type is None:
-            return True
-        if isinstance(handler.type, ast.Name) and handler.type.id in {
-            "ImportError",
-            "ModuleNotFoundError",
-            "Exception",
-            "BaseException",
-        }:
-            return True
-        if isinstance(handler.type, ast.Attribute) and handler.type.attr in {
-            "ImportError",
-            "ModuleNotFoundError",
-            "Exception",
-            "BaseException",
-        }:
-            return True
-        if isinstance(handler.type, ast.Tuple):
-            for element in handler.type.elts:
-                if isinstance(element, ast.Name) and element.id in {
-                    "ImportError",
-                    "ModuleNotFoundError",
-                    "Exception",
-                    "BaseException",
-                }:
-                    return True
+
+def _is_optional_exception_name(name: str) -> bool:
+    return name in OPTIONAL_IMPORT_EXCEPTIONS
+
+
+def _is_optional_exception_type(handler_type: ast.AST | None) -> bool:
+    if handler_type is None:
+        return True
+    if isinstance(handler_type, ast.Name):
+        return _is_optional_exception_name(handler_type.id)
+    if isinstance(handler_type, ast.Attribute):
+        return _is_optional_exception_name(handler_type.attr)
+    if isinstance(handler_type, ast.Tuple):
+        return any(
+            isinstance(element, ast.Name) and _is_optional_exception_name(element.id)
+            for element in handler_type.elts
+        )
     return False
+
+
+def _is_optional_import_try(node: ast.Try) -> bool:
+    return bool(node.handlers) and any(
+        _is_optional_exception_type(handler.type) for handler in node.handlers
+    )
 
 
 def _normalize_requirement_name(raw: str) -> str:
@@ -339,7 +339,7 @@ def run_import_smoke_safe(
     return failures
 
 
-def main() -> int:
+def _create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Audit zależności dla profilu CI Lite (statyczny + import smoke)."
     )
@@ -358,8 +358,70 @@ def main() -> int:
         action="store_true",
         help="Uruchom dodatkowo szybki test importów modułów testowych",
     )
-    args = parser.parse_args()
+    return parser
 
+
+def _print_file_issues(issues: AuditResult) -> int:
+    issue_count = 0
+    if issues.forbidden:
+        print("  ❌ ZNALEZIONO NIEDOZWOLONE PAKIETY:")
+        for issue in sorted(issues.forbidden):
+            print(f"     - {issue}")
+        issue_count += 1
+
+    if issues.missing:
+        print("  ❌ BRAKUJĄCE ZALEŻNOŚCI RUNTIME W REQUIREMENTS-CI-LITE:")
+        for issue in sorted(issues.missing):
+            print(f"     - {issue}")
+        issue_count += 1
+
+    if issues.parse_errors:
+        print("  ❌ BŁĘDY PARSOWANIA PLIKÓW:")
+        for issue in sorted(issues.parse_errors):
+            print(f"     - {issue}")
+        issue_count += 1
+
+    if issue_count == 0:
+        print("  ✅ OK")
+    return issue_count
+
+
+def _run_static_audit(
+    *,
+    root_dir: Path,
+    test_files: list[str],
+    allowed_packages: set[str],
+    stdlib: set[str],
+) -> int:
+    total_issues = 0
+    for test_file in test_files:
+        print(f"Checking {test_file}...")
+        issues = audit_file(
+            root_dir / test_file,
+            root_dir=root_dir,
+            allowed_packages=allowed_packages,
+            stdlib=stdlib,
+        )
+        total_issues += _print_file_issues(issues)
+    return total_issues
+
+
+def _run_optional_import_smoke(root_dir: Path, test_files: list[str]) -> int:
+    print("\n🧪 Import smoke dla modułów testowych CI lite...")
+    smoke_failures = run_import_smoke_safe(root_dir, test_files)
+    if not smoke_failures:
+        print("  ✅ Import smoke OK")
+        return 0
+
+    print("  ❌ IMPORT SMOKE FAILED:")
+    for test_file, error in sorted(smoke_failures.items()):
+        print(f"     - {test_file}")
+        print(f"       {error.splitlines()[-1]}")
+    return len(smoke_failures)
+
+
+def main() -> int:
+    args = _create_parser().parse_args()
     root_dir = Path.cwd()
     req_path = root_dir / args.requirements
     config_path = root_dir / args.config
@@ -374,48 +436,15 @@ def main() -> int:
 
     print(f"🔍 Rozpoczynam audyt {len(test_files)} plików testowych...\n")
 
-    total_issues = 0
-    for test_file in test_files:
-        print(f"Checking {test_file}...")
-        issues = audit_file(
-            root_dir / test_file,
-            root_dir=root_dir,
-            allowed_packages=allowed_packages,
-            stdlib=stdlib,
-        )
-
-        if issues.forbidden:
-            print("  ❌ ZNALEZIONO NIEDOZWOLONE PAKIETY:")
-            for issue in sorted(issues.forbidden):
-                print(f"     - {issue}")
-            total_issues += 1
-
-        if issues.missing:
-            print("  ❌ BRAKUJĄCE ZALEŻNOŚCI RUNTIME W REQUIREMENTS-CI-LITE:")
-            for issue in sorted(issues.missing):
-                print(f"     - {issue}")
-            total_issues += 1
-
-        if issues.parse_errors:
-            print("  ❌ BŁĘDY PARSOWANIA PLIKÓW:")
-            for issue in sorted(issues.parse_errors):
-                print(f"     - {issue}")
-            total_issues += 1
-
-        if not (issues.forbidden or issues.missing or issues.parse_errors):
-            print("  ✅ OK")
+    total_issues = _run_static_audit(
+        root_dir=root_dir,
+        test_files=test_files,
+        allowed_packages=allowed_packages,
+        stdlib=stdlib,
+    )
 
     if args.import_smoke:
-        print("\n🧪 Import smoke dla modułów testowych CI lite...")
-        smoke_failures = run_import_smoke_safe(root_dir, test_files)
-        if smoke_failures:
-            total_issues += len(smoke_failures)
-            print("  ❌ IMPORT SMOKE FAILED:")
-            for test_file, error in sorted(smoke_failures.items()):
-                print(f"     - {test_file}")
-                print(f"       {error.splitlines()[-1]}")
-        else:
-            print("  ✅ Import smoke OK")
+        total_issues += _run_optional_import_smoke(root_dir, test_files)
 
     if total_issues > 0:
         print(

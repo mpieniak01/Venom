@@ -638,7 +638,7 @@ make run
 ### Architektura i Wizja
 - [Architektura systemu](docs/PL/VENOM_MASTER_VISION_V1.md)
 - [Architektura backendu](docs/PL/BACKEND_ARCHITECTURE.md)
-- [Architektura rozproszona (The Hive)](docs/PL/THE_HIVE.md)
+- [Architektura rozproszona (The Hive / Nexus)](docs/PL/THE_HIVE.md)
 - [System rozpoznawania intencji](docs/PL/INTENT_RECOGNITION.md)
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
 
@@ -684,7 +684,7 @@ make run
 cd /home/ubuntu/venom
 source .venv/bin/activate || true
 
-## Szybki pełny scenariusz (optymalne ustawienia dla naszego środowiska)
+# Szybki pełny scenariusz (optymalne ustawienia dla naszego środowiska)
 # pytest: heavy (-n 1), long (-n 2), light (-n 6)
 pytest -n 1 $(cat config/pytest-groups/heavy.txt)
 pytest -n 2 $(cat config/pytest-groups/long.txt)
@@ -700,7 +700,7 @@ make pytest
 npm --prefix web-next run test:e2e:preflight
 npm --prefix web-next run test:e2e:latency
 npm --prefix web-next run test:e2e:functional -- --workers=4
-## Skład grupy functional: smoke + chat-mode-routing + streaming + chat-context-icons
+# Skład grupy functional: smoke + chat-mode-routing + streaming + chat-context-icons
 
 # Alternatywnie (skrypt):
 ./scripts/run-e2e-optimal.sh
@@ -708,7 +708,7 @@ npm --prefix web-next run test:e2e:functional -- --workers=4
 # Alternatywnie (make):
 make e2e
 
-## Tryb awaryjny (słabsze środowisko → wszystko seryjnie)
+# Tryb awaryjny (słabsze środowisko -> wszystko seryjnie)
 pytest -n 1 $(cat config/pytest-groups/heavy.txt)
 pytest -n 1 $(cat config/pytest-groups/long.txt)
 pytest -n 1 $(cat config/pytest-groups/light.txt)
@@ -847,53 +847,6 @@ Zapraszamy do współpracy! Zobacz [CONTRIBUTING.md](docs/PL/CONTRIBUTING.md), a
 - **Bramki jakości:** SonarCloud musi przejść na PR; baza bezpieczeństwa jest monitorowana okresowymi skanami Snyk
 
 
-## 🌐 THE NEXUS: architektura rozproszona
-
-**Eksperymentalne (v1.0.x):** Venom może działać jako **Centralny Węzeł (Nexus)** zarządzający rojem zdalnych instancji ("Zarodników" / Spores). Stabilizacja jest planowana na v1.1.
-
-### Cechy siatki rozproszonej:
-- 🔗 **Architektura master-worker** - Nexus (mózg) + Spores (wykonawcy)
-- 📡 **Komunikacja WebSocket** - szybka, dwukierunkowa
-- 🔍 **Wykrywanie usług mDNS** - automatyczne wykrywanie węzłów w sieci lokalnej (venom.local)
-- ⚖️ **Równoważenie obciążenia** - automatyczny wybór najmniej obciążonego węzła
-- 🔄 **Gorące podłączanie** - dynamiczne dodawanie/usuwanie węzłów
-- 💓 **Kontrola zdrowia i przełączenie awaryjne** - automatyczne wykrywanie offline
-
-### Przykład użycia:
-
-```bash
-# 1. Uruchom Venom w trybie Nexus
-export ENABLE_NEXUS=true
-export NEXUS_SHARED_TOKEN=your-secret-token
-cd venom_core && python main.py
-
-# 2. Uruchom Venom Spore na zdalnej maszynie
-cd venom_spore
-export SPORE_NEXUS_HOST=venom.local  # lub 192.168.1.10
-export SPORE_SHARED_TOKEN=your-secret-token
-python main.py
-
-# 3. Sprawdź połączone węzły
-curl http://localhost:8000/api/v1/nodes
-
-# 4. Wykonaj zadanie na zdalnym węźle
-curl -X POST http://localhost:8000/api/v1/nodes/{node_id}/execute \
-  -H "Content-Type: application/json" \
-  -d '{"skill_name": "ShellSkill", "method_name": "run", "parameters": {"command": "ls"}}'
-```
-
-### Demo z Docker Compose:
-```bash
-# Uruchom symulację roju (2 węzły Docker)
-docker-compose -f docker-compose.spores.yml up
-
-# Uruchom demo
-python examples/nexus_demo.py
-```
-
-📖 **Pełna dokumentacja:** [venom_spore/README.md](venom_spore/README.md)
-📖 **Architektura Hive:** [docs/PL/THE_HIVE.md](docs/PL/THE_HIVE.md)
-
 ## 👥 Zespół
 
 - **Lider rozwoju:** mpieniak01
@@ -905,6 +858,7 @@ python examples/nexus_demo.py
 - Microsoft Semantic Kernel
 - Microsoft AutoGen
 - OpenAI / Anthropic / Google AI
+- pytest
 - Społeczność Open Source
 
 ---

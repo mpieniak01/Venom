@@ -1,11 +1,11 @@
 """Testy jednostkowe dla modułu RequestTracer."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
 
-from venom_core.core.tracer import RequestTracer, TraceStatus
+from venom_core.core.tracer import RequestTracer, TraceStatus, get_utc_now
 
 
 @pytest.fixture
@@ -172,9 +172,9 @@ def test_get_all_traces_returns_sorted(tracer):
 
     traces = tracer.get_all_traces()
     assert len(traces) == 3
-    # Najstarszy (First) powinien być pierwszy
-    assert traces[0].request_id == id1
-    assert traces[2].request_id == id3
+    # Najnowszy (Third) powinien być pierwszy
+    assert traces[0].request_id == id3
+    assert traces[2].request_id == id1
 
 
 def test_get_all_traces_with_limit(tracer):
@@ -238,7 +238,7 @@ def test_clear_old_traces(tracer):
     # Utwórz trace i "postarz" go
     old_id = uuid4()
     trace = tracer.create_trace(old_id, "Old request")
-    trace.created_at = datetime.now() - timedelta(days=8)
+    trace.created_at = get_utc_now() - timedelta(days=8)
 
     # Utwórz świeży trace
     new_id = uuid4()
@@ -276,7 +276,7 @@ async def test_watchdog_marks_lost_requests(tracer):
 
     # Postarz last_activity
     trace = tracer.get_trace(request_id)
-    trace.last_activity = datetime.now() - timedelta(minutes=6)
+    trace.last_activity = get_utc_now() - timedelta(minutes=6)
 
     # Uruchom watchdog check ręcznie
     await tracer._check_lost_requests()
@@ -312,7 +312,7 @@ async def test_watchdog_does_not_mark_completed_requests(tracer):
 
     # Postarz last_activity (ale status to COMPLETED)
     trace = tracer.get_trace(request_id)
-    trace.last_activity = datetime.now() - timedelta(minutes=6)
+    trace.last_activity = get_utc_now() - timedelta(minutes=6)
 
     # Uruchom watchdog check
     await tracer._check_lost_requests()

@@ -40,8 +40,8 @@ async def test_session_handler_full_history_limit():
     task = sm.create_task("Main Task")
     session_id = "test_session_123"
 
-    # Dodajemy 120 wiadomości (limit to 100)
-    for i in range(120):
+    # Dodajemy 600 wiadomości (limit to 500)
+    for i in range(600):
         sh.append_session_history(task.id, "user", f"Msg {i}", session_id)
 
     # Pobieramy zadanie ponownie ze stanu
@@ -49,7 +49,7 @@ async def test_session_handler_full_history_limit():
     full_history = updated_task.context_history.get("session_history_full", [])
 
     assert len(full_history) == SESSION_FULL_HISTORY_LIMIT
-    assert full_history[-1]["content"] == "Msg 119"
-    assert full_history[0]["content"] == "Msg 20"  # 120 - 100 = 20
+    assert full_history[-1]["content"] == "Msg 599"
+    assert full_history[0]["content"] == "Msg 100"  # 600 - 500 = 100
 
     await sm.shutdown()

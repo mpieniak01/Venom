@@ -185,3 +185,4 @@ tests/test_history_order_api.py
 tests/test_lesson_management_api.py
 tests/verify_acceptance_criteria.py
 tests/integration/verify_backend.py
+tests/test_toolmaker_agent.py

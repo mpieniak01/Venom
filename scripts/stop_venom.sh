@@ -7,7 +7,7 @@ echo "🛑 Zatrzymuję stos Venom (Web, Backend, LLM)..."
 pkill -f "make --no-print-directory _start" 2>/dev/null || true
 
 # 1. Frontend (Next.js)
-if [ -f .web-next.pid ]; then
+if [[ -f .web-next.pid ]]; then
     WPID=$(cat .web-next.pid)
     echo "⏹️  Zamykam Frontend (PID $WPID)"
     kill "$WPID" 2>/dev/null || true
@@ -19,7 +19,7 @@ pkill -f "next dev" 2>/dev/null || true
 pkill -f "next start" 2>/dev/null || true
 
 # 2. Backend (FastAPI)
-if [ -f .venom.pid ]; then
+if [[ -f .venom.pid ]]; then
     PID=$(cat .venom.pid)
     echo "⏹️  Zamykam Backend (PID $PID)"
     kill "$PID" 2>/dev/null || true
@@ -41,7 +41,7 @@ pkill -9 -f "ray::" 2>/dev/null || true
 if command -v lsof >/dev/null 2>&1; then
     for port in 8000 3000 11434 8001; do
         pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
-        if [ -n "$pids" ]; then
+        if [[ -n "$pids" ]]; then
             echo "⚠️  Zwalniam port $port (PIDs: $pids)"
             kill $pids 2>/dev/null || true
         fi
@@ -49,7 +49,7 @@ if command -v lsof >/dev/null 2>&1; then
 elif command -v fuser >/dev/null 2>&1; then
     for port in 8000 3000 11434 8001; do
         pids=$(fuser -n tcp "$port" 2>/dev/null || true)
-        if [ -n "$pids" ]; then
+        if [[ -n "$pids" ]]; then
             echo "⚠️  Zwalniam port $port przez fuser (PIDs: $pids)"
             fuser -k -n tcp "$port" >/dev/null 2>&1 || true
         fi

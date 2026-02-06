@@ -1,4 +1,5 @@
 # Venom v1.0 🐍
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 

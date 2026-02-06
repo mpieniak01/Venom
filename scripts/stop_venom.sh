@@ -38,8 +38,9 @@ pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
 pkill -9 -f "ray::" 2>/dev/null || true
 
 # 5. Czyszczenie portów
+PORTS_TO_CLEAN="8000 3000 11434 8001"
 if command -v lsof >/dev/null 2>&1; then
-    for port in 8000 3000 11434 8001; do
+    for port in $PORTS_TO_CLEAN; do
         pids=$(lsof -ti tcp:"$port" 2>/dev/null || true)
         if [[ -n "$pids" ]]; then
             echo "⚠️  Zwalniam port $port (PIDs: $pids)"
@@ -47,7 +48,7 @@ if command -v lsof >/dev/null 2>&1; then
         fi
     done
 elif command -v fuser >/dev/null 2>&1; then
-    for port in 8000 3000 11434 8001; do
+    for port in $PORTS_TO_CLEAN; do
         pids=$(fuser -n tcp "$port" 2>/dev/null || true)
         if [[ -n "$pids" ]]; then
             echo "⚠️  Zwalniam port $port przez fuser (PIDs: $pids)"

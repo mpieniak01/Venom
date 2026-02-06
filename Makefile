@@ -123,7 +123,7 @@ _start:
 				sleep 1; \
 			done; \
 			if [ -z "$$ollama_ready" ]; then \
-				echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; \
+				if [ -z "$$ollama_fatal" ]; then echo "❌ Ollama nie wystartowała w czasie (brak odpowiedzi z /api/tags)"; fi; \
 				if [ -f "logs/ollama.log" ]; then \
 					echo "ℹ️  Ostatnie logi Ollama:"; \
 					tail -n 40 "logs/ollama.log" || true; \

@@ -154,7 +154,7 @@ class CodeGraphStore:
                 if node.startswith("file:"):
                     dependents.append(node.replace("file:", ""))
 
-        logger.info(f"Plik {file_path} ma {len(dependents)} zależnych plików")
+        logger.info("Znaleziono %s zależnych plików", len(dependents))
         return dependents
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:

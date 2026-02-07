@@ -1,6 +1,7 @@
 """Moduł: foreman - agent majster, zarządca zasobów klastra (Load Balancer & Watchdog)."""
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -151,19 +152,13 @@ class ForemanAgent(BaseAgent):
 
         if self._watchdog_task:
             self._watchdog_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._watchdog_task
-            except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania podczas zatrzymywania agenta
-                pass
 
         if self._monitoring_task:
             self._monitoring_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._monitoring_task
-            except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania podczas zatrzymywania agenta
-                pass
 
         logger.info("ForemanAgent zatrzymany")
 
@@ -200,7 +195,7 @@ class ForemanAgent(BaseAgent):
                 await asyncio.sleep(60)
 
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w watchdog loop: {e}")
                 await asyncio.sleep(60)
@@ -243,7 +238,7 @@ class ForemanAgent(BaseAgent):
                 await asyncio.sleep(30)
 
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w monitoring loop: {e}")
                 await asyncio.sleep(30)

@@ -808,4 +808,4 @@ class BenchmarkService:
                 await asyncio.sleep(0.1)  # 100ms
         except asyncio.CancelledError:
             # Zadanie anulowane przez cancel() - zakończ próbkowanie
-            pass
+            raise

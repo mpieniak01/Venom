@@ -128,14 +128,12 @@ class GenerationParamsAdapter:
                 runtime = get_active_llm_runtime()
                 detected = runtime.provider.lower()
                 if detected in ["ollama", "vllm"]:
-                    logger.debug(
-                        f"Wykryto provider z runtime: {detected} (dla 'local')"
-                    )
+                    logger.debug("Wykryto provider z runtime dla trybu local")
                     return detected
                 if detected in ["openai", "azure"]:
-                    logger.debug(f"Ignoruję runtime provider '{detected}' dla 'local'")
-            except Exception as e:
-                logger.debug(f"Nie udało się wykryć providera z runtime: {e}")
+                    logger.debug("Ignoruję runtime provider dla trybu local")
+            except Exception:
+                logger.debug("Nie udało się wykryć providera z runtime")
 
             # Fallback do vLLM (najczęstszy w projekcie)
             logger.debug("Używam domyślnego mapowania vLLM dla providera 'local'")

@@ -154,7 +154,9 @@ async def update_model_config_endpoint(
         else:
             from venom_core.core.model_registry import _create_default_generation_schema
 
-            logger.warning("Brak schematu w manifeście podczas zapisu, używam domyślnego")
+            logger.warning(
+                "Brak schematu w manifeście podczas zapisu, używam domyślnego"
+            )
             generation_schema = _create_default_generation_schema()
 
         runtime_info = get_active_llm_runtime()

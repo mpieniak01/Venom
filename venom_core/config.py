@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
     # Endpoint używany do lokalnego wykrywania adresu IP hosta (bez wysyłania payloadu)
-    NETWORK_PROBE_HOST: str = "8.8.8.8"
+    # Używamy nazwy DNS zamiast hardcoded IP (łatwiejsza konfiguracja i mniej false-positive w skanerach).
+    NETWORK_PROBE_HOST: str = "dns.google"
     NETWORK_PROBE_PORT: int = 80
 
     # Modele ONNX

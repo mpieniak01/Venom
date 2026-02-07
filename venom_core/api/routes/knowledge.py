@@ -385,7 +385,10 @@ async def get_file_graph_info(
     try:
         info = graph_store.get_file_info(normalized_path)
         if not info:
-            raise HTTPException(status_code=404, detail="Plik nie istnieje w grafie")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Plik '{normalized_path}' nie istnieje w grafie",
+            )
         return {"status": "success", "file_info": info}
     except HTTPException:
         raise
@@ -414,7 +417,10 @@ async def get_impact_analysis(
     try:
         impact = graph_store.get_impact_analysis(normalized_path)
         if impact is None or "error" in impact:
-            raise HTTPException(status_code=404, detail="Plik nie istnieje w grafie")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Plik '{normalized_path}' nie istnieje w grafie",
+            )
         return {"status": "success", "impact": impact}
     except HTTPException:
         raise

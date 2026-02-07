@@ -25,7 +25,7 @@ SERVER_ERROR_DETAIL = "Błąd serwera"
 SERVER_ERROR_RESPONSES = {500: {"description": SERVER_ERROR_DETAIL}}
 
 
-@router.get("/models/{model_name}/capabilities")
+@router.get("/models/{model_name}/capabilities", responses=SERVER_ERROR_RESPONSES)
 async def get_model_capabilities_endpoint(model_name: str):
     """Pobiera capabilities modelu (wsparcie rol, templaty, etc.)."""
     model_registry = get_model_registry()

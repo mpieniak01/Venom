@@ -75,7 +75,13 @@ export function sanitizeAssistantText(raw: string) {
   text = text.replace(CONTEXT_SECTION_REGEX, "");
   text = text.replace(PLAN_STEP_REGEX, "");
   text = text.replace(PLAN_DONE_REGEX, "");
-  text = text.replace(/^\s*cel:\s*/gim, "");
+  text = text
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trimStart();
+      return trimmed.toLowerCase().startsWith("cel:") ? trimmed.slice("cel:".length).trimStart() : line;
+    })
+    .join("\n");
   text = text.replace(/\n{3,}/g, "\n\n").trim();
   return text;
 }

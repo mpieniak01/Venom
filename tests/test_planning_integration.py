@@ -45,8 +45,8 @@ class TestPlanningIntegration:
 
         # Mock odpowiedzi ResearcherAgent
         mock_response = MagicMock()
-        mock_response.__str__ = (
-            lambda x: "Znalazłem informacje o Bitcoin: aktualna cena to $50000"
+        mock_response.__str__ = lambda x: (
+            "Znalazłem informacje o Bitcoin: aktualna cena to $50000"
         )
         mock_kernel.get_service.return_value.get_chat_message_content.return_value = (
             mock_response
@@ -139,8 +139,8 @@ class TestPlanningIntegration:
         intent_manager.classify_intent = AsyncMock(return_value="RESEARCH")
 
         mock_response = MagicMock()
-        mock_response.__str__ = (
-            lambda x: "Dokumentacja FastAPI: use @app.get() decorator"
+        mock_response.__str__ = lambda x: (
+            "Dokumentacja FastAPI: use @app.get() decorator"
         )
         mock_kernel.get_service.return_value.get_chat_message_content.return_value = (
             mock_response

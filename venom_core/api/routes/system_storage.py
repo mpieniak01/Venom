@@ -123,14 +123,17 @@ def _get_storage_data_sync() -> dict:
     # 1. Liczymy base entries
     for name, rel_path, kind in STORAGE_ENTRIES:
         path = PROJECT_ROOT / rel_path
-        size_bytes = _dir_size_bytes_fast(path, timeout_sec=2.0)
-        if size_bytes == 0 and path.exists():
+        fast_size = _dir_size_bytes_fast(path, timeout_sec=2.0)
+        if fast_size is None and path.exists():
             try:
                 # Fallback do wolniejszego ale dokładniejszego walk
                 size_bytes = _dir_size_bytes(path)
             except Exception as exc:
                 logger.warning("Błąd liczenia %s: %s", rel_path, exc)
                 size_bytes = 0
+        else:
+            # 0 to legalny rozmiar katalogu - fallback tylko przy błędzie fast-path.
+            size_bytes = fast_size or 0
 
         items.append(
             _item_payload(name=name, path=path, size_bytes=size_bytes, kind=kind)
@@ -144,7 +147,8 @@ def _get_storage_data_sync() -> dict:
         try:
             for child in timelines_path.iterdir():
                 if child.is_dir() and child.name.startswith("dream_"):
-                    dreams_size += _dir_size_bytes_fast(child, timeout_sec=1.0)
+                    dream_size = _dir_size_bytes_fast(child, timeout_sec=1.0)
+                    dreams_size += dream_size or 0
         except Exception as e:
             logger.warning(f"Błąd podczas liczenia rozmiaru snów: {e}")
 
@@ -226,7 +230,7 @@ def _dir_size_bytes(path: Path) -> int:
     return total
 
 
-def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int:
+def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int | None:
     """
     Szybki rozmiar katalogu przy użyciu `du -sb` z timeoutem.
     """
@@ -240,13 +244,13 @@ def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int:
             timeout=timeout_sec,
         )
         if result.returncode != 0:
-            return 0
+            return None
         output = result.stdout.split()
         if not output:
-            return 0
+            return None
         return int(output[0])
     except Exception:
-        return 0
+        return None
 
 
 def _dir_size_code(path: Path, skip_top: set[str] | None = None) -> int:

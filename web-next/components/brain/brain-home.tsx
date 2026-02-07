@@ -44,6 +44,238 @@ import { GraphActionButtons } from "@/components/brain/graph-actions";
 
 import { HygienePanel } from "@/components/brain/hygiene-panel";
 
+type GraphNode = { data?: Record<string, unknown>; position?: { x?: number; y?: number } };
+type GraphEdge = { data?: Record<string, unknown> };
+type PreparedGraphElements = { nodes: GraphNode[]; edges: GraphEdge[] };
+
+function getNodeData(node: unknown): Record<string, unknown> {
+  return ((node as { data?: Record<string, unknown> }).data || {}) as Record<string, unknown>;
+}
+
+function getNodeId(node: unknown): string {
+  return String(getNodeData(node).id ?? "");
+}
+
+function sortByTimestamp(a: unknown, b: unknown): number {
+  const aMeta = getNodeData(a).meta as Record<string, unknown> | undefined;
+  const bMeta = getNodeData(b).meta as Record<string, unknown> | undefined;
+  const aTs = typeof aMeta?.timestamp === "string" ? Date.parse(aMeta.timestamp) : NaN;
+  const bTs = typeof bMeta?.timestamp === "string" ? Date.parse(bMeta.timestamp) : NaN;
+  if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return aTs - bTs;
+  return String(getNodeData(a).label ?? "").localeCompare(String(getNodeData(b).label ?? ""));
+}
+
+function isAssistantEntry(node: unknown): boolean {
+  const data = getNodeData(node);
+  const label = typeof data.label === "string" ? data.label : "";
+  const meta = (data.meta as Record<string, unknown> | undefined) || {};
+  const roleHint =
+    typeof meta.role === "string"
+      ? meta.role
+      : typeof meta.author === "string"
+        ? meta.author
+        : typeof meta.speaker === "string"
+          ? meta.speaker
+          : "";
+  return /assistant|asystent|venom/i.test(roleHint) || /^(assistant|asystent|venom)\b/i.test(label);
+}
+
+function collectEntrySessions(edgesSource: GraphEdge[]): Map<string, Set<string>> {
+  const entrySessions = new Map<string, Set<string>>();
+  edgesSource.forEach((edge) => {
+    const data = getNodeData(edge);
+    const source = String(data.source ?? "");
+    const target = String(data.target ?? "");
+    if (source.startsWith("session:")) {
+      const sessionId = source.slice("session:".length);
+      if (target) {
+        const bucket = entrySessions.get(target) || new Set<string>();
+        bucket.add(sessionId);
+        entrySessions.set(target, bucket);
+      }
+    }
+    if (target.startsWith("session:")) {
+      const sessionId = target.slice("session:".length);
+      if (source) {
+        const bucket = entrySessions.get(source) || new Set<string>();
+        bucket.add(sessionId);
+        entrySessions.set(source, bucket);
+      }
+    }
+  });
+  return entrySessions;
+}
+
+function computeMemoryPositions(
+  filteredNodesSource: GraphNode[],
+  entrySessions: Map<string, Set<string>>,
+): Map<string, { x: number; y: number }> {
+  const positionMap = new Map<string, { x: number; y: number }>();
+  const sessionNodes = filteredNodesSource.filter((node) => getNodeData(node).memory_kind === "session");
+  const entryNodes = filteredNodesSource.filter((node) => {
+    const kind = getNodeData(node).memory_kind;
+    return kind !== "session" && kind !== "user" && kind !== "lesson";
+  });
+  const lessonNodes = filteredNodesSource.filter((node) => getNodeData(node).memory_kind === "lesson");
+  const sessionCenters = new Map<string, number>();
+  const sharedEntries: typeof entryNodes = [];
+  const sharedBuckets = new Map<string, typeof entryNodes>();
+  const entriesBySession = new Map<string, typeof entryNodes>();
+  const orphanEntries: typeof entryNodes = [];
+  entryNodes.forEach((node) => {
+    const data = getNodeData(node);
+    const sessionId = typeof data.session_id === "string" ? data.session_id : "";
+    if (sessionId) {
+      const bucket = entriesBySession.get(sessionId) || [];
+      bucket.push(node);
+      entriesBySession.set(sessionId, bucket);
+    } else {
+      orphanEntries.push(node);
+    }
+  });
+
+  const sessionSpacing = 260;
+  const entrySpacing = 90;
+  const sessionStartY = -((sessionNodes.length - 1) * sessionSpacing) / 2;
+  sessionNodes.forEach((node, index) => {
+    const data = getNodeData(node);
+    const id = String(data.id ?? "");
+    const sessionId = typeof data.session_id === "string" ? data.session_id : "";
+    const centerY = sessionStartY + index * sessionSpacing;
+    if (id) positionMap.set(id, { x: -160, y: centerY });
+    if (sessionId) sessionCenters.set(sessionId, centerY);
+    const entries = (entriesBySession.get(sessionId) || []).slice().sort(sortByTimestamp);
+    const entryStartY = centerY - ((entries.length - 1) * entrySpacing) / 2;
+    entries.forEach((entry, entryIndex) => {
+      const entryId = getNodeId(entry);
+      if (!entryId) return;
+      const sessions = entrySessions.get(entryId);
+      if (sessions && sessions.size > 1) {
+        sharedEntries.push(entry);
+        const signature = Array.from(sessions)
+          .sort((a, b) => a.localeCompare(b))
+          .join("|");
+        const bucket = sharedBuckets.get(signature) || [];
+        bucket.push(entry);
+        sharedBuckets.set(signature, bucket);
+        return;
+      }
+      const baseX = 60;
+      const stepX = 40;
+      const assistantBump = isAssistantEntry(entry) ? 20 : 0;
+      positionMap.set(entryId, {
+        x: baseX + entryIndex * stepX + assistantBump,
+        y: entryStartY + entryIndex * entrySpacing,
+      });
+    });
+  });
+
+  if (sharedEntries.length > 0) {
+    sharedBuckets.forEach((bucket, signature) => {
+      const sessions = signature.split("|").filter(Boolean);
+      const centers = sessions
+        .map((id) => sessionCenters.get(id))
+        .filter((val): val is number => typeof val === "number");
+      const baseY =
+        centers.length > 0
+          ? centers.reduce((acc, val) => acc + val, 0) / centers.length
+          : sessionStartY;
+      const sortedShared = bucket.slice().sort(sortByTimestamp);
+      const sharedStartY = baseY - ((sortedShared.length - 1) * entrySpacing) / 2;
+      sortedShared.forEach((entry, index) => {
+        const entryId = getNodeId(entry);
+        if (!entryId) return;
+        positionMap.set(entryId, { x: 10, y: sharedStartY + index * entrySpacing });
+      });
+    });
+  }
+
+  if (orphanEntries.length > 0) {
+    const baseY = sessionStartY + sessionNodes.length * sessionSpacing + 80;
+    const sortedOrphans = orphanEntries.slice().sort(sortByTimestamp);
+    const startY = baseY - ((sortedOrphans.length - 1) * entrySpacing) / 2;
+    sortedOrphans.forEach((node, index) => {
+      const id = getNodeId(node);
+      if (!id) return;
+      positionMap.set(id, { x: isAssistantEntry(node) ? 180 : 60, y: startY + index * entrySpacing });
+    });
+  }
+
+  if (lessonNodes.length > 0) {
+    const lessonStartY =
+      sessionStartY +
+      sessionNodes.length * sessionSpacing +
+      (orphanEntries.length > 0 ? orphanEntries.length * entrySpacing + 160 : 120);
+    lessonNodes.forEach((node, index) => {
+      const id = getNodeId(node);
+      if (id) positionMap.set(id, { x: 220, y: lessonStartY + index * 140 });
+    });
+  }
+
+  return positionMap;
+}
+
+function prepareGraphElements(
+  mergedGraph: KnowledgeGraph | null,
+  colorFromTopic: (topic?: string) => string | undefined,
+  hasPresetPositions: boolean,
+  isMemoryLayout: boolean,
+): PreparedGraphElements | null {
+  if (!mergedGraph?.elements) return null;
+  const nodesSource = mergedGraph.elements.nodes || [];
+  const edgesSource = mergedGraph.elements.edges || [];
+  const filteredNodesSource = nodesSource.filter((node) => getNodeData(node).memory_kind !== "user");
+  const removedNodeIds = new Set(
+    nodesSource.filter((node) => getNodeData(node).memory_kind === "user").map((node) => getNodeId(node)),
+  );
+  const entrySessions = collectEntrySessions(edgesSource as GraphEdge[]);
+  const positionMap =
+    isMemoryLayout && !hasPresetPositions
+      ? computeMemoryPositions(filteredNodesSource as GraphNode[], entrySessions)
+      : new Map<string, { x: number; y: number }>();
+
+  const nodes = filteredNodesSource.map(
+    (node: { data: Record<string, unknown>; position?: { x?: number; y?: number } }) => {
+      const data = { ...(node.data || {}) };
+      const label = typeof data.label === "string" ? data.label : "";
+      data.label_short = label.length > 40 ? `${label.slice(0, 40)}…` : label;
+      const topic = typeof data.topic === "string" ? data.topic : "";
+      if (topic) {
+        const topicColor = colorFromTopic(topic);
+        if (topicColor) data.node_color = topicColor;
+      }
+      const ts = (data.meta as Record<string, unknown> | undefined)?.timestamp;
+      if (ts && typeof ts === "string") {
+        const timeVal = Date.parse(ts);
+        if (!Number.isNaN(timeVal)) data._ts = timeVal;
+      }
+      const id = typeof data.id === "string" ? data.id : "";
+      if (!node.position && id && positionMap.has(id)) {
+        return { ...node, data, position: positionMap.get(id) };
+      }
+      return { ...node, data };
+    },
+  );
+
+  const edges = (mergedGraph.elements.edges || [])
+    .filter((edge) => {
+      const data = getNodeData(edge);
+      const source = String(data.source ?? "");
+      const target = String(data.target ?? "");
+      if (removedNodeIds.has(source) || removedNodeIds.has(target)) return false;
+      if (source.startsWith("user:") || target.startsWith("user:")) return false;
+      return true;
+    })
+    .map((edge: { data: Record<string, unknown> }) => {
+      const data = { ...(edge.data || {}) };
+      const label = typeof data.label === "string" ? data.label : "";
+      data.label_short = label.length > 30 ? `${label.slice(0, 30)}…` : label;
+      return { ...edge, data };
+    });
+
+  return { nodes, edges };
+}
+
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const t = useTranslation();
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
@@ -112,240 +344,10 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     : activeTab === "repo"
       ? "cose"
       : "concentric";
-  const preparedElements = useMemo(() => {
-    if (!mergedGraph?.elements) return null;
-    const nodesSource = mergedGraph.elements.nodes || [];
-    const edgesSource = mergedGraph.elements.edges || [];
-    const filteredNodesSource = nodesSource.filter((node) => {
-      const data = (node as { data?: Record<string, unknown> }).data || {};
-      return data.memory_kind !== "user";
-    });
-    const removedNodeIds = new Set(
-      nodesSource
-        .filter((node) => {
-          const data = (node as { data?: Record<string, unknown> }).data || {};
-          return data.memory_kind === "user";
-        })
-        .map((node) => String((node as { data?: Record<string, unknown> }).data?.id ?? "")),
-    );
-    const entrySessions = new Map<string, Set<string>>();
-    edgesSource.forEach((edge) => {
-      const data = (edge as { data?: Record<string, unknown> }).data || {};
-      const source = String(data.source ?? "");
-      const target = String(data.target ?? "");
-      if (source.startsWith("session:")) {
-        const sessionId = source.slice("session:".length);
-        if (target) {
-          const bucket = entrySessions.get(target) || new Set<string>();
-          bucket.add(sessionId);
-          entrySessions.set(target, bucket);
-        }
-      }
-      if (target.startsWith("session:")) {
-        const sessionId = target.slice("session:".length);
-        if (source) {
-          const bucket = entrySessions.get(source) || new Set<string>();
-          bucket.add(sessionId);
-          entrySessions.set(source, bucket);
-        }
-      }
-    });
-    const positionMap = new Map<string, { x: number; y: number }>();
-    if (isMemoryLayout && !hasPresetPositions) {
-      const sessionNodes = filteredNodesSource.filter((node) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        return data.memory_kind === "session";
-      });
-      const entryNodes = filteredNodesSource.filter((node) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        return data.memory_kind !== "session" && data.memory_kind !== "user" && data.memory_kind !== "lesson";
-      });
-      const lessonNodes = filteredNodesSource.filter((node) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        return data.memory_kind === "lesson";
-      });
-      const sessionCenters = new Map<string, number>();
-      const sharedEntries: typeof entryNodes = [];
-      const sharedBuckets = new Map<string, typeof entryNodes>();
-
-      const entriesBySession = new Map<string, typeof entryNodes>();
-      const orphanEntries: typeof entryNodes = [];
-      entryNodes.forEach((node) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        const sessionId = typeof data.session_id === "string" ? data.session_id : "";
-        if (sessionId) {
-          const bucket = entriesBySession.get(sessionId) || [];
-          bucket.push(node);
-          entriesBySession.set(sessionId, bucket);
-        } else {
-          orphanEntries.push(node);
-        }
-      });
-
-      const sortByTimestamp = (a: unknown, b: unknown) => {
-        const aMeta = ((a as { data?: Record<string, unknown> }).data || {}).meta as
-          | Record<string, unknown>
-          | undefined;
-        const bMeta = ((b as { data?: Record<string, unknown> }).data || {}).meta as
-          | Record<string, unknown>
-          | undefined;
-        const aTs = typeof aMeta?.timestamp === "string" ? Date.parse(aMeta.timestamp) : NaN;
-        const bTs = typeof bMeta?.timestamp === "string" ? Date.parse(bMeta.timestamp) : NaN;
-        if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return aTs - bTs;
-        return String((a as { data?: Record<string, unknown> }).data?.label ?? "").localeCompare(
-          String((b as { data?: Record<string, unknown> }).data?.label ?? ""),
-        );
-      };
-      const isAssistantEntry = (node: unknown) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        const label = typeof data.label === "string" ? data.label : "";
-        const meta = (data.meta as Record<string, unknown> | undefined) || {};
-        const roleHint =
-          typeof meta.role === "string"
-            ? meta.role
-            : typeof meta.author === "string"
-              ? meta.author
-              : typeof meta.speaker === "string"
-                ? meta.speaker
-                : "";
-        return (
-          /assistant|asystent|venom/i.test(roleHint) ||
-          /^(assistant|asystent|venom)\b/i.test(label)
-        );
-      };
-
-      const sessionSpacing = 260;
-      const entrySpacing = 90;
-      const sessionStartY = -((sessionNodes.length - 1) * sessionSpacing) / 2;
-      sessionNodes.forEach((node, index) => {
-        const data = (node as { data?: Record<string, unknown> }).data || {};
-        const id = String(data.id ?? "");
-        const sessionId = typeof data.session_id === "string" ? data.session_id : "";
-        const centerY = sessionStartY + index * sessionSpacing;
-        if (id) {
-          positionMap.set(id, { x: -160, y: centerY });
-        }
-        if (sessionId) {
-          sessionCenters.set(sessionId, centerY);
-        }
-        const entries = (entriesBySession.get(sessionId) || []).slice().sort(sortByTimestamp);
-        const entryStartY = centerY - ((entries.length - 1) * entrySpacing) / 2;
-        entries.forEach((entry, entryIndex) => {
-          const entryId = String((entry as { data?: Record<string, unknown> }).data?.id ?? "");
-          if (!entryId) return;
-          const sessions = entrySessions.get(entryId);
-          if (sessions && sessions.size > 1) {
-            sharedEntries.push(entry);
-            const signature = Array.from(sessions)
-              .sort((a, b) => a.localeCompare(b))
-              .join("|");
-            const bucket = sharedBuckets.get(signature) || [];
-            bucket.push(entry);
-            sharedBuckets.set(signature, bucket);
-            return;
-          }
-          const isAssistant = isAssistantEntry(entry);
-          const baseX = 60;
-          const stepX = 40;
-          const assistantBump = isAssistant ? 20 : 0;
-          positionMap.set(entryId, {
-            x: baseX + entryIndex * stepX + assistantBump,
-            y: entryStartY + entryIndex * entrySpacing,
-          });
-        });
-      });
-
-      if (sharedEntries.length > 0) {
-        sharedBuckets.forEach((bucket, signature) => {
-          const sessions = signature.split("|").filter(Boolean);
-          const centers = sessions
-            .map((id) => sessionCenters.get(id))
-            .filter((val): val is number => typeof val === "number");
-          const baseY =
-            centers.length > 0
-              ? centers.reduce((acc, val) => acc + val, 0) / centers.length
-              : sessionStartY;
-          const sortedShared = bucket.slice().sort(sortByTimestamp);
-          const sharedStartY = baseY - ((sortedShared.length - 1) * entrySpacing) / 2;
-          sortedShared.forEach((entry, index) => {
-            const entryId = String((entry as { data?: Record<string, unknown> }).data?.id ?? "");
-            if (!entryId) return;
-            positionMap.set(entryId, {
-              x: 10,
-              y: sharedStartY + index * entrySpacing,
-            });
-          });
-        });
-      }
-
-      if (orphanEntries.length > 0) {
-        const baseY = sessionStartY + sessionNodes.length * sessionSpacing + 80;
-        const sortedOrphans = orphanEntries.slice().sort(sortByTimestamp);
-        const startY = baseY - ((sortedOrphans.length - 1) * entrySpacing) / 2;
-        sortedOrphans.forEach((node, index) => {
-          const id = String((node as { data?: Record<string, unknown> }).data?.id ?? "");
-          if (id) {
-            const isAssistant = isAssistantEntry(node);
-            positionMap.set(id, { x: isAssistant ? 180 : 60, y: startY + index * entrySpacing });
-          }
-        });
-      }
-
-      if (lessonNodes.length > 0) {
-        const lessonStartY =
-          sessionStartY +
-          sessionNodes.length * sessionSpacing +
-          (orphanEntries.length > 0 ? orphanEntries.length * entrySpacing + 160 : 120);
-        lessonNodes.forEach((node, index) => {
-          const id = String((node as { data?: Record<string, unknown> }).data?.id ?? "");
-          if (id) {
-            positionMap.set(id, { x: 220, y: lessonStartY + index * 140 });
-          }
-        });
-      }
-    }
-
-    const nodes = filteredNodesSource.map(
-      (node: { data: Record<string, unknown>; position?: { x?: number; y?: number } }) => {
-        const data = { ...(node.data || {}) };
-        const label = typeof data.label === "string" ? data.label : "";
-        data.label_short = label.length > 40 ? `${label.slice(0, 40)}…` : label;
-        const topic = typeof data.topic === "string" ? data.topic : "";
-        if (topic) {
-          const topicColor = colorFromTopic(topic);
-          if (topicColor) data.node_color = topicColor;
-        }
-        const ts = (data.meta as Record<string, unknown> | undefined)?.timestamp;
-        if (ts && typeof ts === "string") {
-          const timeVal = Date.parse(ts);
-          if (!Number.isNaN(timeVal)) {
-            data._ts = timeVal;
-          }
-        }
-        const id = typeof data.id === "string" ? data.id : "";
-        if (!node.position && id && positionMap.has(id)) {
-          return { ...node, data, position: positionMap.get(id) };
-        }
-        return { ...node, data };
-      },
-    );
-    const edges = (mergedGraph.elements.edges || [])
-      .filter((edge) => {
-        const data = (edge as { data?: Record<string, unknown> }).data || {};
-        const source = String(data.source ?? "");
-        const target = String(data.target ?? "");
-        if (removedNodeIds.has(source) || removedNodeIds.has(target)) return false;
-        if (source.startsWith("user:") || target.startsWith("user:")) return false;
-        return true;
-      })
-      .map((edge: { data: Record<string, unknown> }) => {
-        const data = { ...(edge.data || {}) };
-        const label = typeof data.label === "string" ? data.label : "";
-        data.label_short = label.length > 30 ? `${label.slice(0, 30)}…` : label;
-        return { ...edge, data };
-      });
-    return { nodes, edges };
-  }, [mergedGraph, colorFromTopic, hasPresetPositions, isMemoryLayout]);
+  const preparedElements = useMemo(
+    () => prepareGraphElements(mergedGraph, colorFromTopic, hasPresetPositions, isMemoryLayout),
+    [mergedGraph, colorFromTopic, hasPresetPositions, isMemoryLayout],
+  );
   const graphLoading =
     (activeTab === "repo" && liveGraphLoading && !graph) ||
     (activeTab === "memory" && memoryGraphLoading && !memoryGraph);

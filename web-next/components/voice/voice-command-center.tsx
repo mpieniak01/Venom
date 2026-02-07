@@ -17,14 +17,28 @@ declare global {
   }
 }
 
+let secureRandomFallbackCounter = 0;
+
+const nextSecureRandomFallbackInt = () => {
+  secureRandomFallbackCounter += 1;
+  const perfNow = typeof performance !== "undefined" ? Math.floor(performance.now()) : 0;
+  return Date.now() + perfNow + secureRandomFallbackCounter;
+};
+
 const secureRandomInt = (maxExclusive: number): number => {
   if (maxExclusive <= 0) return 0;
   if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const maxUint32 = 0x1_0000_0000;
+    const unbiasedLimit = maxUint32 - (maxUint32 % maxExclusive);
     const bytes = new Uint32Array(1);
-    crypto.getRandomValues(bytes);
-    return bytes[0] % maxExclusive;
+    let value = maxUint32;
+    while (value >= unbiasedLimit) {
+      crypto.getRandomValues(bytes);
+      value = bytes[0] ?? maxUint32;
+    }
+    return value % maxExclusive;
   }
-  return Date.now() % maxExclusive;
+  return nextSecureRandomFallbackInt() % maxExclusive;
 };
 
 export function VoiceCommandCenter() {

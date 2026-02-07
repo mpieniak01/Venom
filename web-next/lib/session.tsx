@@ -14,6 +14,7 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 const SESSION_ID_KEY = "venom-session-id";
 const SESSION_BUILD_KEY = "venom-next-build-id";
 const SESSION_BOOT_KEY = "venom-backend-boot-id";
+let sessionIdFallbackCounter = 0;
 
 const getBuildId = () => {
   if (typeof window === "undefined") return "unknown";
@@ -32,7 +33,8 @@ const createSessionId = () => {
       crypto.getRandomValues(bytes);
       return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
     }
-    return Date.now().toString(36).slice(-8);
+    sessionIdFallbackCounter += 1;
+    return `${Date.now().toString(36)}${sessionIdFallbackCounter.toString(36)}`.slice(-12);
   })();
   return `session-${Date.now()}-${rand}`;
 };

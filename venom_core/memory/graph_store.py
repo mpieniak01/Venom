@@ -110,7 +110,7 @@ class CodeGraphStore:
                 source_code = f.read()
         except Exception as e:
             logger.warning(
-                "Nie można odczytać pliku %s: %s",
+                "Nie można odczytać pliku {}: {}",
                 self._safe_log_value(file_path),
                 self._safe_log_value(e),
             )
@@ -120,7 +120,7 @@ class CodeGraphStore:
             tree = ast.parse(source_code, filename=str(file_path))
         except SyntaxError as e:
             logger.warning(
-                "Błąd składni w pliku %s: %s",
+                "Błąd składni w pliku {}: {}",
                 self._safe_log_value(file_path),
                 self._safe_log_value(e),
             )
@@ -131,7 +131,7 @@ class CodeGraphStore:
             rel_path = file_path.relative_to(self.workspace_root)
         except ValueError:
             logger.warning(
-                "Plik %s jest poza workspace %s, pomijam",
+                "Plik {} jest poza workspace {}, pomijam",
                 self._safe_log_value(file_path),
                 self._safe_log_value(self.workspace_root),
             )
@@ -176,7 +176,7 @@ class CodeGraphStore:
                 if node.startswith(FILE_NODE_PREFIX):
                     dependents.append(node.replace(FILE_NODE_PREFIX, ""))
 
-        logger.info("Znaleziono %s zależnych plików", len(dependents))
+        logger.info("Znaleziono {} zależnych plików", len(dependents))
         return dependents
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:

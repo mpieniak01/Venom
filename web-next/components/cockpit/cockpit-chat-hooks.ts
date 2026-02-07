@@ -236,10 +236,15 @@ export function useOptimisticRequests<TDetail = unknown>(
   };
 }
 
+let optimisticIdFallbackCounter = 0;
+
 function createOptimisticId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    const randomPart = crypto.randomUUID().replaceAll("-", "").slice(0, 4);
+    return `opt-${Date.now().toString(36)}-${randomPart}`;
+  }
+  optimisticIdFallbackCounter += 1;
   const randomPart =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().replace(/-/g, "").slice(0, 4)
-      : Date.now().toString(36).slice(-4);
+    optimisticIdFallbackCounter.toString(36) + Date.now().toString(36).slice(-2);
   return `opt-${Date.now().toString(36)}-${randomPart}`;
 }

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -21,6 +21,16 @@ router = APIRouter(prefix="/api/v1", tags=["knowledge"])
 _graph_store = None
 _lessons_store = None
 INTERNAL_ERROR_DETAIL = "Błąd wewnętrzny"
+BAD_REQUEST_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"description": "Nieprawidłowa ścieżka pliku"},
+}
+INTERNAL_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": INTERNAL_ERROR_DETAIL},
+}
+GRAPH_FILE_ROUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **BAD_REQUEST_RESPONSES,
+    **INTERNAL_ERROR_RESPONSES,
+}
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -313,7 +323,7 @@ def _get_mock_knowledge_graph(limit: int = 500):
     }
 
 
-@router.get("/graph/summary")
+@router.get("/graph/summary", responses=INTERNAL_ERROR_RESPONSES)
 async def get_graph_summary(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
 ):
@@ -365,7 +375,7 @@ async def get_graph_summary(
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
-@router.get("/graph/file/{file_path:path}")
+@router.get("/graph/file/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
 async def get_file_graph_info(
     file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
@@ -397,7 +407,7 @@ async def get_file_graph_info(
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
-@router.get("/graph/impact/{file_path:path}")
+@router.get("/graph/impact/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
 async def get_impact_analysis(
     file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
@@ -429,7 +439,7 @@ async def get_impact_analysis(
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
-@router.post("/graph/scan")
+@router.post("/graph/scan", responses=INTERNAL_ERROR_RESPONSES)
 async def trigger_graph_scan(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
 ):

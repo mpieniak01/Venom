@@ -77,10 +77,7 @@ async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = No
         if capabilities is None or capabilities.generation_schema is None:
             from venom_core.core.model_registry import _create_default_generation_schema
 
-            logger.warning(
-                "Brak schematu w manifestcie, używam domyślnego: model=%s",
-                model_name,
-            )
+            logger.warning("Brak schematu w manifeście, używam domyślnego")
             generation_schema = _create_default_generation_schema()
         else:
             generation_schema = capabilities.generation_schema
@@ -157,10 +154,7 @@ async def update_model_config_endpoint(
         else:
             from venom_core.core.model_registry import _create_default_generation_schema
 
-            logger.warning(
-                "Brak schematu w manifestcie podczas zapisu, używam domyślnego: model=%s",
-                model_name,
-            )
+            logger.warning("Brak schematu w manifeście podczas zapisu, używam domyślnego")
             generation_schema = _create_default_generation_schema()
 
         runtime_info = get_active_llm_runtime()

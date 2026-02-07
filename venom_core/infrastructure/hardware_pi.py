@@ -305,11 +305,10 @@ class HardwareBridge:
                 info["disk_usage_percent"] = float(result["stdout"].strip())
 
             logger.info(f"Informacje systemowe: {info}")
-            return info
-
         except Exception as e:
             logger.error(f"Błąd podczas pobierania informacji systemowych: {e}")
-            return info
+
+        return info
 
     async def emergency_procedure(self, procedure_name: str) -> bool:
         """

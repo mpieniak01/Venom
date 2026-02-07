@@ -752,6 +752,7 @@ PARAMETER top_k 40
             return False
 
         process = None
+        success = False
         try:
             # Próba pobrania z Ollama
             logger.info(f"Rozpoczynam pobieranie modelu: {model_name}")
@@ -773,14 +774,12 @@ PARAMETER top_k 40
                             progress_callback(line.strip())
 
                 return_code = process.wait()
-
-                if return_code == 0:
+                success = return_code == 0
+                if success:
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
-                    return True
                 else:
                     stderr = process.stderr.read() if process.stderr else ""
                     logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
-                    return False
             finally:
                 # Upewnij się, że proces jest zamknięty nawet przy wyjątku
                 if process.poll() is None:
@@ -793,6 +792,8 @@ PARAMETER top_k 40
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modelu: {e}")
             return False
+
+        return success
 
     async def delete_model(self, model_name: str) -> bool:
         """

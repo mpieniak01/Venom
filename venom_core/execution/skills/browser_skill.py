@@ -73,9 +73,7 @@ class BrowserSkill:
         """Pobiera opcjonalną allowlistę hostów z ENV."""
         raw = os.getenv("VENOM_BROWSER_ALLOWED_HOSTS", "")
         hosts = {
-            host.strip().lower()
-            for host in raw.split(",")
-            if host and host.strip()
+            host.strip().lower() for host in raw.split(",") if host and host.strip()
         }
         return hosts
 

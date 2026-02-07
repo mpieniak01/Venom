@@ -3,10 +3,13 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+yaml: Any = None
 try:  # pragma: no cover - zależne od środowiska
-    import yaml  # type: ignore[import-untyped]
+    import yaml as _yaml
+
+    yaml = _yaml
 except ImportError:  # pragma: no cover
-    yaml = None
+    pass
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole

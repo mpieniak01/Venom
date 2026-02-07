@@ -20,7 +20,8 @@ def _resolve_api_base() -> str:
     )
     if env_base:
         return env_base
-    return f"http://localhost:{os.getenv('APP_PORT', '8000')}"
+    api_port = os.getenv("VENOM_API_PORT") or os.getenv("APP_PORT") or "8000"
+    return f"http://localhost:{api_port}"
 
 
 API_BASE = _resolve_api_base()

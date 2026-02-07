@@ -66,7 +66,7 @@ class HardwareBridge:
     async def _connect_ssh(self) -> bool:
         """Łączy przez SSH."""
         try:
-            import paramiko  # type: ignore[import-untyped]
+            import paramiko
 
             client = paramiko.SSHClient()
 

@@ -218,11 +218,11 @@ class HuggingFaceClient:
             await progress_callback(f"Pobieranie {model_name} z HuggingFace...")
 
         local_path = await asyncio.to_thread(
-            hf_snapshot_download,
-            repo_id=model_name,
-            cache_dir=cache_dir,
-            token=self.token,
-            resume_download=True,
+            lambda: hf_snapshot_download(
+                repo_id=model_name,
+                cache_dir=cache_dir,
+                token=self.token,
+            )
         )
         return local_path
 

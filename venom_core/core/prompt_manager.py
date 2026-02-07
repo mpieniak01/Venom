@@ -2,12 +2,15 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
+yaml: Any = None
 try:  # pragma: no cover - zależne od środowiska
-    import yaml  # type: ignore[import-untyped]
+    import yaml as _yaml
+
+    yaml = _yaml
 except ImportError:  # pragma: no cover
-    yaml = None
+    pass
 
 from venom_core.utils.logger import get_logger
 

@@ -236,7 +236,9 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
           const sessions = entrySessions.get(entryId);
           if (sessions && sessions.size > 1) {
             sharedEntries.push(entry);
-            const signature = Array.from(sessions).sort().join("|");
+            const signature = Array.from(sessions)
+              .sort((a, b) => a.localeCompare(b))
+              .join("|");
             const bucket = sharedBuckets.get(signature) || [];
             bucket.push(entry);
             sharedBuckets.set(signature, bucket);

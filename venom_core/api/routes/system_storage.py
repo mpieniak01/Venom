@@ -262,24 +262,12 @@ def _dir_size_code(path: Path, skip_top: set[str] | None = None) -> int:
     """
     if not path.exists():
         return 0
-    skip_top = skip_top or set()
-    global_skip_names = {item for item in skip_top if "/" not in item}
-    relative_skip_paths = {item.strip("/") for item in skip_top if "/" in item}
+    global_skip_names, relative_skip_paths = _parse_skip_rules(skip_top or set())
     total = 0
     for root, dirs, files in os.walk(path, followlinks=False):
         root_path = Path(root)
-        rel_root = root_path.relative_to(path).as_posix()
-        if rel_root == ".":
-            rel_root = ""
-        filtered_dirs = []
-        for d in dirs:
-            rel_dir = f"{rel_root}/{d}" if rel_root else d
-            if d in global_skip_names:
-                continue
-            if rel_dir in relative_skip_paths:
-                continue
-            filtered_dirs.append(d)
-        dirs[:] = filtered_dirs
+        rel_root = _relative_root(path, root_path)
+        dirs[:] = _filter_dirs(dirs, rel_root, global_skip_names, relative_skip_paths)
         for name in files:
             file_path = root_path / name
             try:
@@ -289,3 +277,34 @@ def _dir_size_code(path: Path, skip_top: set[str] | None = None) -> int:
             except OSError:
                 continue
     return total
+
+
+def _parse_skip_rules(skip_top: set[str]) -> tuple[set[str], set[str]]:
+    """Rozdziela reguły skipowania na globalne nazwy i ścieżki względne."""
+    global_skip_names = {item for item in skip_top if "/" not in item}
+    relative_skip_paths = {item.strip("/") for item in skip_top if "/" in item}
+    return global_skip_names, relative_skip_paths
+
+
+def _relative_root(base_path: Path, root_path: Path) -> str:
+    """Zwraca względną ścieżkę roota os.walk względem katalogu bazowego."""
+    rel_root = root_path.relative_to(base_path).as_posix()
+    return "" if rel_root == "." else rel_root
+
+
+def _filter_dirs(
+    dirs: list[str],
+    rel_root: str,
+    global_skip_names: set[str],
+    relative_skip_paths: set[str],
+) -> list[str]:
+    """Filtruje katalogi os.walk według reguł skipowania."""
+    filtered_dirs: list[str] = []
+    for directory in dirs:
+        rel_dir = f"{rel_root}/{directory}" if rel_root else directory
+        if directory in global_skip_names:
+            continue
+        if rel_dir in relative_skip_paths:
+            continue
+        filtered_dirs.append(directory)
+    return filtered_dirs

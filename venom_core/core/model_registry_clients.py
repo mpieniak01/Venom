@@ -94,15 +94,21 @@ class OllamaClient:
 
     async def remove_model(self, model_name: str) -> bool:
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["ollama", "rm", model_name],
                 capture_output=True,
                 text=True,
                 timeout=30,
+                check=False,
             )
             if result.returncode == 0:
                 return True
-            logger.error(f"❌ Błąd podczas usuwania modelu: {result.stderr}")
+            stderr_text = (result.stderr or "").strip()
+            stdout_text = (result.stdout or "").strip()
+            logger.error(
+                f"❌ Błąd podczas usuwania modelu: {stderr_text or stdout_text}"
+            )
             return False
         except subprocess.TimeoutExpired:
             logger.error("Timeout podczas usuwania modelu z Ollama")

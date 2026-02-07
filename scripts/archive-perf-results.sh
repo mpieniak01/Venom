@@ -11,10 +11,11 @@ mkdir -p "${TARGET}"
 copy_if_exists() {
   local path="$1"
   local label="$2"
-  if [ -d "${path}" ] || [ -f "${path}" ]; then
+  if [[ -d "${path}" || -f "${path}" ]]; then
     echo "📁 Archiwizuję ${label} -> ${TARGET}/$(basename "${path}")"
     cp -a "${path}" "${TARGET}/"
   fi
+  return 0
 }
 
 copy_if_exists "${REPO_ROOT}/test-results" "test-results"

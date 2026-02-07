@@ -4,9 +4,12 @@
 
 set -euo pipefail
 
-echo "=============================================="
+SEPARATOR_LINE="=============================================="
+NOT_RUNNING_MSG="  Not running"
+
+echo "$SEPARATOR_LINE"
 echo "WSL Memory Usage Check"
-echo "=============================================="
+echo "$SEPARATOR_LINE"
 echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 
@@ -40,24 +43,24 @@ echo ""
 
 echo "=== VENOM PROCESSES MEMORY ==="
 echo "Backend (uvicorn):"
-ps aux | grep "[u]vicorn.*venom_core" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB", "CMD:", $11, $12, $13}' || echo "  Not running"
+ps aux | grep "[u]vicorn.*venom_core" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB", "CMD:", $11, $12, $13}' || echo "$NOT_RUNNING_MSG"
 echo ""
 
 echo "Next.js:"
-ps aux | grep -E "[n]ode.*(next|web-next)" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "  Not running"
+ps aux | grep -E "[n]ode.*(next|web-next)" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "$NOT_RUNNING_MSG"
 echo ""
 
 echo "vLLM:"
-ps aux | grep "[v]llm" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "  Not running"
+ps aux | grep "[v]llm" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "$NOT_RUNNING_MSG"
 echo ""
 
 echo "Ollama:"
-ps aux | grep "[o]llama" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "  Not running"
+ps aux | grep "[o]llama" | awk '{print "  PID:", $2, "MEM:", $4"%", "RSS:", $6, "KB"}' || echo "$NOT_RUNNING_MSG"
 echo ""
 
-echo "=============================================="
+echo "$SEPARATOR_LINE"
 echo "💡 WSKAZÓWKI:"
-echo "=============================================="
+echo "$SEPARATOR_LINE"
 echo "1. Jeśli pamięć w Windows (Task Manager → vmmem) jest znacznie"
 echo "   wyższa niż pokazane tutaj wartości, WSL nie zwolnił pamięci."
 echo ""

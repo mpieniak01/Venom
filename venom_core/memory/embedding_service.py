@@ -1,5 +1,6 @@
 """Moduł: embedding_service - Serwis do generowania embeddingów tekstowych."""
 
+import hashlib
 from functools import lru_cache
 from typing import Any, List, Optional
 
@@ -7,6 +8,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+LOCAL_EMBEDDING_DIMENSION = 384
 
 
 class EmbeddingService:
@@ -29,6 +31,7 @@ class EmbeddingService:
             self.service_type = "local"
         self._model: Optional[Any] = None
         self._client: Optional[Any] = None
+        self._local_fallback_mode = False
         logger.info(f"EmbeddingService inicjalizowany z typem: {self.service_type}")
         # Zachowaj kompatybilność z testami: expose cached getter z cache_info/cache_clear.
         self._get_embedding_cached = lru_cache(maxsize=1000)(
@@ -53,6 +56,13 @@ class EmbeddingService:
                     "sentence-transformers nie jest zainstalowany. Zainstaluj: pip install sentence-transformers"
                 )
                 raise
+            except Exception as exc:
+                logger.warning(
+                    "Nie udało się załadować lokalnego modelu embeddingów (%s). "
+                    "Przechodzę na fallback deterministyczny 384-dim.",
+                    exc,
+                )
+                self._local_fallback_mode = True
         elif self.service_type == "openai":
             try:
                 from openai import OpenAI
@@ -88,6 +98,8 @@ class EmbeddingService:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
+            if self._local_fallback_mode:
+                return self._generate_fallback_embedding(text)
             if self._model is None:
                 raise RuntimeError("Model embeddingów nie został załadowany")
             embedding = self._model.encode(text, convert_to_numpy=True)
@@ -105,6 +117,23 @@ class EmbeddingService:
     def _get_embedding_impl_wrapper(self, text: str) -> List[float]:
         """Opakowanie funkcji z cache LRU (kompatybilne z testami)."""
         return self._get_embedding_impl(text)
+
+    @staticmethod
+    def _generate_fallback_embedding(text: str) -> List[float]:
+        """
+        Generuje deterministyczny embedding 384-dim bez zależności od sieci/modelu.
+        """
+        values: List[float] = []
+        seed = text.encode("utf-8")
+        counter = 0
+        while len(values) < LOCAL_EMBEDDING_DIMENSION:
+            block = hashlib.sha256(seed + counter.to_bytes(4, "little")).digest()
+            counter += 1
+            for byte in block:
+                values.append((byte / 127.5) - 1.0)
+                if len(values) == LOCAL_EMBEDDING_DIMENSION:
+                    break
+        return values
 
     def get_embedding(self, text: str) -> List[float]:
         """
@@ -148,6 +177,8 @@ class EmbeddingService:
         self._ensure_model_loaded()
 
         if self.service_type == "local":
+            if self._local_fallback_mode:
+                return [self._generate_fallback_embedding(text) for text in texts]
             if self._model is None:
                 raise RuntimeError("Model embeddingów nie został załadowany")
             # Batch encoding dla lepszej wydajności
@@ -177,14 +208,14 @@ class EmbeddingService:
         Returns:
             Liczba wymiarów embeddingu
         """
-        self._ensure_model_loaded()
-
         if self.service_type == "local":
+            # all-MiniLM-L6-v2 ma stały wymiar 384.
+            # Zwracamy go bez ładowania modelu, aby uniknąć zależności od sieci.
             if self._model is None:
-                raise RuntimeError("Model embeddingów nie został załadowany")
-            # all-MiniLM-L6-v2 ma 384 wymiary
+                return LOCAL_EMBEDDING_DIMENSION
             return self._model.get_sentence_embedding_dimension()
         elif self.service_type == "openai":
             # text-embedding-3-small ma 1536 wymiarów
             return 1536
+        self._ensure_model_loaded()
         raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")

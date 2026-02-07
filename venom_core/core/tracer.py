@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
@@ -262,13 +263,9 @@ class RequestTracer:
                 self._save_requested = False
                 await self._save_traces_async()
 
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._save_task
-            except asyncio.CancelledError:
-                # Normalne zachowanie podczas zamykania zadania
-                pass
-            finally:
-                self._save_task = None
+            self._save_task = None
             logger.info("Zapisy śladów zakończone")
 
     def _save_traces(self) -> None:

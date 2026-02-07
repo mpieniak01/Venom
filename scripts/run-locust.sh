@@ -7,12 +7,11 @@ HOST="${LOCUST_WEB_HOST:-127.0.0.1}"
 TARGET="${LOCUST_TARGET:-http://localhost:8000}"
 
 if command -v lsof >/dev/null 2>&1; then
-  if PIDS="$(lsof -ti tcp:"${PORT}" 2>/dev/null)"; then
-    if [[ -n "${PIDS}" ]]; then
-      echo "⚠️  Port ${PORT} jest zajęty (PID: ${PIDS}) – zakańczam procesy."
-      xargs -r kill <<<"${PIDS}" || true
-      sleep 0.3
-    fi
+  PIDS="$(lsof -ti tcp:"${PORT}" 2>/dev/null || true)"
+  if [[ -n "${PIDS}" ]]; then
+    echo "⚠️  Port ${PORT} jest zajęty (PID: ${PIDS}) – zakańczam procesy."
+    xargs -r kill <<<"${PIDS}" || true
+    sleep 0.3
   fi
 fi
 

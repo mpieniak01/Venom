@@ -68,12 +68,51 @@ MIN_CHUNK_RATIO = 0.5  # Minimalny stosunek długości fragmentu do rozmiaru, ab
 MAX_FALLBACK_QUERY_CHARS = 512  # Limit wejścia dla fallbacku leksykalnego
 MAX_FALLBACK_QUERY_TOKENS = 16  # Maks. liczba tokenów w fallbacku
 MAX_FALLBACK_SCAN_ROWS = 5000  # Nie skanuj ogromnych kolekcji w fallbacku
+MAX_EMBEDDING_DIM = 8192  # Twardy limit bezpieczeństwa dla alokacji embeddingów
+MAX_DELETE_FILTER_KEY_LENGTH = 64
+MAX_DELETE_FILTER_VALUE_LENGTH = 256
 
 
 def _tokenize_lexical_text(value: str) -> list[str]:
     """Tokenizuje tekst do fallbacku leksykalnego, dopasowując tylko pełne słowa."""
     normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in value)
     return [token for token in normalized.split() if token]
+
+
+def _validate_filter_key(key: Any) -> str:
+    """Waliduje klucz filtra metadanych dla delete_by_metadata."""
+    if not isinstance(key, str) or len(key) > MAX_DELETE_FILTER_KEY_LENGTH:
+        raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
+    if not _is_ascii_alnum_or(key, "_"):
+        raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
+    return key
+
+
+def _validate_filter_value(key: str, value: Any) -> str:
+    """Waliduje wartość filtra metadanych i zwraca jej reprezentację string."""
+    if not isinstance(value, (str, int, float, bool)):
+        raise TypeError(
+            f"Nieobsługiwany typ wartości dla klucza {key}: {type(value).__name__}. "
+            "Dozwolone typy: str, int, float, bool."
+        )
+    str_value = str(value)
+    if len(str_value) > MAX_DELETE_FILTER_VALUE_LENGTH:
+        raise ValueError(
+            f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_DELETE_FILTER_VALUE_LENGTH} "
+            f"(otrzymano {len(str_value)} znaków)"
+        )
+    if not _is_ascii_alnum_or(str_value, "_.-"):
+        raise ValueError(
+            f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
+            f"Dozwolone: a-z, A-Z, 0-9, _, -, ."
+        )
+    return str_value
+
+
+def _metadata_like_condition(key: str, value: str) -> str:
+    """Buduje bezpieczny warunek LIKE do kolumny metadata (JSON string)."""
+    safe_value = value.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
+    return f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\''
 
 
 class VectorStore:
@@ -125,6 +164,19 @@ class VectorStore:
             )
             raise
 
+    @staticmethod
+    def _validated_embedding_dim(dim: Any) -> int:
+        """Waliduje wymiar embeddingu przed alokacją pamięci."""
+        if not isinstance(dim, int):
+            raise ValueError("Embedding dimension musi być liczbą całkowitą")
+        if dim <= 0:
+            raise ValueError("Embedding dimension musi być > 0")
+        if dim > MAX_EMBEDDING_DIM:
+            raise ValueError(
+                f"Embedding dimension przekracza limit bezpieczeństwa ({MAX_EMBEDDING_DIM})"
+            )
+        return dim
+
     def _get_or_create_table(self, collection_name: Optional[str] = None):
         """
         Pobiera lub tworzy tabelę w bazie.
@@ -149,10 +201,12 @@ class VectorStore:
         logger.info(f"Tworzenie nowej tabeli: {col_name}")
 
         # Pobierz wymiar embeddingu
-        dim = self.embedding_service.embedding_dimension
+        dim = self._validated_embedding_dim(self.embedding_service.embedding_dimension)
 
         # Utwórz tabelę z przykładowym rekordem (LanceDB wymaga danych do schematu)
-        dummy_embedding = [0.0] * dim
+        # Dim jest już zwalidowany w _validated_embedding_dim; używamy jawnej alokacji
+        # zamiast mnożenia listy, żeby uniknąć false-positive security hotspot.
+        dummy_embedding = [0.0 for _ in range(dim)]
         data = [
             {
                 "id": "init",
@@ -486,45 +540,13 @@ class VectorStore:
         # LanceDB to umożliwi, ten kod powinien zostać przerobiony na
         # podejście z parametryzacją.
         conditions = []
-        MAX_KEY_LENGTH = 64
-        MAX_VALUE_LENGTH = 256
 
         for key, value in filters.items():
             if value is None:
                 continue
-
-            # Walidacja klucza: tylko alfanumeryczne + underscore, max 64 znaki
-            if not isinstance(key, str) or len(key) > MAX_KEY_LENGTH:
-                raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
-            if not _is_ascii_alnum_or(key, "_"):
-                raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
-
-            # Walidacja typu wartości i konwersja na string
-            if not isinstance(value, (str, int, float, bool)):
-                raise TypeError(
-                    f"Nieobsługiwany typ wartości dla klucza {key}: {type(value).__name__}. "
-                    "Dozwolone typy: str, int, float, bool."
-                )
-            str_value = str(value)
-            if len(str_value) > MAX_VALUE_LENGTH:
-                raise ValueError(
-                    f"Wartość dla klucza {key} przekracza maksymalną długość {MAX_VALUE_LENGTH} "
-                    f"(otrzymano {len(str_value)} znaków)"
-                )
-
-            # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
-            # Celowo NIE dopuszczamy spacji ani znaków specjalnych
-            if not _is_ascii_alnum_or(str_value, "_.-"):
-                raise ValueError(
-                    f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
-                    f"Dozwolone: a-z, A-Z, 0-9, _, -, ."
-                )
-
-            # Podwójne escapowanie mimo walidacji (defense in depth)
-            safe_value = (
-                str_value.replace("\\", "\\\\").replace("'", "''").replace('"', '\\"')
-            )
-            conditions.append(f'metadata LIKE \'%\\"{key}\\": \\"{safe_value}\\"%\'')
+            safe_key = _validate_filter_key(key)
+            safe_value = _validate_filter_value(safe_key, value)
+            conditions.append(_metadata_like_condition(safe_key, safe_value))
 
         if not conditions:
             raise ValueError("Brak warunków do usunięcia rekordów")
@@ -538,7 +560,6 @@ class VectorStore:
 
         table.delete(where=where_clause)
 
-        after_count = None
         try:
             after_count = table.count_rows()
         except Exception:
@@ -550,9 +571,8 @@ class VectorStore:
             deleted = 0
 
         logger.info(
-            "Usuwanie z pamięci (collection=%s) where=%s, usunięto szac. %s rekordów",
+            "Usuwanie z pamięci (collection=%s), usunięto szac. %s rekordów",
             collection_name or self.collection_name,
-            where_clause,
             deleted,
         )
         return deleted

@@ -139,7 +139,7 @@ class CodeGraphStore:
         file_node = f"file:{file_path}"
 
         if file_node not in self.graph:
-            logger.warning(f"Plik {file_path} nie istnieje w grafie")
+            logger.warning("Żądany plik nie istnieje w grafie: %s", file_path)
             return []
 
         # Znajdź wszystkie węzły, które mają krawędź DO tego pliku
@@ -154,7 +154,9 @@ class CodeGraphStore:
                 if node.startswith("file:"):
                     dependents.append(node.replace("file:", ""))
 
-        logger.info(f"Plik {file_path} ma {len(dependents)} zależnych plików")
+        logger.info(
+            "Znaleziono %s zależnych plików dla: %s", len(dependents), file_path
+        )
         return dependents
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:

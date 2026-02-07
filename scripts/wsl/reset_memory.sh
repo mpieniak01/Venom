@@ -12,7 +12,7 @@ echo "⚠️  UWAGA: Ten skrypt zatrzyma WSZYSTKIE dystrybucje WSL!"
 echo ""
 
 # Sprawdź czy jesteśmy w WSL
-if [ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]; then
+if [[ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
     echo "❌ Ten skrypt działa tylko w środowisku WSL"
     exit 1
 fi
@@ -31,7 +31,7 @@ if [[ $REPLY =~ ^[TtYy]$ ]]; then
     echo "🛑 Zatrzymuję procesy Venom..."
 
     # Zatrzymaj przez Makefile jeśli dostępny
-    if [ -f "$(dirname "${BASH_SOURCE[0]}")/../../Makefile" ]; then
+    if [[ -f "$(dirname "${BASH_SOURCE[0]}")/../../Makefile" ]]; then
         cd "$(dirname "${BASH_SOURCE[0]}")/../.."
         make stop 2>/dev/null || true
     else

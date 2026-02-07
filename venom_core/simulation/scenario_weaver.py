@@ -1,7 +1,6 @@
 """Moduł: scenario_weaver - Tkacz Scenariuszy dla Syntetycznego Uczenia."""
 
 import json
-import re
 import string
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -14,6 +13,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+from venom_core.utils.markdown_blocks import extract_fenced_block, strip_fenced_blocks
 
 logger = get_logger(__name__)
 
@@ -209,12 +209,12 @@ PAMIĘTAJ:
 
             # Parsuj JSON z odpowiedzi (może być opakowany w ```json```)
             # Usuń markdown code blocks jeśli są
-            json_match = re.search(r"```json\s*(.*?)\s*```", result_text, re.DOTALL)
-            if json_match:
-                result_text = json_match.group(1)
+            json_block = extract_fenced_block(result_text, language="json")
+            if json_block:
+                result_text = json_block
             elif "```" in result_text:
                 # Spróbuj usunąć inne code blocki
-                result_text = re.sub(r"```.*?```", "", result_text, flags=re.DOTALL)
+                result_text = strip_fenced_blocks(result_text)
 
             # Parsuj JSON
             scenario_data = json.loads(result_text.strip())

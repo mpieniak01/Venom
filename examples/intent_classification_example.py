@@ -3,6 +3,7 @@
 
 import asyncio
 from pathlib import Path
+from uuid import uuid4
 
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest
@@ -43,8 +44,9 @@ async def example_orchestrator_usage():
     print("PRZYKŁAD 2: Klasyfikacja przez Orchestrator")
     print("=" * 60)
 
-    # Utwórz tymczasowy plik stanu
-    state_file = Path("/tmp/venom_example_state.json")
+    # Wyznacz unikalną ścieżkę pliku stanu.
+    # Plik zostanie utworzony lazy przez StateManager, gdy będzie potrzebny.
+    state_file = Path.cwd() / f"venom_example_state_{uuid4().hex}.json"
     state_manager = StateManager(state_file_path=str(state_file))
     orchestrator = Orchestrator(state_manager)
 

@@ -3,7 +3,6 @@
 import asyncio
 import json
 import random
-import re
 import shutil
 import uuid
 from datetime import datetime
@@ -21,6 +20,7 @@ from venom_core.memory.graph_rag_service import GraphRAGService
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.simulation.scenario_weaver import ScenarioSpec, ScenarioWeaver
 from venom_core.utils.logger import get_logger
+from venom_core.utils.markdown_blocks import extract_fenced_block
 
 logger = get_logger(__name__)
 
@@ -508,19 +508,14 @@ class DreamEngine:
             Czysty kod Python
         """
         # Szukaj bloków kodu ```python ... ```
-        code_blocks = re.findall(
-            r"```python\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE
-        )
+        python_block = extract_fenced_block(response, language="python")
+        if python_block:
+            return python_block
 
-        if code_blocks:
-            # Weź pierwszy blok
-            return code_blocks[0].strip()
-
-        # Szukaj bloków ``` ... ``` (bez języka)
-        code_blocks = re.findall(r"```\s*(.*?)\s*```", response, re.DOTALL)
-
-        if code_blocks:
-            return code_blocks[0].strip()
+        # Szukaj bloków ``` ... ``` (bez języka lub z dowolnym nagłówkiem)
+        generic_block = extract_fenced_block(response)
+        if generic_block:
+            return generic_block
 
         # Jeśli brak code blocków, zwróć całość (może to być czysty kod)
         return response.strip()

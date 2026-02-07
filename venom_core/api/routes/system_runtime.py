@@ -1,5 +1,8 @@
 """Moduł: routes/system_runtime - Endpointy runtime controller."""
 
+import asyncio
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
@@ -9,6 +12,13 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _track_background_task(task: asyncio.Task[Any]) -> None:
+    """Przechowuje referencję do fire-and-forget tasków do czasu zakończenia."""
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.get("/runtime/status")
@@ -40,9 +50,8 @@ async def get_runtime_status():
         if service_monitor:
             try:
                 # Wyzwól odświeżenie w tle (fire-and-forget), aby nie blokować requestu
-                import asyncio
-
-                asyncio.create_task(service_monitor.check_health())
+                refresh_task = asyncio.create_task(service_monitor.check_health())
+                _track_background_task(refresh_task)
                 # Pobierz natychmiast ostatnie znane dane
                 monitor_services = service_monitor.get_all_services()
             except Exception as exc:  # pragma: no cover

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Coroutine
 from uuid import UUID
 
 from venom_core.config import SETTINGS
@@ -16,6 +16,14 @@ if TYPE_CHECKING:
     from .orchestrator_core import Orchestrator
 
 logger = get_logger(__name__)
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _spawn_background_task(coro: Coroutine[Any, Any, Any]) -> None:
+    """Uruchamia task i trzyma referencję do czasu zakończenia."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskResponse:
@@ -52,7 +60,7 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
     log_message = f"Zadanie uruchomione: {get_utc_now_iso()}"
     orch.state_manager.add_log(task.id, log_message)
 
-    asyncio.create_task(
+    _spawn_background_task(
         orch._broadcast_event(
             event_type="TASK_CREATED",
             message=f"Utworzono nowe zadanie: {request.content[:100]}...",
@@ -102,13 +110,13 @@ async def submit_task(orch: "Orchestrator", request: TaskRequest) -> TaskRespons
                 active_count,
                 SETTINGS.MAX_CONCURRENT_TASKS,
             )
-            asyncio.create_task(run_task_with_queue(orch, task.id, request))
+            _spawn_background_task(run_task_with_queue(orch, task.id, request))
             return _build_task_response(task, runtime_info)
 
     if should_use_fast_path(request):
-        asyncio.create_task(run_task_fastpath(orch, task.id, request))
+        _spawn_background_task(run_task_fastpath(orch, task.id, request))
     else:
-        asyncio.create_task(run_task_with_queue(orch, task.id, request))
+        _spawn_background_task(run_task_with_queue(orch, task.id, request))
 
     logger.info("Zadanie %s przyjęte do wykonania", task.id)
     return _build_task_response(task, runtime_info)

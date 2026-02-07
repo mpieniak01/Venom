@@ -1,4 +1,4 @@
-# AGEN Entry Point
+# AGENTS Entry Point
 
 To avoid confusion between coding-agent instructions and the runtime agent catalog:
 

@@ -1,5 +1,9 @@
 """Testy walidacji i policy guardów dla ComposeSkill (bez Dockera)."""
 
+import shutil
+from pathlib import Path
+from uuid import uuid4
+
 import pytest
 
 from venom_core.execution.skills.compose_skill import ComposeSkill
@@ -26,11 +30,20 @@ class _FakeStackManager:
 
 
 @pytest.fixture
-def compose_skill(monkeypatch, tmp_path):
+def compose_skill(monkeypatch):
     monkeypatch.setattr(
         "venom_core.execution.skills.compose_skill.StackManager", _FakeStackManager
     )
-    return ComposeSkill(workspace_root=str(tmp_path))
+    workspace_root = (
+        Path(__file__).resolve().parent
+        / ".compose_skill_test_workspace"
+        / f"run_{uuid4().hex}"
+    )
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    try:
+        yield ComposeSkill(workspace_root=str(workspace_root))
+    finally:
+        shutil.rmtree(workspace_root, ignore_errors=True)
 
 
 @pytest.mark.asyncio

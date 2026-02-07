@@ -19,6 +19,32 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+STORAGE_ENTRIES: tuple[tuple[str, str, str], ...] = (
+    ("llm_models", "models", "models"),
+    ("llm_cache", "models_cache", "cache"),
+    ("logs", "logs", "logs"),
+    ("timelines", "data/timelines", "data"),
+    ("memory", "data/memory", "data"),
+    ("audio", "data/audio", "data"),
+    ("learning", "data/learning", "data"),
+    ("mcp_repos", "workspace/venom_core/skills/mcp/_repos", "mcp"),
+    ("mcp_custom", "workspace/venom_core/skills/custom", "mcp"),
+    ("next_build", "web-next/.next", "build"),
+    ("node_modules", "web-next/node_modules", "deps"),
+)
+
+CODE_SIZE_SKIP_TOP: set[str] = {
+    "models",
+    "models_cache",
+    "logs",
+    "data",
+    "web-next/.next",
+    "web-next/node_modules",
+    ".git",
+    "node_modules",
+    "htmlcov",
+}
+
 
 def _detect_project_root() -> Path:
     """
@@ -65,6 +91,18 @@ async def get_storage_snapshot():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
+def _item_payload(
+    name: str, path: Path, size_bytes: int, kind: str
+) -> dict[str, int | str]:
+    """Tworzy spójny payload itemu storage."""
+    return {
+        "name": name,
+        "path": str(path),
+        "size_bytes": size_bytes,
+        "kind": kind,
+    }
+
+
 def _get_storage_data_sync() -> dict:
     """Synchronizowana wersja zbierania danych o storage."""
     disk_physical_mount = Path("/usr/lib/wsl/drivers")
@@ -79,58 +117,23 @@ def _get_storage_data_sync() -> dict:
     disk_root_mount = Path("/")
     total_root, used_root, free_root = shutil.disk_usage(str(disk_root_mount))
 
-    entries = [
-        {"name": "llm_models", "path": "models", "kind": "models"},
-        {"name": "llm_cache", "path": "models_cache", "kind": "cache"},
-        {"name": "logs", "path": "logs", "kind": "logs"},
-        {"name": "timelines", "path": "data/timelines", "kind": "data"},
-        {"name": "memory", "path": "data/memory", "kind": "data"},
-        {"name": "audio", "path": "data/audio", "kind": "data"},
-        {"name": "learning", "path": "data/learning", "kind": "data"},
-        {
-            "name": "mcp_repos",
-            "path": "workspace/venom_core/skills/mcp/_repos",
-            "kind": "mcp",
-        },
-        {
-            "name": "mcp_custom",
-            "path": "workspace/venom_core/skills/custom",
-            "kind": "mcp",
-        },
-        {
-            "name": "next_build",
-            "path": "web-next/.next",
-            "kind": "build",
-        },
-        {
-            "name": "node_modules",
-            "path": "web-next/node_modules",
-            "kind": "deps",
-        },
-    ]
-
     items = []
     total_items_size = 0
 
     # 1. Liczymy base entries
-    for entry in entries:
-        path = PROJECT_ROOT / entry["path"]
+    for name, rel_path, kind in STORAGE_ENTRIES:
+        path = PROJECT_ROOT / rel_path
         size_bytes = _dir_size_bytes_fast(path, timeout_sec=2.0)
         if size_bytes == 0 and path.exists():
             try:
                 # Fallback do wolniejszego ale dokładniejszego walk
                 size_bytes = _dir_size_bytes(path)
             except Exception as exc:
-                logger.warning("Błąd liczenia %s: %s", entry["path"], exc)
+                logger.warning("Błąd liczenia %s: %s", rel_path, exc)
                 size_bytes = 0
 
         items.append(
-            {
-                "name": entry["name"],
-                "path": str(path),
-                "size_bytes": size_bytes,
-                "kind": entry["kind"],
-            }
+            _item_payload(name=name, path=path, size_bytes=size_bytes, kind=kind)
         )
         total_items_size += size_bytes
 
@@ -158,47 +161,31 @@ def _get_storage_data_sync() -> dict:
 
     if dreams_size > 0:
         final_items.append(
-            {
-                "name": "dreaming",
-                "path": str(timelines_path / "dream_*"),
-                "size_bytes": dreams_size,
-                "kind": "data",
-            }
+            _item_payload(
+                name="dreaming",
+                path=timelines_path / "dream_*",
+                size_bytes=dreams_size,
+                kind="data",
+            )
         )
 
     # 3. Project Root & Code Only
     final_items.insert(
         0,
-        {
-            "name": "project_root",
-            "path": str(PROJECT_ROOT),
-            "size_bytes": total_items_size,
-            "kind": "project",
-        },
+        _item_payload(
+            name="project_root",
+            path=PROJECT_ROOT,
+            size_bytes=total_items_size,
+            kind="project",
+        ),
     )
 
-    code_size = _dir_size_code(
-        PROJECT_ROOT,
-        skip_top={
-            "models",
-            "models_cache",
-            "logs",
-            "data",
-            "web-next/.next",
-            "web-next/node_modules",
-            ".git",
-            "node_modules",
-            "htmlcov",
-        },
-    )
+    code_size = _dir_size_code(PROJECT_ROOT, skip_top=CODE_SIZE_SKIP_TOP)
     final_items.insert(
         1,
-        {
-            "name": "code_only",
-            "path": str(PROJECT_ROOT),
-            "size_bytes": code_size,
-            "kind": "code",
-        },
+        _item_payload(
+            name="code_only", path=PROJECT_ROOT, size_bytes=code_size, kind="code"
+        ),
     )
 
     final_items.sort(key=lambda x: cast(int, x.get("size_bytes", 0) or 0), reverse=True)

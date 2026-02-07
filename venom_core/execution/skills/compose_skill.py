@@ -98,8 +98,12 @@ class ComposeSkill:
             ),
             (r"/var/run/docker\.sock", "Bind mount /var/run/docker.sock"),
             (
-                r"(?im)^\s*-\s*[\"']?/\s*:[^\\n]+$",
+                r"(?im)^\s*-\s*[\"']?/\s*:[^\r\n]+$",
                 "Bind mount katalogu root '/' z hosta",
+            ),
+            (
+                r"(?im)^\s*-\s*[\"']?[a-zA-Z]:[/\\]\s*:[^\r\n]+$",
+                "Bind mount root dysku hosta Windows (np. C:/)",
             ),
         ]
         for pattern, description in checks:

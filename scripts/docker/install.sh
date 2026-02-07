@@ -156,6 +156,7 @@ fi
 
 gpu_runtime_available() {
   docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+  return $?
 }
 
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")

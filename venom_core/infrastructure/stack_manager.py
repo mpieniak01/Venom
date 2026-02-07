@@ -120,7 +120,14 @@ class StackManager:
         Returns:
             Ścieżka do katalogu stacka
         """
-        stack_dir = self.stacks_dir / stack_name
+        if not stack_name or not stack_name.strip():
+            raise ValueError("Nazwa stacka nie może być pusta")
+
+        stack_dir = (self.stacks_dir / stack_name).resolve()
+        if not stack_dir.is_relative_to(self.stacks_dir):
+            raise ValueError(
+                f"Niedozwolona nazwa stacka (wyjście poza katalog stacks): {stack_name}"
+            )
         stack_dir.mkdir(parents=True, exist_ok=True)
         return stack_dir
 

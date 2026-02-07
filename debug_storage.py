@@ -63,20 +63,18 @@ def _dir_size_code(path: Path, skip_top: set[str] | None = None) -> int:
     return total
 
 
-def debug_snapshot():
+def _disk_usage_with_fallback() -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Zwraca usage dla mounta fizycznego i root."""
     disk_physical_mount = Path("/usr/lib/wsl/drivers")
     if not disk_physical_mount.exists():
         disk_physical_mount = PROJECT_ROOT
-    total_physical, used_physical, free_physical = shutil.disk_usage(
-        disk_physical_mount
-    )
-    print(f"Physical: {total_physical}, {used_physical}, {free_physical}")
+    physical = shutil.disk_usage(disk_physical_mount)
+    root = shutil.disk_usage(Path("/"))
+    return physical, root
 
-    disk_root_mount = Path("/")
-    total_root, used_root, free_root = shutil.disk_usage(disk_root_mount)
-    print(f"Root: {total_root}, {used_root}, {free_root}")
 
-    entries = [
+def _storage_entries() -> list[dict[str, str]]:
+    return [
         {"name": "llm_models", "path": "models", "kind": "models"},
         {"name": "llm_cache", "path": "models_cache", "kind": "cache"},
         {"name": "logs", "path": "logs", "kind": "logs"},
@@ -98,7 +96,9 @@ def debug_snapshot():
         {"name": "node_modules", "path": "web-next/node_modules", "kind": "deps"},
     ]
 
-    sizes = []
+
+def _measure_entry_sizes(entries: list[dict[str, str]]) -> list[int]:
+    sizes: list[int] = []
     for entry in entries:
         print(f"Liczenie {entry['path']}...")
         size = _dir_size_bytes_fast(PROJECT_ROOT / entry["path"], timeout_sec=5.0)
@@ -106,45 +106,44 @@ def debug_snapshot():
             print(f"Fallback dla {entry['path']}...")
             size = _dir_size_bytes(PROJECT_ROOT / entry["path"])
         sizes.append(size)
+    return sizes
 
+
+def _compute_dreams_size(timelines_path: Path) -> int:
     dreams_size = 0
-    timelines_path = PROJECT_ROOT / "data/timelines"
     if timelines_path.exists():
         for child in timelines_path.iterdir():
             if child.is_dir() and child.name.startswith("dream_"):
                 dreams_size += _dir_size_bytes_fast(child)
+    return dreams_size
 
-    print(f"Dreams size: {dreams_size}")
 
-    items = []
+def _build_items(
+    entries: list[dict[str, str]], sizes: list[int], dreams_size: int
+) -> tuple[list[dict[str, str | int]], int]:
+    items: list[dict[str, str | int]] = []
     total_items_size = 0
     for entry, size in zip(entries, sizes):
         size_bytes = size
-        if entry["name"] == "timelines" and dreams_size > 0:
+        item_name = entry["name"]
+        if item_name == "timelines" and dreams_size > 0:
             size_bytes = max(0, size_bytes - dreams_size)
-            entry["name"] = "timelines_user"
+            item_name = "timelines_user"
         total_items_size += size_bytes
         items.append(
             {
-                "name": entry["name"],
+                "name": item_name,
                 "path": str(PROJECT_ROOT / entry["path"]),
                 "size_bytes": size_bytes,
                 "kind": entry["kind"],
             }
         )
+    return items, total_items_size
 
-    print(f"Total items size: {total_items_size}")
 
-    if dreams_size > 0:
-        items.append(
-            {
-                "name": "dreaming",
-                "path": str(timelines_path / "dream_*"),
-                "size_bytes": dreams_size,
-                "kind": "data",
-            }
-        )
-
+def _insert_project_and_code_entries(
+    items: list[dict[str, str | int]], total_items_size: int
+) -> None:
     items.insert(
         0,
         {
@@ -179,6 +178,38 @@ def debug_snapshot():
             "kind": "code",
         },
     )
+
+
+def debug_snapshot():
+    (total_physical, used_physical, free_physical), (
+        total_root,
+        used_root,
+        free_root,
+    ) = _disk_usage_with_fallback()
+    print(f"Physical: {total_physical}, {used_physical}, {free_physical}")
+    print(f"Root: {total_root}, {used_root}, {free_root}")
+
+    entries = _storage_entries()
+    sizes = _measure_entry_sizes(entries)
+
+    timelines_path = PROJECT_ROOT / "data/timelines"
+    dreams_size = _compute_dreams_size(timelines_path)
+    print(f"Dreams size: {dreams_size}")
+
+    items, total_items_size = _build_items(entries, sizes, dreams_size)
+    print(f"Total items size: {total_items_size}")
+
+    if dreams_size > 0:
+        items.append(
+            {
+                "name": "dreaming",
+                "path": str(timelines_path / "dream_*"),
+                "size_bytes": dreams_size,
+                "kind": "data",
+            }
+        )
+
+    _insert_project_and_code_entries(items, total_items_size)
 
     items.sort(key=lambda item: item["size_bytes"], reverse=True)
     print("Sukces!")

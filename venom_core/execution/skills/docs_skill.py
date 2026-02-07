@@ -13,6 +13,8 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+ALLOWED_MKDOCS_THEMES = {"material", "readthedocs"}
+
 
 class DocsSkill:
     """
@@ -63,11 +65,19 @@ class DocsSkill:
             Komunikat o wyniku operacji
         """
         try:
+            if not site_name or not site_name.strip():
+                return "❌ site_name nie może być pusty"
+            if theme not in ALLOWED_MKDOCS_THEMES:
+                return (
+                    "❌ Nieprawidłowy motyw MkDocs. "
+                    f"Dozwolone wartości: {', '.join(sorted(ALLOWED_MKDOCS_THEMES))}"
+                )
+
             logger.info(f"Generowanie mkdocs.yml dla projektu: {site_name}")
 
             # Przygotuj konfigurację
             config_lines = [
-                f"site_name: {site_name}",
+                f"site_name: {site_name.strip()}",
                 "theme:",
                 f"  name: {theme}",
             ]
@@ -283,6 +293,9 @@ class DocsSkill:
             Komunikat o wyniku operacji
         """
         try:
+            if port < 1 or port > 65535:
+                return "❌ Nieprawidłowy port. Dozwolony zakres: 1-65535"
+
             logger.info(f"Uruchamianie serwera dokumentacji na porcie {port}...")
 
             # Sprawdź czy mkdocs.yml istnieje

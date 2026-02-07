@@ -254,15 +254,32 @@ def _dir_size_bytes_fast(path: Path, timeout_sec: float = 3.0) -> int | None:
 
 
 def _dir_size_code(path: Path, skip_top: set[str] | None = None) -> int:
-    """Policz rozmiar kodu z pominięciem katalogów i danych."""
+    """Policz rozmiar kodu z pominięciem katalogów i danych.
+
+    Wspiera dwa typy wpisów w ``skip_top``:
+    - nazwa katalogu (np. ``node_modules``) => pomijana globalnie na każdym poziomie,
+    - ścieżka względna (np. ``web-next/.next``) => pomijana tylko dla tej gałęzi.
+    """
     if not path.exists():
         return 0
     skip_top = skip_top or set()
+    global_skip_names = {item for item in skip_top if "/" not in item}
+    relative_skip_paths = {item.strip("/") for item in skip_top if "/" in item}
     total = 0
     for root, dirs, files in os.walk(path, followlinks=False):
         root_path = Path(root)
-        if root_path == path:
-            dirs[:] = [d for d in dirs if d not in skip_top]
+        rel_root = root_path.relative_to(path).as_posix()
+        if rel_root == ".":
+            rel_root = ""
+        filtered_dirs = []
+        for d in dirs:
+            rel_dir = f"{rel_root}/{d}" if rel_root else d
+            if d in global_skip_names:
+                continue
+            if rel_dir in relative_skip_paths:
+                continue
+            filtered_dirs.append(d)
+        dirs[:] = filtered_dirs
         for name in files:
             file_path = root_path / name
             try:

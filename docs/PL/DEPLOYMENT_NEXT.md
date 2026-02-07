@@ -79,6 +79,7 @@ Publikowane obrazy:
 
 Uwaga bezpieczeństwa (domyślnie dla MVP):
 - `compose/compose.minimal.yml` publikuje porty na interfejsach hosta, aby umożliwić testy z innego komputera w LAN.
+- `compose/compose.spores.yml.tmp` to tymczasowy draft topologii Spore, obecnie nieużywany i poza ścieżką onboardingu Venom minimal.
 - Warunek konieczny: uruchamiaj ten profil wyłącznie w zaufanej/prywatnej sieci.
 - Nie wystawiaj tych portów bezpośrednio do Internetu. Dla dostępu publicznego użyj reverse proxy i dodaj uwierzytelnienie/autoryzację.
 

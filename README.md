@@ -673,6 +673,11 @@ cd Venom
 scripts/docker/run-release.sh start
 ```
 
+Compose profiles in this repository:
+- `compose/compose.release.yml` - end-user profile (pulls prebuilt backend/frontend from GHCR).
+- `compose/compose.minimal.yml` - developer profile (local build of backend/frontend).
+- `compose/compose.spores.yml.tmp` - temporary Spore nodes draft; currently unused and intentionally not an active compose profile.
+
 Useful commands:
 
 ```bash

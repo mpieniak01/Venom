@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Independent Spore topology (Hive/Nexus workers).
+# Not part of Venom "minimal" end-user onboarding stack.
+
 # UWAGA: Przed uruchomieniem ustaw zmienną środowiskową:
 # export NEXUS_SHARED_TOKEN=your-secret-token-here
 

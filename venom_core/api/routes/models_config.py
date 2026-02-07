@@ -60,9 +60,9 @@ async def get_model_capabilities_endpoint(model_name: str):
         }
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Błąd podczas pobierania capabilities: {exc}")
-        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+    except Exception:
+        logger.exception("Błąd podczas pobierania capabilities")
+        raise HTTPException(status_code=500, detail="Błąd serwera")
 
 
 @router.get("/models/{model_name}/config")
@@ -133,9 +133,9 @@ async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = No
         }
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Błąd podczas pobierania config: {exc}")
-        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+    except Exception:
+        logger.exception("Błąd podczas pobierania config")
+        raise HTTPException(status_code=500, detail="Błąd serwera")
 
 
 @router.post("/models/{model_name}/config")
@@ -201,6 +201,6 @@ async def update_model_config_endpoint(
         }
     except HTTPException:
         raise
-    except Exception as exc:
-        logger.error(f"Błąd podczas zapisu config: {exc}")
-        raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
+    except Exception:
+        logger.exception("Błąd podczas zapisu config")
+        raise HTTPException(status_code=500, detail="Błąd serwera")

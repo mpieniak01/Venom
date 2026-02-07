@@ -111,3 +111,4 @@ Jeśli wypchniesz błędną paczkę:
 
 - `docker-sanity` waliduje build i smoke na PR; nie publikuje obrazów.
 - Polityka LAN/trusted network oraz runtime są opisane w `docs/PL/DEPLOYMENT_NEXT.md`.
+- Praktyczna instalacja na Windows z WSL trzymanym na `D:` (poza dyskiem systemowym) jest opisana w `docs/PL/WINDOWS_WSL_D_DRIVE_INSTALL.md`.

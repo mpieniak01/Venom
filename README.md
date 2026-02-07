@@ -642,6 +642,7 @@ make run
 - [QA Delivery](docs/QA_DELIVERY_GUIDE.md)
 - [Docker Minimal Packaging (sanity + publish)](docs/DEPLOYMENT_NEXT.md)
 - [Docker Package Release Guide](docs/DOCKER_RELEASE_GUIDE.md)
+- [Windows WSL Install on D: (Docker Release)](docs/WINDOWS_WSL_D_DRIVE_INSTALL.md)
 
 ### Collaboration
 - [Contribution Guide](docs/CONTRIBUTING.md)

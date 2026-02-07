@@ -111,3 +111,4 @@ If wrong package was published:
 
 - `docker-sanity` validates build and smoke on PR; it does not publish images.
 - For trusted LAN testing policy and runtime notes, see `docs/DEPLOYMENT_NEXT.md`.
+- For a practical Windows setup with WSL stored on `D:` (non-system drive), see `docs/WINDOWS_WSL_D_DRIVE_INSTALL.md`.

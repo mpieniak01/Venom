@@ -80,7 +80,7 @@ def _initialize_components():
     return professor, model_manager
 
 
-async def _run_training_readiness(professor: Professor) -> bool:
+def _run_training_readiness(professor: Professor) -> bool:
     print("[2/6] Sprawdzanie kryteriów treningu...")
     decision = professor.should_start_training()
     print(f"   Decyzja: {'✅ TAK' if decision['should_train'] else '❌ NIE'}")
@@ -182,7 +182,7 @@ async def main():
     _print_header()
     professor, model_manager = _initialize_components()
 
-    if not await _run_training_readiness(professor):
+    if not _run_training_readiness(professor):
         return
 
     if not await _build_dataset_or_exit(professor):

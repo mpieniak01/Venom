@@ -300,25 +300,10 @@ class InputSkill:
         """
         try:
             if region:
-                # Parsuj region
-                try:
-                    parts = [int(p.strip()) for p in region.split(",")]
-                except ValueError:
-                    return "❌ Region musi zawierać liczby całkowite: x,y,width,height"
-                if len(parts) != 4:
-                    return "❌ Region musi być w formacie: x,y,width,height"
-                x, y, width, height = parts
-                if width <= 0 or height <= 0:
-                    return "❌ Szerokość i wysokość regionu muszą być > 0"
-                if x < 0 or y < 0:
-                    return "❌ Współrzędne regionu nie mogą być ujemne"
-                if x + width > self.screen_width or y + height > self.screen_height:
-                    return (
-                        "❌ Region wykracza poza ekran "
-                        f"({self.screen_width}x{self.screen_height})"
-                    )
-
-                screenshot = self.pg.screenshot(region=(x, y, width, height))
+                parsed_region = self._parse_screenshot_region(region)
+                if isinstance(parsed_region, str):
+                    return parsed_region
+                screenshot = self.pg.screenshot(region=parsed_region)
             else:
                 screenshot = self.pg.screenshot()
 
@@ -331,6 +316,29 @@ class InputSkill:
             error_msg = f"❌ Błąd podczas robienia zrzutu: {e}"
             logger.error(error_msg)
             return error_msg
+
+    def _parse_screenshot_region(self, region: str) -> tuple[int, int, int, int] | str:
+        """Parsuje i waliduje region zrzutu ekranu."""
+        try:
+            parts = [int(p.strip()) for p in region.split(",")]
+        except ValueError:
+            return "❌ Region musi zawierać liczby całkowite: x,y,width,height"
+
+        if len(parts) != 4:
+            return "❌ Region musi być w formacie: x,y,width,height"
+
+        x, y, width, height = parts
+        if width <= 0 or height <= 0:
+            return "❌ Szerokość i wysokość regionu muszą być > 0"
+        if x < 0 or y < 0:
+            return "❌ Współrzędne regionu nie mogą być ujemne"
+        if x + width > self.screen_width or y + height > self.screen_height:
+            return (
+                "❌ Region wykracza poza ekran "
+                f"({self.screen_width}x{self.screen_height})"
+            )
+
+        return (x, y, width, height)
 
     def _validate_coordinates(self, x: int, y: int) -> bool:
         """

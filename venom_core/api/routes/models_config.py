@@ -1,6 +1,6 @@
 """Endpointy konfiguracji modeli i capabilities."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -22,7 +22,9 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
 SERVER_ERROR_DETAIL = "Błąd serwera"
-SERVER_ERROR_RESPONSES = {500: {"description": SERVER_ERROR_DETAIL}}
+SERVER_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": SERVER_ERROR_DETAIL}
+}
 
 
 @router.get("/models/{model_name}/capabilities", responses=SERVER_ERROR_RESPONSES)

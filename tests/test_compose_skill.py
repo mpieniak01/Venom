@@ -149,11 +149,11 @@ services:
     assert "{{PORT}}" not in result
     assert ":" in result
     # Sprawdź czy zastąpiono prawidłowym portem (liczba)
-    import re
-
-    matches = re.findall(r"(\d+):80", result)
-    assert len(matches) > 0
-    port = int(matches[0])
+    port_line = next((line for line in result.splitlines() if ":80" in line), "")
+    assert port_line
+    host_part = port_line.split(":", 1)[0].strip().lstrip("-").strip().strip("\"'")
+    assert host_part.isdigit()
+    port = int(host_part)
     assert 8000 <= port <= 9000
 
 

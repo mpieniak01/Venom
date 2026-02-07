@@ -726,7 +726,7 @@ async def lifespan(app: FastAPI):
             )
             logger.info("Warm-up LLM uruchomiony w tle.")
 
-    asyncio.create_task(ensure_local_llm_ready())
+    app.state.startup_llm_task = asyncio.create_task(ensure_local_llm_ready())
 
     yield
 

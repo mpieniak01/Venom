@@ -5,6 +5,7 @@ Pokazuje działanie nowych komponentów bez potrzeby pełnego środowiska.
 """
 
 import asyncio
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -66,8 +67,14 @@ async def demo_cloud_provisioner():
 
     # Test placeholder DNS
     print("\n1. Konfiguracja DNS (placeholder)...")
+    demo_ip = os.getenv("VENOM_DEMO_DNS_IP", "").strip()
+    if not demo_ip:
+        print(
+            "   ⚠️ Pomijam test DNS: ustaw VENOM_DEMO_DNS_IP aby przetestować configure_domain."
+        )
+        return
     dns_result = await provisioner.configure_domain(
-        domain="myapp.example.com", ip="1.2.3.4"
+        domain="myapp.example.com", ip=demo_ip
     )
     print(f"   Status: {dns_result['status']}")
     print(f"   Message: {dns_result['message']}")

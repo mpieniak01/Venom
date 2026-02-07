@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$ROOT_DIR/logs"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 SNAPSHOT_FILE="$LOG_DIR/diag-$TIMESTAMP.txt"
+SEPARATOR_LINE="=============================================="
 
 mkdir -p "$LOG_DIR"
 
@@ -15,9 +16,9 @@ echo "📊 Zbieranie danych diagnostycznych..."
 echo "📝 Zapisuję do: $SNAPSHOT_FILE"
 
 {
-    echo "=============================================="
+    echo "$SEPARATOR_LINE"
     echo "VENOM SYSTEM SNAPSHOT"
-    echo "=============================================="
+    echo "$SEPARATOR_LINE"
     echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "Hostname: $(hostname)"
     echo ""
@@ -59,7 +60,7 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
     echo ""
 
     echo "=== PID FILES STATUS ==="
-    if [ -f "$ROOT_DIR/.venom.pid" ]; then
+    if [[ -f "$ROOT_DIR/.venom.pid" ]]; then
         PID=$(cat "$ROOT_DIR/.venom.pid")
         if kill -0 "$PID" 2>/dev/null; then
             echo "✅ Venom API działa (PID $PID)"
@@ -70,7 +71,7 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
         echo "ℹ️  Venom API nie jest uruchomiony"
     fi
 
-    if [ -f "$ROOT_DIR/.web-next.pid" ]; then
+    if [[ -f "$ROOT_DIR/.web-next.pid" ]]; then
         WPID=$(cat "$ROOT_DIR/.web-next.pid")
         if kill -0 "$WPID" 2>/dev/null; then
             echo "✅ Next.js działa (PID $WPID)"
@@ -81,7 +82,7 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
         echo "ℹ️  Next.js nie jest uruchomiony"
     fi
 
-    if [ -f "$LOG_DIR/vllm.pid" ]; then
+    if [[ -f "$LOG_DIR/vllm.pid" ]]; then
         VPID=$(cat "$LOG_DIR/vllm.pid")
         if kill -0 "$VPID" 2>/dev/null; then
             echo "✅ vLLM działa (PID $VPID)"
@@ -92,7 +93,7 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
         echo "ℹ️  vLLM nie jest uruchomiony"
     fi
 
-    if [ -f "$LOG_DIR/ollama.pid" ]; then
+    if [[ -f "$LOG_DIR/ollama.pid" ]]; then
         OPID=$(cat "$LOG_DIR/ollama.pid")
         if kill -0 "$OPID" 2>/dev/null; then
             echo "✅ Ollama działa (PID $OPID)"
@@ -108,7 +109,7 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
     if command -v lsof >/dev/null 2>&1; then
         for port in 8000 3000 8001 11434; do
             PIDS=$(lsof -ti tcp:$port 2>/dev/null || true)
-            if [ -n "$PIDS" ]; then
+            if [[ -n "$PIDS" ]]; then
                 # Convert newlines to spaces for ps command
                 PIDS_SPACE=$(echo "$PIDS" | tr '\n' ' ')
                 echo "Port $port: zajęty przez PID $PIDS_SPACE"
@@ -122,9 +123,9 @@ echo "📝 Zapisuję do: $SNAPSHOT_FILE"
     fi
 
     echo ""
-    echo "=============================================="
+    echo "$SEPARATOR_LINE"
     echo "KONIEC SNAPSHOTA"
-    echo "=============================================="
+    echo "$SEPARATOR_LINE"
 
 } > "$SNAPSHOT_FILE"
 

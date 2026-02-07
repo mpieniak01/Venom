@@ -11,18 +11,14 @@ COPY venom_spore/ /app/venom_spore/
 COPY venom_core/nodes/ /app/venom_core/nodes/
 COPY venom_core/__init__.py /app/venom_core/__init__.py
 
-# Utwórz __init__.py dla venom_core jeśli nie istnieje
-RUN touch /app/venom_core/__init__.py
-
-# Instaluj minimalną listę zależności
+# Instaluj minimalną listę zależności oraz przygotuj workspace
 RUN pip install --no-cache-dir \
     websockets \
     psutil \
     pydantic \
-    pydantic-settings
-
-# Utwórz katalog workspace
-RUN mkdir -p /app/workspace
+    pydantic-settings \
+    && mkdir -p /app/workspace \
+    && touch /app/venom_core/__init__.py
 
 # Ustaw PYTHONPATH
 ENV PYTHONPATH=/app

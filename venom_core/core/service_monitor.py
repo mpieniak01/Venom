@@ -192,6 +192,13 @@ class ServiceHealthMonitor:
         self.check_timeout = 5.0  # Timeout dla health checków (sekundy)
         self.orchestrator = None  # Referencja do Orchestrator (ustawiana przez main.py)
         self.event_broadcaster = event_broadcaster
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
+    def _spawn_background_task(self, coro: Any) -> None:
+        """Uruchamia fire-and-forget task i zachowuje referencję do zakończenia."""
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     def set_orchestrator(self, orchestrator):
         """Ustawia referencję do orkiestratora."""
@@ -290,7 +297,7 @@ class ServiceHealthMonitor:
                 try:
                     from venom_core.api.stream import EventType
 
-                    asyncio.create_task(
+                    self._spawn_background_task(
                         self.event_broadcaster.broadcast_event(
                             event_type=EventType.SERVICE_STATUS_UPDATE,
                             message=f"Status update for {service.name}: {service.status.value}",

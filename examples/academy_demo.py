@@ -127,7 +127,9 @@ def _simulate_training_versions(model_manager: ModelManager) -> None:
     print()
 
 
-async def _evaluate_and_promote(professor: Professor, model_manager: ModelManager) -> None:
+async def _evaluate_and_promote(
+    professor: Professor, model_manager: ModelManager
+) -> None:
     print("[5/6] Ewaluacja nowego modelu...")
     eval_result = await professor.process("oceń model")
     print(eval_result)

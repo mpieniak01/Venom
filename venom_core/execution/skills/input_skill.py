@@ -4,9 +4,9 @@ Moduł: input_skill - Umiejętność motoryczna (kontrola myszy i klawiatury).
 Ten skill pozwala na fizyczną interakcję z interfejsem systemu operacyjnego.
 """
 
+import asyncio
 import platform
 import sys
-import asyncio
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function

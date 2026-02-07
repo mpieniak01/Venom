@@ -181,10 +181,13 @@ def _insert_project_and_code_entries(
 
 
 def debug_snapshot():
-    (total_physical, used_physical, free_physical), (
-        total_root,
-        used_root,
-        free_root,
+    (
+        (total_physical, used_physical, free_physical),
+        (
+            total_root,
+            used_root,
+            free_root,
+        ),
     ) = _disk_usage_with_fallback()
     print(f"Physical: {total_physical}, {used_physical}, {free_physical}")
     print(f"Root: {total_root}, {used_root}, {free_root}")

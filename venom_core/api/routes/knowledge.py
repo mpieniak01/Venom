@@ -505,7 +505,10 @@ async def get_lessons_stats(
 @router.delete("/lessons/prune/latest")
 async def prune_latest_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    count: int = Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
+    count: Annotated[
+        int,
+        Query(..., ge=1, description="Liczba najnowszych lekcji do usunięcia"),
+    ],
 ):
     """
     Usuwa n najnowszych lekcji z magazynu.
@@ -528,12 +531,20 @@ async def prune_latest_lessons(
 @router.delete("/lessons/prune/range")
 async def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    start: str = Query(
-        ..., description="Data początkowa w formacie ISO 8601 (np. 2024-01-01T00:00:00)"
-    ),
-    end: str = Query(
-        ..., description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)"
-    ),
+    start: Annotated[
+        str,
+        Query(
+            ...,
+            description="Data początkowa w formacie ISO 8601 (np. 2024-01-01T00:00:00)",
+        ),
+    ],
+    end: Annotated[
+        str,
+        Query(
+            ...,
+            description="Data końcowa w formacie ISO 8601 (np. 2024-01-31T23:59:59)",
+        ),
+    ],
 ):
     """
     Usuwa lekcje z podanego zakresu czasu.
@@ -569,7 +580,7 @@ async def prune_lessons_by_range(
 @router.delete("/lessons/prune/tag")
 async def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    tag: str = Query(..., description="Tag do wyszukania i usunięcia"),
+    tag: Annotated[str, Query(..., description="Tag do wyszukania i usunięcia")],
 ):
     """
     Usuwa lekcje zawierające dany tag.
@@ -593,9 +604,9 @@ async def prune_lessons_by_tag(
 @router.delete("/lessons/purge")
 async def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    force: bool = Query(
-        False, description="Wymagane potwierdzenie dla operacji nuklearnej"
-    ),
+    force: Annotated[
+        bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
+    ] = False,
 ):
     """
     Czyści całą bazę lekcji (opcja nuklearna).
@@ -631,7 +642,7 @@ async def purge_all_lessons(
 @router.delete("/lessons/prune/ttl")
 async def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
-    days: int = Query(..., ge=1, description="Liczba dni retencji (TTL)"),
+    days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
 ):
     """Usuwa lekcje starsze niż TTL w dniach."""
     try:

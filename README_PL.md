@@ -643,7 +643,8 @@ make run
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
 
 ### Agenci
-- [**Indeks wszystkich agentów** (34 agenty)](docs/PL/AGENTS_INDEX.md) 📋
+- [**Katalog agentów systemu** (34 agenty)](docs/PL/KATALOG_AGENTOW_SYSTEMU.md) 📋
+- [**Wytyczne dla agentów kodowania**](docs/PL/AGENTS.md) 🧭
 - [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md)
 - [The Coder - Generowanie kodu](docs/PL/THE_CODER.md)
 - [The Researcher - Wyszukiwanie wiedzy](docs/PL/THE_RESEARCHER.md)

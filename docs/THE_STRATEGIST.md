@@ -225,4 +225,4 @@ OPENAI_DAILY_TOKENS_LIMIT=500000
 - [THE_ARCHITECT.md](THE_ARCHITECT.md) - Task planning
 - [THE_HIVE.md](THE_HIVE.md) - Distributed task execution
 - [COST_GUARD.md](COST_GUARD.md) - API budget protection
-- [AGENTS_INDEX.md](AGENTS_INDEX.md) - Complete agent index
+- [SYSTEM_AGENTS_CATALOG.md](SYSTEM_AGENTS_CATALOG.md) - Complete system agents catalog

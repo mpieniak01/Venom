@@ -1,6 +1,7 @@
 """Moduł: routes/knowledge - Endpointy API dla graph i lessons."""
 
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +20,20 @@ router = APIRouter(prefix="/api/v1", tags=["knowledge"])
 
 _graph_store = None
 _lessons_store = None
+INTERNAL_ERROR_DETAIL = "Błąd wewnętrzny"
+
+
+def _normalize_graph_file_path(file_path: str) -> str:
+    """
+    Normalizuje ścieżkę pliku z URL i odrzuca niebezpieczne formaty.
+    """
+    normalized = file_path.strip().replace("\\", "/")
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka pliku")
+    path = PurePosixPath(normalized)
+    if path.is_absolute() or ".." in path.parts:
+        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka pliku")
+    return str(path)
 
 
 def set_dependencies(graph_store=None, lessons_store=None):
@@ -347,7 +362,7 @@ async def get_graph_summary(
         }
     except Exception as e:
         logger.exception("Błąd podczas pobierania podsumowania grafu")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
 @router.get("/graph/file/{file_path:path}")
@@ -366,18 +381,17 @@ async def get_file_graph_info(
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
+    normalized_path = _normalize_graph_file_path(file_path)
     try:
-        info = graph_store.get_file_info(file_path)
-        if info is None:
-            raise HTTPException(
-                status_code=404, detail=f"Plik {file_path} nie istnieje w grafie"
-            )
+        info = graph_store.get_file_info(normalized_path)
+        if not info:
+            raise HTTPException(status_code=404, detail="Plik nie istnieje w grafie")
         return {"status": "success", "file_info": info}
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Błąd podczas pobierania informacji o pliku {file_path}")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        logger.exception("Błąd podczas pobierania informacji o pliku z grafu")
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
 @router.get("/graph/impact/{file_path:path}")
@@ -396,18 +410,17 @@ async def get_impact_analysis(
     Raises:
         HTTPException: 503 jeśli CodeGraphStore nie jest dostępny, 404 jeśli plik nie istnieje
     """
+    normalized_path = _normalize_graph_file_path(file_path)
     try:
-        impact = graph_store.get_impact_analysis(file_path)
+        impact = graph_store.get_impact_analysis(normalized_path)
         if impact is None or "error" in impact:
-            raise HTTPException(
-                status_code=404, detail=f"Plik {file_path} nie istnieje w grafie"
-            )
+            raise HTTPException(status_code=404, detail="Plik nie istnieje w grafie")
         return {"status": "success", "impact": impact}
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Błąd podczas analizy wpływu dla pliku {file_path}")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        logger.exception("Błąd podczas analizy wpływu pliku w grafie")
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
 @router.post("/graph/scan")
@@ -436,7 +449,7 @@ async def trigger_graph_scan(
         }
     except Exception as e:
         logger.exception("Błąd podczas uruchamiania skanowania grafu")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
 @router.get("/lessons")

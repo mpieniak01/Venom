@@ -184,7 +184,7 @@ async def main():
 
         print("\n" + "=" * 80)
         print("Naciśnij Enter aby przejść do następnego demo...")
-        input()
+        await asyncio.to_thread(input)
 
         # Demo 2: Calculator
         await demo_create_calculator()

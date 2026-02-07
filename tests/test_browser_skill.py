@@ -89,3 +89,22 @@ async def test_screenshot_workflow(browser_skill):
 
     # Zamknij
     await browser_skill.close_browser()
+
+
+def test_sanitize_screenshot_filename_rejects_path_traversal():
+    """Nazwa pliku nie może zawierać ścieżek względnych."""
+    with pytest.raises(ValueError):
+        BrowserSkill._sanitize_screenshot_filename("../secret.png")
+
+
+def test_sanitize_screenshot_filename_accepts_simple_name():
+    """Prawidłowa nazwa powinna dostać rozszerzenie .png."""
+    assert BrowserSkill._sanitize_screenshot_filename("home") == "home.png"
+
+
+def test_validate_url_policy_flags_unsupported_scheme():
+    """Policy check powinien flagować niedozwolony schemat."""
+    skill = BrowserSkill()
+    warnings = skill._validate_url_policy("file:///etc/passwd")
+    assert warnings
+    assert "Niedozwolony schemat URL" in warnings[0]

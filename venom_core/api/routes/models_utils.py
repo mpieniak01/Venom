@@ -1,5 +1,6 @@
 """Helpery dla routerow modeli (wspolne funkcje i walidacje)."""
 
+import hashlib
 import importlib
 import json
 import re
@@ -36,6 +37,12 @@ def _normalize_model_name_for_fs(model_name: str) -> str | None:
     if ".." in model_name or model_name.startswith("/"):
         return None
     return model_name.strip()
+
+
+def _redacted_input_fingerprint(value: str) -> str:
+    """Zwraca bezpieczny fingerprint danych wejściowych bez logowania treści."""
+    digest = hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return f"len={len(value)},sha256={digest}"
 
 
 def update_last_model(provider: str, new_model: str):
@@ -133,7 +140,10 @@ def validate_generation_params(
 def read_ollama_manifest_params(model_name: str) -> Dict[str, Any]:
     safe_model_name = _normalize_model_name_for_fs(model_name)
     if not safe_model_name:
-        logger.warning("Odrzucono nieprawidłową nazwę modelu: %s", model_name)
+        logger.warning(
+            "Odrzucono nieprawidłową nazwę modelu (%s)",
+            _redacted_input_fingerprint(model_name or ""),
+        )
         return {}
 
     base_name, _, tag = safe_model_name.rpartition(":")
@@ -171,7 +181,10 @@ def read_vllm_generation_config(model_name: str) -> Dict[str, Any]:
     candidates = []
     safe_model_name = _normalize_model_name_for_fs(model_name)
     if model_name and not safe_model_name:
-        logger.warning("Odrzucono nieprawidłową nazwę modelu: %s", model_name)
+        logger.warning(
+            "Odrzucono nieprawidłową nazwę modelu (%s)",
+            _redacted_input_fingerprint(model_name),
+        )
         return {}
 
     if safe_model_name:

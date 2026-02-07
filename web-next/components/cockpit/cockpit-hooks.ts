@@ -390,7 +390,7 @@ export function useHiddenPromptState({
     hiddenPrompts?.items?.forEach((entry) => {
       if (entry.intent) intents.add(entry.intent);
     });
-    return ["all", ...Array.from(intents).sort()];
+    return ["all", ...Array.from(intents).sort((a, b) => a.localeCompare(b))];
   }, [hiddenPrompts]);
 
   const selectableHiddenPrompts = useMemo(() => {

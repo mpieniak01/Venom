@@ -64,6 +64,16 @@ class LessonsManager:
         self.lessons_store = lessons_store
         self.event_broadcaster = event_broadcaster
 
+    @staticmethod
+    def _agent_blocks_learning(agent: Optional[object]) -> bool:
+        """Sprawdza, czy agent jawnie wyłączył uczenie."""
+        return bool(agent and getattr(agent, "disable_learning", False))
+
+    @staticmethod
+    def _request_allows_learning(request: TaskRequest) -> bool:
+        """Sprawdza globalne i per-request flagi dla uczenia."""
+        return bool(request.store_knowledge and SETTINGS.ENABLE_META_LEARNING)
+
     def should_store_lesson(
         self,
         request: TaskRequest,
@@ -81,13 +91,13 @@ class LessonsManager:
         Returns:
             True jeśli lekcja powinna być zapisana
         """
-        if not (request.store_knowledge and SETTINGS.ENABLE_META_LEARNING):
+        if not self._request_allows_learning(request):
             return False
 
         if intent in NON_LEARNING_INTENTS:
             return False
 
-        if agent and getattr(agent, "disable_learning", False):
+        if self._agent_blocks_learning(agent):
             return False
 
         return True
@@ -111,13 +121,13 @@ class LessonsManager:
         Returns:
             True jeśli należy logować
         """
-        if not request.store_knowledge:
+        if not self._request_allows_learning(request):
             return False
         if tool_required:
             return False
         if intent in NON_LEARNING_INTENTS:
             return False
-        if agent and getattr(agent, "disable_learning", False):
+        if self._agent_blocks_learning(agent):
             return False
         return True
 

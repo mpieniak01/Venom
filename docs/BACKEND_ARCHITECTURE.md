@@ -42,7 +42,7 @@ Integrated with Microsoft Semantic Kernel, enabling agent capabilities expansion
 - `venom_core/execution/skills/base_skill.py` – Base class for all skills.
 - `venom_core/skills/mcp_manager_skill.py` – MCP tools management (Git import, venv).
 - `venom_core/skills/mcp/proxy_generator.py` – Automatic proxy code generation for MCP servers.
-- `venom_core/skills/custom/` – Directory for dynamically generated and utility skills.
+- `venom_core/skills/custom/` – Runtime-generated skills directory (may be absent on fresh checkout until first MCP import).
 
 ## Related documentation (MCP)
 - `docs/DEV_GUIDE_SKILLS.md` – MCP import and Skills standards.

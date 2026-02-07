@@ -295,23 +295,15 @@ class TestSkill:
         for line in lines:
             # Szukaj linii z podsumowaniem
             if " passed" in line or " failed" in line:
-                # Wyciągnij liczby
-                parts = line.split()
+                # Obsługa formatów typu:
+                # "2 passed, 1 failed in 0.10s" oraz "2 passed in 0.05s"
+                lowered = line.lower().replace(",", " ").replace("=", " ")
+                parts = lowered.split()
                 for i, part in enumerate(parts):
-                    if part == "passed" and i > 0:
-                        try:
-                            passed = int(parts[i - 1])
-                        except (ValueError, IndexError):
-                            logger.debug(
-                                f"Nie udało się sparsować liczby passed z: {parts}"
-                            )
-                    elif part == "failed" and i > 0:
-                        try:
-                            failed = int(parts[i - 1])
-                        except (ValueError, IndexError):
-                            logger.debug(
-                                f"Nie udało się sparsować liczby failed z: {parts}"
-                            )
+                    if part == "passed" and i > 0 and parts[i - 1].isdigit():
+                        passed = int(parts[i - 1])
+                    if part == "failed" and i > 0 and parts[i - 1].isdigit():
+                        failed = int(parts[i - 1])
 
             # Zbierz szczegóły błędów (linie z FAILED)
             if line.strip().startswith("FAILED") or "AssertionError" in line:

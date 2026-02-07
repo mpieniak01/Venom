@@ -10,8 +10,7 @@ Odpowiada za:
 
 import asyncio
 import json
-import random
-import re
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -29,9 +28,37 @@ from venom_core.core.service_monitor import ServiceHealthMonitor
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-_BENCHMARK_ID_PATTERN = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
-)
+
+
+def _is_valid_benchmark_id(value: str) -> bool:
+    """Waliduje benchmark_id jako kanoniczny UUID."""
+    return _normalize_benchmark_id(value) is not None
+
+
+def _normalize_benchmark_id(value: str) -> Optional[str]:
+    """Zwraca benchmark_id w postaci kanonicznej UUID lub None."""
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return str(parsed)
+
+
+def _secure_sample_without_replacement(
+    items: List["BenchmarkQuestion"], sample_size: int
+) -> List["BenchmarkQuestion"]:
+    """Losuje bez powtórzeń używając kryptograficznego RNG."""
+    if sample_size <= 0:
+        return []
+    if sample_size >= len(items):
+        return list(items)
+
+    pool = list(items)
+    selected: List["BenchmarkQuestion"] = []
+    for _ in range(sample_size):
+        idx = secrets.randbelow(len(pool))
+        selected.append(pool.pop(idx))
+    return selected
 
 
 class BenchmarkStatus(str, Enum):
@@ -244,14 +271,15 @@ class BenchmarkService:
 
     def delete_benchmark(self, benchmark_id: str) -> bool:
         """Usuwa benchmark z pamięci i dysku."""
-        if not _BENCHMARK_ID_PATTERN.match(benchmark_id):
+        normalized_id = _normalize_benchmark_id(benchmark_id)
+        if normalized_id is None:
             logger.warning("Odrzucono nieprawidłowy benchmark_id: %s", benchmark_id)
             return False
 
-        if benchmark_id in self.jobs:
-            del self.jobs[benchmark_id]
+        if normalized_id in self.jobs:
+            del self.jobs[normalized_id]
 
-        file_path = self.storage_dir / f"{benchmark_id}.json"
+        file_path = self.storage_dir / f"{normalized_id}.json"
         if file_path.exists():
             try:
                 file_path.unlink()
@@ -421,8 +449,9 @@ class BenchmarkService:
                     )
 
                 # Wybierz losowe pytania
-                questions = random.sample(
-                    all_questions, min(job.num_questions, len(all_questions))
+                questions = _secure_sample_without_replacement(
+                    all_questions,
+                    min(job.num_questions, len(all_questions)),
                 )
 
                 # Testuj każdy model po kolei

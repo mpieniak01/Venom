@@ -18,17 +18,7 @@
 │   └── memory/
 │       └── lessons_learned.json # memory of errors / conclusions
 │
-├── web/                         # WEB layer (Venom UI)
-│   ├── templates/
-│   │   ├── base.html            # common layout
-│   │   └── index.html           # dashboard / main view
-│   └── static/
-│       ├── css/
-│       │   └── app.css          # styles
-│       └── js/
-│           └── app.js           # frontend logic
-│
-├── web-next/                    # [NEW] Next.js Dashboard (VENOM 1.0)
+├── web-next/                    # Next.js Dashboard (active frontend in v1.0)
 │   ├── app/                     # App Router
 │   ├── components/              # React/Shadcn UI components
 │   ├── lib/                     # utils, types, api clients
@@ -72,7 +62,8 @@
     │   ├── coder.py             # code generation
     │   ├── strategist.py        # [v2.0] Strategy Supervisor (Roadmap, KPI)
     │   ├── critic.py            # tests / review
-    │   ├── writer.py            # documentation, logs, PR descriptions
+    │   ├── documenter.py        # documentation generation
+    │   ├── publisher.py         # release notes and publication
     │   ├── ghost_agent.py       # visual GUI automation
     │   ├── apprentice.py        # learning by observation
     │   ├── professor.py         # user education system
@@ -92,7 +83,7 @@
     │   ├── mcp/
     │   │   ├── proxy_generator.py # MCP proxy generator
     │   │   └── _repos/            # cloned MCP repos (runtime)
-    │   └── custom/              # generated MCP wrappers (runtime)
+    │   └── custom/              # generated MCP wrappers (runtime; may appear after first import)
     │
     ├── perception/              # [LAYER 3: SENSES] – EYES + ANTENNA
     │   ├── __init__.py

@@ -15,23 +15,36 @@ warnings.filterwarnings(
 
 
 def _has_docker() -> bool:
-    return shutil.which("docker") is not None
+    if shutil.which("docker") is None:
+        return False
+    try:
+        # Sama obecność binarki nie wystarcza: testy wymagają działającego daemonu.
+        result = subprocess.run(
+            ["docker", "info"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            check=False,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def _has_docker_compose() -> bool:
-    if shutil.which("docker-compose"):
-        return True
+    # StackManager używa wyłącznie składni `docker compose` (plugin CLI),
+    # więc samodzielna binarka `docker-compose` nie jest wystarczająca.
     if not _has_docker():
         return False
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["docker", "compose", "version"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=2,
-            check=True,
+            check=False,
         )
-        return True
+        return result.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -55,7 +68,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "requires_docker_compose: test wymaga docker compose (docker-compose lub docker compose)",
+        "requires_docker_compose: test wymaga działającego `docker compose` (Docker CLI plugin)",
     )
     config.addinivalue_line(
         "markers",
@@ -68,7 +81,7 @@ def pytest_collection_modifyitems(config, items):
     skip_integration = pytest.mark.skip(
         reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
     )
-    skip_docker = pytest.mark.skip(reason="pomijam - Docker nie jest dostępny")
+    skip_docker = pytest.mark.skip(reason="pomijam - Docker daemon nie jest dostępny")
     skip_compose = pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
 
     for item in items:

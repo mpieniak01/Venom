@@ -611,7 +611,8 @@ make run
 - [Hybrid AI Engine](docs/HYBRID_AI_ENGINE.md)
 
 ### Agents
-- [**All Agents Index** (34 agents)](docs/AGENTS_INDEX.md) 📋
+- [**System Agents Catalog** (34 agents)](docs/SYSTEM_AGENTS_CATALOG.md) 📋
+- [**Coding Agents Guidelines**](docs/AGENTS.md) 🧭
 - [The Architect - Planning](docs/THE_ARCHITECT.md)
 - [The Coder - Code Generation](docs/THE_CODER.md)
 - [The Researcher - Knowledge Search](docs/THE_RESEARCHER.md)

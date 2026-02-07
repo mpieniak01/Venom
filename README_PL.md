@@ -643,7 +643,8 @@ make run
 - [Silnik hybrydowy AI](docs/PL/HYBRID_AI_ENGINE.md)
 
 ### Agenci
-- [**Indeks wszystkich agentów** (34 agenty)](docs/PL/AGENTS_INDEX.md) 📋
+- [**Katalog agentów systemu** (34 agenty)](docs/PL/KATALOG_AGENTOW_SYSTEMU.md) 📋
+- [**Wytyczne dla agentów kodowania**](docs/PL/AGENTS.md) 🧭
 - [The Architect - Planowanie](docs/PL/THE_ARCHITECT.md)
 - [The Coder - Generowanie kodu](docs/PL/THE_CODER.md)
 - [The Researcher - Wyszukiwanie wiedzy](docs/PL/THE_RESEARCHER.md)
@@ -698,6 +699,11 @@ pytest -n 6 $(cat config/pytest-groups/light.txt)
 
 # Alternatywnie (make):
 make pytest
+
+# Uwaga: make pytest testuje backend API (domyślnie port 8000),
+# nie frontend UI (web-next jest na porcie 3000).
+# Jeśli API działa na innym porcie:
+VENOM_API_BASE=http://127.0.0.1:8010 make pytest
 
 # Playwright E2E: latency (1 worker) + functional (4 workers)
 npm --prefix web-next run test:e2e:preflight

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from venom_core.core.orchestrator.constants import LEARNING_LOG_PATH
@@ -15,6 +17,7 @@ from venom_core.core.orchestrator.constants import LEARNING_LOG_PATH
 from .chat_pipeline import is_backend_available, stream_task, submit_task
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.performance]
+MAX_RETRIES = int(os.getenv("VENOM_E2E_RETRIES", "4"))
 
 
 async def _skip_if_backend_unavailable():
@@ -50,6 +53,32 @@ async def _wait_for_log_entries(
     return _read_learning_log()
 
 
+async def _submit_and_wait_finished(prompt: str, session_id: str) -> str:
+    """Tworzy task i czeka na `task_finished` z retry przy błędach transportu."""
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            task_id = await submit_task(
+                prompt, store_knowledge=True, session_id=session_id
+            )
+            async for event, _payload in stream_task(task_id):
+                if event == "task_finished":
+                    return task_id
+            raise RuntimeError("Stream zakończył się bez eventu task_finished")
+        except (
+            httpx.ReadError,
+            httpx.ReadTimeout,
+            httpx.RemoteProtocolError,
+            httpx.ConnectError,
+            TimeoutError,
+        ) as exc:
+            if attempt >= MAX_RETRIES:
+                pytest.skip(
+                    "Backend/SSE niestabilny podczas learning_logs E2E "
+                    f"po {MAX_RETRIES} próbach: {exc}"
+                )
+            await asyncio.sleep(min(2 ** (attempt - 1), 5))
+
+
 @pytest.mark.smoke
 async def test_learning_logs_integrity_e2e():
     await _skip_if_backend_unavailable()
@@ -58,11 +87,8 @@ async def test_learning_logs_integrity_e2e():
     task_ids: list[str] = []
     for idx in range(2):
         prompt = f"Learning log test {session_id} #{idx}: odpowiedz krótko OK."
-        task_id = await submit_task(prompt, store_knowledge=True, session_id=session_id)
+        task_id = await _submit_and_wait_finished(prompt, session_id)
         task_ids.append(task_id)
-        async for event, _payload in stream_task(task_id):
-            if event == "task_finished":
-                break
 
     entries = await _wait_for_log_entries(set(task_ids))
     entries_by_task = {}

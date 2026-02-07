@@ -10,8 +10,7 @@ Odpowiada za:
 
 import asyncio
 import json
-import random
-import re
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -29,9 +28,15 @@ from venom_core.core.service_monitor import ServiceHealthMonitor
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
-_BENCHMARK_ID_PATTERN = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
-)
+
+
+def _is_valid_benchmark_id(value: str) -> bool:
+    """Waliduje benchmark_id jako kanoniczny UUID."""
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return str(parsed) == value.lower()
 
 
 class BenchmarkStatus(str, Enum):
@@ -244,7 +249,7 @@ class BenchmarkService:
 
     def delete_benchmark(self, benchmark_id: str) -> bool:
         """Usuwa benchmark z pamięci i dysku."""
-        if not _BENCHMARK_ID_PATTERN.match(benchmark_id):
+        if not _is_valid_benchmark_id(benchmark_id):
             logger.warning("Odrzucono nieprawidłowy benchmark_id: %s", benchmark_id)
             return False
 
@@ -421,7 +426,8 @@ class BenchmarkService:
                     )
 
                 # Wybierz losowe pytania
-                questions = random.sample(
+                rng = secrets.SystemRandom()
+                questions = rng.sample(
                     all_questions, min(job.num_questions, len(all_questions))
                 )
 

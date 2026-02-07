@@ -30,19 +30,19 @@ except Exception:  # pragma: no cover
 
 BeautifulSoup: Any = _beautiful_soup_cls
 
-_DDGS: Any = None
+DDGS: Any = None
 try:  # pragma: no cover - zależne od środowiska
-    from ddgs import DDGS as _DDGS
+    ddgs_module = import_module("ddgs")
+    DDGS = getattr(ddgs_module, "DDGS", None)
 except Exception:  # pragma: no cover
-    _DDGS = None
+    DDGS = None
 
-if _DDGS is None:  # pragma: no cover - fallback zależny od środowiska
+if DDGS is None:  # pragma: no cover - fallback zależny od środowiska
     try:
-        from duckduckgo_search import DDGS as _DDGS
+        duckduckgo_module = import_module("duckduckgo_search")
+        DDGS = getattr(duckduckgo_module, "DDGS", None)
     except Exception:
-        _DDGS = None
-
-DDGS: Any = _DDGS
+        DDGS = None
 
 logger = get_logger(__name__)
 

@@ -1,8 +1,9 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
+from importlib import import_module
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, Optional
+from typing import Any, Annotated, Literal, Optional
 from urllib.parse import urlparse
 
 from semantic_kernel.functions import kernel_function
@@ -10,8 +11,8 @@ from semantic_kernel.functions import kernel_function
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
-if TYPE_CHECKING:
-    from playwright.async_api import Browser, Page
+Browser = Any
+Page = Any
 
 logger = get_logger(__name__)
 
@@ -54,7 +55,9 @@ class BrowserSkill:
         """Upewnia się, że przeglądarka jest uruchomiona."""
         if self._browser is None:
             try:
-                from playwright.async_api import async_playwright
+                async_playwright = getattr(
+                    import_module("playwright.async_api"), "async_playwright"
+                )
             except ImportError as e:
                 logger.error(
                     "Playwright nie jest zainstalowany. Zainstaluj 'playwright'."

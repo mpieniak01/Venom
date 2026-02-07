@@ -699,6 +699,11 @@ pytest -n 6 $(cat config/pytest-groups/light.txt)
 # Alternatywnie (make):
 make pytest
 
+# Uwaga: make pytest testuje backend API (domyślnie port 8000),
+# nie frontend UI (web-next jest na porcie 3000).
+# Jeśli API działa na innym porcie:
+VENOM_API_BASE=http://127.0.0.1:8010 make pytest
+
 # Playwright E2E: latency (1 worker) + functional (4 workers)
 npm --prefix web-next run test:e2e:preflight
 npm --prefix web-next run test:e2e:latency

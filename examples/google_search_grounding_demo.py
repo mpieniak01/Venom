@@ -13,6 +13,7 @@ Wymagania:
 """
 
 import sys
+import tempfile
 from pathlib import Path
 
 # Dodaj venom_core do path
@@ -22,6 +23,18 @@ from venom_core.core.state_manager import StateManager
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
 
+def _create_demo_state_path() -> Path:
+    """Tworzy bezpieczną ścieżkę pliku stanu dla demo."""
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="venom_demo_state_",
+        suffix=".json",
+        delete=False,
+    )
+    tmp_path = Path(tmp.name)
+    tmp.close()
+    return tmp_path
+
+
 def demo_state_manager():
     """Demonstracja Global Cost Guard (paid_mode)."""
     print("=" * 80)
@@ -29,7 +42,8 @@ def demo_state_manager():
     print("=" * 80)
 
     # Inicjalizacja
-    state_manager = StateManager(state_file_path="/tmp/venom_demo_state.json")
+    state_file = _create_demo_state_path()
+    state_manager = StateManager(state_file_path=str(state_file))
 
     # Sprawdź domyślny stan
     print(f"\n1. Stan początkowy paid_mode: {state_manager.is_paid_mode_enabled()}")
@@ -47,6 +61,7 @@ def demo_state_manager():
     assert state_manager.is_paid_mode_enabled() is False
 
     print("\n✅ StateManager działa poprawnie!")
+    state_file.unlink(missing_ok=True)
 
 
 def demo_task_routing():
@@ -132,7 +147,8 @@ def demo_acceptance_criteria():
     print("DEMO 4: Kryteria Akceptacji")
     print("=" * 80)
 
-    state_manager = StateManager(state_file_path="/tmp/venom_demo_state.json")
+    state_file = _create_demo_state_path()
+    state_manager = StateManager(state_file_path=str(state_file))
     router = HybridModelRouter()
 
     # ✅ DoD 1: Paid Mode OFF → DuckDuckGo
@@ -173,6 +189,7 @@ def demo_acceptance_criteria():
     print("   Brak możliwości obejścia: ✓")
 
     print("\n✅ Wszystkie kryteria akceptacji spełnione!")
+    state_file.unlink(missing_ok=True)
 
 
 def main():

@@ -21,8 +21,9 @@ router = APIRouter(prefix="/api/v1", tags=["knowledge"])
 _graph_store = None
 _lessons_store = None
 INTERNAL_ERROR_DETAIL = "Błąd wewnętrzny"
+INVALID_FILE_PATH_DETAIL = "Nieprawidłowa ścieżka pliku"
 BAD_REQUEST_RESPONSES: dict[int | str, dict[str, Any]] = {
-    400: {"description": "Nieprawidłowa ścieżka pliku"},
+    400: {"description": INVALID_FILE_PATH_DETAIL},
 }
 INTERNAL_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": INTERNAL_ERROR_DETAIL},
@@ -39,10 +40,10 @@ def _normalize_graph_file_path(file_path: str) -> str:
     """
     normalized = file_path.strip().replace("\\", "/")
     if not normalized:
-        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka pliku")
+        raise HTTPException(status_code=400, detail=INVALID_FILE_PATH_DETAIL)
     path = PurePosixPath(normalized)
     if path.is_absolute() or ".." in path.parts:
-        raise HTTPException(status_code=400, detail="Nieprawidłowa ścieżka pliku")
+        raise HTTPException(status_code=400, detail=INVALID_FILE_PATH_DETAIL)
     return str(path)
 
 

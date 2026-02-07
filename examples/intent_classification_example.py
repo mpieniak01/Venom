@@ -2,8 +2,8 @@
 """Przykład użycia systemu klasyfikacji intencji."""
 
 import asyncio
-import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 from venom_core.core.intent_manager import IntentManager
 from venom_core.core.models import TaskRequest
@@ -44,14 +44,9 @@ async def example_orchestrator_usage():
     print("PRZYKŁAD 2: Klasyfikacja przez Orchestrator")
     print("=" * 60)
 
-    # Utwórz tymczasowy plik stanu
-    tmp_file = tempfile.NamedTemporaryFile(
-        prefix="venom_example_state_",
-        suffix=".json",
-        delete=False,
-    )
-    state_file = Path(tmp_file.name)
-    tmp_file.close()
+    # Wyznacz unikalną ścieżkę pliku stanu.
+    # Plik zostanie utworzony lazy przez StateManager, gdy będzie potrzebny.
+    state_file = Path.cwd() / f"venom_example_state_{uuid4().hex}.json"
     state_manager = StateManager(state_file_path=str(state_file))
     orchestrator = Orchestrator(state_manager)
 

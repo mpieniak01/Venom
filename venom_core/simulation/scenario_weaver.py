@@ -13,6 +13,7 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+from venom_core.utils.markdown_blocks import extract_fenced_block, strip_fenced_blocks
 
 logger = get_logger(__name__)
 
@@ -114,54 +115,6 @@ Output:
 }
 """
 
-    @staticmethod
-    def _extract_fenced_block(
-        text: str, language: Optional[str] = None
-    ) -> Optional[str]:
-        """
-        Zwraca pierwszy fenced block (```...```), opcjonalnie z konkretnym językiem.
-        """
-        cursor = 0
-        target_language = language.lower() if language else None
-        while True:
-            start = text.find("```", cursor)
-            if start == -1:
-                return None
-            header_end = text.find("\n", start + 3)
-            if header_end == -1:
-                return None
-            header = text[start + 3 : header_end].strip().lower()
-            block_end = text.find("```", header_end + 1)
-            if block_end == -1:
-                return None
-            if target_language is None or header == target_language:
-                return text[header_end + 1 : block_end].strip()
-            cursor = block_end + 3
-
-    @staticmethod
-    def _strip_fenced_blocks(text: str) -> str:
-        """
-        Usuwa wszystkie poprawnie domknięte fenced blocki (```...```).
-        """
-        parts: List[str] = []
-        cursor = 0
-        while True:
-            start = text.find("```", cursor)
-            if start == -1:
-                parts.append(text[cursor:])
-                break
-            header_end = text.find("\n", start + 3)
-            if header_end == -1:
-                parts.append(text[cursor:])
-                break
-            block_end = text.find("```", header_end + 1)
-            if block_end == -1:
-                parts.append(text[cursor:])
-                break
-            parts.append(text[cursor:start])
-            cursor = block_end + 3
-        return "".join(parts)
-
     def __init__(self, kernel: Kernel, complexity: str = "medium"):
         """
         Inicjalizacja ScenarioWeaver.
@@ -256,12 +209,12 @@ PAMIĘTAJ:
 
             # Parsuj JSON z odpowiedzi (może być opakowany w ```json```)
             # Usuń markdown code blocks jeśli są
-            json_block = self._extract_fenced_block(result_text, language="json")
+            json_block = extract_fenced_block(result_text, language="json")
             if json_block:
                 result_text = json_block
             elif "```" in result_text:
                 # Spróbuj usunąć inne code blocki
-                result_text = self._strip_fenced_blocks(result_text)
+                result_text = strip_fenced_blocks(result_text)
 
             # Parsuj JSON
             scenario_data = json.loads(result_text.strip())

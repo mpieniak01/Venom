@@ -42,14 +42,14 @@ class BenchmarkStatusResponse(BaseModel):
     benchmark_id: str
     status: str
     progress: str
-    current_model: Optional[str]
+    current_model: Optional[str] = None
     models: List[str]
     num_questions: int
     results: List[dict]
     created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
-    error_message: Optional[str]
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 def set_dependencies(benchmark_service):

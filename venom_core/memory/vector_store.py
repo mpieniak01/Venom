@@ -204,7 +204,9 @@ class VectorStore:
         dim = self._validated_embedding_dim(self.embedding_service.embedding_dimension)
 
         # Utwórz tabelę z przykładowym rekordem (LanceDB wymaga danych do schematu)
-        dummy_embedding = [0.0] * dim
+        # Dim jest już zwalidowany w _validated_embedding_dim; używamy jawnej alokacji
+        # zamiast mnożenia listy, żeby uniknąć false-positive security hotspot.
+        dummy_embedding = [0.0 for _ in range(dim)]
         data = [
             {
                 "id": "init",

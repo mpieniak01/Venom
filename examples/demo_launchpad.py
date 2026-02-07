@@ -69,7 +69,9 @@ async def demo_cloud_provisioner():
     print("\n1. Konfiguracja DNS (placeholder)...")
     demo_ip = os.getenv("VENOM_DEMO_DNS_IP", "").strip()
     if not demo_ip:
-        print("   ⚠️ Pomijam test DNS: ustaw VENOM_DEMO_DNS_IP aby przetestować configure_domain.")
+        print(
+            "   ⚠️ Pomijam test DNS: ustaw VENOM_DEMO_DNS_IP aby przetestować configure_domain."
+        )
         return
     dns_result = await provisioner.configure_domain(
         domain="myapp.example.com", ip=demo_ip

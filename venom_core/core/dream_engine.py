@@ -3,7 +3,6 @@
 import asyncio
 import json
 import random
-import re
 import shutil
 import uuid
 from datetime import datetime
@@ -497,6 +496,30 @@ class DreamEngine:
                 "error": str(e),
             }
 
+    @staticmethod
+    def _extract_fenced_block(
+        text: str, language: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Zwraca pierwszy blok fenced (```...```), opcjonalnie dla konkretnego języka.
+        """
+        cursor = 0
+        target_language = language.lower() if language else None
+        while True:
+            start = text.find("```", cursor)
+            if start == -1:
+                return None
+            header_end = text.find("\n", start + 3)
+            if header_end == -1:
+                return None
+            header = text[start + 3 : header_end].strip().lower()
+            block_end = text.find("```", header_end + 1)
+            if block_end == -1:
+                return None
+            if target_language is None or header == target_language:
+                return text[header_end + 1 : block_end].strip()
+            cursor = block_end + 3
+
     def _extract_code_from_response(self, response: str) -> str:
         """
         Wyciąga kod Python z odpowiedzi LLM (usuwa markdown code blocks).
@@ -508,19 +531,14 @@ class DreamEngine:
             Czysty kod Python
         """
         # Szukaj bloków kodu ```python ... ```
-        code_blocks = re.findall(
-            r"```python\s*(.*?)\s*```", response, re.DOTALL | re.IGNORECASE
-        )
+        python_block = self._extract_fenced_block(response, language="python")
+        if python_block:
+            return python_block
 
-        if code_blocks:
-            # Weź pierwszy blok
-            return code_blocks[0].strip()
-
-        # Szukaj bloków ``` ... ``` (bez języka)
-        code_blocks = re.findall(r"```\s*(.*?)\s*```", response, re.DOTALL)
-
-        if code_blocks:
-            return code_blocks[0].strip()
+        # Szukaj bloków ``` ... ``` (bez języka lub z dowolnym nagłówkiem)
+        generic_block = self._extract_fenced_block(response)
+        if generic_block:
+            return generic_block
 
         # Jeśli brak code blocków, zwróć całość (może to być czysty kod)
         return response.strip()

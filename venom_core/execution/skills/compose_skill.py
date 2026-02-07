@@ -547,9 +547,24 @@ class ComposeSkill:
         Returns:
             Sformatowane informacje o portach
         """
-        # Proste wyciąganie portów z linii typu "8080:80"
-        port_pattern = r"(\d+):(\d+)"
-        ports = re.findall(port_pattern, compose_content)
+        # Proste wyciąganie portów z linii typu "8080:80" bez regex.
+        ports: list[tuple[str, str]] = []
+        for raw_line in compose_content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("-"):
+                line = line[1:].strip()
+            line = line.strip("\"'")
+            if ":" not in line:
+                continue
+            host_port, container_part = line.split(":", 1)
+            host_port = host_port.strip().strip("\"'")
+            container_port = (
+                container_part.strip().strip("\"'").split("/", 1)[0].strip()
+            )
+            if host_port.isdigit() and container_port.isdigit():
+                ports.append((host_port, container_port))
 
         if not ports:
             return ""

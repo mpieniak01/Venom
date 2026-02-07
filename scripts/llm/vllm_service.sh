@@ -12,13 +12,14 @@ ENV_FILE="$ROOT_DIR/.env"
 env_get() {
   local key="$1"
   local value="${!key-}"
-  if [ -n "$value" ]; then
+  if [[ -n "$value" ]]; then
     echo "$value"
-    return
+    return 0
   fi
-  if [ -f "$ENV_FILE" ]; then
+  if [[ -f "$ENV_FILE" ]]; then
     awk -F= -v k="$key" '$1 == k {sub(/^[^=]+=*/, "", $0); print $0; exit}' "$ENV_FILE"
   fi
+  return 0
 }
 MODEL_PATH="$(env_get VLLM_MODEL_PATH)"
 MODEL_PATH="${MODEL_PATH:-$ROOT_DIR/models/gemma-2b-it}"
@@ -34,7 +35,7 @@ MAX_MODEL_LEN="$(env_get VLLM_MAX_MODEL_LEN)"
 MAX_NUM_SEQS="$(env_get VLLM_MAX_NUM_SEQS)"
 SERVED_MODEL_NAME="$(env_get VLLM_SERVED_MODEL_NAME)"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-}"
-if [ -z "$SERVED_MODEL_NAME" ]; then
+if [[ -z "$SERVED_MODEL_NAME" ]]; then
   SERVED_MODEL_NAME="$(basename "$MODEL_PATH")"
 fi
 ENFORCE_EAGER="$(env_get VLLM_ENFORCE_EAGER)"
@@ -45,33 +46,33 @@ SYSTEMCTL_BIN="$(command -v systemctl || true)"
 SYSTEMD_UNIT="${VLLM_SYSTEMD_UNIT:-vllm.service}"
 SYSTEMD_SCOPE="${VLLM_SYSTEMD_SCOPE:-system}"
 SYSTEMD_SCOPE_ARGS=()
-if [ "$SYSTEMD_SCOPE" = "user" ]; then
+if [[ "$SYSTEMD_SCOPE" == "user" ]]; then
   SYSTEMD_SCOPE_ARGS=(--user)
 fi
 
 USE_SYSTEMD=false
-if [ -n "$SYSTEMCTL_BIN" ]; then
-  if "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" list-unit-files "$SYSTEMD_UNIT" >/dev/null 2>&1 || \
-     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" status "$SYSTEMD_UNIT" >/dev/null 2>&1; then
-    USE_SYSTEMD=true
-  fi
+if [[ -n "$SYSTEMCTL_BIN" ]] && (
+  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" list-unit-files "$SYSTEMD_UNIT" >/dev/null 2>&1 || \
+  "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" status "$SYSTEMD_UNIT" >/dev/null 2>&1
+); then
+  USE_SYSTEMD=true
 fi
 
 start() {
-  if [ "$USE_SYSTEMD" = "true" ]; then
+  if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Uruchamiam usługę systemd ${SYSTEMD_UNIT}"
     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" start "$SYSTEMD_UNIT"
-    return
+    return 0
   fi
 
-  if [ ! -x "$VLLM_BIN" ]; then
+  if [[ ! -x "$VLLM_BIN" ]]; then
     echo "Nie znaleziono binarki vLLM pod $VLLM_BIN" >&2
     exit 1
   fi
 
   mkdir -p "$LOG_DIR"
 
-  if [ -f "$PID_FILE" ]; then
+  if [[ -f "$PID_FILE" ]]; then
     local existing_pid
     existing_pid="$(cat "$PID_FILE")"
     if kill -0 "$existing_pid" 2>/dev/null; then
@@ -82,7 +83,7 @@ start() {
     fi
   fi
 
-  if [ ! -d "$MODEL_PATH" ]; then
+  if [[ ! -d "$MODEL_PATH" ]]; then
     echo "Brak katalogu modelu: $MODEL_PATH" >&2
     exit 1
   fi
@@ -95,34 +96,35 @@ start() {
     --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
     --max-num-batched-tokens "$MAX_BATCHED_TOKENS"
   )
-  if [ -n "$MAX_MODEL_LEN" ]; then
+  if [[ -n "$MAX_MODEL_LEN" ]]; then
     cmd+=(--max-model-len "$MAX_MODEL_LEN")
   fi
-  if [ -n "$MAX_NUM_SEQS" ]; then
+  if [[ -n "$MAX_NUM_SEQS" ]]; then
     cmd+=(--max-num-seqs "$MAX_NUM_SEQS")
   fi
-  if [ -n "$SERVED_MODEL_NAME" ]; then
+  if [[ -n "$SERVED_MODEL_NAME" ]]; then
     cmd+=(--served-model-name "$SERVED_MODEL_NAME")
   fi
-  if [ -n "$CHAT_TEMPLATE" ]; then
+  if [[ -n "$CHAT_TEMPLATE" ]]; then
     cmd+=(--chat-template "$CHAT_TEMPLATE")
   fi
-  if [ -n "$ENFORCE_EAGER" ]; then
+  if [[ -n "$ENFORCE_EAGER" ]]; then
     cmd+=(--enforce-eager)
   fi
   nohup "${cmd[@]}" >>"$LOG_FILE" 2>&1 &
   echo $! >"$PID_FILE"
   echo "vLLM start - PID $(cat "$PID_FILE"), log: $LOG_FILE"
+  return 0
 }
 
 stop() {
-  if [ "$USE_SYSTEMD" = "true" ]; then
+  if [[ "$USE_SYSTEMD" == "true" ]]; then
     echo "Zatrzymuję usługę systemd ${SYSTEMD_UNIT}"
     "$SYSTEMCTL_BIN" "${SYSTEMD_SCOPE_ARGS[@]}" stop "$SYSTEMD_UNIT"
-    return
+    return 0
   fi
 
-  if [ -f "$PID_FILE" ]; then
+  if [[ -f "$PID_FILE" ]]; then
     local pid
     pid="$(cat "$PID_FILE")"
     if kill -0 "$pid" 2>/dev/null; then
@@ -142,11 +144,13 @@ stop() {
   # Cleanup zombie processes
   pkill -9 -f "vllm serve" 2>/dev/null || true
   echo "vLLM zatrzymany"
+  return 0
 }
 
 restart() {
   stop
   start
+  return 0
 }
 
 case "$ACTION" in

@@ -145,8 +145,7 @@ class McpManagerSkill(BaseSkill):
         )
 
         output_file = self.custom_skills_dir / f"mcp_{tool_name}.py"
-        with open(output_file, "w") as f:
-            f.write(code)
+        await asyncio.to_thread(output_file.write_text, code, "utf-8")
 
         return (
             f"✅ Sukces! Narzędzie '{tool_name}' zaimportowane.\n"

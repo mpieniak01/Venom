@@ -304,7 +304,7 @@ async def stream_task(task_id: UUID):
                 await asyncio.sleep(interval)
             except asyncio.CancelledError:
                 logger.debug("Zamknięto stream SSE dla zadania %s", task_id)
-                break
+                raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

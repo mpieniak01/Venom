@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -202,12 +203,9 @@ class StateManager:
                 self._save_requested = False
                 await self._save()
 
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._save_task
-            except asyncio.CancelledError:
-                logger.info("Zadanie zapisu stanu zostało anulowane podczas zamykania")
-            finally:
-                self._save_task = None
+            self._save_task = None
             logger.info("Zapisy stanu zakończone")
 
     def create_task(self, content: str) -> VenomTask:

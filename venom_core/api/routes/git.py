@@ -1,5 +1,6 @@
 """Moduł: routes/git - Endpointy API dla Git."""
 
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -76,8 +77,9 @@ async def _get_git_status_impl():
     if (repo_root / ".git").exists():
         try:
 
-            def run_git(args: list[str]) -> str:
-                result = subprocess.run(
+            async def run_git(args: list[str]) -> str:
+                result = await asyncio.to_thread(
+                    subprocess.run,
                     ["git", "-C", str(repo_root), *args],
                     capture_output=True,
                     text=True,
@@ -87,8 +89,18 @@ async def _get_git_status_impl():
                     raise RuntimeError((result.stderr or result.stdout).strip())
                 return result.stdout.strip()
 
+            async def run_git_ok(args: list[str]) -> bool:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "-C", str(repo_root), *args],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return result.returncode == 0
+
             try:
-                run_git(["rev-parse", "--is-inside-work-tree"])
+                await run_git(["rev-parse", "--is-inside-work-tree"])
             except RuntimeError as exc:
                 return {
                     "status": "error",
@@ -96,9 +108,9 @@ async def _get_git_status_impl():
                     "message": str(exc) or "Workspace nie jest repozytorium Git.",
                 }
 
-            branch = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
-            status_output = run_git(["status"])
-            porcelain = run_git(["status", "--porcelain"])
+            branch = await run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+            status_output = await run_git(["status"])
+            porcelain = await run_git(["status", "--porcelain"])
             lines = [line for line in porcelain.splitlines() if line.strip()]
             has_changes = len(lines) > 0
             modified_count = len(lines)
@@ -109,62 +121,23 @@ async def _get_git_status_impl():
             ahead_count = 0
             behind_count = 0
 
-            local_main_ok = (
-                subprocess.run(
-                    [
-                        "git",
-                        "-C",
-                        str(repo_root),
-                        "show-ref",
-                        "--verify",
-                        "--quiet",
-                        "refs/heads/main",
-                    ],
-                    check=False,
-                ).returncode
-                == 0
+            local_main_ok = await run_git_ok(
+                ["show-ref", "--verify", "--quiet", "refs/heads/main"]
             )
             if not local_main_ok:
                 compare_status = "no_local_main"
             else:
-                remote_ok = (
-                    subprocess.run(
-                        [
-                            "git",
-                            "-C",
-                            str(repo_root),
-                            "remote",
-                            "get-url",
-                            "origin",
-                        ],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    ).returncode
-                    == 0
-                )
+                remote_ok = await run_git_ok(["remote", "get-url", "origin"])
                 if not remote_ok:
                     compare_status = "no_remote"
                 else:
-                    remote_main_ok = (
-                        subprocess.run(
-                            [
-                                "git",
-                                "-C",
-                                str(repo_root),
-                                "show-ref",
-                                "--verify",
-                                "--quiet",
-                                "refs/remotes/origin/main",
-                            ],
-                            check=False,
-                        ).returncode
-                        == 0
+                    remote_main_ok = await run_git_ok(
+                        ["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"]
                     )
                     if not remote_main_ok:
                         compare_status = "no_remote_main"
                     else:
-                        counts = run_git(
+                        counts = await run_git(
                             [
                                 "rev-list",
                                 "--left-right",

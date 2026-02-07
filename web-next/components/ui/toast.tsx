@@ -25,6 +25,8 @@ const toneStyles: Record<ToastTone, string> = {
   info: "border-sky-400/40 bg-sky-500/10 text-sky-100",
 };
 
+let toastIdFallbackCounter = 0;
+
 const createToastId = () => {
   if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
     const bytes = new Uint8Array(8);
@@ -32,7 +34,8 @@ const createToastId = () => {
     const randomHex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
     return `${Date.now()}-${randomHex}`;
   }
-  return `${Date.now()}-${Date.now().toString(16)}`;
+  toastIdFallbackCounter += 1;
+  return `${Date.now()}-${toastIdFallbackCounter.toString(16).padStart(4, "0")}`;
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

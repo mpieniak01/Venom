@@ -786,12 +786,12 @@ class BenchmarkService:
                 "tokens_generated": tokens_generated,
             }
 
-        except Exception as e:
+        except Exception:
             # Zatrzymaj próbkowanie w przypadku błędu
             sampling_task.cancel()
             with suppress(asyncio.CancelledError):
                 await sampling_task
-            raise e
+            raise
 
     async def _sample_vram_during_generation(self, samples: List[float]):
         """

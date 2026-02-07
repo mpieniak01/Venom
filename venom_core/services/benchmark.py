@@ -14,6 +14,7 @@ import json
 import secrets
 import time
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -763,11 +764,8 @@ class BenchmarkService:
 
             # Zatrzymaj próbkowanie VRAM
             sampling_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await sampling_task
-            except asyncio.CancelledError:
-                # Zadanie anulowane - to normalne, próbkowanie zakończone
-                pass
 
             # Znajdź szczytowe VRAM
             peak_vram = max(vram_samples) if vram_samples else None
@@ -791,11 +789,8 @@ class BenchmarkService:
         except Exception as e:
             # Zatrzymaj próbkowanie w przypadku błędu
             sampling_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await sampling_task
-            except asyncio.CancelledError:
-                # Zadanie anulowane - to normalne przy błędzie
-                pass
             raise e
 
     async def _sample_vram_during_generation(self, samples: List[float]):

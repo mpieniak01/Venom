@@ -68,6 +68,12 @@ MAX_FALLBACK_QUERY_TOKENS = 16  # Maks. liczba tokenów w fallbacku
 MAX_FALLBACK_SCAN_ROWS = 5000  # Nie skanuj ogromnych kolekcji w fallbacku
 
 
+def _tokenize_lexical_text(value: str) -> list[str]:
+    """Tokenizuje tekst do fallbacku leksykalnego, dopasowując tylko pełne słowa."""
+    normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in value)
+    return [token for token in normalized.split() if token]
+
+
 class VectorStore:
     """
     Baza wektorowa do przechowywania i wyszukiwania embeddingów.
@@ -373,9 +379,7 @@ class VectorStore:
             # Jeśli count_rows nie działa, fallback nadal może się odbyć.
             pass
 
-        query_tokens = [token for token in query.lower().split() if token][
-            :MAX_FALLBACK_QUERY_TOKENS
-        ]
+        query_tokens = _tokenize_lexical_text(query)[:MAX_FALLBACK_QUERY_TOKENS]
         if not query_tokens:
             return []
 
@@ -386,8 +390,8 @@ class VectorStore:
                 continue
 
             text_value = str(row.get("text") or "")
-            text_lower = text_value.lower()
-            matched = sum(1 for token in query_tokens if token in text_lower)
+            text_tokens = set(_tokenize_lexical_text(text_value))
+            matched = sum(1 for token in query_tokens if token in text_tokens)
             if matched == 0:
                 continue
 

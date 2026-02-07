@@ -49,11 +49,20 @@ type GraphEdge = { data?: Record<string, unknown> };
 type PreparedGraphElements = { nodes: GraphNode[]; edges: GraphEdge[] };
 
 function getNodeData(node: unknown): Record<string, unknown> {
-  return ((node as { data?: Record<string, unknown> }).data || {}) as Record<string, unknown>;
+  const data = (node as { data?: unknown }).data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return data as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getStringField(data: Record<string, unknown>, key: string): string {
+  const value = data[key];
+  return typeof value === "string" ? value : "";
 }
 
 function getNodeId(node: unknown): string {
-  return String(getNodeData(node).id ?? "");
+  return getStringField(getNodeData(node), "id");
 }
 
 function sortByTimestamp(a: unknown, b: unknown): number {
@@ -62,7 +71,7 @@ function sortByTimestamp(a: unknown, b: unknown): number {
   const aTs = typeof aMeta?.timestamp === "string" ? Date.parse(aMeta.timestamp) : NaN;
   const bTs = typeof bMeta?.timestamp === "string" ? Date.parse(bMeta.timestamp) : NaN;
   if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return aTs - bTs;
-  return String(getNodeData(a).label ?? "").localeCompare(String(getNodeData(b).label ?? ""));
+  return getStringField(getNodeData(a), "label").localeCompare(getStringField(getNodeData(b), "label"));
 }
 
 function isAssistantEntry(node: unknown): boolean {
@@ -84,8 +93,8 @@ function collectEntrySessions(edgesSource: GraphEdge[]): Map<string, Set<string>
   const entrySessions = new Map<string, Set<string>>();
   edgesSource.forEach((edge) => {
     const data = getNodeData(edge);
-    const source = String(data.source ?? "");
-    const target = String(data.target ?? "");
+    const source = getStringField(data, "source");
+    const target = getStringField(data, "target");
     if (source.startsWith("session:")) {
       const sessionId = source.slice("session:".length);
       if (target) {

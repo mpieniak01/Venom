@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   sanity:
-    name: Validate Docker Minimal MVP
+    name: Validate Docker Minimal
     runs-on: ubuntu-latest
     timeout-minutes: 25
 

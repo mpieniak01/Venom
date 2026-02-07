@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-import random
+import secrets
 import shutil
 import uuid
 from datetime import datetime
@@ -23,6 +23,7 @@ from venom_core.utils.logger import get_logger
 from venom_core.utils.markdown_blocks import extract_fenced_block
 
 logger = get_logger(__name__)
+secure_random = secrets.SystemRandom()
 
 # Stałe konfiguracyjne
 MAX_CODE_PREVIEW_LENGTH = 500  # Maksymalna długość podglądu kodu w zapisach
@@ -315,7 +316,7 @@ class DreamEngine:
             top_nodes = [node for node, degree in nodes_by_degree[: count * 2]]
 
             # Losuj z top nodes
-            selected_nodes = random.sample(top_nodes, min(count, len(top_nodes)))
+            selected_nodes = secure_random.sample(top_nodes, min(count, len(top_nodes)))
 
             # Pobierz dane z węzłów
             fragments = []

@@ -53,8 +53,8 @@ class TestResearcherAgent:
         """Test udanego przetwarzania zapytania badawczego."""
         # Mock odpowiedzi LLM
         mock_response = MagicMock()
-        mock_response.__str__ = (
-            lambda x: "Znalazłem informacje o PyGame:\n\nKluczowe punkty:\n• pygame.rect.colliderect() do kolizji"
+        mock_response.__str__ = lambda x: (
+            "Znalazłem informacje o PyGame:\n\nKluczowe punkty:\n• pygame.rect.colliderect() do kolizji"
         )
         mock_chat_service.get_chat_message_content.return_value = mock_response
 

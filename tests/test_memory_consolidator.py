@@ -99,8 +99,8 @@ async def test_consolidate_daily_logs_success(consolidator, mock_kernel):
     # Mock LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = lambda self: (
+        """PODSUMOWANIE:
 Użytkownik stworzył nowy plik i edytował konfigurację. System wykrył zależności między plikami.
 
 LEKCJE:
@@ -134,8 +134,8 @@ async def test_consolidate_daily_logs_with_sensitive_data(consolidator, mock_ker
     # Mock LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = lambda self: (
+        """PODSUMOWANIE:
 Użytkownik zalogował się i skonfigurował system.
 
 LEKCJE:
@@ -255,8 +255,8 @@ async def test_consolidate_integration_with_real_logs(consolidator, mock_kernel)
     # Mock realistic LLM response
     mock_service = MagicMock()
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: """PODSUMOWANIE:
+    mock_response.__str__ = lambda self: (
+        """PODSUMOWANIE:
 Dzisiaj użytkownik pracował nad refaktoryzacją kodu. Stworzono nowy plik utils.py
 z funkcjami pomocniczymi i zrefaktoryzowano main.py. Wszystkie testy przeszły pomyślnie.
 

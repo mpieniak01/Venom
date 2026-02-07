@@ -34,8 +34,8 @@ async def test_designer_agent_process(mock_kernel):
 
     # Mock response
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: '{"type": "chart", "data": {"chartType": "bar"}}'
+    mock_response.__str__ = lambda self: (
+        '{"type": "chart", "data": {"chartType": "bar"}}'
     )
     agent.chat_service.get_chat_message_content.return_value = mock_response
 
@@ -53,8 +53,8 @@ async def test_designer_agent_create_visualization(mock_kernel):
 
     # Mock response z JSONem
     mock_response = MagicMock()
-    mock_response.__str__ = (
-        lambda self: '{"type": "chart", "data": {"chartType": "bar"}}'
+    mock_response.__str__ = lambda self: (
+        '{"type": "chart", "data": {"chartType": "bar"}}'
     )
     agent.chat_service.get_chat_message_content.return_value = mock_response
 

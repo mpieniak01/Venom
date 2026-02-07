@@ -1,7 +1,6 @@
 """Moduł: vector_store - Baza wektorowa oparta na LanceDB."""
 
 import json
-import re
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,6 +10,14 @@ from venom_core.memory.embedding_service import EmbeddingService
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_ascii_alnum_or(value: str, extra_allowed: str = "") -> bool:
+    """Sprawdza czy string składa się tylko z alfanumerycznych ASCII i dozwolonych znaków."""
+    if not value:
+        return False
+    allowed = set(extra_allowed)
+    return all(ch.isascii() and (ch.isalnum() or ch in allowed) for ch in value)
 
 
 class UpsertResult(str):
@@ -58,6 +65,15 @@ class UpsertResult(str):
 DEFAULT_CHUNK_SIZE = 500  # Domyślny rozmiar fragmentu tekstu w znakach
 DEFAULT_CHUNK_OVERLAP = 50  # Domyślne nakładanie się fragmentów w znakach
 MIN_CHUNK_RATIO = 0.5  # Minimalny stosunek długości fragmentu do rozmiaru, aby zaakceptować punkt łamania
+MAX_FALLBACK_QUERY_CHARS = 512  # Limit wejścia dla fallbacku leksykalnego
+MAX_FALLBACK_QUERY_TOKENS = 16  # Maks. liczba tokenów w fallbacku
+MAX_FALLBACK_SCAN_ROWS = 5000  # Nie skanuj ogromnych kolekcji w fallbacku
+
+
+def _tokenize_lexical_text(value: str) -> list[str]:
+    """Tokenizuje tekst do fallbacku leksykalnego, dopasowując tylko pełne słowa."""
+    normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in value)
+    return [token for token in normalized.split() if token]
 
 
 class VectorStore:
@@ -168,7 +184,7 @@ class VectorStore:
             raise ValueError("Nazwa kolekcji nie może być pusta")
 
         # Walidacja nazwy (tylko litery, cyfry, _, -)
-        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+        if not _is_ascii_alnum_or(name, "_-"):
             raise ValueError("Nazwa kolekcji może zawierać tylko litery, cyfry, _ i -")
 
         self._get_or_create_table(name)
@@ -334,8 +350,80 @@ class VectorStore:
                 }
             )
 
+        # Fallback: gdy semantyka nic nie zwróci, spróbuj prostego dopasowania leksykalnego.
+        if not processed_results:
+            processed_results = self._lexical_fallback_search(table, query, limit)
+
         logger.info(f"Znaleziono {len(processed_results)} wyników")
         return processed_results
+
+    def _lexical_fallback_search(
+        self, table: Any, query: str, limit: int
+    ) -> List[Dict[str, Any]]:
+        """Fallback wyszukiwania przez dopasowanie słów w tekście."""
+        if len(query) > MAX_FALLBACK_QUERY_CHARS:
+            logger.warning(
+                "Pominięto fallback leksykalny: zapytanie zbyt długie (%s znaków)",
+                len(query),
+            )
+            return []
+
+        try:
+            row_count = table.count_rows()
+            if row_count > MAX_FALLBACK_SCAN_ROWS:
+                logger.warning(
+                    "Pominięto fallback leksykalny: kolekcja zbyt duża (%s > %s)",
+                    row_count,
+                    MAX_FALLBACK_SCAN_ROWS,
+                )
+                return []
+        except Exception as exc:
+            logger.warning(
+                "Pominięto fallback leksykalny: nie udało się policzyć wierszy (%s)",
+                exc,
+            )
+            return []
+
+        query_tokens = _tokenize_lexical_text(query)[:MAX_FALLBACK_QUERY_TOKENS]
+        if not query_tokens:
+            return []
+
+        rows = table.to_arrow().to_pylist()
+        scored: list[tuple[float, Dict[str, Any]]] = []
+        for row in rows:
+            if row.get("id") == "init":
+                continue
+
+            text_value = str(row.get("text") or "")
+            text_tokens = set(_tokenize_lexical_text(text_value))
+            matched = sum(1 for token in query_tokens if token in text_tokens)
+            if matched == 0:
+                continue
+
+            meta_raw = row.get("metadata") or "{}"
+            try:
+                metadata = (
+                    json.loads(meta_raw)
+                    if isinstance(meta_raw, str)
+                    else dict(meta_raw)
+                )
+            except Exception:
+                metadata = {}
+
+            score = matched / len(query_tokens)
+            scored.append(
+                (
+                    score,
+                    {
+                        "text": text_value,
+                        "metadata": metadata,
+                        "score": float(score),
+                    },
+                )
+            )
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in scored[:limit]]
 
     def list_collections(self) -> List[str]:
         """
@@ -408,7 +496,7 @@ class VectorStore:
             # Walidacja klucza: tylko alfanumeryczne + underscore, max 64 znaki
             if not isinstance(key, str) or len(key) > MAX_KEY_LENGTH:
                 raise ValueError(f"Nieprawidłowy klucz metadanych: {key}")
-            if not re.match(r"^[a-zA-Z0-9_]+$", key):
+            if not _is_ascii_alnum_or(key, "_"):
                 raise ValueError(f"Klucz metadanych zawiera niedozwolone znaki: {key}")
 
             # Walidacja typu wartości i konwersja na string
@@ -426,7 +514,7 @@ class VectorStore:
 
             # Bardzo restrykcyjna walidacja: tylko alfanumeryczne, dash, dot, underscore
             # Celowo NIE dopuszczamy spacji ani znaków specjalnych
-            if not re.match(r"^[a-zA-Z0-9_.\-]+$", str_value):
+            if not _is_ascii_alnum_or(str_value, "_.-"):
                 raise ValueError(
                     f"Wartość dla klucza {key} zawiera niedozwolone znaki. "
                     f"Dozwolone: a-z, A-Z, 0-9, _, -, ."
@@ -540,7 +628,7 @@ class VectorStore:
             )
 
         # Tylko UUID-like lub bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
-        if not re.match(r"^[a-zA-Z0-9\-_]+$", entry_id):
+        if not _is_ascii_alnum_or(entry_id, "_-"):
             raise ValueError(f"entry_id zawiera niedozwolone znaki: {entry_id}")
 
         table = self._get_or_create_table(collection_name)
@@ -567,7 +655,7 @@ class VectorStore:
             )
 
         # Tylko bezpieczne identyfikatory (alfanumeryczne + dash + underscore)
-        if not re.match(r"^[a-zA-Z0-9\-_]+$", session_id):
+        if not _is_ascii_alnum_or(session_id, "_-"):
             raise ValueError(f"session_id zawiera niedozwolone znaki: {session_id}")
 
         table = self._get_or_create_table(collection_name)

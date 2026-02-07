@@ -421,7 +421,7 @@ class ComposeSkill:
             True jeśli YAML jest poprawny, False w przeciwnym razie
         """
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
 
             yaml.safe_load(compose_content)
             return True

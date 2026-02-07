@@ -61,7 +61,7 @@ test-web-e2e:
 test-all: test test-web-unit test-web-e2e
 
 pytest:
-	VENOM_API_BASE="http://$(HOST_DISPLAY):$(PORT)" bash scripts/run-pytest-optimal.sh
+	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh
 
 e2e:
 	bash scripts/run-e2e-optimal.sh

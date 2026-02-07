@@ -32,11 +32,16 @@ logger = get_logger(__name__)
 
 def _is_valid_benchmark_id(value: str) -> bool:
     """Waliduje benchmark_id jako kanoniczny UUID."""
+    return _normalize_benchmark_id(value) is not None
+
+
+def _normalize_benchmark_id(value: str) -> Optional[str]:
+    """Zwraca benchmark_id w postaci kanonicznej UUID lub None."""
     try:
         parsed = uuid.UUID(value)
     except (ValueError, AttributeError, TypeError):
-        return False
-    return str(parsed) == value.lower()
+        return None
+    return str(parsed)
 
 
 def _secure_sample_without_replacement(
@@ -266,14 +271,15 @@ class BenchmarkService:
 
     def delete_benchmark(self, benchmark_id: str) -> bool:
         """Usuwa benchmark z pamięci i dysku."""
-        if not _is_valid_benchmark_id(benchmark_id):
+        normalized_id = _normalize_benchmark_id(benchmark_id)
+        if normalized_id is None:
             logger.warning("Odrzucono nieprawidłowy benchmark_id: %s", benchmark_id)
             return False
 
-        if benchmark_id in self.jobs:
-            del self.jobs[benchmark_id]
+        if normalized_id in self.jobs:
+            del self.jobs[normalized_id]
 
-        file_path = self.storage_dir / f"{benchmark_id}.json"
+        file_path = self.storage_dir / f"{normalized_id}.json"
         if file_path.exists():
             try:
                 file_path.unlink()

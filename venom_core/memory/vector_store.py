@@ -14,6 +14,8 @@ logger = get_logger(__name__)
 
 def _is_ascii_alnum_or(value: str, extra_allowed: str = "") -> bool:
     """Sprawdza czy string składa się tylko z alfanumerycznych ASCII i dozwolonych znaków."""
+    if not value:
+        return False
     allowed = set(extra_allowed)
     return all(ch.isascii() and (ch.isalnum() or ch in allowed) for ch in value)
 

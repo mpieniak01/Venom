@@ -21,14 +21,14 @@ let secureRandomFallbackCounter = 0;
 
 const nextSecureRandomFallbackInt = () => {
   secureRandomFallbackCounter += 1;
-  const perfNow = typeof performance !== "undefined" ? Math.floor(performance.now()) : 0;
+  const perfNow = typeof performance === "undefined" ? 0 : Math.floor(performance.now());
   return Date.now() + perfNow + secureRandomFallbackCounter;
 };
 
 const secureRandomInt = (maxExclusive: number): number => {
   if (maxExclusive <= 0) return 0;
   if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
-    const maxUint32 = 0x1_0000_0000;
+    const maxUint32 = 2 ** 32;
     const unbiasedLimit = maxUint32 - (maxUint32 % maxExclusive);
     const bytes = new Uint32Array(1);
     let value = maxUint32;

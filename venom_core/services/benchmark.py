@@ -800,12 +800,8 @@ class BenchmarkService:
         Args:
             samples: Lista do zapisywania próbek VRAM (w MB)
         """
-        try:
-            while True:
-                vram = self.service_monitor.get_gpu_memory_usage()
-                if vram is not None:
-                    samples.append(vram)
-                await asyncio.sleep(0.1)  # 100ms
-        except asyncio.CancelledError:
-            # Zadanie anulowane przez cancel() - zakończ próbkowanie
-            raise
+        while True:
+            vram = self.service_monitor.get_gpu_memory_usage()
+            if vram is not None:
+                samples.append(vram)
+            await asyncio.sleep(0.1)  # 100ms

@@ -142,9 +142,7 @@ class GenerationParamsAdapter:
             return "vllm"
         else:
             # Domyślnie zwróć oryginalną wartość
-            logger.warning(
-                f"Nieznany provider '{provider}', używam mapowania domyślnego"
-            )
+            logger.warning("Nieznany provider, używam mapowania domyślnego")
             return provider_lower
 
     @classmethod

@@ -68,6 +68,7 @@ MIN_CHUNK_RATIO = 0.5  # Minimalny stosunek długości fragmentu do rozmiaru, ab
 MAX_FALLBACK_QUERY_CHARS = 512  # Limit wejścia dla fallbacku leksykalnego
 MAX_FALLBACK_QUERY_TOKENS = 16  # Maks. liczba tokenów w fallbacku
 MAX_FALLBACK_SCAN_ROWS = 5000  # Nie skanuj ogromnych kolekcji w fallbacku
+MAX_EMBEDDING_DIM = 8192  # Twardy limit bezpieczeństwa dla alokacji embeddingów
 
 
 def _tokenize_lexical_text(value: str) -> list[str]:
@@ -125,6 +126,19 @@ class VectorStore:
             )
             raise
 
+    @staticmethod
+    def _validated_embedding_dim(dim: Any) -> int:
+        """Waliduje wymiar embeddingu przed alokacją pamięci."""
+        if not isinstance(dim, int):
+            raise ValueError("Embedding dimension musi być liczbą całkowitą")
+        if dim <= 0:
+            raise ValueError("Embedding dimension musi być > 0")
+        if dim > MAX_EMBEDDING_DIM:
+            raise ValueError(
+                f"Embedding dimension przekracza limit bezpieczeństwa ({MAX_EMBEDDING_DIM})"
+            )
+        return dim
+
     def _get_or_create_table(self, collection_name: Optional[str] = None):
         """
         Pobiera lub tworzy tabelę w bazie.
@@ -149,7 +163,7 @@ class VectorStore:
         logger.info(f"Tworzenie nowej tabeli: {col_name}")
 
         # Pobierz wymiar embeddingu
-        dim = self.embedding_service.embedding_dimension
+        dim = self._validated_embedding_dim(self.embedding_service.embedding_dimension)
 
         # Utwórz tabelę z przykładowym rekordem (LanceDB wymaga danych do schematu)
         dummy_embedding = [0.0] * dim

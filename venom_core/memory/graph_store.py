@@ -139,7 +139,7 @@ class CodeGraphStore:
         file_node = f"file:{file_path}"
 
         if file_node not in self.graph:
-            logger.warning(f"Plik {file_path} nie istnieje w grafie")
+            logger.warning("Żądany plik nie istnieje w grafie")
             return []
 
         # Znajdź wszystkie węzły, które mają krawędź DO tego pliku

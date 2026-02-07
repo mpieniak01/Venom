@@ -334,6 +334,6 @@ class LessonsStore:
 
 ## Zobacz także
 
-- [AGENTS_INDEX.md](./AGENTS_INDEX.md) - Główny indeks dokumentacji
+- [KATALOG_AGENTOW_SYSTEMU.md](./KATALOG_AGENTOW_SYSTEMU.md) - Główny katalog agentów systemu
 - [THE_ACADEMY.md](./THE_ACADEMY.md) - Dokumentacja Akademii
 - [MEMORY_LAYER_GUIDE.md](./MEMORY_LAYER_GUIDE.md) - Przewodnik po warstwie pamięci

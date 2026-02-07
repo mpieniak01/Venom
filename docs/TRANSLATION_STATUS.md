@@ -11,7 +11,7 @@ This document tracks the progress of translating Venom documentation from Polish
 ## Completed Files (54)
 
 ### From PR #223 (14 files):
-1. AGENTS_INDEX.md
+1. SYSTEM_AGENTS_CATALOG.md (renamed from AGENTS_INDEX.md)
 2. AUTONOMY_GATE.md
 3. BACKEND_ARCHITECTURE.md
 4. CHAT_SESSION.md

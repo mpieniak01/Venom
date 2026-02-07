@@ -330,6 +330,6 @@ class LessonsStore:
 
 ## See also
 
-- [AGENTS_INDEX.md](./AGENTS_INDEX.md) - Main documentation index
+- [SYSTEM_AGENTS_CATALOG.md](./SYSTEM_AGENTS_CATALOG.md) - Main system agents catalog
 - [THE_ACADEMY.md](./THE_ACADEMY.md) - Academy documentation
 - [MEMORY_LAYER_GUIDE.md](./MEMORY_LAYER_GUIDE.md) - Memory layer guide

@@ -66,7 +66,7 @@ async def demo_simple_simulation():
 
     # Przygotuj scenariusz
     scenario_desc = "Znaleźć i kliknąć przycisk 'Kontakt'"
-    mock_url = "http://example.com"  # Mock URL
+    mock_url = "https://example.com"  # Mock URL
 
     print(f"\n🎬 Scenariusz: {scenario_desc}")
     print(f"   URL: {mock_url}")

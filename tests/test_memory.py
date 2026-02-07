@@ -21,8 +21,32 @@ def temp_db_path():
 
 
 @pytest.fixture
-def embedding_service():
+def embedding_service(monkeypatch):
     """Fixture dla serwisu embeddingów w trybie lokalnym."""
+
+    class _FakeVector:
+        def __init__(self, values):
+            self._values = values
+
+        def tolist(self):
+            return self._values
+
+    class _MockSentenceTransformer:
+        def __init__(self, model_name: str):
+            self.model_name = model_name
+
+        def encode(self, text, convert_to_numpy=True):
+            assert convert_to_numpy is True
+            if isinstance(text, list):
+                return [_FakeVector([0.1] * 384) for _ in text]
+            return _FakeVector([0.1] * 384)
+
+        def get_sentence_embedding_dimension(self):
+            return 384
+
+    monkeypatch.setattr(
+        "sentence_transformers.SentenceTransformer", _MockSentenceTransformer
+    )
     return EmbeddingService(service_type="local")
 
 

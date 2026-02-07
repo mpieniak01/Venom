@@ -7,6 +7,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+LOCAL_EMBEDDING_DIMENSION = 384
 
 
 class EmbeddingService:
@@ -177,14 +178,14 @@ class EmbeddingService:
         Returns:
             Liczba wymiarów embeddingu
         """
-        self._ensure_model_loaded()
-
         if self.service_type == "local":
+            # all-MiniLM-L6-v2 ma stały wymiar 384.
+            # Zwracamy go bez ładowania modelu, aby uniknąć zależności od sieci.
             if self._model is None:
-                raise RuntimeError("Model embeddingów nie został załadowany")
-            # all-MiniLM-L6-v2 ma 384 wymiary
+                return LOCAL_EMBEDDING_DIMENSION
             return self._model.get_sentence_embedding_dimension()
         elif self.service_type == "openai":
             # text-embedding-3-small ma 1536 wymiarów
             return 1536
+        self._ensure_model_loaded()
         raise ValueError(f"Nieobsługiwany typ serwisu: {self.service_type}")

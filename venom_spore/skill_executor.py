@@ -1,5 +1,6 @@
 """Executor skill'ów na węźle Spore."""
 
+import asyncio
 import os
 import platform
 import subprocess
@@ -83,7 +84,8 @@ class SkillExecutor:
                     return f"❌ Zabroniona komenda: komenda zawiera niebezpieczny pattern '{pattern}'"
 
             try:
-                result = subprocess.run(
+                result = await asyncio.to_thread(
+                    subprocess.run,
                     command,
                     shell=True,  # SECURITY RISK - rozważ przepisanie na subprocess bez shell
                     capture_output=True,

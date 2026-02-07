@@ -6,6 +6,7 @@ from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
 
+from venom_core.config import SETTINGS
 from venom_core.infrastructure.stack_manager import StackManager
 from venom_core.utils.logger import get_logger
 from venom_core.utils.port_authority import is_port_in_use
@@ -461,7 +462,7 @@ class ComposeSkill:
             try:
                 # Pobierz lokalny adres IP hosta
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
+                s.connect((SETTINGS.NETWORK_PROBE_HOST, SETTINGS.NETWORK_PROBE_PORT))
                 host_ip = s.getsockname()[0]
                 s.close()
             except Exception as e:
@@ -478,8 +479,6 @@ class ComposeSkill:
             if self.stack_manager:
                 volume_root = str(Path(self.stack_manager.workspace_root).resolve())
             else:
-                from venom_core.config import SETTINGS
-
                 volume_root = str(Path(SETTINGS.WORKSPACE_ROOT).resolve())
             processed = processed.replace("{{VOLUME_ROOT}}", volume_root)
             logger.info(f"Wstawiono VOLUME_ROOT: {volume_root}")

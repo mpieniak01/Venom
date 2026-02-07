@@ -5,6 +5,7 @@ import json
 import signal
 import sys
 import time
+from contextlib import suppress
 
 import psutil
 import websockets
@@ -35,6 +36,7 @@ class VenomSpore:
         self.websocket = None
         self.running = False
         self.active_tasks = 0
+        self._heartbeat_task = None
 
     async def connect(self):
         """Łączy się z Nexusem (master node)."""
@@ -51,7 +53,7 @@ class VenomSpore:
             await self._send_handshake()
 
             # Uruchom heartbeat
-            asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
             # Pętla odbierania wiadomości
             await self._message_loop()
@@ -177,6 +179,11 @@ class VenomSpore:
             print("❌ Połączenie z Nexusem zostało zamknięte")
         finally:
             self.running = False
+            if self._heartbeat_task and not self._heartbeat_task.done():
+                self._heartbeat_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
+            self._heartbeat_task = None
 
     async def _handle_skill_execution(self, payload: dict):
         """
@@ -264,12 +271,18 @@ async def main():
 
     # Uruchom połączenie w tle
     connect_task = asyncio.create_task(spore.connect())
+    shutdown_wait_task = asyncio.create_task(shutdown_event.wait())
 
     # Czekaj na sygnał shutdown lub zakończenie zadania
     done, _ = await asyncio.wait(
-        [connect_task, asyncio.create_task(shutdown_event.wait())],
+        [connect_task, shutdown_wait_task],
         return_when=asyncio.FIRST_COMPLETED,
     )
+
+    if shutdown_wait_task not in done:
+        shutdown_wait_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await shutdown_wait_task
 
     # Jeśli otrzymaliśmy sygnał shutdown, rozłącz się
     if shutdown_event.is_set():
@@ -277,11 +290,8 @@ async def main():
         # Anuluj połączenie jeśli jeszcze działa
         if not connect_task.done():
             connect_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await connect_task
-            except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania podczas zamykania aplikacji
-                pass
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ def service_registry():
     test_service = ServiceInfo(
         name="Test Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint="https://test.example.com",
         status=ServiceStatus.ONLINE,
         is_critical=True,
     )

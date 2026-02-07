@@ -25,6 +25,19 @@ const toneStyles: Record<ToastTone, string> = {
   info: "border-sky-400/40 bg-sky-500/10 text-sky-100",
 };
 
+let toastIdFallbackCounter = 0;
+
+const createToastId = () => {
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const randomHex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${Date.now()}-${randomHex}`;
+  }
+  toastIdFallbackCounter += 1;
+  return `${Date.now()}-${toastIdFallbackCounter.toString(16).padStart(4, "0")}`;
+};
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const timersRef = useRef<Map<string, number>>(new Map());
@@ -40,7 +53,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const pushToast = useCallback(
     (message: string, tone: ToastTone = "success") => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const id = createToastId();
       setToasts((prev) => [...prev, { id, message, tone }]);
       const timer = window.setTimeout(() => removeToast(id), NOTIFICATIONS.TOAST_TIMEOUT_MS);
       timersRef.current.set(id, timer);

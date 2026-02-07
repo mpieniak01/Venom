@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     REPO_ROOT: str = "."
     MEMORY_ROOT: str = "./data/memory"
     STATE_FILE_PATH: str = "./data/memory/state_dump.json"
+    # Endpoint używany do lokalnego wykrywania adresu IP hosta (bez wysyłania payloadu)
+    # Używamy nazwy DNS zamiast hardcoded IP (łatwiejsza konfiguracja i mniej false-positive w skanerach).
+    NETWORK_PROBE_HOST: str = "dns.google"
+    NETWORK_PROBE_PORT: int = 80
 
     # Modele ONNX
     MODEL_PHI3_PATH: str = "models/phi3-mini-4k-instruct-onnx"

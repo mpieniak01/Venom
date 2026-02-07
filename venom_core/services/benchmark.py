@@ -786,12 +786,12 @@ class BenchmarkService:
                 "tokens_generated": tokens_generated,
             }
 
-        except Exception as e:
+        except Exception:
             # Zatrzymaj próbkowanie w przypadku błędu
             sampling_task.cancel()
             with suppress(asyncio.CancelledError):
                 await sampling_task
-            raise e
+            raise
 
     async def _sample_vram_during_generation(self, samples: List[float]):
         """
@@ -800,12 +800,8 @@ class BenchmarkService:
         Args:
             samples: Lista do zapisywania próbek VRAM (w MB)
         """
-        try:
-            while True:
-                vram = self.service_monitor.get_gpu_memory_usage()
-                if vram is not None:
-                    samples.append(vram)
-                await asyncio.sleep(0.1)  # 100ms
-        except asyncio.CancelledError:
-            # Zadanie anulowane przez cancel() - zakończ próbkowanie
-            pass
+        while True:
+            vram = self.service_monitor.get_gpu_memory_usage()
+            if vram is not None:
+                samples.append(vram)
+            await asyncio.sleep(0.1)  # 100ms

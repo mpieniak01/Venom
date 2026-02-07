@@ -136,6 +136,12 @@ export function useCockpitLogic({
         data: sessionHistoryData,
         refresh: refreshSessionHistory,
     } = useSessionHistory(sessionId, 0);
+    const refreshSessionHistoryVoid = useCallback(() => {
+        void refreshSessionHistory();
+    }, [refreshSessionHistory]);
+    const refreshHistoryVoid = useCallback(() => {
+        void data.refresh.history();
+    }, [data.refresh]);
 
     const {
         sessionHistory,
@@ -145,8 +151,8 @@ export function useCockpitLogic({
     } = useSessionHistoryState({
         sessionId,
         sessionHistoryData,
-        refreshSessionHistory,
-        refreshHistory: data.refresh.history,
+        refreshSessionHistory: refreshSessionHistoryVoid,
+        refreshHistory: refreshHistoryVoid,
     });
 
     const pendingResetSessionRef = useRef<string | null>(null);
@@ -508,7 +514,9 @@ export function useCockpitLogic({
         sessionId: sessionId,
         language: language ?? "pl",
         resetSession,
-        refreshActiveServer: data.refresh.activeServer,
+        refreshActiveServer: () => {
+            void data.refresh.activeServer();
+        },
         setActiveLlmRuntime: setActiveLlmRuntime,
         sendSimpleChatStream,
         sendTask: sendTask, // No cast
@@ -628,7 +636,7 @@ export function useCockpitLogic({
                         meta = {
                             preview: previewMatch ? previewMatch[1].trim() : null,
                             truncated: details.includes("truncated=true") || details.includes("truncated\":true"),
-                            hiddenPrompts: hiddenMatch ? parseInt(hiddenMatch[1], 10) : null,
+                            hiddenPrompts: hiddenMatch ? Number.parseInt(hiddenMatch[1], 10) : null,
                             mode: modeMatch ? modeMatch[1] : null
                         };
                     }
@@ -676,7 +684,7 @@ export function useCockpitLogic({
                     hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
                 if (hiddenMatch) {
                     if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
-                    meta.hiddenPrompts = parseInt(hiddenMatch[1], 10);
+                    meta.hiddenPrompts = Number.parseInt(hiddenMatch[1], 10);
                 }
             }
 

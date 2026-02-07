@@ -160,7 +160,7 @@ async def interactive_demo():
 
     while True:
         try:
-            user_input = input("Venom> ").strip()
+            user_input = (await asyncio.to_thread(input, "Venom> ")).strip()
 
             if not user_input:
                 continue
@@ -207,7 +207,7 @@ async def main():
     logger.info("0. Wyjście\n")
 
     try:
-        choice = input("Wybór (1-3): ").strip()
+        choice = (await asyncio.to_thread(input, "Wybór (1-3): ")).strip()
 
         if choice == "1":
             await demo_apprentice_basic()

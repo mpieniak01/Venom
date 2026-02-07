@@ -9,6 +9,7 @@ import asyncio
 import platform
 import re
 import threading
+from contextlib import suppress
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
@@ -188,11 +189,8 @@ class DesktopSensor:
         self._is_running = False
         if self._monitor_task:
             self._monitor_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._monitor_task
-            except asyncio.CancelledError:
-                # Expected when cancelling monitor task during shutdown
-                logger.debug("Monitor task cancelled during shutdown")
 
         logger.info("DesktopSensor zatrzymany")
 
@@ -211,8 +209,8 @@ class DesktopSensor:
                 await asyncio.sleep(SETTINGS.SHADOW_CHECK_INTERVAL)
 
             except asyncio.CancelledError:
-                # Oczekiwany wyjątek przy anulowaniu taska – ignorujemy
-                break
+                # Oczekiwany wyjątek przy anulowaniu taska.
+                raise
             except Exception as e:
                 logger.error(f"Błąd w pętli monitoringu: {e}")
                 await asyncio.sleep(5)  # Poczekaj dłużej przy błędzie

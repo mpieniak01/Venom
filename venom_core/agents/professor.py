@@ -1,5 +1,6 @@
 """Moduł: professor - Agent Profesor (Data Scientist i Opiekun Procesu Nauki)."""
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from semantic_kernel import Kernel
@@ -8,6 +9,12 @@ from venom_core.agents.base import BaseAgent
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _count_nonempty_lines(path: str) -> int:
+    """Liczy niepuste linie w pliku tekstowym."""
+    with open(path, "r", encoding="utf-8") as f:
+        return sum(1 for line in f if line.strip())
 
 
 class Professor(BaseAgent):
@@ -198,8 +205,9 @@ class Professor(BaseAgent):
             # Policz liczbę przykładów w datasecie
             dataset_size = 0
             try:
-                with open(dataset_path, "r", encoding="utf-8") as f:
-                    dataset_size = sum(1 for line in f if line.strip())
+                dataset_size = await asyncio.to_thread(
+                    _count_nonempty_lines, dataset_path
+                )
             except Exception as e:
                 logger.warning(f"Nie można policzyć przykładów w datasecie: {e}")
 

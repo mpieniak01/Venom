@@ -1,5 +1,7 @@
+import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -9,6 +11,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Globalna referencja do EventBroadcaster (będzie ustawiona przez main.py)
 _event_broadcaster = None
+_log_tasks: set[asyncio.Task[Any]] = set()
 
 
 def set_event_broadcaster(broadcaster):
@@ -40,16 +43,16 @@ def log_sink(message):
         msg = record["message"]
 
         # Wyślij przez WebSocket (async, ale w sync kontekście)
-        # Używamy asyncio.create_task aby nie blokować loggera
-        import asyncio
-
+        # Trzymamy referencję do taska, aby uniknąć przedwczesnego GC.
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 try:
-                    asyncio.create_task(
+                    task = loop.create_task(
                         _event_broadcaster.broadcast_log(level=level, message=msg)
                     )
+                    _log_tasks.add(task)
+                    task.add_done_callback(_log_tasks.discard)
                 except Exception:
                     # Błąd przy tworzeniu zadania - pomijamy aby nie zablokować loggera
                     pass

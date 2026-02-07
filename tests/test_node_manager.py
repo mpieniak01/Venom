@@ -75,8 +75,8 @@ async def test_update_heartbeat_refreshes_node_metrics():
     await manager.update_heartbeat(heartbeat)
 
     node = manager.nodes["node-1"]
-    assert node.cpu_usage == 0.4
-    assert node.memory_usage == 0.2
+    assert node.cpu_usage == pytest.approx(0.4)
+    assert node.memory_usage == pytest.approx(0.2)
     assert node.active_tasks == 3
     assert node.is_online is True
 

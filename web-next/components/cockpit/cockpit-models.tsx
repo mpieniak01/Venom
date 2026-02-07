@@ -74,9 +74,9 @@ export function CockpitModels({
         ) : null}
         <div className="card-shell card-base p-4 text-sm">
           <div className="grid gap-3">
-            <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
               Serwer
-            </label>
+            </p>
             <SelectMenu
               value={selectedLlmServer}
               options={llmServerOptions}
@@ -87,9 +87,9 @@ export function CockpitModels({
               buttonClassName="w-full justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               menuClassName="w-full max-h-72 overflow-y-auto"
             />
-            <label className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
               Model
-            </label>
+            </p>
             <SelectMenu
               value={selectedLlmModel}
               options={llmModelOptions}

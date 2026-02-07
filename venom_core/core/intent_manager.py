@@ -676,14 +676,9 @@ STATUS_REPORT, INFRA_STATUS, HELP_REQUEST, TIME_REQUEST, UNSUPPORTED_TASK."""
             return intent
         except Exception as exc:
             logger.warning(
-                "Błąd LLM przy klasyfikacji intencji (%s) - używam GENERAL_CHAT",
+                "Błąd LLM przy klasyfikacji intencji (%s) - przechodzę do heurystyk",
                 exc,
             )
-            self.last_intent_debug["source"] = "fallback"
-            return "GENERAL_CHAT"
-
-        except Exception as e:
-            logger.error(f"Błąd podczas klasyfikacji intencji: {e}")
             # W przypadku błędu użyj heurystyki: chat vs unsupported
             if any(
                 self._normalize_text(keyword) in normalized

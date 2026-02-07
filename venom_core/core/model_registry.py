@@ -452,6 +452,7 @@ class ModelRegistry:
 
         # Operacje w toku
         self.operations: Dict[str, ModelOperation] = {}
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         # Lock dla operacji per runtime
         self._runtime_locks: Dict[str, asyncio.Lock] = {
@@ -874,7 +875,9 @@ class ModelRegistry:
         self.operations[operation_id] = operation
 
         # Uruchom usuwanie w tle
-        asyncio.create_task(self._remove_model_task(operation, provider))
+        remove_task = asyncio.create_task(self._remove_model_task(operation, provider))
+        self._background_tasks.add(remove_task)
+        remove_task.add_done_callback(self._background_tasks.discard)
 
         return operation_id
 

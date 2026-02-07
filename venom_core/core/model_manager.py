@@ -1,5 +1,6 @@
 """Moduł: model_manager - Zarządca Modeli i Hot Swap dla Adapterów LoRA."""
 
+import asyncio
 import json
 import os
 import re
@@ -751,40 +752,48 @@ PARAMETER top_k 40
             logger.error(f"Nieprawidłowa nazwa modelu: {model_name}")
             return False
 
-        process = None
         success = False
         try:
             # Próba pobrania z Ollama
             logger.info(f"Rozpoczynam pobieranie modelu: {model_name}")
 
-            # Użyj subprocess dla ollama pull
-            process = subprocess.Popen(
-                ["ollama", "pull", model_name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
+            # Użyj asynchronicznego subprocess dla ollama pull
+            process = await asyncio.create_subprocess_exec(
+                "ollama",
+                "pull",
+                model_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
 
             try:
                 # Streamuj output
                 if process.stdout:
-                    for line in process.stdout:
+                    while True:
+                        line_bytes = await process.stdout.readline()
+                        if not line_bytes:
+                            break
+                        line = line_bytes.decode(errors="replace").strip()
                         logger.info(f"Ollama: {line.strip()}")
                         if progress_callback:
-                            progress_callback(line.strip())
+                            progress_callback(line)
 
-                return_code = process.wait()
+                return_code = await process.wait()
                 success = return_code == 0
                 if success:
                     logger.info(f"✅ Model {model_name} pobrany pomyślnie")
                 else:
-                    stderr = process.stderr.read() if process.stderr else ""
+                    stderr = (
+                        (await process.stderr.read()).decode(errors="replace")
+                        if process.stderr
+                        else ""
+                    )
                     logger.error(f"❌ Błąd podczas pobierania modelu: {stderr}")
             finally:
                 # Upewnij się, że proces jest zamknięty nawet przy wyjątku
-                if process.poll() is None:
+                if process.returncode is None:
                     process.kill()
-                    process.wait()
+                    await process.wait()
 
         except FileNotFoundError:
             logger.error("Ollama nie jest zainstalowane lub niedostępne w PATH")
@@ -830,7 +839,8 @@ PARAMETER top_k 40
 
             if model_info["type"] == "ollama":
                 # Usuń z Ollama
-                result = subprocess.run(
+                result = await asyncio.to_thread(
+                    subprocess.run,
                     ["ollama", "rm", model_name],
                     capture_output=True,
                     text=True,
@@ -886,7 +896,8 @@ PARAMETER top_k 40
             # Próba zatrzymania i ponownego uruchomienia Ollama
             # To spowoduje zwolnienie pamięci VRAM/RAM
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     ["pkill", "-x", "ollama"],  # -x dla dokładnego dopasowania nazwy
                     capture_output=True,
                     timeout=5,
@@ -943,7 +954,8 @@ PARAMETER top_k 40
 
         # Próba pobrania informacji o GPU/VRAM z nvidia-smi (jeśli dostępne)
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 [
                     "nvidia-smi",
                     "--query-gpu=utilization.gpu,memory.used,memory.total",

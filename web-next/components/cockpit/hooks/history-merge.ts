@@ -183,7 +183,7 @@ export function filterHistoryAfterReset(
   const resetAt = new Date(resetAtIso).getTime();
   if (!Number.isFinite(resetAt)) return entries;
   return entries.filter((entry) => {
-    const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : NaN;
+    const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : Number.NaN;
     if (!Number.isFinite(ts)) return false;
     return ts >= resetAt;
   });

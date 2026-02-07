@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-import random
+import secrets
 import shutil
 import uuid
 from datetime import datetime
@@ -23,9 +23,29 @@ from venom_core.utils.logger import get_logger
 from venom_core.utils.markdown_blocks import extract_fenced_block
 
 logger = get_logger(__name__)
+secure_random = secrets.SystemRandom()
 
 # Stałe konfiguracyjne
 MAX_CODE_PREVIEW_LENGTH = 500  # Maksymalna długość podglądu kodu w zapisach
+
+
+def _write_dream_artifacts(
+    dream_file: Path,
+    meta_file: Path,
+    scenario: ScenarioSpec,
+    code: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Zapisuje artefakty snu do plików na dysku."""
+    with open(dream_file, "w", encoding="utf-8") as f:
+        f.write(f"# Dream: {scenario.title}\n")
+        f.write(f"# Description: {scenario.description}\n")
+        f.write(f"# Libraries: {', '.join(scenario.libraries)}\n")
+        f.write(f"# Difficulty: {scenario.difficulty}\n\n")
+        f.write(code)
+
+    with open(meta_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
 
 
 class DreamState:
@@ -315,7 +335,7 @@ class DreamEngine:
             top_nodes = [node for node, degree in nodes_by_degree[: count * 2]]
 
             # Losuj z top nodes
-            selected_nodes = random.sample(top_nodes, min(count, len(top_nodes)))
+            selected_nodes = secure_random.sample(top_nodes, min(count, len(top_nodes)))
 
             # Pobierz dane z węzłów
             fragments = []
@@ -446,33 +466,27 @@ class DreamEngine:
             meta_file = self.output_dir / f"dream_{dream_id}.json"
 
             try:
-                with open(dream_file, "w", encoding="utf-8") as f:
-                    f.write(f"# Dream: {scenario.title}\n")
-                    f.write(f"# Description: {scenario.description}\n")
-                    f.write(f"# Libraries: {', '.join(scenario.libraries)}\n")
-                    f.write(f"# Difficulty: {scenario.difficulty}\n\n")
-                    f.write(code)
-
-                # Zapisz metadane
-                with open(meta_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "dream_id": dream_id,
-                            "session_id": self.current_session_id,
-                            "scenario": {
-                                "title": scenario.title,
-                                "description": scenario.description,
-                                "difficulty": scenario.difficulty,
-                                "libraries": scenario.libraries,
-                                "test_cases": scenario.test_cases,
-                            },
-                            "code_file": f"dream_{dream_id}.py",
-                            "timestamp": datetime.now().isoformat(),
-                            "synthetic": True,
+                await asyncio.to_thread(
+                    _write_dream_artifacts,
+                    dream_file,
+                    meta_file,
+                    scenario,
+                    code,
+                    {
+                        "dream_id": dream_id,
+                        "session_id": self.current_session_id,
+                        "scenario": {
+                            "title": scenario.title,
+                            "description": scenario.description,
+                            "difficulty": scenario.difficulty,
+                            "libraries": scenario.libraries,
+                            "test_cases": scenario.test_cases,
                         },
-                        f,
-                        indent=2,
-                    )
+                        "code_file": f"dream_{dream_id}.py",
+                        "timestamp": datetime.now().isoformat(),
+                        "synthetic": True,
+                    },
+                )
 
                 logger.info(f"[Dream {dream_id}] 💾 Zapisano jako {dream_file.name}")
             except Exception as io_err:

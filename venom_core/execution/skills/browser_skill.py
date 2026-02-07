@@ -1,9 +1,9 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
-from importlib import import_module
 import time
+from importlib import import_module
 from pathlib import Path
-from typing import Any, Annotated, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import urlparse
 
 from semantic_kernel.functions import kernel_function

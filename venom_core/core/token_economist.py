@@ -3,13 +3,6 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-yaml: Any = None
-try:  # pragma: no cover - zależne od środowiska
-    import yaml as _yaml
-
-    yaml = _yaml
-except ImportError:  # pragma: no cover
-    pass
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -17,6 +10,14 @@ from semantic_kernel.contents.utils.author_role import AuthorRole
 from venom_core.config import SETTINGS
 from venom_core.utils.config_paths import resolve_config_path
 from venom_core.utils.logger import get_logger
+
+yaml: Any = None
+try:  # pragma: no cover - zależne od środowiska
+    import yaml as _yaml
+
+    yaml = _yaml
+except ImportError:  # pragma: no cover
+    pass
 
 logger = get_logger(__name__)
 

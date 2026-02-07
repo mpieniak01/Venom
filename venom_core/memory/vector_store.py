@@ -375,9 +375,12 @@ class VectorStore:
                     MAX_FALLBACK_SCAN_ROWS,
                 )
                 return []
-        except Exception:
-            # Jeśli count_rows nie działa, fallback nadal może się odbyć.
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Pominięto fallback leksykalny: nie udało się policzyć wierszy (%s)",
+                exc,
+            )
+            return []
 
         query_tokens = _tokenize_lexical_text(query)[:MAX_FALLBACK_QUERY_TOKENS]
         if not query_tokens:
@@ -398,7 +401,9 @@ class VectorStore:
             meta_raw = row.get("metadata") or "{}"
             try:
                 metadata = (
-                    json.loads(meta_raw) if isinstance(meta_raw, str) else dict(meta_raw)
+                    json.loads(meta_raw)
+                    if isinstance(meta_raw, str)
+                    else dict(meta_raw)
                 )
             except Exception:
                 metadata = {}

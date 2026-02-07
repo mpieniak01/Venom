@@ -81,9 +81,7 @@ def pytest_collection_modifyitems(config, items):
     skip_integration = pytest.mark.skip(
         reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
     )
-    skip_docker = pytest.mark.skip(
-        reason="pomijam - Docker daemon nie jest dostępny"
-    )
+    skip_docker = pytest.mark.skip(reason="pomijam - Docker daemon nie jest dostępny")
     skip_compose = pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
 
     for item in items:

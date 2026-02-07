@@ -18,17 +18,7 @@
 │   └── memory/
 │       └── lessons_learned.json # pamięć błędów / wniosków
 │
-├── web/                         # warstwa WEB (UI Venoma)
-│   ├── templates/
-│   │   ├── base.html            # wspólny layout
-│   │   └── index.html           # dashboard / widok główny
-│   └── static/
-│       ├── css/
-│       │   └── app.css          # style
-│       └── js/
-│           └── app.js           # logika frontendu
-│
-├── web-next/                    # [NOWY] Next.js Dashboard (VENOM 1.0)
+├── web-next/                    # Next.js Dashboard (aktywny frontend w v1.0)
 │   ├── app/                     # App Router
 │   ├── components/              # komponenty React/Shadcn UI
 │   ├── lib/                     # utils, types, api clients
@@ -73,7 +63,8 @@
     │   ├── coder.py             # generacja kodu
     │   ├── strategist.py        # [v2.0] Strategy Supervisor (Roadmap, KPI)
     │   ├── critic.py            # testy / review
-    │   ├── writer.py            # dokumentacja, logi, opisy PR
+    │   ├── documenter.py        # generowanie dokumentacji
+    │   ├── publisher.py         # release notes i publikacja
     │   ├── ghost_agent.py       # wizualna automatyzacja GUI
     │   ├── apprentice.py        # nauka przez obserwację
     │   ├── professor.py         # system edukacji użytkownika
@@ -93,7 +84,7 @@
     │   ├── mcp/
     │   │   ├── proxy_generator.py # generator proxy MCP
     │   │   └── _repos/            # klony repozytoriów MCP (runtime)
-    │   └── custom/              # generowane wrappery MCP (runtime)
+    │   └── custom/              # generowane wrappery MCP (runtime; może pojawić się po pierwszym imporcie)
     │
     ├── perception/              # [WARSTWA 3: ZMYSŁY] – OCZY + ANTENA
     │   ├── __init__.py

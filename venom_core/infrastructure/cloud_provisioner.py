@@ -386,7 +386,9 @@ class CloudProvisioner:
             try:
                 # Metoda 1: Połącz się z zewnętrznym adresem (nie wysyła danych)
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                    s.connect((SETTINGS.NETWORK_PROBE_HOST, SETTINGS.NETWORK_PROBE_PORT))
+                    s.connect(
+                        (SETTINGS.NETWORK_PROBE_HOST, SETTINGS.NETWORK_PROBE_PORT)
+                    )
                     local_ip = s.getsockname()[0]
             except Exception:
                 # Metoda 2: Fallback do gethostbyname

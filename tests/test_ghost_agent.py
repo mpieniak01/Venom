@@ -2,6 +2,7 @@
 
 # ruff: noqa: E402
 
+import asyncio
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -231,11 +232,10 @@ class TestGhostAgent:
             await asyncio.sleep(0.01)
             ghost_agent.emergency_stop = True
 
-        import asyncio
-
-        asyncio.create_task(activate_emergency())
+        emergency_task = asyncio.create_task(activate_emergency())
 
         result = await ghost_agent._execute_plan(plan)
+        await emergency_task
 
         assert "Emergency Stop" in result or len(ghost_agent.action_history) < 5
 

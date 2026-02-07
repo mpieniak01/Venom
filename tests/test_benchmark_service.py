@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -271,11 +272,8 @@ async def test_sample_vram_during_generation(benchmark_service):
 
         # Anuluj task
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            # Oczekiwane - task został anulowany
-            pass
 
     # Sprawdź czy zebrano próbki
     assert len(samples) >= 2  # Powinno być co najmniej kilka próbek

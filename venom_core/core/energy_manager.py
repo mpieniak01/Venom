@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import os
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Awaitable, Callable, List, Optional
 
@@ -201,11 +202,8 @@ class EnergyManager:
 
         if self._monitor_task and not self._monitor_task.done():
             self._monitor_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._monitor_task
-            except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania monitoringu — brak dalszych działań
-                pass
 
         logger.info("Zatrzymano monitorowanie systemu")
 
@@ -233,7 +231,7 @@ class EnergyManager:
 
             except asyncio.CancelledError:
                 logger.debug("Monitoring loop anulowany")
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w monitoring loop: {e}", exc_info=True)
                 await asyncio.sleep(self.check_interval)

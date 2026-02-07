@@ -48,6 +48,7 @@ class DocumenterAgent:
         self._last_processed_files: set[str] = set()
         self._processing_lock = asyncio.Lock()
         self._changelog_lock = asyncio.Lock()  # Lock dla operacji na changelog
+        self._background_tasks: set[asyncio.Task[Any]] = set()
 
         logger.info(f"DocumenterAgent zainicjalizowany dla: {self.workspace_root}")
 
@@ -70,7 +71,9 @@ class DocumenterAgent:
             await self._process_file_change(file_path)
         finally:
             # Odłożone czyszczenie tracking (unikanie resource leak przy cancel)
-            asyncio.create_task(self._cleanup_tracking(file_path))
+            cleanup_task = asyncio.create_task(self._cleanup_tracking(file_path))
+            self._background_tasks.add(cleanup_task)
+            cleanup_task.add_done_callback(self._background_tasks.discard)
 
     async def _cleanup_tracking(self, file_path: str) -> None:
         """
@@ -87,6 +90,7 @@ class DocumenterAgent:
             # Jeśli task został anulowany, usuń od razu
             async with self._processing_lock:
                 self._last_processed_files.discard(file_path)
+            raise
 
     async def _process_file_change(self, file_path: str) -> None:
         """

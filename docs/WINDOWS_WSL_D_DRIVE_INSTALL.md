@@ -20,6 +20,15 @@ It is based on a real end-to-end setup flow and includes common pitfalls.
 - Stable internet connection (first run pulls images and Ollama model).
 - Free space on `D:`: real post-install footprint can reach about `36 GB`; recommended minimum is `45 GB` (safe target `50 GB`).
 
+## Windows installer (one-click)
+
+If you want a no-terminal setup, use installer assets from GitHub Releases:
+
+- Venom Releases: `https://github.com/mpieniak01/Venom/releases`
+- Latest release page: `https://github.com/mpieniak01/Venom/releases/latest`
+
+If a Windows installer is attached to a release, download it from `Assets` and run it.
+
 ## 1. Host layout (Windows)
 
 Create a clear structure once:
@@ -158,3 +167,62 @@ scripts/docker/run-release.sh stop
   Wrong directory; use `/mnt/d/docker-data/venom`.
 - `bash\r` error:
   Convert line endings using `dos2unix` as shown above.
+
+## 11. Full cleanup (back to initial state)
+
+Use this when you want to remove Venom code + Venom WSL distro and return to clean baseline.
+
+### Step A - stop and remove Venom stack
+
+In WSL:
+
+```bash
+cd /mnt/d/docker-data/venom
+scripts/docker/run-release.sh stop || true
+docker compose -f compose/compose.release.yml down -v --remove-orphans || true
+```
+
+### Step B - remove Venom code folder
+
+In PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force D:\docker-data\venom
+```
+
+### Step C - remove dedicated Venom WSL distro
+
+In PowerShell:
+
+```powershell
+wsl --terminate venom-build
+wsl --unregister venom-build
+```
+
+### Step D - optional Docker cleanup (global, destructive)
+
+Use only if you want to wipe Docker data for all projects:
+
+```powershell
+wsl --shutdown
+wsl --unregister docker-desktop
+wsl --unregister docker-desktop-data
+```
+
+Then you can uninstall Docker Desktop from Windows Apps.
+
+### Step E - remove leftover folders on D:
+
+In PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force D:\docker-data\wsl\venom-build
+```
+
+Verification:
+
+```powershell
+wsl -l -v
+```
+
+`venom-build` should no longer be listed.

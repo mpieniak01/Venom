@@ -20,6 +20,15 @@ Jest oparty o realny proces instalacji end-to-end i zawiera typowe pułapki.
 - Stabilne łącze internetowe (pierwszy start pobiera obrazy i model Ollama).
 - Wolne miejsce na dysku `D:`: realnie po instalacji i pierwszym uruchomieniu może zająć ok. `36 GB`; rekomendowane minimum to `45 GB` (bezpiecznie `50 GB`).
 
+## Instalator Windows (one-click)
+
+Jeśli chcesz instalacji bez terminala, użyj paczki instalatora z GitHub Releases:
+
+- Venom Releases: `https://github.com/mpieniak01/Venom/releases`
+- Ostatnie wydanie: `https://github.com/mpieniak01/Venom/releases/latest`
+
+Jeśli instalator Windows jest dołączony do wydania, pobierz go z sekcji `Assets` i uruchom.
+
 ## 1. Układ katalogów na hoście (Windows)
 
 Utwórz raz czytelny układ:
@@ -158,3 +167,62 @@ scripts/docker/run-release.sh stop
   Zły katalog; użyj `/mnt/d/docker-data/venom`.
 - Błąd `bash\r`:
   Skonwertuj końce linii przez `dos2unix` jak wyżej.
+
+## 11. Pełne usunięcie (powrót do stanu początkowego)
+
+Użyj, jeśli chcesz usunąć kod Venoma + dedykowaną dystrybucję WSL i wrócić do czystego stanu.
+
+### Krok A - zatrzymanie i usunięcie stosu Venom
+
+W WSL:
+
+```bash
+cd /mnt/d/docker-data/venom
+scripts/docker/run-release.sh stop || true
+docker compose -f compose/compose.release.yml down -v --remove-orphans || true
+```
+
+### Krok B - usunięcie katalogu kodu Venoma
+
+W PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force D:\docker-data\venom
+```
+
+### Krok C - usunięcie dedykowanej dystrybucji WSL Venom
+
+W PowerShell:
+
+```powershell
+wsl --terminate venom-build
+wsl --unregister venom-build
+```
+
+### Krok D - opcjonalne czyszczenie Dockera (globalne, destrukcyjne)
+
+Użyj tylko jeśli chcesz wyczyścić Docker dla wszystkich projektów:
+
+```powershell
+wsl --shutdown
+wsl --unregister docker-desktop
+wsl --unregister docker-desktop-data
+```
+
+Następnie możesz odinstalować Docker Desktop z aplikacji Windows.
+
+### Krok E - usunięcie pozostałych katalogów na D:
+
+W PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force D:\docker-data\wsl\venom-build
+```
+
+Weryfikacja:
+
+```powershell
+wsl -l -v
+```
+
+`venom-build` nie powinien już występować na liście.

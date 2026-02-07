@@ -9,6 +9,7 @@ Odpowiada za:
 """
 
 import asyncio
+import hashlib
 import json
 import secrets
 import time
@@ -42,6 +43,12 @@ def _normalize_benchmark_id(value: str) -> Optional[str]:
     except (ValueError, AttributeError, TypeError):
         return None
     return str(parsed)
+
+
+def _redacted_input_fingerprint(value: str) -> str:
+    """Zwraca fingerprint wejścia bez logowania pełnej wartości."""
+    digest = hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return f"len={len(value)},sha256={digest}"
 
 
 def _secure_sample_without_replacement(
@@ -273,7 +280,10 @@ class BenchmarkService:
         """Usuwa benchmark z pamięci i dysku."""
         normalized_id = _normalize_benchmark_id(benchmark_id)
         if normalized_id is None:
-            logger.warning("Odrzucono nieprawidłowy benchmark_id: %s", benchmark_id)
+            logger.warning(
+                "Odrzucono nieprawidłowy benchmark_id (%s)",
+                _redacted_input_fingerprint(benchmark_id or ""),
+            )
             return False
 
         if normalized_id in self.jobs:

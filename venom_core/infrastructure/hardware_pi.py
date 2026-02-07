@@ -16,7 +16,7 @@ class HardwareBridge:
 
     def __init__(
         self,
-        host: str = "192.168.1.100",
+        host: str = "localhost",
         port: int = 22,
         username: str = "pi",
         password: Optional[str] = None,
@@ -305,11 +305,10 @@ class HardwareBridge:
                 info["disk_usage_percent"] = float(result["stdout"].strip())
 
             logger.info(f"Informacje systemowe: {info}")
-            return info
-
         except Exception as e:
             logger.error(f"Błąd podczas pobierania informacji systemowych: {e}")
-            return info
+
+        return info
 
     async def emergency_procedure(self, procedure_name: str) -> bool:
         """

@@ -48,6 +48,7 @@ class OllamaClient:
     async def pull_model(
         self, model_name: str, progress_callback: Optional[Callable] = None
     ) -> bool:
+        success = False
         try:
             process = await asyncio.create_subprocess_exec(
                 "ollama",
@@ -71,11 +72,12 @@ class OllamaClient:
                         await progress_callback(line_str)
 
                 await process.wait()
-                if process.returncode == 0:
-                    return True
-                stderr = await process.stderr.read()
-                logger.error(f"❌ Błąd podczas pobierania modelu: {stderr.decode()}")
-                return False
+                success = process.returncode == 0
+                if not success:
+                    stderr = await process.stderr.read()
+                    logger.error(
+                        f"❌ Błąd podczas pobierania modelu: {stderr.decode()}"
+                    )
             finally:
                 if process.returncode is None:
                     process.kill()
@@ -87,6 +89,8 @@ class OllamaClient:
         except Exception as exc:
             logger.error(f"Błąd podczas pobierania modelu: {exc}")
             return False
+
+        return success
 
     async def remove_model(self, model_name: str) -> bool:
         try:

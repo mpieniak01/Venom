@@ -157,7 +157,7 @@ class Settings(BaseSettings):
 
     # Konfiguracja IoT Bridge (Rider-Pi)
     ENABLE_IOT_BRIDGE: bool = False  # Włącz komunikację z Raspberry Pi
-    RIDER_PI_HOST: str = "192.168.1.100"  # Adres IP Raspberry Pi
+    RIDER_PI_HOST: str = "localhost"  # Host Rider-Pi (ustaw przez ENV dla sieci LAN)
     RIDER_PI_PORT: int = 22  # Port SSH (22) lub HTTP (8888 dla pigpio)
     RIDER_PI_USERNAME: str = "pi"  # Nazwa użytkownika SSH
     RIDER_PI_PASSWORD: SecretStr = SecretStr(

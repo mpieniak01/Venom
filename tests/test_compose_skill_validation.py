@@ -7,7 +7,7 @@ from venom_core.execution.skills.compose_skill import ComposeSkill
 
 class _FakeStackManager:
     def __init__(self, workspace_root=None):
-        self.workspace_root = workspace_root or "/tmp"
+        self.workspace_root = workspace_root or "."
 
     def deploy_stack(self, compose_content: str, stack_name: str):
         return True, f"stack {stack_name} deployed"
@@ -26,11 +26,11 @@ class _FakeStackManager:
 
 
 @pytest.fixture
-def compose_skill(monkeypatch):
+def compose_skill(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "venom_core.execution.skills.compose_skill.StackManager", _FakeStackManager
     )
-    return ComposeSkill(workspace_root="/tmp")
+    return ComposeSkill(workspace_root=str(tmp_path))
 
 
 @pytest.mark.asyncio
@@ -69,6 +69,30 @@ services:
   app:
     image: alpine:latest
     network_mode: host
+"""
+    result = await compose_skill.create_environment(compose_content, "safe-stack")
+    assert "zablokowany przez politykę bezpieczeństwa" in result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host_mount",
+    [
+        "/:/container_data",
+        "C:/:/container_data",
+    ],
+)
+async def test_compose_policy_blocks_host_root_mounts(
+    compose_skill, monkeypatch, host_mount
+):
+    monkeypatch.setenv("VENOM_COMPOSE_POLICY_MODE", "block")
+    compose_content = f"""
+version: '3.8'
+services:
+  app:
+    image: alpine:latest
+    volumes:
+      - {host_mount}
 """
     result = await compose_skill.create_environment(compose_content, "safe-stack")
     assert "zablokowany przez politykę bezpieczeństwa" in result

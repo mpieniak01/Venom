@@ -16,7 +16,7 @@ class HardwareBridge:
 
     def __init__(
         self,
-        host: str = "192.168.1.100",
+        host: str = "localhost",
         port: int = 22,
         username: str = "pi",
         password: Optional[str] = None,

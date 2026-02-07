@@ -282,11 +282,8 @@ class RequestTracer:
         """Zatrzymuje watchdog."""
         if self._watchdog_task:
             self._watchdog_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._watchdog_task
-            except asyncio.CancelledError:
-                # Przechwytujemy wyjątek wynikający z anulowania zadania
-                pass
             self._watchdog_task = None
             logger.info("RequestTracer watchdog zatrzymany")
 
@@ -297,7 +294,7 @@ class RequestTracer:
                 await asyncio.sleep(60)  # Sprawdzaj co minutę
                 await self._check_lost_requests()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w watchdog loop: {e}", exc_info=True)
 

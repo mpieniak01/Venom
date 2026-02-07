@@ -1,6 +1,7 @@
 """Moduł: node_manager - Zarządza rojem węzłów zdalnych (Swarm Manager)."""
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -101,11 +102,8 @@ class NodeManager:
         """Zatrzymuje NodeManager i zadania w tle."""
         if self._healthcheck_task:
             self._healthcheck_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._healthcheck_task
-            except asyncio.CancelledError:
-                # Oczekiwane anulowanie zadania podczas zatrzymywania NodeManagera
-                pass
         logger.info("NodeManager zatrzymany")
 
     async def register_node(
@@ -383,6 +381,6 @@ class NodeManager:
                             node.is_online = False
 
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w healthcheck loop: {e}")

@@ -2,6 +2,7 @@
 
 import asyncio
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from uuid import UUID
 
@@ -117,11 +118,8 @@ async def test_abort_task(orchestrator):
     assert task_updated.status == TaskStatus.FAILED
 
     # Cleanup
-    try:
+    with suppress(asyncio.CancelledError):
         await mock_task_handle
-    except asyncio.CancelledError:
-        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
-        pass
 
 
 @pytest.mark.asyncio
@@ -186,16 +184,10 @@ async def test_emergency_stop(orchestrator):
     assert task3_updated.status == TaskStatus.FAILED
 
     # Cleanup
-    try:
+    with suppress(asyncio.CancelledError):
         await mock_task1
-    except asyncio.CancelledError:
-        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
-        pass
-    try:
+    with suppress(asyncio.CancelledError):
         await mock_task2
-    except asyncio.CancelledError:
-        # Oczekiwane anulowanie taska podczas czyszczenia po teście.
-        pass
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Moduł: ota_manager - Over-The-Air Updates dla węzłów Spore."""
 
+import asyncio
 import hashlib
 import importlib
 import subprocess
@@ -368,7 +369,8 @@ class OTAManager:
             timeout = getattr(SETTINGS, "OTA_DEPENDENCY_INSTALL_TIMEOUT", 300)
 
             # Uruchom pip install
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["pip", "install", "-r", str(requirements_path)],
                 capture_output=True,
                 text=True,

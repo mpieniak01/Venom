@@ -15,6 +15,12 @@ from venom_core.core.state_manager import StateManager
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
 
 
+def _read_json_file(path: str) -> dict:
+    """Czyta plik JSON i zwraca słownik."""
+    with open(path, "r") as f:
+        return json.load(f)
+
+
 @pytest.fixture
 def mock_runtime_info():
     """Mock dla get_active_llm_runtime."""
@@ -218,8 +224,7 @@ async def test_state_manager_persistence(temp_state_file):
 
     # Sprawdź czy plik istnieje i zawiera dane
     assert Path(temp_state_file).exists()
-    with open(temp_state_file, "r") as f:
-        data = json.load(f)
+    data = await asyncio.to_thread(_read_json_file, temp_state_file)
     assert "tasks" in data
     assert len(data["tasks"]) == 1
 
@@ -285,8 +290,7 @@ async def test_state_manager_shutdown(temp_state_file):
 
     # Sprawdź czy plik został zapisany
     assert Path(temp_state_file).exists()
-    with open(temp_state_file, "r") as f:
-        data = json.load(f)
+    data = await asyncio.to_thread(_read_json_file, temp_state_file)
     assert len(data["tasks"]) == 2
 
 

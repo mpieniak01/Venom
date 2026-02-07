@@ -1,5 +1,6 @@
 """Moduł: docs_skill - umiejętność generowania dokumentacji."""
 
+import asyncio
 import shutil
 import subprocess
 from pathlib import Path
@@ -220,7 +221,8 @@ class DocsSkill:
 
             # Sprawdź czy mkdocs jest zainstalowany
             try:
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     ["mkdocs", "--version"],
                     check=True,
                     capture_output=True,
@@ -236,7 +238,8 @@ class DocsSkill:
                 logger.info("Wyczyszczono poprzednią wersję strony")
 
             # Buduj stronę
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ["mkdocs", "build"],
                 cwd=self.workspace_root,
                 capture_output=True,

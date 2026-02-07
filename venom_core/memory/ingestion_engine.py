@@ -2,6 +2,8 @@
 
 import asyncio
 import mimetypes
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +16,39 @@ logger = get_logger(__name__)
 SEMANTIC_CHUNK_SIZE = 1000  # Większe chunki dla semantic splitting
 SEMANTIC_OVERLAP = 100
 SEMANTIC_SEPARATORS = ["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " "]
+
+
+def _create_temp_wav_file() -> str:
+    """Tworzy pusty plik tymczasowy WAV i zwraca ścieżkę."""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        return tmp.name
+
+
+def _extract_audio_with_ffmpeg(source_path: str, output_path: str) -> None:
+    """Ekstrahuje audio z pliku video do WAV używając ffmpeg."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-i",
+            source_path,
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            output_path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _read_text_file(path: Path, encoding: str) -> str:
+    """Wczytuje plik tekstowy z podanym kodowaniem."""
+    with open(path, "r", encoding=encoding) as f:
+        return f.read()
 
 
 class IngestionEngine:
@@ -335,29 +370,11 @@ class IngestionEngine:
             safe_path = path.resolve()
 
             # Użyj ffmpeg do ekstrakcji audio (jeśli dostępne)
-            import subprocess
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp_path = tmp.name
+            tmp_path = await asyncio.to_thread(_create_temp_wav_file)
 
             # Ekstrahuj audio do WAV
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-i",
-                    str(safe_path),
-                    "-vn",
-                    "-acodec",
-                    "pcm_s16le",
-                    "-ar",
-                    "16000",
-                    "-ac",
-                    "1",
-                    tmp_path,
-                ],
-                check=True,
-                capture_output=True,
+            await asyncio.to_thread(
+                _extract_audio_with_ffmpeg, str(safe_path), tmp_path
             )
 
             # Transkrybuj audio
@@ -386,16 +403,14 @@ class IngestionEngine:
             Zawartość pliku
         """
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                text = f.read()
+            text = await asyncio.to_thread(_read_text_file, path, "utf-8")
             logger.info(f"Plik tekstowy wczytany: {len(text)} znaków")
             return text
         except UnicodeDecodeError:
             # Spróbuj innych kodowań
             for encoding in ["latin-1", "cp1252", "iso-8859-1"]:
                 try:
-                    with open(path, "r", encoding=encoding) as f:
-                        text = f.read()
+                    text = await asyncio.to_thread(_read_text_file, path, encoding)
                     logger.info(
                         f"Plik tekstowy wczytany ({encoding}): {len(text)} znaków"
                     )

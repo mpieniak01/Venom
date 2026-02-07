@@ -7,7 +7,7 @@ import { statusTone } from "@/lib/status";
 import { TYPING_EFFECT } from "@/lib/ui-config";
 import { useTranslation } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 type ConversationBubbleProps = {
   role: "user" | "assistant";
@@ -91,13 +91,6 @@ export function ConversationBubble({
       }
     };
   }, [isUser, showTyping, typingText, visibleText]);
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (disabled) return;
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect?.();
-    }
-  };
   const statusLabel = (() => {
     if (!status) return null;
     const normalized = status.toUpperCase();
@@ -179,13 +172,7 @@ export function ConversationBubble({
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
         <div
-          role={footerClickable ? "button" : undefined}
-          tabIndex={footerClickable ? 0 : undefined}
-          aria-disabled={footerClickable ? false : undefined}
-          onClick={footerClickable ? onSelect : undefined}
-          onKeyDown={footerClickable ? handleKeyDown : undefined}
-          className={`mt-4 border-t border-white/10 pt-3 ${footerClickable ? "cursor-pointer hover:text-white" : ""
-            }`}
+          className="mt-4 border-t border-white/10 pt-3"
         >
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             {footerActions && (

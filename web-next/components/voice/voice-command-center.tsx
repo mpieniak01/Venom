@@ -17,6 +17,30 @@ declare global {
   }
 }
 
+let secureRandomFallbackCounter = 0;
+
+const nextSecureRandomFallbackInt = () => {
+  secureRandomFallbackCounter += 1;
+  const perfNow = typeof performance === "undefined" ? 0 : Math.floor(performance.now());
+  return Date.now() + perfNow + secureRandomFallbackCounter;
+};
+
+const secureRandomInt = (maxExclusive: number): number => {
+  if (maxExclusive <= 0) return 0;
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const maxUint32 = 2 ** 32;
+    const unbiasedLimit = maxUint32 - (maxUint32 % maxExclusive);
+    const bytes = new Uint32Array(1);
+    let value = maxUint32;
+    while (value >= unbiasedLimit) {
+      crypto.getRandomValues(bytes);
+      value = bytes[0] ?? maxUint32;
+    }
+    return value % maxExclusive;
+  }
+  return nextSecureRandomFallbackInt() % maxExclusive;
+};
+
 export function VoiceCommandCenter() {
   const audioEnabled = process.env.NEXT_PUBLIC_ENABLE_AUDIO_INTERFACE === "true";
   const iotStatusEnabled = process.env.NEXT_PUBLIC_ENABLE_IOT_STATUS === "true";
@@ -88,7 +112,7 @@ export function VoiceCommandCenter() {
         if (!destroyed) {
           const attempt = reconnectAttemptsRef.current;
           const baseDelay = Math.min(30000, 1000 * 2 ** attempt);
-          const jitter = Math.floor(Math.random() * 500);
+          const jitter = secureRandomInt(500);
           const delay = baseDelay + jitter;
           reconnectAttemptsRef.current = Math.min(attempt + 1, 6);
           setStatusMessage(`Kanał audio offline – ponawiam za ${Math.ceil(delay / 1000)}s…`);

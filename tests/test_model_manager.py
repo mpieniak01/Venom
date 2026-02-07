@@ -443,9 +443,9 @@ async def test_model_manager_get_usage_metrics(tmp_path):
         assert "gpu_usage_percent" in metrics
         assert "vram_total_mb" in metrics
         assert metrics["disk_usage_gb"] > 0
-        assert metrics["cpu_usage_percent"] == 25.0
+        assert metrics["cpu_usage_percent"] == pytest.approx(25.0)
         assert metrics["memory_total_gb"] == pytest.approx(16.0, rel=1e-2)
-        assert metrics["memory_usage_percent"] == 50.0
-        assert metrics["gpu_usage_percent"] == 10.0
+        assert metrics["memory_usage_percent"] == pytest.approx(50.0)
+        assert metrics["gpu_usage_percent"] == pytest.approx(10.0)
         assert metrics["vram_total_mb"] == 10240
         assert metrics["vram_usage_percent"] == pytest.approx(50.0)

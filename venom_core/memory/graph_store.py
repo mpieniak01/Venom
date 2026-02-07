@@ -11,6 +11,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+FILE_NODE_PREFIX = "file:"
 
 
 class CodeGraphStore:
@@ -18,6 +19,17 @@ class CodeGraphStore:
     Graf wiedzy o strukturze kodu projektu.
     Używa AST (Abstract Syntax Tree) do analizy zależności między plikami, klasami i funkcjami.
     """
+
+    @staticmethod
+    def _safe_log_value(value: Any, max_len: int = 120) -> str:
+        """Sanityzuje wartość do logowania (bez znaków kontrolnych)."""
+        raw = str(value)
+        sanitized = "".join(
+            ch if ch.isprintable() and ch not in "\r\n\t" else " " for ch in raw
+        )
+        if len(sanitized) > max_len:
+            return sanitized[: max_len - 3] + "..."
+        return sanitized
 
     def __init__(
         self, workspace_root: Optional[str] = None, graph_file: Optional[str] = None
@@ -97,13 +109,21 @@ class CodeGraphStore:
             with open(file_path, "r", encoding="utf-8") as f:
                 source_code = f.read()
         except Exception as e:
-            logger.warning(f"Nie można odczytać pliku {file_path}: {e}")
+            logger.warning(
+                "Nie można odczytać pliku {}: {}",
+                self._safe_log_value(file_path),
+                self._safe_log_value(e),
+            )
             return False
 
         try:
             tree = ast.parse(source_code, filename=str(file_path))
         except SyntaxError as e:
-            logger.warning(f"Błąd składni w pliku {file_path}: {e}")
+            logger.warning(
+                "Błąd składni w pliku {}: {}",
+                self._safe_log_value(file_path),
+                self._safe_log_value(e),
+            )
             return False
 
         # Dodaj węzeł pliku (z walidacją ścieżki)
@@ -111,11 +131,13 @@ class CodeGraphStore:
             rel_path = file_path.relative_to(self.workspace_root)
         except ValueError:
             logger.warning(
-                f"Plik {file_path} jest poza workspace {self.workspace_root}, pomijam"
+                "Plik {} jest poza workspace {}, pomijam",
+                self._safe_log_value(file_path),
+                self._safe_log_value(self.workspace_root),
             )
             return False
 
-        file_node = f"file:{rel_path}"
+        file_node = f"{FILE_NODE_PREFIX}{rel_path}"
         self.graph.add_node(
             file_node, type="file", path=str(rel_path), full_path=str(file_path)
         )
@@ -136,10 +158,10 @@ class CodeGraphStore:
         Returns:
             Lista ścieżek plików zależnych
         """
-        file_node = f"file:{file_path}"
+        file_node = f"{FILE_NODE_PREFIX}{file_path}"
 
         if file_node not in self.graph:
-            logger.warning("Żądany plik nie istnieje w grafie: %s", file_path)
+            logger.warning("Żądany plik nie istnieje w grafie")
             return []
 
         # Znajdź wszystkie węzły, które mają krawędź DO tego pliku
@@ -151,12 +173,10 @@ class CodeGraphStore:
             # Sprawdź czy istnieje ścieżka od tego węzła do pliku
             if nx.has_path(self.graph, node, file_node):
                 # Wyciągnij tylko węzły typu "file"
-                if node.startswith("file:"):
-                    dependents.append(node.replace("file:", ""))
+                if node.startswith(FILE_NODE_PREFIX):
+                    dependents.append(node.replace(FILE_NODE_PREFIX, ""))
 
-        logger.info(
-            "Znaleziono %s zależnych plików dla: %s", len(dependents), file_path
-        )
+        logger.info("Znaleziono {} zależnych plików", len(dependents))
         return dependents
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:
@@ -169,7 +189,7 @@ class CodeGraphStore:
         Returns:
             Słownik z informacjami (klasy, funkcje, importy)
         """
-        file_node = f"file:{file_path}"
+        file_node = f"{FILE_NODE_PREFIX}{file_path}"
 
         if file_node not in self.graph:
             return {}
@@ -217,7 +237,7 @@ class CodeGraphStore:
         Returns:
             Raport wpływu na inne pliki
         """
-        file_node = f"file:{file_path}"
+        file_node = f"{FILE_NODE_PREFIX}{file_path}"
 
         if file_node not in self.graph:
             return {"error": f"Plik {file_path} nie istnieje w grafie"}
@@ -226,15 +246,17 @@ class CodeGraphStore:
         importers = []
         for predecessor in self.graph.predecessors(file_node):
             edge_data = self.graph.get_edge_data(predecessor, file_node, default={})
-            if edge_data.get("type") == "IMPORTS" and predecessor.startswith("file:"):
-                importers.append(predecessor.replace("file:", ""))
+            if edge_data.get("type") == "IMPORTS" and predecessor.startswith(
+                FILE_NODE_PREFIX
+            ):
+                importers.append(predecessor.replace(FILE_NODE_PREFIX, ""))
 
         # Znajdź wszystkie pliki w downstream (zależne pośrednio) używając ancestors
         all_dependents = set()
         try:
             for node in nx.ancestors(self.graph, file_node):
-                if node.startswith("file:"):
-                    all_dependents.add(node.replace("file:", ""))
+                if node.startswith(FILE_NODE_PREFIX):
+                    all_dependents.add(node.replace(FILE_NODE_PREFIX, ""))
         except nx.NetworkXError:
             # Graf może nie być skierowany lub węzeł nie istnieje
             pass

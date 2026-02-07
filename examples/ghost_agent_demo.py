@@ -118,7 +118,9 @@ async def main():
     print("3. Upewnij się że nie masz otwartych ważnych aplikacji")
     print("4. Demo najlepiej działa na Windows")
 
-    input("\nNaciśnij Enter aby kontynuować (lub Ctrl+C aby anulować)...")
+    await asyncio.to_thread(
+        input, "\nNaciśnij Enter aby kontynuować (lub Ctrl+C aby anulować)..."
+    )
 
     try:
         # Demo 1: Notatnik (tylko na Windows/Linux z GUI)

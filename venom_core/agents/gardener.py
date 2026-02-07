@@ -6,6 +6,7 @@ ani metody `process()`.
 """
 
 import asyncio
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -87,11 +88,8 @@ class GardenerAgent:
 
         if self._task:
             self._task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                # Expected when cancelling task - no action needed
-                logger.debug("Gardener monitoring task cancelled during shutdown")
 
         logger.info("GardenerAgent zatrzymany")
 
@@ -115,7 +113,7 @@ class GardenerAgent:
 
             except asyncio.CancelledError:
                 logger.info("Monitoring loop anulowany")
-                break
+                raise
             except Exception as e:
                 logger.error(f"Błąd w pętli monitorowania: {e}")
                 # Kontynuuj pomimo błędu

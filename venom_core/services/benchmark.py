@@ -39,6 +39,23 @@ def _is_valid_benchmark_id(value: str) -> bool:
     return str(parsed) == value.lower()
 
 
+def _secure_sample_without_replacement(
+    items: List["BenchmarkQuestion"], sample_size: int
+) -> List["BenchmarkQuestion"]:
+    """Losuje bez powtórzeń używając kryptograficznego RNG."""
+    if sample_size <= 0:
+        return []
+    if sample_size >= len(items):
+        return list(items)
+
+    pool = list(items)
+    selected: List["BenchmarkQuestion"] = []
+    for _ in range(sample_size):
+        idx = secrets.randbelow(len(pool))
+        selected.append(pool.pop(idx))
+    return selected
+
+
 class BenchmarkStatus(str, Enum):
     """Status testu benchmarkowego."""
 
@@ -426,9 +443,9 @@ class BenchmarkService:
                     )
 
                 # Wybierz losowe pytania
-                rng = secrets.SystemRandom()
-                questions = rng.sample(
-                    all_questions, min(job.num_questions, len(all_questions))
+                questions = _secure_sample_without_replacement(
+                    all_questions,
+                    min(job.num_questions, len(all_questions)),
                 )
 
                 # Testuj każdy model po kolei

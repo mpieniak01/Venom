@@ -21,6 +21,8 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
+SERVER_ERROR_DETAIL = "Błąd serwera"
+SERVER_ERROR_RESPONSES = {500: {"description": SERVER_ERROR_DETAIL}}
 
 
 @router.get("/models/{model_name}/capabilities")
@@ -62,10 +64,10 @@ async def get_model_capabilities_endpoint(model_name: str):
         raise
     except Exception:
         logger.exception("Błąd podczas pobierania capabilities")
-        raise HTTPException(status_code=500, detail="Błąd serwera")
+        raise HTTPException(status_code=500, detail=SERVER_ERROR_DETAIL)
 
 
-@router.get("/models/{model_name}/config")
+@router.get("/models/{model_name}/config", responses=SERVER_ERROR_RESPONSES)
 async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = None):
     """Pobiera schemat parametrow generacji dla modelu (generation_schema)."""
     model_registry = get_model_registry()
@@ -135,10 +137,10 @@ async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = No
         raise
     except Exception:
         logger.exception("Błąd podczas pobierania config")
-        raise HTTPException(status_code=500, detail="Błąd serwera")
+        raise HTTPException(status_code=500, detail=SERVER_ERROR_DETAIL)
 
 
-@router.post("/models/{model_name}/config")
+@router.post("/models/{model_name}/config", responses=SERVER_ERROR_RESPONSES)
 async def update_model_config_endpoint(
     model_name: str, request: ModelConfigUpdateRequest
 ):
@@ -205,4 +207,4 @@ async def update_model_config_endpoint(
         raise
     except Exception:
         logger.exception("Błąd podczas zapisu config")
-        raise HTTPException(status_code=500, detail="Błąd serwera")
+        raise HTTPException(status_code=500, detail=SERVER_ERROR_DETAIL)

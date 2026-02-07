@@ -1,7 +1,7 @@
 """Moduł: persona_factory - generator profili użytkowników dla symulacji."""
 
 import json
-import random
+import secrets
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Optional, TypedDict
@@ -11,6 +11,7 @@ from semantic_kernel import Kernel
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+secure_random = secrets.SystemRandom()
 
 
 class TechLiteracy(str, Enum):
@@ -186,13 +187,15 @@ class PersonaFactory:
                 logger.warning(
                     f"Nieznany archetyp: {archetype}, użyto losowego szablonu"
                 )
-                template = random.choice(self.PERSONA_TEMPLATES)
+                template = secure_random.choice(self.PERSONA_TEMPLATES)
         else:
-            template = random.choice(self.PERSONA_TEMPLATES)
+            template = secure_random.choice(self.PERSONA_TEMPLATES)
 
         # Wygeneruj podstawowe dane
-        age = random.randint(*template["age_range"])
-        name = random.choice(self.POLISH_NAMES["male"] + self.POLISH_NAMES["female"])
+        age = secure_random.randint(*template["age_range"])
+        name = secure_random.choice(
+            self.POLISH_NAMES["male"] + self.POLISH_NAMES["female"]
+        )
 
         # Wylicz próg frustracji na podstawie cierpliwości
         frustration_threshold = max(

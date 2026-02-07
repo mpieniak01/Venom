@@ -23,10 +23,17 @@ const getBuildId = () => {
 };
 
 const createSessionId = () => {
-  const rand =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(36).slice(2, 10);
+  const rand = (() => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID().slice(0, 8);
+    }
+    if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+      const bytes = new Uint8Array(4);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    return Date.now().toString(36).slice(-8);
+  })();
   return `session-${Date.now()}-${rand}`;
 };
 

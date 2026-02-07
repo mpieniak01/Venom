@@ -1,7 +1,7 @@
 """Moduł: director - reżyser koordynujący symulacje użytkowników."""
 
 import asyncio
-import random
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ from venom_core.simulation.persona_factory import Persona, PersonaFactory
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+secure_random = secrets.SystemRandom()
 
 
 class SimulationDirector:
@@ -266,10 +267,10 @@ class SimulationDirector:
 
         while (time.monotonic() - start_time) < duration_seconds:
             # Czekaj losowy czas (10-30s)
-            await asyncio.sleep(random.randint(10, 30))
+            await asyncio.sleep(secure_random.randint(10, 30))
 
             # Losuj akcję chaosu
-            chaos_action = random.choice(
+            chaos_action = secure_random.choice(
                 [
                     "restart_service",
                     # "kill_service",  # Zbyt agresywne dla MVP

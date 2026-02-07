@@ -237,5 +237,9 @@ export function useOptimisticRequests<TDetail = unknown>(
 }
 
 function createOptimisticId() {
-  return `opt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 4)
+      : Date.now().toString(36).slice(-4);
+  return `opt-${Date.now().toString(36)}-${randomPart}`;
 }

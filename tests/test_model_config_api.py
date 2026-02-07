@@ -65,7 +65,7 @@ class TestModelConfigAPI:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["current_values"]["temperature"] == 1.1
+        assert data["current_values"]["temperature"] == pytest.approx(1.1)
         assert data["current_values"]["max_tokens"] == 256
 
     def test_update_model_config_success(self, client):
@@ -91,7 +91,7 @@ class TestModelConfigAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["params"]["temperature"] == 0.9
+        assert data["params"]["temperature"] == pytest.approx(0.9)
 
     def test_update_model_config_unknown_param(self, client):
         _set_registry(DummyRegistry())

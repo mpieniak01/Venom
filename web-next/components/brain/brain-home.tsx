@@ -68,8 +68,8 @@ function getNodeId(node: unknown): string {
 function sortByTimestamp(a: unknown, b: unknown): number {
   const aMeta = getNodeData(a).meta as Record<string, unknown> | undefined;
   const bMeta = getNodeData(b).meta as Record<string, unknown> | undefined;
-  const aTs = typeof aMeta?.timestamp === "string" ? Date.parse(aMeta.timestamp) : NaN;
-  const bTs = typeof bMeta?.timestamp === "string" ? Date.parse(bMeta.timestamp) : NaN;
+  const aTs = typeof aMeta?.timestamp === "string" ? Date.parse(aMeta.timestamp) : Number.NaN;
+  const bTs = typeof bMeta?.timestamp === "string" ? Date.parse(bMeta.timestamp) : Number.NaN;
   if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return aTs - bTs;
   return getStringField(getNodeData(a), "label").localeCompare(getStringField(getNodeData(b), "label"));
 }

@@ -36,7 +36,7 @@ def test_get_token_metrics_basic_without_economist(monkeypatch, client):
     assert response.status_code == 200
     data = response.json()
     assert data["session_total_tokens"] == 123
-    assert data["session_cost_usd"] == 0.0
+    assert data["session_cost_usd"] == pytest.approx(0.0)
 
 
 def test_get_token_metrics_with_economist(monkeypatch, client):
@@ -54,7 +54,7 @@ def test_get_token_metrics_with_economist(monkeypatch, client):
     response = client.get("/api/v1/metrics/tokens")
     assert response.status_code == 200
     data = response.json()
-    assert data["session_cost_usd"] == 1.23
+    assert data["session_cost_usd"] == pytest.approx(1.23)
     assert data["models_breakdown"]["estimated"]["tokens"] == 100
 
 

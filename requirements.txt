@@ -46,13 +46,13 @@ lancedb==0.25.3         # Baza wektorowa (Local-first) - pin dla stabilnego reso
 # Ingestion Engine dependencies
 pypdf>=6.6.0            # Ekstrakcja tekstu z PDF (fix CVE)
 filelock>=3.20.3        # Fix for TOCTOU/symlink issues (transitive from HF stack)
-litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
+# litellm>=1.81.3         # Fix for graphrag transitive vulnerability (wymaga openai>=2.x)
 marshmallow>=4.1.2      # Fix for graphrag/environs transitive vulnerability
 pyasn1>=0.6.2           # Fix for google-auth transitive vulnerability
 werkzeug>=3.1.5         # Fix for locust transitive vulnerability
 markitdown              # Microsoft MarkItDown - konwersja dokumentów (PDF, DOCX) do Markdown
 python-docx             # Obsługa plików DOCX (fallback dla markitdown)
-openapi-core>=0.22.0    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5)
+openapi-core<0.20,>=0.18    # Nowe wymagania (kompatybilność z werkzeug>=3.1.5)
 
 
 # --- VENOM FRONTAL LOBE & EYES: MODELE I WZROK ---
@@ -82,7 +82,7 @@ google-api-python-client>=2.100.0  # Google Calendar API client
 
 # --- VENOM ORACLE MODELS: MODELE CHMUROWE (Opcjonalne) ---
 
-openai>=2.8.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
+openai<2,>=1.98.0           # SDK OpenAI (wersja 2.x; wymagane przez litellm>=1.81)
 google-generativeai     # Gemini API
 anthropic               # Claude API
 azure-core>=1.38.0      # Azure SDK core – aktualizacja pod CVE dot. deserializacji

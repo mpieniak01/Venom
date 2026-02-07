@@ -1,0 +1,187 @@
+name: Docker Hub Publish (Minimal)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: "Safety switch: set to true to allow publishing"
+        required: true
+        default: false
+        type: boolean
+      custom_tag:
+        description: "Optional extra tag (e.g. mvp-1, rc1)"
+        required: false
+        default: ""
+      push_latest:
+        description: "Also publish :latest"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: docker-hub-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Release preflight checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate manual publish guard
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          INPUT_CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+        run: |
+          set -euo pipefail
+          if [[ "${INPUT_CONFIRM_PUBLISH}" != "true" ]]; then
+            echo "[ERROR] Manual publish blocked: confirm_publish must be true." >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "[ERROR] Manual publish allowed only from main branch." >&2
+            echo "[INFO] Current ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Validate tag format and ancestry
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "[ERROR] Release tag must match v<major>.<minor>.<patch> (e.g. v1.2.3)." >&2
+            echo "[INFO] Got tag: ${tag}" >&2
+            exit 1
+          fi
+
+          git fetch origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "[ERROR] Tag commit is not on top of main history." >&2
+            exit 1
+          fi
+
+  publish:
+    name: Publish backend/frontend images to Docker Hub
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            dockerfile: docker/backend.Dockerfile
+          - component: frontend
+            dockerfile: docker/frontend.Dockerfile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker Hub secrets
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
+            echo "[ERROR] Missing Docker Hub secrets: DOCKERHUB_USERNAME and/or DOCKERHUB_TOKEN." >&2
+            exit 1
+          fi
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        shell: bash
+        env:
+          WORKFLOW_EVENT_NAME: ${{ github.event_name }}
+          INPUT_CUSTOM_TAG: ${{ inputs.custom_tag }}
+          INPUT_PUSH_LATEST: ${{ inputs.push_latest }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          namespace="${DOCKERHUB_NAMESPACE:-${DOCKERHUB_USERNAME}}"
+          image="${namespace}/venom-${{ matrix.component }}"
+          short_sha="${GITHUB_SHA::7}"
+
+          tags=("${image}:sha-${short_sha}")
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            git_tag="${GITHUB_REF#refs/tags/}"
+            tags+=("${image}:${git_tag}")
+            tags+=("${image}:latest")
+          fi
+
+          if [[ "${WORKFLOW_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            custom_tag="${INPUT_CUSTOM_TAG}"
+            if [[ -n "${custom_tag}" && ! "${custom_tag}" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+              echo "[ERROR] Invalid custom_tag. Allowed: letters, digits, dot, underscore, hyphen." >&2
+              exit 1
+            fi
+            if [[ -n "${custom_tag}" ]]; then
+              tags+=("${image}:${custom_tag}")
+            fi
+            if [[ "${INPUT_PUSH_LATEST}" == "true" ]]; then
+              tags+=("${image}:latest")
+            fi
+          fi
+
+          uniq_tags=()
+          for tag in "${tags[@]}"; do
+            skip=0
+            for seen in "${uniq_tags[@]}"; do
+              if [[ "${seen}" == "${tag}" ]]; then
+                skip=1
+                break
+              fi
+            done
+            if [[ "${skip}" -eq 0 ]]; then
+              uniq_tags+=("${tag}")
+            fi
+          done
+
+          {
+            echo "tags<<EOF"
+            for tag in "${uniq_tags[@]}"; do
+              echo "${tag}"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Will publish tags:"
+          printf '  - %s\n' "${uniq_tags[@]}"
+
+      - name: Build and push ${{ matrix.component }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

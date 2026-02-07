@@ -1,5 +1,8 @@
 """Moduł: browser_skill - umiejętność przeglądarkowa dla testów E2E."""
 
+import ipaddress
+import os
+import re
 import time
 from importlib import import_module
 from pathlib import Path
@@ -18,6 +21,9 @@ logger = get_logger(__name__)
 
 # Stała dla opóźnienia stabilizacji DOM
 DOM_STABILIZATION_DELAY_MS = 500
+MAX_SCREENSHOT_FILENAME_LEN = 128
+ALLOWED_SCREENSHOT_CHARS = re.compile(r"^[A-Za-z0-9._-]+$")
+ALLOWED_BROWSER_SCHEMES = {"http", "https"}
 
 
 class BrowserSkill:
@@ -50,6 +56,83 @@ class BrowserSkill:
         self._page: Optional["Page"] = None
 
         logger.info("BrowserSkill zainicjalizowany")
+
+    @staticmethod
+    def _is_local_or_private_host(hostname: str) -> bool:
+        """Sprawdza czy host jest lokalny/prywatny."""
+        lowered = hostname.lower().strip()
+        if lowered in {"localhost", "0.0.0.0", "::1"}:
+            return True
+        try:
+            ip = ipaddress.ip_address(lowered)
+        except ValueError:
+            return False
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+
+    def _get_allowed_hosts(self) -> set[str]:
+        """Pobiera opcjonalną allowlistę hostów z ENV."""
+        raw = os.getenv("VENOM_BROWSER_ALLOWED_HOSTS", "")
+        hosts = {
+            host.strip().lower()
+            for host in raw.split(",")
+            if host and host.strip()
+        }
+        return hosts
+
+    def _validate_url_policy(self, normalized_url: str) -> list[str]:
+        """
+        Zwraca listę ostrzeżeń polityki URL (warn-only / block zależnie od konfiguracji).
+        """
+        warnings: list[str] = []
+        parsed = urlparse(normalized_url)
+        scheme = parsed.scheme.lower()
+        host = (parsed.hostname or "").lower()
+
+        if scheme not in ALLOWED_BROWSER_SCHEMES:
+            warnings.append(
+                f"Niedozwolony schemat URL: '{scheme}'. Dozwolone: http/https."
+            )
+            return warnings
+
+        if not host:
+            warnings.append("Brak hosta w URL.")
+            return warnings
+
+        if self._is_local_or_private_host(host):
+            return warnings
+
+        allowed_hosts = self._get_allowed_hosts()
+        if host not in allowed_hosts:
+            warnings.append(
+                "Host nie jest lokalny i nie znajduje się na allowliście "
+                "(VENOM_BROWSER_ALLOWED_HOSTS)."
+            )
+
+        return warnings
+
+    @staticmethod
+    def _sanitize_screenshot_filename(filename: str) -> str:
+        """Sanityzuje nazwę pliku screenshotu (bez katalogów)."""
+        if not filename or not filename.strip():
+            raise ValueError("Nazwa pliku nie może być pusta")
+
+        candidate = filename.strip()
+        if Path(candidate).name != candidate:
+            raise ValueError("Nazwa pliku nie może zawierać separatorów katalogów")
+        if candidate in {".", ".."}:
+            raise ValueError("Niedozwolona nazwa pliku")
+
+        if not candidate.endswith(".png"):
+            candidate = f"{candidate}.png"
+
+        if len(candidate) > MAX_SCREENSHOT_FILENAME_LEN:
+            raise ValueError("Nazwa pliku screenshotu jest zbyt długa")
+        if not ALLOWED_SCREENSHOT_CHARS.fullmatch(candidate):
+            raise ValueError(
+                "Nazwa pliku może zawierać tylko: litery, cyfry, '.', '_' i '-'"
+            )
+
+        return candidate
 
     async def _ensure_browser(self):
         """Upewnia się, że przeglądarka jest uruchomiona."""
@@ -151,6 +234,14 @@ class BrowserSkill:
             await self._ensure_browser()
 
             normalized_url = self._ensure_url_scheme(url)
+            policy_warnings = self._validate_url_policy(normalized_url)
+            policy_mode = os.getenv("VENOM_BROWSER_URL_POLICY_MODE", "warn").lower()
+            if policy_warnings:
+                warning_text = " | ".join(policy_warnings)
+                if policy_mode == "block":
+                    logger.warning("Browser URL policy BLOCK: %s", warning_text)
+                    return f"❌ URL zablokowany przez politykę bezpieczeństwa: {warning_text}"
+                logger.warning("Browser URL policy WARN: %s", warning_text)
             logger.info(f"Odwiedzanie strony: {normalized_url}")
             page = self._require_page()
             await page.goto(normalized_url, wait_until=wait_until, timeout=30000)
@@ -232,9 +323,7 @@ class BrowserSkill:
         try:
             await self._ensure_browser()
 
-            # Upewnij się że filename ma rozszerzenie .png
-            if not filename.endswith(".png"):
-                filename = f"{filename}.png"
+            filename = self._sanitize_screenshot_filename(filename)
 
             screenshot_path = self.screenshots_dir / filename
             logger.info(f"Wykonywanie zrzutu ekranu: {screenshot_path}")

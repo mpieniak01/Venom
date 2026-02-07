@@ -1,5 +1,6 @@
 """Moduł: compose_skill - umiejętność orkiestracji środowisk Docker Compose."""
 
+import os
 import re
 from typing import Annotated, Optional
 
@@ -17,6 +18,8 @@ PORT_RANGE_END = 9000
 
 # Konfiguracja generowania sekretów
 SECRET_KEY_BYTES = 32  # Liczba bajtów dla SECRET_KEY (64 znaki hex)
+STACK_NAME_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9]|)$")
+SERVICE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
 
 class ComposeSkill:
@@ -61,6 +64,49 @@ class ComposeSkill:
             "aby korzystać z orkiestracji stacków."
         )
 
+    def _validate_stack_name(self, stack_name: str) -> Optional[str]:
+        """Waliduje nazwę stacka."""
+        if not stack_name or not stack_name.strip():
+            return "❌ Błąd: Nazwa stacka nie może być pusta."
+        if not STACK_NAME_PATTERN.fullmatch(stack_name):
+            return (
+                f"Błąd: Nieprawidłowa nazwa stacka '{stack_name}'. "
+                "Nazwa musi zaczynać się i kończyć małą literą lub cyfrą, "
+                "może zawierać myślniki w środku."
+            )
+        return None
+
+    def _validate_service_name(self, service_name: str) -> Optional[str]:
+        """Waliduje nazwę serwisu w compose."""
+        if not service_name or not service_name.strip():
+            return "❌ Błąd: Nazwa serwisu nie może być pusta."
+        if not SERVICE_NAME_PATTERN.fullmatch(service_name):
+            return (
+                f"❌ Błąd: Nieprawidłowa nazwa serwisu '{service_name}'. "
+                "Dozwolone: litery, cyfry, '_', '-', '.'."
+            )
+        return None
+
+    def _scan_compose_policy_issues(self, compose_content: str) -> list[str]:
+        """Wykrywa potencjalnie niebezpieczne wzorce w compose (policy guard)."""
+        issues: list[str] = []
+        checks = [
+            (r"(?im)^\s*privileged\s*:\s*true\b", "Użycie privileged: true"),
+            (
+                r"(?im)^\s*network_mode\s*:\s*[\"']?host[\"']?\s*$",
+                "Użycie network_mode: host",
+            ),
+            (r"/var/run/docker\.sock", "Bind mount /var/run/docker.sock"),
+            (
+                r"(?im)^\s*-\s*[\"']?/\s*:[^\\n]+$",
+                "Bind mount katalogu root '/' z hosta",
+            ),
+        ]
+        for pattern, description in checks:
+            if re.search(pattern, compose_content):
+                issues.append(description)
+        return issues
+
     @kernel_function(
         name="create_environment",
         description="Tworzy i uruchamia środowisko wielokontenerowe (stack) na podstawie docker-compose.yml. "
@@ -94,12 +140,9 @@ class ComposeSkill:
             if not self.stack_manager:
                 return self._compose_unavailable_response()
 
-            # Walidacja nazwy stacka
-            if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9]|)$", stack_name):
-                return (
-                    f"Błąd: Nieprawidłowa nazwa stacka '{stack_name}'. "
-                    "Nazwa musi zaczynać się i kończyć małą literą lub cyfrą, może zawierać myślniki w środku."
-                )
+            stack_name_error = self._validate_stack_name(stack_name)
+            if stack_name_error:
+                return stack_name_error
 
             logger.info(f"Tworzenie środowiska: {stack_name}")
 
@@ -118,6 +161,18 @@ class ComposeSkill:
                     "Sprawdź poprawność szablonu."
                 )
 
+            policy_issues = self._scan_compose_policy_issues(processed_content)
+            policy_mode = os.getenv("VENOM_COMPOSE_POLICY_MODE", "warn").lower()
+            if policy_issues:
+                issues = "; ".join(policy_issues)
+                if policy_mode == "block":
+                    logger.warning("Compose policy BLOCK (%s): %s", stack_name, issues)
+                    return (
+                        "❌ Compose zablokowany przez politykę bezpieczeństwa: "
+                        f"{issues}"
+                    )
+                logger.warning("Compose policy WARN (%s): %s", stack_name, issues)
+
             # Wdróż stack
             success, message = self.stack_manager.deploy_stack(
                 compose_content=processed_content,
@@ -133,6 +188,11 @@ class ComposeSkill:
                 )
                 if port_info:
                     result += f"\n📡 Dostępne porty:\n{port_info}"
+                if policy_issues:
+                    result += (
+                        "\n⚠️ Ostrzeżenia polityki bezpieczeństwa (tryb warn-only):\n"
+                        + "\n".join(f"  • {issue}" for issue in policy_issues)
+                    )
 
                 return result
             else:
@@ -165,6 +225,9 @@ class ComposeSkill:
         try:
             if not self.stack_manager:
                 return self._compose_unavailable_response()
+            stack_name_error = self._validate_stack_name(stack_name)
+            if stack_name_error:
+                return stack_name_error
             logger.info(f"Usuwanie środowiska: {stack_name}")
 
             success, message = self.stack_manager.destroy_stack(
@@ -206,6 +269,12 @@ class ComposeSkill:
         try:
             if not self.stack_manager:
                 return self._compose_unavailable_response()
+            stack_name_error = self._validate_stack_name(stack_name)
+            if stack_name_error:
+                return stack_name_error
+            service_name_error = self._validate_service_name(service_name)
+            if service_name_error:
+                return service_name_error
             logger.info(f"Sprawdzanie zdrowia serwisu: {service_name} w {stack_name}")
 
             # Pobierz logi serwisu
@@ -279,6 +348,9 @@ class ComposeSkill:
         try:
             if not self.stack_manager:
                 return self._compose_unavailable_response()
+            stack_name_error = self._validate_stack_name(stack_name)
+            if stack_name_error:
+                return stack_name_error
             success, status = self.stack_manager.get_stack_status(stack_name)
 
             if success:

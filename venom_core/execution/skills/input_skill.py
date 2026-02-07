@@ -6,7 +6,7 @@ Ten skill pozwala na fizyczną interakcję z interfejsem systemu operacyjnego.
 
 import platform
 import sys
-import time
+import asyncio
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -46,7 +46,7 @@ class InputSkill:
             )
 
         self.pg = resolved_pg
-        self.safety_delay = safety_delay
+        self.safety_delay = max(0.0, float(safety_delay))
         self.system = platform.system()
 
         # Aktywuj PyAutoGUI Fail-Safe (ruch do rogu (0,0) przerywa)
@@ -98,6 +98,8 @@ class InputSkill:
             # Walidacja współrzędnych
             if not self._validate_coordinates(x, y):
                 return f"❌ Nieprawidłowe współrzędne: ({x}, {y})"
+            if move_duration < 0:
+                return "❌ Czas ruchu kursora nie może być ujemny"
 
             # Walidacja przycisku
             if button not in ["left", "right", "middle"]:
@@ -111,7 +113,7 @@ class InputSkill:
             self.pg.moveTo(x, y, duration=move_duration)
 
             # Czekaj chwilę
-            time.sleep(0.1)
+            await self._pause(0.1)
 
             # Kliknij
             if double:
@@ -120,7 +122,7 @@ class InputSkill:
                 self.pg.click(button=button)
 
             # Czekaj safety delay
-            time.sleep(self.safety_delay)
+            await self._pause(self.safety_delay)
 
             return f"✅ Kliknięto w ({x}, {y}) przyciskiem {button}"
 
@@ -157,6 +159,10 @@ class InputSkill:
 
         raise RuntimeError("PyAutoGUI zwróciło nieprawidłowy rozmiar ekranu")
 
+    async def _pause(self, delay: float) -> None:
+        """Nieblokujące opóźnienie dla metod async."""
+        await asyncio.sleep(max(0.0, float(delay)))
+
     @kernel_function(
         name="keyboard_type",
         description="Wpisuje tekst używając klawiatury. UWAGA: Wpisuje w aktywnym oknie!",
@@ -182,6 +188,8 @@ class InputSkill:
         try:
             if not text:
                 return "❌ Brak tekstu do wpisania"
+            if interval < 0:
+                return "❌ Opóźnienie między literami nie może być ujemne"
 
             logger.info(f"Wpisywanie tekstu: '{text[:50]}...' (długość: {len(text)})")
 
@@ -189,7 +197,7 @@ class InputSkill:
             self.pg.write(text, interval=interval)
 
             # Czekaj safety delay
-            time.sleep(self.safety_delay)
+            await self._pause(self.safety_delay)
 
             return f"✅ Wpisano tekst ({len(text)} znaków)"
 
@@ -238,7 +246,7 @@ class InputSkill:
             self.pg.hotkey(*key_list)
 
             # Czekaj safety delay
-            time.sleep(self.safety_delay)
+            await self._pause(self.safety_delay)
 
             return f"✅ Wykonano skrót: {keys}"
 
@@ -293,11 +301,24 @@ class InputSkill:
         try:
             if region:
                 # Parsuj region
-                parts = [int(p.strip()) for p in region.split(",")]
+                try:
+                    parts = [int(p.strip()) for p in region.split(",")]
+                except ValueError:
+                    return "❌ Region musi zawierać liczby całkowite: x,y,width,height"
                 if len(parts) != 4:
                     return "❌ Region musi być w formacie: x,y,width,height"
+                x, y, width, height = parts
+                if width <= 0 or height <= 0:
+                    return "❌ Szerokość i wysokość regionu muszą być > 0"
+                if x < 0 or y < 0:
+                    return "❌ Współrzędne regionu nie mogą być ujemne"
+                if x + width > self.screen_width or y + height > self.screen_height:
+                    return (
+                        "❌ Region wykracza poza ekran "
+                        f"({self.screen_width}x{self.screen_height})"
+                    )
 
-                screenshot = self.pg.screenshot(region=tuple(parts))
+                screenshot = self.pg.screenshot(region=(x, y, width, height))
             else:
                 screenshot = self.pg.screenshot()
 

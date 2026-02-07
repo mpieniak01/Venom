@@ -1,5 +1,6 @@
 """Testy jednostkowe dla CloudProvisioner."""
 
+import asyncio
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,6 +11,13 @@ from venom_core.infrastructure.cloud_provisioner import (
     CloudProvisioner,
     CloudProvisionerError,
 )
+
+
+def _create_temp_compose_file(compose_content: str) -> str:
+    """Tworzy tymczasowy plik docker-compose i zwraca ścieżkę."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(compose_content)
+        return f.name
 
 
 @pytest.fixture
@@ -141,11 +149,9 @@ async def test_provision_server_success(mock_connect, temp_ssh_key):
 async def test_deploy_stack_success(mock_connect, temp_ssh_key):
     """Test pomyślnego deploymentu stacku."""
     # Stwórz tymczasowy docker-compose.yml
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False
-    ) as compose_file:
-        compose_file.write("version: '3'\nservices:\n  app:\n    image: nginx")
-        compose_path = compose_file.name
+    compose_path = await asyncio.to_thread(
+        _create_temp_compose_file, "version: '3'\nservices:\n  app:\n    image: nginx"
+    )
 
     try:
         # Mock SSH connection i SFTP
@@ -281,11 +287,9 @@ async def test_deploy_stack_invalid_stack_name():
     provisioner = CloudProvisioner()
 
     # Stwórz tymczasowy docker-compose.yml
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False
-    ) as compose_file:
-        compose_file.write("version: '3'\nservices:\n  app:\n    image: nginx")
-        compose_path = compose_file.name
+    compose_path = await asyncio.to_thread(
+        _create_temp_compose_file, "version: '3'\nservices:\n  app:\n    image: nginx"
+    )
 
     try:
         # Test path traversal attempt

@@ -19,6 +19,35 @@ If you are looking for the list of Venom system agents, use:
 - Run relevant `pytest` groups for touched modules.
 - Confirm no new critical/high security findings.
 
+## Quality and Security Toolchain (Project Standard)
+
+- **SonarCloud (PR gate):** mandatory pull request analysis for bugs, vulnerabilities, code smells, duplications, and maintainability.
+- **Snyk (periodic scan):** recurring dependency and container security scans for newly disclosed CVEs.
+- **CI Lite:** fast PR checks (lint + selected unit tests).
+- **pre-commit:** local hooks expected before push.
+- **Local static checks:** `ruff`, `mypy venom_core`.
+- **Local tests:** `pytest` (targeted suites at minimum for changed modules).
+
+Recommended local command sequence:
+
+```bash
+pre-commit run --all-files
+ruff check . --fix
+ruff format .
+mypy venom_core
+pytest -q
+```
+
+## Canonical Reference
+
+- Source of truth for quality/security gates: `README.md` section **"Quality and Security Gates"**.
+
+## Architecture References
+
+- System vision: `docs/VENOM_MASTER_VISION_V1.md`
+- Backend architecture: `docs/BACKEND_ARCHITECTURE.md`
+- Repository tree / directories map: `docs/TREE.md`
+
 ## Documentation Rule
 
 - Functional catalog of Venom runtime agents belongs in `SYSTEM_AGENTS_CATALOG.md`.

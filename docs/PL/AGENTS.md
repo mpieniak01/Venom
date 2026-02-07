@@ -19,6 +19,35 @@ Jeśli szukasz listy agentów systemu Venom, użyj:
 - Uruchamiaj odpowiednie grupy `pytest` dla zmienianych modułów.
 - Potwierdź brak nowych podatności critical/high.
 
+## Stos Narzędzi Jakości i Bezpieczeństwa (Standard Projektu)
+
+- **SonarCloud (bramka PR):** obowiązkowa analiza pull requestów pod kątem bugów, podatności, code smelli, duplikacji i utrzymywalności.
+- **Snyk (skan okresowy):** cykliczne skany bezpieczeństwa zależności i kontenerów pod nowe CVE.
+- **CI Lite:** szybkie checki na PR (lint + wybrane testy unit).
+- **pre-commit:** lokalne hooki wymagane przed push.
+- **Lokalne checki statyczne:** `ruff`, `mypy venom_core`.
+- **Lokalne testy:** `pytest` (co najmniej celowane zestawy dla zmienionych modułów).
+
+Rekomendowana sekwencja lokalna:
+
+```bash
+pre-commit run --all-files
+ruff check . --fix
+ruff format .
+mypy venom_core
+pytest -q
+```
+
+## Referencja Kanoniczna
+
+- Źródło prawdy dla bramek jakości/bezpieczeństwa: `README_PL.md` sekcja **"Bramy jakości i bezpieczeństwa"**.
+
+## Referencje Architektury
+
+- Wizja systemu: `docs/PL/VENOM_MASTER_VISION_V1.md`
+- Architektura backendu: `docs/PL/BACKEND_ARCHITECTURE.md`
+- Mapa katalogów / drzewo repo: `docs/PL/TREE.md`
+
 ## Zasada Dokumentacyjna
 
 - Katalog funkcjonalny agentów runtime Venom jest w `KATALOG_AGENTOW_SYSTEMU.md`.

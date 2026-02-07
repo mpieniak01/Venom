@@ -2,6 +2,9 @@
 
 from typing import Any, Dict, Optional
 
+from venom_core.utils.config_paths import resolve_config_path
+from venom_core.utils.logger import get_logger
+
 yaml: Any = None
 try:  # pragma: no cover - zależne od środowiska
     import yaml as _yaml
@@ -9,9 +12,6 @@ try:  # pragma: no cover - zależne od środowiska
     yaml = _yaml
 except ImportError:  # pragma: no cover
     pass
-
-from venom_core.utils.config_paths import resolve_config_path
-from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

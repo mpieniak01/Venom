@@ -115,7 +115,7 @@ GraphRAG + LanceDB – repository structure, dependencies, project knowledge.
 
 ### 3.4. Execution layer (Execution Layer)
 Semantic Kernel – files, shell, git, tests.
-MCP Import – tools from Git (proxy generator + wrappers in `venom_core/skills/custom`).
+MCP Import – tools from Git (proxy generator + wrappers in `venom_core/skills/custom`, runtime-generated and optional in a fresh checkout).
 
 ### 3.5. Perception layer (Vision Layer)
 - Florence-2 ONNX – UI vision

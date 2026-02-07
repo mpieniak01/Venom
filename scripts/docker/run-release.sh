@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 COMPOSE_FILE="$ROOT_DIR/compose/compose.release.yml"
-COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.minimal.gpu.yml"
+COMPOSE_GPU_FILE="$ROOT_DIR/compose/compose.internal.gpu-override.yml"
 MODEL_DEFAULT="gemma3:4b"
 MODEL="${OLLAMA_MODEL:-$MODEL_DEFAULT}"
 GPU_MODE="${VENOM_ENABLE_GPU:-auto}"

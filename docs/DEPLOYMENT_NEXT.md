@@ -79,6 +79,7 @@ Published images:
 
 Security note (MVP default):
 - `compose/compose.minimal.yml` publishes ports on host interfaces to allow testing from another computer in LAN.
+- `compose/compose.spores.yml.tmp` is a temporary Spore nodes draft, currently unused and not part of the Venom minimal onboarding path.
 - Mandatory condition: run this profile only in a trusted/private network.
 - Do not expose these ports directly to public Internet. If remote/public access is needed, place a reverse proxy in front and add authentication/authorization.
 

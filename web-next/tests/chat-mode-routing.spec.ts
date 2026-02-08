@@ -48,6 +48,60 @@ async function waitForCockpitReady(page: Page) {
   await page.getByTestId("cockpit-send-button").waitFor({ state: "visible", timeout: 10000 });
 }
 
+type EventSourcePayload = { event: string; data: Record<string, unknown> };
+
+async function installMockTaskEventSource(
+  page: Page,
+  payloads: EventSourcePayload[],
+  openDelayMs: number,
+  stepDelayMs: number,
+) {
+  await page.addInitScript(
+    ({ payloads, openDelayMs, stepDelayMs }) => {
+      class MockEventSource {
+        url: string;
+        onopen: ((event: Event) => void) | null = null;
+        onerror: ((event: Event) => void) | null = null;
+        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
+
+        constructor(url: string) {
+          this.url = url;
+          setTimeout(() => {
+            this.onopen?.(new Event("open"));
+            this.schedulePayloads(payloads, stepDelayMs);
+          }, openDelayMs);
+        }
+
+        private emitPayload(payload: { event: string; data: Record<string, unknown> }) {
+          const event = new MessageEvent(payload.event, { data: JSON.stringify(payload.data) });
+          for (const handler of this.listeners[payload.event] || []) {
+            handler(event);
+          }
+        }
+
+        private schedulePayloads(payloads: Array<{ event: string; data: Record<string, unknown> }>, delayStepMs: number) {
+          payloads.forEach((payload, index) => {
+            setTimeout(() => this.emitPayload(payload), delayStepMs * (index + 1));
+          });
+        }
+
+        addEventListener(event: string, handler: (event: MessageEvent) => void) {
+          this.listeners[event] = this.listeners[event] || [];
+          this.listeners[event].push(handler);
+        }
+
+        close() {
+          this.listeners = {};
+        }
+      }
+
+      // @ts-expect-error - mock EventSource in test runtime
+      window.EventSource = MockEventSource;
+    },
+    { payloads, openDelayMs, stepDelayMs },
+  );
+}
+
 test.describe("Chat mode routing", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
@@ -147,39 +201,12 @@ test.describe("Chat mode routing", () => {
   test("Normal mode routes through tasks without forced intent", async ({ page }) => {
     let taskBody: Record<string, unknown> | null = null;
 
-    await page.addInitScript(() => {
-      class MockEventSource {
-        url: string;
-        onopen: ((event: Event) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          setTimeout(() => {
-            this.onopen?.(new Event("open"));
-            const payload = {
-              event: "task_finished",
-              data: JSON.stringify({ task_id: "task-normal", status: "COMPLETED", result: "OK" }),
-            };
-            const event = new MessageEvent(payload.event, { data: payload.data });
-            (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-          }, 30);
-        }
-
-        addEventListener(event: string, handler: (event: MessageEvent) => void) {
-          this.listeners[event] = this.listeners[event] || [];
-          this.listeners[event].push(handler);
-        }
-
-        close() {
-          this.listeners = {};
-        }
-      }
-
-      // @ts-expect-error - mock EventSource in test runtime
-      window.EventSource = MockEventSource;
-    });
+    await installMockTaskEventSource(
+      page,
+      [{ event: "task_finished", data: { task_id: "task-normal", status: "COMPLETED", result: "OK" } }],
+      30,
+      120,
+    );
 
     await page.route("**/api/v1/tasks", async (route) => {
       if (route.request().method() === "POST") {
@@ -275,57 +302,18 @@ test.describe("Chat mode routing", () => {
   });
 
   test("Streaming TTFT shows partial before final result", async ({ page }) => {
-    await page.addInitScript(() => {
-      class MockEventSource {
-        url: string;
-        onopen: ((event: Event) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          setTimeout(() => {
-            this.onopen?.(new Event("open"));
-            const payloads = [
-              {
-                event: "task_update",
-                data: JSON.stringify({
-                  task_id: "task-ttft",
-                  status: "PROCESSING",
-                  result: "Pierwszy fragment",
-                }),
-              },
-              {
-                event: "task_finished",
-                data: JSON.stringify({
-                  task_id: "task-ttft",
-                  status: "COMPLETED",
-                  result: "Pierwszy fragment + reszta",
-                }),
-              },
-            ];
-            payloads.forEach((payload, index) => {
-              setTimeout(() => {
-                const event = new MessageEvent(payload.event, { data: payload.data });
-                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-              }, 120 * (index + 1));
-            });
-          }, 40);
-        }
-
-        addEventListener(event: string, handler: (event: MessageEvent) => void) {
-          this.listeners[event] = this.listeners[event] || [];
-          this.listeners[event].push(handler);
-        }
-
-        close() {
-          this.listeners = {};
-        }
-      }
-
-      // @ts-expect-error - mock EventSource in test runtime
-      window.EventSource = MockEventSource;
-    });
+    await installMockTaskEventSource(
+      page,
+      [
+        { event: "task_update", data: { task_id: "task-ttft", status: "PROCESSING", result: "Pierwszy fragment" } },
+        {
+          event: "task_finished",
+          data: { task_id: "task-ttft", status: "COMPLETED", result: "Pierwszy fragment + reszta" },
+        },
+      ],
+      40,
+      120,
+    );
 
     await page.route("**/api/v1/tasks", async (route) => {
       if (route.request().method() === "POST") {
@@ -394,57 +382,22 @@ test.describe("Chat mode routing", () => {
   test("Complex mode forces COMPLEX_PLANNING intent and routes to Architect", async ({ page }) => {
     let taskBody: Record<string, unknown> | null = null;
 
-    await page.addInitScript(() => {
-      class MockEventSource {
-        url: string;
-        onopen: ((event: Event) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          setTimeout(() => {
-            this.onopen?.(new Event("open"));
-            const payloads = [
-              {
-                event: "task_update",
-                data: JSON.stringify({
-                  task_id: "task-complex",
-                  status: "PROCESSING",
-                  logs: ["Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta"],
-                }),
-              },
-              {
-                event: "task_finished",
-                data: JSON.stringify({
-                  task_id: "task-complex",
-                  status: "COMPLETED",
-                  result: "OK",
-                }),
-              },
-            ];
-            payloads.forEach((payload, index) => {
-              setTimeout(() => {
-                const event = new MessageEvent(payload.event, { data: payload.data });
-                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-              }, 80 * (index + 1));
-            });
-          }, 30);
-        }
-
-        addEventListener(event: string, handler: (event: MessageEvent) => void) {
-          this.listeners[event] = this.listeners[event] || [];
-          this.listeners[event].push(handler);
-        }
-
-        close() {
-          this.listeners = {};
-        }
-      }
-
-      // @ts-expect-error - mock EventSource in test runtime
-      window.EventSource = MockEventSource;
-    });
+    await installMockTaskEventSource(
+      page,
+      [
+        {
+          event: "task_update",
+          data: {
+            task_id: "task-complex",
+            status: "PROCESSING",
+            logs: ["Zadanie sklasyfikowane jako COMPLEX_PLANNING - delegacja do Architekta"],
+          },
+        },
+        { event: "task_finished", data: { task_id: "task-complex", status: "COMPLETED", result: "OK" } },
+      ],
+      30,
+      80,
+    );
 
     await page.route("**/api/v1/tasks", async (route) => {
       if (route.request().method() === "POST") {

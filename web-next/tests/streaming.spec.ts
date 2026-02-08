@@ -2,6 +2,76 @@ import { test } from "@playwright/test";
 
 const emptyJson = JSON.stringify([]);
 
+type StreamPayload = { event: string; data: Record<string, unknown> };
+
+const streamPayloads: StreamPayload[] = [
+  {
+    event: "task_update",
+    data: {
+      task_id: "sse-test-123",
+      status: "PROCESSING",
+      logs: ["Rozpoczynam streaming odpowiedzi"],
+    },
+  },
+  {
+    event: "task_finished",
+    data: {
+      task_id: "sse-test-123",
+      status: "COMPLETED",
+      result: "SSE wynik odpowiedzi",
+    },
+  },
+];
+
+async function installStreamingMockEventSource(page: import("@playwright/test").Page) {
+  await page.addInitScript(({ payloads }) => {
+    class MockEventSource {
+      url: string;
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
+
+      constructor(url: string) {
+        this.url = url;
+        setTimeout(() => {
+          this.onopen?.(new Event("open"));
+          this.schedulePayloads(payloads);
+        }, 50);
+      }
+
+      private emitPayload(payload: { event: string; data: Record<string, unknown> }) {
+        const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
+        win.__taskStreamEvents = [
+          ...(win.__taskStreamEvents ?? []),
+          { event: payload.event, ...payload.data },
+        ].slice(-25);
+        const event = new MessageEvent(payload.event, { data: JSON.stringify(payload.data) });
+        for (const handler of this.listeners[payload.event] || []) {
+          handler(event);
+        }
+      }
+
+      private schedulePayloads(payloads: Array<{ event: string; data: Record<string, unknown> }>) {
+        payloads.forEach((payload, index) => {
+          setTimeout(() => this.emitPayload(payload), 150 * (index + 1));
+        });
+      }
+
+      addEventListener(event: string, handler: (event: MessageEvent) => void) {
+        this.listeners[event] = this.listeners[event] || [];
+        this.listeners[event].push(handler);
+      }
+
+      close() {
+        this.listeners = {};
+      }
+    }
+
+    // @ts-expect-error - mock EventSource in test runtime
+    window.EventSource = MockEventSource;
+  }, { payloads: streamPayloads });
+}
+
 test.describe("Cockpit streaming SSE", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
@@ -90,62 +160,7 @@ test.describe("Cockpit streaming SSE", () => {
   });
 
   test("aktualizuje bąbel rozmowy po zdarzeniach SSE", async ({ page }) => {
-    await page.addInitScript(() => {
-      class MockEventSource {
-        url: string;
-        onopen: ((event: Event) => void) | null = null;
-        onerror: ((event: Event) => void) | null = null;
-        private listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
-
-        constructor(url: string) {
-          this.url = url;
-          setTimeout(() => {
-            this.onopen?.(new Event("open"));
-            const payloads = [
-              {
-                event: "task_update",
-                data: JSON.stringify({
-                  task_id: "sse-test-123",
-                  status: "PROCESSING",
-                  logs: ["Rozpoczynam streaming odpowiedzi"],
-                }),
-              },
-              {
-                event: "task_finished",
-                data: JSON.stringify({
-                  task_id: "sse-test-123",
-                  status: "COMPLETED",
-                  result: "SSE wynik odpowiedzi",
-                }),
-              },
-            ];
-            payloads.forEach((payload, index) => {
-              setTimeout(() => {
-                const win = window as typeof window & { __taskStreamEvents?: Record<string, unknown>[] };
-                win.__taskStreamEvents = [
-                  ...(win.__taskStreamEvents ?? []),
-                  { event: payload.event, ...(JSON.parse(payload.data) as Record<string, unknown> || {}) },
-                ].slice(-25);
-                const event = new MessageEvent(payload.event, { data: payload.data });
-                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-              }, 150 * (index + 1));
-            });
-          }, 50);
-        }
-
-        addEventListener(event: string, handler: (event: MessageEvent) => void) {
-          this.listeners[event] = this.listeners[event] || [];
-          this.listeners[event].push(handler);
-        }
-
-        close() {
-          this.listeners = {};
-        }
-      }
-
-      // @ts-expect-error - mock EventSource in test runtime
-      window.EventSource = MockEventSource;
-    });
+    await installStreamingMockEventSource(page);
 
     await page.route("**/api/v1/history/requests?limit=6", async (route) => {
       await route.fulfill({

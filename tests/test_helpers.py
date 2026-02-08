@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -67,7 +68,8 @@ def test_write_file_non_string_content(temp_dir):
     file_path = temp_dir / "number.txt"
 
     # Powinno automatycznie skonwertować na string
-    assert write_file(file_path, 12345) is True
+    non_string_content: Any = 12345
+    assert write_file(file_path, non_string_content) is True
     assert read_file(file_path) == "12345"
 
 

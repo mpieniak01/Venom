@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from venom_core.config import SETTINGS
+from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
 
 @dataclass
@@ -86,6 +87,7 @@ def get_active_llm_runtime(settings=None) -> LLMRuntimeInfo:
     endpoint = settings.LLM_LOCAL_ENDPOINT
 
     if service_type == "local":
+        endpoint = apply_http_policy_to_url(endpoint)
         provider = infer_local_provider(endpoint)
     elif service_type == "openai":
         provider = "openai"
@@ -140,7 +142,11 @@ def _build_health_url(runtime: LLMRuntimeInfo) -> Optional[str]:
     parsed = urlparse(runtime.endpoint)
     if runtime.provider == "ollama":
         base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-        return f"{base}/api/tags" if base else "http://localhost:11434/api/tags"
+        return (
+            f"{base}/api/tags"
+            if base
+            else build_http_url("localhost", 11434, "/api/tags")
+        )
 
     endpoint = runtime.endpoint.rstrip("/")
     if endpoint.endswith("/models"):

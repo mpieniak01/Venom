@@ -31,6 +31,18 @@ PIPELINE_CONCURRENCY = int(os.getenv("VENOM_PIPELINE_CONCURRENCY", "3"))
 PIPELINE_BATCH_BUDGET_SECONDS = float(os.getenv("VENOM_PIPELINE_BUDGET", "6.0"))
 
 
+def _decode_sse_payload(data_buffer: List[str]) -> Dict[str, Any]:
+    return json.loads("\n".join(data_buffer)) if data_buffer else {}
+
+
+def _is_event_line(line: str) -> bool:
+    return line.startswith("event:")
+
+
+def _is_data_line(line: str) -> bool:
+    return line.startswith("data:")
+
+
 async def submit_task(
     content: str,
     store_knowledge: bool = True,
@@ -87,16 +99,14 @@ async def stream_task(
                 stripped = line.strip()
                 if not stripped:
                     if event_name:
-                        payload = (
-                            json.loads("\n".join(data_buffer)) if data_buffer else {}
-                        )
+                        payload = _decode_sse_payload(data_buffer)
                         yield event_name, payload
                     event_name = None
                     data_buffer = []
                     continue
-                if stripped.startswith("event:"):
+                if _is_event_line(stripped):
                     event_name = stripped.split("event:", 1)[1].strip()
-                elif stripped.startswith("data:"):
+                elif _is_data_line(stripped):
                     data_buffer.append(stripped.split("data:", 1)[1].strip())
 
 

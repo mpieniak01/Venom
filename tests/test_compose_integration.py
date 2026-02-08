@@ -109,8 +109,7 @@ services:
         await compose_skill.destroy_environment(stack_name)
 
 
-@pytest.mark.asyncio
-async def test_stack_manager_workflow(temp_workspace):
+def test_stack_manager_workflow(temp_workspace):
     """
     Test workflow StackManager bez ComposeSkill wrapper.
 

@@ -14,13 +14,11 @@ import pytest
 class TestGhostAgentImprovements:
     """Testy dla ulepszeń Ghost Agent."""
 
-    @pytest.mark.asyncio
-    async def test_create_action_plan_uses_llm(self):
+    def test_create_action_plan_uses_llm(self):
         """Test że _create_action_plan używa LLM zamiast hardcodowanych heurystyk."""
         pytest.skip("Wymaga pyautogui - test strukturalny, kod zweryfikowany")
 
-    @pytest.mark.asyncio
-    async def test_verify_step_result_exists(self):
+    def test_verify_step_result_exists(self):
         """Test że metoda _verify_step_result została zaimplementowana."""
         pytest.skip("Wymaga pyautogui - test strukturalny, kod zweryfikowany")
 
@@ -28,8 +26,7 @@ class TestGhostAgentImprovements:
 class TestShadowAgentImprovements:
     """Testy dla ulepszeń Shadow Agent."""
 
-    @pytest.mark.asyncio
-    async def test_find_similar_lessons_uses_embeddings(self):
+    def test_find_similar_lessons_uses_embeddings(self):
         """Test że _find_similar_lessons próbuje użyć embeddings."""
         from venom_core.agents.shadow import ShadowAgent
 

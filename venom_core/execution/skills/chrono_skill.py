@@ -39,7 +39,7 @@ class ChronoSkill(BaseSkill):
         description="Tworzy checkpoint (punkt przywracania) całego stanu systemu. Używaj przed ryzykownymi operacjami.",
     )
     @async_safe_action
-    async def create_checkpoint(
+    def create_checkpoint(
         self,
         name: Annotated[str, "Nazwa checkpointu (user-friendly)"],
         description: Annotated[str, "Opcjonalny opis checkpointu"] = "",
@@ -63,7 +63,7 @@ class ChronoSkill(BaseSkill):
         description="Przywraca system do stanu z checkpointu. UWAGA: Obecne zmiany zostaną utracone!",
     )
     @async_safe_action
-    async def restore_checkpoint(
+    def restore_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do przywrócenia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
@@ -92,7 +92,7 @@ class ChronoSkill(BaseSkill):
         description="Wyświetla listę wszystkich dostępnych checkpointów dla danej linii czasowej.",
     )
     @async_safe_action
-    async def list_checkpoints(
+    def list_checkpoints(
         self,
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
@@ -120,7 +120,7 @@ class ChronoSkill(BaseSkill):
         description="Usuwa checkpoint. Operacja nieodwracalna!",
     )
     @async_safe_action
-    async def delete_checkpoint(
+    def delete_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do usunięcia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
@@ -142,7 +142,7 @@ class ChronoSkill(BaseSkill):
         description="Tworzy nową linię czasową (branch) do eksperymentowania. Działa jak Git branch dla całego stanu systemu.",
     )
     @async_safe_action
-    async def branch_timeline(
+    def branch_timeline(
         self,
         name: Annotated[str, "Nazwa nowej linii czasowej"],
     ) -> str:
@@ -184,7 +184,7 @@ class ChronoSkill(BaseSkill):
         description="Wyświetla listę wszystkich dostępnych linii czasowych.",
     )
     @async_safe_action
-    async def list_timelines(self) -> str:
+    def list_timelines(self) -> str:
         """
         Wyświetla listę wszystkich linii czasowych.
         """
@@ -205,7 +205,7 @@ class ChronoSkill(BaseSkill):
         description="Scala wiedzę z eksperymentalnej linii czasowej do głównej (zaawansowane).",
     )
     @async_safe_action
-    async def merge_timeline(
+    def merge_timeline(
         self,
         source: Annotated[str, "Nazwa źródłowej linii czasowej"],
         target: Annotated[str, "Nazwa docelowej linii czasowej"] = "main",

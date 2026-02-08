@@ -41,7 +41,7 @@ def set_dependencies(
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
 )
-async def get_gardener_status():
+def get_gardener_status():
     """
     Zwraca status agenta Ogrodnika.
 
@@ -69,7 +69,7 @@ async def get_gardener_status():
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
 )
-async def get_watcher_status():
+def get_watcher_status():
     """
     Zwraca status obserwatora plików.
 
@@ -97,7 +97,7 @@ async def get_watcher_status():
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
 )
-async def get_documenter_status():
+def get_documenter_status():
     """
     Zwraca status agenta dokumentalisty.
 
@@ -124,7 +124,7 @@ async def get_documenter_status():
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
 )
-async def get_shadow_status():
+def get_shadow_status():
     """
     Zwraca status Shadow Agent, Desktop Sensor i Notifier.
 
@@ -158,7 +158,7 @@ async def get_shadow_status():
         500: {"description": "Błąd wewnętrzny podczas odrzucania sugestii"},
     },
 )
-async def reject_shadow_suggestion(request: TaskRequest):
+def reject_shadow_suggestion(request: TaskRequest):
     """
     Odrzuca sugestię Shadow Agent.
 

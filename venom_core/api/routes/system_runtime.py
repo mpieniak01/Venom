@@ -36,7 +36,7 @@ def _track_background_task(task: asyncio.Task[Any]) -> None:
 
 
 @router.get("/runtime/status", responses=RUNTIME_STATUS_RESPONSES)
-async def get_runtime_status():
+def get_runtime_status():
     """
     Zwraca status wszystkich usług Venom (backend, UI, LLM, Hive, Nexus, background tasks).
     """
@@ -115,7 +115,7 @@ async def get_runtime_status():
 
 
 @router.post("/runtime/profile/{profile_name}", responses=RUNTIME_PROFILE_RESPONSES)
-async def apply_runtime_profile(profile_name: str):
+def apply_runtime_profile(profile_name: str):
     """
     Aplikuje profil konfiguracji (full, light, llm_off).
     """
@@ -128,7 +128,7 @@ async def apply_runtime_profile(profile_name: str):
 
 
 @router.post("/runtime/{service}/{action}", responses=RUNTIME_ACTION_RESPONSES)
-async def runtime_service_action(service: str, action: str):
+def runtime_service_action(service: str, action: str):
     """
     Wykonuje akcję (start/stop/restart) na wskazanej usłudze.
     """
@@ -167,7 +167,7 @@ async def runtime_service_action(service: str, action: str):
 
 
 @router.get("/runtime/history", responses=RUNTIME_HISTORY_RESPONSES)
-async def get_runtime_history(limit: int = 50):
+def get_runtime_history(limit: int = 50):
     """
     Zwraca historię akcji runtime (start/stop/restart).
     """

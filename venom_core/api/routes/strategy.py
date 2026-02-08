@@ -36,7 +36,7 @@ def set_dependencies(orchestrator):
 
 
 @router.get("/api/roadmap", responses=STRATEGY_ROUTE_RESPONSES)
-async def get_roadmap():
+def get_roadmap():
     """
     Pobiera aktualną roadmapę projektu.
 

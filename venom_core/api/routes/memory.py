@@ -200,7 +200,7 @@ DEFAULT_USER_ID = "user_default"
         500: {"description": "Błąd wewnętrzny podczas zapisu do pamięci"},
     },
 )
-async def ingest_to_memory(
+def ingest_to_memory(
     request: MemoryIngestRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
 ):
@@ -247,7 +247,7 @@ async def ingest_to_memory(
         500: {"description": "Błąd wewnętrzny podczas wyszukiwania"},
     },
 )
-async def search_memory(
+def search_memory(
     request: MemorySearchRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
 ):
@@ -296,7 +296,7 @@ async def search_memory(
         400: {"description": "Brak wymaganego session_id"},
     },
 )
-async def clear_session_memory(
+def clear_session_memory(
     session_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
     state_manager: Annotated[Any, Depends(get_state_manager)],
@@ -337,7 +337,7 @@ async def clear_session_memory(
         503: {"description": "SessionStore nie jest dostępny"},
     },
 )
-async def get_session_memory(
+def get_session_memory(
     session_id: str,
     session_store: Annotated[Any, Depends(get_session_store)],
 ):
@@ -364,7 +364,7 @@ async def get_session_memory(
         500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
     },
 )
-async def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
+def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
     """
@@ -388,7 +388,7 @@ async def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_st
 
 
 @router.get("/graph", responses=INTERNAL_ERROR_RESPONSES)
-async def memory_graph(
+def memory_graph(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
@@ -606,7 +606,7 @@ async def memory_graph(
         500: {"description": "Błąd aktualizacji wpisu pamięci"},
     },
 )
-async def pin_memory_entry(
+def pin_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
     pinned: Annotated[bool, Query(description="Czy oznaczyć pinned")] = True,
@@ -635,7 +635,7 @@ async def pin_memory_entry(
         500: {"description": "Błąd usuwania wpisu pamięci"},
     },
 )
-async def delete_memory_entry(
+def delete_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
 ):
@@ -669,7 +669,7 @@ async def delete_memory_entry(
         500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
     },
 )
-async def flush_semantic_cache():
+def flush_semantic_cache():
     """
     Czyści Semantic Cache (kolekcja hidden_prompts).
     Usuwa wszystkie zapamiętane pary prompt-odpowiedź używane do semantycznego cache'owania.

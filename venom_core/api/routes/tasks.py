@@ -280,7 +280,7 @@ async def create_task(request: TaskRequest):
 
 
 @router.get("/tasks/{task_id}", response_model=VenomTask, responses=TASK_GET_RESPONSES)
-async def get_task(task_id: UUID):
+def get_task(task_id: UUID):
     """
     Pobiera szczegóły zadania po ID.
 
@@ -303,7 +303,7 @@ async def get_task(task_id: UUID):
 
 
 @router.get("/tasks/{task_id}/stream", responses=TASK_STREAM_RESPONSES)
-async def stream_task(task_id: UUID):
+def stream_task(task_id: UUID):
     """
     Strumieniuje zmiany zadania jako Server-Sent Events (SSE).
 
@@ -421,7 +421,7 @@ async def stream_task(task_id: UUID):
 
 
 @router.get("/tasks", response_model=list[VenomTask], responses=TASKS_LIST_RESPONSES)
-async def get_all_tasks():
+def get_all_tasks():
     """
     Pobiera listę wszystkich zadań.
 
@@ -439,7 +439,7 @@ async def get_all_tasks():
     response_model=list[HistoryRequestSummary],
     responses=HISTORY_LIST_RESPONSES,
 )
-async def get_request_history(
+def get_request_history(
     limit: Annotated[
         int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")
     ] = 50,
@@ -482,7 +482,7 @@ async def get_request_history(
     response_model=HistoryRequestDetail,
     responses=HISTORY_DETAIL_RESPONSES,
 )
-async def get_request_detail(request_id: UUID):
+def get_request_detail(request_id: UUID):
     """
     Pobiera szczegóły requestu z pełną listą kroków.
 

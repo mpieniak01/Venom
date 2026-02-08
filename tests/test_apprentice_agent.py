@@ -40,8 +40,7 @@ class TestApprenticeAgent:
         assert apprentice_agent.custom_skills_dir.exists()
         assert apprentice_agent.current_session_id is None
 
-    @pytest.mark.asyncio
-    async def test_start_recording(self, apprentice_agent):
+    def test_start_recording(self, apprentice_agent):
         """Test rozpoczęcia nagrywania."""
         apprentice_agent.recorder.is_recording = False
         apprentice_agent.recorder.start_recording = MagicMock(
@@ -54,8 +53,7 @@ class TestApprenticeAgent:
         assert "test_session" in result
         assert apprentice_agent.current_session_id == "test_session"
 
-    @pytest.mark.asyncio
-    async def test_start_recording_already_running(self, apprentice_agent):
+    def test_start_recording_already_running(self, apprentice_agent):
         """Test próby rozpoczęcia nagrywania gdy już trwa."""
         apprentice_agent.recorder.is_recording = True
 
@@ -63,8 +61,7 @@ class TestApprenticeAgent:
 
         assert "już trwa" in result
 
-    @pytest.mark.asyncio
-    async def test_stop_recording(self, apprentice_agent):
+    def test_stop_recording(self, apprentice_agent):
         """Test zatrzymania nagrywania."""
         apprentice_agent.recorder.is_recording = True
         apprentice_agent.recorder.stop_recording = MagicMock(
@@ -77,8 +74,7 @@ class TestApprenticeAgent:
         assert "Zakończono nagrywanie" in result
         assert "/path/to/session.json" in result
 
-    @pytest.mark.asyncio
-    async def test_stop_recording_not_active(self, apprentice_agent):
+    def test_stop_recording_not_active(self, apprentice_agent):
         """Test zatrzymania gdy nie nagrywa."""
         apprentice_agent.recorder.is_recording = False
 

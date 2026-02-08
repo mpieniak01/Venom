@@ -117,13 +117,23 @@ const installMockEventSource = async (page: Page, payloads: MockPayload[]) => {
               event: payload.event,
               data: JSON.stringify(payload.data),
             }));
-            encoded.forEach((payload, index) => {
-              setTimeout(() => {
-                const event = new MessageEvent(payload.event, { data: payload.data });
-                (this.listeners[payload.event] || []).forEach((handler) => handler(event));
-              }, 150 * (index + 1));
-            });
+            this.scheduleEncodedPayloads(encoded);
           }, 50);
+        }
+
+        private emitPayload(payload: { event: string; data: string }) {
+          const event = new MessageEvent(payload.event, { data: payload.data });
+          for (const handler of this.listeners[payload.event] || []) {
+            handler(event);
+          }
+        }
+
+        private scheduleEncodedPayloads(encoded: Array<{ event: string; data: string }>) {
+          encoded.forEach((payload, index) => {
+            setTimeout(() => {
+              this.emitPayload(payload);
+            }, 150 * (index + 1));
+          });
         }
 
         addEventListener(event: string, handler: (event: MessageEvent) => void) {

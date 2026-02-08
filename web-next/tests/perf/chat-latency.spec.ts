@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { buildHttpUrl } from "../utils/url";
 
 type TargetConfig = {
@@ -53,6 +53,55 @@ async function isBackendHealthy() {
   }
 }
 
+async function diagnosePromptFillError(page: Page, error: unknown): Promise<never> {
+  const errorBoundary = page.locator('[data-testid="app-error"]');
+  if (await errorBoundary.count() > 0) {
+    const errorText = await errorBoundary.innerText();
+    throw new Error(`Aplikacja uległa awarii:\n${errorText}`);
+  }
+  const loadingEl = page.locator("text=Ładowanie kokpitu");
+  if (await loadingEl.count() > 0) {
+    throw new Error("Aplikacja utknęła na ekranie ładowania (isClientReady=false lub hydration error).");
+  }
+  throw error;
+}
+
+async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: string): Promise<boolean> {
+  try {
+    await page.fill(target.promptSelector, prompt, { timeout: 5_000 });
+    return true;
+  } catch (error) {
+    if (target.optional) {
+      test.skip(true, `${target.name} pominięty: brak pola promptu (${target.promptSelector})`);
+      return false;
+    }
+    await diagnosePromptFillError(page, error);
+  }
+}
+
+async function waitForResponseLatency(
+  page: Page,
+  responseLocator: Locator,
+  initialResponses: number,
+  timeoutMs: number,
+  targetName: string,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  const startedAt = performance.now();
+  let baseline = initialResponses;
+  while (Date.now() < deadline) {
+    const count = await responseLocator.count();
+    if (count > baseline) {
+      return performance.now() - startedAt;
+    }
+    if (count < baseline) {
+      baseline = count;
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error(`${targetName}: brak nowej odpowiedzi w strumieniu`);
+}
+
 async function measureLatency(page: Page, target: TargetConfig) {
   const backendOk = await isBackendHealthy();
   if (!backendOk) {
@@ -77,56 +126,15 @@ async function measureLatency(page: Page, target: TargetConfig) {
   const responseLocator = page.locator(target.responseSelector);
   const initialResponses = await responseLocator.count();
 
-  try {
-    // Attempt to fill with a shorter timeout (5s) to allow for error diagnosis within the test limit
-    await page.fill(target.promptSelector, prompt, { timeout: 5_000 });
-  } catch (error) {
-    if (target.optional) {
-      test.skip(true, `${target.name} pominięty: brak pola promptu (${target.promptSelector})`);
-      return;
-    }
-    // 1. Check for application crash (Error Boundary)
-    const errorBoundary = page.locator('[data-testid="app-error"]');
-    if (await errorBoundary.count() > 0) {
-      const errorText = await errorBoundary.innerText();
-      throw new Error(`Aplikacja uległa awarii:\n${errorText}`);
-    }
-
-    // 2. Check for stuck loading state
-    const loadingEl = page.locator("text=Ładowanie kokpitu");
-    if (await loadingEl.count() > 0) {
-      // Dump console logs if possible?
-      throw new Error("Aplikacja utknęła na ekranie ładowania (isClientReady=false lub hydration error).");
-    }
-
-    // 3. Re-throw original error if we can't identify the cause
-    throw error;
-  }
+  const promptFilled = await fillPromptForTarget(page, target, prompt);
+  if (!promptFilled) return;
   const sendButton = page.locator(target.sendSelector);
   await expect(sendButton).toBeEnabled({ timeout: 15000 });
   await sendButton.click();
-  const start = performance.now();
-  let latency: number | null = null;
-
   const timeoutMs = target.responseTimeoutMs ?? 30_000;
+  let latency: number;
   try {
-    const deadline = Date.now() + timeoutMs;
-    let baseline = initialResponses;
-    while (Date.now() < deadline) {
-      const count = await responseLocator.count();
-      if (count > baseline) {
-        latency = performance.now() - start;
-        break;
-      }
-      if (count < baseline) {
-        // Session reset or history cleared; adjust baseline to current count.
-        baseline = count;
-      }
-      await page.waitForTimeout(200);
-    }
-    if (latency === null) {
-      throw new Error(`${target.name}: brak nowej odpowiedzi w strumieniu`);
-    }
+    latency = await waitForResponseLatency(page, responseLocator, initialResponses, timeoutMs, target.name);
   } catch (error) {
     if (target.optional) {
       test.skip(

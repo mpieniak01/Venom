@@ -110,7 +110,8 @@ class HistorianAgent(BaseAgent):
             "transform",
         ]
 
-        operation_lower = await asyncio.to_thread(str.lower, operation_description)
+        operation_lower = operation_description.lower()
+        await asyncio.sleep(0)
 
         # Sprawdź poziom ryzyka
         for keyword in high_risk_keywords:

@@ -143,7 +143,7 @@ class HardwareBridge:
             await asyncio.to_thread(self.ssh_client.close)
             self.ssh_client = None
         else:
-            await asyncio.to_thread(bool, True)
+            await asyncio.sleep(0)
         self.connected = False
         logger.info("Rozłączono z Raspberry Pi")
 

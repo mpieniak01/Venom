@@ -1,6 +1,5 @@
 """Moduł: executive - Agent Wykonawczy (CEO/Product Manager)."""
 
-import asyncio
 import os
 from typing import Any
 from uuid import UUID
@@ -432,7 +431,7 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         meeting_notes = ["=== DAILY STANDUP - STATUS MEETING ===\n"]
         from datetime import datetime as dt
 
-        meeting_timestamp = await asyncio.to_thread(dt.now)
+        meeting_timestamp = dt.now()
         meeting_notes.append(f"Data: {meeting_timestamp.strftime('%Y-%m-%d %H:%M')}\n")
 
         # 1. Status aktualnego Milestone

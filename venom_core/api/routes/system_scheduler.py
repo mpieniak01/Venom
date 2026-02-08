@@ -18,6 +18,7 @@ SCHEDULER_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas obsługi schedulera"},
 }
 
+
 @router.get("/scheduler/status", responses=SCHEDULER_RESPONSES)
 async def get_scheduler_status():
     """

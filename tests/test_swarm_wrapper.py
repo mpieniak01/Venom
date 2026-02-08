@@ -66,7 +66,9 @@ def test_swarm_wrapper_registers_functions(monkeypatch):
 @pytest.mark.asyncio
 async def test_swarm_wrapper_process_error():
     agent = DummyAgent(kernel=DummyKernel(), raise_error=True)
-    wrapper = swarm_mod.create_venom_agent_wrapper(cast(BaseAgent, agent), name="ErrAgent")
+    wrapper = swarm_mod.create_venom_agent_wrapper(
+        cast(BaseAgent, agent), name="ErrAgent"
+    )
 
     result = await wrapper.a_process_venom("hi")
 

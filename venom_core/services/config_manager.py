@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field, field_validator
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -27,6 +28,7 @@ CONFIG_WHITELIST = {
     "AI_MODE",
     "LLM_SERVICE_TYPE",
     "LLM_LOCAL_ENDPOINT",
+    "URL_SCHEME_POLICY",
     "LLM_MODEL_NAME",
     "LLM_LOCAL_API_KEY",
     "SIMPLE_MODE_SYSTEM_PROMPT",
@@ -209,6 +211,7 @@ RESTART_REQUIREMENTS = {
     "AI_MODE": ["backend"],
     "LLM_SERVICE_TYPE": ["backend"],
     "LLM_LOCAL_ENDPOINT": ["backend"],
+    "URL_SCHEME_POLICY": ["backend"],
     "LLM_MODEL_NAME": ["backend"],
     "SIMPLE_MODE_SYSTEM_PROMPT": ["backend"],
     "HYBRID_CLOUD_PROVIDER": ["backend"],
@@ -359,6 +362,13 @@ class ConfigUpdateRequest(BaseModel):
                     f"LLM_SERVICE_TYPE musi być jednym z: {', '.join(valid_types)}"
                 )
 
+        if "URL_SCHEME_POLICY" in v:
+            valid_policies = ["auto", "force_http", "force_https"]
+            if str(v["URL_SCHEME_POLICY"]).lower() not in valid_policies:
+                errors.append(
+                    "URL_SCHEME_POLICY musi być jednym z: " + ", ".join(valid_policies)
+                )
+
         if errors:
             raise ValueError("; ".join(errors))
 
@@ -452,7 +462,7 @@ class ConfigManager:
                 vllm_endpoint = updates.get("VLLM_ENDPOINT")
                 if not vllm_endpoint:
                     vllm_endpoint = env_values.get(
-                        "VLLM_ENDPOINT", "http://localhost:8001/v1"
+                        "VLLM_ENDPOINT", build_http_url("localhost", 8001, "/v1")
                     )
 
                 env_values["LLM_LOCAL_ENDPOINT"] = str(vllm_endpoint)
@@ -463,7 +473,7 @@ class ConfigManager:
 
             elif new_server == "ollama":
                 # Domyślny endpoint Ollama
-                ollama_endpoint = "http://localhost:11434/v1"
+                ollama_endpoint = build_http_url("localhost", 11434, "/v1")
                 env_values["LLM_LOCAL_ENDPOINT"] = ollama_endpoint
                 changed_keys.append("LLM_LOCAL_ENDPOINT")
                 logger.info(

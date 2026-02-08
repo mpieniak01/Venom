@@ -16,13 +16,11 @@ import {
   Task,
   TokenMetrics,
 } from "@/lib/types";
+import { getServerApiBaseUrl } from "@/lib/env";
 
 const KNOWLEDGE_GRAPH_LIMIT = Number(process.env.NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT ?? "500");
 
-const API_BASE =
-  process.env.API_PROXY_TARGET ||
-  process.env.NEXT_PUBLIC_API_BASE ||
-  "http://127.0.0.1:8000";
+const API_BASE = getServerApiBaseUrl();
 
 const sanitizeBase = (value: string) => value.replace(/\/$/, "");
 const apiBase = sanitizeBase(API_BASE);

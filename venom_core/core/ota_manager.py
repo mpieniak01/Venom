@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from venom_core.config import SETTINGS
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 aiofiles: Any = None
 try:  # pragma: no cover - zależne od środowiska
@@ -207,7 +208,11 @@ class OTAManager:
             update_data = {
                 "version": package.version,
                 "description": package.description,
-                "package_url": f"http://localhost:{SETTINGS.NEXUS_PORT}/ota/download/{package.package_path.name}",
+                "package_url": build_http_url(
+                    "localhost",
+                    SETTINGS.NEXUS_PORT,
+                    f"/ota/download/{package.package_path.name}",
+                ),
                 "checksum": package.checksum,
                 "target_nodes": target_nodes,
                 "created_at": package.created_at.isoformat(),

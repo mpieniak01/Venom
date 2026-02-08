@@ -7,8 +7,11 @@ import type {
     BenchmarkStartResponse,
     BenchmarkStatusResponse,
 } from "@/lib/types";
+import { getApiBaseUrl } from "@/lib/env";
 
 const POLLING_INTERVAL_MS = 1000;
+const resolveApiRoot = (): string => getApiBaseUrl() || "";
+const buildApiUrl = (path: string): string => `${resolveApiRoot()}${path}`;
 
 interface UseBenchmarkReturn {
     status: BenchmarkStatus;
@@ -58,7 +61,7 @@ export function useBenchmark(): UseBenchmarkReturn {
 
     const pollStatus = useCallback(async (benchmarkId: string) => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/${benchmarkId}/status`);
+            const response = await fetch(buildApiUrl(`/api/v1/benchmark/${benchmarkId}/status`));
 
             if (!response.ok) {
                 throw new Error(`Failed to fetch status: ${response.statusText}`);
@@ -106,7 +109,7 @@ export function useBenchmark(): UseBenchmarkReturn {
         addLog(`Rozpoczynam benchmark dla modeli: ${config.models.join(", ")}`, "info");
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/start`, {
+            const response = await fetch(buildApiUrl("/api/v1/benchmark/start"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -146,7 +149,7 @@ export function useBenchmark(): UseBenchmarkReturn {
 
     const deleteBenchmark = useCallback(async (benchmarkId: string) => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/${benchmarkId}`, {
+            const response = await fetch(buildApiUrl(`/api/v1/benchmark/${benchmarkId}`), {
                 method: "DELETE",
             });
             if (!response.ok) throw new Error("Failed to delete benchmark");
@@ -161,7 +164,7 @@ export function useBenchmark(): UseBenchmarkReturn {
 
     const clearAllBenchmarks = useCallback(async () => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/all`, {
+            const response = await fetch(buildApiUrl("/api/v1/benchmark/all"), {
                 method: "DELETE",
             });
             if (!response.ok) throw new Error("Failed to clear benchmarks");

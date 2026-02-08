@@ -21,6 +21,7 @@ from venom_core.utils.llm_runtime import (
     infer_local_provider,
 )
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -310,7 +311,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
 
     endpoint = target.get("endpoint")
     if server_name == "ollama":
-        endpoint = "http://localhost:11434/v1"
+        endpoint = build_http_url("localhost", 11434, "/v1")
     elif server_name == "vllm":
         endpoint = SETTINGS.VLLM_ENDPOINT
     if endpoint:

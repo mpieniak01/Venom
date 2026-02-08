@@ -1,5 +1,24 @@
+import os
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_url_scheme() -> str:
+    policy = os.getenv("URL_SCHEME_POLICY", "auto").strip().lower()
+    if policy == "force_https":
+        return "https"
+    if policy == "force_http":
+        return "http"
+    env_name = os.getenv("ENV", "development").strip().lower()
+    if env_name in {"production", "prod", "staging", "stage"}:
+        return "https"
+    return "http"
+
+
+def _default_url(host: str, port: int, path: str) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"{_default_url_scheme()}://{host}:{port}{normalized_path}"
 
 
 class Settings(BaseSettings):
@@ -8,6 +27,9 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Venom Meta-Intelligence"
     ENV: str = "development"
+    URL_SCHEME_POLICY: str = (
+        "auto"  # auto|force_http|force_https (single source of truth for http/https)
+    )
 
     WORKSPACE_ROOT: str = "./workspace"
     REPO_ROOT: str = "."
@@ -23,7 +45,7 @@ class Settings(BaseSettings):
 
     # Konfiguracja LLM (Local-First Brain)
     LLM_SERVICE_TYPE: str = "local"  # Opcje: "local", "openai", "azure", "google"
-    LLM_LOCAL_ENDPOINT: str = "http://localhost:11434/v1"  # Ollama/vLLM
+    LLM_LOCAL_ENDPOINT: str = _default_url("localhost", 11434, "/v1")  # Ollama/vLLM
     LLM_MODEL_NAME: str = "phi3:latest"
     LLM_LOCAL_API_KEY: str = "venom-local"  # Dummy key dla lokalnych serwerów
     OPENAI_API_KEY: str = ""  # Opcjonalne, wymagane tylko dla typu "openai"
@@ -59,7 +81,7 @@ class Settings(BaseSettings):
     VLLM_MAX_BATCHED_TOKENS: int = 2048
     VLLM_MAX_MODEL_LEN: int = 0  # 0 = auto-detect from model
     VLLM_MAX_NUM_SEQS: int = 0
-    VLLM_ENDPOINT: str = "http://localhost:8001/v1"
+    VLLM_ENDPOINT: str = _default_url("localhost", 8001, "/v1")
     VLLM_CHAT_TEMPLATE: str = ""
     VLLM_ENFORCE_EAGER: bool = True  # Disable CUDA Graphs to save VRAM
     VLLM_START_COMMAND: str = ""
@@ -313,7 +335,7 @@ class Settings(BaseSettings):
 
     # ===== STABLE DIFFUSION CONFIGURATION =====
     # Endpoint dla Stable Diffusion (Automatic1111 API)
-    STABLE_DIFFUSION_ENDPOINT: str = "http://127.0.0.1:7860"
+    STABLE_DIFFUSION_ENDPOINT: str = _default_url("127.0.0.1", 7860, "")
     # Timeouty dla Stable Diffusion API
     SD_PING_TIMEOUT: float = 5.0  # Timeout dla sprawdzenia dostępności API (sekundy)
     SD_GENERATION_TIMEOUT: float = 120.0  # Timeout dla generowania obrazu (sekundy)
@@ -404,7 +426,9 @@ class Settings(BaseSettings):
 
     # ===== SYSTEM & MONITORING ENDPOINTS =====
     # Endpoint dla API systemowego (ServiceMonitor)
-    SYSTEM_SERVICES_ENDPOINT: str = "http://localhost:8000/api/v1/system/services"
+    SYSTEM_SERVICES_ENDPOINT: str = _default_url(
+        "localhost", 8000, "/api/v1/system/services"
+    )
 
     # ===== BRAIN / GRAPH LIMITS (UI) =====
     NEXT_PUBLIC_KNOWLEDGE_GRAPH_LIMIT: int = 500

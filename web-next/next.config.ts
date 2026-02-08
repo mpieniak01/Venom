@@ -1,13 +1,10 @@
 import type { NextConfig } from "next";
 import path from "path";
-import { applyHttpPolicyToUrl, buildHttpBaseUrl } from "./lib/url-policy";
 
 const API_PROXY_TARGET =
-  applyHttpPolicyToUrl(
-    process.env.API_PROXY_TARGET ||
-      process.env.NEXT_PUBLIC_API_BASE ||
-      buildHttpBaseUrl("127.0.0.1", 8000)
-  );
+  process.env.API_PROXY_TARGET ||
+  process.env.NEXT_PUBLIC_API_BASE ||
+  "http://127.0.0.1:8000";
 
 const nextConfig: NextConfig = {
   // Ułatwia deployment produkcyjny (docker / serverless)

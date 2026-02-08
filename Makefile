@@ -174,47 +174,68 @@ _start:
 			exit 1; \
 		fi; \
 	fi
-	$(call ensure_process_not_running,Venom backend,$(PID_FILE))
-	@if [ "$(START_MODE)" = "prod" ]; then \
-		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
-	else \
-		UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
-	fi; \
-	echo "▶️  Uruchamiam Venom backend (uvicorn na $(HOST):$(PORT))"; \
-	: > $(BACKEND_LOG); \
-	setsid $(UVICORN) $(API_APP) $$UVICORN_FLAGS >> $(BACKEND_LOG) 2>&1 & \
-	echo $$! > $(PID_FILE); \
-	echo "✅ Venom backend wystartował z PID $$(cat $(PID_FILE))"
-	@echo "⏳ Czekam na backend (/api/v1/system/status)..."
-	@backend_ready=""; \
-	for attempt in {1..60}; do \
-		if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
-			backend_ready="yes"; \
-			echo "✅ Backend gotowy"; \
-			break; \
-		fi; \
+	@backend_reused=""; \
+	if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
+		echo "⚠️  Backend już odpowiada na $(HOST_DISPLAY):$(PORT). Pomijam drugi start backendu."; \
+		backend_reused="yes"; \
 		if [ -f "$(PID_FILE)" ]; then \
-			PID=$$(cat $(PID_FILE)); \
-			if ! kill -0 $$PID 2>/dev/null; then \
-				echo "⚠️  Proces startowy backendu $$PID nie działa"; \
-				break; \
+			PID=$$(cat "$(PID_FILE)"); \
+			if ! kill -0 $$PID 2>/dev/null; then rm -f "$(PID_FILE)"; fi; \
+		fi; \
+	fi; \
+	if [ -z "$$backend_reused" ]; then \
+		if [ -f "$(PID_FILE)" ]; then \
+			PID=$$(cat "$(PID_FILE)"); \
+			if kill -0 $$PID 2>/dev/null; then \
+				echo "⚠️  Venom backend już działa (PID $$PID). Użyj 'make stop' lub 'make restart'."; \
+				exit 1; \
+			else \
+				rm -f "$(PID_FILE)"; \
 			fi; \
 		fi; \
-		sleep 1; \
-	done; \
-	if [ -z "$$backend_ready" ]; then \
-		echo "❌ Backend nie wystartował w czasie (brak 200 z /api/v1/system/status)"; \
-		if [ -f "$(BACKEND_LOG)" ]; then \
-			echo "ℹ️  Ostatnie logi backendu:"; \
-			tail -n 40 "$(BACKEND_LOG)" || true; \
+		if [ "$(START_MODE)" = "prod" ]; then \
+			UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_PROD_FLAGS)"; \
+		else \
+			UVICORN_FLAGS="--host $(HOST) --port $(PORT) $(UVICORN_DEV_FLAGS)"; \
 		fi; \
-		if [ -f "$(PID_FILE)" ]; then \
-			BPID=$$(cat "$(PID_FILE)"); \
-			kill $$BPID 2>/dev/null || true; \
-			rm -f "$(PID_FILE)"; \
+		echo "▶️  Uruchamiam Venom backend (uvicorn na $(HOST):$(PORT))"; \
+		: > $(BACKEND_LOG); \
+		setsid $(UVICORN) $(API_APP) $$UVICORN_FLAGS >> $(BACKEND_LOG) 2>&1 & \
+		echo $$! > $(PID_FILE); \
+		echo "✅ Venom backend wystartował z PID $$(cat $(PID_FILE))"; \
+		echo "⏳ Czekam na backend (/api/v1/system/status)..."; \
+		backend_ready=""; \
+		for attempt in {1..60}; do \
+			if curl -fsS http://$(HOST_DISPLAY):$(PORT)/api/v1/system/status >/dev/null 2>&1; then \
+				backend_ready="yes"; \
+				echo "✅ Backend gotowy"; \
+				break; \
+			fi; \
+			if [ -f "$(PID_FILE)" ]; then \
+				PID=$$(cat $(PID_FILE)); \
+				if ! kill -0 $$PID 2>/dev/null; then \
+					echo "⚠️  Proces startowy backendu $$PID nie działa"; \
+					break; \
+				fi; \
+			fi; \
+			sleep 1; \
+		done; \
+		if [ -z "$$backend_ready" ]; then \
+			echo "❌ Backend nie wystartował w czasie (brak 200 z /api/v1/system/status)"; \
+			if [ -f "$(BACKEND_LOG)" ]; then \
+				echo "ℹ️  Ostatnie logi backendu:"; \
+				tail -n 40 "$(BACKEND_LOG)" || true; \
+			fi; \
+			if [ -f "$(PID_FILE)" ]; then \
+				BPID=$$(cat "$(PID_FILE)"); \
+				kill $$BPID 2>/dev/null || true; \
+				rm -f "$(PID_FILE)"; \
+			fi; \
+			$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
+			exit 1; \
 		fi; \
-		$(MAKE) --no-print-directory vllm-stop >/dev/null || true; \
-		exit 1; \
+	else \
+		echo "✅ Backend gotowy (używam już działającej instancji)"; \
 	fi
 	@ui_skip=""; \
 	if [ -f $(WEB_PID_FILE) ]; then \

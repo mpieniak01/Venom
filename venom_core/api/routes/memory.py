@@ -148,7 +148,15 @@ class MemorySearchRequest(BaseModel):
 DEFAULT_USER_ID = "user_default"
 
 
-@router.post("/ingest", response_model=MemoryIngestResponse, status_code=201)
+@router.post(
+    "/ingest",
+    response_model=MemoryIngestResponse,
+    status_code=201,
+    responses={
+        400: {"description": "Nieprawidłowe dane wejściowe"},
+        500: {"description": "Błąd wewnętrzny podczas zapisu do pamięci"},
+    },
+)
 async def ingest_to_memory(
     request: MemoryIngestRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
@@ -211,7 +219,13 @@ async def ingest_to_memory(
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/search")
+@router.post(
+    "/search",
+    responses={
+        400: {"description": "Nieprawidłowe zapytanie"},
+        500: {"description": "Błąd wewnętrzny podczas wyszukiwania"},
+    },
+)
 async def search_memory(
     request: MemorySearchRequest,
     vector_store: Annotated[Any, Depends(get_vector_store)],
@@ -261,7 +275,12 @@ async def search_memory(
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.delete("/session/{session_id}")
+@router.delete(
+    "/session/{session_id}",
+    responses={
+        400: {"description": "Brak wymaganego session_id"},
+    },
+)
 async def clear_session_memory(
     session_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
@@ -296,7 +315,13 @@ async def clear_session_memory(
     }
 
 
-@router.get("/session/{session_id}")
+@router.get(
+    "/session/{session_id}",
+    responses={
+        400: {"description": "Brak wymaganego session_id"},
+        503: {"description": "SessionStore nie jest dostępny"},
+    },
+)
 async def get_session_memory(
     session_id: str,
     session_store: Annotated[Any, Depends(get_session_store)],
@@ -318,7 +343,12 @@ async def get_session_memory(
     }
 
 
-@router.delete("/global")
+@router.delete(
+    "/global",
+    responses={
+        500: {"description": "Błąd podczas czyszczenia pamięci globalnej"},
+    },
+)
 async def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_store)]):
     """
     Czyści pamięć globalną (preferencje/fakty globalne użytkownika).
@@ -554,7 +584,13 @@ async def memory_graph(
     }
 
 
-@router.post("/entry/{entry_id}/pin")
+@router.post(
+    "/entry/{entry_id}/pin",
+    responses={
+        404: {"description": "Nie znaleziono wpisu pamięci"},
+        500: {"description": "Błąd aktualizacji wpisu pamięci"},
+    },
+)
 async def pin_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
@@ -577,7 +613,13 @@ async def pin_memory_entry(
         ) from e
 
 
-@router.delete("/entry/{entry_id}")
+@router.delete(
+    "/entry/{entry_id}",
+    responses={
+        404: {"description": "Nie znaleziono wpisu do usunięcia"},
+        500: {"description": "Błąd usuwania wpisu pamięci"},
+    },
+)
 async def delete_memory_entry(
     entry_id: str,
     vector_store: Annotated[Any, Depends(get_vector_store)],
@@ -606,7 +648,12 @@ async def delete_memory_entry(
 # ============================================
 
 
-@router.delete("/cache/semantic")
+@router.delete(
+    "/cache/semantic",
+    responses={
+        500: {"description": "Błąd podczas czyszczenia Semantic Cache"},
+    },
+)
 async def flush_semantic_cache():
     """
     Czyści Semantic Cache (kolekcja hidden_prompts).

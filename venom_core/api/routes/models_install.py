@@ -46,7 +46,13 @@ def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
     return provider_buckets
 
 
-@router.get("/models")
+@router.get(
+    "/models",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        500: {"description": "Błąd serwera podczas listowania modeli"},
+    },
+)
 async def list_models():
     """
     Zwraca liste modeli wraz z ich statusem.
@@ -99,7 +105,14 @@ async def list_models():
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.post("/models/install")
+@router.post(
+    "/models/install",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        400: {"description": "Brak miejsca na dysku lub nieprawidłowe dane"},
+        500: {"description": "Błąd serwera podczas inicjalizacji instalacji"},
+    },
+)
 async def install_model(
     request: ModelInstallRequest, background_tasks: BackgroundTasks
 ):
@@ -138,7 +151,15 @@ async def install_model(
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.post("/models/switch")
+@router.post(
+    "/models/switch",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        404: {"description": "Model nie został znaleziony"},
+        400: {"description": "Model niezgodny z aktywnym runtime"},
+        500: {"description": "Błąd serwera podczas zmiany modelu"},
+    },
+)
 async def switch_model(request: ModelSwitchRequest):
     """
     Zmienia aktywny model dla okreslonej roli.
@@ -217,7 +238,15 @@ async def switch_model(request: ModelSwitchRequest):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.delete("/models/{model_name}")
+@router.delete(
+    "/models/{model_name}",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        400: {"description": "Nieprawidłowa nazwa modelu lub aktywny model"},
+        404: {"description": "Model nie został znaleziony"},
+        500: {"description": "Błąd serwera podczas usuwania modelu"},
+    },
+)
 async def delete_model(model_name: str):
     """
     Usuwa model z dysku.

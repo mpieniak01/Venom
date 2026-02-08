@@ -80,7 +80,14 @@ def _ensure_calendar_skill():
     return _google_calendar_skill
 
 
-@router.get("/events", response_model=EventsResponse)
+@router.get(
+    "/events",
+    response_model=EventsResponse,
+    responses={
+        503: {"description": "Google Calendar nie jest skonfigurowany"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania wydarzeń"},
+    },
+)
 async def get_calendar_events(
     time_min: str = "now",
     hours: int = 24,
@@ -145,7 +152,16 @@ async def get_calendar_events(
         )
 
 
-@router.post("/event", response_model=CreateEventResponse, status_code=201)
+@router.post(
+    "/event",
+    response_model=CreateEventResponse,
+    status_code=201,
+    responses={
+        503: {"description": "Google Calendar nie jest skonfigurowany"},
+        400: {"description": "Nieprawidłowe dane wejściowe"},
+        500: {"description": "Błąd wewnętrzny podczas tworzenia wydarzenia"},
+    },
+)
 async def create_calendar_event(request: CreateEventRequest):
     """
     Tworzy nowe wydarzenie w kalendarzu Venoma.

@@ -34,7 +34,13 @@ def set_dependencies(
     _orchestrator = orchestrator
 
 
-@router.get("/gardener/status")
+@router.get(
+    "/gardener/status",
+    responses={
+        503: {"description": "GardenerAgent nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
+)
 async def get_gardener_status():
     """
     Zwraca status agenta Ogrodnika.
@@ -56,7 +62,13 @@ async def get_gardener_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/watcher/status")
+@router.get(
+    "/watcher/status",
+    responses={
+        503: {"description": "FileWatcher nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
+)
 async def get_watcher_status():
     """
     Zwraca status obserwatora plików.
@@ -78,7 +90,13 @@ async def get_watcher_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/documenter/status")
+@router.get(
+    "/documenter/status",
+    responses={
+        503: {"description": "DocumenterAgent nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
+)
 async def get_documenter_status():
     """
     Zwraca status agenta dokumentalisty.
@@ -100,7 +118,12 @@ async def get_documenter_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/shadow/status")
+@router.get(
+    "/shadow/status",
+    responses={
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
+)
 async def get_shadow_status():
     """
     Zwraca status Shadow Agent, Desktop Sensor i Notifier.
@@ -128,7 +151,13 @@ async def get_shadow_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/shadow/reject")
+@router.post(
+    "/shadow/reject",
+    responses={
+        503: {"description": "Shadow Agent lub Orchestrator nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas odrzucania sugestii"},
+    },
+)
 async def reject_shadow_suggestion(request: TaskRequest):
     """
     Odrzuca sugestię Shadow Agent.

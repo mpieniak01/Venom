@@ -63,7 +63,15 @@ def set_dependencies(benchmark_service):
     _benchmark_service = benchmark_service
 
 
-@router.post("/start", response_model=BenchmarkStartResponse)
+@router.post(
+    "/start",
+    response_model=BenchmarkStartResponse,
+    responses={
+        503: {"description": "BenchmarkService nie jest dostępny"},
+        400: {"description": "Nieprawidłowe parametry benchmarku"},
+        500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
+    },
+)
 async def start_benchmark(request: BenchmarkStartRequest):
     """
     Rozpoczyna benchmark wielu modeli.
@@ -111,7 +119,15 @@ async def start_benchmark(request: BenchmarkStartRequest):
         ) from e
 
 
-@router.get("/{benchmark_id}/status", response_model=BenchmarkStatusResponse)
+@router.get(
+    "/{benchmark_id}/status",
+    response_model=BenchmarkStatusResponse,
+    responses={
+        503: {"description": "BenchmarkService nie jest dostępny"},
+        404: {"description": "Benchmark nie został znaleziony"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
+    },
+)
 async def get_benchmark_status(benchmark_id: str):
     """
     Zwraca status i wyniki benchmarku.
@@ -157,7 +173,13 @@ async def get_benchmark_status(benchmark_id: str):
         ) from e
 
 
-@router.get("/list")
+@router.get(
+    "/list",
+    responses={
+        503: {"description": "BenchmarkService nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania listy"},
+    },
+)
 async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
     """
     Lista ostatnich benchmarków.
@@ -188,7 +210,14 @@ async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
         ) from e
 
 
-@router.delete("/all", status_code=200)
+@router.delete(
+    "/all",
+    status_code=200,
+    responses={
+        503: {"description": "BenchmarkService nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas czyszczenia benchmarków"},
+    },
+)
 async def clear_all_benchmarks():
     """
     Usuwa wszystkie wyniki benchmarków.
@@ -216,7 +245,15 @@ async def clear_all_benchmarks():
         ) from e
 
 
-@router.delete("/{benchmark_id}", status_code=200)
+@router.delete(
+    "/{benchmark_id}",
+    status_code=200,
+    responses={
+        503: {"description": "BenchmarkService nie jest dostępny"},
+        404: {"description": "Benchmark nie został znaleziony"},
+        500: {"description": "Błąd wewnętrzny podczas usuwania benchmarku"},
+    },
+)
 async def delete_benchmark(benchmark_id: str):
     """
     Usuwa pojedynczy benchmark.

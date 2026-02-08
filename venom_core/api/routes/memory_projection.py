@@ -31,7 +31,13 @@ def set_dependencies(vector_store):
         _embedding_service = None
 
 
-@router.post("/embedding-project")
+@router.post(
+    "/embedding-project",
+    responses={
+        503: {"description": "VectorStore/Embedding service lub PCA nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas projekcji embeddingów"},
+    },
+)
 async def project_embeddings(limit: Annotated[int, Query(ge=2, le=1000)] = 200):
     """Prosta projekcja embeddingów do 2D (PCA) i zapis x,y w metadanych."""
     if _vector_store is None or _embedding_service is None:

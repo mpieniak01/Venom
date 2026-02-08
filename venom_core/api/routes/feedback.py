@@ -47,7 +47,16 @@ class FeedbackResponse(BaseModel):
     follow_up_task_id: Optional[str] = None
 
 
-@router.post("/feedback", response_model=FeedbackResponse)
+@router.post(
+    "/feedback",
+    response_model=FeedbackResponse,
+    responses={
+        400: {"description": "Nieprawidłowy rating lub brak komentarza dla oceny down"},
+        503: {"description": "StateManager nie jest dostępny"},
+        404: {"description": "Zadanie nie istnieje"},
+        500: {"description": "Błąd wewnętrzny podczas zapisu feedbacku"},
+    },
+)
 async def submit_feedback(payload: FeedbackRequest):
     """Zapisuje feedback użytkownika i opcjonalnie uruchamia rundę doprecyzowania."""
     if payload.rating not in ("up", "down"):
@@ -181,7 +190,12 @@ async def submit_feedback(payload: FeedbackRequest):
     )
 
 
-@router.get("/feedback/logs")
+@router.get(
+    "/feedback/logs",
+    responses={
+        400: {"description": "Nieprawidłowa wartość parametru rating"},
+    },
+)
 async def get_feedback_logs(limit: int = 50, rating: Optional[str] = None) -> dict:
     """Zwraca ostatnie wpisy feedbacku użytkownika."""
     if limit < 1:

@@ -52,7 +52,7 @@ class AssistantSkill:
         name="get_current_time",
         description="Zwraca aktualny czas lokalny w formacie czytelnym dla człowieka.",
     )
-    async def get_current_time(
+    def get_current_time(
         self,
         format_type: Annotated[
             str, "Format czasu: 'short' (HH:MM), 'full' (pełna data i czas)"

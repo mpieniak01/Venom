@@ -84,8 +84,7 @@ class TestVisionGrounding:
 
                 assert result is None
 
-    @pytest.mark.asyncio
-    async def test_locate_element_fallback(self, vision_grounding, sample_image):
+    def test_locate_element_fallback(self, vision_grounding, sample_image):
         """Test fallback lokalizacji (bez OpenAI)."""
         # Bez OpenAI i bez pytesseract - powinien zwrócić None (bezpieczeństwo)
         with patch.dict("sys.modules", {"pytesseract": None}):
@@ -94,10 +93,7 @@ class TestVisionGrounding:
             # Dla bezpieczeństwa fallback zwraca None zamiast środka ekranu
             assert result is None
 
-    @pytest.mark.asyncio
-    async def test_locate_element_fallback_with_ocr(
-        self, vision_grounding, sample_image
-    ):
+    def test_locate_element_fallback_with_ocr(self, vision_grounding, sample_image):
         """Test fallback lokalizacji z OCR."""
         # Mock pytesseract
         mock_ocr_data = {

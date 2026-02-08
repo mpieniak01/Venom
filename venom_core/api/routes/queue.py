@@ -36,7 +36,7 @@ def set_dependencies(orchestrator):
 
 
 @router.get("/status", responses=QUEUE_BASE_RESPONSES)
-async def get_queue_status():
+def get_queue_status():
     """
     Pobiera status kolejki zadań.
 

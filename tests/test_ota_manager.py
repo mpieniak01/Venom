@@ -239,8 +239,7 @@ def test_list_packages_with_files(ota_manager):
     assert "1.1.0" in versions
 
 
-@pytest.mark.asyncio
-async def test_cleanup_old_packages(ota_manager):
+def test_cleanup_old_packages(ota_manager):
     """Test czyszczenia starych paczek."""
     # Utwórz 10 paczek
     for i in range(10):
@@ -254,8 +253,7 @@ async def test_cleanup_old_packages(ota_manager):
     assert len(packages) == 3
 
 
-@pytest.mark.asyncio
-async def test_cleanup_old_packages_keep_all(ota_manager):
+def test_cleanup_old_packages_keep_all(ota_manager):
     """Test cleanup gdy nie ma czego usuwać."""
     # Utwórz 3 paczki
     for i in range(3):

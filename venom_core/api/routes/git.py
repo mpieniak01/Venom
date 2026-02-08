@@ -371,7 +371,7 @@ async def init_repository(request: InitRepoRequest):
         501: {"description": "Synchronizacja repozytorium nie jest zaimplementowana"},
     },
 )
-async def sync_repository():
+def sync_repository():
     """
     Synchronizuje repozytorium (pull z remote).
 
@@ -398,7 +398,7 @@ async def sync_repository():
         501: {"description": "Cofnięcie zmian nie jest zaimplementowane"},
     },
 )
-async def undo_changes():
+def undo_changes():
     """
     Cofa wszystkie niezapisane zmiany (git reset --hard).
 

@@ -29,7 +29,7 @@ SERVER_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 @router.get("/models/{model_name}/capabilities", responses=SERVER_ERROR_RESPONSES)
-async def get_model_capabilities_endpoint(model_name: str):
+def get_model_capabilities_endpoint(model_name: str):
     """Pobiera capabilities modelu (wsparcie rol, templaty, etc.)."""
     model_registry = get_model_registry()
     if model_registry is None:
@@ -71,7 +71,7 @@ async def get_model_capabilities_endpoint(model_name: str):
 
 
 @router.get("/models/{model_name}/config", responses=SERVER_ERROR_RESPONSES)
-async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = None):
+def get_model_config_endpoint(model_name: str, runtime: Optional[str] = None):
     """Pobiera schemat parametrow generacji dla modelu (generation_schema)."""
     model_registry = get_model_registry()
     if model_registry is None:
@@ -144,9 +144,7 @@ async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = No
 
 
 @router.post("/models/{model_name}/config", responses=SERVER_ERROR_RESPONSES)
-async def update_model_config_endpoint(
-    model_name: str, request: ModelConfigUpdateRequest
-):
+def update_model_config_endpoint(model_name: str, request: ModelConfigUpdateRequest):
     """Aktualizuje parametry generacji dla modelu (per runtime)."""
     model_registry = get_model_registry()
     if model_registry is None:

@@ -289,7 +289,7 @@ class SimpleChatRequest(BaseModel):
         503: {"description": "Brak dostępnego endpointu LLM"},
     },
 )
-async def stream_simple_chat(request: SimpleChatRequest):
+def stream_simple_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
     model_name = request.model or runtime.model_name
     if not model_name:

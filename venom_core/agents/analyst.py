@@ -93,6 +93,11 @@ class AnalystAgent(BaseAgent):
         Returns:
             Raport z analizy
         """
+        # Yield control to event loop since this method is synchronous but implements async interface
+        import asyncio
+
+        await asyncio.sleep(0)
+
         logger.info("AnalystAgent generuje raport analityczny")
 
         # Generuj raport

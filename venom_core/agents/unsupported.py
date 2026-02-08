@@ -17,6 +17,11 @@ class UnsupportedAgent(BaseAgent):
         super().__init__(kernel)
 
     async def process(self, input_text: str) -> str:
+        # Yield control to event loop since this method is synchronous but implements async interface
+        import asyncio
+
+        await asyncio.sleep(0)
+
         logger.info("UnsupportedAgent obsługuje zapytanie bez dopasowania.")
         return (
             "Nie mam jeszcze umiejętności do tego zadania. "

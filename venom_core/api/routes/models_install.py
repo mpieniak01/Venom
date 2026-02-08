@@ -114,9 +114,7 @@ async def list_models():
         500: {"description": "Błąd serwera podczas inicjalizacji instalacji"},
     },
 )
-async def install_model(
-    request: ModelInstallRequest, background_tasks: BackgroundTasks
-):
+def install_model(request: ModelInstallRequest, background_tasks: BackgroundTasks):
     """
     Uruchamia pobieranie modelu w tle.
     """

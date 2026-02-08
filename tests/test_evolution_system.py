@@ -66,22 +66,19 @@ def core_skill(tmp_path):
 class TestSystemEngineerAgent:
     """Testy dla SystemEngineerAgent."""
 
-    @pytest.mark.asyncio
-    async def test_initialization(self, system_engineer, tmp_path):
+    def test_initialization(self, system_engineer, tmp_path):
         """Test inicjalizacji SystemEngineerAgent."""
         assert system_engineer.project_root == tmp_path
         assert system_engineer.graph_store is not None
         assert system_engineer.file_skill is not None
         assert system_engineer.git_skill is not None
 
-    @pytest.mark.asyncio
-    async def test_process_request(self, system_engineer):
+    def test_process_request(self, system_engineer):
         """Test przetwarzania żądania modyfikacji kodu."""
         # Skip this test as it requires full semantic-kernel setup
         pytest.skip("Wymaga pełnej konfiguracji semantic-kernel")
 
-    @pytest.mark.asyncio
-    async def test_analyze_impact(self, system_engineer):
+    def test_analyze_impact(self, system_engineer):
         """Test analizy wpływu modyfikacji."""
         impact = system_engineer.analyze_impact("test.py")
 

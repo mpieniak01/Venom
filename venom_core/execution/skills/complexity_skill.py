@@ -105,7 +105,7 @@ class ComplexitySkill:
         name="estimate_time",
         description="Szacuje czas wykonania zadania technicznego w minutach i zwraca JSON.",
     )
-    async def estimate_time(
+    def estimate_time(
         self,
         description: Annotated[str, "Opis zadania do oszacowania"],
     ) -> str:
@@ -162,7 +162,7 @@ class ComplexitySkill:
         name="estimate_complexity",
         description="Ocenia złożoność zadania technicznego (TRIVIAL/LOW/MEDIUM/HIGH/EPIC).",
     )
-    async def estimate_complexity(
+    def estimate_complexity(
         self,
         description: Annotated[str, "Opis zadania do oceny"],
     ) -> str:
@@ -216,7 +216,7 @@ class ComplexitySkill:
         name="suggest_subtasks",
         description="Proponuje podział dużego zadania na mniejsze podzadania.",
     )
-    async def suggest_subtasks(
+    def suggest_subtasks(
         self,
         description: Annotated[str, "Opis dużego zadania do podziału"],
     ) -> str:
@@ -283,7 +283,7 @@ class ComplexitySkill:
         name="flag_risks",
         description="Identyfikuje potencjalne ryzyka w zadaniu technicznym.",
     )
-    async def flag_risks(
+    def flag_risks(
         self,
         description: Annotated[str, "Opis zadania do analizy ryzyk"],
     ) -> str:

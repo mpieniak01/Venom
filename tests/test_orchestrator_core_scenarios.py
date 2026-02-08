@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
 from venom_core.core.models import TaskRequest, TaskStatus
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -18,11 +19,11 @@ def mock_runtime_info():
     return LLMRuntimeInfo(
         provider="local",
         model_name="mock-model",
-        endpoint="http://mock",
+        endpoint=MOCK_HTTP,
         service_type="local",
         mode="LOCAL",
         config_hash="initial_hash",
-        runtime_id="local@http://mock",
+        runtime_id=local_runtime_id(MOCK_HTTP),
     )
 
 

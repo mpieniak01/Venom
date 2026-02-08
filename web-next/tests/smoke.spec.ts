@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { buildHttpUrl } from "./utils/url";
 
 async function waitForHydration(page: Page) {
   await page.waitForFunction(
@@ -289,7 +290,7 @@ test.describe("Venom Next Cockpit Smoke", () => {
       await route.fulfill({
         status: 200,
         body: JSON.stringify([
-          { name: "vllm", status: "online", base_url: "http://localhost:8000" }
+          { name: "vllm", status: "online", base_url: buildHttpUrl("localhost", 8000) }
         ])
       });
     });

@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.helpers.url_fixtures import MOCK_HTTP, local_runtime_id
 from venom_core.config import SETTINGS
 from venom_core.main import app, state_manager
 from venom_core.utils.llm_runtime import LLMRuntimeInfo
@@ -18,11 +19,11 @@ def mock_runtime_info():
     return LLMRuntimeInfo(
         provider="local",
         model_name="mock-model",
-        endpoint="http://mock",
+        endpoint=MOCK_HTTP,
         service_type="local",
         mode="LOCAL",
         config_hash="abc123456789",
-        runtime_id="local@http://mock",
+        runtime_id=local_runtime_id(MOCK_HTTP),
     )
 
 

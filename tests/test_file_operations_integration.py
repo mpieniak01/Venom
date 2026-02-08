@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import LOCALHOST_11434_V1, MOCK_HTTP, local_runtime_id
 from venom_core.core.models import TaskRequest
 from venom_core.core.orchestrator import Orchestrator
 from venom_core.core.state_manager import StateManager
@@ -19,11 +20,11 @@ def mock_runtime_info():
     return LLMRuntimeInfo(
         provider="local",
         model_name="mock-model",
-        endpoint="http://mock",
+        endpoint=MOCK_HTTP,
         service_type="local",
         mode="LOCAL",
         config_hash="abc123456789",
-        runtime_id="local@http://mock",
+        runtime_id=local_runtime_id(MOCK_HTTP),
     )
 
 
@@ -101,7 +102,7 @@ async def test_orchestrator_with_file_operations(temp_state_file, temp_workspace
         mock_settings.WORKSPACE_ROOT = temp_workspace
         mock_settings.STATE_FILE_PATH = temp_state_file
         mock_settings.LLM_SERVICE_TYPE = "local"
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.LLM_MODEL_NAME = "phi3:latest"
         mock_settings.LLM_LOCAL_API_KEY = "venom-local"
         mock_settings.OPENAI_API_KEY = ""

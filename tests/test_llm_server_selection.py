@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.api.routes import system_llm as system_routes
 from venom_core.config import SETTINGS
 
@@ -79,7 +80,7 @@ async def test_set_active_llm_server_uses_last_model(tmp_path, monkeypatch):
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
     SETTINGS.LLM_MODEL_NAME = "phi3:mini"
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
 
@@ -118,7 +119,7 @@ async def test_set_active_llm_server_fallbacks_to_previous(monkeypatch):
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
     SETTINGS.LLM_MODEL_NAME = "missing"
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     try:
@@ -156,7 +157,7 @@ async def test_set_active_llm_server_raises_without_models(monkeypatch):
 
     original = _snapshot_settings()
     SETTINGS.LLM_SERVICE_TYPE = "local"
-    SETTINGS.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+    SETTINGS.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
     SETTINGS.LLM_MODEL_NAME = "missing"
     SETTINGS.ACTIVE_LLM_SERVER = "ollama"
     try:

@@ -14,6 +14,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import LOCALHOST_11434_V1
+
 # Sprawdź czy środowisko headless PRZED importem perception
 HEADLESS = os.environ.get("DISPLAY", "") == ""
 
@@ -37,7 +39,7 @@ class TestEyes:
         """Test inicjalizacji z OpenAI API key."""
         # Arrange
         mock_settings.OPENAI_API_KEY = "test_key"
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_get.side_effect = Exception("No local model")
 
@@ -54,7 +56,7 @@ class TestEyes:
         """Test inicjalizacji bez OpenAI API key."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_get.side_effect = Exception("No local model")
 
@@ -70,7 +72,7 @@ class TestEyes:
         """Test przygotowania base64 z data URI."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_get.side_effect = Exception("No local model")
         eyes = Eyes()
@@ -88,7 +90,7 @@ class TestEyes:
         """Test przygotowania base64 z czystego base64 stringa."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
         mock_get.side_effect = Exception("No local model")
@@ -110,7 +112,7 @@ class TestEyes:
         """Test przygotowania base64 z pliku."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
         mock_get.side_effect = Exception("No local model")
@@ -134,7 +136,7 @@ class TestEyes:
         """Test przygotowania base64 z nieistniejącego pliku."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_settings.MIN_BASE64_LENGTH = 500
         mock_get.side_effect = Exception("No local model")
@@ -150,7 +152,7 @@ class TestEyes:
         """Test sprawdzania lokalnego modelu vision gdy niedostępny."""
         # Arrange
         mock_settings.OPENAI_API_KEY = ""
-        mock_settings.LLM_LOCAL_ENDPOINT = "http://localhost:11434/v1"
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
         mock_settings.OLLAMA_CHECK_TIMEOUT = 5
         mock_get.side_effect = Exception("Connection error")
 

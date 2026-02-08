@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { buildHttpUrl } from "../utils/url";
 
 type TargetConfig = {
   name: string;
@@ -16,7 +17,8 @@ const defaultBaseUrl = (() => {
   const host = process.env.PLAYWRIGHT_HOST ?? "127.0.0.1";
   // Domyślnie celujemy w port Cockpitu (3000).
   const port = process.env.PLAYWRIGHT_PORT ?? "3000";
-  return `http://${host}:${port}`;
+  const parsedPort = Number.parseInt(port, 10);
+  return Number.isNaN(parsedPort) ? buildHttpUrl(host) : buildHttpUrl(host, parsedPort);
 })();
 
 const targets: TargetConfig[] = [
@@ -34,7 +36,7 @@ const targets: TargetConfig[] = [
 const defaultApiBase =
   process.env.PERF_API_BASE ??
   process.env.VENOM_API_BASE ??
-  "http://127.0.0.1:8000";
+  buildHttpUrl("127.0.0.1", 8000);
 
 async function isBackendHealthy() {
   try {

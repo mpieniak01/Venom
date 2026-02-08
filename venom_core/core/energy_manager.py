@@ -186,7 +186,7 @@ class EnergyManager:
         self._alert_callbacks.append(callback)
         logger.debug(f"Zarejestrowano alert callback: {callback.__name__}")
 
-    async def start_monitoring(self) -> None:
+    def start_monitoring(self) -> None:
         """Rozpoczyna monitorowanie systemu w tle."""
         if self.is_monitoring:
             logger.warning("Monitoring już działa")
@@ -264,7 +264,7 @@ class EnergyManager:
         idle_time = self.get_idle_time()
         return idle_time >= threshold
 
-    async def wake_up(self) -> None:
+    def wake_up(self) -> None:
         """
         Natychmiastowe "obudzenie" - przerywa wszystkie procesy śnienia.
         Wywoływane gdy użytkownik wraca do aktywności.

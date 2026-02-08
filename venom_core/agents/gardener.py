@@ -71,7 +71,7 @@ class GardenerAgent:
         logger.info("Uruchamianie GardenerAgent...")
 
         # Wykonaj początkowe skanowanie
-        await self.scan_and_update()
+        self.scan_and_update()
 
         # Uruchom pętlę monitorowania
         self._task = asyncio.create_task(self._monitoring_loop())
@@ -101,9 +101,9 @@ class GardenerAgent:
                 await asyncio.sleep(self.scan_interval)
 
                 # Sprawdź czy były zmiany
-                if await self._check_for_changes():
+                if self._check_for_changes():
                     logger.info("Wykryto zmiany w workspace, rozpoczynam re-indeksację")
-                    await self.scan_and_update()
+                    self.scan_and_update()
                 else:
                     logger.debug("Brak zmian w workspace")
 
@@ -119,7 +119,7 @@ class GardenerAgent:
                 # Kontynuuj pomimo błędu
                 await asyncio.sleep(10)
 
-    async def _check_for_changes(self) -> bool:
+    def _check_for_changes(self) -> bool:
         """
         Sprawdza czy były zmiany w plikach Python.
 
@@ -159,7 +159,7 @@ class GardenerAgent:
             logger.error(f"Błąd podczas sprawdzania zmian: {e}")
             return False
 
-    async def scan_and_update(self, force_rescan: bool = False) -> dict:
+    def scan_and_update(self, force_rescan: bool = False) -> dict:
         """
         Skanuje workspace i aktualizuje graf.
 
@@ -299,7 +299,7 @@ class GardenerAgent:
             logger.info("Rozpoczynam automatyczną refaktoryzację w trybie idle")
 
             # 1. Znajdź pliki o wysokiej złożoności
-            complex_files = await self._find_complex_files()
+            complex_files = self._find_complex_files()
 
             if not complex_files:
                 logger.info("Brak plików wymagających refaktoryzacji")
@@ -310,7 +310,7 @@ class GardenerAgent:
             logger.info(f"Refaktoryzacja pliku: {target_file['path']}")
 
             # 3. Utwórz branch (jeśli Git jest dostępny)
-            branch_created = await self._create_refactoring_branch()
+            branch_created = self._create_refactoring_branch()
 
             if branch_created:
                 logger.info(
@@ -334,7 +334,7 @@ class GardenerAgent:
         finally:
             self._idle_refactoring_in_progress = False
 
-    async def _find_complex_files(self) -> list[dict]:
+    def _find_complex_files(self) -> list[dict]:
         """
         Znajduje pliki o wysokiej złożoności cyklomatycznej.
 
@@ -405,7 +405,7 @@ class GardenerAgent:
             logger.error(f"Błąd podczas analizy złożoności: {e}")
             return []
 
-    async def _create_refactoring_branch(self) -> bool:
+    def _create_refactoring_branch(self) -> bool:
         """
         Tworzy branch dla automatycznej refaktoryzacji.
 

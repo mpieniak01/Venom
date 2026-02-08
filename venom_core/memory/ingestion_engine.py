@@ -182,9 +182,9 @@ class IngestionEngine:
 
         # Wybierz odpowiednią metodę przetwarzania
         if file_type == "pdf":
-            text = await self._process_pdf(path)
+            text = self._process_pdf(path)
         elif file_type == "docx":
-            text = await self._process_docx(path)
+            text = self._process_docx(path)
         elif file_type == "image":
             text = await self._process_image(path)
         elif file_type == "audio":
@@ -206,7 +206,7 @@ class IngestionEngine:
             "file_type": file_type,
         }
 
-    async def _process_pdf(self, path: Path) -> str:
+    def _process_pdf(self, path: Path) -> str:
         """
         Ekstrahuje tekst z pliku PDF.
 
@@ -252,7 +252,7 @@ class IngestionEngine:
             logger.error(f"Błąd podczas przetwarzania PDF: {e}")
             raise
 
-    async def _process_docx(self, path: Path) -> str:
+    def _process_docx(self, path: Path) -> str:
         """
         Ekstrahuje tekst z pliku DOCX.
 
@@ -514,11 +514,12 @@ class IngestionEngine:
             import trafilatura
 
             # Pobierz i wyekstrahuj tekst
-            downloaded = trafilatura.fetch_url(url)
+            downloaded = await asyncio.to_thread(trafilatura.fetch_url, url)
             if not downloaded:
                 raise ValueError(f"Nie udało się pobrać URL: {url}")
 
-            text = trafilatura.extract(
+            text = await asyncio.to_thread(
+                trafilatura.extract,
                 downloaded,
                 include_comments=False,
                 include_tables=True,

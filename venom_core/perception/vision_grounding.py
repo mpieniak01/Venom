@@ -65,7 +65,7 @@ class VisionGrounding:
             logger.warning(
                 "Brak zaawansowanego modelu vision. Używam fallback (OCR + heurystyka)"
             )
-            return await self._locate_with_fallback(screenshot, description)
+            return self._locate_with_fallback(screenshot, description)
 
     async def _locate_with_openai(
         self,
@@ -191,7 +191,7 @@ Przykład odpowiedzi:
 
         return None
 
-    async def _locate_with_fallback(
+    def _locate_with_fallback(
         self, screenshot: Image.Image, description: str
     ) -> Optional[Tuple[int, int]]:
         """

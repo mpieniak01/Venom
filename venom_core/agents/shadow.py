@@ -5,6 +5,7 @@ Shadow Agent obserwuje aktywność użytkownika, analizuje kontekst pracy
 i proaktywnie oferuje pomoc bez przerywania przepływu pracy.
 """
 
+import asyncio
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -157,6 +158,7 @@ Gdy otrzymujesz dane z sensora:
             return
 
         self._is_running = True
+        await asyncio.sleep(0)
         logger.info("ShadowAgent uruchomiony w trybie daemon")
 
     async def stop(self) -> None:
@@ -166,6 +168,7 @@ Gdy otrzymujesz dane z sensora:
             return
 
         self._is_running = False
+        await asyncio.sleep(0)
         logger.info("ShadowAgent zatrzymany")
 
     async def process(self, input_text: str) -> str:
@@ -225,7 +228,7 @@ Gdy otrzymujesz dane z sensora:
             sensor_type = sensor_data.get("type")
 
             if sensor_type == "clipboard":
-                return await self._analyze_clipboard(sensor_data)
+                return self._analyze_clipboard(sensor_data)
             elif sensor_type == "window":
                 return await self._analyze_window(sensor_data)
             else:
@@ -236,7 +239,7 @@ Gdy otrzymujesz dane z sensora:
             logger.error(f"Błąd w analyze_sensor_data: {e}")
             return None
 
-    async def _analyze_clipboard(self, data: Dict[str, Any]) -> Optional[Suggestion]:
+    def _analyze_clipboard(self, data: Dict[str, Any]) -> Optional[Suggestion]:
         """
         Analizuje zawartość schowka.
 
@@ -250,9 +253,9 @@ Gdy otrzymujesz dane z sensora:
 
         # Szybkie heurystyki przed wywołaniem LLM
         if self._is_error_traceback(content):
-            return await self._suggest_error_fix(content)
+            return self._suggest_error_fix(content)
         elif self._is_code_snippet(content):
-            return await self._suggest_code_improvement(content)
+            return self._suggest_code_improvement(content)
 
         # Brak jasnego sygnału - nie generuj sugestii
         return None
@@ -277,7 +280,7 @@ Gdy otrzymujesz dane z sensora:
 
         # Sprawdź czy użytkownik czyta dokumentację
         if self._is_reading_docs(title):
-            return await self._suggest_context_help(title)
+            return self._suggest_context_help(title)
 
         return None
 
@@ -347,7 +350,7 @@ Gdy otrzymujesz dane z sensora:
 
         return any(keyword in title.lower() for keyword in doc_keywords)
 
-    async def _suggest_error_fix(self, error_text: str) -> Optional[Suggestion]:
+    def _suggest_error_fix(self, error_text: str) -> Optional[Suggestion]:
         """
         Generuje sugestię naprawy błędu.
 
@@ -359,7 +362,7 @@ Gdy otrzymujesz dane z sensora:
         """
         # Sprawdź lekcje z przeszłości
         if self.lessons_store:
-            similar_lessons = await self._find_similar_lessons(error_text)
+            similar_lessons = self._find_similar_lessons(error_text)
             if similar_lessons:
                 logger.info(f"Znaleziono {len(similar_lessons)} podobnych lekcji")
 
@@ -374,7 +377,7 @@ Gdy otrzymujesz dane z sensora:
             metadata={"source": "clipboard", "error_detected": True},
         )
 
-    async def _suggest_code_improvement(self, code: str) -> Optional[Suggestion]:
+    def _suggest_code_improvement(self, code: str) -> Optional[Suggestion]:
         """
         Generuje sugestię poprawy kodu.
 
@@ -398,7 +401,7 @@ Gdy otrzymujesz dane z sensora:
             metadata={"source": "clipboard"},
         )
 
-    async def _suggest_context_help(self, window_title: str) -> Optional[Suggestion]:
+    def _suggest_context_help(self, window_title: str) -> Optional[Suggestion]:
         """
         Generuje sugestię kontekstowej pomocy.
 
@@ -517,7 +520,7 @@ ODPOWIEDŹ:"""
             logger.error(f"Błąd podczas sprawdzania task context: {e}")
             return None
 
-    async def _find_similar_lessons(self, context: str) -> List[Any]:
+    def _find_similar_lessons(self, context: str) -> List[Any]:
         """
         Szuka podobnych lekcji w LessonsStore używając embeddings.
 

@@ -113,11 +113,11 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
 
         # Rozpocznij nagrywanie
         if any(kw in request_lower for kw in ["rozpocznij", "start", "rec", "nagraj"]):
-            return await self._start_recording(request)
+            return self._start_recording(request)
 
         # Zatrzymaj nagrywanie
         elif any(kw in request_lower for kw in ["zatrzymaj", "stop", "zakończ"]):
-            return await self._stop_recording(request)
+            return self._stop_recording(request)
 
         # Analiza sesji
         elif "analizuj" in request_lower:
@@ -129,9 +129,9 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
 
         # Inne - deleguj do LLM
         else:
-            return await self._llm_response(request)
+            return self._llm_response(request)
 
-    async def _start_recording(self, request: str) -> str:
+    def _start_recording(self, request: str) -> str:
         """
         Rozpoczyna nagrywanie demonstracji.
 
@@ -158,7 +158,7 @@ Pamiętaj: Generujesz kod PYTHON, nie pseudokod. Kod musi być gotowy do wykonan
             f"Wykonaj zadanie, które chcesz nauczyć, a następnie powiedz 'stop'."
         )
 
-    async def _stop_recording(self, request: str) -> str:
+    def _stop_recording(self, request: str) -> str:
         """
         Zatrzymuje nagrywanie demonstracji.
 
@@ -417,7 +417,7 @@ async def {safe_function_name}(ghost_agent: GhostAgent, **kwargs):
 
         return sanitized
 
-    async def _llm_response(self, request: str) -> str:
+    def _llm_response(self, request: str) -> str:
         """
         Deleguje żądanie do LLM przez hybrydowy router.
 

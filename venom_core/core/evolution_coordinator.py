@@ -76,7 +76,7 @@ class EvolutionCoordinator:
         try:
             # Faza 1: Analiza i planowanie
             logger.info("=== FAZA 1: ANALIZA ===")
-            analysis = await self._analyze_request(request)
+            analysis = self._analyze_request(request)
             if not analysis["feasible"]:
                 return {
                     "success": False,
@@ -110,7 +110,7 @@ class EvolutionCoordinator:
             logger.info("=== FAZA 5: DECYZJA ===")
             if verification_result["success"]:
                 logger.info("✅ Weryfikacja pomyślna - mergowanie zmian")
-                merge_result = await self._merge_changes(branch_name)
+                merge_result = self._merge_changes(branch_name)
 
                 # Cleanup
                 await self.mirror_world.destroy_instance(
@@ -149,7 +149,7 @@ class EvolutionCoordinator:
                 "reason": str(e),
             }
 
-    async def _analyze_request(self, request: str) -> dict:
+    def _analyze_request(self, request: str) -> dict:
         """
         Analizuje żądanie i sprawdza czy jest możliwe do wykonania.
 
@@ -259,7 +259,7 @@ class EvolutionCoordinator:
             "reason": "Wszystkie weryfikacje przeszły pomyślnie",
         }
 
-    async def _merge_changes(self, branch_name: str) -> dict:
+    def _merge_changes(self, branch_name: str) -> dict:
         """
         Merguje zmiany z brancha eksperymentalnego do głównego brancha.
 

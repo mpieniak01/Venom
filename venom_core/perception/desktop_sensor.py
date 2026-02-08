@@ -178,6 +178,7 @@ class DesktopSensor:
 
         self._is_running = True
         self._monitor_task = asyncio.create_task(self._monitor_loop())
+        await asyncio.sleep(0)
         logger.info("DesktopSensor uruchomiony")
 
     async def stop(self) -> None:

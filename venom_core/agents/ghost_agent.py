@@ -499,7 +499,7 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
                 # Weryfikacja po każdym kroku jeśli włączona
                 if self.verification_enabled and step.status == "success":
                     # Zrób screenshot po akcji i sprawdź czy akcja zakończyła się sukcesem
-                    verification_result = await self._verify_step_result(
+                    verification_result = self._verify_step_result(
                         step, last_screenshot
                     )
                     if not verification_result:
@@ -520,9 +520,7 @@ ODPOWIEDŹ (tylko JSON, bez dodatkowych komentarzy):"""
         # Generuj raport
         return self._generate_report()
 
-    async def _verify_step_result(
-        self, step: ActionStep, pre_action_screenshot
-    ) -> bool:
+    def _verify_step_result(self, step: ActionStep, pre_action_screenshot) -> bool:
         """
         Weryfikuje rezultat wykonania kroku porównując stan przed i po akcji.
 

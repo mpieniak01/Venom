@@ -318,7 +318,7 @@ class DemonstrationAnalyzer:
 
             # Prosty placeholder - w przyszłości można użyć Florence-2 lub LLaVA
             # do generowania opisów
-            description = await self._simple_element_detection(crop)
+            description = self._simple_element_detection(crop)
 
             return description
 
@@ -326,7 +326,7 @@ class DemonstrationAnalyzer:
             logger.error(f"Błąd podczas opisywania elementu UI: {e}")
             return None
 
-    async def _simple_element_detection(self, crop: Image.Image) -> str:
+    def _simple_element_detection(self, crop: Image.Image) -> str:
         """
         Prosta detekcja elementu (placeholder).
 

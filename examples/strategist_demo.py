@@ -16,7 +16,7 @@ from venom_core.core.prompt_manager import PromptManager
 from venom_core.core.token_economist import TokenEconomist
 
 
-async def example_model_routing():
+def example_model_routing():
     """Przykład inteligentnego routingu modeli."""
     print("=" * 60)
     print("PRZYKŁAD 1: Model Router - Inteligentny Routing")
@@ -46,7 +46,7 @@ async def example_model_routing():
     print(f"   Wybrany model: {routing_info['selected_service']}")
 
 
-async def example_prompt_management():
+def example_prompt_management():
     """Przykład zarządzania promptami."""
     print("\n" + "=" * 60)
     print("PRZYKŁAD 2: Prompt Manager - Dynamiczne Prompty")
@@ -75,7 +75,7 @@ async def example_prompt_management():
     print(f"💾 Prompty w cache: {cache_status['cached_prompts']}")
 
 
-async def example_token_management():
+def example_token_management():
     """Przykład zarządzania tokenami i kosztami."""
     print("\n" + "=" * 60)
     print("PRZYKŁAD 3: Token Economist - Optymalizacja Kosztów")
@@ -202,7 +202,7 @@ async def example_analyst():
         print(f"\n⚠️  Pominięto przykład Analyst Agent (brak zależności): {e}")
 
 
-async def example_kernel_builder_integration():
+def example_kernel_builder_integration():
     """Przykład integracji KernelBuilder z nowymi komponentami."""
     print("\n" + "=" * 60)
     print("PRZYKŁAD 5: KernelBuilder - Integracja")
@@ -244,11 +244,11 @@ async def main():
     print("Inteligentne Zarządzanie Modelami i Zasobami")
     print("=" * 60)
 
-    await example_model_routing()
-    await example_prompt_management()
-    await example_token_management()
+    example_model_routing()
+    example_prompt_management()
+    example_token_management()
     await example_analyst()
-    await example_kernel_builder_integration()
+    example_kernel_builder_integration()
 
     print("\n" + "=" * 60)
     print("✅ DEMO ZAKOŃCZONE")

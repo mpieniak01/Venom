@@ -118,7 +118,7 @@ async def example_full_cycle():
     logger.info("4. Skrypt gotowy do wykonania przez GhostAgent")
 
 
-async def example_workflow_editing():
+def example_workflow_editing():
     """
     Przykład edycji wygenerowanego workflow.
 
@@ -193,7 +193,7 @@ async def example_workflow_editing():
     logger.info("\n✅ Przykład zakończony!")
 
 
-async def example_parametrization():
+def example_parametrization():
     """
     Przykład parametryzacji workflow.
 
@@ -277,9 +277,9 @@ async def main():
         if choice == "1":
             await example_full_cycle()
         elif choice == "2":
-            await example_workflow_editing()
+            example_workflow_editing()
         elif choice == "3":
-            await example_parametrization()
+            example_parametrization()
         elif choice == "0":
             logger.info("👋 Do zobaczenia!")
         else:

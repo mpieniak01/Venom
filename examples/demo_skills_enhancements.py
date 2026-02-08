@@ -41,7 +41,7 @@ async def demo_file_skill_recursive():
         print(result)
 
 
-async def demo_browser_skill_screenshots():
+def demo_browser_skill_screenshots():
     """Demonstracja automatycznych screenshotów w BrowserSkill."""
     print("\n" + "=" * 70)
     print("2. BrowserSkill - Automatyczne screenshoty po akcjach")
@@ -140,7 +140,7 @@ async def main():
 
     # Demonstracje
     await demo_file_skill_recursive()
-    await demo_browser_skill_screenshots()
+    demo_browser_skill_screenshots()
     demo_platform_skill_config_status()
     demo_web_skill_tavily()
 

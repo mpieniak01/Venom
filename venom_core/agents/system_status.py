@@ -11,6 +11,13 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+STATUS_EMOJIS = {
+    "online": "🟢",
+    "degraded": "🟠",
+    "offline": "🔴",
+    "unknown": "⚪",
+}
+
 
 class SystemStatusAgent(BaseAgent):
     """
@@ -64,12 +71,10 @@ class SystemStatusAgent(BaseAgent):
     def _format_report(self, services: List[dict]) -> str:
         """Buduje raport tekstowy na podstawie listy usług."""
         status_groups = {"online": 0, "degraded": 0, "offline": 0, "unknown": 0}
-        critical_alerts = []
+        critical_alerts: List[dict] = []
 
         for service in services:
-            status = service.get("status", "unknown").lower()
-            if status not in status_groups:
-                status = "unknown"
+            status = self._normalize_status(service, status_groups)
             status_groups[status] += 1
 
             if service.get("is_critical") and status != "online":
@@ -84,36 +89,41 @@ class SystemStatusAgent(BaseAgent):
         if critical_alerts:
             lines.append("\n‼️ **Krytyczne alerty:**")
             for service in critical_alerts:
-                lines.append(
-                    f"• {service['name']} – status: {service['status'].upper()} "
-                    f"(ostatnie sprawdzenie: {service.get('last_check') or 'brak danych'})"
-                )
+                lines.append(self._format_critical_alert(service))
 
         lines.append("\n📋 **Szczegóły usług:**")
-        status_emojis = {
-            "online": "🟢",
-            "degraded": "🟠",
-            "offline": "🔴",
-            "unknown": "⚪",
-        }
-
         for service in sorted(
             services, key=lambda s: (s.get("is_critical"), s["name"]), reverse=True
         ):
-            status = service.get("status", "unknown").lower()
-            emoji = status_emojis.get(status, "⚪")
-            latency = service.get("latency_ms")
-            latency_text = (
-                f"{latency:.0f} ms"
-                if isinstance(latency, (int, float))
-                else "brak danych"
-            )
-            last_check = service.get("last_check") or "brak danych"
-            importance = " (krytyczna)" if service.get("is_critical") else ""
-
-            lines.append(
-                f"{emoji} {service['name']}{importance} – {status.upper()}, "
-                f"opóźnienie: {latency_text}, ostatni pomiar: {last_check}"
-            )
+            lines.append(self._format_service_line(service))
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _normalize_status(service: dict, status_groups: dict[str, int]) -> str:
+        status = service.get("status", "unknown").lower()
+        if status not in status_groups:
+            return "unknown"
+        return status
+
+    @staticmethod
+    def _format_critical_alert(service: dict) -> str:
+        return (
+            f"• {service['name']} – status: {service['status'].upper()} "
+            f"(ostatnie sprawdzenie: {service.get('last_check') or 'brak danych'})"
+        )
+
+    @staticmethod
+    def _format_service_line(service: dict) -> str:
+        status = service.get("status", "unknown").lower()
+        emoji = STATUS_EMOJIS.get(status, "⚪")
+        latency = service.get("latency_ms")
+        latency_text = (
+            f"{latency:.0f} ms" if isinstance(latency, (int, float)) else "brak danych"
+        )
+        last_check = service.get("last_check") or "brak danych"
+        importance = " (krytyczna)" if service.get("is_critical") else ""
+        return (
+            f"{emoji} {service['name']}{importance} – {status.upper()}, "
+            f"opóźnienie: {latency_text}, ostatni pomiar: {last_check}"
+        )

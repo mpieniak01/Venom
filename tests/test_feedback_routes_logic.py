@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -125,10 +126,12 @@ async def test_submit_feedback_save_error_returns_500(monkeypatch):
     state = SimpleNamespace(get_task=lambda _task_id: task)
     feedback_routes.set_dependencies(orchestrator=None, state_manager=state)
 
-    async def failing_save(*_args, **_kwargs):
+    def failing_save(*_args, **_kwargs):
         raise RuntimeError("disk error")
 
-    monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", failing_save)
+    monkeypatch.setattr(
+        feedback_routes, "_save_jsonl_entry", AsyncMock(side_effect=failing_save)
+    )
 
     payload = feedback_routes.FeedbackRequest(task_id=task_id, rating="up")
     with pytest.raises(HTTPException) as exc:
@@ -189,10 +192,12 @@ async def test_submit_feedback_down_with_followup_error_and_metrics(monkeypatch)
 
     saved = []
 
-    async def fake_save(path, entry, _msg):
+    def fake_save(path, entry, _msg):
         saved.append((path, entry))
 
-    monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", fake_save)
+    monkeypatch.setattr(
+        feedback_routes, "_save_jsonl_entry", AsyncMock(side_effect=fake_save)
+    )
     collector = DummyCollector()
     monkeypatch.setattr(
         feedback_routes.metrics_module, "metrics_collector", collector, raising=False
@@ -223,12 +228,14 @@ async def test_submit_feedback_up_hidden_prompt_save_error(monkeypatch):
     state = SimpleNamespace(get_task=lambda _task_id: task)
     calls = {"count": 0}
 
-    async def fake_save(path, entry, _msg):
+    def fake_save(path, entry, _msg):
         calls["count"] += 1
         if calls["count"] == 2:
             raise RuntimeError("hidden save failed")
 
-    monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", fake_save)
+    monkeypatch.setattr(
+        feedback_routes, "_save_jsonl_entry", AsyncMock(side_effect=fake_save)
+    )
     monkeypatch.setattr(
         feedback_routes.metrics_module, "metrics_collector", None, raising=False
     )

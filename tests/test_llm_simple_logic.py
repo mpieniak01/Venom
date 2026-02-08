@@ -153,7 +153,7 @@ def test_build_preview_messages_and_payload(monkeypatch):
     )
     assert payload["keep_alive"] == "30m"
     assert payload["max_tokens"] == 42
-    assert payload["temperature"] == 0.3
+    assert payload["temperature"] == pytest.approx(0.3, abs=1e-12)
 
 
 def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):

@@ -103,29 +103,49 @@ class VenomSpore:
         if tags:
             print(f"   Tags: {', '.join(tags)}")
 
+    def _build_heartbeat(self) -> HeartbeatMessage:
+        cpu_usage = psutil.cpu_percent(interval=0.1) / 100.0
+        memory = psutil.virtual_memory()
+        memory_usage = memory.percent / 100.0
+        return HeartbeatMessage(
+            node_id=self.node_id,
+            cpu_usage=cpu_usage,
+            memory_usage=memory_usage,
+            active_tasks=self.active_tasks,
+        )
+
+    @staticmethod
+    def _should_disconnect_on_invalid_message(invalid_message_count: int) -> bool:
+        max_invalid_messages = 10
+        return invalid_message_count >= max_invalid_messages
+
+    @staticmethod
+    def _to_node_message(message_str: str) -> NodeMessage:
+        message_dict = json.loads(message_str)
+        return NodeMessage(**message_dict)
+
+    async def _cleanup_heartbeat_task(self) -> None:
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._heartbeat_task
+        self._heartbeat_task = None
+
     async def _heartbeat_loop(self):
         """Pętla wysyłająca heartbeat."""
         while self.running:
             try:
                 await asyncio.sleep(self.settings.HEARTBEAT_INTERVAL)
 
-                # Pobierz statystyki
-                cpu_usage = psutil.cpu_percent(interval=0.1) / 100.0
-                memory = psutil.virtual_memory()
-                memory_usage = memory.percent / 100.0
-
-                heartbeat = HeartbeatMessage(
-                    node_id=self.node_id,
-                    cpu_usage=cpu_usage,
-                    memory_usage=memory_usage,
-                    active_tasks=self.active_tasks,
-                )
-
+                heartbeat = self._build_heartbeat()
                 message = NodeMessage.from_heartbeat(heartbeat)
                 await self.websocket.send(json.dumps(message.model_dump()))
 
                 print(
-                    f"💓 Heartbeat: CPU={cpu_usage:.2f}, MEM={memory_usage:.2f}, Tasks={self.active_tasks}"
+                    "💓 Heartbeat: "
+                    f"CPU={heartbeat.cpu_usage:.2f}, "
+                    f"MEM={heartbeat.memory_usage:.2f}, "
+                    f"Tasks={self.active_tasks}"
                 )
 
             except ConnectionClosed:
@@ -140,38 +160,39 @@ class VenomSpore:
         print("👂 Nasłuchuję poleceń od Nexusa...")
 
         invalid_message_count = 0
-        MAX_INVALID_MESSAGES = 10
 
         try:
             async for message_str in self.websocket:
                 try:
-                    message_dict = json.loads(message_str)
-                    message = NodeMessage(**message_dict)
+                    message = self._to_node_message(message_str)
 
                     if message.message_type == MessageType.EXECUTE_SKILL:
                         await self._handle_skill_execution(message.payload)
-                        invalid_message_count = (
-                            0  # Reset counter po poprawnej wiadomości
-                        )
-                    else:
-                        print(f"⚠️ Nieznany typ wiadomości: {message.message_type}")
-                        invalid_message_count += 1
-                        if invalid_message_count >= MAX_INVALID_MESSAGES:
-                            print(
-                                "❌ Zbyt wiele nieprawidłowych wiadomości - rozłączam"
-                            )
-                            break
+                        invalid_message_count = 0
+                        continue
+
+                    print(f"⚠️ Nieznany typ wiadomości: {message.message_type}")
+                    invalid_message_count += 1
+                    if self._should_disconnect_on_invalid_message(
+                        invalid_message_count
+                    ):
+                        print("❌ Zbyt wiele nieprawidłowych wiadomości - rozłączam")
+                        break
 
                 except json.JSONDecodeError as e:
                     print(f"❌ Błąd JSON: {e}")
                     invalid_message_count += 1
-                    if invalid_message_count >= MAX_INVALID_MESSAGES:
+                    if self._should_disconnect_on_invalid_message(
+                        invalid_message_count
+                    ):
                         print("❌ Zbyt wiele błędów parsowania - rozłączam")
                         break
                 except Exception as e:
                     print(f"❌ Błąd parsowania wiadomości: {e}")
                     invalid_message_count += 1
-                    if invalid_message_count >= MAX_INVALID_MESSAGES:
+                    if self._should_disconnect_on_invalid_message(
+                        invalid_message_count
+                    ):
                         print("❌ Zbyt wiele błędów - rozłączam")
                         break
 
@@ -179,11 +200,7 @@ class VenomSpore:
             print("❌ Połączenie z Nexusem zostało zamknięte")
         finally:
             self.running = False
-            if self._heartbeat_task and not self._heartbeat_task.done():
-                self._heartbeat_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await self._heartbeat_task
-            self._heartbeat_task = None
+            await self._cleanup_heartbeat_task()
 
     async def _handle_skill_execution(self, payload: dict):
         """

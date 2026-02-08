@@ -94,78 +94,36 @@ class SimulationDirector:
         start_time = datetime.now(timezone.utc)
 
         # Krok 1: Wdróż stack jeśli wymagane
-        if deploy_stack:
-            if not compose_content:
-                logger.error("deploy_stack=True ale brak compose_content")
-                return {
-                    "error": "Brak zawartości docker-compose.yml",
-                    "scenario_id": scenario_id,
-                }
-
-            logger.info(f"Wdrażam stack: {stack_name}")
-            success, msg = self.stack_manager.deploy_stack(
-                compose_content=compose_content,
-                stack_name=stack_name,
-            )
-
-            if not success:
-                logger.error(f"Nie udało się wdrożyć stacka: {msg}")
-                return {
-                    "error": f"Błąd wdrażania stacka: {msg}",
-                    "scenario_id": scenario_id,
-                }
-
-            logger.info("Stack wdrożony, czekam 5s na inicjalizację...")
-            await asyncio.sleep(5)
+        deployment_error = await self._deploy_stack_if_needed(
+            stack_name=stack_name,
+            deploy_stack=deploy_stack,
+            compose_content=compose_content,
+            scenario_id=scenario_id,
+        )
+        if deployment_error:
+            return deployment_error
 
         # Krok 2: Przygotuj persony
-        if not personas:
-            logger.info(f"Generuję {user_count} zróżnicowanych person")
-            personas = self.persona_factory.generate_diverse_personas(
-                goal=scenario_desc,
-                count=user_count,
-                use_llm=False,  # Dla MVP bez LLM
-            )
+        personas = self._resolve_personas(personas, scenario_desc, user_count)
 
         # Krok 3: Spawn użytkowników równolegle
         logger.info(f"Spawning {len(personas)} symulowanych użytkowników...")
 
-        # Stwórz zadania dla każdego użytkownika
-        tasks = []
-        for i, persona in enumerate(personas):
-            session_id = f"{scenario_id}_{i}"
-            task = self._run_user_session(
-                persona=persona,
-                target_url=target_url,
-                session_id=session_id,
-                max_steps=max_steps_per_user,
-            )
-            tasks.append(task)
-
-        # Krok 4: Opcjonalnie wprowadź chaos
-        if self.enable_chaos and deploy_stack:
-            chaos_task = self._run_chaos_monkey(
-                stack_name=stack_name,
-                duration_seconds=max_steps_per_user * 5,  # Szacunkowy czas
-            )
-            tasks.append(chaos_task)
+        tasks = self._build_scenario_tasks(
+            personas=personas,
+            scenario_id=scenario_id,
+            target_url=target_url,
+            max_steps_per_user=max_steps_per_user,
+            stack_name=stack_name,
+            deploy_stack=deploy_stack,
+        )
 
         # Uruchom wszystkie sesje równolegle
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Krok 5: Zbierz wyniki (pomiń wynik chaos_monkey jeśli był)
-        if self.enable_chaos and deploy_stack:
-            user_results = results[:-1]  # Usuń ostatni (chaos monkey)
-        else:
-            user_results = results
-
-        # Filtruj błędy
-        successful_results = [
-            r for r in user_results if isinstance(r, dict) and "error" not in r
-        ]
-        failed_results = [
-            r for r in user_results if not isinstance(r, dict) or "error" in r
-        ]
+        user_results = self._extract_user_results(results, deploy_stack)
+        successful_results, failed_results = self._split_results(user_results)
 
         end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
@@ -200,6 +158,99 @@ class SimulationDirector:
 
         self.simulation_results.append(scenario_report)
         return scenario_report
+
+    async def _deploy_stack_if_needed(
+        self,
+        *,
+        stack_name: str,
+        deploy_stack: bool,
+        compose_content: Optional[str],
+        scenario_id: str,
+    ) -> dict | None:
+        if not deploy_stack:
+            return None
+        if not compose_content:
+            logger.error("deploy_stack=True ale brak compose_content")
+            return {
+                "error": "Brak zawartości docker-compose.yml",
+                "scenario_id": scenario_id,
+            }
+        logger.info(f"Wdrażam stack: {stack_name}")
+        success, msg = self.stack_manager.deploy_stack(
+            compose_content=compose_content,
+            stack_name=stack_name,
+        )
+        if not success:
+            logger.error(f"Nie udało się wdrożyć stacka: {msg}")
+            return {
+                "error": f"Błąd wdrażania stacka: {msg}",
+                "scenario_id": scenario_id,
+            }
+        logger.info("Stack wdrożony, czekam 5s na inicjalizację...")
+        await asyncio.sleep(5)
+        return None
+
+    def _resolve_personas(
+        self, personas: Optional[list[Persona]], scenario_desc: str, user_count: int
+    ) -> list[Persona]:
+        if personas:
+            return personas
+        logger.info(f"Generuję {user_count} zróżnicowanych person")
+        return self.persona_factory.generate_diverse_personas(
+            goal=scenario_desc,
+            count=user_count,
+            use_llm=False,
+        )
+
+    def _build_scenario_tasks(
+        self,
+        *,
+        personas: list[Persona],
+        scenario_id: str,
+        target_url: str,
+        max_steps_per_user: int,
+        stack_name: str,
+        deploy_stack: bool,
+    ) -> list[Any]:
+        tasks: list[Any] = []
+        for index, persona in enumerate(personas):
+            session_id = f"{scenario_id}_{index}"
+            tasks.append(
+                self._run_user_session(
+                    persona=persona,
+                    target_url=target_url,
+                    session_id=session_id,
+                    max_steps=max_steps_per_user,
+                )
+            )
+        if self.enable_chaos and deploy_stack:
+            tasks.append(
+                self._run_chaos_monkey(
+                    stack_name=stack_name,
+                    duration_seconds=max_steps_per_user * 5,
+                )
+            )
+        return tasks
+
+    def _extract_user_results(
+        self, results: list[Any], deploy_stack: bool
+    ) -> list[Any]:
+        if self.enable_chaos and deploy_stack:
+            return results[:-1]
+        return results
+
+    def _split_results(self, user_results: list[Any]) -> tuple[list[dict], list[Any]]:
+        successful_results = [
+            result
+            for result in user_results
+            if isinstance(result, dict) and "error" not in result
+        ]
+        failed_results = [
+            result
+            for result in user_results
+            if not isinstance(result, dict) or "error" in result
+        ]
+        return successful_results, failed_results
 
     async def _run_user_session(
         self,

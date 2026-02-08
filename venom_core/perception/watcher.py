@@ -105,6 +105,23 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
             return src_path.decode(errors="ignore")
         return src_path
 
+    def _is_supported_file(self, src_path: str) -> bool:
+        return src_path.endswith(".py") or src_path.endswith(".md")
+
+    def _ensure_event_loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        if self._loop is not None:
+            return self._loop
+        try:
+            self._loop = asyncio.get_running_loop()
+            return self._loop
+        except RuntimeError:
+            try:
+                self._loop = asyncio.get_event_loop()
+                return self._loop
+            except RuntimeError:
+                logger.warning("Brak event loop dla debounce task, pomijam zmianę")
+                return None
+
     def on_modified(self, event: FileSystemEvent) -> None:
         """
         Callback wywoływany gdy plik jest modyfikowany.
@@ -115,44 +132,26 @@ class VenomFileSystemEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        # Ignoruj pliki niebędące Pythonem lub markdown
         src_path = self._normalize_path(event.src_path)
-        if not (src_path.endswith(".py") or src_path.endswith(".md")):
+        if not self._is_supported_file(src_path):
             return
 
-        # Sprawdź czy ścieżka powinna być ignorowana
         if self._should_ignore(src_path):
             logger.debug(f"Ignorowanie zmiany w: {src_path}")
             return
 
-        # Użyj thread-safe metody do dodania zmiany
-        # Dodaj do pending changes z aktualnym timestampem (thread-safe dict access)
         self._pending_changes[src_path] = time.time()
 
-        # Uruchom debounce task jeśli nie działa
-        if self._debounce_task is None or self._debounce_task.done():
-            if self._loop is None:
-                try:
-                    self._loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    # Fallback dla edge case: watchdog wywołuje z innego wątku
-                    # gdzie nie ma running loop. Próbujemy pobrać główny loop.
-                    # W Python 3.10+ może być None jeśli loop nie istnieje.
-                    try:
-                        self._loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        # Brak loopa - nie możemy utworzyć task
-                        logger.warning(
-                            "Brak event loop dla debounce task, pomijam zmianę"
-                        )
-                        return
+        if self._debounce_task is not None and not self._debounce_task.done():
+            return
 
-            if self._loop:
-                # Użyj call_soon_threadsafe dla thread-safe task creation
-                try:
-                    self._loop.call_soon_threadsafe(self._schedule_debounce_task)
-                except RuntimeError:
-                    logger.warning("Nie można zaplanować debounce task")
+        loop = self._ensure_event_loop()
+        if not loop:
+            return
+        try:
+            loop.call_soon_threadsafe(self._schedule_debounce_task)
+        except RuntimeError:
+            logger.warning("Nie można zaplanować debounce task")
 
     def _schedule_debounce_task(self) -> None:
         """Planuje debounce task (thread-safe helper)."""

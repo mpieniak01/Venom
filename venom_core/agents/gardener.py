@@ -103,7 +103,7 @@ class GardenerAgent:
                 # Sprawdź czy były zmiany
                 if self._check_for_changes():
                     logger.info("Wykryto zmiany w workspace, rozpoczynam re-indeksację")
-                    self.scan_and_update()
+                    await asyncio.to_thread(self.scan_and_update)
                 else:
                     logger.debug("Brak zmian w workspace")
 

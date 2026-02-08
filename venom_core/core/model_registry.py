@@ -823,9 +823,7 @@ class ModelRegistry:
 
                 async def progress_callback(message: str):
                     operation.message = message
-                    await asyncio.to_thread(
-                        logger.info, f"[{operation.operation_id}] {message}"
-                    )
+                    logger.info(f"[{operation.operation_id}] {message}")
 
                 provider_obj = self.providers[provider]
                 success = await provider_obj.install_model(

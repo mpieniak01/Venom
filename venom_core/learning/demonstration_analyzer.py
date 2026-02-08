@@ -76,7 +76,7 @@ class DemonstrationAnalyzer:
 
         # Analizuj każde kliknięcie
         for event in click_events:
-            intent = await self._analyze_click_event(event, screenshots_dir)
+            intent = self._analyze_click_event(event, screenshots_dir)
             if intent:
                 actions.append(intent)
 
@@ -94,7 +94,7 @@ class DemonstrationAnalyzer:
         )
         return actions
 
-    async def _analyze_click_event(
+    def _analyze_click_event(
         self, event: InputEvent, screenshots_dir: Optional[Path]
     ) -> Optional[ActionIntent]:
         """

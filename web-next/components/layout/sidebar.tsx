@@ -101,8 +101,8 @@ const persistSidebarWidth = (collapsed: boolean) => {
 };
 
 const persistAutonomySnapshot = (snapshot: AutonomySnapshot) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
+  if (globalThis.window === undefined) return;
+  globalThis.window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
 };
 
 const resolveSidebarAutonomyInfo = (input: {

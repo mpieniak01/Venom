@@ -566,24 +566,28 @@ PARAMETER top_k 40
             if not base_dir.exists():
                 continue
             for model_path in base_dir.iterdir():
-                if model_path.name in skip_dirs:
+                if not self._is_local_model_candidate(model_path, skip_dirs):
                     continue
-                if model_path.is_dir() or model_path.suffix in {
-                    ".onnx",
-                    ".gguf",
-                    ".bin",
-                }:
-                    try:
-                        self._register_local_entry(
-                            models,
-                            model_path,
-                            source=base_dir.name,
-                            provider="vllm",
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Nie udało się odczytać modelu {model_path}: {e}"
-                        )
+                self._try_register_local_entry(models, model_path, base_dir.name)
+
+    @staticmethod
+    def _is_local_model_candidate(model_path: Path, skip_dirs: set[str]) -> bool:
+        if model_path.name in skip_dirs:
+            return False
+        return model_path.is_dir() or model_path.suffix in {".onnx", ".gguf", ".bin"}
+
+    def _try_register_local_entry(
+        self, models: Dict[str, Dict[str, Any]], model_path: Path, source_name: str
+    ) -> None:
+        try:
+            self._register_local_entry(
+                models,
+                model_path,
+                source=source_name,
+                provider="vllm",
+            )
+        except Exception as e:
+            logger.warning(f"Nie udało się odczytać modelu {model_path}: {e}")
 
     def _load_ollama_manifest_entries(
         self, manifests_dir: Path
@@ -594,32 +598,14 @@ PARAMETER top_k 40
         for manifest_path in manifests_dir.rglob("*"):
             if not manifest_path.is_file():
                 continue
-            try:
-                relative_parts = manifest_path.relative_to(manifests_dir).parts
-            except ValueError:
-                continue
-            if len(relative_parts) < 2:
+            relative_parts = self._resolve_manifest_relative_parts(
+                manifests_dir, manifest_path
+            )
+            if relative_parts is None or len(relative_parts) < 2:
                 continue
             registry = relative_parts[0]
-            tag = relative_parts[-1]
-            model = relative_parts[-2]
-            namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
-            if namespace and namespace != "library":
-                entry_name = f"{namespace}/{model}:{tag}"
-            else:
-                entry_name = f"{model}:{tag}"
-            size_bytes = 0
-            try:
-                manifest_payload = json.loads(manifest_path.read_text("utf-8"))
-                layers = manifest_payload.get("layers") or []
-                size_bytes = sum(
-                    layer.get("size", 0) for layer in layers if isinstance(layer, dict)
-                )
-                config = manifest_payload.get("config") or {}
-                if isinstance(config, dict):
-                    size_bytes += config.get("size", 0) or 0
-            except Exception as e:
-                logger.warning(f"Nie udało się odczytać manifestu {manifest_path}: {e}")
+            entry_name = self._build_ollama_manifest_entry_name(relative_parts)
+            size_bytes = self._read_manifest_size_bytes(manifest_path)
             entries.append(
                 {
                     "name": entry_name,
@@ -633,6 +619,40 @@ PARAMETER top_k 40
                 }
             )
         return entries
+
+    @staticmethod
+    def _resolve_manifest_relative_parts(
+        manifests_dir: Path, manifest_path: Path
+    ) -> Optional[tuple[str, ...]]:
+        try:
+            return manifest_path.relative_to(manifests_dir).parts
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _build_ollama_manifest_entry_name(relative_parts: tuple[str, ...]) -> str:
+        tag = relative_parts[-1]
+        model = relative_parts[-2]
+        namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
+        if namespace and namespace != "library":
+            return f"{namespace}/{model}:{tag}"
+        return f"{model}:{tag}"
+
+    @staticmethod
+    def _read_manifest_size_bytes(manifest_path: Path) -> int:
+        size_bytes = 0
+        try:
+            manifest_payload = json.loads(manifest_path.read_text("utf-8"))
+            layers = manifest_payload.get("layers") or []
+            size_bytes = sum(
+                layer.get("size", 0) for layer in layers if isinstance(layer, dict)
+            )
+            config = manifest_payload.get("config") or {}
+            if isinstance(config, dict):
+                size_bytes += config.get("size", 0) or 0
+        except Exception as e:
+            logger.warning(f"Nie udało się odczytać manifestu {manifest_path}: {e}")
+        return size_bytes
 
     def _collect_ollama_entries(
         self, ollama_models: List[Dict[str, Any]]

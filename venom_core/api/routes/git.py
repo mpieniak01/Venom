@@ -18,6 +18,8 @@ router = APIRouter(prefix="/api/v1/git", tags=["git"])
 
 # Cache dla statusu git (5 sekund TTL)
 _git_status_cache = TTLCache[dict](ttl_seconds=5.0)
+DEFAULT_COMPARE_BRANCH = "main"
+DEFAULT_COMPARE_REF = "origin/main"
 
 
 # Dependency - będzie ustawione w main.py
@@ -63,59 +65,71 @@ async def _run_git_ok(repo_root: Path, args: list[str]) -> bool:
 
 
 async def _collect_compare_state(repo_root: Path) -> dict:
-    compare_branch = "main"
-    compare_ref = "origin/main"
-    compare_status = None
-    ahead_count = 0
-    behind_count = 0
-
     local_main_ok = await _run_git_ok(
         repo_root,
-        ["show-ref", "--verify", "--quiet", "refs/heads/main"],
+        ["show-ref", "--verify", "--quiet", f"refs/heads/{DEFAULT_COMPARE_BRANCH}"],
     )
     if not local_main_ok:
-        compare_status = "no_local_main"
-    else:
-        remote_ok = await _run_git_ok(repo_root, ["remote", "get-url", "origin"])
-        if not remote_ok:
-            compare_status = "no_remote"
-        else:
-            remote_main_ok = await _run_git_ok(
-                repo_root,
-                ["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"],
-            )
-            if not remote_main_ok:
-                compare_status = "no_remote_main"
-            else:
-                counts = await _run_git(
-                    repo_root,
-                    [
-                        "rev-list",
-                        "--left-right",
-                        "--count",
-                        "origin/main...main",
-                    ],
-                )
-                parts = counts.split()
-                if len(parts) == 2:
-                    behind_count = int(parts[0])
-                    ahead_count = int(parts[1])
-                if ahead_count > 0 and behind_count > 0:
-                    compare_status = "diverged"
-                elif ahead_count > 0:
-                    compare_status = "ahead"
-                elif behind_count > 0:
-                    compare_status = "behind"
-                else:
-                    compare_status = "equal"
+        return _build_compare_state("no_local_main", ahead_count=0, behind_count=0)
 
+    remote_ok = await _run_git_ok(repo_root, ["remote", "get-url", "origin"])
+    if not remote_ok:
+        return _build_compare_state("no_remote", ahead_count=0, behind_count=0)
+
+    remote_main_ok = await _run_git_ok(
+        repo_root,
+        ["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"],
+    )
+    if not remote_main_ok:
+        return _build_compare_state("no_remote_main", ahead_count=0, behind_count=0)
+
+    ahead_count, behind_count = await _collect_ahead_behind_counts(repo_root)
+    compare_status = _resolve_compare_status(ahead_count, behind_count)
+    return _build_compare_state(
+        compare_status,
+        ahead_count=ahead_count,
+        behind_count=behind_count,
+    )
+
+
+async def _collect_ahead_behind_counts(repo_root: Path) -> tuple[int, int]:
+    counts = await _run_git(
+        repo_root,
+        [
+            "rev-list",
+            "--left-right",
+            "--count",
+            f"{DEFAULT_COMPARE_REF}...{DEFAULT_COMPARE_BRANCH}",
+        ],
+    )
+    parts = counts.split()
+    if len(parts) != 2:
+        return 0, 0
+    behind_count = int(parts[0])
+    ahead_count = int(parts[1])
+    return ahead_count, behind_count
+
+
+def _build_compare_state(
+    compare_status: str | None, *, ahead_count: int, behind_count: int
+) -> dict:
     return {
-        "compare_branch": compare_branch,
-        "compare_ref": compare_ref,
+        "compare_branch": DEFAULT_COMPARE_BRANCH,
+        "compare_ref": DEFAULT_COMPARE_REF,
         "compare_status": compare_status,
         "ahead_count": ahead_count,
         "behind_count": behind_count,
     }
+
+
+def _resolve_compare_status(ahead_count: int, behind_count: int) -> str:
+    if ahead_count > 0 and behind_count > 0:
+        return "diverged"
+    if ahead_count > 0:
+        return "ahead"
+    if behind_count > 0:
+        return "behind"
+    return "equal"
 
 
 async def _build_local_repo_status(repo_root: Path) -> dict:
@@ -158,8 +172,8 @@ def _count_modified_from_status_output(status_output: str) -> int:
 
 
 def _build_skill_compare_state(repo) -> tuple[str | None, int, int]:
-    compare_ref = "origin/main"
-    compare_branch = "main"
+    compare_ref = DEFAULT_COMPARE_REF
+    compare_branch = DEFAULT_COMPARE_BRANCH
     compare_status = None
     ahead_count = 0
     behind_count = 0
@@ -227,8 +241,8 @@ async def _build_git_skill_status() -> dict:
     compare_status = None
     ahead_count = 0
     behind_count = 0
-    compare_ref = "origin/main"
-    compare_branch = "main"
+    compare_ref = DEFAULT_COMPARE_REF
+    compare_branch = DEFAULT_COMPARE_BRANCH
     try:
         from git import Repo
 

@@ -7,6 +7,32 @@ function resolveLanguageFromStorage(): keyof typeof DATE_LOCALES {
   return "pl";
 }
 
+const RELATIVE_UNITS = [
+  { unit: "year", threshold: 12, step: 12 },
+  { unit: "month", threshold: 30, step: 30 },
+  { unit: "day", threshold: 24, step: 24 },
+  { unit: "hour", threshold: 60, step: 60 },
+  { unit: "minute", threshold: 60, step: 60 },
+] as const;
+
+function resolveRelativeAmount(absSeconds: number): {
+  unit: Intl.RelativeTimeFormatUnit;
+  amount: number;
+} {
+  let unit: Intl.RelativeTimeFormatUnit = "second";
+  let amount = absSeconds;
+
+  for (const entry of RELATIVE_UNITS) {
+    const nextAmount = Math.floor(amount / entry.step);
+    if (nextAmount < 1) break;
+    unit = entry.unit;
+    amount = nextAmount;
+    if (amount < entry.threshold) break;
+  }
+
+  return { unit, amount };
+}
+
 export function formatRelativeTime(value?: string | null): string {
   if (!value) return "—";
   const target = new Date(value);
@@ -14,37 +40,7 @@ export function formatRelativeTime(value?: string | null): string {
 
   const diffMs = Date.now() - target.getTime();
   const absSeconds = Math.max(1, Math.floor(Math.abs(diffMs) / 1000));
-
-  let unit: Intl.RelativeTimeFormatUnit = "second";
-  let amount = absSeconds;
-  if (absSeconds >= 60) {
-    const minutes = Math.floor(absSeconds / 60);
-    if (minutes < 60) {
-      unit = "minute";
-      amount = minutes;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) {
-        unit = "hour";
-        amount = hours;
-      } else {
-        const days = Math.floor(hours / 24);
-        if (days < 30) {
-          unit = "day";
-          amount = days;
-        } else {
-          const months = Math.floor(days / 30);
-          if (months < 12) {
-            unit = "month";
-            amount = months;
-          } else {
-            unit = "year";
-            amount = Math.floor(months / 12);
-          }
-        }
-      }
-    }
-  }
+  const { unit, amount } = resolveRelativeAmount(absSeconds);
 
   const language = resolveLanguageFromStorage();
   const locale = DATE_LOCALES[language] ?? DATE_LOCALES.en;

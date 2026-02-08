@@ -60,6 +60,75 @@ type AutonomySnapshot = {
   description: string;
 };
 
+type SidebarStoredState = {
+  collapsed: boolean | null;
+  autonomySnapshot: AutonomySnapshot | null;
+};
+
+const readSidebarStoredState = (): SidebarStoredState => {
+  if (typeof window === "undefined") {
+    return { collapsed: null, autonomySnapshot: null };
+  }
+
+  const storedCollapsed = window.localStorage.getItem("sidebar-collapsed");
+  const storedAutonomy = window.localStorage.getItem("sidebar-autonomy");
+  let autonomySnapshot: AutonomySnapshot | null = null;
+
+  if (storedAutonomy) {
+    try {
+      autonomySnapshot = JSON.parse(storedAutonomy) as AutonomySnapshot;
+    } catch {
+      autonomySnapshot = null;
+    }
+  }
+
+  return {
+    collapsed: storedCollapsed ? storedCollapsed === "true" : null,
+    autonomySnapshot,
+  };
+};
+
+const persistSidebarWidth = (collapsed: boolean) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("sidebar-collapsed", String(collapsed));
+  const root = document.documentElement;
+  if (!root) return;
+
+  const styles = getComputedStyle(root);
+  const expandedWidth = styles.getPropertyValue("--sidebar-width-expanded").trim() || "18rem";
+  const collapsedWidth = styles.getPropertyValue("--sidebar-width-collapsed").trim() || "6rem";
+  root.style.setProperty("--sidebar-width", collapsed ? collapsedWidth : expandedWidth);
+};
+
+const resolveSidebarAutonomyInfo = (input: {
+  autonomy: ReturnType<typeof useAutonomyLevel>["data"];
+  localAutonomy: AutonomySnapshot | null;
+  selectedAutonomy: string;
+  resolveAutonomyDetails: (level: number | null) => AutonomySnapshot | null;
+  t: ReturnType<typeof useTranslation>;
+}) => {
+  const { autonomy, localAutonomy, selectedAutonomy, resolveAutonomyDetails, t } = input;
+  if (autonomy) {
+    return {
+      level: autonomy.current_level,
+      name: autonomy.current_level_name,
+      risk: autonomy.risk_level,
+      description: autonomy.description,
+    };
+  }
+  if (localAutonomy) return localAutonomy;
+
+  const fallbackLevel = selectedAutonomy ? Number(selectedAutonomy) : null;
+  return (
+    resolveAutonomyDetails(fallbackLevel) ?? {
+      level: null,
+      name: t("sidebar.autonomy.noData"),
+      risk: "n/a",
+      description: t("sidebar.autonomy.offline"),
+    }
+  );
+};
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: costMode, refresh: refreshCost } = useCostMode(15000);
@@ -91,25 +160,14 @@ export function Sidebar() {
   );
 
   const autonomyInfo = useMemo(() => {
-    if (autonomy) {
-      return {
-        level: autonomy.current_level,
-        name: autonomy.current_level_name,
-        risk: autonomy.risk_level,
-        description: autonomy.description,
-      };
-    }
-    if (localAutonomy) return localAutonomy;
-    const fallbackLevel = selectedAutonomy ? Number(selectedAutonomy) : null;
-    return (
-      resolveAutonomyDetails(fallbackLevel) ?? {
-        level: null,
-        name: t("sidebar.autonomy.noData"),
-        risk: "n/a",
-        description: t("sidebar.autonomy.offline"),
-      }
-    );
-  }, [autonomy, localAutonomy, selectedAutonomy, t, resolveAutonomyDetails]);
+    return resolveSidebarAutonomyInfo({
+      autonomy,
+      localAutonomy,
+      selectedAutonomy,
+      resolveAutonomyDetails,
+      t,
+    });
+  }, [autonomy, localAutonomy, selectedAutonomy, resolveAutonomyDetails, t]);
 
   const handleCostToggle = async () => {
     const targetState = !(costMode?.enabled ?? false);
@@ -141,20 +199,11 @@ export function Sidebar() {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const storedCollapsed = window.localStorage.getItem("sidebar-collapsed");
-    if (storedCollapsed) {
-      setCollapsed(storedCollapsed === "true");
-    }
-    const stored = window.localStorage.getItem("sidebar-autonomy");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as AutonomySnapshot;
-        setLocalAutonomy(parsed);
-        setSelectedAutonomy(String(parsed.level));
-      } catch {
-        // ignore corrupted storage
-      }
+    const storedState = readSidebarStoredState();
+    if (storedState.collapsed !== null) setCollapsed(storedState.collapsed);
+    if (storedState.autonomySnapshot) {
+      setLocalAutonomy(storedState.autonomySnapshot);
+      setSelectedAutonomy(String(storedState.autonomySnapshot.level));
     }
     // Enable transitions after initial state sync
     const timer = setTimeout(() => setIsSynced(true), 100);
@@ -162,19 +211,7 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("sidebar-collapsed", String(collapsed));
-    const root = document.documentElement;
-    if (!root) return;
-    const styles = getComputedStyle(root);
-    const expandedWidth =
-      styles.getPropertyValue("--sidebar-width-expanded").trim() || "18rem";
-    const collapsedWidth =
-      styles.getPropertyValue("--sidebar-width-collapsed").trim() || "6rem";
-    root.style.setProperty(
-      "--sidebar-width",
-      collapsed ? collapsedWidth : expandedWidth,
-    );
+    persistSidebarWidth(collapsed);
   }, [collapsed]);
 
   useEffect(() => {

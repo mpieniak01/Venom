@@ -55,7 +55,7 @@ class TestShadowAgentImprovements:
                 return_value=[]
             )
 
-            result = await agent._find_similar_lessons("test error")
+            result = agent._find_similar_lessons("test error")
 
             # Sprawdź że próbowano użyć EmbeddingService (lub zwrócono pustą listę)
             assert result == []  # Brak lekcji w mock store

@@ -438,7 +438,7 @@ async def test_model_registry_concurrent_operations(tmp_path):
     # Timestamps to verify serialization
     timestamps = []
 
-    async def fake_create_subprocess_exec(*args, **kwargs):
+    def fake_create_subprocess_exec(*args, **kwargs):
         """Fake subprocess that records timestamps."""
         loop = asyncio.get_event_loop()
         timestamps.append(loop.time())

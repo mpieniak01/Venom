@@ -48,7 +48,7 @@ class TestApprenticeAgent:
             return_value="test_session"
         )
 
-        result = await apprentice_agent._start_recording("Rozpocznij nagrywanie")
+        result = apprentice_agent._start_recording("Rozpocznij nagrywanie")
 
         assert "Rozpoczęto nagrywanie" in result
         assert "test_session" in result
@@ -59,7 +59,7 @@ class TestApprenticeAgent:
         """Test próby rozpoczęcia nagrywania gdy już trwa."""
         apprentice_agent.recorder.is_recording = True
 
-        result = await apprentice_agent._start_recording("Rozpocznij nagrywanie")
+        result = apprentice_agent._start_recording("Rozpocznij nagrywanie")
 
         assert "już trwa" in result
 
@@ -72,7 +72,7 @@ class TestApprenticeAgent:
         )
         apprentice_agent.current_session_id = "test_session"
 
-        result = await apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
+        result = apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
 
         assert "Zakończono nagrywanie" in result
         assert "/path/to/session.json" in result
@@ -82,7 +82,7 @@ class TestApprenticeAgent:
         """Test zatrzymania gdy nie nagrywa."""
         apprentice_agent.recorder.is_recording = False
 
-        result = await apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
+        result = apprentice_agent._stop_recording("Zatrzymaj nagrywanie")
 
         assert "nie jest aktywne" in result
 

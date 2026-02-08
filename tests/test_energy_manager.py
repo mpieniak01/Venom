@@ -131,7 +131,7 @@ class TestEnergyManager:
         """Test funkcji wake_up."""
         em = EnergyManager()
 
-        await em.wake_up()
+        em.wake_up()
 
         # Idle time powinien być bardzo mały (aktywność została oznaczona)
         assert em.get_idle_time() < 1.0
@@ -144,7 +144,7 @@ class TestEnergyManager:
         assert not em.is_monitoring
 
         # Uruchom monitoring
-        await em.start_monitoring()
+        em.start_monitoring()
         assert em.is_monitoring
         assert em._monitor_task is not None
 
@@ -161,14 +161,14 @@ class TestEnergyManager:
         callback_called = []
 
         async def alert_callback():
-            callback_called.append(True)
+            await asyncio.to_thread(callback_called.append, True)
 
         # Ustaw bardzo niskie progi żeby wywołać callback
         em = EnergyManager(cpu_threshold=0.0, memory_threshold=0.0, check_interval=1)
         em.register_alert_callback(alert_callback)
 
         # Uruchom monitoring
-        await em.start_monitoring()
+        em.start_monitoring()
 
         # Poczekaj na wykonanie callbacka
         await asyncio.sleep(2)

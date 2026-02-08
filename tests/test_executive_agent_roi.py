@@ -25,7 +25,7 @@ async def test_parse_and_create_roadmap_creates_goals(tmp_path):
         ]
     )
 
-    result = await agent._parse_and_create_roadmap(llm_response, "Wizja produktu")
+    result = agent._parse_and_create_roadmap(llm_response, "Wizja produktu")
 
     assert result["success"] is True
     assert result["milestones_count"] == 1

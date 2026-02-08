@@ -279,7 +279,7 @@ async def test_watchdog_marks_lost_requests(tracer):
     trace.last_activity = get_utc_now() - timedelta(minutes=6)
 
     # Uruchom watchdog check ręcznie
-    await tracer._check_lost_requests()
+    tracer._check_lost_requests()
 
     # Sprawdź że został oznaczony jako LOST
     trace = tracer.get_trace(request_id)
@@ -296,7 +296,7 @@ async def test_watchdog_does_not_mark_fresh_requests(tracer):
     tracer.update_status(request_id, TraceStatus.PROCESSING)
 
     # Uruchom watchdog check
-    await tracer._check_lost_requests()
+    tracer._check_lost_requests()
 
     # Sprawdź że nadal jest PROCESSING
     trace = tracer.get_trace(request_id)
@@ -315,7 +315,7 @@ async def test_watchdog_does_not_mark_completed_requests(tracer):
     trace.last_activity = get_utc_now() - timedelta(minutes=6)
 
     # Uruchom watchdog check
-    await tracer._check_lost_requests()
+    tracer._check_lost_requests()
 
     # Sprawdź że nadal jest COMPLETED
     trace = tracer.get_trace(request_id)

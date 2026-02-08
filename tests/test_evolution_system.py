@@ -83,7 +83,7 @@ class TestSystemEngineerAgent:
     @pytest.mark.asyncio
     async def test_analyze_impact(self, system_engineer):
         """Test analizy wpływu modyfikacji."""
-        impact = await system_engineer.analyze_impact("test.py")
+        impact = system_engineer.analyze_impact("test.py")
 
         assert isinstance(impact, dict)
         assert "affected_files" in impact or "error" in impact

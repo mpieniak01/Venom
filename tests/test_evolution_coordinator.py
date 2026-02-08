@@ -18,7 +18,7 @@ class MockEvolutionCoordinator:
         self.core_skill = core_skill
         self.git_skill = git_skill
 
-    async def _analyze_request(self, request: str) -> dict:
+    def _analyze_request(self, request: str) -> dict:
         """Analizuje żądanie."""
         keywords = ["dodaj", "zmień", "usuń", "zmodyfikuj", "uaktualnij", "popraw"]
         is_modification_request = any(kw in request.lower() for kw in keywords)
@@ -130,7 +130,7 @@ class TestEvolutionCoordinator:
     @pytest.mark.asyncio
     async def test_analyze_request_valid(self, evolution_coordinator):
         """Test analizy poprawnego żądania."""
-        result = await evolution_coordinator._analyze_request("Dodaj obsługę kolorów")
+        result = evolution_coordinator._analyze_request("Dodaj obsługę kolorów")
 
         assert result["feasible"] is True
         assert "branch_name" in result
@@ -139,7 +139,7 @@ class TestEvolutionCoordinator:
     @pytest.mark.asyncio
     async def test_analyze_request_invalid(self, evolution_coordinator):
         """Test analizy niepoprawnego żądania."""
-        result = await evolution_coordinator._analyze_request("Hello")
+        result = evolution_coordinator._analyze_request("Hello")
 
         assert result["feasible"] is False
         assert "reason" in result

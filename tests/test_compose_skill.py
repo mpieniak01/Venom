@@ -128,7 +128,7 @@ services:
     ports:
       - "8080:80"
 """
-    result = await compose_skill._process_port_placeholders(content)
+    result = compose_skill._process_port_placeholders(content)
     assert result == content
 
 
@@ -143,7 +143,7 @@ services:
     ports:
       - "{{PORT}}:80"
 """
-    result = await compose_skill._process_port_placeholders(content)
+    result = compose_skill._process_port_placeholders(content)
 
     # Placeholder powinien zostać zastąpiony liczbą
     assert "{{PORT}}" not in result
@@ -168,7 +168,7 @@ services:
     ports:
       - "{{PORT:8888}}:80"
 """
-    result = await compose_skill._process_port_placeholders(content)
+    result = compose_skill._process_port_placeholders(content)
 
     # Placeholder powinien zostać zastąpiony
     assert "{{PORT" not in result
@@ -251,7 +251,7 @@ services:
     environment:
       - SECRET_KEY={{SECRET_KEY}}
 """
-    result = await compose_skill._process_template_placeholders(content)
+    result = compose_skill._process_template_placeholders(content)
 
     # Placeholder powinien zostać zastąpiony
     assert "{{SECRET_KEY}}" not in result
@@ -272,7 +272,7 @@ services:
     extra_hosts:
       - "host.docker.internal:{{HOST_IP}}"
 """
-    result = await compose_skill._process_template_placeholders(content)
+    result = compose_skill._process_template_placeholders(content)
 
     # Placeholder powinien zostać zastąpiony
     assert "{{HOST_IP}}" not in result
@@ -293,7 +293,7 @@ services:
     volumes:
       - {{VOLUME_ROOT}}/data:/data
 """
-    result = await compose_skill._process_template_placeholders(content)
+    result = compose_skill._process_template_placeholders(content)
 
     # Placeholder powinien zostać zastąpiony
     assert "{{VOLUME_ROOT}}" not in result
@@ -320,7 +320,7 @@ services:
     volumes:
       - {{VOLUME_ROOT}}/data:/data
 """
-    result = await compose_skill._process_template_placeholders(content)
+    result = compose_skill._process_template_placeholders(content)
 
     # Wszystkie placeholdery powinny zostać zastąpione
     assert "{{SECRET_KEY}}" not in result

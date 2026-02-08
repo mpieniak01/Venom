@@ -138,15 +138,17 @@ Dla każdego hotspotu:
 - `web-next/components/cockpit/cockpit-chat-send.ts` (runtime/payload/reconcile helpers)
 - `web-next/components/cockpit/hooks/use-cockpit-logic.ts` (derived-state helper extraction)
 - `web-next/components/models/models-viewer.tsx` (cache/storage helper extraction)
+- `web-next/components/brain/brain-home.tsx` (style/relation/stats helper extraction, reduced nesting)
+- `web-next/components/layout/system-status-bar.tsx` (repo status helper decomposition)
+- `web-next/tests/chat-context-icons.spec.ts` (SSE mock flattening)
+- `web-next/tests/chat-mode-routing.spec.ts` (shared EventSource helper, reduced nesting)
+- `web-next/tests/perf/chat-latency.spec.ts` (flow decomposition helpers)
+- `web-next/tests/streaming.spec.ts` (SSE mock helper extraction)
 - `sonar-project.properties` (CPD exclusions dla locale i18n)
 
 ### Do domknięcia
-- `web-next/components/brain/brain-home.tsx` (critical complexity + nesting)
 - pozostałe głębokie hotspoty w `cockpit-chat-send.ts`/`use-cockpit-logic.ts` jeżeli Sonar nadal raportuje po aktualnym refactorze
-- `web-next/tests/chat-context-icons.spec.ts`
-- `web-next/tests/chat-mode-routing.spec.ts`
-- `web-next/tests/perf/chat-latency.spec.ts`
-- `web-next/tests/streaming.spec.ts`
+- ewentualne pozostałe hotspoty frontend e2e po ponownym skanie Sonar (do potwierdzenia raportem)
 
 ## Ryzyka
 

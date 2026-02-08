@@ -1,5 +1,6 @@
 """Moduł: chrono_skill - Umiejętności Czasowe (Timeline Branching & State Management)."""
 
+import asyncio
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -39,12 +40,13 @@ class ChronoSkill(BaseSkill):
         description="Tworzy checkpoint (punkt przywracania) całego stanu systemu. Używaj przed ryzykownymi operacjami.",
     )
     @async_safe_action
-    def create_checkpoint(
+    async def create_checkpoint(
         self,
         name: Annotated[str, "Nazwa checkpointu (user-friendly)"],
         description: Annotated[str, "Opcjonalny opis checkpointu"] = "",
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Tworzy checkpoint całego stanu systemu.
         """
@@ -63,11 +65,12 @@ class ChronoSkill(BaseSkill):
         description="Przywraca system do stanu z checkpointu. UWAGA: Obecne zmiany zostaną utracone!",
     )
     @async_safe_action
-    def restore_checkpoint(
+    async def restore_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do przywrócenia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Przywraca system do stanu z checkpointu.
         """
@@ -92,10 +95,11 @@ class ChronoSkill(BaseSkill):
         description="Wyświetla listę wszystkich dostępnych checkpointów dla danej linii czasowej.",
     )
     @async_safe_action
-    def list_checkpoints(
+    async def list_checkpoints(
         self,
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Wyświetla listę checkpointów.
         """
@@ -120,11 +124,12 @@ class ChronoSkill(BaseSkill):
         description="Usuwa checkpoint. Operacja nieodwracalna!",
     )
     @async_safe_action
-    def delete_checkpoint(
+    async def delete_checkpoint(
         self,
         checkpoint_id: Annotated[str, "ID checkpointu do usunięcia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Usuwa checkpoint.
         """
@@ -142,10 +147,11 @@ class ChronoSkill(BaseSkill):
         description="Tworzy nową linię czasową (branch) do eksperymentowania. Działa jak Git branch dla całego stanu systemu.",
     )
     @async_safe_action
-    def branch_timeline(
+    async def branch_timeline(
         self,
         name: Annotated[str, "Nazwa nowej linii czasowej"],
     ) -> str:
+        await asyncio.sleep(0)
         """
         Tworzy nową linię czasową (branch).
         """
@@ -184,7 +190,8 @@ class ChronoSkill(BaseSkill):
         description="Wyświetla listę wszystkich dostępnych linii czasowych.",
     )
     @async_safe_action
-    def list_timelines(self) -> str:
+    async def list_timelines(self) -> str:
+        await asyncio.sleep(0)
         """
         Wyświetla listę wszystkich linii czasowych.
         """
@@ -205,11 +212,12 @@ class ChronoSkill(BaseSkill):
         description="Scala wiedzę z eksperymentalnej linii czasowej do głównej (zaawansowane).",
     )
     @async_safe_action
-    def merge_timeline(
+    async def merge_timeline(
         self,
         source: Annotated[str, "Nazwa źródłowej linii czasowej"],
         target: Annotated[str, "Nazwa docelowej linii czasowej"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Scala wiedzę z dwóch linii czasowych (zaawansowane).
         """

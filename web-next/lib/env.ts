@@ -8,7 +8,7 @@ const getEnv = (key: string): string | undefined => {
 };
 
 const getBrowserWindow = (): Window | undefined => {
-  if (typeof globalThis.window === "undefined") return undefined;
+  if (globalThis.window === undefined) return undefined;
   return globalThis.window;
 };
 

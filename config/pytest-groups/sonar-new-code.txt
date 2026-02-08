@@ -8,3 +8,4 @@ tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
 tests/test_evolution_basic.py
 tests/test_sonar_new_code_routes.py
+tests/test_sonar_agents_init.py

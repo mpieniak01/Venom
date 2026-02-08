@@ -1,6 +1,9 @@
 """Testy dla modułu API - WebSocket i metryki."""
 
+from typing import cast
+
 import pytest
+from fastapi import WebSocket
 
 from venom_core.api.stream import ConnectionManager, Event, EventBroadcaster, EventType
 from venom_core.core.metrics import MetricsCollector
@@ -50,7 +53,7 @@ class TestConnectionManager:
         manager = ConnectionManager()
         mock_ws = MockWebSocket()
 
-        await manager.connect(mock_ws)
+        await manager.connect(cast(WebSocket, mock_ws))
 
         assert len(manager.active_connections) == 1
         assert mock_ws in manager.active_connections
@@ -61,10 +64,10 @@ class TestConnectionManager:
         manager = ConnectionManager()
         mock_ws = MockWebSocket()
 
-        await manager.connect(mock_ws)
+        await manager.connect(cast(WebSocket, mock_ws))
         assert len(manager.active_connections) == 1
 
-        await manager.disconnect(mock_ws)
+        await manager.disconnect(cast(WebSocket, mock_ws))
         assert len(manager.active_connections) == 0
 
     @pytest.mark.asyncio
@@ -74,8 +77,8 @@ class TestConnectionManager:
         mock_ws1 = MockWebSocket()
         mock_ws2 = MockWebSocket()
 
-        await manager.connect(mock_ws1)
-        await manager.connect(mock_ws2)
+        await manager.connect(cast(WebSocket, mock_ws1))
+        await manager.connect(cast(WebSocket, mock_ws2))
 
         event = Event(
             type=EventType.AGENT_ACTION,
@@ -96,8 +99,8 @@ class TestConnectionManager:
         mock_ws_good = MockWebSocket()
         mock_ws_bad = MockWebSocket(should_fail=True)
 
-        await manager.connect(mock_ws_good)
-        await manager.connect(mock_ws_bad)
+        await manager.connect(cast(WebSocket, mock_ws_good))
+        await manager.connect(cast(WebSocket, mock_ws_bad))
 
         assert len(manager.active_connections) == 2
 

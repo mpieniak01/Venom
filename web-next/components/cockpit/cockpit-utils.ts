@@ -37,7 +37,7 @@ export const TELEMETRY_REFRESH_EVENTS = new Set([
 export const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "LOST"]);
 
 export const normalizeMatchValue = (value: string) =>
-  value.toLowerCase().replace(/\s+/g, " ").trim();
+  value.toLowerCase().replaceAll(/\s+/g, " ").trim();
 
 export function extractContextPreviewMeta(steps?: HistoryStep[]) {
   if (!steps || steps.length === 0) return null;
@@ -66,15 +66,15 @@ export function sanitizeAssistantText(raw: string) {
   if (!raw) return raw;
   const hasMarkers = SESSION_CONTEXT_MARKERS.some((marker) => raw.includes(marker));
   if (!hasMarkers) return raw;
-  let text = raw.replace(MATH_BLOCK_TOKEN_REGEX, "").trim();
+  let text = raw.replaceAll(MATH_BLOCK_TOKEN_REGEX, "").trim();
   const lower = text.toLowerCase();
   const wynikIndex = lower.lastIndexOf("wynik:");
   if (wynikIndex !== -1) {
     text = text.slice(wynikIndex + "wynik:".length).trim();
   }
-  text = text.replace(CONTEXT_SECTION_REGEX, "");
-  text = text.replace(PLAN_STEP_REGEX, "");
-  text = text.replace(PLAN_DONE_REGEX, "");
+  text = text.replaceAll(CONTEXT_SECTION_REGEX, "");
+  text = text.replaceAll(PLAN_STEP_REGEX, "");
+  text = text.replaceAll(PLAN_DONE_REGEX, "");
   text = text
     .split("\n")
     .map((line) => {
@@ -82,7 +82,7 @@ export function sanitizeAssistantText(raw: string) {
       return trimmed.toLowerCase().startsWith("cel:") ? trimmed.slice("cel:".length).trimStart() : line;
     })
     .join("\n");
-  text = text.replace(/\n{3,}/g, "\n\n").trim();
+  text = text.replaceAll(/\n{3,}/g, "\n\n").trim();
   return text;
 }
 

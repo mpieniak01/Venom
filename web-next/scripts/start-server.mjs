@@ -4,11 +4,12 @@ import path from "node:path";
 
 const rootDir = process.cwd();
 const serverPath = path.join(rootDir, ".next", "standalone", "web-next", "server.js");
+const nodeExecPath = process.execPath;
 
 process.env.PORT = process.env.PORT || "3000";
 process.env.HOSTNAME = process.env.HOSTNAME || "0.0.0.0";
 
-const child = spawn("node", [serverPath], {
+const child = spawn(nodeExecPath, [serverPath], {
   cwd: rootDir,
   stdio: "inherit",
   env: process.env,

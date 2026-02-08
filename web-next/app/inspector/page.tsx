@@ -35,7 +35,7 @@ import { useTranslation } from "@/lib/i18n";
 import { getTranslatedStatus } from "@/lib/status-helper";
 
 function sanitizeMermaidDiagram(value: string) {
-  const cleaned = value.replace(/\r?\n/g, "\n");
+  const cleaned = value.replaceAll(/\r?\n/g, "\n");
   const safeChars = new Set(
     Array.from(
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:/_-[]()>",
@@ -907,7 +907,7 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
     if (participant === "User" || participant === "Orchestrator") {
       lines.push(`    participant ${alias} as ${participant}`);
     } else {
-      const display = participant.replace(/"/g, "'");
+      const display = participant.replaceAll(/"/g, "'");
       lines.push(`    participant ${alias} as "${display}"`);
     }
   });
@@ -959,18 +959,18 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
 }
 
 function createParticipantAlias(participant: string, index: number) {
-  const base = participant.replace(/[^a-zA-Z0-9]/g, "_") || `P${index + 1}`;
+  const base = participant.replaceAll(/[^a-zA-Z0-9]/g, "_") || `P${index + 1}`;
   return `${base}_${index + 1}`;
 }
 
 function sanitizeSequenceText(value?: string | null) {
   if (!value) return "";
   return value
-    .replace(/[<>]/g, "")
-    .replace(/[\r\n]/g, " ")
-    .replace(/[|]/g, "‖")
-    .replace(/--/g, "–")
-    .replace(/["]/g, "'")
+    .replaceAll(/[<>]/g, "")
+    .replaceAll(/[\r\n]/g, " ")
+    .replaceAll(/[|]/g, "‖")
+    .replaceAll(/--/g, "–")
+    .replaceAll(/["]/g, "'")
     .trim();
 }
 
@@ -1043,7 +1043,7 @@ function buildFlowchartDiagram(steps: HistoryStep[]) {
 }
 
 function sanitizeMermaidText(value: string, limit = 60) {
-  return value.replace(/[\n\r"]/g, " ").trim().slice(0, limit);
+  return value.replaceAll(/[\n\r"]/g, " ").trim().slice(0, limit);
 }
 
 function statusToMermaidClass(status?: string) {

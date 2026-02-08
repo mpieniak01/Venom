@@ -185,7 +185,7 @@ export function ParametersPanel() {
       <div key={key} className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-zinc-300">
-            {key.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}
+            {key.replaceAll(/[_-]+/g, " ").replaceAll(/\b\w/g, (m) => m.toUpperCase())}
           </label>
           {secret && (
             <IconButton

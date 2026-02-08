@@ -179,7 +179,7 @@ class TestMetricsCollector:
 
         metrics = collector.get_metrics()
         assert metrics["tasks"]["completed"] == 1
-        assert metrics["tasks"]["success_rate"] == 100.0
+        assert metrics["tasks"]["success_rate"] == pytest.approx(100.0)
 
     def test_increment_task_failed(self):
         """Test inkrementacji zadań nieudanych."""
@@ -191,7 +191,7 @@ class TestMetricsCollector:
 
         metrics = collector.get_metrics()
         assert metrics["tasks"]["failed"] == 1
-        assert metrics["tasks"]["success_rate"] == 0.0
+        assert metrics["tasks"]["success_rate"] == pytest.approx(0.0)
 
     def test_tool_usage(self):
         """Test śledzenia użycia narzędzi."""

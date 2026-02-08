@@ -92,7 +92,7 @@ class TestWorkLedger:
         assert success is True
         task = ledger.get_task("test_001")
         assert task.status == TaskStatus.COMPLETED
-        assert task.progress_percent == 100.0
+        assert task.progress_percent == pytest.approx(100.0)
         assert task.actual_minutes == 28
         assert task.completed_at is not None
 

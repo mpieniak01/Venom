@@ -1,5 +1,7 @@
 """Testy dla adaptera parametrów generacji."""
 
+import pytest
+
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
 
 
@@ -26,11 +28,11 @@ class TestGenerationParamsAdapter:
 
         result = GenerationParamsAdapter.adapt_params(params, "vllm")
 
-        assert result["temperature"] == 0.7
+        assert result["temperature"] == pytest.approx(0.7)
         assert result["max_tokens"] == 2048
-        assert result["top_p"] == 0.9
+        assert result["top_p"] == pytest.approx(0.9)
         assert result["top_k"] == 40
-        assert result["repetition_penalty"] == 1.1  # Zmapowano na repetition_penalty
+        assert result["repetition_penalty"] == pytest.approx(1.1)  # Zmapowano na repetition_penalty
         assert "repeat_penalty" not in result
 
     def test_adapt_params_ollama(self):
@@ -45,11 +47,11 @@ class TestGenerationParamsAdapter:
 
         result = GenerationParamsAdapter.adapt_params(params, "ollama")
 
-        assert result["temperature"] == 0.5
+        assert result["temperature"] == pytest.approx(0.5)
         assert result["num_predict"] == 1024  # Zmapowano na num_predict
-        assert result["top_p"] == 0.95
+        assert result["top_p"] == pytest.approx(0.95)
         assert result["top_k"] == 50
-        assert result["repeat_penalty"] == 1.2
+        assert result["repeat_penalty"] == pytest.approx(1.2)
         assert "max_tokens" not in result
 
     def test_adapt_params_openai(self):
@@ -64,9 +66,9 @@ class TestGenerationParamsAdapter:
 
         result = GenerationParamsAdapter.adapt_params(params, "openai")
 
-        assert result["temperature"] == 0.8
+        assert result["temperature"] == pytest.approx(0.8)
         assert result["max_tokens"] == 512
-        assert result["top_p"] == 0.9
+        assert result["top_p"] == pytest.approx(0.9)
         # Parametry nieobsługiwane powinny być pominięte
         assert "top_k" not in result
         assert "repeat_penalty" not in result
@@ -114,9 +116,9 @@ class TestGenerationParamsAdapter:
 
         result = GenerationParamsAdapter.merge_with_defaults(user_params, defaults)
 
-        assert result["temperature"] == 0.3  # Nadpisane przez użytkownika
+        assert result["temperature"] == pytest.approx(0.3)  # Nadpisane przez użytkownika
         assert result["max_tokens"] == 2048  # Z domyślnych
-        assert result["top_p"] == 0.9  # Z domyślnych
+        assert result["top_p"] == pytest.approx(0.9)  # Z domyślnych
         assert result["top_k"] == 50  # Nowy od użytkownika
 
     def test_merge_with_defaults_no_defaults(self):

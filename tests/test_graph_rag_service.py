@@ -57,7 +57,7 @@ def test_add_relationship(graph_rag_service):
     assert graph_rag_service.graph.has_edge("entity1", "entity2")
     edge_data = graph_rag_service.graph.get_edge_data("entity1", "entity2")
     assert edge_data["relationship_type"] == "RELATED_TO"
-    assert edge_data["weight"] == 1.0
+    assert edge_data["weight"] == pytest.approx(1.0)
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,7 @@ class TestScenarioWeaver:
 
         assert weaver.kernel == mock_kernel
         assert weaver.complexity == "complex"
-        assert weaver.execution_settings.temperature == 0.8
+        assert weaver.execution_settings.temperature == pytest.approx(0.8)
 
     def test_initialization_default_complexity(self, mock_kernel):
         """Test inicjalizacji z domyślną złożonością."""

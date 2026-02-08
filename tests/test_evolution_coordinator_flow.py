@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ class DummySystemEngineer:
         self.response = response
 
     async def process(self, _prompt: str) -> str:
+        await asyncio.sleep(0)
         return self.response
 
 
@@ -27,9 +29,11 @@ class DummyMirrorWorld:
         return self.instance_info
 
     async def verify_instance(self, _instance_id: str):
+        await asyncio.sleep(0)
         return self.verify_result
 
     async def destroy_instance(self, instance_id: str, cleanup: bool = True):
+        await asyncio.sleep(0)
         self.destroy_calls.append((instance_id, cleanup))
 
 
@@ -42,9 +46,11 @@ class DummyCoreSkill:
         self.restart_called = False
 
     async def verify_syntax(self, _path: str) -> str:
+        await asyncio.sleep(0)
         return self.syntax_result
 
     async def restart_service(self, confirm: bool = True) -> str:
+        await asyncio.sleep(0)
         self.restart_called = True
         return self.restart_result
 

@@ -1,5 +1,6 @@
 """Testy dla feedbacku i hidden prompts (PR 064/067)."""
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ class DummyOrchestrator:
         self._task_id = task_id
 
     async def submit_task(self, request):
+        await asyncio.sleep(0)
         return SimpleNamespace(task_id=self._task_id)
 
 

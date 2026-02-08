@@ -1,3 +1,4 @@
+import asyncio
 import types
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ class DummyController:
         self.calls = []
 
     async def run_action(self, runtime: str, action: str):
+        await asyncio.sleep(0)
         self.calls.append((runtime, action))
         return types.SimpleNamespace(
             ok=True, action=action, stdout="", stderr="", exit_code=0
@@ -25,6 +27,7 @@ async def test_benchmark_restarts_runtime_on_activate(monkeypatch):
         manifest = {}
 
         async def activate_model(self, model_name, runtime):
+            await asyncio.sleep(0)
             registry_calls["called"] = (model_name, runtime)
             return True
 
@@ -44,10 +47,12 @@ async def test_benchmark_restarts_runtime_on_activate(monkeypatch):
         return fake_time["t"]
 
     async def fake_health(endpoint: str, timeout: int = 60):
+        await asyncio.sleep(0)
         fake_time["t"] += 0.5  # healthcheck trwa 0.5s
         return
 
     async def fake_query(question: str, model_name: str, endpoint: str):
+        await asyncio.sleep(0)
         fake_time["t"] += 0.2  # generowanie 0.2s
         return {
             "latency_ms": 10,

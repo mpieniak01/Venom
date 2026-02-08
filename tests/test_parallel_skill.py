@@ -1,5 +1,6 @@
 """Testy dla parallel_skill - umiejętność równoległego przetwarzania."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, Mock
 
@@ -15,6 +16,7 @@ def mock_message_broker():
     broker = Mock(spec=MessageBroker)
 
     async def _fake_enqueue(task_type, payload, priority):
+        await asyncio.sleep(0)
         return f"task_{payload.get('item_index', 0)}"
 
     broker.enqueue_task = AsyncMock(side_effect=_fake_enqueue)
@@ -74,6 +76,7 @@ async def test_map_reduce_creates_tasks(parallel_skill, mock_message_broker):
 
     # Mock get_task_status do symulacji ukończonych zadań
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         task = TaskMessage(task_id, "map_task", {"item": "test"})
         task.status = "completed"
         task.result = f"result_{task_id}"
@@ -100,6 +103,7 @@ async def test_map_reduce_priority(parallel_skill, mock_message_broker):
     items = ["item1"]
 
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         task = TaskMessage(task_id, "map_task", {})
         task.status = "completed"
         return task
@@ -157,6 +161,7 @@ async def test_parallel_execute_creates_tasks(parallel_skill, mock_message_broke
     subtasks = ["subtask1", "subtask2"]
 
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         task = TaskMessage(task_id, "parallel_task", {})
         task.status = "completed"
         task.result = "success"
@@ -208,6 +213,7 @@ async def test_wait_for_results_timeout():
 
     # Mock który zawsze zwraca pending task
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         task = TaskMessage(task_id, "test", {})
         task.status = "pending"
         return task
@@ -229,6 +235,7 @@ async def test_wait_for_results_all_completed():
 
     # Mock który zwraca completed tasks
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         task = TaskMessage(task_id, "test", {"item_index": int(task_id.split("_")[1])})
         task.status = "completed"
         task.result = f"result_{task_id}"
@@ -253,6 +260,7 @@ async def test_wait_for_results_mixed_status():
     call_count = 0
 
     async def mock_get_status(task_id):
+        await asyncio.sleep(0)
         nonlocal call_count
         call_count += 1
 

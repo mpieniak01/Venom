@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -15,6 +16,7 @@ class DummyTestSkill:
         self.reports = list(reports)
 
     async def run_pytest(self, test_path: str = ".", timeout: int = 60):
+        await asyncio.sleep(0)
         return self.reports.pop(0)
 
 
@@ -23,12 +25,14 @@ class DummyGuardianAgent:
         self.calls = []
 
     async def process(self, prompt: str) -> str:
+        await asyncio.sleep(0)
         self.calls.append(prompt)
         return "ticket"
 
 
 class DummyCoderAgent:
     async def process(self, prompt: str) -> str:
+        await asyncio.sleep(0)
         return "fix applied"
 
 

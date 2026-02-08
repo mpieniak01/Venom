@@ -1,5 +1,6 @@
 """Testy API dla endpointów tłumaczeń i news/papers."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,6 +24,7 @@ def client(test_app):
 
 class DummyRegistry:
     async def list_news(self, provider, limit=5, kind="blog", month=None):
+        await asyncio.sleep(0)
         return {
             "items": [
                 {
@@ -65,6 +67,7 @@ class TestModelsTranslationAPI:
     def test_models_news_registry_error_returns_payload(self, client):
         class FailingRegistry:
             async def list_news(self, provider, limit=5, kind="blog", month=None):
+                await asyncio.sleep(0)
                 raise RuntimeError("registry error")
 
         _set_registry(FailingRegistry())

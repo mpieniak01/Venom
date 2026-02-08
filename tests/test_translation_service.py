@@ -1,5 +1,7 @@
 """Tests for translation_service."""
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -52,12 +54,15 @@ async def test_translate_text_uses_cache(monkeypatch):
             pass
 
         async def __aenter__(self):
+            await asyncio.sleep(0)
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
             return False
 
         async def post(self, *args, **kwargs):
+            await asyncio.sleep(0)
             call_count["value"] += 1
             return DummyResponse(payload)
 
@@ -82,12 +87,15 @@ async def test_translate_text_falls_back_on_error(monkeypatch):
             pass
 
         async def __aenter__(self):
+            await asyncio.sleep(0)
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
             return False
 
         async def post(self, *args, **kwargs):
+            await asyncio.sleep(0)
             raise httpx.HTTPError("boom")
 
     monkeypatch.setattr(translation_module.httpx, "AsyncClient", DummyClient)

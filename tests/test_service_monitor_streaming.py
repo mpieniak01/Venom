@@ -37,6 +37,7 @@ async def test_service_status_broadcast():
     ) as mock_http_check:
 
         async def side_effect(s):
+            await asyncio.sleep(0)
             if s.name == "test_api":
                 s.status = ServiceStatus.ONLINE
                 s.error_message = "All good"

@@ -1,3 +1,4 @@
+import asyncio
 import types
 
 import pytest
@@ -39,9 +40,11 @@ async def test_benchmark_uses_vllm_endpoint(monkeypatch):
     called = {}
 
     async def fake_health(endpoint: str, timeout: int = 60):
+        await asyncio.sleep(0)
         called["health"] = endpoint
 
     async def fake_query(question: str, model_name: str, endpoint: str):
+        await asyncio.sleep(0)
         called["query"] = (model_name, endpoint)
         return {
             "latency_ms": 10,
@@ -83,9 +86,11 @@ async def test_benchmark_uses_ollama_endpoint(monkeypatch):
     called = {}
 
     async def fake_health(endpoint: str, timeout: int = 60):
+        await asyncio.sleep(0)
         called["health"] = endpoint
 
     async def fake_query(question: str, model_name: str, endpoint: str):
+        await asyncio.sleep(0)
         called["query"] = (model_name, endpoint)
         return {
             "latency_ms": 10,

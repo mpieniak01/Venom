@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -18,11 +19,13 @@ class DummyToolmaker:
         self.create_success = create_success
 
     async def create_tool(self, specification: str, tool_name: str, output_dir=None):
+        await asyncio.sleep(0)
         if self.create_success:
             return True, f"# tool {tool_name}"
         return False, "tool error"
 
     async def create_test(self, tool_name: str, tool_code: str, output_dir=None):
+        await asyncio.sleep(0)
         return True, "# test"
 
 
@@ -46,6 +49,7 @@ class DummyGuardianAgent:
         self.calls = []
 
     async def process(self, prompt: str) -> str:
+        await asyncio.sleep(0)
         self.calls.append(prompt)
         return "APPROVED"
 

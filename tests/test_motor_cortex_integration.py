@@ -276,12 +276,14 @@ async def test_orchestrator_processes_multiple_tasks_in_parallel(
     call_count = 0
 
     async def mock_classify(content):
+        await asyncio.sleep(0)
         nonlocal call_count
         intent = intents_and_results[call_count % len(intents_and_results)][0]
         call_count += 1
         return intent
 
     async def mock_dispatch_func(intent, content, **kwargs):
+        await asyncio.sleep(0)
         for i, r in intents_and_results:
             if i == intent:
                 return r

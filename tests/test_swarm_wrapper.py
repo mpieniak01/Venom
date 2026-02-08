@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import venom_core.core.swarm as swarm_mod
@@ -16,6 +18,7 @@ class DummyAgent:
         self.raise_error = raise_error
 
     async def process(self, message: str) -> str:
+        await asyncio.sleep(0)
         if self.raise_error:
             raise RuntimeError("boom")
         return f"echo:{message}"
@@ -34,8 +37,7 @@ class PluginWithMethods:
 PluginWithMethods.do.__kernel_function__ = True
 
 
-@pytest.mark.asyncio
-async def test_swarm_wrapper_registers_functions(monkeypatch):
+def test_swarm_wrapper_registers_functions(monkeypatch):
     registered = {}
 
     def fake_register(self, function_map):

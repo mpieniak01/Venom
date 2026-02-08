@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import venom_core.execution.skills.research_skill as research_skill_mod
@@ -38,9 +40,11 @@ class FakeIngestionEngine:
         self.next_file_results = []
 
     async def ingest_url(self, _url: str):
+        await asyncio.sleep(0)
         return self.next_url_result
 
     async def ingest_file(self, _path: str):
+        await asyncio.sleep(0)
         if self.next_file_results:
             return self.next_file_results.pop(0)
         return {

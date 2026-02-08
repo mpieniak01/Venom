@@ -12,16 +12,20 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
+METRICS_COLLECTOR_UNAVAILABLE = "Metrics collector nie jest dostępny"
+TOKEN_METRICS_FETCH_ERROR = "Błąd podczas pobierania metryk tokenów"
+SYSTEM_METRICS_FETCH_ERROR = "Błąd podczas pobierania metryk systemowych"
+
 TOKEN_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Metrics collector nie jest dostępny"},
-    500: {"description": "Błąd podczas pobierania metryk tokenów"},
+    503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
+    500: {"description": TOKEN_METRICS_FETCH_ERROR},
 }
 SYSTEM_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Metrics collector nie jest dostępny"},
-    500: {"description": "Błąd podczas pobierania metryk systemowych"},
+    503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
+    500: {"description": SYSTEM_METRICS_FETCH_ERROR},
 }
 METRICS_ROOT_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Metrics collector nie jest dostępny"},
+    503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
 }
 
 _metrics_cache = TTLCache[dict](ttl_seconds=1.0)
@@ -65,9 +69,7 @@ def _get_token_metrics_impl():
     if _token_economist is None:
         # Zwróć podstawowe metryki z metrics_collector
         if collector is None:
-            raise HTTPException(
-                status_code=503, detail="Metrics collector nie jest dostępny"
-            )
+            raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
 
         metrics = collector.get_metrics()
         return {
@@ -83,9 +85,7 @@ def _get_token_metrics_impl():
 
         collector = metrics_module.metrics_collector
         if collector is None:
-            raise HTTPException(
-                status_code=503, detail="Metrics collector nie jest dostępny"
-            )
+            raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
 
         metrics = collector.get_metrics()
         total_tokens = metrics.get("tokens_used_session", 0)
@@ -121,10 +121,8 @@ def _get_token_metrics_impl():
             "note": "Koszty są szacunkowe. Śledzenie per-model zostanie dodane w przyszłej wersji.",
         }
     except Exception as e:
-        logger.exception("Błąd podczas pobierania metryk tokenów")
-        raise HTTPException(
-            status_code=500, detail="Błąd podczas pobierania metryk tokenów"
-        ) from e
+        logger.exception(TOKEN_METRICS_FETCH_ERROR)
+        raise HTTPException(status_code=500, detail=TOKEN_METRICS_FETCH_ERROR) from e
 
 
 @router.get("/system", responses=SYSTEM_METRICS_RESPONSES)
@@ -140,18 +138,14 @@ def get_system_metrics():
     """
     collector = metrics_module.metrics_collector
     if collector is None:
-        raise HTTPException(
-            status_code=503, detail="Metrics collector nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail=METRICS_COLLECTOR_UNAVAILABLE)
 
     try:
         metrics = collector.get_metrics()
         return metrics
     except Exception as e:
-        logger.exception("Błąd podczas pobierania metryk systemowych")
-        raise HTTPException(
-            status_code=500, detail="Błąd podczas pobierania metryk systemowych"
-        ) from e
+        logger.exception(SYSTEM_METRICS_FETCH_ERROR)
+        raise HTTPException(status_code=500, detail=SYSTEM_METRICS_FETCH_ERROR) from e
 
 
 @router.get("", responses=METRICS_ROOT_RESPONSES)

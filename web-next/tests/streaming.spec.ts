@@ -51,10 +51,14 @@ async function installStreamingMockEventSource(page: import("@playwright/test").
         }
       }
 
+      private schedulePayload(payload: { event: string; data: Record<string, unknown> }, delayMs: number) {
+        setTimeout(() => this.emitPayload(payload), delayMs);
+      }
+
       private schedulePayloads(payloads: Array<{ event: string; data: Record<string, unknown> }>) {
-        payloads.forEach((payload, index) => {
-          setTimeout(() => this.emitPayload(payload), 150 * (index + 1));
-        });
+        for (let index = 0; index < payloads.length; index += 1) {
+          this.schedulePayload(payloads[index], 150 * (index + 1));
+        }
       }
 
       addEventListener(event: string, handler: (event: MessageEvent) => void) {

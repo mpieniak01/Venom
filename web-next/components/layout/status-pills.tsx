@@ -45,6 +45,19 @@ const resolvePillToneClass = (tone: PillTone): string => {
   return "status-pill--neutral";
 };
 
+const resolvePillHint = (input: {
+  loading: boolean;
+  available: boolean;
+  loadingText: string;
+  availableText: string;
+  fallbackText: string;
+}) => {
+  const { loading, available, loadingText, availableText, fallbackText } = input;
+  if (loading) return loadingText;
+  if (available) return availableText;
+  return fallbackText;
+};
+
 function buildStatusPills(input: {
   t: (key: string) => string;
   queueAvailable: boolean;
@@ -81,11 +94,13 @@ function buildStatusPills(input: {
       id: "queue",
       label: t("mobileNav.systemStatus.queue"),
       value: queueAvailable ? `${queueActive}/${queueLimit}` : "—",
-      hint: queuePendingLoading
-        ? t("mobileNav.systemStatus.loading")
-        : queueAvailable
-          ? `${queuePending} ${t("mobileNav.systemStatus.pending")}`
-          : t("mobileNav.systemStatus.noData"),
+      hint: resolvePillHint({
+        loading: queuePendingLoading,
+        available: queueAvailable,
+        loadingText: t("mobileNav.systemStatus.loading"),
+        availableText: `${queuePending} ${t("mobileNav.systemStatus.pending")}`,
+        fallbackText: t("mobileNav.systemStatus.noData"),
+      }),
       tone: resolveQueueTone(queueAvailable, queuePaused),
       loading: queuePendingLoading,
     },
@@ -93,11 +108,13 @@ function buildStatusPills(input: {
       id: "success",
       label: t("mobileNav.systemStatus.efficiency"),
       value: metricsAvailable ? `${successRate}%` : "—",
-      hint: metricsPendingLoading
-        ? t("mobileNav.systemStatus.loading")
-        : metricsAvailable
-          ? t("mobileNav.systemStatus.lastTasks")
-          : t("mobileNav.systemStatus.offline"),
+      hint: resolvePillHint({
+        loading: metricsPendingLoading,
+        available: metricsAvailable,
+        loadingText: t("mobileNav.systemStatus.loading"),
+        availableText: t("mobileNav.systemStatus.lastTasks"),
+        fallbackText: t("mobileNav.systemStatus.offline"),
+      }),
       tone: resolveSuccessTone(metricsAvailable, successRate),
       loading: metricsPendingLoading,
     },
@@ -105,11 +122,13 @@ function buildStatusPills(input: {
       id: "tasks",
       label: t("mobileNav.systemStatus.tasks"),
       value: tasksAvailable ? activeTasks : "—",
-      hint: tasksPendingLoading
-        ? t("mobileNav.systemStatus.loading")
-        : tasksAvailable
-          ? t("mobileNav.systemStatus.active")
-          : t("mobileNav.systemStatus.noData"),
+      hint: resolvePillHint({
+        loading: tasksPendingLoading,
+        available: tasksAvailable,
+        loadingText: t("mobileNav.systemStatus.loading"),
+        availableText: t("mobileNav.systemStatus.active"),
+        fallbackText: t("mobileNav.systemStatus.noData"),
+      }),
       tone: resolveTasksTone(tasksAvailable, activeTasks),
       loading: tasksPendingLoading,
     },

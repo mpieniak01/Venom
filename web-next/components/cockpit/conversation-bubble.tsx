@@ -159,7 +159,7 @@ export function ConversationBubble({
   }, [isUser, showTyping, text, typingText]);
   useEffect(() => {
     if (isUser || !showTyping) return undefined;
-    typingTimerRef.current = window.setInterval(() => {
+    typingTimerRef.current = globalThis.setInterval(() => {
       setVisibleText((prev) => {
         if (prev.length >= typingText.length) return prev;
         const remaining = typingText.length - prev.length;
@@ -173,7 +173,7 @@ export function ConversationBubble({
     }, TYPING_EFFECT.INTERVAL_MS);
     return () => {
       if (typingTimerRef.current) {
-        window.clearInterval(typingTimerRef.current);
+        globalThis.clearInterval(typingTimerRef.current);
         typingTimerRef.current = null;
       }
     };

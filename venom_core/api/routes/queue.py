@@ -13,13 +13,15 @@ _queue_cache = TTLCache[dict](ttl_seconds=1.0)
 
 router = APIRouter(prefix="/api/v1/queue", tags=["queue"])
 
+ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
+
 QUEUE_BASE_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Orchestrator nie jest dostępny"},
+    503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas operacji na kolejce"},
 }
 QUEUE_ABORT_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Zadanie nie istnieje lub nie jest aktywne"},
-    503: {"description": "Orchestrator nie jest dostępny"},
+    503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas przerywania zadania"},
 }
 
@@ -45,7 +47,7 @@ async def get_queue_status():
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         cached = _queue_cache.get()
@@ -73,7 +75,7 @@ async def pause_queue():
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         result = await _orchestrator.pause_queue()
@@ -99,7 +101,7 @@ async def resume_queue():
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         result = await _orchestrator.resume_queue()
@@ -125,7 +127,7 @@ async def purge_queue():
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         result = await _orchestrator.purge_queue()
@@ -153,7 +155,7 @@ async def emergency_stop():
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         result = await _orchestrator.emergency_stop()
@@ -182,7 +184,7 @@ async def abort_task(task_id: UUID):
         HTTPException: 503 jeśli Orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         result = await _orchestrator.abort_task(task_id)

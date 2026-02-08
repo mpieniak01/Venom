@@ -27,12 +27,14 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+LLM_CONTROLLER_UNAVAILABLE = "LLMController nie jest dostępny"
+
 LLM_SERVERS_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "LLMController nie jest dostępny"},
+    503: {"description": LLM_CONTROLLER_UNAVAILABLE},
 }
 LLM_SERVER_CONTROL_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowa akcja lub parametry sterowania serwerem"},
-    503: {"description": "LLMController nie jest dostępny"},
+    503: {"description": LLM_CONTROLLER_UNAVAILABLE},
     500: {"description": "Błąd podczas wykonywania komendy serwera LLM"},
 }
 LLM_RUNTIME_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -65,7 +67,7 @@ async def get_llm_servers():
     llm_controller = system_deps.get_llm_controller()
     service_monitor = system_deps.get_service_monitor()
     if llm_controller is None:
-        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
 
     servers = llm_controller.list_servers()
 
@@ -125,7 +127,7 @@ async def control_llm_server(server_name: str, action: str):
     """
     llm_controller = system_deps.get_llm_controller()
     if llm_controller is None:
-        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
 
     try:
         result = await llm_controller.run_action(server_name, action)
@@ -264,7 +266,7 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
     model_manager = system_deps.get_model_manager()
     request_tracer = system_deps.get_request_tracer()
     if llm_controller is None:
-        raise HTTPException(status_code=503, detail="LLMController nie jest dostępny")
+        raise HTTPException(status_code=503, detail=LLM_CONTROLLER_UNAVAILABLE)
     if model_manager is None:
         raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
 

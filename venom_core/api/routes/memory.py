@@ -24,6 +24,17 @@ router = APIRouter(prefix="/api/v1/memory", tags=["memory"])
 # Back-compat for tests that patch memory_routes.config_manager
 config_manager = _config_manager
 
+INTERNAL_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny"},
+}
+LESSONS_READ_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **INTERNAL_ERROR_RESPONSES,
+}
+LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"description": "Nieprawidłowe parametry żądania"},
+    **INTERNAL_ERROR_RESPONSES,
+}
+
 # Globalne referencje dla testów
 _vector_store = None
 _state_manager = None
@@ -372,7 +383,7 @@ async def clear_global_memory(vector_store: Annotated[Any, Depends(get_vector_st
     }
 
 
-@router.get("/graph")
+@router.get("/graph", responses=INTERNAL_ERROR_RESPONSES)
 async def memory_graph(
     vector_store: Annotated[Any, Depends(get_vector_store)],
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
@@ -708,7 +719,7 @@ async def flush_semantic_cache():
 # ============================================
 
 
-@router.delete("/lessons/prune/latest")
+@router.delete("/lessons/prune/latest", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_latest_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     count: Annotated[
@@ -721,7 +732,7 @@ async def prune_latest_lessons(
     return await knowledge_prune(count=count, lessons_store=lessons_store)
 
 
-@router.delete("/lessons/prune/range")
+@router.delete("/lessons/prune/range", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: Annotated[str, Query(description="Data początkowa")],
@@ -735,7 +746,7 @@ async def prune_lessons_by_range(
     return await knowledge_prune(start=start, end=end, lessons_store=lessons_store)
 
 
-@router.delete("/lessons/prune/tag")
+@router.delete("/lessons/prune/tag", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(description="Tag do usunięcia")],
@@ -746,7 +757,7 @@ async def prune_lessons_by_tag(
     return await knowledge_prune(tag=tag, lessons_store=lessons_store)
 
 
-@router.delete("/lessons/prune/ttl")
+@router.delete("/lessons/prune/ttl", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(ge=1, description="Dni retencji")],
@@ -757,7 +768,7 @@ async def prune_lessons_by_ttl(
     return await knowledge_prune(days=days, lessons_store=lessons_store)
 
 
-@router.delete("/lessons/purge")
+@router.delete("/lessons/purge", responses=LESSONS_MUTATION_RESPONSES)
 async def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     force: Annotated[
@@ -774,7 +785,7 @@ class LearningToggleRequest(BaseModel):
     enabled: bool
 
 
-@router.get("/lessons/learning/status")
+@router.get("/lessons/learning/status", responses=LESSONS_READ_RESPONSES)
 async def get_learning_status():
     """Alias dla knowledge/lessons/learning/status"""
     from venom_core.api.routes.knowledge import get_learning_status as knowledge_status
@@ -782,7 +793,7 @@ async def get_learning_status():
     return await knowledge_status()
 
 
-@router.post("/lessons/learning/toggle")
+@router.post("/lessons/learning/toggle", responses=LESSONS_MUTATION_RESPONSES)
 async def toggle_learning(request: LearningToggleRequest):
     """Alias dla knowledge/lessons/learning/toggle"""
     from venom_core.api.routes.knowledge import (

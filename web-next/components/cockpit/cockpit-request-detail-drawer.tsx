@@ -27,6 +27,154 @@ type ContextPreviewMeta = {
   mode?: string | null;
 };
 
+type RuntimeContext = {
+  status: string | null;
+  error: string | Record<string, unknown> | null;
+};
+
+type RuntimeErrorMeta = {
+  errorClass: string | null;
+  details: string[];
+  promptPreview: string | null;
+  promptContext: string | null;
+  promptContextTruncated: boolean;
+};
+
+const RUNTIME_ERROR_CLASSES = [
+  "routing_mismatch",
+  "execution_contract_violation",
+  "provider_unreachable",
+  "timeout",
+  "rate_limited",
+  "runtime_error",
+  "agent_error",
+  "validation_error",
+  "cancelled",
+] as const;
+
+function extractRuntimeContext(selectedTask: Task | null): RuntimeContext | null {
+  const runtime = selectedTask?.context_history?.["llm_runtime"];
+  if (!runtime || typeof runtime !== "object") return null;
+
+  const ctx = runtime as Record<string, unknown>;
+  const statusValue = ctx["status"];
+  const errorValue = ctx["error"];
+
+  return {
+    status: typeof statusValue === "string" ? statusValue : null,
+    error:
+      typeof errorValue === "string" || (typeof errorValue === "object" && errorValue)
+        ? (errorValue as string | Record<string, unknown>)
+        : null,
+  };
+}
+
+function parseRuntimeErrorDetails(errorDetails: Record<string, unknown>): string[] {
+  const details: string[] = [];
+  const missing = errorDetails["missing"];
+  if (Array.isArray(missing) && missing.length > 0) {
+    details.push(`missing: ${missing[0]}`);
+  }
+
+  const expectedHash = errorDetails["expected_hash"];
+  const actualHash = errorDetails["actual_hash"];
+  if (typeof expectedHash === "string") details.push(`expected_hash: ${expectedHash.slice(0, 8)}`);
+  if (typeof actualHash === "string") details.push(`active_hash: ${actualHash.slice(0, 8)}`);
+
+  const expectedRuntime = errorDetails["expected_runtime"];
+  const actualRuntime = errorDetails["actual_runtime"];
+  if (typeof expectedRuntime === "string") details.push(`expected_runtime: ${expectedRuntime}`);
+  if (typeof actualRuntime === "string") details.push(`active_runtime: ${actualRuntime}`);
+
+  return details;
+}
+
+function parseRuntimeTokenInfo(errorDetails: Record<string, unknown>): string | null {
+  const tokenInfo: { max?: number; input?: number; requested?: number } = {};
+  if (typeof errorDetails.max_context_tokens === "number") tokenInfo.max = errorDetails.max_context_tokens;
+  if (typeof errorDetails.input_tokens === "number") tokenInfo.input = errorDetails.input_tokens;
+  if (typeof errorDetails.requested_max_tokens === "number") tokenInfo.requested = errorDetails.requested_max_tokens;
+
+  if (!tokenInfo.max && !tokenInfo.input && !tokenInfo.requested) return null;
+  const parts: string[] = [];
+  if (tokenInfo.max) parts.push(`max_ctx=${tokenInfo.max}`);
+  if (tokenInfo.input) parts.push(`input=${tokenInfo.input}`);
+  if (tokenInfo.requested) parts.push(`requested=${tokenInfo.requested}`);
+  return `tokens: ${parts.join(" / ")}`;
+}
+
+function parseRuntimeErrorMeta(error: RuntimeContext["error"]): RuntimeErrorMeta | null {
+  if (!error) return null;
+
+  if (typeof error === "string") {
+    const errorClass = RUNTIME_ERROR_CLASSES.find((entry) => error.includes(entry)) ?? null;
+    return {
+      errorClass,
+      details: [],
+      promptPreview: null,
+      promptContext: null,
+      promptContextTruncated: false,
+    };
+  }
+
+  const errorObj = error as Record<string, unknown>;
+  const errorDetails =
+    typeof errorObj.error_details === "object" && errorObj.error_details
+      ? (errorObj.error_details as Record<string, unknown>)
+      : {};
+  const details = parseRuntimeErrorDetails(errorDetails);
+  const tokenInfo = parseRuntimeTokenInfo(errorDetails);
+  if (tokenInfo) details.push(tokenInfo);
+
+  const stage = errorObj.stage;
+  if (typeof stage === "string") details.push(`stage: ${stage}`);
+
+  return {
+    errorClass:
+      (typeof errorObj.error_class === "string" && errorObj.error_class) ||
+      (typeof errorObj.error_code === "string" && errorObj.error_code) ||
+      null,
+    details,
+    promptPreview: typeof errorDetails.prompt_preview === "string" ? errorDetails.prompt_preview : null,
+    promptContext: typeof errorDetails.prompt_context === "string" ? errorDetails.prompt_context : null,
+    promptContextTruncated:
+      typeof errorDetails.prompt_context_truncated === "boolean"
+        ? errorDetails.prompt_context_truncated
+        : false,
+  };
+}
+
+function parseSimpleResponse(historyDetail: HistoryRequestDetail | null) {
+  if (!historyDetail) return null;
+  if (historyDetail.result) return { text: historyDetail.result, truncated: false };
+  if (!historyDetail.steps || historyDetail.steps.length === 0) return null;
+
+  const responseStep = [...historyDetail.steps]
+    .reverse()
+    .find((step) => step.component === "SimpleMode" && step.action === "response");
+  if (!responseStep?.details) return null;
+
+  const raw = responseStep.details.trim();
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as { response?: string; truncated?: boolean };
+      if (typeof parsed.response === "string") {
+        return { text: parsed.response, truncated: !!parsed.truncated };
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  const responseMatch = raw.match(/response=([\s\S]*)$/);
+  if (responseMatch?.[1]) return { text: responseMatch[1].trim(), truncated: false };
+
+  const previewMatch = raw.match(/preview=([\s\S]*)$/);
+  if (previewMatch?.[1]) return { text: previewMatch[1].trim(), truncated: true };
+
+  return null;
+}
+
 type CockpitRequestDetailDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,141 +227,12 @@ export function CockpitRequestDetailDrawer({
   onUpdateFeedbackState,
   t,
 }: CockpitRequestDetailDrawerProps) {
-  const selectedTaskRuntime = useMemo(() => {
-    const runtime = selectedTask?.context_history?.["llm_runtime"];
-    if (runtime && typeof runtime === "object") {
-      const ctx = runtime as Record<string, unknown>;
-      const statusValue = ctx["status"];
-      const errorValue = ctx["error"];
-      return {
-        status: typeof statusValue === "string" ? statusValue : null,
-        error:
-          typeof errorValue === "string" || (typeof errorValue === "object" && errorValue)
-            ? errorValue
-            : null,
-      };
-    }
-    return null;
-  }, [selectedTask]);
-  const runtimeErrorMeta = useMemo(() => {
-    const error = selectedTaskRuntime?.error;
-    if (!error) return null;
-    if (typeof error === "string") {
-      const classes = [
-        "routing_mismatch",
-        "execution_contract_violation",
-        "provider_unreachable",
-        "timeout",
-        "rate_limited",
-        "runtime_error",
-        "agent_error",
-        "validation_error",
-        "cancelled",
-      ];
-      const errorClass = classes.find((entry) => error.includes(entry)) ?? null;
-      return { errorClass, details: [], promptPreview: null, promptContext: null, promptContextTruncated: false };
-    }
-    const errorObj = error as Record<string, unknown>;
-    const errorClass =
-      (typeof errorObj.error_class === "string" && errorObj.error_class) ||
-      (typeof errorObj.error_code === "string" && errorObj.error_code) ||
-      null;
-    const details: string[] = [];
-    const errorDetails =
-      typeof errorObj.error_details === "object" && errorObj.error_details
-        ? (errorObj.error_details as Record<string, unknown>)
-        : {};
-    const tokenInfo: { max?: number; input?: number; requested?: number } = {};
-    if (typeof errorDetails.max_context_tokens === "number") {
-      tokenInfo.max = errorDetails.max_context_tokens;
-    }
-    if (typeof errorDetails.input_tokens === "number") {
-      tokenInfo.input = errorDetails.input_tokens;
-    }
-    if (typeof errorDetails.requested_max_tokens === "number") {
-      tokenInfo.requested = errorDetails.requested_max_tokens;
-    }
-    const promptPreview =
-      typeof errorDetails.prompt_preview === "string"
-        ? errorDetails.prompt_preview
-        : null;
-    const promptContext =
-      typeof errorDetails.prompt_context === "string"
-        ? errorDetails.prompt_context
-        : null;
-    const promptContextTruncated =
-      typeof errorDetails.prompt_context_truncated === "boolean"
-        ? errorDetails.prompt_context_truncated
-        : false;
-    const missing = errorDetails["missing"];
-    if (Array.isArray(missing) && missing.length > 0) {
-      details.push(`missing: ${missing[0]}`);
-    }
-    const expectedHash = errorDetails["expected_hash"];
-    const actualHash = errorDetails["actual_hash"];
-    if (typeof expectedHash === "string") {
-      details.push(`expected_hash: ${expectedHash.slice(0, 8)}`);
-    }
-    if (typeof actualHash === "string") {
-      details.push(`active_hash: ${actualHash.slice(0, 8)}`);
-    }
-    const expectedRuntime = errorDetails["expected_runtime"];
-    const actualRuntime = errorDetails["actual_runtime"];
-    if (typeof expectedRuntime === "string") {
-      details.push(`expected_runtime: ${expectedRuntime}`);
-    }
-    if (typeof actualRuntime === "string") {
-      details.push(`active_runtime: ${actualRuntime}`);
-    }
-    const stage = errorObj.stage;
-    if (typeof stage === "string") {
-      details.push(`stage: ${stage}`);
-    }
-    if (tokenInfo.max || tokenInfo.input || tokenInfo.requested) {
-      const parts = [];
-      if (tokenInfo.max) parts.push(`max_ctx=${tokenInfo.max}`);
-      if (tokenInfo.input) parts.push(`input=${tokenInfo.input}`);
-      if (tokenInfo.requested) parts.push(`requested=${tokenInfo.requested}`);
-      details.push(`tokens: ${parts.join(" / ")}`);
-    }
-    return {
-      errorClass,
-      details,
-      promptPreview,
-      promptContext,
-      promptContextTruncated,
-    };
-  }, [selectedTaskRuntime?.error]);
-  const simpleResponse = useMemo(() => {
-    if (historyDetail?.result) {
-      return { text: historyDetail.result, truncated: false };
-    }
-    if (!historyDetail?.steps || historyDetail.steps.length === 0) return null;
-    const responseStep = [...historyDetail.steps]
-      .reverse()
-      .find((step) => step.component === "SimpleMode" && step.action === "response");
-    if (!responseStep?.details) return null;
-    const raw = responseStep.details.trim();
-    if (raw.startsWith("{")) {
-      try {
-        const parsed = JSON.parse(raw) as { response?: string; truncated?: boolean };
-        if (typeof parsed.response === "string") {
-          return { text: parsed.response, truncated: !!parsed.truncated };
-        }
-      } catch {
-        return null;
-      }
-    }
-    const responseMatch = raw.match(/response=([\s\S]*)$/);
-    if (responseMatch?.[1]) {
-      return { text: responseMatch[1].trim(), truncated: false };
-    }
-    const previewMatch = raw.match(/preview=([\s\S]*)$/);
-    if (previewMatch?.[1]) {
-      return { text: previewMatch[1].trim(), truncated: true };
-    }
-    return null;
-  }, [historyDetail?.steps, historyDetail?.result]);
+  const selectedTaskRuntime = useMemo(() => extractRuntimeContext(selectedTask), [selectedTask]);
+  const runtimeErrorMeta = useMemo(
+    () => parseRuntimeErrorMeta(selectedTaskRuntime?.error ?? null),
+    [selectedTaskRuntime?.error],
+  );
+  const simpleResponse = useMemo(() => parseSimpleResponse(historyDetail), [historyDetail]);
   const requestModeLabel = useMemo(() => {
     if (contextPreviewMeta?.mode === "direct") return "direct";
     if (contextPreviewMeta?.mode === "normal") return "normal";

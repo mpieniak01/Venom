@@ -12,6 +12,110 @@ export type StatusPillsInitialData = {
   tasks?: Task[] | null;
 };
 
+type PillTone = "success" | "warning" | "danger" | "neutral";
+
+type StatusPill = {
+  id: "queue" | "success" | "tasks";
+  label: string;
+  value: string | number;
+  hint: string;
+  tone: PillTone;
+  loading: boolean;
+};
+
+const resolveQueueTone = (queueAvailable: boolean, paused?: boolean): PillTone => {
+  if (!queueAvailable) return "neutral";
+  return paused ? "warning" : "success";
+};
+
+const resolveSuccessTone = (metricsAvailable: boolean, successRate: number): PillTone => {
+  if (!metricsAvailable) return "neutral";
+  return successRate > 70 ? "success" : "danger";
+};
+
+const resolveTasksTone = (tasksAvailable: boolean, activeTasks: number): PillTone => {
+  if (!tasksAvailable) return "neutral";
+  return activeTasks > 0 ? "warning" : "neutral";
+};
+
+const resolvePillToneClass = (tone: PillTone): string => {
+  if (tone === "success") return "status-pill--success";
+  if (tone === "warning") return "status-pill--warning";
+  if (tone === "danger") return "status-pill--danger";
+  return "status-pill--neutral";
+};
+
+function buildStatusPills(input: {
+  t: (key: string) => string;
+  queueAvailable: boolean;
+  queueActive: number;
+  queueLimit: number | string;
+  queuePending: number;
+  queuePaused?: boolean;
+  queuePendingLoading: boolean;
+  metricsAvailable: boolean;
+  successRate: number;
+  metricsPendingLoading: boolean;
+  tasksAvailable: boolean;
+  activeTasks: number;
+  tasksPendingLoading: boolean;
+}): StatusPill[] {
+  const {
+    t,
+    queueAvailable,
+    queueActive,
+    queueLimit,
+    queuePending,
+    queuePaused,
+    queuePendingLoading,
+    metricsAvailable,
+    successRate,
+    metricsPendingLoading,
+    tasksAvailable,
+    activeTasks,
+    tasksPendingLoading,
+  } = input;
+
+  return [
+    {
+      id: "queue",
+      label: t("mobileNav.systemStatus.queue"),
+      value: queueAvailable ? `${queueActive}/${queueLimit}` : "—",
+      hint: queuePendingLoading
+        ? t("mobileNav.systemStatus.loading")
+        : queueAvailable
+          ? `${queuePending} ${t("mobileNav.systemStatus.pending")}`
+          : t("mobileNav.systemStatus.noData"),
+      tone: resolveQueueTone(queueAvailable, queuePaused),
+      loading: queuePendingLoading,
+    },
+    {
+      id: "success",
+      label: t("mobileNav.systemStatus.efficiency"),
+      value: metricsAvailable ? `${successRate}%` : "—",
+      hint: metricsPendingLoading
+        ? t("mobileNav.systemStatus.loading")
+        : metricsAvailable
+          ? t("mobileNav.systemStatus.lastTasks")
+          : t("mobileNav.systemStatus.offline"),
+      tone: resolveSuccessTone(metricsAvailable, successRate),
+      loading: metricsPendingLoading,
+    },
+    {
+      id: "tasks",
+      label: t("mobileNav.systemStatus.tasks"),
+      value: tasksAvailable ? activeTasks : "—",
+      hint: tasksPendingLoading
+        ? t("mobileNav.systemStatus.loading")
+        : tasksAvailable
+          ? t("mobileNav.systemStatus.active")
+          : t("mobileNav.systemStatus.noData"),
+      tone: resolveTasksTone(tasksAvailable, activeTasks),
+      loading: tasksPendingLoading,
+    },
+  ];
+}
+
 export function StatusPills({ initialData }: { initialData?: StatusPillsInitialData }) {
   const { data: queue, loading: queueLoading } = useQueueStatus(10000);
   const { data: metrics, loading: metricsLoading } = useMetrics(15000);
@@ -37,32 +141,22 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
   const t = useTranslation();
 
   const pills = useMemo(
-    () => [
-      {
-        id: "queue",
-        label: t("mobileNav.systemStatus.queue"),
-        value: queueAvailable ? `${queueActive}/${queueData?.limit ?? "∞"}` : "—",
-        hint: queuePendingLoading ? t("mobileNav.systemStatus.loading") : queueAvailable ? `${queuePending} ${t("mobileNav.systemStatus.pending")}` : t("mobileNav.systemStatus.noData"),
-        tone: queueAvailable ? (queueData?.paused ? "warning" : "success") : "neutral",
-        loading: queuePendingLoading,
-      },
-      {
-        id: "success",
-        label: t("mobileNav.systemStatus.efficiency"),
-        value: metricsAvailable ? `${successRate}%` : "—",
-        hint: metricsPendingLoading ? t("mobileNav.systemStatus.loading") : metricsAvailable ? t("mobileNav.systemStatus.lastTasks") : t("mobileNav.systemStatus.offline"),
-        tone: metricsAvailable ? (successRate > 70 ? "success" : "danger") : "neutral",
-        loading: metricsPendingLoading,
-      },
-      {
-        id: "tasks",
-        label: t("mobileNav.systemStatus.tasks"),
-        value: tasksAvailable ? activeTasks : "—",
-        hint: tasksPendingLoading ? t("mobileNav.systemStatus.loading") : tasksAvailable ? t("mobileNav.systemStatus.active") : t("mobileNav.systemStatus.noData"),
-        tone: tasksAvailable ? (activeTasks > 0 ? "warning" : "neutral") : "neutral",
-        loading: tasksPendingLoading,
-      },
-    ],
+    () =>
+      buildStatusPills({
+        t,
+        queueAvailable,
+        queueActive,
+        queueLimit: queueData?.limit ?? "∞",
+        queuePending,
+        queuePaused: queueData?.paused,
+        queuePendingLoading,
+        metricsAvailable,
+        successRate,
+        metricsPendingLoading,
+        tasksAvailable,
+        activeTasks,
+        tasksPendingLoading,
+      }),
     [
       queueAvailable,
       queueActive,
@@ -86,16 +180,7 @@ export function StatusPills({ initialData }: { initialData?: StatusPillsInitialD
         <div
           key={pill.id}
           data-testid={`status-pill-${pill.id}`}
-          className={cn(
-            "status-pill",
-            pill.tone === "success"
-              ? "status-pill--success"
-              : pill.tone === "warning"
-                ? "status-pill--warning"
-                : pill.tone === "danger"
-                  ? "status-pill--danger"
-                  : "status-pill--neutral",
-          )}
+          className={cn("status-pill", resolvePillToneClass(pill.tone))}
         >
           <span className="text-caption" suppressHydrationWarning>{pill.label}</span>
           <span className="text-lg font-semibold" data-testid={`status-pill-${pill.id}-value`} suppressHydrationWarning>

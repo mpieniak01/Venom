@@ -64,6 +64,34 @@ const formatUptime = (totalSeconds: number) => {
   return `${hours}h ${minutes}m`;
 };
 
+const getTasksSummaryLabel = (
+  tasksCreated: number,
+  t: (key: string) => string,
+): string => {
+  if (tasksCreated > 0) {
+    return `${tasksCreated.toLocaleString("pl-PL")} ${t("cockpit.metrics.queue.tasksSuffix")}`;
+  }
+  return t("cockpit.metrics.queue.noTasks");
+};
+
+const getUptimeLabel = (metrics: Metrics | null): string => {
+  if (metrics?.uptime_seconds === undefined) return "Uptime: —";
+  return `Uptime: ${formatUptime(metrics.uptime_seconds)}`;
+};
+
+const getTokenTrendTone = (tokenTrendDelta: number | null): "success" | "warning" => {
+  if (tokenTrendDelta !== null && tokenTrendDelta < 0) return "success";
+  return "warning";
+};
+
+const getTokenSplits = (
+  tokenSplits: { label: string; value: number }[],
+  t: (key: string) => string,
+) => {
+  if (tokenSplits.length > 0) return tokenSplits;
+  return [{ label: t("cockpit.metrics.tokens.noData"), value: 0 }];
+};
+
 export function CockpitKpiSection({
   metrics,
   metricsLoading,
@@ -82,6 +110,10 @@ export function CockpitKpiSection({
   showReferenceSections,
 }: CockpitKpiSectionProps) {
   const t = useTranslation();
+  const tasksSummaryLabel = getTasksSummaryLabel(tasksCreated, t);
+  const uptimeLabel = getUptimeLabel(metrics);
+  const tokenTrendTone = getTokenTrendTone(tokenTrendDelta);
+  const displayTokenSplits = getTokenSplits(tokenSplits, t);
 
   return (
     <>
@@ -142,16 +174,9 @@ export function CockpitKpiSection({
             ) : (
               <CockpitMetricCard
                 primaryValue={`${successRate}%`}
-                secondaryLabel={
-                  tasksCreated > 0
-                    ? `${tasksCreated.toLocaleString("pl-PL")} ${t("cockpit.metrics.queue.tasksSuffix")}`
-                    : t("cockpit.metrics.queue.noTasks")
-                }
+                secondaryLabel={tasksSummaryLabel}
                 progress={successRate}
-                footer={`Uptime: ${metrics?.uptime_seconds !== undefined
-                  ? formatUptime(metrics.uptime_seconds)
-                  : "—"
-                  }`}
+                footer={uptimeLabel}
               />
             )}
           </Panel>
@@ -168,22 +193,12 @@ export function CockpitKpiSection({
             ) : (
               <CockpitTokenCard
                 totalValue={totalTokens}
-                splits={
-                  tokenSplits.length > 0
-                    ? tokenSplits
-                    : [{ label: t("cockpit.metrics.tokens.noData"), value: 0 }]
-                }
+                splits={displayTokenSplits}
                 chartSlot={
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-caption">{t("cockpit.metrics.tokens.trend")}</p>
-                      <Badge
-                        tone={
-                          tokenTrendDelta !== null && tokenTrendDelta < 0
-                            ? "success"
-                            : "warning"
-                        }
-                      >
+                      <Badge tone={tokenTrendTone}>
                         {tokenTrendLabel}
                       </Badge>
                     </div>

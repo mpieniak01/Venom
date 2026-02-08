@@ -50,6 +50,70 @@ const safeNumber = (payload: string | null): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const resolveMilestoneEmoji = (totalTasks: number, completedTasks: number): string => {
+  if (totalTasks === 0) return "🧭";
+  if (completedTasks === totalTasks) return "✅";
+  if (completedTasks === 0) return "🚧";
+  return "⚙️";
+};
+
+const renderVisionPanelBody = (
+  roadmapData: RoadmapResponse | null,
+  roadmapError: unknown,
+  visionProgress: number,
+  t: ReturnType<typeof useTranslation>,
+) => {
+  if (roadmapData?.vision) {
+    return (
+      <div className="space-y-3 text-sm text-muted">
+        <div className="flex items-center justify-between">
+          <h3 className="heading-h3">{roadmapData.vision.title}</h3>
+          <Badge tone="neutral">{roadmapData.vision.status ?? "n/a"}</Badge>
+        </div>
+        <MarkdownPreview content={roadmapData.vision.description} />
+        <div>
+          <p className="text-caption">{t("strategy.panels.vision.progress")}</p>
+          <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
+        </div>
+      </div>
+    );
+  }
+
+  if (roadmapError) {
+    return (
+      <EmptyState
+        icon={<span className="text-lg">⚠️</span>}
+        title={t("strategy.panels.vision.backendError")}
+        description={t("strategy.panels.vision.backendErrorDesc")}
+      />
+    );
+  }
+
+  return (
+    <EmptyState
+      icon={<span className="text-lg">✨</span>}
+      title={t("strategy.panels.vision.noVision")}
+      description={t("strategy.panels.vision.noVisionDesc")}
+    />
+  );
+};
+
+const renderReportPanelBody = (
+  statusReport: string | null,
+  t: ReturnType<typeof useTranslation>,
+) => {
+  if (statusReport) {
+    return <MarkdownPreview content={statusReport} />;
+  }
+  return (
+    <EmptyState
+      icon={<span className="text-lg">📊</span>}
+      title={t("strategy.panels.report.emptyTitle")}
+      description={t("strategy.panels.report.emptyDesc")}
+    />
+  );
+};
+
 export default function StrategyPage() {
   const t = useTranslation();
   const { data: liveRoadmap, refresh: refreshRoadmap, error: roadmapError } = useRoadmap();
@@ -432,31 +496,7 @@ export default function StrategyPage() {
             />
           }
         >
-          {roadmapData?.vision ? (
-            <div className="space-y-3 text-sm text-muted">
-              <div className="flex items-center justify-between">
-                <h3 className="heading-h3">{roadmapData.vision.title}</h3>
-                <Badge tone="neutral">{roadmapData.vision.status ?? "n/a"}</Badge>
-              </div>
-              <MarkdownPreview content={roadmapData.vision.description} />
-              <div>
-                <p className="text-caption">{t("strategy.panels.vision.progress")}</p>
-                <GradientProgress value={visionProgress} tone="violet" className="mt-2" />
-              </div>
-            </div>
-          ) : roadmapError ? (
-            <EmptyState
-              icon={<span className="text-lg">⚠️</span>}
-              title={t("strategy.panels.vision.backendError")}
-              description={t("strategy.panels.vision.backendErrorDesc")}
-            />
-          ) : (
-            <EmptyState
-              icon={<span className="text-lg">✨</span>}
-              title={t("strategy.panels.vision.noVision")}
-              description={t("strategy.panels.vision.noVisionDesc")}
-            />
-          )}
+          {renderVisionPanelBody(roadmapData, roadmapError, visionProgress, t)}
         </Panel>
         <Panel
           title={t("strategy.panels.report.title")}
@@ -468,15 +508,7 @@ export default function StrategyPage() {
             />
           }
         >
-          {statusReport ? (
-            <MarkdownPreview content={statusReport} />
-          ) : (
-            <EmptyState
-              icon={<span className="text-lg">📊</span>}
-              title={t("strategy.panels.report.emptyTitle")}
-              description={t("strategy.panels.report.emptyDesc")}
-            />
-          )}
+          {renderReportPanelBody(statusReport, t)}
         </Panel>
         <Panel title={t("strategy.panels.tasks.title")} description={t("strategy.panels.tasks.description")}>
           <TaskStatusBreakdown
@@ -555,14 +587,7 @@ export default function StrategyPage() {
               const completedTasks = (milestone.tasks || []).filter((task) =>
                 (task.status || "").toUpperCase().includes("DONE"),
               ).length;
-              const emoji =
-                totalTasks === 0
-                  ? "🧭"
-                  : completedTasks === totalTasks
-                    ? "✅"
-                    : completedTasks === 0
-                      ? "🚧"
-                      : "⚙️";
+              const emoji = resolveMilestoneEmoji(totalTasks, completedTasks);
               return (
                 <AccordionItem key={milestone.title ?? `ms-${index}`} value={milestone.title ?? `ms-${index}`}>
                   <AccordionTrigger className="text-white">

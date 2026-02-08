@@ -215,6 +215,47 @@ type RepoStatus = {
   title?: string;
 };
 
+function getRepoStatusTitle(gitStatus: GitStatus): string | undefined {
+  return gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined;
+}
+
+function resolveRepoBaseText(
+  compareStatus: string | undefined,
+  hasChanges: boolean,
+  t: ReturnType<typeof useTranslation>,
+): string {
+  if (!compareStatus) {
+    return hasChanges ? t("statusBar.repoDirty") : t("statusBar.repoClean");
+  }
+  const compareTextMap: Record<string, string> = {
+    ahead: t("statusBar.repoAhead"),
+    behind: t("statusBar.repoBehind"),
+    diverged: t("statusBar.repoDiverged"),
+    equal: t("statusBar.repoEqual"),
+    no_remote: t("statusBar.repoNoRemote"),
+    no_remote_main: t("statusBar.repoNoRemoteMain"),
+    no_local_main: t("statusBar.repoNoLocalMain"),
+  };
+  return compareTextMap[compareStatus] || t("statusBar.repoUnknown");
+}
+
+function resolveRepoTone(compareStatus: string | undefined, hasChanges: boolean): RepoStatusTone {
+  const isBehindOrDiverged = compareStatus === "behind" || compareStatus === "diverged";
+  const isNeedsAttention =
+    hasChanges ||
+    compareStatus === "ahead" ||
+    compareStatus === "no_remote" ||
+    compareStatus === "no_remote_main" ||
+    compareStatus === "no_local_main";
+  const isClean = (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges);
+  return {
+    "text-zinc-400": false,
+    "text-rose-300": isBehindOrDiverged,
+    "text-amber-300": isNeedsAttention,
+    "text-emerald-300": isClean,
+  };
+}
+
 function resolveRepoStatus(
   gitStatus: GitStatus | null,
   gitLoading: boolean,
@@ -232,48 +273,20 @@ function resolveRepoStatus(
     return {
       text: t("statusBar.repoNotGit"),
       tone: { "text-zinc-400": true },
-      title: gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined,
+      title: getRepoStatusTitle(gitStatus),
     };
   }
 
   const hasChanges = gitStatus.has_changes ?? gitStatus.dirty ?? false;
   const compareStatus = gitStatus.compare_status;
-  let baseText = t("statusBar.repoUnknown");
-  if (!compareStatus) {
-    baseText = hasChanges ? t("statusBar.repoDirty") : t("statusBar.repoClean");
-  } else if (compareStatus === "ahead") {
-    baseText = t("statusBar.repoAhead");
-  } else if (compareStatus === "behind") {
-    baseText = t("statusBar.repoBehind");
-  } else if (compareStatus === "diverged") {
-    baseText = t("statusBar.repoDiverged");
-  } else if (compareStatus === "equal") {
-    baseText = t("statusBar.repoEqual");
-  } else if (compareStatus === "no_remote") {
-    baseText = t("statusBar.repoNoRemote");
-  } else if (compareStatus === "no_remote_main") {
-    baseText = t("statusBar.repoNoRemoteMain");
-  } else if (compareStatus === "no_local_main") {
-    baseText = t("statusBar.repoNoLocalMain");
-  }
+  const baseText = resolveRepoBaseText(compareStatus, hasChanges, t);
 
   const text = hasChanges ? `${baseText} ${t("statusBar.repoDirtySuffix")}` : baseText;
-  const tone = {
-    "text-zinc-400": false,
-    "text-rose-300": compareStatus === "behind" || compareStatus === "diverged",
-    "text-amber-300":
-      hasChanges ||
-      compareStatus === "ahead" ||
-      compareStatus === "no_remote" ||
-      compareStatus === "no_remote_main" ||
-      compareStatus === "no_local_main",
-    "text-emerald-300":
-      (!compareStatus && !hasChanges) || (compareStatus === "equal" && !hasChanges),
-  };
+  const tone = resolveRepoTone(compareStatus, hasChanges);
 
   return {
     text,
     tone,
-    title: gitStatus.status_output || gitStatus.changes || gitStatus.status || undefined,
+    title: getRepoStatusTitle(gitStatus),
   };
 }

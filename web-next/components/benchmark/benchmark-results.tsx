@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { BenchmarkModelResult } from "@/lib/types";
 import { Trash2, History, RefreshCw, X, Clock } from "lucide-react";
 import { useBenchmark } from "@/hooks/use-benchmark";
+import { getApiBaseUrl } from "@/lib/env";
 
 interface BenchmarkResultsProps {
   currentResults: BenchmarkModelResult[];
@@ -21,11 +22,12 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
   const [history, setHistory] = useState<BenchmarkHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const { deleteBenchmark, clearAllBenchmarks } = useBenchmark();
+  const apiBase = useMemo(() => getApiBaseUrl() || "", []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/benchmark/list?limit=50`);
+      const res = await fetch(`${apiBase}/api/v1/benchmark/list?limit=50`);
       if (res.ok) {
         const data = await res.json();
         setHistory(data.benchmarks || []);
@@ -35,11 +37,11 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase]);
 
   useEffect(() => {
     fetchHistory();
-  }, [safeResults]); // Odśwież jak zmienią się bieżące wyniki (np. po zakończeniu testu)
+  }, [safeResults, fetchHistory]); // Odśwież jak zmienią się bieżące wyniki (np. po zakończeniu testu)
 
   const handleDelete = async (id: string) => {
     if (confirm("Czy na pewno chcesz usunąć ten wynik?")) {

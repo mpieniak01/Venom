@@ -27,10 +27,11 @@ services:
     container_name: venom-backend-minimal
     environment:
       ENV: production
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
       AI_MODE: LOCAL
       ACTIVE_LLM_SERVER: ollama
       LLM_SERVICE_TYPE: local
-      LLM_LOCAL_ENDPOINT: http://ollama:11434/v1
+      LLM_LOCAL_ENDPOINT: ${LLM_HTTP_SCHEME:-http}://ollama:11434/v1
       LLM_MODEL_NAME: ${OLLAMA_MODEL:-gemma3:4b}
       SUMMARY_STRATEGY: heuristic_only
     depends_on:
@@ -58,9 +59,12 @@ services:
       dockerfile: docker/frontend.Dockerfile
     container_name: venom-frontend-minimal
     environment:
-      API_PROXY_TARGET: http://backend:8000
-      NEXT_PUBLIC_API_BASE: http://localhost:8000
-      NEXT_PUBLIC_WS_BASE: ws://localhost:8000/ws/events
+      NEXT_PUBLIC_ENV: ${ENV:-production}
+      URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      NEXT_PUBLIC_URL_SCHEME_POLICY: ${URL_SCHEME_POLICY:-auto}
+      API_PROXY_TARGET: ${HTTP_SCHEME:-http}://backend:8000
+      NEXT_PUBLIC_API_BASE: ${HTTP_SCHEME:-http}://localhost:8000
+      NEXT_PUBLIC_WS_BASE: ${WS_SCHEME:-ws}://localhost:8000/ws/events
     depends_on:
       backend:
         condition: service_healthy

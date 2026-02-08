@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -20,8 +21,8 @@ logger = get_logger(__name__)
 class OllamaClient:
     """Klient do integracji z Ollama (HTTP + CLI)."""
 
-    def __init__(self, endpoint: str = "http://localhost:11434"):
-        self.endpoint = endpoint.rstrip("/")
+    def __init__(self, endpoint: Optional[str] = None):
+        self.endpoint = (endpoint or build_http_url("localhost", 11434)).rstrip("/")
 
     async def list_tags(self) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:

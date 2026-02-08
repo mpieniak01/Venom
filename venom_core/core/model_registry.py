@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 from venom_core.config import SETTINGS
 from venom_core.core.model_registry_clients import HuggingFaceClient, OllamaClient
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -213,8 +214,8 @@ class BaseModelProvider:
 class OllamaModelProvider(BaseModelProvider):
     """Provider dla modeli Ollama."""
 
-    def __init__(self, endpoint: str = "http://localhost:11434"):
-        self.endpoint = endpoint.rstrip("/")
+    def __init__(self, endpoint: Optional[str] = None):
+        self.endpoint = (endpoint or build_http_url("localhost", 11434)).rstrip("/")
         self.client = OllamaClient(endpoint=self.endpoint)
 
     async def list_available_models(self) -> List[ModelMetadata]:

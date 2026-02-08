@@ -9,8 +9,8 @@ Użycie:
   python scripts/bench/compare_llm.py
 
 Konfiguracja (zmienne środowiskowe):
-  VLLM_ENDPOINT      - domyślnie http://localhost:8001/v1
-  OLLAMA_ENDPOINT    - domyślnie http://localhost:11434/v1
+  VLLM_ENDPOINT      - domyślnie localhost:8001/v1 (schemat wg polityki URL)
+  OLLAMA_ENDPOINT    - domyślnie localhost:11434/v1 (schemat wg polityki URL)
   VLLM_MODEL         - domyślnie gemma-3-4b-it
   OLLAMA_MODEL       - domyślnie gemma3:4b
   OLLAMA_START_COMMAND- opcjonalnie; fallback do `ollama serve`
@@ -27,6 +27,8 @@ import subprocess
 import time
 
 import requests
+
+from venom_core.utils.url_policy import build_http_url
 
 PROMPTS = [
     "Co to jest kwadrat?",
@@ -269,8 +271,10 @@ def kill_leftovers():
 
 
 def run_benchmark():
-    vllm_endpoint = os.getenv("VLLM_ENDPOINT", "http://localhost:8001/v1")
-    ollama_endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/v1")
+    vllm_endpoint = os.getenv("VLLM_ENDPOINT", build_http_url("localhost", 8001, "/v1"))
+    ollama_endpoint = os.getenv(
+        "OLLAMA_ENDPOINT", build_http_url("localhost", 11434, "/v1")
+    )
     vllm_model = os.getenv("VLLM_MODEL") or _read_env_var_from_dotenv("VLLM_MODEL")
     if not vllm_model:
         vllm_model = (

@@ -159,9 +159,10 @@ class CodeGraphStore:
             Lista ścieżek plików zależnych
         """
         file_node = f"{FILE_NODE_PREFIX}{file_path}"
+        safe_file_path = self._safe_log_value(file_path)
 
         if file_node not in self.graph:
-            logger.warning("Żądany plik nie istnieje w grafie")
+            logger.warning("Żądany plik '{}' nie istnieje w grafie", safe_file_path)
             return []
 
         # Znajdź wszystkie węzły, które mają krawędź DO tego pliku
@@ -176,7 +177,11 @@ class CodeGraphStore:
                 if node.startswith(FILE_NODE_PREFIX):
                     dependents.append(node.replace(FILE_NODE_PREFIX, ""))
 
-        logger.info("Znaleziono {} zależnych plików", len(dependents))
+        logger.info(
+            "Znaleziono {} zależnych plików dla '{}'",
+            len(dependents),
+            safe_file_path,
+        )
         return dependents
 
     def get_file_info(self, file_path: str) -> Dict[str, Any]:

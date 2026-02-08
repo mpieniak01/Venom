@@ -11,6 +11,7 @@ from semantic_kernel.functions import kernel_function
 from venom_core.config import SETTINGS
 from venom_core.utils import helpers
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -311,7 +312,7 @@ class DocsSkill:
                 f"ℹ️ Aby uruchomić serwer deweloperski MkDocs, wykonaj:\n\n"
                 f"cd {self.workspace_root}\n"
                 f"mkdocs serve -a 0.0.0.0:{port}\n\n"
-                f"Serwer będzie dostępny pod: http://localhost:{port}"
+                f"Serwer będzie dostępny pod: {build_http_url('localhost', port)}"
             )
 
             logger.info(info)

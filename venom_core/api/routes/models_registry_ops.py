@@ -12,12 +12,13 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
+MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 
 
 @router.post(
     "/models/registry/install",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowe dane wejściowe dla instalacji modelu"},
         500: {"description": "Błąd serwera podczas uruchamiania instalacji modelu"},
     },
@@ -28,7 +29,7 @@ async def install_model_registry(request: ModelRegistryInstallRequest):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         from venom_core.core.model_registry import ModelProvider
@@ -62,7 +63,7 @@ async def install_model_registry(request: ModelRegistryInstallRequest):
 @router.delete(
     "/models/registry/{model_name}",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         404: {"description": "Model nie został znaleziony"},
         500: {"description": "Błąd serwera podczas usuwania modelu"},
     },
@@ -73,7 +74,7 @@ async def remove_model_registry(model_name: str):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         logger.info("Remove registry model: %s", model_name)
@@ -94,7 +95,7 @@ async def remove_model_registry(model_name: str):
 @router.post(
     "/models/activate",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd serwera podczas aktywacji modelu"},
     },
 )
@@ -104,7 +105,7 @@ async def activate_model_endpoint(request: ModelActivateRequest):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         logger.info("Activate model: %s runtime=%s", request.name, request.runtime)
@@ -138,7 +139,7 @@ async def activate_model_endpoint(request: ModelActivateRequest):
 @router.get(
     "/models/operations",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd serwera podczas pobierania listy operacji"},
     },
 )
@@ -148,7 +149,7 @@ async def list_model_operations(limit: int = 10):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         operations = model_registry.list_operations(limit=limit)
@@ -166,7 +167,7 @@ async def list_model_operations(limit: int = 10):
 @router.get(
     "/models/operations/{operation_id}",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         404: {"description": "Operacja nie została znaleziona"},
         500: {"description": "Błąd serwera podczas pobierania statusu operacji"},
     },
@@ -177,7 +178,7 @@ async def get_operation_status_endpoint(operation_id: str):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         operation = model_registry.get_operation_status(operation_id)

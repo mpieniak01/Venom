@@ -20,12 +20,13 @@ def _get_translation_service():
 
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
+MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 
 
 @router.get(
     "/models/providers",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowy provider"},
         500: {"description": "Błąd serwera podczas pobierania listy modeli providerów"},
     },
@@ -36,7 +37,7 @@ async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         from venom_core.core.model_registry import ModelProvider
@@ -84,7 +85,7 @@ async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
 @router.get(
     "/models/trending",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowy provider"},
         500: {"description": "Błąd serwera podczas pobierania trendujących modeli"},
     },
@@ -95,7 +96,7 @@ async def list_trending_models(provider: str, limit: int = 12):
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         try:
@@ -128,7 +129,7 @@ async def list_trending_models(provider: str, limit: int = 12):
 @router.get(
     "/models/search",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowy provider lub parametry wyszukiwania"},
         500: {"description": "Błąd serwera podczas wyszukiwania modeli"},
     },
@@ -143,7 +144,7 @@ async def search_models(
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         try:
@@ -176,7 +177,7 @@ async def search_models(
 @router.get(
     "/models/news",
     responses={
-        503: {"description": "ModelRegistry nie jest dostępny"},
+        503: {"description": MODEL_REGISTRY_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowy provider lub język docelowy"},
         500: {"description": "Błąd serwera podczas pobierania newsów modeli"},
     },
@@ -193,7 +194,7 @@ async def list_model_news(
     """
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         from venom_core.core.model_registry import ModelProvider

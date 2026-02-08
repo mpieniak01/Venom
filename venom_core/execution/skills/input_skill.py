@@ -19,6 +19,9 @@ except Exception:  # pragma: no cover
     pyautogui = None
 
 logger = get_logger(__name__)
+FAIL_SAFE_ERROR_MESSAGE = (
+    "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
+)
 
 
 class InputSkill:
@@ -127,7 +130,7 @@ class InputSkill:
             return f"✅ Kliknięto w ({x}, {y}) przyciskiem {button}"
 
         except self.pg.FailSafeException:
-            error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
+            error_msg = FAIL_SAFE_ERROR_MESSAGE
             logger.warning(error_msg)
             return error_msg
         except Exception as e:
@@ -202,7 +205,7 @@ class InputSkill:
             return f"✅ Wpisano tekst ({len(text)} znaków)"
 
         except self.pg.FailSafeException:
-            error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
+            error_msg = FAIL_SAFE_ERROR_MESSAGE
             logger.warning(error_msg)
             return error_msg
         except Exception as e:
@@ -251,7 +254,7 @@ class InputSkill:
             return f"✅ Wykonano skrót: {keys}"
 
         except self.pg.FailSafeException:
-            error_msg = "🛑 FAIL-SAFE AKTYWOWANY! Mysz przesunięta do (0,0) - operacja przerwana"
+            error_msg = FAIL_SAFE_ERROR_MESSAGE
             logger.warning(error_msg)
             return error_msg
         except Exception as e:

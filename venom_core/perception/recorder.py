@@ -51,6 +51,7 @@ else:
     mss = _mss_module_stub
 
 logger = get_logger(__name__)
+SESSION_FILE_NAME = "session.json"
 
 
 @dataclass
@@ -417,7 +418,7 @@ class DemonstrationRecorder:
             logger.error("Brak aktywnej sesji do zapisu")
             return None
         session_dir = self.sessions_dir / self.current_session.session_id
-        session_file = session_dir / "session.json"
+        session_file = session_dir / SESSION_FILE_NAME
 
         # Konwertuj sesję do dict
         session_dict = asdict(self.current_session)
@@ -443,7 +444,7 @@ class DemonstrationRecorder:
         # Sanityzuj session_id aby zapobiec path traversal
         session_id = self._sanitize_session_id(session_id)
 
-        session_file = self.sessions_dir / session_id / "session.json"
+        session_file = self.sessions_dir / session_id / SESSION_FILE_NAME
 
         # Weryfikuj że ścieżka jest wewnątrz sessions_dir
         try:
@@ -494,7 +495,7 @@ class DemonstrationRecorder:
         """
         sessions = []
         for session_dir in self.sessions_dir.iterdir():
-            if session_dir.is_dir() and (session_dir / "session.json").exists():
+            if session_dir.is_dir() and (session_dir / SESSION_FILE_NAME).exists():
                 sessions.append(session_dir.name)
 
         return sorted(sessions)

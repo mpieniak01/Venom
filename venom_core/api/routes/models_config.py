@@ -21,6 +21,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
+MODEL_REGISTRY_UNAVAILABLE_DETAIL = "ModelRegistry nie jest dostępny"
 SERVER_ERROR_DETAIL = "Błąd serwera"
 SERVER_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": SERVER_ERROR_DETAIL}
@@ -32,7 +33,7 @@ async def get_model_capabilities_endpoint(model_name: str):
     """Pobiera capabilities modelu (wsparcie rol, templaty, etc.)."""
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         capabilities = model_registry.get_model_capabilities(model_name)
@@ -74,7 +75,7 @@ async def get_model_config_endpoint(model_name: str, runtime: Optional[str] = No
     """Pobiera schemat parametrow generacji dla modelu (generation_schema)."""
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         capabilities = model_registry.get_model_capabilities(model_name)
@@ -149,7 +150,7 @@ async def update_model_config_endpoint(
     """Aktualizuje parametry generacji dla modelu (per runtime)."""
     model_registry = get_model_registry()
     if model_registry is None:
-        raise HTTPException(status_code=503, detail="ModelRegistry nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
         capabilities = model_registry.get_model_capabilities(model_name)

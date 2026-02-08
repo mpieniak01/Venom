@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover
     aiofiles = None
 
 logger = get_logger(__name__)
+REQUIREMENTS_FILENAME = "requirements.txt"
 
 
 class OTAPackage:
@@ -108,7 +109,7 @@ class OTAManager:
             version: Wersja paczki (np. "1.2.3")
             description: Opis zmian
             source_paths: Lista ścieżek do zapakowania (katalogi/pliki)
-            include_dependencies: Czy dołączyć plik requirements.txt
+            include_dependencies: Czy dołączyć plik zależności
 
         Returns:
             OTAPackage lub None w przypadku błędu
@@ -141,12 +142,12 @@ class OTAManager:
                                 arcname = file_path.relative_to(source_path.parent)
                                 zipf.write(file_path, arcname)
 
-                # Dodaj requirements.txt jeśli wymagane
+                # Dodaj plik zależności jeśli wymagane
                 if include_dependencies:
-                    req_path = Path("requirements.txt")
+                    req_path = Path(REQUIREMENTS_FILENAME)
                     if req_path.exists():
-                        zipf.write(req_path, "requirements.txt")
-                        logger.info("Dodano requirements.txt do paczki")
+                        zipf.write(req_path, REQUIREMENTS_FILENAME)
+                        logger.info(f"Dodano {REQUIREMENTS_FILENAME} do paczki")
 
             # Oblicz checksum
             checksum = await self._calculate_checksum(package_path)
@@ -279,8 +280,8 @@ class OTAManager:
             venom_root = Path(__file__).parent.parent.parent
             await self._copy_files(extract_dir, venom_root)
 
-            # 5. Instaluj zależności jeśli requirements.txt
-            requirements_path = extract_dir / "requirements.txt"
+            # 5. Instaluj zależności jeśli plik zależności istnieje
+            requirements_path = extract_dir / REQUIREMENTS_FILENAME
             if requirements_path.exists():
                 logger.info("Instaluję zależności...")
                 await self._install_dependencies(requirements_path)
@@ -361,13 +362,13 @@ class OTAManager:
 
     async def _install_dependencies(self, requirements_path: Path) -> bool:
         """
-        Instaluje zależności z requirements.txt.
+        Instaluje zależności z pliku zależności.
 
         UWAGA: Szczegółowe uwagi bezpieczeństwa dotyczące instalacji zależności
         znajdują się w dokumentacji: patrz docs/THE_HIVE.md, sekcja Security.
 
         Args:
-            requirements_path: Ścieżka do requirements.txt
+            requirements_path: Ścieżka do pliku zależności
 
         Returns:
             True jeśli instalacja udana

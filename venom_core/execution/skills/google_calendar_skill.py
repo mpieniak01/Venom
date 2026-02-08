@@ -46,6 +46,7 @@ SCOPES = [
 
 # Limity dla bezpieczeństwa
 MAX_EVENTS_RESULTS = 20
+UTC_OFFSET_SUFFIX = "+00:00"
 
 
 class GoogleCalendarSkill:
@@ -210,7 +211,9 @@ class GoogleCalendarSkill:
             if time_min == "now":
                 start_time = datetime.now(timezone.utc)
             else:
-                start_time = datetime.fromisoformat(time_min.replace("Z", "+00:00"))
+                start_time = datetime.fromisoformat(
+                    time_min.replace("Z", UTC_OFFSET_SUFFIX)
+                )
 
             end_time = start_time + timedelta(hours=hours)
 
@@ -243,8 +246,10 @@ class GoogleCalendarSkill:
 
                 # Parsuj czas
                 try:
-                    start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    start_dt = datetime.fromisoformat(
+                        start.replace("Z", UTC_OFFSET_SUFFIX)
+                    )
+                    end_dt = datetime.fromisoformat(end.replace("Z", UTC_OFFSET_SUFFIX))
                     time_str = (
                         f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
                     )

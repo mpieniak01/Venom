@@ -16,6 +16,7 @@ except Exception:  # pragma: no cover
     docker = None
 
 logger = get_logger(__name__)
+DOCKER_COMPOSE_FILE = "docker-compose.yml"
 
 
 # Domyślny stack z Redis dla architektury Hive
@@ -141,7 +142,7 @@ class StackManager:
         Wdraża stack Docker Compose.
 
         Args:
-            compose_content: Zawartość pliku docker-compose.yml
+            compose_content: Zawartość pliku Compose
             stack_name: Nazwa stacka (katalog w workspace/stacks/)
             project_name: Opcjonalna nazwa projektu Docker Compose
                          (domyślnie stack_name)
@@ -152,11 +153,11 @@ class StackManager:
         try:
             # Przygotuj katalog stacka
             stack_dir = self._get_stack_dir(stack_name)
-            compose_file = stack_dir / "docker-compose.yml"
+            compose_file = stack_dir / DOCKER_COMPOSE_FILE
 
-            # Zapisz plik docker-compose.yml
+            # Zapisz plik Compose
             compose_file.write_text(compose_content, encoding="utf-8")
-            logger.info(f"Zapisano docker-compose.yml dla stacka: {stack_name}")
+            logger.info(f"Zapisano {DOCKER_COMPOSE_FILE} dla stacka: {stack_name}")
 
             # Ustal nazwę projektu
             proj_name = project_name or stack_name
@@ -220,10 +221,10 @@ class StackManager:
         """
         try:
             stack_dir = self._get_stack_dir(stack_name)
-            compose_file = stack_dir / "docker-compose.yml"
+            compose_file = stack_dir / DOCKER_COMPOSE_FILE
 
             if not compose_file.exists():
-                msg = f"Stack '{stack_name}' nie istnieje (brak docker-compose.yml)"
+                msg = f"Stack '{stack_name}' nie istnieje (brak {DOCKER_COMPOSE_FILE})"
                 logger.warning(msg)
                 return False, msg
 
@@ -293,7 +294,7 @@ class StackManager:
 
         Args:
             stack_name: Nazwa stacka
-            service: Nazwa serwisu w docker-compose.yml
+            service: Nazwa serwisu w pliku Compose
             project_name: Opcjonalna nazwa projektu (domyślnie stack_name)
             tail: Liczba ostatnich linii do pobrania (domyślnie 100)
 
@@ -302,7 +303,7 @@ class StackManager:
         """
         try:
             stack_dir = self._get_stack_dir(stack_name)
-            compose_file = stack_dir / "docker-compose.yml"
+            compose_file = stack_dir / DOCKER_COMPOSE_FILE
 
             if not compose_file.exists():
                 msg = f"Stack '{stack_name}' nie istnieje"
@@ -365,7 +366,7 @@ class StackManager:
                 if not stack_dir.is_dir():
                     continue
 
-                compose_file = stack_dir / "docker-compose.yml"
+                compose_file = stack_dir / DOCKER_COMPOSE_FILE
                 if not compose_file.exists():
                     continue
 
@@ -427,7 +428,7 @@ class StackManager:
         """
         try:
             stack_dir = self._get_stack_dir(stack_name)
-            compose_file = stack_dir / "docker-compose.yml"
+            compose_file = stack_dir / DOCKER_COMPOSE_FILE
 
             if not compose_file.exists():
                 return False, {"error": f"Stack '{stack_name}' nie istnieje"}

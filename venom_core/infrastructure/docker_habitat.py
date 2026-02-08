@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover
     NotFound = Exception
 
 logger = get_logger(__name__)
+CONTAINER_WORKDIR = "/workspace"
 
 
 class DockerHabitat:
@@ -120,8 +121,10 @@ class DockerHabitat:
                 image=image_name,
                 name=self.CONTAINER_NAME,
                 command="tail -f /dev/null",  # Utrzymuje kontener w działaniu
-                volumes={str(workspace_path): {"bind": "/workspace", "mode": "rw"}},
-                working_dir="/workspace",
+                volumes={
+                    str(workspace_path): {"bind": CONTAINER_WORKDIR, "mode": "rw"}
+                },
+                working_dir=CONTAINER_WORKDIR,
                 detach=True,
                 remove=False,  # Nie usuwaj kontenera po zatrzymaniu
             )
@@ -130,7 +133,7 @@ class DockerHabitat:
             container.reload()
 
             logger.info(
-                f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> /workspace"
+                f"Utworzono kontener {self.CONTAINER_NAME} z volume: {workspace_path} -> {CONTAINER_WORKDIR}"
             )
             return container
 
@@ -174,7 +177,7 @@ class DockerHabitat:
             # Wykonaj komendę
             exec_result = self.container.exec_run(
                 cmd=command,
-                workdir="/workspace",
+                workdir=CONTAINER_WORKDIR,
                 demux=False,  # Połącz stdout i stderr
             )
 

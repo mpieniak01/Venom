@@ -152,7 +152,8 @@ async function triggerFetch<T>(entry: PollingEntry<T>) {
 }
 
 function notifyEntry(entry: PollingEntry<unknown>) {
-  entry.listeners.forEach((listener) => listener());
+  const listeners = Array.from(entry.listeners);
+  for (const listener of listeners) listener();
 }
 
 function usePolling<T>(
@@ -184,18 +185,20 @@ function usePolling<T>(
     }),
     [],
   );
+  const fetcherRef = useRef(fetcher);
   const entryRef = useRef<PollingEntry<T>>(fallbackEntry);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!isBrowser || pollingDisabled) return;
-    const actualEntry = ensureEntry(key, fetcher, intervalMs);
+    const actualEntry = ensureEntry(key, fetcherRef.current, intervalMs);
     entryRef.current = actualEntry;
-    setReady(true);
-  }, [isBrowser, pollingDisabled, key, intervalMs, fetcher]);
+    setReady((prev) => (prev ? prev : true));
+  }, [isBrowser, pollingDisabled, key, intervalMs]);
 
   useEffect(() => {
     if (pollingDisabled) return;
+    fetcherRef.current = fetcher;
     const entry = entryRef.current;
     if (entry) {
       entry.fetcher = fetcher;
@@ -216,7 +219,9 @@ function usePolling<T>(
         if (entry.interval > 0 && !entry.timer) {
           entry.timer = setInterval(() => triggerFetch(entry), entry.interval);
         }
-        triggerFetch(entry);
+        Promise.resolve().then(() => {
+          void triggerFetch(entry);
+        });
       }
       return () => {
         entry.listeners.delete(listener);

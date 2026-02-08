@@ -297,9 +297,7 @@ class DemonstrationAnalyzer:
 
         return has_no_spaces and has_digits and has_special and is_short
 
-    def _describe_ui_element(
-        self, crop: Image.Image, x: int, y: int
-    ) -> Optional[str]:
+    def _describe_ui_element(self, crop: Image.Image, x: int, y: int) -> Optional[str]:
         """
         Używa VLM do opisania elementu UI.
 

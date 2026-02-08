@@ -61,6 +61,7 @@ MAX_SEARCH_RESULTS = 5
 MAX_SCRAPED_TEXT_LENGTH = 8000  # Maksymalna długość tekstu ze strony (tokeny)
 MAX_TOTAL_CONTEXT_LENGTH = 20000  # Maksymalna łączna długość dla wielu stron
 MAX_CONTENT_PREVIEW_LENGTH = 200  # Maksymalna długość podglądu opisu w wynikach
+NO_TITLE_TEXT = "Brak tytułu"
 
 
 class WebSearchSkill:
@@ -214,7 +215,7 @@ class WebSearchSkill:
 
                     output += f"🔍 Źródła ({len(results)}):\n\n"
                     for i, result in enumerate(results[:max_results], 1):
-                        title = result.get("title", "Brak tytułu")
+                        title = result.get("title", NO_TITLE_TEXT)
                         url = result.get("url", "Brak URL")
                         content = result.get("content", "Brak opisu")
 
@@ -251,7 +252,7 @@ class WebSearchSkill:
             output += f"Znaleziono {len(results)} wyników dla zapytania: '{query}'\n"
             output += "(źródło: DuckDuckGo)\n\n"
             for i, result in enumerate(results, 1):
-                title = result.get("title", "Brak tytułu")
+                title = result.get("title", NO_TITLE_TEXT)
                 url = result.get("href", "Brak URL")
                 snippet = result.get("body", "Brak opisu")
 
@@ -352,7 +353,7 @@ class WebSearchSkill:
 
             for i, result in enumerate(results, 1):
                 url = result.get("href", "")
-                title = result.get("title", "Brak tytułu")
+                title = result.get("title", NO_TITLE_TEXT)
 
                 if not url:
                     continue

@@ -16,6 +16,8 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 ALLOWED_MKDOCS_THEMES = {"material", "readthedocs"}
+MKDOCS_CONFIG_FILE = "mkdocs.yml"
+INDEX_DOC_FILE = "index.md"
 
 
 class DocsSkill:
@@ -44,7 +46,7 @@ class DocsSkill:
 
     @kernel_function(
         name="generate_mkdocs_config",
-        description="Generuje plik konfiguracyjny mkdocs.yml dla dokumentacji. "
+        description=f"Generuje plik konfiguracyjny {MKDOCS_CONFIG_FILE} dla dokumentacji. "
         "Użyj przed budowaniem strony dokumentacji.",
     )
     async def generate_mkdocs_config(
@@ -56,7 +58,7 @@ class DocsSkill:
         repo_url: Annotated[Optional[str], "URL repozytorium (opcjonalne)"] = None,
     ) -> str:
         """
-        Generuje plik mkdocs.yml.
+        Generuje plik konfiguracji MkDocs.
 
         Args:
             site_name: Nazwa projektu
@@ -75,7 +77,7 @@ class DocsSkill:
                     f"Dozwolone wartości: {', '.join(sorted(ALLOWED_MKDOCS_THEMES))}"
                 )
 
-            logger.info(f"Generowanie mkdocs.yml dla projektu: {site_name}")
+            logger.info(f"Generowanie {MKDOCS_CONFIG_FILE} dla projektu: {site_name}")
 
             # Przygotuj konfigurację
             config_lines = [
@@ -124,7 +126,7 @@ class DocsSkill:
             )
 
             # Zapisz plik używając helpers (Venom Standard Library)
-            config_path = self.workspace_root / "mkdocs.yml"
+            config_path = self.workspace_root / MKDOCS_CONFIG_FILE
             config_content = "\n".join(config_lines)
 
             if not helpers.write_file(
@@ -132,13 +134,13 @@ class DocsSkill:
             ):
                 raise IOError(f"Nie udało się zapisać pliku {config_path}")
 
-            logger.info(f"Plik mkdocs.yml utworzony: {config_path}")
+            logger.info(f"Plik {MKDOCS_CONFIG_FILE} utworzony: {config_path}")
             return (
                 f"✅ Plik konfiguracyjny utworzony: {config_path}\n\n{config_content}"
             )
 
         except Exception as e:
-            error_msg = f"❌ Błąd podczas generowania mkdocs.yml: {str(e)}"
+            error_msg = f"❌ Błąd podczas generowania {MKDOCS_CONFIG_FILE}: {str(e)}"
             logger.error(error_msg)
             return error_msg
 
@@ -154,7 +156,7 @@ class DocsSkill:
         try:
             # Szukaj pliku index.md lub README.md jako strona główna
             index_file = None
-            for name in ["index.md", "README.md", "readme.md"]:
+            for name in [INDEX_DOC_FILE, "README.md", "readme.md"]:
                 if (self.docs_dir / name).exists():
                     index_file = name
                     break
@@ -165,7 +167,7 @@ class DocsSkill:
             # Dodaj wszystkie pliki .md (poza index/readme)
             md_files = sorted(self.docs_dir.glob("*.md"))
             for md_file in md_files:
-                if md_file.name.lower() not in ["index.md", "readme.md"]:
+                if md_file.name.lower() not in [INDEX_DOC_FILE, "readme.md"]:
                     # Utwórz czytelny tytuł z nazwy pliku
                     title = md_file.stem.replace("_", " ").replace("-", " ").title()
                     nav_lines.append(f"  - {title}: {md_file.name}")
@@ -195,7 +197,7 @@ class DocsSkill:
     @kernel_function(
         name="build_docs_site",
         description="Buduje statyczną stronę HTML z dokumentacji Markdown. "
-        "Użyj po wygenerowaniu mkdocs.yml.",
+        f"Użyj po wygenerowaniu {MKDOCS_CONFIG_FILE}.",
     )
     async def build_docs_site(
         self,
@@ -216,9 +218,9 @@ class DocsSkill:
             logger.info("Budowanie strony dokumentacji...")
 
             # Sprawdź czy mkdocs.yml istnieje
-            config_path = self.workspace_root / "mkdocs.yml"
+            config_path = self.workspace_root / MKDOCS_CONFIG_FILE
             if not config_path.exists():
-                return "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
+                return f"❌ Brak pliku {MKDOCS_CONFIG_FILE}. Użyj najpierw generate_mkdocs_config."
 
             # Sprawdź czy mkdocs jest zainstalowany
             try:
@@ -303,9 +305,9 @@ class DocsSkill:
             logger.info(f"Uruchamianie serwera dokumentacji na porcie {port}...")
 
             # Sprawdź czy mkdocs.yml istnieje
-            config_path = self.workspace_root / "mkdocs.yml"
+            config_path = self.workspace_root / MKDOCS_CONFIG_FILE
             if not config_path.exists():
-                return "❌ Brak pliku mkdocs.yml. Użyj najpierw generate_mkdocs_config."
+                return f"❌ Brak pliku {MKDOCS_CONFIG_FILE}. Użyj najpierw generate_mkdocs_config."
 
             # Informacja dla użytkownika
             info = (
@@ -364,15 +366,17 @@ class DocsSkill:
                     )
 
             # Sprawdź czy jest index/readme
-            has_index = (self.docs_dir / "index.md").exists()
+            has_index = (self.docs_dir / INDEX_DOC_FILE).exists()
             has_readme = (self.docs_dir / "README.md").exists()
 
             if has_index or has_readme:
                 report_lines.append(
-                    f"\n✅ Strona główna: {'index.md' if has_index else 'README.md'}"
+                    f"\n✅ Strona główna: {INDEX_DOC_FILE if has_index else 'README.md'}"
                 )
             else:
-                report_lines.append("\n⚠️ Brak strony głównej (index.md lub README.md)")
+                report_lines.append(
+                    f"\n⚠️ Brak strony głównej ({INDEX_DOC_FILE} lub README.md)"
+                )
 
             # Lista pierwszych 10 plików
             if md_files:

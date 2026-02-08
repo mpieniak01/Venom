@@ -12,6 +12,9 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+GITHUB_NOT_CONFIGURED_ERROR = (
+    "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"
+)
 
 
 class PlatformSkill:
@@ -119,7 +122,7 @@ class PlatformSkill:
             Sformatowany tekst z listą Issues lub komunikat błędu
         """
         if not self.github_client or not self.github_repo_name:
-            return "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"
+            return GITHUB_NOT_CONFIGURED_ERROR
 
         try:
             repo = self.github_client.get_repo(self.github_repo_name)
@@ -207,7 +210,7 @@ class PlatformSkill:
             Szczegóły Issue lub komunikat błędu
         """
         if not self.github_client or not self.github_repo_name:
-            return "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"
+            return GITHUB_NOT_CONFIGURED_ERROR
 
         try:
             repo = self.github_client.get_repo(self.github_repo_name)
@@ -277,7 +280,7 @@ class PlatformSkill:
             URL Pull Requesta lub komunikat błędu
         """
         if not self.github_client or not self.github_repo_name:
-            return "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"
+            return GITHUB_NOT_CONFIGURED_ERROR
 
         try:
             repo = self.github_client.get_repo(self.github_repo_name)
@@ -327,7 +330,7 @@ class PlatformSkill:
             Potwierdzenie lub komunikat błędu
         """
         if not self.github_client or not self.github_repo_name:
-            return "❌ Błąd: GitHub nie skonfigurowany (brak GITHUB_TOKEN lub GITHUB_REPO_NAME)"
+            return GITHUB_NOT_CONFIGURED_ERROR
 
         try:
             repo = self.github_client.get_repo(self.github_repo_name)

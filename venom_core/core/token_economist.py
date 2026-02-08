@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover
     pass
 
 logger = get_logger(__name__)
+DEFAULT_PRICING_MODEL = "gpt-3.5-turbo"
 
 
 class TokenEconomist:
@@ -31,7 +32,7 @@ class TokenEconomist:
     PRICING: dict[str, dict[str, float]] = {
         "gpt-4o": {"input": 5.0, "output": 15.0},
         "gpt-4-turbo": {"input": 10.0, "output": 30.0},
-        "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
+        DEFAULT_PRICING_MODEL: {"input": 0.5, "output": 1.5},
         "claude-opus": {"input": 15.0, "output": 75.0},
         "claude-sonnet": {"input": 3.0, "output": 15.0},
         "gemini-pro": {"input": 0.5, "output": 1.5},
@@ -223,7 +224,7 @@ class TokenEconomist:
     def calculate_cost(
         self,
         usage: dict,
-        model_name: str = "gpt-3.5-turbo",
+        model_name: str = DEFAULT_PRICING_MODEL,
     ) -> dict:
         """
         Kalkuluje koszt użycia modelu.
@@ -283,13 +284,13 @@ class TokenEconomist:
         logger.warning(
             f"Nieznany model {model_name}, używam cennika GPT-3.5 jako fallback"
         )
-        return self.PRICING["gpt-3.5-turbo"]
+        return self.PRICING[DEFAULT_PRICING_MODEL]
 
     def estimate_request_cost(
         self,
         prompt: str,
         expected_output_tokens: int = 500,
-        model_name: str = "gpt-3.5-turbo",
+        model_name: str = DEFAULT_PRICING_MODEL,
     ) -> dict:
         """
         Estymuje koszt requesta przed jego wykonaniem.

@@ -16,6 +16,8 @@ from venom_core.execution.skills.test_skill import TestSkill
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+FILE_PREFIX = "FILE:"
+ACTION_PREFIX = "ACTION:"
 
 
 @dataclass
@@ -59,11 +61,11 @@ ZASADY:
   3. Wskazać CO trzeba naprawić (bez podawania kodu!)
 
 PRZYKŁAD TICKETU NAPRAWCZEGO:
-FILE: src/calculator.py
+{FILE_PREFIX} src/calculator.py
 LINE: 15
 ERROR: AssertionError: Expected 10, got 0
 CAUSE: Funkcja divide() zwraca 0 zamiast wyniku dzielenia
-ACTION: Popraw logikę dzielenia - upewnij się że zwracasz a/b zamiast 0
+{ACTION_PREFIX} Popraw logikę dzielenia - upewnij się że zwracasz a/b zamiast 0
 
 Bądź konkretny i precyzyjny. Coder potrzebuje jasnych instrukcji.
 """
@@ -172,11 +174,11 @@ TEST OUTPUT:
 
             prompt += """
 Odpowiedz w formacie:
-FILE: <ścieżka do pliku>
+{FILE_PREFIX} <ścieżka do pliku>
 LINE: <numer linii lub UNKNOWN>
 ERROR: <treść błędu>
 CAUSE: <przyczyna błędu>
-ACTION: <co trzeba naprawić>
+{ACTION_PREFIX} <co trzeba naprawić>
 """
 
             # Wywołaj analizę
@@ -226,8 +228,8 @@ ACTION: <co trzeba naprawić>
         for line in lines:
             line = line.strip()
 
-            if line.startswith("FILE:"):
-                file_path = line.replace("FILE:", "").strip()
+            if line.startswith(FILE_PREFIX):
+                file_path = line.replace(FILE_PREFIX, "").strip()
             elif line.startswith("LINE:"):
                 line_str = line.replace("LINE:", "").strip()
                 if line_str.isdigit():
@@ -236,8 +238,8 @@ ACTION: <co trzeba naprawić>
                 error_message = line.replace("ERROR:", "").strip()
             elif line.startswith("CAUSE:"):
                 cause = line.replace("CAUSE:", "").strip()
-            elif line.startswith("ACTION:"):
-                suggested_action = line.replace("ACTION:", "").strip()
+            elif line.startswith(ACTION_PREFIX):
+                suggested_action = line.replace(ACTION_PREFIX, "").strip()
 
         return RepairTicket(
             file_path=file_path,
@@ -270,4 +272,4 @@ ACTION: <co trzeba naprawić>
             return True
 
         # Brak sekcji FILE / ACTION oznacza, że odpowiedź jest niepoprawna
-        return "FILE:" not in normalized and "ACTION:" not in normalized
+        return FILE_PREFIX not in normalized and ACTION_PREFIX not in normalized

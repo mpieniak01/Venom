@@ -13,6 +13,7 @@ from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+REDIS_NOT_CONNECTED_ERROR = "MessageBroker nie jest połączony z Redis"
 
 
 class TaskMessage:
@@ -213,7 +214,7 @@ class MessageBroker:
             RuntimeError: Jeśli brak połączenia z Redis
         """
         if not self._is_connected or not self.arq_pool:
-            raise RuntimeError("MessageBroker nie jest połączony z Redis")
+            raise RuntimeError(REDIS_NOT_CONNECTED_ERROR)
 
         # Generuj ID jeśli nie podano
         if not task_id:
@@ -357,7 +358,7 @@ class MessageBroker:
             data: Dodatkowe dane komendy
         """
         if not self.redis_client:
-            raise RuntimeError("MessageBroker nie jest połączony z Redis")
+            raise RuntimeError(REDIS_NOT_CONNECTED_ERROR)
 
         message = {
             "command": command,
@@ -383,7 +384,7 @@ class MessageBroker:
             RuntimeError: Jeśli brak połączenia z Redis
         """
         if not self.redis_client:
-            raise RuntimeError("MessageBroker nie jest połączony z Redis")
+            raise RuntimeError(REDIS_NOT_CONNECTED_ERROR)
 
         self.pubsub = self.redis_client.pubsub()
         await self.pubsub.subscribe(SETTINGS.HIVE_BROADCAST_CHANNEL)

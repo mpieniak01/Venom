@@ -8,6 +8,9 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
+PATH_SYMLINK_BLOCKED_ERROR = "❌ Zabroniony dostęp: symlink poza workspace"
+PATH_OUTSIDE_WORKSPACE_ERROR = "❌ Zabroniony dostęp: ścieżka poza workspace"
+
 
 class SkillExecutor:
     """Wykonywacz skill'ów na węźle Spore."""
@@ -134,14 +137,14 @@ class SkillExecutor:
                         workspace_resolved not in real_path.parents
                         and real_path != workspace_resolved
                     ):
-                        return "❌ Zabroniony dostęp: symlink poza workspace"
+                        return PATH_SYMLINK_BLOCKED_ERROR
 
                 # Sprawdź czy ścieżka jest w workspace
                 if (
                     workspace_resolved not in file_path.parents
                     and file_path != workspace_resolved
                 ):
-                    return "❌ Zabroniony dostęp: ścieżka poza workspace"
+                    return PATH_OUTSIDE_WORKSPACE_ERROR
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 
@@ -168,14 +171,14 @@ class SkillExecutor:
                         workspace_resolved not in real_path.parents
                         and real_path != workspace_resolved
                     ):
-                        return "❌ Zabroniony dostęp: symlink poza workspace"
+                        return PATH_SYMLINK_BLOCKED_ERROR
 
                 # Sprawdź czy ścieżka jest w workspace
                 if (
                     workspace_resolved not in file_path.parents
                     and file_path != workspace_resolved
                 ):
-                    return "❌ Zabroniony dostęp: ścieżka poza workspace"
+                    return PATH_OUTSIDE_WORKSPACE_ERROR
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 
@@ -201,14 +204,14 @@ class SkillExecutor:
                         workspace_resolved not in real_path.parents
                         and real_path != workspace_resolved
                     ):
-                        return "❌ Zabroniony dostęp: symlink poza workspace"
+                        return PATH_SYMLINK_BLOCKED_ERROR
 
                 # Sprawdź czy ścieżka jest w workspace
                 if (
                     workspace_resolved not in dir_path.parents
                     and dir_path != workspace_resolved
                 ):
-                    return "❌ Zabroniony dostęp: ścieżka poza workspace"
+                    return PATH_OUTSIDE_WORKSPACE_ERROR
             except Exception as e:
                 return f"❌ Nieprawidłowa ścieżka: {str(e)}"
 

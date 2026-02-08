@@ -71,6 +71,7 @@ MAX_FALLBACK_SCAN_ROWS = 5000  # Nie skanuj ogromnych kolekcji w fallbacku
 MAX_EMBEDDING_DIM = 8192  # Twardy limit bezpieczeństwa dla alokacji embeddingów
 MAX_DELETE_FILTER_KEY_LENGTH = 64
 MAX_DELETE_FILTER_VALUE_LENGTH = 256
+LANCEDB_NOT_INITIALIZED_ERROR = "LanceDB connection not initialized"
 
 
 def _tokenize_lexical_text(value: str) -> list[str]:
@@ -192,7 +193,7 @@ class VectorStore:
 
         # Sprawdź czy tabela już istnieje
         if self._db is None:
-            raise RuntimeError("LanceDB connection not initialized")
+            raise RuntimeError(LANCEDB_NOT_INITIALIZED_ERROR)
         if col_name in self._db.table_names():
             logger.debug(f"Używanie istniejącej tabeli: {col_name}")
             return self._db.open_table(col_name)
@@ -375,7 +376,7 @@ class VectorStore:
         # Sprawdź czy tabela istnieje
         self._ensure_db_connected()
         if self._db is None:
-            raise RuntimeError("LanceDB connection not initialized")
+            raise RuntimeError(LANCEDB_NOT_INITIALIZED_ERROR)
         if col_name not in self._db.table_names():
             logger.warning(f"Kolekcja '{col_name}' nie istnieje, zwracam pustą listę")
             return []
@@ -506,7 +507,7 @@ class VectorStore:
         """
         self._ensure_db_connected()
         if self._db is None:
-            raise RuntimeError("LanceDB connection not initialized")
+            raise RuntimeError(LANCEDB_NOT_INITIALIZED_ERROR)
         if collection_name not in self._db.table_names():
             raise ValueError(f"Kolekcja '{collection_name}' nie istnieje")
 

@@ -10,6 +10,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/benchmark", tags=["benchmark"])
+BENCHMARK_SERVICE_UNAVAILABLE_DETAIL = "BenchmarkService nie jest dostępny"
 
 # Zależność - będzie ustawiona w main.py
 _benchmark_service = None
@@ -67,7 +68,7 @@ def set_dependencies(benchmark_service):
     "/start",
     response_model=BenchmarkStartResponse,
     responses={
-        503: {"description": "BenchmarkService nie jest dostępny"},
+        503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowe parametry benchmarku"},
         500: {"description": "Błąd wewnętrzny podczas uruchamiania benchmarku"},
     },
@@ -90,12 +91,12 @@ async def start_benchmark(request: BenchmarkStartRequest):
         ID benchmarku do sprawdzania statusu
 
     Raises:
-        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 503 jeśli serwis benchmarku jest niedostępny
         HTTPException: 400 jeśli parametry są nieprawidłowe
     """
     if _benchmark_service is None:
         raise HTTPException(
-            status_code=503, detail="BenchmarkService nie jest dostępny"
+            status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
     try:
@@ -123,7 +124,7 @@ async def start_benchmark(request: BenchmarkStartRequest):
     "/{benchmark_id}/status",
     response_model=BenchmarkStatusResponse,
     responses={
-        503: {"description": "BenchmarkService nie jest dostępny"},
+        503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         404: {"description": "Benchmark nie został znaleziony"},
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
@@ -145,12 +146,12 @@ async def get_benchmark_status(benchmark_id: str):
         Status benchmarku z wynikami częściowymi lub pełnymi
 
     Raises:
-        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 503 jeśli serwis benchmarku jest niedostępny
         HTTPException: 404 jeśli benchmark nie został znaleziony
     """
     if _benchmark_service is None:
         raise HTTPException(
-            status_code=503, detail="BenchmarkService nie jest dostępny"
+            status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
     try:
@@ -176,7 +177,7 @@ async def get_benchmark_status(benchmark_id: str):
 @router.get(
     "/list",
     responses={
-        503: {"description": "BenchmarkService nie jest dostępny"},
+        503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd wewnętrzny podczas pobierania listy"},
     },
 )
@@ -191,11 +192,11 @@ async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
         Lista benchmarków posortowanych od najnowszych
 
     Raises:
-        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 503 jeśli serwis benchmarku jest niedostępny
     """
     if _benchmark_service is None:
         raise HTTPException(
-            status_code=503, detail="BenchmarkService nie jest dostępny"
+            status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
     try:
@@ -214,7 +215,7 @@ async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
     "/all",
     status_code=200,
     responses={
-        503: {"description": "BenchmarkService nie jest dostępny"},
+        503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd wewnętrzny podczas czyszczenia benchmarków"},
     },
 )
@@ -226,11 +227,11 @@ async def clear_all_benchmarks():
         Informacja o liczbie usuniętych benchmarków
 
     Raises:
-        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 503 jeśli serwis benchmarku jest niedostępny
     """
     if _benchmark_service is None:
         raise HTTPException(
-            status_code=503, detail="BenchmarkService nie jest dostępny"
+            status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
     try:
@@ -249,7 +250,7 @@ async def clear_all_benchmarks():
     "/{benchmark_id}",
     status_code=200,
     responses={
-        503: {"description": "BenchmarkService nie jest dostępny"},
+        503: {"description": BENCHMARK_SERVICE_UNAVAILABLE_DETAIL},
         404: {"description": "Benchmark nie został znaleziony"},
         500: {"description": "Błąd wewnętrzny podczas usuwania benchmarku"},
     },
@@ -262,12 +263,12 @@ async def delete_benchmark(benchmark_id: str):
         benchmark_id: ID benchmarku do usunięcia
 
     Raises:
-        HTTPException: 503 jeśli BenchmarkService nie jest dostępny
+        HTTPException: 503 jeśli serwis benchmarku jest niedostępny
         HTTPException: 404 jeśli benchmark nie został znaleziony
     """
     if _benchmark_service is None:
         raise HTTPException(
-            status_code=503, detail="BenchmarkService nie jest dostępny"
+            status_code=503, detail=BENCHMARK_SERVICE_UNAVAILABLE_DETAIL
         )
 
     try:

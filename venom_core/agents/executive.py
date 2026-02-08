@@ -23,6 +23,8 @@ except Exception:  # pragma: no cover
 
 
 logger = get_logger(__name__)
+PRIORITY_LABEL = "Priorytet:"
+DESCRIPTION_LABEL = "Opis:"
 
 
 class ExecutiveAgent(BaseAgent):
@@ -177,12 +179,12 @@ Twoim zadaniem jest stworzyć ROADMAPĘ PROJEKTU. Przeprowadź analizę i zaprop
 ODPOWIEDZ W FORMACIE:
 
 VISION: [tytuł]
-Opis: [opis wizji]
+{DESCRIPTION_LABEL} [opis wizji]
 KPI: [nazwa KPI] - target: [wartość] [jednostka]
 
 MILESTONE 1: [tytuł]
-Priorytet: [1-5]
-Opis: [opis]
+{PRIORITY_LABEL} [1-5]
+{DESCRIPTION_LABEL} [opis]
 KPI: [nazwa] - target: [wartość] [jednostka]
 
 MILESTONE 2: [tytuł]
@@ -190,8 +192,8 @@ MILESTONE 2: [tytuł]
 
 TASKS dla Milestone 1:
 TASK 1: [tytuł]
-Priorytet: [1-5]
-Opis: [opis]
+{PRIORITY_LABEL} [1-5]
+{DESCRIPTION_LABEL} [opis]
 
 TASK 2: [tytuł]
 ...
@@ -290,15 +292,17 @@ Pamiętaj:
                     priority = 1
                     description = ""
                     for j in range(i + 1, min(i + 5, len(lines))):
-                        if "Priorytet:" in lines[j]:
+                        if PRIORITY_LABEL in lines[j]:
                             try:
                                 priority = int(
-                                    lines[j].replace("Priorytet:", "").strip()
+                                    lines[j].replace(PRIORITY_LABEL, "").strip()
                                 )
                             except ValueError:
                                 priority = milestone_count
-                        elif "Opis:" in lines[j]:
-                            description = lines[j].replace("Opis:", "").strip()
+                        elif DESCRIPTION_LABEL in lines[j]:
+                            description = (
+                                lines[j].replace(DESCRIPTION_LABEL, "").strip()
+                            )
 
                     milestone = self.goal_store.add_goal(
                         title=milestone_title,
@@ -336,15 +340,17 @@ Pamiętaj:
                         priority = 1
                         description = ""
                         for j in range(i + 1, min(i + 5, len(lines))):
-                            if "Priorytet:" in lines[j]:
+                            if PRIORITY_LABEL in lines[j]:
                                 try:
                                     priority = int(
-                                        lines[j].replace("Priorytet:", "").strip()
+                                        lines[j].replace(PRIORITY_LABEL, "").strip()
                                     )
                                 except ValueError:
                                     priority = task_count
-                            elif "Opis:" in lines[j]:
-                                description = lines[j].replace("Opis:", "").strip()
+                            elif DESCRIPTION_LABEL in lines[j]:
+                                description = (
+                                    lines[j].replace(DESCRIPTION_LABEL, "").strip()
+                                )
 
                         task = self.goal_store.add_goal(
                             title=task_title,

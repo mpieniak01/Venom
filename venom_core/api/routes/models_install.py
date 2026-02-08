@@ -25,6 +25,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
+MODEL_MANAGER_UNAVAILABLE_DETAIL = "ModelManager nie jest dostępny"
 
 
 def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
@@ -49,7 +50,7 @@ def _resolve_provider_bucket(models: List[dict]) -> Dict[str, List[dict]]:
 @router.get(
     "/models",
     responses={
-        503: {"description": "ModelManager nie jest dostępny"},
+        503: {"description": MODEL_MANAGER_UNAVAILABLE_DETAIL},
         500: {"description": "Błąd serwera podczas listowania modeli"},
     },
 )
@@ -59,7 +60,7 @@ async def list_models():
     """
     model_manager = get_model_manager()
     if model_manager is None:
-        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
 
     try:
         models = await model_manager.list_local_models()
@@ -108,7 +109,7 @@ async def list_models():
 @router.post(
     "/models/install",
     responses={
-        503: {"description": "ModelManager nie jest dostępny"},
+        503: {"description": MODEL_MANAGER_UNAVAILABLE_DETAIL},
         400: {"description": "Brak miejsca na dysku lub nieprawidłowe dane"},
         500: {"description": "Błąd serwera podczas inicjalizacji instalacji"},
     },
@@ -121,7 +122,7 @@ async def install_model(
     """
     model_manager = get_model_manager()
     if model_manager is None:
-        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
 
     if not model_manager.check_storage_quota(additional_size_gb=DEFAULT_MODEL_SIZE_GB):
         raise HTTPException(
@@ -154,7 +155,7 @@ async def install_model(
 @router.post(
     "/models/switch",
     responses={
-        503: {"description": "ModelManager nie jest dostępny"},
+        503: {"description": MODEL_MANAGER_UNAVAILABLE_DETAIL},
         404: {"description": "Model nie został znaleziony"},
         400: {"description": "Model niezgodny z aktywnym runtime"},
         500: {"description": "Błąd serwera podczas zmiany modelu"},
@@ -166,7 +167,7 @@ async def switch_model(request: ModelSwitchRequest):
     """
     model_manager = get_model_manager()
     if model_manager is None:
-        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
 
     try:
         models = await model_manager.list_local_models()
@@ -241,7 +242,7 @@ async def switch_model(request: ModelSwitchRequest):
 @router.delete(
     "/models/{model_name}",
     responses={
-        503: {"description": "ModelManager nie jest dostępny"},
+        503: {"description": MODEL_MANAGER_UNAVAILABLE_DETAIL},
         400: {"description": "Nieprawidłowa nazwa modelu lub aktywny model"},
         404: {"description": "Model nie został znaleziony"},
         500: {"description": "Błąd serwera podczas usuwania modelu"},
@@ -253,7 +254,7 @@ async def delete_model(model_name: str):
     """
     model_manager = get_model_manager()
     if model_manager is None:
-        raise HTTPException(status_code=503, detail="ModelManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=MODEL_MANAGER_UNAVAILABLE_DETAIL)
 
     try:
         validate_model_name_basic(model_name, max_length=100)

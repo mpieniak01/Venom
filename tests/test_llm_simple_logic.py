@@ -42,6 +42,8 @@ class DummyTracer:
 
 
 class ErrorStreamResponse:
+    _lines: tuple[str, ...] = ()
+
     async def __aenter__(self):
         return self
 
@@ -54,13 +56,16 @@ class ErrorStreamResponse:
         raise httpx.HTTPStatusError("bad", request=request, response=response)
 
     async def aiter_lines(self):
-        if False:
-            yield ""
+        # Intencjonalnie brak danych: ten test double reprezentuje odpowiedź z błędem HTTP.
+        for line in self._lines:
+            yield line
 
 
 class DummyClientHttpStatus:
     def __init__(self, *args, **kwargs):
-        pass
+        # Zachowujemy kompatybilność z sygnaturą httpx.AsyncClient.
+        self._args = args
+        self._kwargs = kwargs
 
     async def __aenter__(self):
         return self
@@ -74,7 +79,9 @@ class DummyClientHttpStatus:
 
 class DummyClientConnectionError:
     def __init__(self, *args, **kwargs):
-        pass
+        # Zachowujemy kompatybilność z sygnaturą httpx.AsyncClient.
+        self._args = args
+        self._kwargs = kwargs
 
     async def __aenter__(self):
         return self
@@ -88,7 +95,9 @@ class DummyClientConnectionError:
 
 class DummyClientInternalError:
     def __init__(self, *args, **kwargs):
-        pass
+        # Zachowujemy kompatybilność z sygnaturą httpx.AsyncClient.
+        self._args = args
+        self._kwargs = kwargs
 
     async def __aenter__(self):
         return self

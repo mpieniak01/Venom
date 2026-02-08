@@ -91,11 +91,11 @@ function renderMathTokens(html: string, tokens: MathToken[]) {
 
 function escapeHtml(value: string) {
   return value
-    .replaceAll(/&/g, "&amp;")
-    .replaceAll(/</g, "&lt;")
-    .replaceAll(/>/g, "&gt;")
-    .replaceAll(/"/g, "&quot;")
-    .replaceAll(/'/g, "&#039;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function decorateSourcesLabel(value: string) {

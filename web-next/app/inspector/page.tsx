@@ -907,7 +907,7 @@ function buildSequenceDiagram(flow?: FlowTrace | null) {
     if (participant === "User" || participant === "Orchestrator") {
       lines.push(`    participant ${alias} as ${participant}`);
     } else {
-      const display = participant.replaceAll(/"/g, "'");
+      const display = participant.replaceAll('"', "'");
       lines.push(`    participant ${alias} as "${display}"`);
     }
   });
@@ -969,7 +969,7 @@ function sanitizeSequenceText(value?: string | null) {
     .replaceAll(/[<>]/g, "")
     .replaceAll(/[\r\n]/g, " ")
     .replaceAll(/[|]/g, "‖")
-    .replaceAll(/--/g, "–")
+    .replaceAll("--", "–")
     .replaceAll(/["]/g, "'")
     .trim();
 }

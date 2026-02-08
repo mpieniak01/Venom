@@ -1,5 +1,6 @@
 """Moduł: executive - Agent Wykonawczy (CEO/Product Manager)."""
 
+import asyncio
 import os
 from typing import Any
 from uuid import UUID
@@ -205,9 +206,9 @@ Pamiętaj:
         response = await self.process(prompt)
 
         # Sparsuj odpowiedź i utwórz strukturę w GoalStore
-        return await self._parse_and_create_roadmap(response, vision_text)
+        return self._parse_and_create_roadmap(response, vision_text)
 
-    async def _parse_and_create_roadmap(
+    def _parse_and_create_roadmap(
         self, llm_response: str, original_vision: str
     ) -> dict:
         """
@@ -431,7 +432,8 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
         meeting_notes = ["=== DAILY STANDUP - STATUS MEETING ===\n"]
         from datetime import datetime as dt
 
-        meeting_notes.append(f"Data: {dt.now().strftime('%Y-%m-%d %H:%M')}\n")
+        meeting_timestamp = await asyncio.to_thread(dt.now)
+        meeting_notes.append(f"Data: {meeting_timestamp.strftime('%Y-%m-%d %H:%M')}\n")
 
         # 1. Status aktualnego Milestone
         current_milestone = self.goal_store.get_next_milestone()

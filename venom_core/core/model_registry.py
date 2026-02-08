@@ -802,6 +802,7 @@ class ModelRegistry:
             self._install_model_task(operation, provider, runtime)
         )
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        await asyncio.sleep(0)
 
         return operation_id
 
@@ -822,7 +823,9 @@ class ModelRegistry:
 
                 async def progress_callback(message: str):
                     operation.message = message
-                    logger.info(f"[{operation.operation_id}] {message}")
+                    await asyncio.to_thread(
+                        logger.info, f"[{operation.operation_id}] {message}"
+                    )
 
                 provider_obj = self.providers[provider]
                 success = await provider_obj.install_model(
@@ -879,6 +882,7 @@ class ModelRegistry:
         remove_task = asyncio.create_task(self._remove_model_task(operation, provider))
         self._background_tasks.add(remove_task)
         remove_task.add_done_callback(self._background_tasks.discard)
+        await asyncio.sleep(0)
 
         return operation_id
 

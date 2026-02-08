@@ -140,8 +140,10 @@ class HardwareBridge:
     async def disconnect(self):
         """Rozłącza połączenie."""
         if self.ssh_client:
-            self.ssh_client.close()
+            await asyncio.to_thread(self.ssh_client.close)
             self.ssh_client = None
+        else:
+            await asyncio.to_thread(bool, True)
         self.connected = False
         logger.info("Rozłączono z Raspberry Pi")
 

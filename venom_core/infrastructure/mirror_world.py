@@ -1,5 +1,6 @@
 """Moduł: mirror_world - zarządzanie lustrzanymi instancjami Venom do testowania."""
 
+import asyncio
 import shutil
 import time
 from dataclasses import dataclass
@@ -164,10 +165,10 @@ class MirrorWorld:
         try:
             if use_docker:
                 # Uruchom w Dockerze
-                success = await self._start_in_docker(info)
+                success = await asyncio.to_thread(self._start_in_docker, info)
             else:
                 # Uruchom jako lokalny proces (dla testów)
-                success = await self._start_local_process(info)
+                success = await asyncio.to_thread(self._start_local_process, info)
 
             if success:
                 info.status = "running"
@@ -185,7 +186,7 @@ class MirrorWorld:
             info.status = "failed"
             return False
 
-    async def _start_in_docker(self, info: InstanceInfo) -> bool:
+    def _start_in_docker(self, info: InstanceInfo) -> bool:
         """
         Uruchamia instancję w kontenerze Docker.
 
@@ -209,7 +210,7 @@ class MirrorWorld:
         )
         return False
 
-    async def _start_local_process(self, info: InstanceInfo) -> bool:
+    def _start_local_process(self, info: InstanceInfo) -> bool:
         """
         Uruchamia instancję jako lokalny proces (dla testów).
 
@@ -326,7 +327,7 @@ class MirrorWorld:
                 instance_dir = info.workspace_path.parent
                 if instance_dir.exists():
                     logger.info(f"Usuwanie katalogu {instance_dir}")
-                    shutil.rmtree(instance_dir)
+                    await asyncio.to_thread(shutil.rmtree, instance_dir)
 
             # 3. Usuń z rejestru
             del self.instances[instance_id]

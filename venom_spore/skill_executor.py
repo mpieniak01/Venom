@@ -1,6 +1,7 @@
 """Executor skill'ów na węźle Spore."""
 
 import asyncio
+import inspect
 import os
 import platform
 import subprocess
@@ -48,7 +49,10 @@ class SkillExecutor:
         if not handler:
             raise ValueError(f"Skill {skill_name} nie jest obsługiwany przez ten węzeł")
 
-        return await handler(method_name, parameters)
+        result = handler(method_name, parameters)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
     async def _handle_shell(self, method_name: str, parameters: Dict[str, Any]) -> str:
         """
@@ -104,7 +108,7 @@ class SkillExecutor:
         else:
             raise ValueError(f"Metoda {method_name} nie jest obsługiwana w ShellSkill")
 
-    async def _handle_file(self, method_name: str, parameters: Dict[str, Any]) -> str:
+    def _handle_file(self, method_name: str, parameters: Dict[str, Any]) -> str:
         """
         Obsługuje FileSkill.
 

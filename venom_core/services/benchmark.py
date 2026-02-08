@@ -388,6 +388,7 @@ class BenchmarkService:
         # Uruchom benchmark w tle i zachowaj referencję do zadania
         task = asyncio.create_task(self._run_benchmark_task(benchmark_id))
         job.task = task  # Przechowuj referencję do zadania
+        await asyncio.sleep(0)
 
         logger.info(
             f"Rozpoczęto benchmark {benchmark_id}: {len(models)} modeli, "

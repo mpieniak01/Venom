@@ -143,6 +143,7 @@ class ForemanAgent(BaseAgent):
 
         # Uruchom monitoring węzłów
         self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        await asyncio.sleep(0)
 
         logger.info("ForemanAgent uruchomiony")
 

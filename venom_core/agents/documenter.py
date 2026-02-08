@@ -113,7 +113,7 @@ class DocumenterAgent:
         # Sprawdź czy to zmiana dokonana przez venom-bot (unikanie pętli)
         # Sprawdzamy na podstawie nazwy autora
         try:
-            last_commit_author = await self._get_last_commit_author()
+            last_commit_author = self._get_last_commit_author()
             if last_commit_author:
                 # Sprawdź czy to bot na podstawie nazwy zawierającej "bot" lub "venom"
                 author_lower = last_commit_author.lower()
@@ -144,7 +144,7 @@ class DocumenterAgent:
                 return
 
             # Analizuj czy potrzebna aktualizacja dokumentacji
-            needs_update = await self._analyze_changes(file_path, diff)
+            needs_update = self._analyze_changes(file_path, diff)
 
             if needs_update:
                 # Aktualizuj dokumentację (obecnie prosty placeholder)
@@ -206,7 +206,7 @@ class DocumenterAgent:
             logger.debug(f"Błąd podczas pobierania diff: {e}")
             return ""
 
-    async def _get_last_commit_author(self) -> Optional[str]:
+    def _get_last_commit_author(self) -> Optional[str]:
         """
         Pobiera autora ostatniego commita.
 
@@ -224,7 +224,7 @@ class DocumenterAgent:
             logger.debug(f"Nie można pobrać autora ostatniego commita: {e}")
         return None
 
-    async def _analyze_changes(self, file_path: str, diff: str) -> bool:
+    def _analyze_changes(self, file_path: str, diff: str) -> bool:
         """
         Analizuje czy zmiany wymagają aktualizacji dokumentacji.
 

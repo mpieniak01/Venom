@@ -97,6 +97,7 @@ class NodeManager:
         """Uruchamia NodeManager i zadania w tle."""
         logger.info("NodeManager uruchomiony")
         self._healthcheck_task = asyncio.create_task(self._healthcheck_loop())
+        await asyncio.sleep(0)
 
     async def stop(self):
         """Zatrzymuje NodeManager i zadania w tle."""

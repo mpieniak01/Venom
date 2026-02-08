@@ -118,7 +118,7 @@ class MediaSkill:
 
         # Krok 3: Emergency fallback - Placeholder z Pillow
         logger.info("Wszystkie AI engines niedostępne, używam Pillow placeholder")
-        return await self._generate_placeholder(prompt, size, filename)
+        return self._generate_placeholder(prompt, size, filename)
 
     async def _generate_with_stable_diffusion(
         self, prompt: str, size: str, filename: str
@@ -267,7 +267,7 @@ class MediaSkill:
             logger.error(f"Błąd podczas generowania przez DALL-E: {e}")
             return None
 
-    async def _generate_placeholder(self, prompt: str, size: str, filename: str) -> str:
+    def _generate_placeholder(self, prompt: str, size: str, filename: str) -> str:
         """
         Generuje placeholder obrazu używając Pillow (fallback).
 

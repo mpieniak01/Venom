@@ -317,7 +317,7 @@ class DreamEngine:
         """
         try:
             # Pobierz statystyki grafu
-            stats = self.graph_rag.get_stats()
+            stats = await asyncio.to_thread(self.graph_rag.get_stats)
 
             if stats["total_nodes"] == 0:
                 logger.warning("Graf wiedzy jest pusty")
@@ -534,7 +534,7 @@ class DreamEngine:
         # Jeśli brak code blocków, zwróć całość (może to być czysty kod)
         return response.strip()
 
-    async def _handle_wake_up(self) -> None:
+    def _handle_wake_up(self) -> None:
         """Callback wywoływany przez EnergyManager gdy system staje się zajęty."""
         if self.state in [
             DreamState.DREAMING,

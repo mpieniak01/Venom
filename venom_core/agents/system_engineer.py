@@ -194,7 +194,7 @@ Ty:
             logger.error(error_msg, exc_info=True)
             return error_msg
 
-    async def analyze_impact(self, file_path: str) -> dict:
+    def analyze_impact(self, file_path: str) -> dict:
         """
         Analizuje wpływ modyfikacji danego pliku na system.
 

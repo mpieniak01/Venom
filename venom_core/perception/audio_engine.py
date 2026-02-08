@@ -237,10 +237,10 @@ class VoiceSkill:
         """Uruchamia wątek do odtwarzania kolejki audio."""
         if self._playback_thread is None or not self._playback_thread.is_alive():
             self._stop_playback.clear()
-            self._playback_thread = threading.Thread(
-                target=self._playback_worker, daemon=True
+            self._playback_thread = await asyncio.to_thread(
+                threading.Thread, target=self._playback_worker, daemon=True
             )
-            self._playback_thread.start()
+            await asyncio.to_thread(self._playback_thread.start)
             logger.info("Wątek odtwarzania audio uruchomiony")
 
     def _playback_worker(self):
@@ -269,7 +269,7 @@ class VoiceSkill:
         """Zatrzymuje wątek odtwarzania."""
         self._stop_playback.set()
         if self._playback_thread:
-            self._playback_thread.join(timeout=2.0)
+            await asyncio.to_thread(self._playback_thread.join, 2.0)
             logger.info("Wątek odtwarzania audio zatrzymany")
 
 

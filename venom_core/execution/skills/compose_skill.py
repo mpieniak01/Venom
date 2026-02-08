@@ -152,12 +152,10 @@ class ComposeSkill:
             logger.info(f"Tworzenie środowiska: {stack_name}")
 
             # Znajdź i zastąp placeholdery portów
-            processed_content = await self._process_port_placeholders(compose_content)
+            processed_content = self._process_port_placeholders(compose_content)
 
             # Znajdź i zastąp inne placeholdery (SECRET_KEY, HOST_IP, VOLUME_ROOT)
-            processed_content = await self._process_template_placeholders(
-                processed_content
-            )
+            processed_content = self._process_template_placeholders(processed_content)
 
             # Walidacja YAML
             if not self._validate_yaml(processed_content):
@@ -375,7 +373,7 @@ class ComposeSkill:
             logger.error(f"Błąd w get_environment_status: {e}")
             return f"❌ Nieoczekiwany błąd: {str(e)}"
 
-    async def _process_port_placeholders(self, compose_content: str) -> str:
+    def _process_port_placeholders(self, compose_content: str) -> str:
         """
         Przetwarza placeholdery portów w docker-compose.yml.
 
@@ -431,7 +429,7 @@ class ComposeSkill:
 
         return processed
 
-    async def _process_template_placeholders(self, compose_content: str) -> str:
+    def _process_template_placeholders(self, compose_content: str) -> str:
         """
         Przetwarza placeholdery szablonów w docker-compose.yml.
 

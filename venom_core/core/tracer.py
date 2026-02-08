@@ -276,6 +276,7 @@ class RequestTracer:
         """Uruchamia watchdog do monitorowania zagubionych zadań."""
         if self._watchdog_task is None:
             self._watchdog_task = asyncio.create_task(self._watchdog_loop())
+            await asyncio.sleep(0)
             logger.info("RequestTracer watchdog uruchomiony")
 
     async def stop_watchdog(self):
@@ -292,13 +293,13 @@ class RequestTracer:
         while True:
             try:
                 await asyncio.sleep(60)  # Sprawdzaj co minutę
-                await self._check_lost_requests()
+                self._check_lost_requests()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.error(f"Błąd w watchdog loop: {e}", exc_info=True)
 
-    async def _check_lost_requests(self):
+    def _check_lost_requests(self):
         """Sprawdza i oznacza zadania, które przekroczyły timeout."""
         now = get_utc_now()
         updated = False

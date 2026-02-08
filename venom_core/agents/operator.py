@@ -85,13 +85,13 @@ PAMIĘTAJ: Twoim celem jest być jak Jarvis - pomocny, zwięzły i profesjonalny
         logger.info(f"OperatorAgent przetwarza: {input_text}")
 
         # Sprawdź czy to komenda sprzętowa
-        if await self._is_hardware_command(input_text):
+        if self._is_hardware_command(input_text):
             return await self._handle_hardware_command(input_text)
 
         # W przeciwnym wypadku, deleguj do LLM z kontekstem głosowym
         return await self._generate_voice_response(input_text)
 
-    async def _is_hardware_command(self, text: str) -> bool:
+    def _is_hardware_command(self, text: str) -> bool:
         """
         Sprawdza czy komenda dotyczy sprzętu.
 

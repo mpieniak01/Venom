@@ -86,16 +86,16 @@ class Professor(BaseAgent):
 
         try:
             if "przygotuj materiały" in input_lower or "dataset" in input_lower:
-                return await self._generate_dataset()
+                return self._generate_dataset()
 
             elif "rozpocznij trening" in input_lower or "train" in input_lower:
                 return await self._start_training()
 
             elif "sprawdź postęp" in input_lower or "status" in input_lower:
-                return await self._check_training_status()
+                return self._check_training_status()
 
             elif "oceń model" in input_lower or "ewaluacja" in input_lower:
-                return await self._evaluate_model()
+                return self._evaluate_model()
 
             else:
                 return (
@@ -113,7 +113,7 @@ class Professor(BaseAgent):
             logger.error(error_msg)
             return error_msg
 
-    async def _generate_dataset(self) -> str:
+    def _generate_dataset(self) -> str:
         """
         Generuje dataset treningowy.
 
@@ -278,7 +278,7 @@ class Professor(BaseAgent):
             logger.error(error_msg)
             return error_msg
 
-    async def _check_training_status(self) -> str:
+    def _check_training_status(self) -> str:
         """
         Sprawdza status aktualnego treningu.
 
@@ -319,7 +319,7 @@ class Professor(BaseAgent):
             logger.error(error_msg)
             return error_msg
 
-    async def _evaluate_model(
+    def _evaluate_model(
         self,
         candidate_model: Optional[str] = None,
         baseline_model: Optional[

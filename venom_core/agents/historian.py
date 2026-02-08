@@ -1,5 +1,6 @@
 """Moduł: historian - Agent Historyk (Risk Management & Causality Analysis)."""
 
+import asyncio
 from typing import Optional
 
 from semantic_kernel import Kernel
@@ -109,7 +110,7 @@ class HistorianAgent(BaseAgent):
             "transform",
         ]
 
-        operation_lower = operation_description.lower()
+        operation_lower = await asyncio.to_thread(str.lower, operation_description)
 
         # Sprawdź poziom ryzyka
         for keyword in high_risk_keywords:
@@ -131,7 +132,7 @@ class HistorianAgent(BaseAgent):
             "reason": "Operacja tylko do odczytu lub bezpieczna",
         }
 
-    async def analyze_failure(
+    def analyze_failure(
         self, operation: str, error: str, checkpoint_before: Optional[str] = None
     ) -> None:
         """

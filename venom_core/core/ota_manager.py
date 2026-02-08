@@ -288,7 +288,7 @@ class OTAManager:
             # 6. Restart procesu jeśli wymagane
             if restart_after:
                 logger.info("Planowanie restartu procesu...")
-                await self._schedule_restart()
+                self._schedule_restart()
 
             logger.info("Aktualizacja OTA ukończona pomyślnie")
             return True
@@ -339,22 +339,25 @@ class OTAManager:
         """
         import shutil
 
-        for item in source_dir.rglob("*"):
-            if item.is_file():
-                rel_path = item.relative_to(source_dir)
-                target_path = target_dir / rel_path
-                target_path.parent.mkdir(parents=True, exist_ok=True)
+        def _copy_files_sync() -> None:
+            for item in source_dir.rglob("*"):
+                if item.is_file():
+                    rel_path = item.relative_to(source_dir)
+                    target_path = target_dir / rel_path
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Backup starego pliku jeśli istnieje
-                if target_path.exists():
-                    backup_path = target_path.with_suffix(
-                        target_path.suffix + ".backup"
-                    )
-                    shutil.copy2(target_path, backup_path)
+                    # Backup starego pliku jeśli istnieje
+                    if target_path.exists():
+                        backup_path = target_path.with_suffix(
+                            target_path.suffix + ".backup"
+                        )
+                        shutil.copy2(target_path, backup_path)
 
-                # Skopiuj nowy plik
-                shutil.copy2(item, target_path)
-                logger.debug(f"Skopiowano: {rel_path}")
+                    # Skopiuj nowy plik
+                    shutil.copy2(item, target_path)
+                    logger.debug(f"Skopiowano: {rel_path}")
+
+        await asyncio.to_thread(_copy_files_sync)
 
     async def _install_dependencies(self, requirements_path: Path) -> bool:
         """
@@ -393,7 +396,7 @@ class OTAManager:
             logger.error(f"Błąd podczas instalacji zależności: {e}")
             return False
 
-    async def _schedule_restart(self):
+    def _schedule_restart(self):
         """
         Planuje restart procesu.
 
@@ -442,7 +445,7 @@ class OTAManager:
 
         return sorted(packages, key=lambda p: p["created_at"], reverse=True)
 
-    async def cleanup_old_packages(self, keep_latest: int = 5):
+    def cleanup_old_packages(self, keep_latest: int = 5):
         """
         Usuwa stare paczki OTA, zostawiając najnowsze.
 

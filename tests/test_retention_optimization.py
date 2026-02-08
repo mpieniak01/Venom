@@ -11,9 +11,10 @@ class MockMemorySkill:
 
 
 @pytest.mark.asyncio
-async def test_state_manager_pruning():
+async def test_state_manager_pruning(tmp_path):
     # Inicjalizacja StateManager z tymczasowym plikiem
-    sm = StateManager(state_file_path="data/test_state_pruning.json")
+    state_file = tmp_path / "test_state_pruning.json"
+    sm = StateManager(state_file_path=str(state_file))
 
     # Tworzymy 1050 zadań (limit to 1000)
     for i in range(1050):
@@ -32,8 +33,9 @@ async def test_state_manager_pruning():
 
 
 @pytest.mark.asyncio
-async def test_session_handler_full_history_limit():
-    sm = StateManager(state_file_path="data/test_session_handler.json")
+async def test_session_handler_full_history_limit(tmp_path):
+    state_file = tmp_path / "test_session_handler.json"
+    sm = StateManager(state_file_path=str(state_file))
     memory = MockMemorySkill()
     sh = SessionHandler(state_manager=sm, memory_skill=memory)
 

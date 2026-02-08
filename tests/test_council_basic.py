@@ -35,8 +35,8 @@ def test_swarm_module_imports():
     from venom_core.core.swarm import VenomAgent, create_venom_agent_wrapper
 
     # Sprawdź że klasy/funkcje są dostępne
-    assert VenomAgent is not None
-    assert create_venom_agent_wrapper is not None
+    assert callable(create_venom_agent_wrapper)
+    assert isinstance(VenomAgent.__name__, str)
 
 
 def test_create_local_llm_config_invalid_temperature_high():

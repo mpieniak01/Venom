@@ -16,7 +16,7 @@ def test_director_initialization():
     """Test inicjalizacji SimulationDirector (podstawowy)."""
     # Ten test sprawdza tylko czy klasa istnieje i ma właściwe atrybuty
     # Pełna inicjalizacja wymaga kernela
-    assert SimulationDirector is not None
+    assert callable(SimulationDirector)
 
 
 @pytest.mark.asyncio

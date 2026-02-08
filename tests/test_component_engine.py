@@ -6,7 +6,6 @@ from venom_core.ui.component_engine import ComponentEngine, Widget, WidgetType
 def test_component_engine_initialization():
     """Test inicjalizacji ComponentEngine."""
     engine = ComponentEngine()
-    assert engine is not None
     assert len(engine.widgets) == 0
 
 
@@ -17,7 +16,6 @@ def test_create_widget():
     data = {"test": "data"}
     widget = engine.create_widget(WidgetType.CHART, data)
 
-    assert widget is not None
     assert widget.type == WidgetType.CHART
     assert widget.data == data
     assert widget.id in engine.widgets
@@ -30,7 +28,6 @@ def test_get_widget():
     widget = engine.create_widget(WidgetType.TABLE, {"headers": [], "rows": []})
     retrieved = engine.get_widget(widget.id)
 
-    assert retrieved is not None
     assert retrieved.id == widget.id
     assert retrieved.type == WidgetType.TABLE
 
@@ -44,7 +41,7 @@ def test_update_widget():
 
     success = engine.update_widget(widget.id, new_data)
 
-    assert success is True
+    assert success
     updated = engine.get_widget(widget.id)
     assert updated.data == new_data
 
@@ -55,7 +52,7 @@ def test_update_nonexistent_widget():
 
     success = engine.update_widget("nonexistent-id", {"data": "test"})
 
-    assert success is False
+    assert not success
 
 
 def test_remove_widget():
@@ -65,7 +62,7 @@ def test_remove_widget():
     widget = engine.create_widget(WidgetType.MARKDOWN, {"content": "test"})
     success = engine.remove_widget(widget.id)
 
-    assert success is True
+    assert success
     assert engine.get_widget(widget.id) is None
 
 
@@ -75,7 +72,7 @@ def test_remove_nonexistent_widget():
 
     success = engine.remove_widget("nonexistent-id")
 
-    assert success is False
+    assert not success
 
 
 def test_list_widgets():

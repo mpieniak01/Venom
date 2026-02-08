@@ -15,7 +15,6 @@ def render_skill():
 def test_render_skill_initialization():
     """Test inicjalizacji RenderSkill."""
     skill = RenderSkill()
-    assert skill is not None
     assert skill.component_engine is not None
 
 

@@ -21,7 +21,6 @@ def mock_kernel():
 def test_designer_agent_initialization(mock_kernel):
     """Test inicjalizacji DesignerAgent."""
     agent = DesignerAgent(mock_kernel)
-    assert agent is not None
     assert agent.kernel == mock_kernel
     assert "UI/UX" in agent.SYSTEM_PROMPT
     assert "Frontend Developer" in agent.SYSTEM_PROMPT
@@ -41,7 +40,6 @@ async def test_designer_agent_process(mock_kernel):
 
     result = await agent.process("Stwórz wykres")
 
-    assert result is not None
     assert isinstance(result, str)
     agent.chat_service.get_chat_message_content.assert_called_once()
 

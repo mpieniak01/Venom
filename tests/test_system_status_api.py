@@ -54,12 +54,12 @@ class TestSystemStatusAPI:
             data = response.json()
             assert data["status"] == "success"
             assert data["system_healthy"] is True
-            assert data["memory_usage_mb"] == 8192.50
-            assert data["memory_total_mb"] == 16384.00
-            assert data["memory_usage_percent"] == 50.0
-            assert data["vram_usage_mb"] == 2048.00
-            assert data["vram_total_mb"] == 8192.00
-            assert data["vram_usage_percent"] == 25.0
+            assert data["memory_usage_mb"] == pytest.approx(8192.50)
+            assert data["memory_total_mb"] == pytest.approx(16384.00)
+            assert data["memory_usage_percent"] == pytest.approx(50.0)
+            assert data["vram_usage_mb"] == pytest.approx(2048.00)
+            assert data["vram_total_mb"] == pytest.approx(8192.00)
+            assert data["vram_usage_percent"] == pytest.approx(25.0)
 
     def test_system_status_without_gpu(self, client):
         """Test statusu systemu bez dostępnego GPU (VRAM = null)."""
@@ -86,7 +86,7 @@ class TestSystemStatusAPI:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "success"
-            assert data["memory_usage_mb"] == 4096.25
+            assert data["memory_usage_mb"] == pytest.approx(4096.25)
             assert data["vram_usage_mb"] is None
             assert data["vram_total_mb"] is None
             assert data["vram_usage_percent"] is None

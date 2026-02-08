@@ -30,7 +30,7 @@ class SystemMetrics:
     timestamp: float = 0.0
 
     def __post_init__(self):
-        if self.timestamp == 0.0:
+        if self.timestamp <= 0.0:
             self.timestamp = time.time()
 
 

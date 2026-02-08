@@ -129,7 +129,7 @@ class TestDreamEngine:
                 assert report["status"] == "completed"
                 assert report["dreams_attempted"] == 2
                 assert report["dreams_successful"] == 2
-                assert report["success_rate"] == 1.0
+                assert report["success_rate"] == pytest.approx(1.0)
                 assert dream_engine.state == DreamState.IDLE
 
     @pytest.mark.asyncio
@@ -312,5 +312,5 @@ print(x)
         assert stats["state"] == DreamState.IDLE
         assert stats["total_dreams"] == 10
         assert stats["successful_dreams"] == 7
-        assert stats["success_rate"] == 0.7
+        assert stats["success_rate"] == pytest.approx(0.7)
         assert stats["saved_dreams_count"] == 2

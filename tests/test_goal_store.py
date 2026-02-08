@@ -76,7 +76,7 @@ def test_add_task_with_kpi(temp_storage):
 
     assert len(task.kpis) == 1
     assert task.kpis[0].name == "Pokrycie testami"
-    assert task.kpis[0].target_value == 90.0
+    assert task.kpis[0].target_value == pytest.approx(90.0)
 
 
 def test_update_progress(temp_storage):
@@ -104,8 +104,8 @@ def test_update_progress_with_kpi(temp_storage):
     # Aktualizuj KPI
     updated = store.update_progress(task.goal_id, kpi_updates={"Test": 50.0})
 
-    assert updated.kpis[0].current_value == 50.0
-    assert updated.get_progress() == 50.0
+    assert updated.kpis[0].current_value == pytest.approx(50.0)
+    assert updated.get_progress() == pytest.approx(50.0)
 
 
 def test_get_vision(temp_storage):
@@ -257,13 +257,13 @@ def test_kpi_progress():
     """Test obliczania postępu KPI."""
     kpi = KPI(name="Test", target_value=100.0, current_value=50.0)
 
-    assert kpi.get_progress_percentage() == 50.0
+    assert kpi.get_progress_percentage() == pytest.approx(50.0)
 
     kpi.current_value = 100.0
-    assert kpi.get_progress_percentage() == 100.0
+    assert kpi.get_progress_percentage() == pytest.approx(100.0)
 
     kpi.current_value = 150.0
-    assert kpi.get_progress_percentage() == 100.0  # Max 100%
+    assert kpi.get_progress_percentage() == pytest.approx(100.0)  # Max 100%
 
 
 def test_goal_progress_with_status():
@@ -275,13 +275,13 @@ def test_goal_progress_with_status():
         priority=1,
     )
 
-    assert goal.get_progress() == 0.0
+    assert goal.get_progress() == pytest.approx(0.0)
 
     goal.status = GoalStatus.IN_PROGRESS
-    assert goal.get_progress() == 50.0
+    assert goal.get_progress() == pytest.approx(50.0)
 
     goal.status = GoalStatus.COMPLETED
-    assert goal.get_progress() == 100.0
+    assert goal.get_progress() == pytest.approx(100.0)
 
 
 def test_goal_progress_with_kpis():
@@ -297,4 +297,4 @@ def test_goal_progress_with_kpis():
     )
 
     # Średnia z 50% i 100% = 75%
-    assert goal.get_progress() == 75.0
+    assert goal.get_progress() == pytest.approx(75.0)

@@ -1,5 +1,7 @@
 """Testy jednostkowe dla protokołu komunikacji węzłów."""
 
+import pytest
+
 from venom_core.nodes.protocol import (
     Capabilities,
     HeartbeatMessage,
@@ -68,8 +70,8 @@ def test_heartbeat_message():
 
     assert heartbeat.message_type == MessageType.HEARTBEAT
     assert heartbeat.node_id == "node-123"
-    assert heartbeat.cpu_usage == 0.5
-    assert heartbeat.memory_usage == 0.6
+    assert heartbeat.cpu_usage == pytest.approx(0.5)
+    assert heartbeat.memory_usage == pytest.approx(0.6)
     assert heartbeat.active_tasks == 2
 
 
@@ -87,7 +89,7 @@ def test_node_response():
     assert response.request_id == "req-123"
     assert response.success is True
     assert response.result == "test output"
-    assert response.execution_time == 1.5
+    assert response.execution_time == pytest.approx(1.5)
     assert response.error is None
 
 

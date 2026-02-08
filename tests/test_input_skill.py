@@ -49,7 +49,7 @@ class TestInputSkill:
 
     def test_initialization(self, input_skill):
         """Test inicjalizacji InputSkill."""
-        assert input_skill.safety_delay == 0.1
+        assert input_skill.safety_delay == pytest.approx(0.1)
         assert input_skill.screen_width == 1920
         assert input_skill.screen_height == 1080
 

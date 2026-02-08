@@ -201,7 +201,7 @@ class TestGenerationParamsIntegration:
         )
 
         assert request.generation_params is not None
-        assert request.generation_params["temperature"] == 0.5
+        assert request.generation_params["temperature"] == pytest.approx(0.5)
         assert request.generation_params["max_tokens"] == 1000
 
     def test_generation_params_optional_in_task_request(self):

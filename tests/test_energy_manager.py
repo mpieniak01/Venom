@@ -15,8 +15,8 @@ class TestSystemMetrics:
         """Test tworzenia metryki systemowej."""
         metrics = SystemMetrics(cpu_percent=50.0, memory_percent=70.0)
 
-        assert metrics.cpu_percent == 50.0
-        assert metrics.memory_percent == 70.0
+        assert metrics.cpu_percent == pytest.approx(50.0)
+        assert metrics.memory_percent == pytest.approx(70.0)
         assert metrics.temperature is None
         assert metrics.timestamp > 0
 
@@ -24,7 +24,7 @@ class TestSystemMetrics:
         """Test metryki z temperaturą."""
         metrics = SystemMetrics(cpu_percent=60.0, memory_percent=80.0, temperature=45.5)
 
-        assert metrics.temperature == 45.5
+        assert metrics.temperature == pytest.approx(45.5)
 
 
 class TestEnergyManager:
@@ -34,8 +34,8 @@ class TestEnergyManager:
         """Test inicjalizacji EnergyManager."""
         em = EnergyManager(cpu_threshold=0.7, memory_threshold=0.8)
 
-        assert em.cpu_threshold == 0.7
-        assert em.memory_threshold == 0.8
+        assert em.cpu_threshold == pytest.approx(0.7)
+        assert em.memory_threshold == pytest.approx(0.8)
         assert not em.is_monitoring
         assert len(em._alert_callbacks) == 0
         assert em.sensors_active  # Nowa flaga dla sensorów
@@ -195,6 +195,6 @@ class TestEnergyManager:
         assert "is_idle" in status
         assert "registered_callbacks" in status
 
-        assert status["cpu_threshold"] == 70.0  # 0.7 * 100
-        assert status["memory_threshold"] == 80.0  # 0.8 * 100
+        assert status["cpu_threshold"] == pytest.approx(70.0)  # 0.7 * 100
+        assert status["memory_threshold"] == pytest.approx(80.0)  # 0.8 * 100
         assert status["registered_callbacks"] == 0

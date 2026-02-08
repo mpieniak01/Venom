@@ -69,7 +69,7 @@ class TestPromptManager:
         """Test pobrania parametrów promptu."""
         manager = PromptManager(prompts_dir=str(temp_prompts_dir))
         params = manager.get_parameters("test_agent")
-        assert params["temperature"] == 0.5
+        assert params["temperature"] == pytest.approx(0.5)
 
     def test_get_parameters_nonexistent(self, temp_prompts_dir):
         """Test pobrania parametrów nieistniejącego promptu."""

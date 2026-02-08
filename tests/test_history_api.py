@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 # Ensure venom_core is in path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -29,7 +31,7 @@ def test_history_request_summary_with_all_fields():
     assert summary.prompt == "Test prompt"
     assert summary.status == "COMPLETED"
     assert summary.finished_at == "2024-12-17T10:05:00"
-    assert summary.duration_seconds == 300.0
+    assert summary.duration_seconds == pytest.approx(300.0)
 
 
 def test_history_request_summary_without_finished_at():
@@ -81,7 +83,7 @@ def test_history_request_summary_to_dict():
 
     assert data["request_id"] == request_id
     assert data["finished_at"] == "2024-12-17T10:05:00"
-    assert data["duration_seconds"] == 300.0
+    assert data["duration_seconds"] == pytest.approx(300.0)
 
 
 def test_history_request_summary_to_dict_with_none():
@@ -126,7 +128,7 @@ def test_history_request_detail_with_all_fields():
 
     assert detail.request_id == request_id
     assert detail.finished_at == "2024-12-17T10:05:00"
-    assert detail.duration_seconds == 300.0
+    assert detail.duration_seconds == pytest.approx(300.0)
     assert len(detail.steps) == 1
 
 
@@ -161,7 +163,7 @@ def test_history_request_detail_to_dict():
     data = detail.model_dump()
 
     assert data["finished_at"] == "2024-12-17T10:05:00"
-    assert data["duration_seconds"] == 300.0
+    assert data["duration_seconds"] == pytest.approx(300.0)
 
 
 def test_history_request_detail_to_dict_with_none():

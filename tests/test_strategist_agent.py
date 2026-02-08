@@ -236,7 +236,7 @@ class TestStrategistAgent:
 
         extracted = agent._extract_time(time_result)
 
-        assert extracted == 45.0
+        assert extracted == pytest.approx(45.0)
 
     def test_extract_time_from_old_json_format(self, agent):
         """Test parsowania czasu ze starego formatu JSON."""
@@ -244,7 +244,7 @@ class TestStrategistAgent:
 
         extracted = agent._extract_time(time_result)
 
-        assert extracted == 60.0
+        assert extracted == pytest.approx(60.0)
 
     def test_extract_time_from_text_fallback(self, agent):
         """Test parsowania czasu z tekstu (fallback)."""
@@ -252,7 +252,7 @@ class TestStrategistAgent:
 
         extracted = agent._extract_time(time_result)
 
-        assert extracted == 120.0
+        assert extracted == pytest.approx(120.0)
 
     def test_extract_time_default_on_error(self, agent):
         """Test domyślnej wartości gdy parsowanie się nie uda."""
@@ -260,7 +260,7 @@ class TestStrategistAgent:
 
         extracted = agent._extract_time(time_result)
 
-        assert extracted == 30.0  # Domyślna wartość
+        assert extracted == pytest.approx(30.0)  # Domyślna wartość
 
     def test_extract_time_with_multiline_json(self, agent):
         """Test parsowania JSON z wieloliniowego wyniku."""
@@ -274,7 +274,7 @@ Złożoność: HIGH
 
         extracted = agent._extract_time(time_result)
 
-        assert extracted == 75.0
+        assert extracted == pytest.approx(75.0)
 
     def test_extract_time_zero_minutes(self, agent):
         """Test parsowania JSON gdy estimated_minutes wynosi 0 (edge case)."""
@@ -283,4 +283,4 @@ Złożoność: HIGH
         extracted = agent._extract_time(time_result)
 
         # Powinno zwrócić 0, a nie fallback do "minutes"
-        assert extracted == 0.0
+        assert extracted == pytest.approx(0.0)

@@ -47,6 +47,70 @@ class FeedbackResponse(BaseModel):
     follow_up_task_id: Optional[str] = None
 
 
+def _validate_feedback_payload(payload: FeedbackRequest) -> str:
+    if payload.rating not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="rating musi być 'up' albo 'down'")
+    comment = payload.comment or ""
+    if payload.rating == "down" and not comment.strip():
+        raise HTTPException(status_code=400, detail="comment wymagany dla oceny 'down'")
+    return comment
+
+
+def _extract_result_from_trace(trace) -> str:
+    if not trace:
+        return ""
+    for step in reversed(trace.steps):
+        if (
+            step.component != "SimpleMode"
+            or step.action != "response"
+            or not step.details
+        ):
+            continue
+        try:
+            details_json = json.loads(step.details)
+            return details_json.get("response", "")
+        except Exception as exc:
+            logger.debug("Nieudane parsowanie JSON w kroku feedbacku: %s", exc)
+    return ""
+
+
+def _resolve_feedback_context(
+    task_id: UUID, state_manager
+) -> tuple[str, str, Optional[str], Optional[bool]]:
+    prompt = ""
+    result = ""
+    intent = None
+    tool_required = None
+    task = state_manager.get_task(task_id)
+    if task:
+        context = getattr(task, "context_history", {}) or {}
+        intent_debug = context.get("intent_debug") or {}
+        tool_requirement = context.get("tool_requirement") or {}
+        prompt = getattr(task, "content", "") or ""
+        result = getattr(task, "result", "") or ""
+        intent = intent_debug.get("intent") or tool_requirement.get("intent")
+        tool_required = tool_requirement.get("required")
+        return prompt, result, intent, tool_required
+
+    if not _request_tracer:
+        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
+
+    trace = _request_tracer.get_trace(task_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
+    return trace.prompt, _extract_result_from_trace(trace), intent, tool_required
+
+
+async def _save_jsonl_entry(path: Path, entry: dict, error_message: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(path, "a", encoding="utf-8") as handle:
+            await handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.warning("%s: %s", error_message, exc)
+        raise
+
+
 @router.post(
     "/feedback",
     response_model=FeedbackResponse,
@@ -59,59 +123,15 @@ class FeedbackResponse(BaseModel):
 )
 async def submit_feedback(payload: FeedbackRequest):
     """Zapisuje feedback użytkownika i opcjonalnie uruchamia rundę doprecyzowania."""
-    if payload.rating not in ("up", "down"):
-        raise HTTPException(status_code=400, detail="rating musi być 'up' albo 'down'")
-    comment = payload.comment or ""
-    if payload.rating == "down" and not comment.strip():
-        raise HTTPException(status_code=400, detail="comment wymagany dla oceny 'down'")
+    comment = _validate_feedback_payload(payload)
 
     if _state_manager is None:
         raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
 
-    prompt = ""
-    result = ""
-    intent = None
-    tool_required = None
-
-    task = _state_manager.get_task(payload.task_id)
-    if task:
-        context = getattr(task, "context_history", {}) or {}
-        intent_debug = context.get("intent_debug") or {}
-        tool_requirement = context.get("tool_requirement") or {}
-        prompt = getattr(task, "content", "") or ""
-        result = getattr(task, "result", "") or ""
-        intent = intent_debug.get("intent") or tool_requirement.get("intent")
-        tool_required = tool_requirement.get("required")
-    elif _request_tracer:
-        # Fallback do tracera (SimpleMode)
-        trace = _request_tracer.get_trace(payload.task_id)
-        if trace:
-            prompt = trace.prompt
-            # Spróbuj wyciągnąć odpowiedź z kroków
-            for step in reversed(trace.steps):
-                if (
-                    step.component == "SimpleMode"
-                    and step.action == "response"
-                    and step.details
-                ):
-                    try:
-                        details_json = json.loads(step.details)
-                        result = details_json.get("response", "")
-                        break
-                    except Exception as exc:
-                        # Ignorujemy błędy parsowania JSON - przechodzimy do kolejnego kroku
-                        logger.debug(
-                            "Nieudane parsowanie JSON w kroku feedbacku: %s",
-                            exc,
-                        )
-        else:
-            raise HTTPException(
-                status_code=404, detail=f"Zadanie {payload.task_id} nie istnieje"
-            )
-    else:
-        raise HTTPException(
-            status_code=404, detail=f"Zadanie {payload.task_id} nie istnieje"
-        )
+    assert _state_manager is not None
+    prompt, result, intent, tool_required = _resolve_feedback_context(
+        payload.task_id, _state_manager
+    )
 
     entry = {
         "task_id": str(payload.task_id),
@@ -125,11 +145,10 @@ async def submit_feedback(payload: FeedbackRequest):
     }
 
     try:
-        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(FEEDBACK_LOG_PATH, "a", encoding="utf-8") as handle:
-            await handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception as exc:
-        logger.warning("Nie udało się zapisać feedbacku: %s", exc)
+        await _save_jsonl_entry(
+            FEEDBACK_LOG_PATH, entry, "Nie udało się zapisać feedbacku"
+        )
+    except Exception:
         raise HTTPException(status_code=500, detail="Nie udało się zapisać feedbacku")
 
     if _request_tracer:
@@ -144,10 +163,9 @@ async def submit_feedback(payload: FeedbackRequest):
 
     follow_up_task_id = None
     if payload.rating == "down" and _orchestrator is not None:
-        refinement = comment.strip()
         follow_up_prompt = (
             "Poprzednia odpowiedź była niepoprawna lub nie spełniła celu.\n"
-            f"Uwagi użytkownika: {refinement}\n\n"
+            f"Uwagi użytkownika: {comment.strip()}\n\n"
             "Popraw odpowiedź i doprecyzuj wynik."
         )
         follow_up_request = TaskRequest(
@@ -173,15 +191,13 @@ async def submit_feedback(payload: FeedbackRequest):
             "note": "Ukryty prompt może zostać utworzony na podstawie tej pary.",
         }
         try:
-            HIDDEN_PROMPT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            async with aiofiles.open(
-                HIDDEN_PROMPT_LOG_PATH, "a", encoding="utf-8"
-            ) as handle:
-                await handle.write(
-                    json.dumps(hidden_prompt_entry, ensure_ascii=False) + "\n"
-                )
+            await _save_jsonl_entry(
+                HIDDEN_PROMPT_LOG_PATH,
+                hidden_prompt_entry,
+                "Nie udało się zapisać hidden prompt",
+            )
         except Exception as exc:
-            logger.warning("Nie udało się zapisać hidden prompt: %s", exc)
+            logger.warning("%s", exc)
 
     return FeedbackResponse(
         status="ok",

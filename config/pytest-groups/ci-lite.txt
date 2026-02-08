@@ -23,3 +23,7 @@ tests/test_node_manager.py
 tests/test_evolution_basic.py
 tests/test_tracer.py
 tests/test_tracer_persistence.py
+tests/test_feedback_routes_logic.py
+tests/test_git_routes_logic.py
+tests/test_llm_simple_logic.py
+tests/test_runtime_controller_roi.py

@@ -243,11 +243,13 @@ function prepareGraphElements(
       ? computeMemoryPositions(filteredNodesSource as GraphNode[], entrySessions)
       : new Map<string, { x: number; y: number }>();
 
+  const buildShortLabel = (label: string) => (label.length > 40 ? `${label.slice(0, 40)}…` : label);
+
   const nodes = filteredNodesSource.map(
     (node: { data: Record<string, unknown>; position?: { x?: number; y?: number } }) => {
       const data = { ...(node.data || {}) };
       const label = typeof data.label === "string" ? data.label : "";
-      data.label_short = label.length > 40 ? `${label.slice(0, 40)}…` : label;
+      data.label_short = buildShortLabel(label);
       const topic = typeof data.topic === "string" ? data.topic : "";
       if (topic) {
         const topicColor = colorFromTopic(topic);

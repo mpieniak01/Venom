@@ -175,6 +175,18 @@ function parseSimpleResponse(historyDetail: HistoryRequestDetail | null) {
   return null;
 }
 
+function resolveRequestModeLabel(
+  contextPreviewMeta: ContextPreviewMeta | null | undefined,
+  historyDetail: HistoryRequestDetail | null,
+) {
+  if (contextPreviewMeta?.mode === "direct") return "direct";
+  if (contextPreviewMeta?.mode === "normal") return "normal";
+  const hasSimple = historyDetail?.steps?.some(
+    (step) => step.component === "SimpleMode",
+  );
+  return hasSimple ? "direct" : "normal";
+}
+
 type CockpitRequestDetailDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -233,15 +245,10 @@ export function CockpitRequestDetailDrawer({
     [selectedTaskRuntime?.error],
   );
   const simpleResponse = useMemo(() => parseSimpleResponse(historyDetail), [historyDetail]);
-  const requestModeLabel = useMemo(() => {
-    if (contextPreviewMeta?.mode === "direct") return "direct";
-    if (contextPreviewMeta?.mode === "normal") return "normal";
-    const hasSimple = historyDetail?.steps?.some(
-      (step) => step.component === "SimpleMode",
-    );
-    if (hasSimple) return "direct";
-    return "normal";
-  }, [contextPreviewMeta?.mode, historyDetail?.steps]);
+  const requestModeLabel = useMemo(
+    () => resolveRequestModeLabel(contextPreviewMeta, historyDetail),
+    [contextPreviewMeta, historyDetail],
+  );
 
   return (
     <Sheet

@@ -52,6 +52,11 @@ const getStatusTone = (status?: string) => {
   return "neutral";
 };
 
+const getInstalledModelSizeLabel = (t: ReturnType<typeof useLanguage>["t"], sizeGb?: number) =>
+  typeof sizeGb === "number"
+    ? `${sizeGb.toFixed(2)} GB`
+    : `${t("models.status.size")} —`;
+
 const readStorageJson = <T,>(key: string): T | null => {
   if (globalThis.window === undefined) return null;
   const raw = globalThis.window.localStorage.getItem(key);
@@ -232,9 +237,7 @@ const InstalledCard = ({
         <div>
           <p className="text-lg font-semibold">{model.name}</p>
           <p className="text-xs text-slate-400">
-            {typeof model.size_gb === "number"
-              ? `${model.size_gb.toFixed(2)} GB`
-              : `${t("models.status.size")} —`}{" "}
+            {getInstalledModelSizeLabel(t, model.size_gb)}{" "}
             • {providerLabel}
           </p>
         </div>

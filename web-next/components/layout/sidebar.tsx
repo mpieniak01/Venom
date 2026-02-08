@@ -100,6 +100,11 @@ const persistSidebarWidth = (collapsed: boolean) => {
   root.style.setProperty("--sidebar-width", collapsed ? collapsedWidth : expandedWidth);
 };
 
+const persistAutonomySnapshot = (snapshot: AutonomySnapshot) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
+};
+
 const resolveSidebarAutonomyInfo = (input: {
   autonomy: ReturnType<typeof useAutonomyLevel>["data"];
   localAutonomy: AutonomySnapshot | null;
@@ -226,9 +231,7 @@ export function Sidebar() {
     };
     setLocalAutonomy(snapshot);
     setSelectedAutonomy(String(autonomy.current_level));
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
-    }
+    persistAutonomySnapshot(snapshot);
   }, [autonomy, resolveAutonomyDetails]);
 
   const handleAutonomyChange = async (level: number) => {
@@ -243,9 +246,7 @@ export function Sidebar() {
       const fallback = resolveAutonomyDetails(level);
       if (fallback) {
         setLocalAutonomy(fallback);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("sidebar-autonomy", JSON.stringify(fallback));
-        }
+        persistAutonomySnapshot(fallback);
       }
       setStatusMessage(
         error instanceof Error

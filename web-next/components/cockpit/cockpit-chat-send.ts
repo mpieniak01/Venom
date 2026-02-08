@@ -189,6 +189,17 @@ const buildSimpleRequestSteps = (
   return steps.length > 0 ? steps : undefined;
 };
 
+const updateDurationMetrics = (params: {
+  duration: number;
+  setLastResponseDurationMs: ChatSendParams["setLastResponseDurationMs"];
+  setResponseDurations: ChatSendParams["setResponseDurations"];
+}) => {
+  const { duration, setLastResponseDurationMs, setResponseDurations } = params;
+  if (!Number.isFinite(duration)) return;
+  setLastResponseDurationMs(duration);
+  setResponseDurations((prev) => [...prev, duration].slice(-10));
+};
+
 const addInitialSimpleUserHistoryEntry = (
   setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
   clientId: string,
@@ -402,10 +413,7 @@ async function handleSimpleTaskSend(params: {
     } catch (err) {
       console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
     }
-    if (Number.isFinite(duration)) {
-      setLastResponseDurationMs(duration);
-      setResponseDurations((prev) => [...prev, duration].slice(-10));
-    }
+    updateDurationMetrics({ duration, setLastResponseDurationMs, setResponseDurations });
     window.setTimeout(() => {
       dropOptimisticRequest(clientId);
       clearSimpleStream(clientId);

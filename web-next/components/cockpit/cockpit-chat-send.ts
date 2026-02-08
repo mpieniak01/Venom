@@ -97,6 +97,13 @@ type ChatSendParams = {
 };
 
 type RuntimeOverride = { configHash?: string | null; runtimeId?: string | null } | null;
+type LocalHistoryEntry = {
+  role?: string;
+  content?: string;
+  session_id?: string;
+  request_id?: string;
+  timestamp?: string;
+};
 
 const resolveForcedRuntimeProvider = (
   provider: string | null,
@@ -128,6 +135,364 @@ const reconcileUserRequestId = (
     }),
   );
 };
+
+const upsertHistoryEntry = (
+  entries: LocalHistoryEntry[],
+  requestId: string,
+  role: "user" | "assistant",
+  content: string,
+  timestamp: string,
+  sessionId: string | null,
+) => {
+  const idx = entries.findIndex((entry) => entry.request_id === requestId && entry.role === role);
+  if (idx >= 0) {
+    entries[idx] = {
+      ...entries[idx],
+      content,
+      timestamp: entries[idx].timestamp || timestamp,
+    };
+    return;
+  }
+  entries.push({
+    role,
+    content,
+    request_id: requestId,
+    timestamp,
+    session_id: sessionId ?? undefined,
+  });
+};
+
+const buildSimpleRequestSteps = (
+  timing: { historyMs?: number; ttftMs?: number } | undefined,
+  timestamp: string,
+): HistoryRequestDetail["steps"] | undefined => {
+  const steps = [
+    timing?.historyMs !== undefined
+      ? {
+          component: "UI",
+          action: "submit_to_history",
+          status: "OK",
+          timestamp,
+          details: `history_ms=${Math.round(timing.historyMs)}`,
+        }
+      : null,
+    timing?.ttftMs !== undefined
+      ? {
+          component: "UI",
+          action: "ttft",
+          status: "OK",
+          timestamp,
+          details: `ttft_ms=${Math.round(timing.ttftMs)}`,
+        }
+      : null,
+  ].filter(Boolean) as HistoryRequestDetail["steps"];
+  return steps.length > 0 ? steps : undefined;
+};
+
+async function handleSimpleTaskSend(params: {
+  clientId: string;
+  trimmed: string;
+  resolvedSession: string | null;
+  generationParams: GenerationParams | null;
+  selectedLlmModel: string;
+  activeServerInfo: ActiveServerInfo;
+  sendSimpleChatStream: ChatSendParams["sendSimpleChatStream"];
+  linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
+  updateSimpleStream: ChatSendParams["updateSimpleStream"];
+  recordUiTiming: ChatSendParams["recordUiTiming"];
+  uiTimingsRef: ChatSendParams["uiTimingsRef"];
+  setSimpleRequestDetails: ChatSendParams["setSimpleRequestDetails"];
+  ingestMemoryEntry: ChatSendParams["ingestMemoryEntry"];
+  setLastResponseDurationMs: ChatSendParams["setLastResponseDurationMs"];
+  setResponseDurations: ChatSendParams["setResponseDurations"];
+  dropOptimisticRequest: ChatSendParams["dropOptimisticRequest"];
+  clearSimpleStream: ChatSendParams["clearSimpleStream"];
+  setMessage: ChatSendParams["setMessage"];
+  setSending: ChatSendParams["setSending"];
+}) {
+  const {
+    clientId,
+    trimmed,
+    resolvedSession,
+    generationParams,
+    selectedLlmModel,
+    activeServerInfo,
+    sendSimpleChatStream,
+    linkOptimisticRequest,
+    setLocalSessionHistory,
+    updateSimpleStream,
+    recordUiTiming,
+    uiTimingsRef,
+    setSimpleRequestDetails,
+    ingestMemoryEntry,
+    setLastResponseDurationMs,
+    setResponseDurations,
+    dropOptimisticRequest,
+    clearSimpleStream,
+    setMessage,
+    setSending,
+  } = params;
+
+  try {
+    const createdTimestamp = new Date().toISOString();
+    setLocalSessionHistory((prev) => {
+      const next = [...prev];
+      const exists = next.some((entry) => entry.request_id === clientId && entry.role === "user");
+      if (!exists) {
+        next.push({
+          role: "user",
+          content: trimmed,
+          request_id: clientId,
+          timestamp: createdTimestamp,
+          session_id: resolvedSession ?? undefined,
+        });
+      }
+      return next;
+    });
+    updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
+
+    const maxTokens = typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null;
+    const temperature = typeof generationParams?.temperature === "number" ? generationParams.temperature : null;
+    const response = await sendSimpleChatStream({
+      content: trimmed,
+      model: selectedLlmModel || null,
+      maxTokens,
+      temperature,
+      sessionId: resolvedSession,
+    });
+    const headerRequestId = response.headers.get("x-request-id");
+    const simpleRequestId = headerRequestId || `simple-${clientId}`;
+    linkOptimisticRequest(clientId, simpleRequestId);
+
+    reconcileUserRequestId(setLocalSessionHistory, clientId, simpleRequestId);
+    let lastHistoryUpdate = 0;
+    const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
+      const now = Date.now();
+      if (role === "assistant" && now - lastHistoryUpdate < 60) {
+        return;
+      }
+      lastHistoryUpdate = now;
+      setLocalSessionHistory((prev) => {
+        const next = [...prev];
+        upsertHistoryEntry(next, simpleRequestId, role, content, createdTimestamp, resolvedSession);
+        return next;
+      });
+    };
+    upsertLocalHistory("user", trimmed);
+    const historyTiming = uiTimingsRef.current.get(clientId);
+    if (historyTiming && historyTiming.historyMs === undefined) {
+      recordUiTiming(clientId, { historyMs: Date.now() - historyTiming.t0 });
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Brak strumienia odpowiedzi z API.");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const startedAt = Date.now();
+    let firstChunkLogged = false;
+
+    const parser = createParser({
+      onEvent: (msg) => {
+        if (msg.event === "content") {
+          const data = JSON.parse(msg.data);
+          if (data.text) {
+            buffer += data.text;
+            if (!firstChunkLogged) {
+              const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
+              if (ttftTiming && ttftTiming.ttftMs === undefined) {
+                recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
+              }
+              firstChunkLogged = true;
+            }
+            updateSimpleStream(clientId, { text: buffer, status: "W toku" });
+            upsertLocalHistory("assistant", buffer);
+          }
+        } else if (msg.event === "error") {
+          const data = JSON.parse(msg.data);
+          throw new Error(data.error || "Wystąpił błąd strumieniowania.");
+        }
+      },
+    });
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) {
+          parser.feed(chunk);
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
+    const duration = Date.now() - startedAt;
+    const timestamp = new Date().toISOString();
+    const simpleModelName = selectedLlmModel || activeServerInfo?.active_model || undefined;
+    const simpleEndpoint = activeServerInfo?.active_endpoint ?? undefined;
+    setLocalSessionHistory((prev) => {
+      const next = [...prev];
+      upsertHistoryEntry(next, simpleRequestId, "user", trimmed, timestamp, resolvedSession);
+      upsertHistoryEntry(next, simpleRequestId, "assistant", buffer, timestamp, resolvedSession);
+      return next;
+    });
+    const timing = uiTimingsRef.current.get(simpleRequestId);
+    const steps = buildSimpleRequestSteps(timing, timestamp);
+    const simpleProvider = activeServerInfo?.active_server ?? activeServerInfo?.runtime_id?.split("@")[0] ?? "local";
+    setSimpleRequestDetails((prev) => ({
+      ...prev,
+      [simpleRequestId]: {
+        request_id: simpleRequestId,
+        prompt: trimmed,
+        status: "COMPLETED",
+        model: simpleModelName,
+        llm_provider: simpleProvider,
+        llm_model: simpleModelName ?? null,
+        llm_endpoint: simpleEndpoint ?? null,
+        llm_config_hash: activeServerInfo?.config_hash ?? null,
+        llm_runtime_id: activeServerInfo?.runtime_id ?? null,
+        forced_tool: null,
+        forced_provider: null,
+        session_id: resolvedSession ?? null,
+        created_at: timestamp,
+        finished_at: timestamp,
+        duration_seconds: Number.isFinite(duration) ? Math.round((duration / 1000) * 100) / 100 : null,
+        steps,
+      },
+    }));
+    try {
+      await ingestMemoryEntry({
+        text: buffer,
+        category: "assistant",
+        sessionId: resolvedSession ?? null,
+        userId: "user_default",
+        pinned: true,
+        memoryType: "fact",
+        scope: "session",
+        timestamp,
+      });
+    } catch (err) {
+      console.warn("Nie udało się zapisać pamięci dla trybu prostego:", err);
+    }
+    if (Number.isFinite(duration)) {
+      setLastResponseDurationMs(duration);
+      setResponseDurations((prev) => [...prev, duration].slice(-10));
+    }
+    window.setTimeout(() => {
+      dropOptimisticRequest(clientId);
+      clearSimpleStream(clientId);
+    }, 200);
+  } catch (err) {
+    updateSimpleStream(clientId, {
+      text: err instanceof Error ? err.message : "Błąd trybu prostego.",
+      status: "FAILED",
+      done: true,
+    });
+    dropOptimisticRequest(clientId);
+    setMessage(err instanceof Error ? err.message : "Nie udało się wysłać zadania");
+    setLocalSessionHistory((prev) => {
+      const next = [...prev];
+      const exists = next.some((entry) => entry.request_id === clientId && entry.role === "assistant");
+      if (!exists) {
+        upsertHistoryEntry(
+          next,
+          clientId,
+          "assistant",
+          err instanceof Error ? err.message : "Błąd trybu prostego.",
+          new Date().toISOString(),
+          resolvedSession,
+        );
+      }
+      return next;
+    });
+  } finally {
+    setSending(false);
+  }
+}
+
+async function handleStandardTaskSend(params: {
+  trimmed: string;
+  labMode: boolean;
+  generationParams: GenerationParams | null;
+  runtimeOverride: RuntimeOverride;
+  activeServerInfo: ActiveServerInfo;
+  parsed: ReturnType<typeof parseSlashCommand>;
+  forcedIntent: string | null;
+  language: string;
+  resolvedSession: string | null;
+  clientId: string;
+  sendTask: ChatSendParams["sendTask"];
+  linkOptimisticRequest: ChatSendParams["linkOptimisticRequest"];
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"];
+  refreshTasks: ChatSendParams["refreshTasks"];
+  refreshQueue: ChatSendParams["refreshQueue"];
+  refreshHistory: ChatSendParams["refreshHistory"];
+  refreshSessionHistory: ChatSendParams["refreshSessionHistory"];
+  dropOptimisticRequest: ChatSendParams["dropOptimisticRequest"];
+  setMessage: ChatSendParams["setMessage"];
+  setSending: ChatSendParams["setSending"];
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const {
+    trimmed,
+    labMode,
+    generationParams,
+    runtimeOverride,
+    activeServerInfo,
+    parsed,
+    forcedIntent,
+    language,
+    resolvedSession,
+    clientId,
+    sendTask,
+    linkOptimisticRequest,
+    setLocalSessionHistory,
+    refreshTasks,
+    refreshQueue,
+    refreshHistory,
+    refreshSessionHistory,
+    dropOptimisticRequest,
+    setMessage,
+    setSending,
+    t,
+  } = params;
+  try {
+    const res = await sendTask(
+      trimmed,
+      !labMode,
+      generationParams,
+      buildRuntimeMeta(runtimeOverride, activeServerInfo),
+      null,
+      {
+        tool: parsed.forcedTool,
+        provider: parsed.forcedProvider,
+      },
+      forcedIntent,
+      language as ("pl" | "en" | "de" | null),
+      resolvedSession,
+      "session",
+    );
+    const resolvedId = res.task_id ?? null;
+    linkOptimisticRequest(clientId, resolvedId);
+    if (resolvedId) {
+      reconcileUserRequestId(setLocalSessionHistory, clientId, resolvedId);
+    }
+    const displayId = resolvedId ?? t("cockpit.chatMessages.taskPendingId");
+    setMessage(t("cockpit.chatMessages.taskSent", { id: displayId }));
+    await Promise.all([refreshTasks(), refreshQueue(), refreshHistory(), refreshSessionHistory()]);
+  } catch (err) {
+    dropOptimisticRequest(clientId);
+    setMessage(err instanceof Error ? err.message : t("cockpit.chatMessages.taskSendError"));
+  } finally {
+    setSending(false);
+  }
+}
 
 export function useChatSend({
   labMode,
@@ -244,303 +609,53 @@ export function useChatSend({
     }
     void (async () => {
       if (shouldUseSimple) {
-        try {
-          const createdTimestamp = new Date().toISOString();
-          setLocalSessionHistory((prev) => {
-            const next = [...prev];
-            const exists = next.some(
-              (entry) => entry.request_id === clientId && entry.role === "user",
-            );
-            if (!exists) {
-              next.push({
-                role: "user",
-                content: trimmed,
-                request_id: clientId,
-                timestamp: createdTimestamp,
-                session_id: resolvedSession ?? undefined,
-              });
-            }
-            return next;
-          });
-          updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
-          const maxTokens =
-            typeof generationParams?.max_tokens === "number"
-              ? generationParams.max_tokens
-              : null;
-          const temperature =
-            typeof generationParams?.temperature === "number"
-              ? generationParams.temperature
-              : null;
-          const response = await sendSimpleChatStream({
-            content: trimmed,
-            model: selectedLlmModel || null,
-            maxTokens,
-            temperature,
-            sessionId: resolvedSession,
-          });
-          const headerRequestId = response.headers.get("x-request-id");
-          const simpleRequestId = headerRequestId || `simple-${clientId}`;
-          linkOptimisticRequest(clientId, simpleRequestId);
-
-          reconcileUserRequestId(setLocalSessionHistory, clientId, simpleRequestId);
-          let lastHistoryUpdate = 0;
-          const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
-            const now = Date.now();
-            if (role === "assistant" && now - lastHistoryUpdate < 60) {
-              return;
-            }
-            lastHistoryUpdate = now;
-            setLocalSessionHistory((prev) => {
-              const next = [...prev];
-              const idx = next.findIndex(
-                (entry) =>
-                  entry.request_id === simpleRequestId && entry.role === role,
-              );
-              const timestamp = createdTimestamp;
-              if (idx >= 0) {
-                next[idx] = {
-                  ...next[idx],
-                  content,
-                  timestamp: next[idx].timestamp || timestamp,
-                };
-              } else {
-                next.push({
-                  role,
-                  content,
-                  request_id: simpleRequestId,
-                  timestamp,
-                  session_id: resolvedSession ?? undefined,
-                });
-              }
-              return next;
-            });
-          };
-          upsertLocalHistory("user", trimmed);
-          const historyTiming = uiTimingsRef.current.get(clientId);
-          if (historyTiming && historyTiming.historyMs === undefined) {
-            recordUiTiming(clientId, { historyMs: Date.now() - historyTiming.t0 });
-          }
-          const reader = response.body?.getReader();
-          if (!reader) {
-            throw new Error("Brak strumienia odpowiedzi z API.");
-          }
-
-          const decoder = new TextDecoder();
-          let buffer = ""; // To store the full text for history/memory
-          const startedAt = Date.now();
-          let firstChunkLogged = false;
-
-          const parser = createParser({
-            onEvent: (msg) => {
-              if (msg.event === "content") {
-                const data = JSON.parse(msg.data);
-                if (data.text) {
-                  buffer += data.text;
-                  if (!firstChunkLogged) {
-                    const ttftTiming = uiTimingsRef.current.get(simpleRequestId);
-                    if (ttftTiming && ttftTiming.ttftMs === undefined) {
-                      recordUiTiming(simpleRequestId, { ttftMs: Date.now() - ttftTiming.t0 });
-                    }
-                    firstChunkLogged = true;
-                  }
-                  updateSimpleStream(clientId, { text: buffer, status: "W toku" });
-                  upsertLocalHistory("assistant", buffer);
-                }
-              } else if (msg.event === "error") {
-                const data = JSON.parse(msg.data);
-                throw new Error(data.error || "Wystąpił błąd strumieniowania.");
-              }
-            },
-          });
-
-          try {
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              const chunk = decoder.decode(value, { stream: true });
-              if (chunk) {
-                parser.feed(chunk);
-              }
-            }
-          } finally {
-            reader.releaseLock();
-          }
-          updateSimpleStream(clientId, { text: buffer, status: "COMPLETED", done: true });
-          const duration = Date.now() - startedAt;
-          const timestamp = new Date().toISOString();
-          const simpleModelName = selectedLlmModel || activeServerInfo?.active_model || undefined;
-          const simpleEndpoint = activeServerInfo?.active_endpoint ?? undefined;
-          setLocalSessionHistory((prev) => {
-            const next = [...prev];
-            const upsert = (role: "user" | "assistant", content: string) => {
-              const idx = next.findIndex(
-                (entry) =>
-                  entry.request_id === simpleRequestId && entry.role === role,
-              );
-              if (idx >= 0) {
-                next[idx] = {
-                  ...next[idx],
-                  content,
-                  timestamp: next[idx].timestamp || timestamp,
-                };
-              } else {
-                next.push({
-                  role,
-                  content,
-                  request_id: simpleRequestId,
-                  timestamp,
-                  session_id: resolvedSession ?? undefined,
-                });
-              }
-            };
-            upsert("user", trimmed);
-            upsert("assistant", buffer);
-            return next;
-          });
-          const timing = uiTimingsRef.current.get(simpleRequestId);
-          const steps = [
-            timing?.historyMs !== undefined
-              ? {
-                component: "UI",
-                action: "submit_to_history",
-                status: "OK",
-                timestamp,
-                details: `history_ms=${Math.round(timing.historyMs)}`,
-              }
-              : null,
-            timing?.ttftMs !== undefined
-              ? {
-                component: "UI",
-                action: "ttft",
-                status: "OK",
-                timestamp,
-                details: `ttft_ms=${Math.round(timing.ttftMs)}`,
-              }
-              : null,
-          ].filter(Boolean) as HistoryRequestDetail["steps"];
-          const simpleProvider =
-            activeServerInfo?.active_server ?? activeServerInfo?.runtime_id?.split("@")[0] ?? "local";
-          setSimpleRequestDetails((prev) => ({
-            ...prev,
-            [simpleRequestId]: {
-              request_id: simpleRequestId,
-              prompt: trimmed,
-              status: "COMPLETED",
-              model: simpleModelName,
-              llm_provider: simpleProvider,
-              llm_model: simpleModelName ?? null,
-              llm_endpoint: simpleEndpoint ?? null,
-              llm_config_hash: activeServerInfo?.config_hash ?? null,
-              llm_runtime_id: activeServerInfo?.runtime_id ?? null,
-              forced_tool: null,
-              forced_provider: null,
-              session_id: resolvedSession ?? null,
-              created_at: timestamp,
-              finished_at: timestamp,
-              duration_seconds: Number.isFinite(duration)
-                ? Math.round((duration / 1000) * 100) / 100
-                : null,
-              steps: steps && steps.length > 0 ? steps : undefined,
-            },
-          }));
-          try {
-            await ingestMemoryEntry({
-              text: buffer,
-              category: "assistant",
-              sessionId: resolvedSession ?? null,
-              userId: "user_default",
-              pinned: true,
-              memoryType: "fact",
-              scope: "session",
-              timestamp,
-            });
-          } catch (err) {
-            console.warn(
-              "Nie udało się zapisać pamięci dla trybu prostego:",
-              err,
-            );
-          }
-          if (Number.isFinite(duration)) {
-            setLastResponseDurationMs(duration);
-            setResponseDurations((prev) => [...prev, duration].slice(-10));
-          }
-          window.setTimeout(() => {
-            dropOptimisticRequest(clientId);
-            clearSimpleStream(clientId);
-          }, 200);
-        } catch (err) {
-          updateSimpleStream(clientId, {
-            text: err instanceof Error ? err.message : "Błąd trybu prostego.",
-            status: "FAILED",
-            done: true,
-          });
-          dropOptimisticRequest(clientId);
-          setMessage(
-            err instanceof Error ? err.message : "Nie udało się wysłać zadania",
-          );
-          setLocalSessionHistory((prev) => {
-            const next = [...prev];
-            const exists = next.some(
-              (entry) =>
-                entry.request_id === clientId && entry.role === "assistant",
-            );
-            if (!exists) {
-              next.push({
-                role: "assistant",
-                content:
-                  err instanceof Error ? err.message : "Błąd trybu prostego.",
-                request_id: clientId,
-                timestamp: new Date().toISOString(),
-                session_id: resolvedSession ?? undefined,
-              });
-            }
-            return next;
-          });
-        } finally {
-          setSending(false);
-        }
+        await handleSimpleTaskSend({
+          clientId,
+          trimmed,
+          resolvedSession,
+          generationParams,
+          selectedLlmModel,
+          activeServerInfo,
+          sendSimpleChatStream,
+          linkOptimisticRequest,
+          setLocalSessionHistory,
+          updateSimpleStream,
+          recordUiTiming,
+          uiTimingsRef,
+          setSimpleRequestDetails,
+          ingestMemoryEntry,
+          setLastResponseDurationMs,
+          setResponseDurations,
+          dropOptimisticRequest,
+          clearSimpleStream,
+          setMessage,
+          setSending,
+        });
         return;
       }
-      try {
-        const res = await sendTask(
-          trimmed,
-          !labMode,
-          generationParams,
-          buildRuntimeMeta(runtimeOverride, activeServerInfo),
-          null,
-          {
-            tool: parsed.forcedTool,
-            provider: parsed.forcedProvider,
-          },
-          forcedIntent,
-          language as ("pl" | "en" | "de" | null),
-          resolvedSession,
-          "session",
-        );
-        const resolvedId = res.task_id ?? null;
-        linkOptimisticRequest(clientId, resolvedId);
-
-        // Reconcile user message ID in local history to avoid duplication
-        if (resolvedId) {
-          reconcileUserRequestId(setLocalSessionHistory, clientId, resolvedId);
-        }
-
-        const displayId = resolvedId ?? t("cockpit.chatMessages.taskPendingId");
-        setMessage(t("cockpit.chatMessages.taskSent", { id: displayId }));
-        await Promise.all([
-          refreshTasks(),
-          refreshQueue(),
-          refreshHistory(),
-          refreshSessionHistory(),
-        ]);
-      } catch (err) {
-        dropOptimisticRequest(clientId);
-        setMessage(
-          err instanceof Error ? err.message : t("cockpit.chatMessages.taskSendError"),
-        );
-      } finally {
-        setSending(false);
-      }
+      await handleStandardTaskSend({
+        trimmed,
+        labMode,
+        generationParams,
+        runtimeOverride,
+        activeServerInfo,
+        parsed,
+        forcedIntent,
+        language,
+        resolvedSession,
+        clientId,
+        sendTask,
+        linkOptimisticRequest,
+        setLocalSessionHistory,
+        refreshTasks,
+        refreshQueue,
+        refreshHistory,
+        refreshSessionHistory,
+        dropOptimisticRequest,
+        setMessage,
+        setSending,
+        t,
+      });
     })();
     return true;
   }, [

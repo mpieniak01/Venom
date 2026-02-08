@@ -16,10 +16,8 @@ tests/test_ux_analyst.py
 tests/test_executive_agent_roi.py
 tests/test_shadow_agent.py
 tests/test_evolution_coordinator.py
-tests/test_overmind_integration.py
 tests/test_hardware_bridge.py
 tests/test_operator_agent.py
-tests/test_ingestion_engine.py
 tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
 tests/test_evolution_basic.py

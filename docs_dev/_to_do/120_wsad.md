@@ -46,6 +46,14 @@
   - cleanup tautologicznych asercji i no-op callbacków w testach
   - runtime perf fix: `venom_core/memory/graph_rag_service.py` (`re.sub` -> `str.replace`)
 
+- [x] Batch `120-g` (commit: `TBD`):
+  - Sonar reports pipeline (lokalne + CI):
+    - `Makefile`: `sonar-reports-backend`, `sonar-reports-frontend`, `sonar-reports`
+    - `web-next/package.json`: `test:unit:coverage` (generowanie `web-next/coverage/lcov.info`)
+    - `sonar-project.properties`: pełny scope backend+frontend + ścieżki raportów coverage/xUnit/lcov
+    - `.github/workflows/sonar.yml`: workflow SonarCloud scan + upload artefaktów raportów
+    - `.gitignore`: ignorowanie lokalnych artefaktów `web-next/coverage/`
+
 #### Do domknięcia
 - Brak otwartych pozycji implementacyjnych w zakresie tasku `120`.
 

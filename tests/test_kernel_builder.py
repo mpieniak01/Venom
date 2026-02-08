@@ -3,6 +3,7 @@
 import pytest
 from pydantic_settings import BaseSettings
 
+from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 from venom_core.execution.kernel_builder import KernelBuilder
 
 
@@ -10,7 +11,7 @@ class MockSettings(BaseSettings):
     """Mockowa konfiguracja do testów."""
 
     LLM_SERVICE_TYPE: str = "local"
-    LLM_LOCAL_ENDPOINT: str = "http://localhost:11434/v1"
+    LLM_LOCAL_ENDPOINT: str = LOCALHOST_11434_V1
     LLM_MODEL_NAME: str = "phi3:latest"
     LLM_LOCAL_API_KEY: str = "venom-local"
     OPENAI_API_KEY: str = ""
@@ -33,7 +34,7 @@ def test_kernel_builder_local_configuration():
     """Test budowania kernela z konfiguracją lokalną."""
     settings = MockSettings(
         LLM_SERVICE_TYPE="local",
-        LLM_LOCAL_ENDPOINT="http://localhost:11434/v1",
+        LLM_LOCAL_ENDPOINT=LOCALHOST_11434_V1,
         LLM_MODEL_NAME="phi3:latest",
     )
     builder = KernelBuilder(settings=settings)
@@ -119,7 +120,7 @@ def test_kernel_builder_case_insensitive_service_type():
     """Test że typ serwisu nie jest case-sensitive."""
     settings = MockSettings(
         LLM_SERVICE_TYPE="LOCAL",  # Uppercase
-        LLM_LOCAL_ENDPOINT="http://localhost:11434/v1",
+        LLM_LOCAL_ENDPOINT=LOCALHOST_11434_V1,
         LLM_MODEL_NAME="phi3:latest",
     )
     builder = KernelBuilder(settings=settings)

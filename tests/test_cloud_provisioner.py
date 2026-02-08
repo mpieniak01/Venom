@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import http_url
 from venom_core.infrastructure.cloud_provisioner import (
     CloudProvisioner,
     CloudProvisionerError,
@@ -263,22 +264,22 @@ def test_get_service_url():
 
     # Test domyślnej nazwy
     url = provisioner.get_service_url()
-    assert url == "http://venom.local:8000"
+    assert url == http_url("venom.local", 8000)
 
     # Test z własną nazwą
     url = provisioner.get_service_url("test-agent")
-    assert url == "http://test-agent.local:8000"
+    assert url == http_url("test-agent.local", 8000)
 
     # Test z nazwą zawierającą .local
     url = provisioner.get_service_url("agent.local")
-    assert url == "http://agent.local:8000"
+    assert url == http_url("agent.local", 8000)
 
 
 def test_get_service_url_with_custom_port():
     """Test URL usługi z niestandardowym portem."""
     provisioner = CloudProvisioner(service_port=9000)
     url = provisioner.get_service_url("custom")
-    assert url == "http://custom.local:9000"
+    assert url == http_url("custom.local", 9000)
 
 
 @pytest.mark.asyncio

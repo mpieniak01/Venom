@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import TEST_EXAMPLE_HTTP
 from venom_core.core.service_monitor import (
     ServiceHealthMonitor,
     ServiceInfo,
@@ -37,7 +38,7 @@ def test_register_service(service_registry):
     test_service = ServiceInfo(
         name="Test Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint=TEST_EXAMPLE_HTTP,
         description="Test service",
         is_critical=True,
     )
@@ -53,7 +54,7 @@ def test_get_service(service_registry):
     test_service = ServiceInfo(
         name="Test Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint=TEST_EXAMPLE_HTTP,
     )
 
     service_registry.register_service(test_service)
@@ -104,7 +105,7 @@ async def test_check_http_service_online(service_monitor):
     test_service = ServiceInfo(
         name="Test HTTP Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint=TEST_EXAMPLE_HTTP,
     )
 
     # Mock aiohttp session
@@ -134,7 +135,7 @@ async def test_check_http_service_offline(service_monitor):
     test_service = ServiceInfo(
         name="Test HTTP Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint=TEST_EXAMPLE_HTTP,
     )
 
     # Mock aiohttp session - symuluj błąd połączenia
@@ -182,7 +183,7 @@ async def test_check_health_specific_service(service_monitor, service_registry):
     test_service = ServiceInfo(
         name="Specific Test Service",
         service_type="api",
-        endpoint="http://test.example.com",
+        endpoint=TEST_EXAMPLE_HTTP,
     )
     service_registry.register_service(test_service)
 

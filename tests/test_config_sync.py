@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import LOCALHOST_8001_V1, LOCALHOST_11434_V1, http_url
 from venom_core.services.config_manager import ConfigManager
 
 
@@ -21,8 +22,8 @@ def mock_config_manager():
         # Setup initial state
         mock_read.return_value = {
             "ACTIVE_LLM_SERVER": "vllm",
-            "LLM_LOCAL_ENDPOINT": "http://localhost:8001/v1",
-            "VLLM_ENDPOINT": "http://localhost:8001/v1",
+            "LLM_LOCAL_ENDPOINT": LOCALHOST_8001_V1,
+            "VLLM_ENDPOINT": LOCALHOST_8001_V1,
         }
         mock_backup.return_value = MagicMock(name="backup_path")
 
@@ -41,7 +42,7 @@ def test_auto_sync_ollama(mock_config_manager):
     args, _ = mock_write.call_args
     env_values = args[0]
     assert env_values["ACTIVE_LLM_SERVER"] == "ollama"
-    assert env_values["LLM_LOCAL_ENDPOINT"] == "http://localhost:11434/v1"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == LOCALHOST_11434_V1
 
 
 def test_auto_sync_vllm(mock_config_manager):
@@ -54,7 +55,7 @@ def test_auto_sync_vllm(mock_config_manager):
     args, _ = mock_write.call_args
     env_values = args[0]
     assert env_values["ACTIVE_LLM_SERVER"] == "vllm"
-    assert env_values["LLM_LOCAL_ENDPOINT"] == "http://localhost:8001/v1"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == LOCALHOST_8001_V1
 
 
 def test_explicit_override_respected(mock_config_manager):
@@ -64,7 +65,7 @@ def test_explicit_override_respected(mock_config_manager):
     result = manager.update_config(
         {
             "ACTIVE_LLM_SERVER": "ollama",
-            "LLM_LOCAL_ENDPOINT": "http://custom-server:1234/v1",
+            "LLM_LOCAL_ENDPOINT": http_url("custom-server", 1234, "/v1"),
         }
     )
 
@@ -72,4 +73,4 @@ def test_explicit_override_respected(mock_config_manager):
     args, _ = mock_write.call_args
     env_values = args[0]
     assert env_values["ACTIVE_LLM_SERVER"] == "ollama"
-    assert env_values["LLM_LOCAL_ENDPOINT"] == "http://custom-server:1234/v1"
+    assert env_values["LLM_LOCAL_ENDPOINT"] == http_url("custom-server", 1234, "/v1")

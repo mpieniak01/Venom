@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import LOCALHOST_8000
 from venom_core.core.model_registry import ModelRegistry
 from venom_core.core.service_monitor import ServiceHealthMonitor, ServiceRegistry
 from venom_core.services.benchmark import BenchmarkService, BenchmarkStatus
@@ -184,7 +185,7 @@ async def test_wait_for_healthcheck_success(benchmark_service):
 
         # Powinno zakończyć się bez błędu
         await benchmark_service._wait_for_healthcheck(
-            endpoint="http://localhost:8000", timeout=5
+            endpoint=LOCALHOST_8000, timeout=5
         )
 
 
@@ -201,7 +202,7 @@ async def test_wait_for_healthcheck_timeout(benchmark_service):
 
         with pytest.raises(TimeoutError, match="healthcheck failed"):
             await benchmark_service._wait_for_healthcheck(
-                endpoint="http://localhost:8000", timeout=1
+                endpoint=LOCALHOST_8000, timeout=1
             )
 
 
@@ -238,7 +239,7 @@ async def test_query_model_with_metrics(benchmark_service):
             mock_client_class.return_value = mock_client
 
             metrics = await benchmark_service._query_model_with_metrics(
-                question, model_name="model1", endpoint="http://localhost:8000"
+                question, model_name="model1", endpoint=LOCALHOST_8000
             )
 
             assert "latency_ms" in metrics

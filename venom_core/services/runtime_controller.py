@@ -94,6 +94,15 @@ class RuntimeController:
         # Inicjalizuj ProcessMonitor
         self.process_monitor = ProcessMonitor(self.project_root)
 
+    @staticmethod
+    def _is_actionable(service_type: ServiceType) -> bool:
+        return service_type in {
+            ServiceType.BACKEND,
+            ServiceType.UI,
+            ServiceType.LLM_OLLAMA,
+            ServiceType.LLM_VLLM,
+        }
+
     def _get_process_info(self, pid: int) -> Optional[Dict[str, float | int]]:
         """Pobiera informacje o procesie. Deleguje do ProcessMonitor."""
         return self.process_monitor.get_process_info(pid)
@@ -117,116 +126,85 @@ class RuntimeController:
         if len(self.history) > self.max_history:
             self.history = self.history[-self.max_history :]
 
-    def get_service_status(self, service_type: ServiceType) -> ServiceInfo:
-        """Pobiera status usługi."""
-        # Określ czy usługa jest actionable (ma realne akcje start/stop)
-        actionable = service_type in [
-            ServiceType.BACKEND,
-            ServiceType.UI,
-            ServiceType.LLM_OLLAMA,
-            ServiceType.LLM_VLLM,
-        ]
-
-        info = ServiceInfo(
+    def _base_service_info(self, service_type: ServiceType) -> ServiceInfo:
+        return ServiceInfo(
             name=service_type.value,
             service_type=service_type,
             status=ServiceStatus.UNKNOWN,
-            actionable=actionable,
+            actionable=self._is_actionable(service_type),
         )
 
-        # Backend i UI - sprawdź PID file
-        if service_type in [ServiceType.BACKEND, ServiceType.UI]:
-            pid_file = self.pid_files.get(service_type)
-            log_file = self.log_files.get(service_type)
+    def _apply_process_metrics(self, info: ServiceInfo, pid: int) -> None:
+        process_info = self._get_process_info(pid)
+        if not process_info:
+            return
+        info.pid = pid
+        info.cpu_percent = process_info["cpu_percent"]
+        info.memory_mb = process_info["memory_mb"]
+        uptime_seconds = process_info.get("uptime_seconds")
+        if uptime_seconds is not None:
+            info.uptime_seconds = int(uptime_seconds)
 
-            if pid_file and pid_file.exists():
-                try:
-                    with open(pid_file, "r") as f:
-                        pid = int(f.read().strip())
-                        process_info = self._get_process_info(pid)
+    def _read_pid_file(self, service_type: ServiceType) -> Optional[int]:
+        pid_file = self.pid_files.get(service_type)
+        if not pid_file or not pid_file.exists():
+            return None
+        with open(pid_file, "r") as pid_handle:
+            return int(pid_handle.read().strip())
 
-                        if process_info:
-                            info.pid = pid
-                            info.status = ServiceStatus.RUNNING
-                            info.cpu_percent = process_info["cpu_percent"]
-                            info.memory_mb = process_info["memory_mb"]
-                            uptime_seconds = process_info.get("uptime_seconds")
-                            if uptime_seconds is not None:
-                                info.uptime_seconds = int(uptime_seconds)
-
-                            # Ustaw porty
-                            if service_type == ServiceType.BACKEND:
-                                info.port = 8000
-                            elif service_type == ServiceType.UI:
-                                info.port = 3000
-                        else:
-                            info.status = ServiceStatus.STOPPED
-                except Exception as e:
-                    info.status = ServiceStatus.ERROR
-                    info.error_message = str(e)
-            else:
+    def _update_pid_file_service_status(
+        self, info: ServiceInfo, service_type: ServiceType
+    ) -> None:
+        try:
+            pid = self._read_pid_file(service_type)
+            if pid is None:
                 info.status = ServiceStatus.STOPPED
+                return
 
-            # Pobierz ostatni log
-            if log_file and log_file.exists():
-                info.last_log = self._read_last_log_line(log_file)
-
-        # LLM Ollama
-        elif service_type == ServiceType.LLM_OLLAMA:
-            info.port = 11434
-            if self._check_port_listening(11434):
-                info.status = ServiceStatus.RUNNING
-                # Spróbuj znaleźć PID procesu ollama
-                for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                    try:
-                        proc_name = (proc.info.get("name") or "").lower()
-                        if "ollama" in proc_name:
-                            info.pid = proc.info["pid"]
-                            process_info = self._get_process_info(proc.info["pid"])
-                            if process_info:
-                                info.cpu_percent = process_info["cpu_percent"]
-                                info.memory_mb = process_info["memory_mb"]
-                                uptime_seconds = process_info.get("uptime_seconds")
-                                if uptime_seconds is not None:
-                                    info.uptime_seconds = int(uptime_seconds)
-                            break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            else:
+            process_info = self._get_process_info(pid)
+            if not process_info:
                 info.status = ServiceStatus.STOPPED
+                return
 
-        # LLM vLLM
-        elif service_type == ServiceType.LLM_VLLM:
-            info.port = 8001
-            if self._check_port_listening(8001):
-                info.status = ServiceStatus.RUNNING
-                # Spróbuj znaleźć PID procesu vllm
-                for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-                    try:
-                        cmdline = " ".join(proc.info.get("cmdline") or [])
-                        if "vllm" in cmdline.lower():
-                            info.pid = proc.info["pid"]
-                            process_info = self._get_process_info(proc.info["pid"])
-                            if process_info:
-                                info.cpu_percent = process_info["cpu_percent"]
-                                info.memory_mb = process_info["memory_mb"]
-                                uptime_seconds = process_info.get("uptime_seconds")
-                                if uptime_seconds is not None:
-                                    info.uptime_seconds = int(uptime_seconds)
-                            break
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            else:
-                info.status = ServiceStatus.STOPPED
+            info.status = ServiceStatus.RUNNING
+            self._apply_process_metrics(info, pid)
+            if service_type == ServiceType.BACKEND:
+                info.port = 8000
+            elif service_type == ServiceType.UI:
+                info.port = 3000
+        except Exception as exc:
+            info.status = ServiceStatus.ERROR
+            info.error_message = str(exc)
 
-        # Hive (kontrolowane przez konfigurację, nie przez runtime)
-        elif service_type == ServiceType.HIVE:
+    def _update_llm_status(
+        self, info: ServiceInfo, *, port: int, process_match: str
+    ) -> None:
+        info.port = port
+        if not self._check_port_listening(port):
+            info.status = ServiceStatus.STOPPED
+            return
+
+        info.status = ServiceStatus.RUNNING
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                proc_name = (proc.info.get("name") or "").lower()
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+                if process_match in proc_name or process_match in cmdline:
+                    pid = proc.info["pid"]
+                    self._apply_process_metrics(info, pid)
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+    def _update_config_managed_status(
+        self, info: ServiceInfo, service_type: ServiceType
+    ) -> None:
+        if service_type == ServiceType.HIVE:
             info.status = (
                 ServiceStatus.RUNNING if SETTINGS.ENABLE_HIVE else ServiceStatus.STOPPED
             )
-
-        # Nexus (kontrolowane przez konfigurację, nie przez runtime)
-        elif service_type == ServiceType.NEXUS:
+            return
+        if service_type == ServiceType.NEXUS:
             info.status = (
                 ServiceStatus.RUNNING
                 if SETTINGS.ENABLE_NEXUS
@@ -234,16 +212,73 @@ class RuntimeController:
             )
             if SETTINGS.ENABLE_NEXUS:
                 info.port = getattr(SETTINGS, "NEXUS_PORT", None)
-
-        # Background Tasks (kontrolowane przez konfigurację, nie przez runtime)
-        elif service_type == ServiceType.BACKGROUND_TASKS:
+            return
+        if service_type == ServiceType.BACKGROUND_TASKS:
             info.status = (
                 ServiceStatus.STOPPED
                 if SETTINGS.VENOM_PAUSE_BACKGROUND_TASKS
                 else ServiceStatus.RUNNING
             )
 
+    def _update_last_log(self, info: ServiceInfo, service_type: ServiceType) -> None:
+        log_file = self.log_files.get(service_type)
+        if log_file and log_file.exists():
+            info.last_log = self._read_last_log_line(log_file)
+
+    def get_service_status(self, service_type: ServiceType) -> ServiceInfo:
+        """Pobiera status usługi."""
+        info = self._base_service_info(service_type)
+        if service_type in {ServiceType.BACKEND, ServiceType.UI}:
+            self._update_pid_file_service_status(info, service_type)
+            self._update_last_log(info, service_type)
+            return info
+        if service_type == ServiceType.LLM_OLLAMA:
+            self._update_llm_status(info, port=11434, process_match="ollama")
+            return info
+        if service_type == ServiceType.LLM_VLLM:
+            self._update_llm_status(info, port=8001, process_match="vllm")
+            return info
+        self._update_config_managed_status(info, service_type)
         return info
+
+    def _config_controlled_result(self, service_type: ServiceType) -> Dict[str, Any]:
+        messages = {
+            ServiceType.HIVE: "Hive kontrolowany przez konfigurację",
+            ServiceType.NEXUS: "Nexus kontrolowany przez konfigurację",
+            ServiceType.BACKGROUND_TASKS: "Background tasks kontrolowane przez konfigurację",
+        }
+        message = messages.get(service_type, "Nieznany typ usługi")
+        return {"success": False, "message": message}
+
+    def _start_service_handler(self, service_type: ServiceType):
+        handlers = {
+            ServiceType.BACKEND: self._start_backend,
+            ServiceType.UI: self._start_ui,
+            ServiceType.LLM_OLLAMA: self._start_ollama,
+            ServiceType.LLM_VLLM: self._start_vllm,
+        }
+        return handlers.get(service_type)
+
+    def _stop_service_handler(self, service_type: ServiceType):
+        handlers = {
+            ServiceType.BACKEND: self._stop_backend,
+            ServiceType.UI: self._stop_ui,
+            ServiceType.LLM_OLLAMA: self._stop_ollama,
+            ServiceType.LLM_VLLM: self._stop_vllm,
+        }
+        return handlers.get(service_type)
+
+    def _perform_action(
+        self, service_type: ServiceType, *, action: str
+    ) -> Dict[str, Any]:
+        handler = (
+            self._start_service_handler(service_type)
+            if action == "start"
+            else self._stop_service_handler(service_type)
+        )
+        if handler is not None:
+            return handler()
+        return self._config_controlled_result(service_type)
 
     def _check_port_listening(self, port: int) -> bool:
         """Sprawdza czy port jest nasłuchiwany. Deleguje do ProcessMonitor."""
@@ -314,32 +349,7 @@ class RuntimeController:
             return {"success": False, "message": dependency_error}
 
         try:
-            if service_type == ServiceType.BACKEND:
-                result = self._start_backend()
-            elif service_type == ServiceType.UI:
-                result = self._start_ui()
-            elif service_type == ServiceType.LLM_OLLAMA:
-                result = self._start_ollama()
-            elif service_type == ServiceType.LLM_VLLM:
-                result = self._start_vllm()
-            elif service_type == ServiceType.HIVE:
-                result = {
-                    "success": False,
-                    "message": "Hive kontrolowany przez konfigurację",
-                }
-            elif service_type == ServiceType.NEXUS:
-                result = {
-                    "success": False,
-                    "message": "Nexus kontrolowany przez konfigurację",
-                }
-            elif service_type == ServiceType.BACKGROUND_TASKS:
-                result = {
-                    "success": False,
-                    "message": "Background tasks kontrolowane przez konfigurację",
-                }
-            else:
-                result = {"success": False, "message": "Nieznany typ usługi"}
-
+            result = self._perform_action(service_type, action="start")
             self._add_to_history(
                 service_name, "start", result["success"], result["message"]
             )
@@ -364,32 +374,7 @@ class RuntimeController:
             return {"success": True, "message": message}
 
         try:
-            if service_type == ServiceType.BACKEND:
-                result = self._stop_backend()
-            elif service_type == ServiceType.UI:
-                result = self._stop_ui()
-            elif service_type == ServiceType.LLM_OLLAMA:
-                result = self._stop_ollama()
-            elif service_type == ServiceType.LLM_VLLM:
-                result = self._stop_vllm()
-            elif service_type == ServiceType.HIVE:
-                result = {
-                    "success": False,
-                    "message": "Hive kontrolowany przez konfigurację",
-                }
-            elif service_type == ServiceType.NEXUS:
-                result = {
-                    "success": False,
-                    "message": "Nexus kontrolowany przez konfigurację",
-                }
-            elif service_type == ServiceType.BACKGROUND_TASKS:
-                result = {
-                    "success": False,
-                    "message": "Background tasks kontrolowane przez konfigurację",
-                }
-            else:
-                result = {"success": False, "message": "Nieznany typ usługi"}
-
+            result = self._perform_action(service_type, action="stop")
             self._add_to_history(
                 service_name, "stop", result["success"], result["message"]
             )
@@ -653,36 +638,19 @@ class RuntimeController:
         """Aplikuje profil konfiguracji."""
         logger.info(f"Aplikowanie profilu: {profile_name}")
 
-        if profile_name == "full":
-            # Uruchom wszystko
-            services = [
-                ServiceType.BACKEND,
-                ServiceType.UI,
-                ServiceType.LLM_OLLAMA,
-            ]
-            action = "start"
-        elif profile_name == "light":
-            # Tylko backend i UI
-            services = [ServiceType.BACKEND, ServiceType.UI]
-            action = "start"
-            # Zatrzymaj LLM
-            self.stop_service(ServiceType.LLM_OLLAMA)
-            self.stop_service(ServiceType.LLM_VLLM)
-        elif profile_name == "llm_off":
-            # Wszystko oprócz LLM
-            services = [ServiceType.BACKEND, ServiceType.UI]
-            action = "start"
-            self.stop_service(ServiceType.LLM_OLLAMA)
-            self.stop_service(ServiceType.LLM_VLLM)
-        else:
+        if profile_name not in {"full", "light", "llm_off"}:
             return {"success": False, "message": f"Nieznany profil: {profile_name}"}
+
+        services = [ServiceType.BACKEND, ServiceType.UI]
+        if profile_name == "full":
+            services.append(ServiceType.LLM_OLLAMA)
+        else:
+            self.stop_service(ServiceType.LLM_OLLAMA)
+            self.stop_service(ServiceType.LLM_VLLM)
 
         results = []
         for service_type in services:
-            if action == "start":
-                result = self.start_service(service_type)
-            else:
-                result = self.stop_service(service_type)
+            result = self.start_service(service_type)
             results.append(
                 {
                     "service": service_type.value,

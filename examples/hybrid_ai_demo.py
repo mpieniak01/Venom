@@ -3,8 +3,6 @@ Demo: Hybrid AI Engine
 Pokazuje jak używać hybrydowego silnika AI w różnych trybach.
 """
 
-import asyncio
-
 from venom_core.config import Settings
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
@@ -150,7 +148,7 @@ def demo_fallback():
     print("  ✅ System nadal działa!")
 
 
-async def main():
+def main():
     """Uruchom wszystkie demo."""
     print("\n")
     print("🚀 " + "=" * 58 + " 🚀")
@@ -171,4 +169,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

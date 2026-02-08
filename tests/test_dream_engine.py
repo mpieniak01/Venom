@@ -237,8 +237,7 @@ print(x)
 
         assert code == "x = 42\nprint(x)"
 
-    @pytest.mark.asyncio
-    async def test_handle_wake_up(self, dream_engine):
+    def test_handle_wake_up(self, dream_engine):
         """Test callbacka wake_up."""
         dream_engine.state = DreamState.DREAMING
 
@@ -246,8 +245,7 @@ print(x)
 
         assert dream_engine.state == DreamState.INTERRUPTED
 
-    @pytest.mark.asyncio
-    async def test_handle_wake_up_when_idle(self, dream_engine):
+    def test_handle_wake_up_when_idle(self, dream_engine):
         """Test callbacka wake_up gdy IDLE."""
         dream_engine.state = DreamState.IDLE
 

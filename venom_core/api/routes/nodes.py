@@ -1,5 +1,7 @@
 """Moduł: routes/nodes - Endpointy API dla distributed nodes (Nexus)."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -9,16 +11,16 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
-NODES_LIST_RESPONSES = {
+NODES_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "NodeManager nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas pobierania listy węzłów"},
 }
-NODE_INFO_RESPONSES = {
+NODE_INFO_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "NodeManager nie jest dostępny"},
     404: {"description": "Węzeł o podanym ID nie istnieje"},
     500: {"description": "Błąd wewnętrzny podczas pobierania informacji o węźle"},
 }
-NODE_EXECUTE_RESPONSES = {
+NODE_EXECUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Węzeł jest offline lub żądanie jest nieprawidłowe"},
     404: {"description": "Węzeł o podanym ID nie istnieje"},
     503: {"description": "NodeManager nie jest dostępny"},

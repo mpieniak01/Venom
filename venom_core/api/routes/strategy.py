@@ -1,5 +1,7 @@
 """Moduł: routes/strategy - Endpointy API dla strategii (roadmap, campaign)."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -9,7 +11,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["strategy"])
 
-STRATEGY_ROUTE_RESPONSES = {
+STRATEGY_ROUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "Orchestrator nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas obsługi endpointu strategii"},
 }

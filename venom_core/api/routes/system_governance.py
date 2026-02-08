@@ -1,5 +1,7 @@
 """Moduł: routes/system_governance - Cost Guard i AutonomyGate."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -12,18 +14,18 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
-COST_MODE_RESPONSES = {
+COST_MODE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "StateManager nie jest dostępny (Cost Guard)"},
     500: {"description": "Błąd wewnętrzny podczas obsługi Cost Guard"},
 }
-AUTONOMY_GET_RESPONSES = {
+AUTONOMY_GET_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania poziomu autonomii"},
 }
-AUTONOMY_SET_RESPONSES = {
+AUTONOMY_SET_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowy poziom autonomii"},
     500: {"description": "Błąd wewnętrzny podczas zmiany poziomu autonomii"},
 }
-AUTONOMY_LEVELS_RESPONSES = {
+AUTONOMY_LEVELS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania listy poziomów"},
 }
 

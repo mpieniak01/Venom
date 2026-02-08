@@ -96,6 +96,39 @@ type ChatSendParams = {
   autoScrollEnabled: React.MutableRefObject<boolean>;
 };
 
+type RuntimeOverride = { configHash?: string | null; runtimeId?: string | null } | null;
+
+const resolveForcedRuntimeProvider = (
+  provider: string | null,
+): "openai" | "google" | string | null => {
+  if (provider === "gpt") return "openai";
+  if (provider === "gem") return "google";
+  return provider;
+};
+
+const buildRuntimeMeta = (
+  runtimeOverride: RuntimeOverride,
+  activeServerInfo: ActiveServerInfo,
+) => ({
+  configHash: runtimeOverride?.configHash ?? activeServerInfo?.config_hash ?? null,
+  runtimeId: runtimeOverride?.runtimeId ?? activeServerInfo?.runtime_id ?? null,
+});
+
+const reconcileUserRequestId = (
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
+  fromId: string,
+  toId: string,
+) => {
+  setLocalSessionHistory((prev) =>
+    prev.map((entry) => {
+      if (entry.request_id === fromId && entry.role === "user") {
+        return { ...entry, request_id: toId };
+      }
+      return entry;
+    }),
+  );
+};
+
 export function useChatSend({
   labMode,
   chatMode,
@@ -139,13 +172,8 @@ export function useChatSend({
       return false;
     }
     let sessionOverride: string | null = null;
-    let runtimeOverride: { configHash?: string | null; runtimeId?: string | null } | null = null;
-    const forcedRuntimeProvider =
-      parsed.forcedProvider === "gpt"
-        ? "openai"
-        : parsed.forcedProvider === "gem"
-          ? "google"
-          : parsed.forcedProvider;
+    let runtimeOverride: RuntimeOverride = null;
+    const forcedRuntimeProvider = resolveForcedRuntimeProvider(parsed.forcedProvider);
     const activeRuntime = activeServerInfo?.active_server ?? null;
     if (forcedRuntimeProvider && activeRuntime !== forcedRuntimeProvider) {
       const label = forcedRuntimeProvider === "openai" ? "OpenAI" : "Gemini";
@@ -254,15 +282,7 @@ export function useChatSend({
           const simpleRequestId = headerRequestId || `simple-${clientId}`;
           linkOptimisticRequest(clientId, simpleRequestId);
 
-          // Reconcile user message ID in local history to avoid duplication
-          setLocalSessionHistory((prev) => {
-            return prev.map((entry) => {
-              if (entry.request_id === clientId && entry.role === "user") {
-                return { ...entry, request_id: simpleRequestId };
-              }
-              return entry;
-            });
-          });
+          reconcileUserRequestId(setLocalSessionHistory, clientId, simpleRequestId);
           let lastHistoryUpdate = 0;
           const upsertLocalHistory = (role: "user" | "assistant", content: string) => {
             const now = Date.now();
@@ -486,10 +506,7 @@ export function useChatSend({
           trimmed,
           !labMode,
           generationParams,
-          {
-            configHash: runtimeOverride?.configHash ?? activeServerInfo?.config_hash ?? null,
-            runtimeId: runtimeOverride?.runtimeId ?? activeServerInfo?.runtime_id ?? null,
-          },
+          buildRuntimeMeta(runtimeOverride, activeServerInfo),
           null,
           {
             tool: parsed.forcedTool,
@@ -505,14 +522,7 @@ export function useChatSend({
 
         // Reconcile user message ID in local history to avoid duplication
         if (resolvedId) {
-          setLocalSessionHistory((prev) => {
-            return prev.map(entry => {
-              if (entry.request_id === clientId && entry.role === 'user') {
-                return { ...entry, request_id: resolvedId };
-              }
-              return entry;
-            });
-          });
+          reconcileUserRequestId(setLocalSessionHistory, clientId, resolvedId);
         }
 
         const displayId = resolvedId ?? t("cockpit.chatMessages.taskPendingId");
@@ -534,11 +544,7 @@ export function useChatSend({
     })();
     return true;
   }, [
-    activeServerInfo?.active_endpoint,
-    activeServerInfo?.active_model,
-    activeServerInfo?.active_server,
-    activeServerInfo?.config_hash,
-    activeServerInfo?.runtime_id,
+    activeServerInfo,
     autoScrollEnabled,
     chatMode,
     clearSimpleStream,

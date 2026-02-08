@@ -18,6 +18,7 @@ from tests.helpers.url_fixtures import LOCALHOST_11434_V1
 
 # Sprawdź czy środowisko headless PRZED importem perception
 HEADLESS = os.environ.get("DISPLAY", "") == ""
+_ORIGINAL_RECORDER_MODULE = sys.modules.get("venom_core.perception.recorder")
 
 if HEADLESS:
     # Mock całego modułu perception.recorder aby uniknąć importu pynput
@@ -28,6 +29,13 @@ if HEADLESS:
     sys.modules["venom_core.perception.recorder"] = mock_recorder
 
 from venom_core.perception.eyes import Eyes  # noqa: E402  # import after recorder mock
+
+if HEADLESS:
+    # Przywrócenie stanu sys.modules po imporcie Eyes, aby nie zanieczyścić innych testów.
+    if _ORIGINAL_RECORDER_MODULE is None:
+        sys.modules.pop("venom_core.perception.recorder", None)
+    else:
+        sys.modules["venom_core.perception.recorder"] = _ORIGINAL_RECORDER_MODULE
 
 
 class TestEyes:
@@ -165,11 +173,7 @@ class TestEyes:
 
 
 def test_headless_detection():
-    """Test sprawdzający mechanizm mockowania dla środowisk headless."""
+    """Test sprawdzający mechanizm importu Eyes w środowisku headless."""
     # Assert
     if HEADLESS:
-        assert "venom_core.perception.recorder" in sys.modules
-        assert isinstance(
-            sys.modules["venom_core.perception.recorder"].DemonstrationRecorder,
-            type(Mock),
-        )
+        assert Eyes is not None

@@ -19,7 +19,7 @@ def test_model_version_creation():
     assert version.version_id == "v1.0"
     assert version.base_model == "phi3:latest"
     assert version.adapter_path == "/path/to/adapter"
-    assert version.performance_metrics["accuracy"] == 0.95
+    assert version.performance_metrics["accuracy"] == pytest.approx(0.95)
     assert version.is_active is False
 
 
@@ -173,8 +173,8 @@ def test_model_manager_compare_versions(tmp_path):
     assert comparison is not None
     assert "metrics_diff" in comparison
     assert "accuracy" in comparison["metrics_diff"]
-    assert comparison["metrics_diff"]["accuracy"]["v1"] == 0.90
-    assert comparison["metrics_diff"]["accuracy"]["v2"] == 0.95
+    assert comparison["metrics_diff"]["accuracy"]["v1"] == pytest.approx(0.90)
+    assert comparison["metrics_diff"]["accuracy"]["v2"] == pytest.approx(0.95)
     assert comparison["metrics_diff"]["accuracy"]["diff"] == pytest.approx(0.05)
 
 
@@ -246,7 +246,7 @@ def test_model_manager_get_models_size_gb_empty(tmp_path):
     """Test obliczania rozmiaru przy pustym katalogu."""
     manager = ModelManager(models_dir=str(tmp_path))
     size = manager.get_models_size_gb()
-    assert size == 0.0
+    assert size == pytest.approx(0.0)
 
 
 def test_model_manager_get_models_size_gb_with_files(tmp_path):
@@ -300,7 +300,7 @@ async def test_model_manager_list_local_models_empty(tmp_path):
 
         models = await manager.list_local_models()
         assert isinstance(models, list)
-        assert len(models) >= 0
+        assert len(models) > 0
 
 
 @pytest.mark.asyncio

@@ -55,8 +55,8 @@ def test_node_metrics_creation():
 
     assert metrics.node_id == "node_1"
     assert metrics.node_name == "Test Node"
-    assert metrics.cpu_usage == 50.0
-    assert metrics.memory_usage == 60.0
+    assert metrics.cpu_usage == pytest.approx(50.0)
+    assert metrics.memory_usage == pytest.approx(60.0)
     assert metrics.active_tasks == 3
     assert metrics.gpu_available is True
     assert metrics.is_online is True
@@ -75,13 +75,13 @@ def test_node_metrics_load_score():
         idle_node = NodeMetrics(
             "node_1", "Idle", cpu_usage=0, memory_usage=0, active_tasks=0
         )
-        assert idle_node.get_load_score() == 0.0
+        assert idle_node.get_load_score() == pytest.approx(0.0)
 
         # Węzeł z pełnym obciążeniem
         busy_node = NodeMetrics(
             "node_2", "Busy", cpu_usage=100, memory_usage=100, active_tasks=10
         )
-        assert busy_node.get_load_score() == 100.0
+        assert busy_node.get_load_score() == pytest.approx(100.0)
 
         # Węzeł z średnim obciążeniem
         medium_node = NodeMetrics(
@@ -272,8 +272,8 @@ def test_get_cluster_status(foreman_agent):
     assert status["total_nodes"] == 2
     assert status["online_nodes"] == 2
     assert status["offline_nodes"] == 0
-    assert status["avg_cpu_usage"] == 50.0
-    assert status["avg_memory_usage"] == 60.0
+    assert status["avg_cpu_usage"] == pytest.approx(50.0)
+    assert status["avg_memory_usage"] == pytest.approx(60.0)
     assert status["total_active_tasks"] == 5
     assert len(status["nodes"]) == 2
 

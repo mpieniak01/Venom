@@ -46,7 +46,7 @@ def test_model_metadata_creation():
 
     assert metadata.name == "test-model"
     assert metadata.provider == ModelProvider.OLLAMA
-    assert metadata.size_gb == 4.0
+    assert metadata.size_gb == pytest.approx(4.0)
 
 
 def test_model_metadata_to_dict():
@@ -76,7 +76,7 @@ def test_model_operation_creation():
 
     assert operation.operation_id == "op-123"
     assert operation.status == OperationStatus.PENDING
-    assert operation.progress == 0.0
+    assert operation.progress == pytest.approx(0.0)
 
 
 def test_model_operation_to_dict():
@@ -93,7 +93,7 @@ def test_model_operation_to_dict():
 
     assert data["operation_id"] == "op-123"
     assert data["status"] == "completed"
-    assert data["progress"] == 100.0
+    assert data["progress"] == pytest.approx(100.0)
 
 
 @pytest.mark.asyncio

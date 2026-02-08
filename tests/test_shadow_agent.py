@@ -57,7 +57,7 @@ class TestSuggestion:
         assert suggestion.suggestion_type == SuggestionType.ERROR_FIX
         assert suggestion.title == "Test Error"
         assert suggestion.message == "Found an error"
-        assert suggestion.confidence == 0.9
+        assert suggestion.confidence == pytest.approx(0.9)
         assert suggestion.timestamp is not None
 
     def test_suggestion_to_dict(self):
@@ -75,7 +75,7 @@ class TestSuggestion:
         assert result["type"] == SuggestionType.CODE_IMPROVEMENT
         assert result["title"] == "Code Quality"
         assert result["message"] == "Improve this code"
-        assert result["confidence"] == 0.75
+        assert result["confidence"] == pytest.approx(0.75)
         assert result["action_payload"] == {"code": "test"}
 
 
@@ -94,7 +94,7 @@ class TestShadowAgent:
         assert agent.kernel == mock_kernel
         assert agent.goal_store == mock_goal_store
         assert agent.lessons_store == mock_lessons_store
-        assert agent.confidence_threshold == 0.8
+        assert agent.confidence_threshold == pytest.approx(0.8)
         assert agent._is_running is False
 
     @pytest.mark.asyncio
@@ -242,4 +242,4 @@ class TestShadowAgent:
         assert "queued_suggestions" in status
         assert "rejected_count" in status
         assert status["is_running"] is False
-        assert status["confidence_threshold"] == 0.8
+        assert status["confidence_threshold"] == pytest.approx(0.8)

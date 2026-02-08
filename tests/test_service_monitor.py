@@ -299,7 +299,7 @@ def test_get_memory_metrics(service_monitor):
             assert "memory_usage_percent" in metrics
             assert metrics["memory_usage_mb"] > 0
             assert metrics["memory_total_mb"] > 0
-            assert metrics["memory_usage_percent"] == 50.0
+            assert metrics["memory_usage_percent"] == pytest.approx(50.0)
             # GPU metrics powinny być None gdy nvidia-smi niedostępne
             assert metrics["vram_usage_mb"] is None
             assert metrics["vram_total_mb"] is None
@@ -330,6 +330,6 @@ def test_get_memory_metrics_with_gpu(service_monitor):
                 metrics = service_monitor.get_memory_metrics()
 
                 assert metrics["memory_usage_mb"] > 0
-                assert metrics["vram_usage_mb"] == 2048.0
-                assert metrics["vram_total_mb"] == 8192.0
-                assert metrics["vram_usage_percent"] == 25.0
+                assert metrics["vram_usage_mb"] == pytest.approx(2048.0)
+                assert metrics["vram_total_mb"] == pytest.approx(8192.0)
+                assert metrics["vram_usage_percent"] == pytest.approx(25.0)

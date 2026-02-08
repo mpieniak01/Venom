@@ -252,7 +252,7 @@ def test_professor_score_response(kernel):
 
     # Pusta odpowiedź
     score = professor._score_response("", "Napisz funkcję")
-    assert score == 1.0
+    assert score == pytest.approx(1.0)
 
     # Odpowiedź z kodem
     code_response = "def hello():\n    print('Hello')\n    return True"

@@ -66,12 +66,12 @@ type SidebarStoredState = {
 };
 
 const readSidebarStoredState = (): SidebarStoredState => {
-  if (typeof window === "undefined") {
+  if (typeof globalThis.window === "undefined") {
     return { collapsed: null, autonomySnapshot: null };
   }
 
-  const storedCollapsed = window.localStorage.getItem("sidebar-collapsed");
-  const storedAutonomy = window.localStorage.getItem("sidebar-autonomy");
+  const storedCollapsed = globalThis.window.localStorage.getItem("sidebar-collapsed");
+  const storedAutonomy = globalThis.window.localStorage.getItem("sidebar-autonomy");
   let autonomySnapshot: AutonomySnapshot | null = null;
 
   if (storedAutonomy) {
@@ -89,8 +89,8 @@ const readSidebarStoredState = (): SidebarStoredState => {
 };
 
 const persistSidebarWidth = (collapsed: boolean) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("sidebar-collapsed", String(collapsed));
+  if (typeof globalThis.window === "undefined") return;
+  globalThis.window.localStorage.setItem("sidebar-collapsed", String(collapsed));
   const root = document.documentElement;
   if (!root) return;
 
@@ -171,10 +171,11 @@ export function Sidebar() {
 
   const handleCostToggle = async () => {
     const targetState = !(costMode?.enabled ?? false);
+    const browserWindow = globalThis.window;
     if (
       targetState &&
-      typeof window !== "undefined" &&
-      !window.confirm(t("sidebar.messages.costConfirm"))
+      browserWindow &&
+      !browserWindow.confirm(t("sidebar.messages.costConfirm"))
     ) {
       setStatusMessage(t("sidebar.messages.costCancelled"));
       return;
@@ -226,8 +227,8 @@ export function Sidebar() {
     };
     setLocalAutonomy(snapshot);
     setSelectedAutonomy(String(autonomy.current_level));
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
+    if (globalThis.window) {
+      globalThis.window.localStorage.setItem("sidebar-autonomy", JSON.stringify(snapshot));
     }
   }, [autonomy, resolveAutonomyDetails]);
 
@@ -243,8 +244,8 @@ export function Sidebar() {
       const fallback = resolveAutonomyDetails(level);
       if (fallback) {
         setLocalAutonomy(fallback);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("sidebar-autonomy", JSON.stringify(fallback));
+        if (globalThis.window) {
+          globalThis.window.localStorage.setItem("sidebar-autonomy", JSON.stringify(fallback));
         }
       }
       setStatusMessage(

@@ -79,10 +79,14 @@ async function installMockTaskEventSource(
           }
         }
 
+        private schedulePayload(payload: { event: string; data: Record<string, unknown> }, delayMs: number) {
+          setTimeout(() => this.emitPayload(payload), delayMs);
+        }
+
         private schedulePayloads(payloads: Array<{ event: string; data: Record<string, unknown> }>, delayStepMs: number) {
-          payloads.forEach((payload, index) => {
-            setTimeout(() => this.emitPayload(payload), delayStepMs * (index + 1));
-          });
+          for (let index = 0; index < payloads.length; index += 1) {
+            this.schedulePayload(payloads[index], delayStepMs * (index + 1));
+          }
         }
 
         addEventListener(event: string, handler: (event: MessageEvent) => void) {

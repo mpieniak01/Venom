@@ -117,7 +117,7 @@ function parseRuntimeErrorMeta(error: RuntimeContext["error"]): RuntimeErrorMeta
     };
   }
 
-  const errorObj = error as Record<string, unknown>;
+  const errorObj = error;
   const errorDetails =
     typeof errorObj.error_details === "object" && errorObj.error_details
       ? (errorObj.error_details as Record<string, unknown>)

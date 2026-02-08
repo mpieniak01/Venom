@@ -53,20 +53,20 @@ const getStatusTone = (status?: string) => {
 };
 
 const readStorageJson = <T,>(key: string): T | null => {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(key);
+  if (typeof globalThis.window === "undefined") return null;
+  const raw = globalThis.window.localStorage.getItem(key);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
   } catch {
-    window.localStorage.removeItem(key);
+    globalThis.window.localStorage.removeItem(key);
     return null;
   }
 };
 
 const writeStorageJson = (key: string, value: unknown) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  if (typeof globalThis.window === "undefined") return;
+  globalThis.window.localStorage.setItem(key, JSON.stringify(value));
 };
 
 type CatalogCachePayload = {
@@ -419,7 +419,9 @@ export const ModelsViewer = () => {
     const cachedCatalogHf = readStorageJson<CatalogCachePayload>("models-catalog-hf");
     const cachedCatalogOllama = readStorageJson<CatalogCachePayload>("models-catalog-ollama");
     const cachedNewsSort =
-      typeof window !== "undefined" ? window.localStorage.getItem("models-news-sort") : null;
+      typeof globalThis.window !== "undefined"
+        ? globalThis.window.localStorage.getItem("models-news-sort")
+        : null;
 
     if (cachedHf) setTrendingHf((prev) => ({ ...prev, ...cachedHf, loading: false }));
     if (cachedOllama) setTrendingOllama((prev) => ({ ...prev, ...cachedOllama, loading: false }));
@@ -458,8 +460,8 @@ export const ModelsViewer = () => {
     }
   }, [language, newsBlogCacheKey, newsPapersCacheKey]);
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("models-news-sort", newsSort);
+    if (!globalThis.window) return;
+    globalThis.window.localStorage.setItem("models-news-sort", newsSort);
   }, [newsSort]);
 
   const setPending = (key: string, value: boolean) => {

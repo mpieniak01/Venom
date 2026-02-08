@@ -58,8 +58,9 @@ async def test_watcher_callback_triggered(temp_workspace):
     changed_files = []
 
     async def test_callback(file_path):
-        await asyncio.to_thread(changed_files.append, file_path)
-        await asyncio.to_thread(callback_triggered.set)
+        changed_files.append(file_path)
+        callback_triggered.set()
+        await asyncio.sleep(0)
 
     watcher = FileWatcher(
         workspace_root=str(temp_workspace), on_change_callback=test_callback
@@ -96,8 +97,9 @@ async def test_watcher_ignores_non_python_files(temp_workspace):
     changed_files = []
 
     async def test_callback(file_path):
-        await asyncio.to_thread(changed_files.append, file_path)
-        await asyncio.to_thread(callback_triggered.set)
+        changed_files.append(file_path)
+        callback_triggered.set()
+        await asyncio.sleep(0)
 
     watcher = FileWatcher(
         workspace_root=str(temp_workspace), on_change_callback=test_callback
@@ -125,8 +127,9 @@ async def test_watcher_ignores_pycache(temp_workspace):
     changed_files = []
 
     async def test_callback(file_path):
-        await asyncio.to_thread(changed_files.append, file_path)
-        await asyncio.to_thread(callback_triggered.set)
+        changed_files.append(file_path)
+        callback_triggered.set()
+        await asyncio.sleep(0)
 
     watcher = FileWatcher(
         workspace_root=str(temp_workspace), on_change_callback=test_callback

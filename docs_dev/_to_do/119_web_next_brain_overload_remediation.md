@@ -150,8 +150,15 @@ Dla każdego hotspotu:
 - `web-next/tests/perf/chat-latency.spec.ts` (flow decomposition helpers)
 - `web-next/tests/streaming.spec.ts` (SSE mock helper extraction)
 - `sonar-project.properties` (CPD exclusions dla locale i18n)
+- `web-next/components/cockpit/conversation-bubble.tsx` (split status/mode/time + message-body helpers, lower complexity)
+- `web-next/components/cockpit/hooks/use-cockpit-logic.ts` (context-preview parser helper extraction, lower complexity)
+- `web-next/components/layout/sidebar.tsx` (direct `undefined` checks in storage guards)
+- `web-next/components/models/models-viewer.tsx` (storage helper extraction + direct `undefined` checks)
+- `web-next/components/config/services-panel.tsx` (status semantics: `degraded` kept as warning, no escalation to `error`)
 
 ### Do domknięcia
+- potwierdzić finalny skan Sonar po commit `fix(web-next): resolve task 119 maintainability issues` (`cbd7d53`)
+- wyczyścić gałąź release 119 z elementów niezwiązanych z 119 (commit API z task 120, jeśli nie ma być częścią wydania 119)
 - pozostałe głębokie hotspoty w `cockpit-chat-send.ts`/`use-cockpit-logic.ts` jeżeli Sonar nadal raportuje po aktualnym refactorze (wymaga reskanu Sonar i ewentualnego finalnego splitu modułów)
 - ewentualne pozostałe hotspoty frontend e2e po ponownym skanie Sonar (do potwierdzenia raportem)
 

@@ -11,8 +11,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["strategy"])
 
+ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
+
 STRATEGY_ROUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Orchestrator nie jest dostępny"},
+    503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas obsługi endpointu strategii"},
 }
 
@@ -45,7 +47,7 @@ async def get_roadmap():
         HTTPException: 503 jeśli orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         goal_store = _orchestrator.task_dispatcher.goal_store
@@ -138,7 +140,7 @@ async def create_roadmap(request: RoadmapCreateRequest):
         HTTPException: 503 jeśli orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         executive_agent = _orchestrator.task_dispatcher.executive_agent
@@ -167,7 +169,7 @@ async def get_roadmap_status():
         HTTPException: 503 jeśli orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         executive_agent = _orchestrator.task_dispatcher.executive_agent
@@ -192,7 +194,7 @@ async def start_campaign():
         HTTPException: 503 jeśli orchestrator nie jest dostępny
     """
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         # Wywołaj tryb kampanii przez orchestrator

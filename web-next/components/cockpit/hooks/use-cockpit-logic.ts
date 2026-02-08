@@ -188,6 +188,28 @@ const extractHiddenPrompts = (details: string) => {
     return Number.parseInt(hiddenMatch[1], 10);
 };
 
+const parseContextPreviewFromSteps = (steps: TaskDetailStep[]) => {
+    const contextStep = steps.find(isContextStep);
+    const hiddenStep = steps.find(isHiddenPromptsStep);
+    let meta = contextStep?.details ? parseContextStepDetails(contextStep.details.trim()) : null;
+
+    if (!meta && contextStep === undefined) {
+        const llmStep = steps.find(isLlmStep);
+        if (llmStep?.details) {
+            meta = parseLlmStepDetails(llmStep.details.trim());
+        }
+    }
+
+    if (!hiddenStep?.details) return meta;
+    const hiddenPrompts = extractHiddenPrompts(hiddenStep.details);
+    if (hiddenPrompts === null) return meta;
+
+    return {
+        ...(meta ?? { preview: null, truncated: false, mode: null, hiddenPrompts: null }),
+        hiddenPrompts,
+    };
+};
+
 function mergeStreamsIntoHistory(
     deduped: HistoryEntryLike[],
     taskStreams: Record<string, StreamLike>,
@@ -254,41 +276,20 @@ function parseContextPreviewMeta(
     selectedTask: { context_history?: Record<string, unknown> } | null,
     detail: { steps?: TaskDetailStep[] } | null,
 ) {
-    if (selectedTask?.context_history) {
-        const ctx = selectedTask.context_history;
-        const preview = resolvePreviewFromContext(ctx);
-        if (preview) {
-            return {
-                preview,
-                truncated: !!ctx.truncated || !!ctx.prompt_context_truncated,
-                hiddenPrompts: typeof ctx.hidden_prompts_count === "number" ? ctx.hidden_prompts_count : null,
-                mode: typeof ctx.mode === "string" ? ctx.mode : null,
-            };
-        }
+    const ctx = selectedTask?.context_history;
+    const preview = ctx ? resolvePreviewFromContext(ctx) : null;
+    if (preview) {
+        return {
+            preview,
+            truncated: !!ctx?.truncated || !!ctx?.prompt_context_truncated,
+            hiddenPrompts: typeof ctx?.hidden_prompts_count === "number" ? ctx.hidden_prompts_count : null,
+            mode: typeof ctx?.mode === "string" ? ctx.mode : null,
+        };
     }
 
     const steps = detail?.steps;
     if (!steps) return null;
-
-    const contextStep = steps.find(isContextStep);
-    const hiddenStep = steps.find(isHiddenPromptsStep);
-    let meta = contextStep?.details ? parseContextStepDetails(contextStep.details.trim()) : null;
-
-    if (!meta && contextStep === undefined) {
-        const llmStep = steps.find(isLlmStep);
-        if (llmStep?.details) {
-            meta = parseLlmStepDetails(llmStep.details.trim());
-        }
-    }
-
-    if (!hiddenStep?.details) return meta;
-    const hiddenPrompts = extractHiddenPrompts(hiddenStep.details);
-    if (hiddenPrompts === null) return meta;
-
-    return {
-        ...(meta ?? { preview: null, truncated: false, mode: null, hiddenPrompts: null }),
-        hiddenPrompts,
-    };
+    return parseContextPreviewFromSteps(steps);
 }
 
 function shouldHydrateCompletedTask(
@@ -324,6 +325,33 @@ function upsertHydratedAssistantMessage(
         request_id: requestId,
         timestamp,
     }].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+}
+
+async function hydrateCompletedTask(input: {
+    requestId: string;
+    sessionId: string;
+    setLocalSessionHistory: (updater: (prev: HistoryEntryLike[]) => HistoryEntryLike[]) => void;
+}) {
+    const { requestId, sessionId, setLocalSessionHistory } = input;
+    try {
+        const taskDetail = await fetchTaskDetail(requestId);
+        const detail = taskDetail as TaskDetailLike;
+        const detailSession = detail.context_history?.session?.session_id ?? null;
+        if (detailSession && detailSession !== sessionId) return;
+        if (!detail.result) return;
+        setLocalSessionHistory((prev) =>
+            upsertHydratedAssistantMessage(
+                prev,
+                requestId,
+                detail.result || "",
+                detail.created_at || new Date().toISOString(),
+            ),
+        );
+    } catch (err: unknown) {
+        if ((err as { status?: number })?.status !== 404 && !(err as { message?: string })?.message?.includes("404")) {
+            console.error("Failed to hydrate task", requestId, err);
+        }
+    }
 }
 
 function extractFeedbackUpdates(
@@ -614,26 +642,11 @@ export function useCockpitLogic({
             }
             const requestId = normalized.request_id;
             hydratedRefs.current.add(requestId);
-            fetchTaskDetail(requestId)
-                .then((taskDetail) => {
-                    const detail = taskDetail as TaskDetailLike;
-                    const detailSession = detail.context_history?.session?.session_id ?? null;
-                    if (detailSession && detailSession !== sessionId) return;
-                    if (!detail.result) return;
-                    setLocalSessionHistory((prev) =>
-                        upsertHydratedAssistantMessage(
-                            prev,
-                            requestId,
-                            detail.result || "",
-                            detail.created_at || new Date().toISOString(),
-                        ),
-                    );
-                })
-                .catch((err) => {
-                    if (err?.status !== 404 && !err?.message?.includes("404")) {
-                        console.error("Failed to hydrate task", requestId, err);
-                    }
-                });
+            void hydrateCompletedTask({
+                requestId,
+                sessionId,
+                setLocalSessionHistory,
+            });
         });
     }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
 

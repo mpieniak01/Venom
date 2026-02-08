@@ -128,12 +128,14 @@ const installMockEventSource = async (page: Page, payloads: MockPayload[]) => {
           }
         }
 
+        private schedulePayload(payload: { event: string; data: string }, delayMs: number) {
+          setTimeout(() => this.emitPayload(payload), delayMs);
+        }
+
         private scheduleEncodedPayloads(encoded: Array<{ event: string; data: string }>) {
-          encoded.forEach((payload, index) => {
-            setTimeout(() => {
-              this.emitPayload(payload);
-            }, 150 * (index + 1));
-          });
+          for (let index = 0; index < encoded.length; index += 1) {
+            this.schedulePayload(encoded[index], 150 * (index + 1));
+          }
         }
 
         addEventListener(event: string, handler: (event: MessageEvent) => void) {

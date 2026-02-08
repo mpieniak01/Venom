@@ -107,7 +107,7 @@ type LocalHistoryEntry = {
 
 const resolveForcedRuntimeProvider = (
   provider: string | null | undefined,
-): "openai" | "google" | string | null => {
+): string | null => {
   if (provider === "gpt") return "openai";
   if (provider === "gem") return "google";
   return provider ?? null;
@@ -189,6 +189,42 @@ const buildSimpleRequestSteps = (
   return steps.length > 0 ? steps : undefined;
 };
 
+const addInitialSimpleUserHistoryEntry = (
+  setLocalSessionHistory: ChatSendParams["setLocalSessionHistory"],
+  clientId: string,
+  trimmed: string,
+  createdTimestamp: string,
+  resolvedSession: string | null,
+) => {
+  setLocalSessionHistory((prev) => {
+    const next = [...prev];
+    const exists = next.some((entry) => entry.request_id === clientId && entry.role === "user");
+    if (!exists) {
+      next.push({
+        role: "user",
+        content: trimmed,
+        request_id: clientId,
+        timestamp: createdTimestamp,
+        session_id: resolvedSession ?? undefined,
+      });
+    }
+    return next;
+  });
+};
+
+const buildSimpleStreamRequestPayload = (
+  trimmed: string,
+  selectedLlmModel: string,
+  generationParams: GenerationParams | null,
+  resolvedSession: string | null,
+) => ({
+  content: trimmed,
+  model: selectedLlmModel || null,
+  maxTokens: typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null,
+  temperature: typeof generationParams?.temperature === "number" ? generationParams.temperature : null,
+  sessionId: resolvedSession,
+});
+
 async function handleSimpleTaskSend(params: {
   clientId: string;
   trimmed: string;
@@ -236,31 +272,17 @@ async function handleSimpleTaskSend(params: {
 
   try {
     const createdTimestamp = new Date().toISOString();
-    setLocalSessionHistory((prev) => {
-      const next = [...prev];
-      const exists = next.some((entry) => entry.request_id === clientId && entry.role === "user");
-      if (!exists) {
-        next.push({
-          role: "user",
-          content: trimmed,
-          request_id: clientId,
-          timestamp: createdTimestamp,
-          session_id: resolvedSession ?? undefined,
-        });
-      }
-      return next;
-    });
+    addInitialSimpleUserHistoryEntry(
+      setLocalSessionHistory,
+      clientId,
+      trimmed,
+      createdTimestamp,
+      resolvedSession,
+    );
     updateSimpleStream(clientId, { text: "", status: "W toku", done: false });
-
-    const maxTokens = typeof generationParams?.max_tokens === "number" ? generationParams.max_tokens : null;
-    const temperature = typeof generationParams?.temperature === "number" ? generationParams.temperature : null;
-    const response = await sendSimpleChatStream({
-      content: trimmed,
-      model: selectedLlmModel || null,
-      maxTokens,
-      temperature,
-      sessionId: resolvedSession,
-    });
+    const response = await sendSimpleChatStream(
+      buildSimpleStreamRequestPayload(trimmed, selectedLlmModel, generationParams, resolvedSession),
+    );
     const headerRequestId = response.headers.get("x-request-id");
     const simpleRequestId = headerRequestId || `simple-${clientId}`;
     linkOptimisticRequest(clientId, simpleRequestId);

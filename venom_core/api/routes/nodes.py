@@ -11,19 +11,24 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
+NODE_MANAGER_UNAVAILABLE = "NodeManager nie jest dostępny"
+NODE_MANAGER_UNAVAILABLE_HINT = (
+    f"{NODE_MANAGER_UNAVAILABLE} - włącz tryb Nexus (ENABLE_NEXUS=true)"
+)
+
 NODES_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "NodeManager nie jest dostępny"},
+    503: {"description": NODE_MANAGER_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas pobierania listy węzłów"},
 }
 NODE_INFO_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "NodeManager nie jest dostępny"},
+    503: {"description": NODE_MANAGER_UNAVAILABLE},
     404: {"description": "Węzeł o podanym ID nie istnieje"},
     500: {"description": "Błąd wewnętrzny podczas pobierania informacji o węźle"},
 }
 NODE_EXECUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Węzeł jest offline lub żądanie jest nieprawidłowe"},
     404: {"description": "Węzeł o podanym ID nie istnieje"},
-    503: {"description": "NodeManager nie jest dostępny"},
+    503: {"description": NODE_MANAGER_UNAVAILABLE},
     504: {"description": "Przekroczono timeout wykonywania na węźle"},
     500: {"description": "Błąd wewnętrzny podczas wykonywania na węźle"},
 }
@@ -65,7 +70,7 @@ async def list_nodes(online_only: bool = False):
     if _node_manager is None:
         raise HTTPException(
             status_code=503,
-            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+            detail=NODE_MANAGER_UNAVAILABLE_HINT,
         )
 
     try:
@@ -99,7 +104,7 @@ async def get_node_info(node_id: str):
     if _node_manager is None:
         raise HTTPException(
             status_code=503,
-            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+            detail=NODE_MANAGER_UNAVAILABLE_HINT,
         )
 
     try:
@@ -134,7 +139,7 @@ async def execute_on_node(node_id: str, request: NodeExecuteRequest):
     if _node_manager is None:
         raise HTTPException(
             status_code=503,
-            detail="NodeManager nie jest dostępny - włącz tryb Nexus (ENABLE_NEXUS=true)",
+            detail=NODE_MANAGER_UNAVAILABLE_HINT,
         )
 
     try:

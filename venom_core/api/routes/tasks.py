@@ -19,27 +19,31 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
 
+ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
+STATE_MANAGER_UNAVAILABLE = "StateManager nie jest dostępny"
+REQUEST_TRACER_UNAVAILABLE = "RequestTracer nie jest dostępny"
+
 TASK_CREATE_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "Orchestrator nie jest dostępny"},
+    503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas tworzenia zadania"},
 }
 TASK_GET_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "StateManager nie jest dostępny"},
+    503: {"description": STATE_MANAGER_UNAVAILABLE},
     404: {"description": "Zadanie o podanym ID nie istnieje"},
 }
 TASK_STREAM_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "StateManager nie jest dostępny"},
+    503: {"description": STATE_MANAGER_UNAVAILABLE},
     404: {"description": "Zadanie o podanym ID nie istnieje"},
 }
 TASKS_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "StateManager nie jest dostępny"},
+    503: {"description": STATE_MANAGER_UNAVAILABLE},
 }
 HISTORY_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowy filtr statusu"},
-    503: {"description": "RequestTracer nie jest dostępny"},
+    503: {"description": REQUEST_TRACER_UNAVAILABLE},
 }
 HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
-    503: {"description": "RequestTracer nie jest dostępny"},
+    503: {"description": REQUEST_TRACER_UNAVAILABLE},
     404: {"description": "Request o podanym ID nie istnieje"},
 }
 
@@ -180,7 +184,7 @@ async def create_task(request: TaskRequest):
     _bootstrap_orchestrator_if_testing()
 
     if _orchestrator is None:
-        raise HTTPException(status_code=503, detail="Orchestrator nie jest dostępny")
+        raise HTTPException(status_code=503, detail=ORCHESTRATOR_UNAVAILABLE)
 
     try:
         # Inkrementuj licznik zadań
@@ -212,7 +216,7 @@ async def get_task(task_id: UUID):
         HTTPException: 404 jeśli zadanie nie istnieje
     """
     if _state_manager is None:
-        raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
 
     task = _state_manager.get_task(task_id)
     if task is None:
@@ -233,7 +237,7 @@ async def stream_task(task_id: UUID):
     """
 
     if _state_manager is None:
-        raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
 
     if _state_manager.get_task(task_id) is None:
         raise HTTPException(status_code=404, detail=f"Zadanie {task_id} nie istnieje")
@@ -347,7 +351,7 @@ async def get_all_tasks():
         Lista wszystkich zadań w systemie
     """
     if _state_manager is None:
-        raise HTTPException(status_code=503, detail="StateManager nie jest dostępny")
+        raise HTTPException(status_code=503, detail=STATE_MANAGER_UNAVAILABLE)
 
     return _state_manager.get_all_tasks()
 
@@ -385,7 +389,7 @@ async def get_request_history(
         HTTPException: 503 jeśli RequestTracer nie jest dostępny
     """
     if _request_tracer is None:
-        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
+        raise HTTPException(status_code=503, detail=REQUEST_TRACER_UNAVAILABLE)
 
     # Walidacja statusu jeśli podano
     if status is not None:
@@ -457,7 +461,7 @@ async def get_request_detail(request_id: UUID):
         HTTPException: 404 jeśli request nie istnieje
     """
     if _request_tracer is None:
-        raise HTTPException(status_code=503, detail="RequestTracer nie jest dostępny")
+        raise HTTPException(status_code=503, detail=REQUEST_TRACER_UNAVAILABLE)
 
     trace = _request_tracer.get_trace(request_id)
     if trace is None:

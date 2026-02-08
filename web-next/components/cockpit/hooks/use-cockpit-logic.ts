@@ -73,6 +73,20 @@ type StreamLike = {
     contextUsed?: { lessons?: string[]; memory_entries?: string[] } | null;
 };
 
+type HistoryTaskLike = {
+    request_id: string;
+    status?: string | null;
+    session_id?: string | null;
+};
+
+type TaskDetailLike = {
+    result?: string | null;
+    created_at?: string | null;
+    context_history?: { session?: { session_id?: string } };
+};
+
+type FeedbackValue = { rating?: "up" | "down" | null; comment?: string };
+
 function mergeStreamsIntoHistory(
     deduped: HistoryEntryLike[],
     taskStreams: Record<string, StreamLike>,
@@ -269,6 +283,80 @@ function parseContextPreviewMeta(
     }
 
     return meta;
+}
+
+function shouldHydrateCompletedTask(
+    task: HistoryTaskLike,
+    sessionId: string | null,
+    hydratedIds: Set<string>,
+    localSessionHistory: HistoryEntryLike[],
+    taskStreams: Record<string, StreamLike>,
+): boolean {
+    if (task.status !== "COMPLETED") return false;
+    if (!sessionId || task.session_id !== sessionId) return false;
+    if (hydratedIds.has(task.request_id)) return false;
+    const hasAssistantMessage = localSessionHistory.some(
+        (msg) => msg.request_id === task.request_id && msg.role === "assistant" && msg.content,
+    );
+    if (hasAssistantMessage) return false;
+    const stream = taskStreams[task.request_id];
+    return !(stream && stream.result);
+}
+
+function upsertHydratedAssistantMessage(
+    prev: HistoryEntryLike[],
+    requestId: string,
+    content: string,
+    timestamp: string,
+): HistoryEntryLike[] {
+    if (prev.some((entry) => entry.request_id === requestId && entry.role === "assistant")) {
+        return prev;
+    }
+    return [...prev, {
+        role: "assistant",
+        content,
+        request_id: requestId,
+        timestamp,
+    }].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+}
+
+function extractFeedbackUpdates(
+    history: Array<{ request_id?: string; feedback?: { rating?: string; comment?: string | null } }> | null | undefined,
+    detail: { request_id?: string; feedback?: { rating?: string; comment?: string | null } } | null | undefined,
+): Record<string, FeedbackValue> {
+    const updates: Record<string, FeedbackValue> = {};
+    if (history) {
+        history.forEach((item) => {
+            if (item.feedback && item.request_id) {
+                updates[item.request_id] = {
+                    rating: item.feedback.rating as "up" | "down",
+                    comment: item.feedback.comment ?? undefined,
+                };
+            }
+        });
+    }
+    if (detail?.feedback && detail.request_id) {
+        updates[detail.request_id] = {
+            rating: detail.feedback.rating as "up" | "down",
+            comment: detail.feedback.comment ?? undefined,
+        };
+    }
+    return updates;
+}
+
+function mergeFeedbackUpdates(
+    prev: Record<string, FeedbackValue>,
+    updates: Record<string, FeedbackValue>,
+): Record<string, FeedbackValue> {
+    const copy = { ...prev };
+    let changed = false;
+    for (const [id, value] of Object.entries(updates)) {
+        if (prev[id]?.rating !== value.rating || prev[id]?.comment !== value.comment) {
+            copy[id] = value;
+            changed = true;
+        }
+    }
+    return changed ? copy : prev;
 }
 
 export function useCockpitLogic({
@@ -508,100 +596,52 @@ export function useCockpitLogic({
     useEffect(() => {
         if (!data.history) return;
         if (!sessionId) return;
-
-        // Find tasks that are COMPLETED in history but don't have a corresponding message in session history
-        // or the message is empty.
-        const completedTasks = data.history.filter(h => h.status === 'COMPLETED');
-
-        completedTasks.forEach(task => {
-            // Only hydrate tasks belonging to the current session context!
-            if (task.session_id !== sessionId) return;
-
-            if (hydratedRefs.current.has(task.request_id)) return;
-
-            // Check if we have an assistant message for this task
-            const stringKeyId = task.request_id;
-            const hasMessage = localSessionHistory.some(
-                msg => msg.request_id === stringKeyId && msg.role === 'assistant' && msg.content
-            );
-
-            if (!hasMessage) {
-                // Double check streams - maybe it's there?
-                const stream = taskStreams[stringKeyId];
-                if (stream && stream.result) return; // It's in stream, will be merged
-
-                // It is NOT in history, and NOT in stream. Hydrate it.
-                hydratedRefs.current.add(stringKeyId);
-                fetchTaskDetail(stringKeyId).then(taskDetail => {
-                    const detailSession =
-                        typeof (taskDetail as { context_history?: { session?: { session_id?: string } } }).context_history?.session?.session_id === "string"
-                            ? (taskDetail as { context_history?: { session?: { session_id?: string } } }).context_history?.session?.session_id
-                            : null;
-                    if (detailSession && detailSession !== sessionId) {
-                        return;
-                    }
-                    if (taskDetail.result) {
-                        setLocalSessionHistory(prev => {
-                            // Double check existence to avoid dups
-                            if (prev.some(p => p.request_id === stringKeyId && p.role === 'assistant')) return prev;
-
-                            return [...prev, {
-                                role: 'assistant',
-                                content: taskDetail.result || "",
-                                request_id: stringKeyId,
-                                timestamp: taskDetail.created_at || new Date().toISOString()
-                            }].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
-                        });
-                    }
-                }).catch(err => {
-                    // Ignore 404s (task not found/deleted) to prevent console spam
+        data.history.forEach((task) => {
+            const normalized = task as HistoryTaskLike;
+            if (
+                !shouldHydrateCompletedTask(
+                    normalized,
+                    sessionId,
+                    hydratedRefs.current,
+                    localSessionHistory,
+                    taskStreams as Record<string, StreamLike>,
+                )
+            ) {
+                return;
+            }
+            const requestId = normalized.request_id;
+            hydratedRefs.current.add(requestId);
+            fetchTaskDetail(requestId)
+                .then((taskDetail) => {
+                    const detail = taskDetail as TaskDetailLike;
+                    const detailSession = detail.context_history?.session?.session_id ?? null;
+                    if (detailSession && detailSession !== sessionId) return;
+                    if (!detail.result) return;
+                    setLocalSessionHistory((prev) =>
+                        upsertHydratedAssistantMessage(
+                            prev as HistoryEntryLike[],
+                            requestId,
+                            detail.result || "",
+                            detail.created_at || new Date().toISOString(),
+                        ),
+                    );
+                })
+                .catch((err) => {
                     if (err?.status !== 404 && !err?.message?.includes("404")) {
-                        console.error("Failed to hydrate task", stringKeyId, err);
+                        console.error("Failed to hydrate task", requestId, err);
                     }
                 });
-            }
         });
     }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
 
     // Sync feedback from history to local state
     useEffect(() => {
-        interface FeedbackValue { rating?: "up" | "down" | null; comment?: string }
-        const updates: Record<string, FeedbackValue> = {};
-
-        // 1. From history list
-        if (data.history) {
-            data.history.forEach((item) => {
-                if (item.feedback && item.request_id) {
-                    updates[item.request_id] = {
-                        rating: item.feedback.rating as "up" | "down",
-                        comment: item.feedback.comment ?? undefined
-                    };
-                }
-            });
-        }
-
-        // 2. From detailed history
-        const detail = interactive.state.historyDetail;
-        if (detail && detail.feedback && detail.request_id) {
-            updates[detail.request_id] = {
-                rating: detail.feedback.rating as "up" | "down",
-                comment: detail.feedback.comment ?? undefined
-            };
-        }
-
+        const updates = extractFeedbackUpdates(
+            data.history,
+            interactive.state.historyDetail as { request_id?: string; feedback?: { rating?: string; comment?: string | null } } | null,
+        );
         if (Object.keys(updates).length > 0) {
-            // Only update if something changed to avoid re-renders
-            interactive.setters.setFeedbackByRequest(prev => {
-                const copy = { ...prev };
-                let changed = false;
-                for (const [id, val] of Object.entries(updates)) {
-                    if (prev[id]?.rating !== val.rating || prev[id]?.comment !== val.comment) {
-                        copy[id] = val;
-                        changed = true;
-                    }
-                }
-                return changed ? copy : prev;
-            });
+            interactive.setters.setFeedbackByRequest((prev) => mergeFeedbackUpdates(prev, updates));
         }
     }, [data.history, interactive.state.historyDetail, interactive.setters]);
 

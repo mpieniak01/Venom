@@ -23,13 +23,89 @@ type UiTimingEntry = {
 
 export type SimpleStreamState = Record<string, { text: string; status: string; done: boolean }>;
 
+type UiTimingState = { t0: number; historyMs?: number; ttftMs?: number };
+type HistoryItem = {
+  request_id: string;
+  status?: string | null;
+  finished_at?: string | null;
+  created_at?: string | null;
+};
+
+function mapLinkedOptimisticRequest(
+  entries: OptimisticRequestState[],
+  clientId: string,
+  requestId: string | null,
+): OptimisticRequestState[] {
+  return entries.map((entry) =>
+    entry.clientId === clientId
+      ? {
+          ...entry,
+          requestId: requestId ?? entry.requestId ?? entry.clientId,
+          confirmed: true,
+        }
+      : entry,
+  );
+}
+
+function buildSimpleStreamUpdate(
+  prev: SimpleStreamState,
+  clientId: string,
+  mappedId: string | undefined,
+  patch: { text?: string; status?: string; done?: boolean },
+): SimpleStreamState {
+  const existing = prev[clientId] ?? { text: "", status: "W toku", done: false };
+  const mappedExisting =
+    mappedId && mappedId !== clientId
+      ? prev[mappedId] ?? { text: "", status: "W toku", done: false }
+      : null;
+  const next: SimpleStreamState = {
+    ...prev,
+    [clientId]: {
+      ...existing,
+      ...patch,
+    },
+  };
+  if (mappedId && mappedId !== clientId) {
+    next[mappedId] = {
+      text: patch.text ?? mappedExisting?.text ?? "",
+      status: patch.status ?? mappedExisting?.status ?? "W toku",
+      done: patch.done ?? mappedExisting?.done ?? false,
+    };
+  }
+  return next;
+}
+
+function pruneCompletedRequests(
+  entries: OptimisticRequestState[],
+  history: HistoryItem[],
+): { next: OptimisticRequestState[]; latestDuration: number | null; changed: boolean } {
+  let changed = false;
+  let latestDuration: number | null = null;
+  const next = entries.filter((entry) => {
+    if (!entry.requestId) return true;
+    const match = history.find((item) => item.request_id === entry.requestId);
+    const isFinished =
+      !!match?.status &&
+      (match.status === "COMPLETED" || match.status === "FAILED" || match.status === "LOST");
+    if (!isFinished) return true;
+    changed = true;
+    const finishTs = match.finished_at ?? match.created_at ?? entry.createdAt;
+    if (finishTs) {
+      const duration = new Date(finishTs).getTime() - entry.startedAt;
+      if (Number.isFinite(duration)) latestDuration = duration;
+    }
+    return false;
+  });
+  return { next, latestDuration, changed };
+}
+
 export function useOptimisticRequests<TDetail = unknown>(
   chatMode?: OptimisticRequestState["chatMode"],
 ) {
   const [optimisticRequests, setOptimisticRequests] = useState<OptimisticRequestState[]>([]);
   const [simpleStreams, setSimpleStreams] = useState<SimpleStreamState>({});
   const [simpleRequestDetails, setSimpleRequestDetails] = useState<Record<string, TDetail>>({});
-  const uiTimingsRef = useRef<Map<string, { t0: number; historyMs?: number; ttftMs?: number }>>(
+  const uiTimingsRef = useRef<Map<string, UiTimingState>>(
     new Map(),
   );
   const uiTimingKeyMapRef = useRef<Map<string, string>>(new Map());
@@ -67,17 +143,7 @@ export function useOptimisticRequests<TDetail = unknown>(
 
   const linkOptimisticRequest = useCallback((clientId: string, requestId: string | null) => {
     if (!clientId) return;
-    setOptimisticRequests((prev) =>
-      prev.map((entry) =>
-        entry.clientId === clientId
-          ? {
-            ...entry,
-            requestId: requestId ?? entry.requestId ?? entry.clientId,
-            confirmed: true,
-          }
-          : entry,
-      ),
-    );
+    setOptimisticRequests((prev) => mapLinkedOptimisticRequest(prev, clientId, requestId));
     if (requestId) {
       const existing = uiTimingsRef.current.get(clientId);
       if (existing) {
@@ -116,29 +182,9 @@ export function useOptimisticRequests<TDetail = unknown>(
 
   const updateSimpleStream = useCallback(
     (clientId: string, patch: { text?: string; status?: string; done?: boolean }) => {
-      setSimpleStreams((prev) => {
-        const existing = prev[clientId] ?? { text: "", status: "W toku", done: false };
-        const mappedId = uiTimingKeyMapRef.current.get(clientId);
-        const mappedExisting =
-          mappedId && mappedId !== clientId
-            ? prev[mappedId] ?? { text: "", status: "W toku", done: false }
-            : null;
-        const next: Record<string, { text: string; status: string; done: boolean }> = {
-          ...prev,
-          [clientId]: {
-            ...existing,
-            ...patch,
-          },
-        };
-        if (mappedId && mappedId !== clientId) {
-          next[mappedId] = {
-            text: patch.text ?? mappedExisting?.text ?? "",
-            status: patch.status ?? mappedExisting?.status ?? "W toku",
-            done: patch.done ?? mappedExisting?.done ?? false,
-          };
-        }
-        return next;
-      });
+      setSimpleStreams((prev) =>
+        buildSimpleStreamUpdate(prev, clientId, uiTimingKeyMapRef.current.get(clientId), patch),
+      );
     },
     [],
   );
@@ -178,37 +224,16 @@ export function useOptimisticRequests<TDetail = unknown>(
 
   const pruneOptimisticRequests = useCallback(
     (
-      history: Array<{ request_id: string; status?: string | null; finished_at?: string | null; created_at?: string | null }> | null,
+      history: HistoryItem[] | null,
       onDuration?: (duration: number) => void,
     ) => {
       if (!history || history.length === 0) return;
       let latestDuration: number | null = null;
       setOptimisticRequests((prev) => {
         if (prev.length === 0) return prev;
-        let mutated = false;
-        const next = prev.filter((entry) => {
-          if (!entry.requestId) return true;
-          const match = history.find((item) => item.request_id === entry.requestId);
-          if (
-            match &&
-            match.status &&
-            (match.status === "COMPLETED" ||
-              match.status === "FAILED" ||
-              match.status === "LOST")
-          ) {
-            mutated = true;
-            const finishTs = match.finished_at ?? match.created_at ?? entry.createdAt;
-            if (finishTs) {
-              const duration = new Date(finishTs).getTime() - entry.startedAt;
-              if (Number.isFinite(duration)) {
-                latestDuration = duration;
-              }
-            }
-            return false;
-          }
-          return true;
-        });
-        return mutated ? next : prev;
+        const pruned = pruneCompletedRequests(prev, history);
+        latestDuration = pruned.latestDuration;
+        return pruned.changed ? pruned.next : prev;
       });
       if (latestDuration !== null && onDuration) {
         onDuration(latestDuration);

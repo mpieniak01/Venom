@@ -716,7 +716,7 @@ async def dedupe_lessons(
         ) from e
 
 
-@router.get("/lessons/learning/status")
+@router.get("/lessons/learning/status", responses=LESSONS_READ_RESPONSES)
 async def get_learning_status():
     """Zwraca status globalnego zapisu lekcji."""
     return {"status": "success", "enabled": SETTINGS.ENABLE_META_LEARNING}

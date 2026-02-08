@@ -140,7 +140,7 @@ class DemonstrationAnalyzer:
         crop = self._crop_around_point(screenshot, x, y, self.crop_size)
 
         # Użyj VLM do rozpoznania elementu
-        element_description = await self._describe_ui_element(crop, x, y)
+        element_description = self._describe_ui_element(crop, x, y)
 
         # Jeśli nie udało się rozpoznać, użyj współrzędnych
         if not element_description or element_description == "unknown":
@@ -297,7 +297,7 @@ class DemonstrationAnalyzer:
 
         return has_no_spaces and has_digits and has_special and is_short
 
-    async def _describe_ui_element(
+    def _describe_ui_element(
         self, crop: Image.Image, x: int, y: int
     ) -> Optional[str]:
         """

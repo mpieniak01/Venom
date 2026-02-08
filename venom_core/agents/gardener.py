@@ -71,7 +71,7 @@ class GardenerAgent:
         logger.info("Uruchamianie GardenerAgent...")
 
         # Wykonaj początkowe skanowanie
-        self.scan_and_update()
+        await asyncio.to_thread(self.scan_and_update)
 
         # Uruchom pętlę monitorowania
         self._task = asyncio.create_task(self._monitoring_loop())

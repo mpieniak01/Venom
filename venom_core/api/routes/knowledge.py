@@ -40,6 +40,11 @@ LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
     **INTERNAL_ERROR_RESPONSES,
 }
 
+NODE_TYPE_FILE = "file"
+NODE_TYPE_CLASS = "class"
+NODE_TYPE_FUNCTION = "function"
+NODE_TYPE_METHOD = "method"
+
 
 def _normalize_graph_file_path(file_path: str) -> str:
     """
@@ -52,6 +57,70 @@ def _normalize_graph_file_path(file_path: str) -> str:
     if path.is_absolute() or ".." in path.parts:
         raise HTTPException(status_code=400, detail=INVALID_FILE_PATH_DETAIL)
     return str(path)
+
+
+def _resolve_node_presentation(
+    node_id: str, node_data: dict[str, Any]
+) -> tuple[str, str]:
+    node_type = node_data.get("type", "unknown")
+    node_name = node_data.get("name", node_id)
+    if node_type == NODE_TYPE_FILE:
+        return "file", node_data.get("path", node_name)
+    if node_type == NODE_TYPE_CLASS:
+        file_path = node_data.get("file", "")
+        category = (
+            "agent"
+            if "agents" in file_path or node_data.get("is_agent", False)
+            else "class"
+        )
+        return category, node_name
+    if node_type in (NODE_TYPE_FUNCTION, NODE_TYPE_METHOD):
+        return "function", node_name
+    return "file", node_name
+
+
+def _build_graph_nodes(graph_store: CodeGraphStore, limit: int) -> list[dict[str, Any]]:
+    nodes: list[dict[str, Any]] = []
+    for node_id, node_data in graph_store.graph.nodes(data=True):
+        category, label = _resolve_node_presentation(node_id, node_data)
+        nodes.append(
+            {
+                "data": {
+                    "id": node_id,
+                    "label": label,
+                    "type": category,
+                    "original_type": node_data.get("type", "unknown"),
+                    "properties": node_data,
+                }
+            }
+        )
+        if len(nodes) >= limit:
+            break
+    return nodes
+
+
+def _build_graph_edges(
+    graph_store: CodeGraphStore, allowed_ids: set[str]
+) -> list[dict[str, Any]]:
+    edges: list[dict[str, Any]] = []
+    edge_id = 0
+    for source, target, edge_data in graph_store.graph.edges(data=True):
+        if allowed_ids and (source not in allowed_ids or target not in allowed_ids):
+            continue
+        edge_type = edge_data.get("type", "RELATED")
+        edges.append(
+            {
+                "data": {
+                    "id": f"e{edge_id}",
+                    "source": source,
+                    "target": target,
+                    "type": edge_type,
+                    "label": edge_type,
+                }
+            }
+        )
+        edge_id += 1
+    return edges
 
 
 def set_dependencies(graph_store=None, lessons_store=None):
@@ -105,68 +174,9 @@ async def get_knowledge_graph(
         return _get_mock_knowledge_graph(limit=limit)
 
     try:
-        # Konwertuj NetworkX graph do formatu Cytoscape
-        nodes = []
-        edges = []
-
-        # Dodaj węzły
-        for node_id, node_data in graph_store.graph.nodes(data=True):
-            node_type = node_data.get("type", "unknown")
-            node_name = node_data.get("name", node_id)
-
-            # Mapowanie typów na kategorie dla UI
-            if node_type == "file":
-                category = "file"
-                label = node_data.get("path", node_name)
-            elif node_type == "class":
-                # Rozróżnij agentów od zwykłych klas
-                file_path = node_data.get("file", "")
-                if "agents" in file_path or node_data.get("is_agent", False):
-                    category = "agent"
-                else:
-                    category = "class"
-                label = node_name
-            elif node_type == "function" or node_type == "method":
-                # Funkcje i metody jako osobna kategoria, nie memory
-                category = "function"
-                label = node_name
-            else:
-                category = "file"
-                label = node_name
-
-            nodes.append(
-                {
-                    "data": {
-                        "id": node_id,
-                        "label": label,
-                        "type": category,
-                        "original_type": node_type,
-                        "properties": node_data,
-                    }
-                }
-            )
-            if len(nodes) >= limit:
-                break
-
+        nodes = _build_graph_nodes(graph_store, limit)
         allowed_ids = {n["data"]["id"] for n in nodes}
-        # Dodaj krawędzie
-        edge_id = 0
-        for source, target, edge_data in graph_store.graph.edges(data=True):
-            if allowed_ids and (source not in allowed_ids or target not in allowed_ids):
-                continue
-            edge_type = edge_data.get("type", "RELATED")
-            edges.append(
-                {
-                    "data": {
-                        "id": f"e{edge_id}",
-                        "source": source,
-                        "target": target,
-                        "type": edge_type,
-                        "label": edge_type,
-                    }
-                }
-            )
-            edge_id += 1
+        edges = _build_graph_edges(graph_store, allowed_ids)
 
         return {
             "status": "success",

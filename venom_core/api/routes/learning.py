@@ -43,6 +43,40 @@ def set_dependencies(orchestrator=None, state_manager=None, request_tracer=None)
 LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 
 
+def _normalize_limit(limit: int, *, minimum: int = 1, maximum: int = 500) -> int:
+    if limit < minimum:
+        return minimum
+    if limit > maximum:
+        return maximum
+    return limit
+
+
+def _parse_learning_entry(line: str) -> dict[str, Any] | None:
+    if not line.strip():
+        return None
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError:
+        return None
+
+
+def _matches_filters(
+    entry: dict[str, Any],
+    *,
+    intent: Optional[str],
+    success: Optional[bool],
+    tag: Optional[str],
+) -> bool:
+    if intent and str(entry.get("intent") or "").upper() != intent.upper():
+        return False
+    if success is not None and entry.get("success") is not success:
+        return False
+    if not tag:
+        return True
+    tags = entry.get("tags") or []
+    return isinstance(tags, list) and tag in tags
+
+
 @router.get("/logs", responses=LEARNING_READ_RESPONSES)
 async def get_learning_logs(
     limit: int = 50,
@@ -52,10 +86,7 @@ async def get_learning_logs(
 ) -> dict:
     """Zwraca ostatnie wpisy procesu nauki (JSONL) z opcjonalnym filtrowaniem."""
     ensure_learning_log_boot_id()
-    if limit < 1:
-        limit = 1
-    if limit > 500:
-        limit = 500
+    limit = _normalize_limit(limit)
 
     if not LEARNING_LOG_PATH.exists():
         return {"count": 0, "items": []}
@@ -67,23 +98,11 @@ async def get_learning_logs(
         async with aiofiles.open(LEARNING_LOG_PATH, "r", encoding="utf-8") as handle:
             lines = await handle.readlines()
         for line in reversed(lines):
-            if not line.strip():
+            entry = _parse_learning_entry(line)
+            if entry is None:
                 continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
+            if not _matches_filters(entry, intent=intent, success=success, tag=tag):
                 continue
-            if intent and str(entry.get("intent") or "").upper() != intent.upper():
-                continue
-            if success is not None and entry.get("success") is not success:
-                continue
-            if tag:
-                tags = entry.get("tags") or []
-                if isinstance(tags, list):
-                    if tag not in tags:
-                        continue
-                else:
-                    continue
             items.append(entry)
             if len(items) >= limit:
                 break
@@ -100,10 +119,7 @@ async def get_hidden_prompts(
     min_score: int = 1,
 ) -> dict:
     """Zwraca zagregowane hidden prompts (deduplikacja + score)."""
-    if limit < 1:
-        limit = 1
-    if limit > 500:
-        limit = 500
+    limit = _normalize_limit(limit)
     if min_score < 1:
         min_score = 1
 

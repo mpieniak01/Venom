@@ -59,6 +59,108 @@ class LlmRuntimeActivateRequest(BaseModel):
     model: str | None = Field(default=None, description="Opcjonalny model LLM")
 
 
+async def _stop_other_servers(
+    llm_controller, servers: list[dict], server_name: str
+) -> dict:
+    stop_results: dict[str, dict[str, Any]] = {}
+    for server in servers:
+        if server["name"] == server_name:
+            continue
+        if not server.get("supports", {}).get("stop"):
+            continue
+        try:
+            result = await llm_controller.run_action(server["name"], "stop")
+            stop_results[server["name"]] = {
+                "ok": result.ok,
+                "exit_code": result.exit_code,
+            }
+        except Exception as exc:
+            stop_results[server["name"]] = {"ok": False, "error": str(exc)}
+    return stop_results
+
+
+async def _start_server_if_supported(
+    llm_controller, server_name: str, target: dict
+) -> Optional[dict]:
+    if not target.get("supports", {}).get("start"):
+        return None
+    try:
+        result = await llm_controller.run_action(server_name, "start")
+        return {"ok": result.ok, "exit_code": result.exit_code}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+async def _await_server_health(server_name: str, health_url: str) -> bool:
+    logger.info(f"Oczekiwanie na start serwera {server_name} ({health_url})...")
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        for attempt in range(60):
+            try:
+                resp = await client.get(health_url)
+                if 200 <= resp.status_code < 300:
+                    logger.info(f"Serwer {server_name} gotowy po {attempt * 0.5}s")
+                    return True
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+    logger.error(f"Serwer {server_name} nie odpowiedział prawidłowo po 30s")
+    return False
+
+
+def _resolve_local_endpoint(server_name: str, target: dict) -> str | None:
+    endpoint = target.get("endpoint")
+    if server_name == "ollama":
+        return build_http_url("localhost", 11434, "/v1")
+    if server_name == "vllm":
+        return SETTINGS.VLLM_ENDPOINT
+    return endpoint
+
+
+def _persist_local_runtime_endpoint(server_name: str, endpoint: str | None) -> None:
+    if not endpoint:
+        return
+    try:
+        SETTINGS.LLM_SERVICE_TYPE = "local"
+        SETTINGS.LLM_LOCAL_ENDPOINT = endpoint
+    except Exception:
+        logger.warning("Nie udało się zaktualizować SETTINGS dla endpointu LLM.")
+    config_manager.update_config(
+        {
+            "LLM_SERVICE_TYPE": "local",
+            "LLM_LOCAL_ENDPOINT": endpoint,
+            "ACTIVE_LLM_SERVER": server_name,
+        }
+    )
+
+
+def _select_model_for_server(
+    *,
+    server_name: str,
+    config: dict,
+    models: list[dict],
+) -> tuple[str, str, str]:
+    last_model_key = (
+        "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
+    )
+    prev_model_key = (
+        "PREVIOUS_MODEL_OLLAMA" if server_name == "ollama" else "PREVIOUS_MODEL_VLLM"
+    )
+    desired_model = config.get(last_model_key) or config.get("LLM_MODEL_NAME", "")
+    previous_model = config.get(prev_model_key) or ""
+    available = {
+        m["name"] for m in models if m.get("provider") == server_name and m.get("name")
+    }
+    if desired_model in available:
+        return desired_model, last_model_key, prev_model_key
+    if previous_model and previous_model in available:
+        config_manager.update_config({last_model_key: previous_model})
+        return previous_model, last_model_key, prev_model_key
+    raise HTTPException(
+        status_code=400,
+        detail="Brak modelu na wybranym serwerze (brak fallbacku).",
+    )
+
+
 @router.get("/system/llm-servers", responses=LLM_SERVERS_RESPONSES)
 async def get_llm_servers():
     """
@@ -290,100 +392,27 @@ async def set_active_llm_server(request: ActiveLlmServerRequest):
             status_code=404, detail="Nie znaleziono konfiguracji serwera"
         )
 
-    stop_results = {}
-    for server in servers:
-        if server["name"] == server_name:
-            continue
-        if server.get("supports", {}).get("stop"):
-            try:
-                result = await llm_controller.run_action(server["name"], "stop")
-                stop_results[server["name"]] = {
-                    "ok": result.ok,
-                    "exit_code": result.exit_code,
-                }
-            except Exception as exc:
-                stop_results[server["name"]] = {"ok": False, "error": str(exc)}
-
-    start_result = None
-    if target.get("supports", {}).get("start"):
-        try:
-            result = await llm_controller.run_action(server_name, "start")
-            start_result = {"ok": result.ok, "exit_code": result.exit_code}
-        except Exception as exc:
-            start_result = {"ok": False, "error": str(exc)}
+    stop_results = await _stop_other_servers(llm_controller, servers, server_name)
+    start_result = await _start_server_if_supported(llm_controller, server_name, target)
 
     if start_result and start_result.get("ok"):
         health_url = target.get("health_url")
-        if health_url:
-            logger.info(f"Oczekiwanie na start serwera {server_name} ({health_url})...")
-            health_ok = False
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                for attempt in range(60):
-                    try:
-                        resp = await client.get(health_url)
-                        if 200 <= resp.status_code < 300:
-                            logger.info(
-                                f"Serwer {server_name} gotowy po {attempt * 0.5}s"
-                            )
-                            health_ok = True
-                            break
-                    except Exception:
-                        # Ignorujemy błędy health check - próbujemy ponownie
-                        pass
-                    await asyncio.sleep(0.5)
-
-            if not health_ok:
-                logger.error(f"Serwer {server_name} nie odpowiedział prawidłowo po 30s")
-                start_result = {
-                    "ok": False,
-                    "error": "Health check timeout - serwer nie odpowiada",
-                }
-
-    endpoint = target.get("endpoint")
-    if server_name == "ollama":
-        endpoint = build_http_url("localhost", 11434, "/v1")
-    elif server_name == "vllm":
-        endpoint = SETTINGS.VLLM_ENDPOINT
-    if endpoint:
-        try:
-            SETTINGS.LLM_SERVICE_TYPE = "local"
-            SETTINGS.LLM_LOCAL_ENDPOINT = endpoint
-        except Exception:
-            logger.warning("Nie udało się zaktualizować SETTINGS dla endpointu LLM.")
-        config_manager.update_config(
-            {
-                "LLM_SERVICE_TYPE": "local",
-                "LLM_LOCAL_ENDPOINT": endpoint,
-                "ACTIVE_LLM_SERVER": server_name,
+        if health_url and not await _await_server_health(server_name, health_url):
+            start_result = {
+                "ok": False,
+                "error": "Health check timeout - serwer nie odpowiada",
             }
-        )
+
+    endpoint = _resolve_local_endpoint(server_name, target)
+    _persist_local_runtime_endpoint(server_name, endpoint)
 
     config = config_manager.get_config(mask_secrets=False)
-    last_model_key = (
-        "LAST_MODEL_OLLAMA" if server_name == "ollama" else "LAST_MODEL_VLLM"
-    )
-    prev_model_key = (
-        "PREVIOUS_MODEL_OLLAMA" if server_name == "ollama" else "PREVIOUS_MODEL_VLLM"
-    )
-    desired_model = config.get(last_model_key) or config.get("LLM_MODEL_NAME", "")
-    previous_model = config.get(prev_model_key) or ""
-
     models = await model_manager.list_local_models()
-    available = {
-        m["name"] for m in models if m.get("provider") == server_name and m.get("name")
-    }
-
-    selected_model = None
-    if desired_model in available:
-        selected_model = desired_model
-    elif previous_model and previous_model in available:
-        selected_model = previous_model
-        config_manager.update_config({last_model_key: selected_model})
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Brak modelu na wybranym serwerze (brak fallbacku).",
-        )
+    selected_model, last_model_key, prev_model_key = _select_model_for_server(
+        server_name=server_name,
+        config=config,
+        models=models,
+    )
 
     old_last_model = config.get(last_model_key) or ""
     updates = {

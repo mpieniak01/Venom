@@ -347,6 +347,161 @@ type CockpitChatThreadProps = {
   onUpdateFeedbackState: (requestId: string, patch: Partial<FeedbackState>) => void;
 };
 
+type CockpitThreadItemProps = {
+  msg: ChatMessage;
+  isSelected: boolean;
+  t: ReturnType<typeof useTranslation>;
+  feedbackState?: FeedbackState;
+  feedbackSubmittingId: string | null;
+  onOpenRequestDetail: (requestId: string, prompt?: string) => void;
+  onFeedbackClick: (requestId: string, rating: "up" | "down") => void;
+  onFeedbackSubmit: (requestId: string) => void;
+  onUpdateFeedbackState: (requestId: string, patch: Partial<FeedbackState>) => void;
+};
+
+const getForcedLabel = (msg: ChatMessage): string | null => {
+  if (msg.forcedProvider) return `/${msg.forcedProvider}`;
+  if (msg.forcedTool) return `/${msg.forcedTool}`;
+  return null;
+};
+
+function CockpitThreadItem({
+  msg,
+  isSelected,
+  t,
+  feedbackState,
+  feedbackSubmittingId,
+  onOpenRequestDetail,
+  onFeedbackClick,
+  onFeedbackSubmit,
+  onUpdateFeedbackState,
+}: CockpitThreadItemProps) {
+  const requestId = msg.requestId;
+  const canInspect = Boolean(requestId) && !msg.pending;
+  const handleSelect =
+    canInspect && requestId
+      ? () => onOpenRequestDetail(requestId, msg.prompt)
+      : undefined;
+  const feedbackLocked = Boolean(feedbackState?.rating);
+  const forcedLabel = getForcedLabel(msg);
+
+  const feedbackActions =
+    msg.role === "assistant" && requestId ? (
+      <div className="flex items-center gap-2">
+        <IconButton
+          label={t("cockpit.feedback.up")}
+          variant="outline"
+          size="xs"
+          className={
+            feedbackState?.rating === "up"
+              ? "border-emerald-400/60 bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-0"
+              : "focus-visible:outline-none focus-visible:ring-0"
+          }
+          icon={
+            <ThumbsUp
+              strokeWidth={2.5}
+              className={
+                feedbackState?.rating === "up"
+                  ? "h-3.5 w-3.5 text-emerald-300"
+                  : "h-3.5 w-3.5"
+              }
+            />
+          }
+          disabled={feedbackSubmittingId === requestId || feedbackLocked}
+          onClick={(event) => {
+            event.stopPropagation();
+            onFeedbackClick(requestId, "up");
+          }}
+        />
+        <IconButton
+          label={t("cockpit.feedback.down")}
+          variant="outline"
+          size="xs"
+          className={
+            feedbackState?.rating === "down"
+              ? "border-rose-400/60 bg-rose-500/10 focus-visible:outline-none focus-visible:ring-0"
+              : "focus-visible:outline-none focus-visible:ring-0"
+          }
+          icon={
+            <ThumbsDown
+              strokeWidth={2.5}
+              className={
+                feedbackState?.rating === "down"
+                  ? "h-3.5 w-3.5 text-rose-300"
+                  : "h-3.5 w-3.5"
+              }
+            />
+          }
+          disabled={feedbackSubmittingId === requestId || feedbackLocked}
+          onClick={(event) => {
+            event.stopPropagation();
+            onFeedbackClick(requestId, "down");
+          }}
+        />
+        {feedbackState?.rating === "down" && feedbackState.comment !== undefined ? (
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={
+              feedbackSubmittingId === requestId ||
+              !(feedbackState.comment || "").trim()
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+              onFeedbackSubmit(requestId);
+            }}
+          >
+            {feedbackSubmittingId === requestId
+              ? t("cockpit.feedback.submitting")
+              : t("cockpit.feedback.submit")}
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
+
+  const feedbackExtra =
+    msg.role === "assistant" && requestId && !msg.pending && feedbackState?.rating === "down" ? (
+      <>
+        <textarea
+          className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
+          placeholder={t("cockpit.feedback.placeholder")}
+          value={feedbackState.comment || ""}
+          onChange={(event) =>
+            onUpdateFeedbackState(requestId, {
+              comment: event.target.value,
+            })
+          }
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        />
+        {feedbackState.message && (
+          <p className="mt-2 text-xs text-zinc-400">
+            {feedbackState.message}
+          </p>
+        )}
+      </>
+    ) : null;
+
+  return (
+    <ConversationBubble
+      role={msg.role}
+      timestamp={msg.timestamp}
+      text={msg.text}
+      status={msg.status}
+      requestId={msg.role === "assistant" ? msg.requestId ?? undefined : undefined}
+      isSelected={isSelected}
+      pending={msg.pending}
+      onSelect={handleSelect}
+      footerActions={feedbackActions}
+      footerExtra={feedbackExtra}
+      forcedLabel={forcedLabel}
+      modeLabel={msg.modeLabel}
+      sourceLabel={msg.sourceLabel}
+      contextUsed={msg.contextUsed ?? undefined}
+    />
+  );
+}
+
 export function CockpitChatThread({
   chatMessages,
   selectedRequestId,
@@ -370,134 +525,20 @@ export function CockpitChatThread({
         )}
         {chatMessages.map((msg) => {
           const requestId = msg.requestId;
-          const isSelected = selectedRequestId === requestId;
-          const canInspect = Boolean(requestId) && !msg.pending;
-          const handleSelect =
-            canInspect && requestId
-              ? () => onOpenRequestDetail(requestId, msg.prompt)
-              : undefined;
           const feedbackState =
             msg.role === "assistant" && requestId ? feedbackByRequest[requestId] : undefined;
-          const feedbackLocked = Boolean(feedbackState?.rating);
-          const feedbackActions =
-            msg.role === "assistant" && requestId ? (
-              <div className="flex items-center gap-2">
-                <IconButton
-                  label={t("cockpit.feedback.up")}
-                  variant="outline"
-                  size="xs"
-                  className={
-                    feedbackState?.rating === "up"
-                      ? "border-emerald-400/60 bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-0"
-                      : "focus-visible:outline-none focus-visible:ring-0"
-                  }
-                  icon={
-                    <ThumbsUp
-                      strokeWidth={2.5}
-                      className={
-                        feedbackState?.rating === "up"
-                          ? "h-3.5 w-3.5 text-emerald-300"
-                          : "h-3.5 w-3.5"
-                      }
-                    />
-                  }
-                  disabled={feedbackSubmittingId === requestId || feedbackLocked}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onFeedbackClick(requestId, "up");
-                  }}
-                />
-                <IconButton
-                  label={t("cockpit.feedback.down")}
-                  variant="outline"
-                  size="xs"
-                  className={
-                    feedbackState?.rating === "down"
-                      ? "border-rose-400/60 bg-rose-500/10 focus-visible:outline-none focus-visible:ring-0"
-                      : "focus-visible:outline-none focus-visible:ring-0"
-                  }
-                  icon={
-                    <ThumbsDown
-                      strokeWidth={2.5}
-                      className={
-                        feedbackState?.rating === "down"
-                          ? "h-3.5 w-3.5 text-rose-300"
-                          : "h-3.5 w-3.5"
-                      }
-                    />
-                  }
-                  disabled={feedbackSubmittingId === requestId || feedbackLocked}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onFeedbackClick(requestId, "down");
-                  }}
-                />
-                {feedbackState?.rating === "down" && feedbackState.comment !== undefined ? (
-                  <Button
-                    variant="outline"
-                    size="xs"
-                    disabled={
-                      feedbackSubmittingId === requestId ||
-                      !(feedbackState.comment || "").trim()
-                    }
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onFeedbackSubmit(requestId);
-                    }}
-                  >
-                    {feedbackSubmittingId === requestId ? t("cockpit.feedback.submitting") : t("cockpit.feedback.submit")}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null;
-          const feedbackExtra =
-            msg.role === "assistant" &&
-              requestId &&
-              !msg.pending &&
-              feedbackState?.rating === "down" ? (
-              <>
-                <textarea
-                  className="min-h-[70px] w-full rounded-2xl box-muted px-3 py-2 text-xs text-white outline-none placeholder:text-zinc-500"
-                  placeholder={t("cockpit.feedback.placeholder")}
-                  value={feedbackState.comment || ""}
-                  onChange={(event) =>
-                    onUpdateFeedbackState(requestId, {
-                      comment: event.target.value,
-                    })
-                  }
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => event.stopPropagation()}
-                />
-                {feedbackState.message && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    {feedbackState.message}
-                  </p>
-                )}
-              </>
-            ) : null;
-          const forcedLabel = msg.forcedProvider
-            ? `/${msg.forcedProvider}`
-            : msg.forcedTool
-              ? `/${msg.forcedTool}`
-              : null;
-
           return (
             <div key={msg.bubbleId}>
-              <ConversationBubble
-                role={msg.role}
-                timestamp={msg.timestamp}
-                text={msg.text}
-                status={msg.status}
-                requestId={msg.role === "assistant" ? msg.requestId ?? undefined : undefined}
-                isSelected={isSelected}
-                pending={msg.pending}
-                onSelect={handleSelect}
-                footerActions={feedbackActions}
-                footerExtra={feedbackExtra}
-                forcedLabel={forcedLabel}
-                modeLabel={msg.modeLabel}
-                sourceLabel={msg.sourceLabel}
-                contextUsed={msg.contextUsed ?? undefined}
+              <CockpitThreadItem
+                msg={msg}
+                isSelected={selectedRequestId === requestId}
+                t={t}
+                feedbackState={feedbackState}
+                feedbackSubmittingId={feedbackSubmittingId}
+                onOpenRequestDetail={onOpenRequestDetail}
+                onFeedbackClick={onFeedbackClick}
+                onFeedbackSubmit={onFeedbackSubmit}
+                onUpdateFeedbackState={onUpdateFeedbackState}
               />
             </div>
           );

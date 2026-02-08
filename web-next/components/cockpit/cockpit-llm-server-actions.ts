@@ -29,6 +29,21 @@ type CockpitLlmServerActionsParams = {
   setActiveLlmServer: (server: string) => Promise<{ status?: string; active_model?: string | null }>;
 };
 
+const isRegistryRuntime = (server: string): boolean => server === "vllm" || server === "ollama";
+
+const resolveActivationError = (err: unknown): string =>
+  err instanceof Error ? err.message : "Nie udało się aktywować serwera.";
+
+const resolveLastModelForServer = (
+  server: string,
+  lastModels?: ActiveLlmServerResponse["last_models"],
+): string => {
+  if (!lastModels) return "";
+  if (server === "ollama") return lastModels.ollama || lastModels.previous_ollama || "";
+  if (server === "vllm") return lastModels.vllm || lastModels.previous_vllm || "";
+  return "";
+};
+
 export function useCockpitLlmServerActions({
   selectedLlmServer,
   selectedLlmModel,
@@ -48,6 +63,35 @@ export function useCockpitLlmServerActions({
   switchModel,
   setActiveLlmServer,
 }: CockpitLlmServerActionsParams) {
+  const activateModelForServer = useCallback(
+    async (server: string, model: string) => {
+      if (isRegistryRuntime(server)) {
+        await activateRegistryModel({ name: model, runtime: server });
+        return;
+      }
+      await switchModel(model);
+    },
+    [activateRegistryModel, switchModel],
+  );
+
+  const ensureSelectedModel = useCallback(
+    (server: string, currentSelection: string) => {
+      if (!server || availableModelsForServer.length === 0) return "";
+      const availableNames = new Set(availableModelsForServer.map((model) => model.name));
+      if (currentSelection && availableNames.has(currentSelection)) return currentSelection;
+
+      const currentActive =
+        activeServerInfo?.active_server === server ? activeServerInfo?.active_model ?? "" : "";
+      if (currentActive && availableNames.has(currentActive)) return currentActive;
+
+      const lastForServer = resolveLastModelForServer(server, activeServerInfo?.last_models);
+      if (lastForServer && availableNames.has(lastForServer)) return lastForServer;
+
+      return availableModelsForServer[0].name;
+    },
+    [activeServerInfo?.active_model, activeServerInfo?.active_server, activeServerInfo?.last_models, availableModelsForServer],
+  );
+
   const handleLlmServerActivate = useCallback(async (override?: { server?: string; model?: string }) => {
     const targetServer = override?.server ?? selectedLlmServer;
     const targetModel = override?.model ?? selectedLlmModel;
@@ -59,11 +103,7 @@ export function useCockpitLlmServerActions({
     try {
       setLlmActionPending(`activate:${targetServer}`);
       if (targetModel && activeServerInfo?.active_server === targetServer) {
-        if (targetServer === "vllm" || targetServer === "ollama") {
-          await activateRegistryModel({ name: targetModel, runtime: targetServer });
-        } else {
-          await switchModel(targetModel);
-        }
+        await activateModelForServer(targetServer, targetModel);
         setMessage(`Aktywowano model ${targetModel} na serwerze ${targetServer}.`);
         pushToast(`Aktywny serwer: ${targetServer}, model: ${targetModel}.`, "success");
         return;
@@ -73,11 +113,7 @@ export function useCockpitLlmServerActions({
         setMessage(`Aktywowano serwer ${targetServer}.`);
         pushToast(`Aktywny serwer: ${targetServer}.`, "success");
         if (targetModel && response.active_model && response.active_model !== targetModel) {
-          if (targetServer === "vllm" || targetServer === "ollama") {
-            await activateRegistryModel({ name: targetModel, runtime: targetServer });
-          } else {
-            await switchModel(targetModel);
-          }
+          await activateModelForServer(targetServer, targetModel);
           setMessage(`Aktywowano serwer ${targetServer} i model ${targetModel}.`);
           pushToast(`Aktywny serwer: ${targetServer}, model: ${targetModel}.`, "success");
         }
@@ -86,8 +122,9 @@ export function useCockpitLlmServerActions({
         pushToast("Nie udało się aktywować serwera.", "error");
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Nie udało się aktywować serwera.");
-      pushToast(err instanceof Error ? err.message : "Nie udało się aktywować serwera.", "error");
+      const message = resolveActivationError(err);
+      setMessage(message);
+      pushToast(message, "error");
     } finally {
       setLlmActionPending(null);
       refreshLlmServers();
@@ -96,7 +133,7 @@ export function useCockpitLlmServerActions({
     }
   }, [
     activeServerInfo?.active_server,
-    activateRegistryModel,
+    activateModelForServer,
     pushToast,
     refreshActiveServer,
     refreshLlmServers,
@@ -106,7 +143,6 @@ export function useCockpitLlmServerActions({
     setActiveLlmServer,
     setLlmActionPending,
     setMessage,
-    switchModel,
   ]);
 
   const handleChatModelSelect = useCallback(
@@ -150,41 +186,15 @@ export function useCockpitLlmServerActions({
       setSelectedLlmModel("");
       return;
     }
-    if (availableModelsForServer.length === 0) {
+    const preferred = ensureSelectedModel(selectedLlmServer, selectedLlmModel);
+    if (!preferred) {
       setSelectedLlmModel("");
       return;
     }
-    const currentActive =
-      activeServerInfo?.active_server === selectedLlmServer
-        ? activeServerInfo?.active_model ?? ""
-        : "";
-    const lastModels = activeServerInfo?.last_models ?? {};
-    const lastForServer =
-      selectedLlmServer === "ollama"
-        ? lastModels.ollama || lastModels.previous_ollama
-        : selectedLlmServer === "vllm"
-          ? lastModels.vllm || lastModels.previous_vllm
-          : "";
-    const availableNames = new Set(
-      availableModelsForServer.map((model) => model.name),
-    );
-    if (selectedLlmModel && availableNames.has(selectedLlmModel)) {
-      return;
-    }
-    if (currentActive && availableNames.has(currentActive)) {
-      setSelectedLlmModel(currentActive);
-      return;
-    }
-    if (lastForServer && availableNames.has(lastForServer)) {
-      setSelectedLlmModel(lastForServer);
-      return;
-    }
-    setSelectedLlmModel(availableModelsForServer[0].name);
+    if (preferred === selectedLlmModel) return;
+    setSelectedLlmModel(preferred);
   }, [
-    activeServerInfo?.active_model,
-    activeServerInfo?.active_server,
-    activeServerInfo?.last_models,
-    availableModelsForServer,
+    ensureSelectedModel,
     selectedLlmModel,
     selectedLlmServer,
     setSelectedLlmModel,

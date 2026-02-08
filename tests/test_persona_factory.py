@@ -20,7 +20,7 @@ def test_persona_creation():
     assert persona.name == "Jan"
     assert persona.age == 45
     assert persona.tech_literacy == TechLiteracy.MEDIUM
-    assert persona.patience == 0.5
+    assert persona.patience == pytest.approx(0.5)
     assert persona.goal == "Kupić produkt"
     assert "ciekawy" in persona.traits
 
@@ -41,7 +41,7 @@ def test_persona_to_dict():
     assert persona_dict["name"] == "Anna"
     assert persona_dict["age"] == 30
     assert persona_dict["tech_literacy"] == TechLiteracy.HIGH
-    assert persona_dict["patience"] == 0.8
+    assert persona_dict["patience"] == pytest.approx(0.8)
 
 
 def test_persona_to_json():
@@ -81,7 +81,7 @@ def test_persona_from_dict():
     assert persona.name == "Piotr"
     assert persona.age == 35
     assert persona.tech_literacy == TechLiteracy.HIGH
-    assert persona.patience == 0.7
+    assert persona.patience == pytest.approx(0.7)
 
 
 def test_persona_factory_initialization():

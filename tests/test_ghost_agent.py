@@ -71,7 +71,7 @@ class TestGhostAgent:
     def test_initialization(self, ghost_agent):
         """Test inicjalizacji GhostAgent."""
         assert ghost_agent.max_steps == 10
-        assert ghost_agent.step_delay == 0.1
+        assert ghost_agent.step_delay == pytest.approx(0.1)
         assert ghost_agent.verification_enabled is False
         assert ghost_agent.is_running is False
         assert ghost_agent.emergency_stop is False

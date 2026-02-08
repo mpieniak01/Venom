@@ -1,5 +1,6 @@
 """Moduł: token_economist - optymalizacja kontekstu i kalkulacja kosztów."""
 
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -408,7 +409,7 @@ class TokenEconomist:
         output_cost = (output_tokens / 1_000) * pricing["output"]
         total_cost = input_cost + output_cost
 
-        is_free = total_cost == 0.0
+        is_free = math.isclose(total_cost, 0.0, abs_tol=1e-12)
 
         logger.debug(
             f"Estymacja kosztu dla {service_id}: "

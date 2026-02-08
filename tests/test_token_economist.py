@@ -1,5 +1,6 @@
 """Testy dla TokenEconomist."""
 
+import pytest
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
@@ -253,7 +254,7 @@ class TestTokenEconomist:
         # Test dla modelu lokalnego (darmowy)
         local_cost = economist.estimate_task_cost("local", 100)
         assert local_cost["service_id"] == "local"
-        assert local_cost["estimated_cost_usd"] == 0.0
+        assert local_cost["estimated_cost_usd"] == pytest.approx(0.0)
         assert local_cost["is_free"] is True
 
         # Test dla modelu płatnego
@@ -276,7 +277,7 @@ class TestTokenEconomist:
 
         # Pierwszy (najtańszy) powinien być local (koszt 0)
         assert results[0]["provider"] == "local"
-        assert results[0]["cost"] == 0.0
+        assert results[0]["cost"] == pytest.approx(0.0)
         assert results[0]["is_free"] is True
 
         # Wyniki powinny być posortowane rosnąco po koszcie

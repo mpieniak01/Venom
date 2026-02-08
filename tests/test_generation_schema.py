@@ -1,5 +1,7 @@
 """Testy dla systemu strojenia parametrów (generation schema)."""
 
+import pytest
+
 from venom_core.core.model_registry import (
     GenerationParameter,
     ModelCapabilities,
@@ -20,9 +22,9 @@ def test_generation_parameter_creation():
     )
 
     assert param.type == "float"
-    assert param.default == 0.7
-    assert param.min == 0.0
-    assert param.max == 2.0
+    assert param.default == pytest.approx(0.7)
+    assert param.min == pytest.approx(0.0)
+    assert param.max == pytest.approx(2.0)
     assert param.desc == "Temperatura"
 
 
@@ -58,9 +60,9 @@ def test_default_generation_schema():
     # Sprawdź temperature
     temp = schema["temperature"]
     assert temp.type == "float"
-    assert temp.default == 0.7
-    assert temp.min == 0.0
-    assert temp.max == 2.0
+    assert temp.default == pytest.approx(0.7)
+    assert temp.min == pytest.approx(0.0)
+    assert temp.max == pytest.approx(2.0)
 
     # Sprawdź max_tokens
     max_tokens = schema["max_tokens"]
@@ -104,7 +106,7 @@ def test_model_metadata_to_dict_with_generation_schema():
 
     temp_data = data["capabilities"]["generation_schema"]["temperature"]
     assert temp_data["type"] == "float"
-    assert temp_data["default"] == 0.7
+    assert temp_data["default"] == pytest.approx(0.7)
 
 
 def test_llama3_temperature_range():
@@ -121,8 +123,8 @@ def test_llama3_temperature_range():
         desc="Kreatywność modelu (0 = deterministyczny, 1 = kreatywny)",
     )
 
-    assert schema["temperature"].max == 1.0
-    assert schema["temperature"].min == 0.0
+    assert schema["temperature"].max == pytest.approx(1.0)
+    assert schema["temperature"].min == pytest.approx(0.0)
 
 
 def test_ollama_provider_llama3_detection():

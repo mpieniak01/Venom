@@ -4,6 +4,7 @@ import os
 from unittest.mock import Mock, patch
 
 import psutil
+import pytest
 
 from venom_core.services.process_monitor import ProcessMonitor
 
@@ -154,8 +155,8 @@ class TestProcessMonitor:
 
         # Assert
         assert result is not None
-        assert result["cpu_percent"] == 25.5
-        assert result["memory_mb"] == 100.0
+        assert result["cpu_percent"] == pytest.approx(25.5)
+        assert result["memory_mb"] == pytest.approx(100.0)
         assert result["uptime_seconds"] == 1000
 
     @patch("psutil.Process")

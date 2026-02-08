@@ -462,6 +462,7 @@ class ServiceHealthMonitor:
         Args:
             service: Usługa do sprawdzenia
         """
+        await asyncio.sleep(0)
         try:
             from pathlib import Path
 
@@ -491,6 +492,7 @@ class ServiceHealthMonitor:
         """
         Sprawdza stan Semantic Kernel.
         """
+        await asyncio.sleep(0)
         try:
             orchestrator = self.orchestrator
 

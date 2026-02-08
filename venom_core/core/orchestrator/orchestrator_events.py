@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
@@ -41,6 +42,7 @@ def trace_llm_start(orch: "Orchestrator", task_id: UUID, intent: str) -> None:
 async def trace_step_async(
     orch: "Orchestrator", task_id: UUID, actor: str, action: str, **kwargs
 ) -> None:
+    await asyncio.sleep(0)
     if not orch.request_tracer:
         return
     try:

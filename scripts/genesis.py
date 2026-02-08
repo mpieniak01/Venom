@@ -122,6 +122,27 @@ logger.add(LOG_DIR / "venom.log", rotation="10 MB")
 }
 
 
+def _resolve_file_content(folder: str, file_name: str) -> str:
+    key = f"{folder}/{file_name}" if folder != "." else file_name
+    content = CONTENTS.get(key, "")
+    if not content and file_name.endswith(".py"):
+        module_name = file_name.replace(".py", "")
+        return f'"""Moduł: {module_name}"""\n'
+    return content
+
+
+def _create_file_if_missing(base_dir: Path, folder: str, file_name: str):
+    file_path = base_dir / folder / file_name
+    if file_path.exists():
+        print(f"  └── ⚠️ Pominięto (istnieje): {folder}/{file_name}")
+        return
+
+    content = _resolve_file_content(folder, file_name)
+    with open(file_path, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+    print(f"  └── 📄 Utworzono plik: {folder}/{file_name}")
+
+
 def create_structure():
     print("🧬 Rozpoczynam sekwencję GENESIS...")
     base_path = Path.cwd()
@@ -132,20 +153,7 @@ def create_structure():
         print(f"📁 Katalog OK: {folder}")
 
         for file in files:
-            file_path = dir_path / file
-            if not file_path.exists():
-                key = f"{folder}/{file}" if folder != "." else file
-                content = CONTENTS.get(key, "")
-                # Domyślna treść dla pustych plików .py (żeby były modułami)
-                if not content and file.endswith(".py"):
-                    module_name = file.replace(".py", "")
-                    content = f'"""Moduł: {module_name}"""\n'
-
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                print(f"  └── 📄 Utworzono plik: {folder}/{file}")
-            else:
-                print(f"  └── ⚠️ Pominięto (istnieje): {folder}/{file}")
+            _create_file_if_missing(base_path, folder, file)
 
     print("\n✅ GENESIS ZAKOŃCZONE. Organizm Venom posiada strukturę.")
     print("👉 Następny krok: uzupełnij .env i uruchom:")

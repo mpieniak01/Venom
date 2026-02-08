@@ -270,6 +270,167 @@ def kill_leftovers():
         print("[bench] GPU czyste (brak procesów nvidia-smi).")
 
 
+def _new_runtime_entry(runtime: str, model: str) -> dict:
+    return {"runtime": runtime, "model": model, "prompts": []}
+
+
+def _append_prompt_result(
+    runtime_entry: dict,
+    prompt: str,
+    endpoint: str,
+    model: str,
+    *,
+    use_chat: bool,
+):
+    runtime_entry["prompts"].append(
+        {
+            "prompt": prompt,
+            "result": call_chat(endpoint, model, prompt, use_chat=use_chat),
+        }
+    )
+
+
+def _append_runtime_error(runtime_entry: dict, prompts: list[str], exc: Exception):
+    error_text = str(exc)
+    for prompt in prompts:
+        runtime_entry["prompts"].append(
+            {"prompt": prompt, "result": {"error": error_text}}
+        )
+
+
+def _run_vllm_prompts(vllm_endpoint: str, vllm_model: str) -> dict:
+    vllm_entry = _new_runtime_entry("vllm", vllm_model)
+    for prompt in PROMPTS:
+        _append_prompt_result(
+            vllm_entry,
+            prompt,
+            vllm_endpoint,
+            vllm_model,
+            use_chat=False,
+        )
+    return vllm_entry
+
+
+def _run_ollama_prompts(ollama_endpoint: str, ollama_model: str) -> dict:
+    ollama_entry = _new_runtime_entry("ollama", ollama_model)
+    for prompt in PROMPTS:
+        _append_prompt_result(
+            ollama_entry,
+            prompt,
+            ollama_endpoint,
+            ollama_model,
+            use_chat=True,
+        )
+    return ollama_entry
+
+
+def _benchmark_vllm(
+    vllm_endpoint: str,
+    vllm_model: str,
+    vllm_start_cmd: str,
+    vllm_stop_cmd: str,
+    force_cleanup: bool,
+) -> dict:
+    started_vllm = False
+    try:
+        started_vllm = ensure_vllm_running(vllm_endpoint, vllm_start_cmd)
+        return _run_vllm_prompts(vllm_endpoint, vllm_model)
+    except Exception as exc:
+        print(f"[bench] vLLM nieosiągalny: {exc}")
+        vllm_entry = _new_runtime_entry("vllm", vllm_model)
+        _append_runtime_error(vllm_entry, PROMPTS, exc)
+        return vllm_entry
+    finally:
+        if force_cleanup or started_vllm:
+            stop_vllm(vllm_stop_cmd, started_vllm or force_cleanup)
+            kill_leftovers()
+
+
+def _benchmark_ollama(
+    ollama_endpoint: str,
+    ollama_model: str,
+    ollama_stop_cmd: str,
+    force_cleanup: bool,
+) -> dict:
+    ollama_was_running = check_health(ollama_endpoint)
+    started_ollama, ollama_proc = False, None
+    ollama_failed = False
+    ollama_entry = _new_runtime_entry("ollama", ollama_model)
+    try:
+        if not ollama_was_running:
+            try:
+                started_ollama, ollama_proc = ensure_ollama_running(
+                    ollama_endpoint, os.getenv("OLLAMA_START_COMMAND", "")
+                )
+            except Exception as exc:
+                ollama_failed = True
+                print(f"[bench] Ollama nieosiągalna: {exc}")
+                _append_runtime_error(ollama_entry, PROMPTS, exc)
+        if not ollama_failed:
+            ollama_entry = _run_ollama_prompts(ollama_endpoint, ollama_model)
+    finally:
+        if started_ollama and ollama_proc:
+            ollama_proc.terminate()
+            try:
+                ollama_proc.wait(timeout=10)
+            except Exception:
+                ollama_proc.kill()
+        if force_cleanup or started_ollama or not ollama_was_running:
+            stop_ollama(ollama_stop_cmd, started_by_script=True)
+            kill_leftovers()
+    return ollama_entry
+
+
+def _format_prompt_cell(prompt: str, max_len: int = 40) -> str:
+    return prompt[:max_len] + ("..." if len(prompt) > max_len else "")
+
+
+def _build_table_rows(runtime_prompts: list[dict]) -> list[list[str]]:
+    rows = [["Lp", "Prompt", "TTFT (ms)", "Czas (ms)", "Tok", "Err"]]
+    for idx, entry in enumerate(runtime_prompts, start=1):
+        result = entry["result"]
+        rows.append(
+            [
+                str(idx),
+                _format_prompt_cell(entry["prompt"]),
+                f"{result.get('ttft_ms'):.0f}" if result.get("ttft_ms") else "-",
+                f"{result.get('duration_ms'):.0f}"
+                if result.get("duration_ms")
+                else "-",
+                str(result.get("tokens", "-")),
+                result.get("error", "-"),
+            ]
+        )
+    return rows
+
+
+def print_box_table(title: str, rows: list[list[str]]):
+    # oblicz szerokości kolumn
+    widths = [max(len(str(cell)) for cell in col) for col in zip(*rows)]
+
+    def border(char="+", fill="-"):
+        return char + char.join(fill * (w + 2) for w in widths) + char
+
+    print(f"\n=== {title} ===")
+    print(border())
+    # header
+    header = rows[0]
+    print(
+        "|"
+        + "|".join(f" {str(cell).ljust(widths[i])} " for i, cell in enumerate(header))
+        + "|"
+    )
+    print(border(char="+", fill="="))
+    # data rows
+    for row in rows[1:]:
+        print(
+            "|"
+            + "|".join(f" {str(cell).ljust(widths[i])} " for i, cell in enumerate(row))
+            + "|"
+        )
+    print(border())
+
+
 def run_benchmark():
     vllm_endpoint = os.getenv("VLLM_ENDPOINT", build_http_url("localhost", 8001, "/v1"))
     ollama_endpoint = os.getenv(
@@ -292,131 +453,29 @@ def run_benchmark():
     results = []
 
     # --- Test vLLM ---
-    vllm_entry = {"runtime": "vllm", "model": vllm_model, "prompts": []}
-
-    started_vllm = False
-    try:
-        started_vllm = ensure_vllm_running(vllm_endpoint, vllm_start_cmd)
-        for prompt in PROMPTS:
-            vllm_entry["prompts"].append(
-                {
-                    "prompt": prompt,
-                    "result": call_chat(
-                        vllm_endpoint, vllm_model, prompt, use_chat=False
-                    ),
-                }
-            )
-    except Exception as exc:
-        print(f"[bench] vLLM nieosiągalny: {exc}")
-        for prompt in PROMPTS:
-            vllm_entry["prompts"].append(
-                {"prompt": prompt, "result": {"error": str(exc)}}
-            )
-    finally:
-        if force_cleanup or started_vllm:
-            stop_vllm(vllm_stop_cmd, started_vllm or force_cleanup)
-            kill_leftovers()
-    results.append(vllm_entry)
+    results.append(
+        _benchmark_vllm(
+            vllm_endpoint=vllm_endpoint,
+            vllm_model=vllm_model,
+            vllm_start_cmd=vllm_start_cmd,
+            vllm_stop_cmd=vllm_stop_cmd,
+            force_cleanup=force_cleanup,
+        )
+    )
 
     # --- Test Ollama ---
-    ollama_entry = {"runtime": "ollama", "model": ollama_model, "prompts": []}
-    ollama_was_running = check_health(ollama_endpoint)
-    started_ollama, ollama_proc = False, None
-    ollama_failed = False
-    try:
-        if not ollama_was_running:
-            try:
-                started_ollama, ollama_proc = ensure_ollama_running(
-                    ollama_endpoint, os.getenv("OLLAMA_START_COMMAND", "")
-                )
-            except Exception as exc:
-                ollama_failed = True
-                print(f"[bench] Ollama nieosiągalna: {exc}")
-                for prompt in PROMPTS:
-                    ollama_entry["prompts"].append(
-                        {"prompt": prompt, "result": {"error": str(exc)}}
-                    )
-        if not ollama_failed:
-            for prompt in PROMPTS:
-                ollama_entry["prompts"].append(
-                    {
-                        "prompt": prompt,
-                        "result": call_chat(ollama_endpoint, ollama_model, prompt),
-                    }
-                )
-    finally:
-        # jeśli startowaliśmy własny serwer, zamknijmy go grzecznie
-        if started_ollama and ollama_proc:
-            ollama_proc.terminate()
-            try:
-                ollama_proc.wait(timeout=10)
-            except Exception:
-                ollama_proc.kill()
-        if force_cleanup or started_ollama or not ollama_was_running:
-            stop_ollama(ollama_stop_cmd, started_by_script=True)
-            kill_leftovers()
-    results.append(ollama_entry)
-
-    def print_box_table(title: str, rows: list[list[str]]):
-        # oblicz szerokości kolumn
-        widths = [max(len(str(cell)) for cell in col) for col in zip(*rows)]
-
-        def border(char="+", fill="-"):
-            return char + char.join(fill * (w + 2) for w in widths) + char
-
-        print(f"\n=== {title} ===")
-        print(border())
-        # header
-        header = rows[0]
-        print(
-            "|"
-            + "|".join(
-                f" {str(cell).ljust(widths[i])} " for i, cell in enumerate(header)
-            )
-            + "|"
+    results.append(
+        _benchmark_ollama(
+            ollama_endpoint=ollama_endpoint,
+            ollama_model=ollama_model,
+            ollama_stop_cmd=ollama_stop_cmd,
+            force_cleanup=force_cleanup,
         )
-        print(border(char="+", fill="="))
-        # data rows
-        for row in rows[1:]:
-            print(
-                "|"
-                + "|".join(
-                    f" {str(cell).ljust(widths[i])} " for i, cell in enumerate(row)
-                )
-                + "|"
-            )
-        print(border())
+    )
 
     # Prezentacja tabelaryczna z ramkami
-    v_rows = [["Lp", "Prompt", "TTFT (ms)", "Czas (ms)", "Tok", "Err"]]
-    for i, entry in enumerate(results[0]["prompts"], start=1):
-        v = entry["result"]
-        v_rows.append(
-            [
-                str(i),
-                entry["prompt"][:40] + ("..." if len(entry["prompt"]) > 40 else ""),
-                f"{v.get('ttft_ms'):.0f}" if v.get("ttft_ms") else "-",
-                f"{v.get('duration_ms'):.0f}" if v.get("duration_ms") else "-",
-                str(v.get("tokens", "-")),
-                v.get("error", "-"),
-            ]
-        )
-    print_box_table("vLLM", v_rows)
-
-    o_rows = [["Lp", "Prompt", "TTFT (ms)", "Czas (ms)", "Tok", "Err"]]
-    for i, entry in enumerate(results[1]["prompts"], start=1):
-        o = entry["result"]
-        o_rows.append(
-            [
-                str(i),
-                entry["prompt"][:40] + ("..." if len(entry["prompt"]) > 40 else ""),
-                f"{o.get('ttft_ms'):.0f}" if o.get("ttft_ms") else "-",
-                f"{o.get('duration_ms'):.0f}" if o.get("duration_ms") else "-",
-                str(o.get("tokens", "-")),
-                o.get("error", "-"),
-            ]
-        )
-    print_box_table("Ollama", o_rows)
+    print_box_table("vLLM", _build_table_rows(results[0]["prompts"]))
+    print_box_table("Ollama", _build_table_rows(results[1]["prompts"]))
 
     # JSON do dalszego przetwarzania
     print("\n=== JSON ===")

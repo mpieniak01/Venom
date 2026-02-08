@@ -27,6 +27,7 @@ REPEATS = int(os.getenv("VENOM_LLM_REPEATS", "2"))
 STREAM_TIMEOUT = float(os.getenv("VENOM_STREAM_TIMEOUT", "60"))
 STATUS_TIMEOUT = float(os.getenv("VENOM_STATUS_TIMEOUT", "20"))
 STATUS_POLL_INTERVAL = float(os.getenv("VENOM_STATUS_POLL_INTERVAL", "1.0"))
+LATENCY_SUMMARY_LABEL = "LLM latency summary:"
 
 
 async def _skip_if_backend_unavailable(message: str) -> None:
@@ -84,7 +85,7 @@ def _print_latency_summary(
     totals: List[float],
 ) -> None:
     print(
-        "LLM latency summary:",
+        LATENCY_SUMMARY_LABEL,
         f"model={model_to_use}",
         f"runtime={runtime_info.get('active_server')}@{runtime_info.get('active_endpoint')}",
         f"first_token avg={sum(first_tokens) / len(first_tokens):.2f}s",
@@ -102,7 +103,7 @@ def _print_mode_summary(
     totals: List[float],
 ) -> None:
     print(
-        "LLM latency summary:",
+        LATENCY_SUMMARY_LABEL,
         f"mode={mode}",
         f"model={model_to_use}",
         f"runtime={runtime_info.get('active_server')}@{runtime_info.get('active_endpoint')}",
@@ -214,7 +215,7 @@ async def run_latency_modes_e2e() -> None:
         results["complex"] = (complex_first, complex_total)
     except TimeoutError as exc:
         complex_error = str(exc)
-        print("LLM latency summary:", "mode=complex", f"error={complex_error}")
+        print(LATENCY_SUMMARY_LABEL, "mode=complex", f"error={complex_error}")
 
     for mode, (firsts, totals) in results.items():
         assert all(value > 0 for value in firsts)

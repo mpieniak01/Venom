@@ -124,3 +124,41 @@ def test_actionable_field_for_config_based_services(monkeypatch):
     # Test Background Tasks
     bg_tasks_info = controller.get_service_status(ServiceType.BACKGROUND_TASKS)
     assert bg_tasks_info.actionable is False
+
+
+def test_perform_action_for_config_controlled_service():
+    controller = RuntimeController()
+    result = controller._perform_action(ServiceType.HIVE, action="start")
+    assert result["success"] is False
+    assert "konfig" in result["message"].lower()
+
+
+def test_apply_profile_unknown():
+    controller = RuntimeController()
+    result = controller.apply_profile("nope")
+    assert result["success"] is False
+    assert "Nieznany profil" in result["message"]
+
+
+def test_apply_profile_light_starts_core_services(monkeypatch):
+    controller = RuntimeController()
+    started = []
+    stopped = []
+
+    def fake_start(service_type):
+        started.append(service_type)
+        return {"success": True, "message": f"started {service_type.value}"}
+
+    def fake_stop(service_type):
+        stopped.append(service_type)
+        return {"success": True, "message": f"stopped {service_type.value}"}
+
+    monkeypatch.setattr(controller, "start_service", fake_start)
+    monkeypatch.setattr(controller, "stop_service", fake_stop)
+
+    result = controller.apply_profile("light")
+    assert result["success"] is True
+    assert ServiceType.BACKEND in started
+    assert ServiceType.UI in started
+    assert ServiceType.LLM_OLLAMA in stopped
+    assert ServiceType.LLM_VLLM in stopped

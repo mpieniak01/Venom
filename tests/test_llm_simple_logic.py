@@ -1,0 +1,190 @@
+from __future__ import annotations
+
+import json
+
+import httpx
+from fastapi.testclient import TestClient
+
+from venom_core.api.routes import llm_simple as llm_simple_routes
+from venom_core.main import app
+
+
+class DummyRuntime:
+    def __init__(self, provider: str = "ollama", model_name: str | None = "model-x"):
+        self.provider = provider
+        self.model_name = model_name
+        self.endpoint = "http://localhost:1234"
+        self.config_hash = "cfg"
+        self.runtime_id = "rid"
+
+
+class ErrorStreamResponse:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def raise_for_status(self):
+        request = httpx.Request("POST", "http://localhost")
+        response = httpx.Response(502, request=request, text="bad gateway")
+        raise httpx.HTTPStatusError("bad", request=request, response=response)
+
+    async def aiter_lines(self):
+        if False:
+            yield ""
+
+
+class DummyClientHttpStatus:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def stream(self, method: str, url: str, json: dict):
+        return ErrorStreamResponse()
+
+
+class DummyClientConnectionError:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    def stream(self, method: str, url: str, json: dict):
+        raise httpx.ConnectError("offline")
+
+
+def _collect_sse_events(response):
+    events: list[dict] = []
+    for line in response.iter_lines():
+        if line.startswith("event:"):
+            events.append({"event": line.split(": ", 1)[1]})
+            continue
+        if line.startswith("data:"):
+            payload = line.split(": ", 1)[1]
+            if payload:
+                events[-1]["data"] = json.loads(payload)
+    return events
+
+
+def test_get_simple_context_char_limit(monkeypatch):
+    monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 1024)
+    assert (
+        llm_simple_routes._get_simple_context_char_limit(DummyRuntime("ollama")) is None
+    )
+    assert (
+        llm_simple_routes._get_simple_context_char_limit(DummyRuntime("vllm")) == 3072
+    )
+
+
+def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
+    monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
+    captured = {"steps": []}
+
+    class DummyTracer:
+        def add_step(self, *args, **kwargs):
+            captured["steps"].append((args, kwargs))
+
+    monkeypatch.setattr(llm_simple_routes, "_request_tracer", DummyTracer())
+
+    trimmed = llm_simple_routes._trim_user_content_for_runtime(
+        "x" * 200, "sys", DummyRuntime("vllm"), request_id="rid"
+    )
+    assert len(trimmed) < 200
+    assert captured["steps"]
+
+
+def test_extract_sse_contents_filters_invalid_packets():
+    packet = {
+        "choices": [
+            {"delta": {"content": "A"}},
+            {"delta": {"content": ""}},
+            {"delta": "not-dict"},
+            {},
+        ]
+    }
+    assert llm_simple_routes._extract_sse_contents(packet) == ["A"]
+
+
+def test_stream_simple_chat_returns_400_without_model(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_routes,
+        "get_active_llm_runtime",
+        lambda: DummyRuntime(model_name=None),
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/v1/llm/simple/stream", json={"content": "hello"})
+    assert response.status_code == 400
+
+
+def test_stream_simple_chat_returns_503_without_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+    )
+    monkeypatch.setattr(
+        llm_simple_routes, "_build_chat_completions_url", lambda _rt: None
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/v1/llm/simple/stream", json={"content": "hello"})
+    assert response.status_code == 503
+
+
+def test_stream_simple_chat_http_status_error_emits_error_event(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+    )
+    monkeypatch.setattr(
+        llm_simple_routes,
+        "_build_chat_completions_url",
+        lambda _rt: "http://localhost/v1/chat/completions",
+    )
+    monkeypatch.setattr("httpx.AsyncClient", DummyClientHttpStatus)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/llm/simple/stream",
+        json={"content": "hello"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_sse_events(response)
+
+    assert events[0]["event"] == "start"
+    assert events[1]["event"] == "error"
+    assert events[1]["data"]["code"] == "llm_http_error"
+
+
+def test_stream_simple_chat_connection_error_emits_error_event(monkeypatch):
+    monkeypatch.setattr(
+        llm_simple_routes, "get_active_llm_runtime", lambda: DummyRuntime()
+    )
+    monkeypatch.setattr(
+        llm_simple_routes,
+        "_build_chat_completions_url",
+        lambda _rt: "http://localhost/v1/chat/completions",
+    )
+    monkeypatch.setattr("httpx.AsyncClient", DummyClientConnectionError)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/llm/simple/stream",
+        json={"content": "hello"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_sse_events(response)
+
+    assert events[0]["event"] == "start"
+    assert events[1]["event"] == "error"
+    assert events[1]["data"]["code"] == "llm_connection_error"

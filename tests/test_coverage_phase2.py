@@ -1,13 +1,23 @@
 import sys
 from unittest.mock import AsyncMock, MagicMock
 
-# Mock orchestrator to bypass heavy dependencies (semantic_kernel, pydantic errors)
-sys.modules["venom_core.core.orchestrator"] = MagicMock()
-sys.modules["venom_core.core.tracer"] = MagicMock()
-sys.modules["venom_core.core.dispatcher"] = MagicMock()
-sys.modules["venom_core.services.memory_service"] = MagicMock()
-sys.modules["venom_core.services.session_store"] = MagicMock()
-sys.modules["venom_core.memory.embedding_service"] = MagicMock()
+# Mock heavy dependencies only for import phase
+_module_backup: dict[str, object | None] = {}
+
+
+def _set_mocked_module(name: str, module: object | None = None) -> object:
+    _module_backup[name] = sys.modules.get(name)
+    mocked = module if module is not None else MagicMock()
+    sys.modules[name] = mocked  # type: ignore[assignment]
+    return mocked
+
+
+_set_mocked_module("venom_core.core.orchestrator")
+_set_mocked_module("venom_core.core.tracer")
+_set_mocked_module("venom_core.core.dispatcher")
+_set_mocked_module("venom_core.services.memory_service")
+_set_mocked_module("venom_core.services.session_store")
+_set_mocked_module("venom_core.memory.embedding_service")
 
 from uuid import uuid4  # noqa: E402
 
@@ -20,6 +30,12 @@ from venom_core.api.routes import knowledge as knowledge_routes  # noqa: E402
 from venom_core.api.routes import memory as memory_routes  # noqa: E402
 from venom_core.api.routes import tasks as tasks_routes  # noqa: E402
 from venom_core.core.models import TaskStatus, VenomTask  # noqa: E402
+
+for _name, _original in _module_backup.items():
+    if _original is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original  # type: ignore[assignment]
 
 # --- Setup Fixtures ---
 

@@ -87,7 +87,7 @@ class GitSkill(BaseSkill):
         description="Inicjalizuje nowe repozytorium Git w workspace lub klonuje istniejące.",
     )
     @async_safe_action
-    def init_repo(
+    async def init_repo(
         self,
         url: Annotated[
             Optional[str], "URL repozytorium do sklonowania (opcjonalne)"
@@ -123,7 +123,7 @@ class GitSkill(BaseSkill):
         description="Przełącza branch w repozytorium Git.",
     )
     @async_safe_action
-    def checkout(
+    async def checkout(
         self,
         branch_name: Annotated[str, "Nazwa brancha do przełączenia"],
         create_new: Annotated[
@@ -152,7 +152,7 @@ class GitSkill(BaseSkill):
         description="Zwraca status repozytorium Git (zmodyfikowane, dodane, usunięte pliki).",
     )
     @async_safe_action
-    def get_status(self) -> str:
+    async def get_status(self) -> str:
         """
         Pobiera status repozytorium Git.
         """
@@ -169,7 +169,7 @@ class GitSkill(BaseSkill):
         description="Zwraca różnice (diff) między workspace a ostatnim commitem.",
     )
     @async_safe_action
-    def get_diff(self) -> str:
+    async def get_diff(self) -> str:
         """
         Pobiera diff repozytorium Git.
         """
@@ -187,7 +187,7 @@ class GitSkill(BaseSkill):
         description="Stage'uje pliki do commita (git add).",
     )
     @async_safe_action
-    def add_files(
+    async def add_files(
         self,
         files: Annotated[
             Optional[List[str]],
@@ -214,7 +214,7 @@ class GitSkill(BaseSkill):
         description="Tworzy commit Git z podaną wiadomością.",
     )
     @async_safe_action
-    def commit(
+    async def commit(
         self,
         message: Annotated[
             str, "Wiadomość commita (najlepiej w formacie Conventional Commits)"
@@ -239,7 +239,7 @@ class GitSkill(BaseSkill):
         description="Wypycha zmiany do zdalnego repozytorium.",
     )
     @async_safe_action
-    def push(
+    async def push(
         self,
         remote: Annotated[str, "Nazwa remote (domyślnie 'origin')"] = "origin",
         branch: Annotated[
@@ -270,7 +270,7 @@ class GitSkill(BaseSkill):
         description="Zwraca historię ostatnich commitów.",
     )
     @async_safe_action
-    def get_last_commit_log(
+    async def get_last_commit_log(
         self,
         n: Annotated[int, "Liczba ostatnich commitów do wyświetlenia"] = 5,
     ) -> str:
@@ -303,7 +303,7 @@ class GitSkill(BaseSkill):
         description="Zwraca nazwę aktualnego brancha.",
     )
     @async_safe_action
-    def get_current_branch(self) -> str:
+    async def get_current_branch(self) -> str:
         """
         Pobiera nazwę aktualnego brancha.
         """
@@ -320,7 +320,7 @@ class GitSkill(BaseSkill):
         description="Pobiera i scala zmiany ze zdalnego repozytorium (git pull).",
     )
     @async_safe_action
-    def pull(
+    async def pull(
         self,
         remote: Annotated[str, "Nazwa remote (domyślnie 'origin')"] = "origin",
         branch: Annotated[
@@ -389,7 +389,7 @@ class GitSkill(BaseSkill):
         description="Cofa zmiany w repozytorium (git reset). UWAGA: Operacja destrukcyjna!",
     )
     @async_safe_action
-    def reset(
+    async def reset(
         self,
         mode: Annotated[
             str, "Tryb resetu: 'soft', 'mixed', lub 'hard' (domyślnie 'hard')"
@@ -434,7 +434,7 @@ class GitSkill(BaseSkill):
         description="Scala zmiany z innego brancha do aktualnego brancha (git merge).",
     )
     @async_safe_action
-    def merge(
+    async def merge(
         self,
         source_branch: Annotated[str, "Nazwa brancha źródłowego do scalenia"],
     ) -> str:
@@ -473,7 +473,7 @@ class GitSkill(BaseSkill):
         description="Tworzy nowy branch (bez przełączania się na niego).",
     )
     @async_safe_action
-    def create_branch(
+    async def create_branch(
         self,
         branch_name: Annotated[str, "Nazwa nowego brancha"],
     ) -> str:

@@ -1,20 +1,30 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-# Mock heavy dependencies to avoid Pydantic errors and import overhead
-sys.modules["semantic_kernel"] = MagicMock()
-sys.modules["semantic_kernel.kernel"] = MagicMock()
-sys.modules["semantic_kernel.contents"] = MagicMock()
-sys.modules["semantic_kernel.contents.chat_history"] = MagicMock()
-sys.modules["semantic_kernel.contents.chat_message_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.function_result_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.text_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.utils"] = MagicMock()
-sys.modules["semantic_kernel.contents.utils.author_role"] = MagicMock()
-sys.modules["semantic_kernel.connectors"] = MagicMock()
-sys.modules["semantic_kernel.connectors.ai"] = MagicMock()
-sys.modules["semantic_kernel.connectors.ai.open_ai"] = MagicMock()
-sys.modules["semantic_kernel.functions"] = MagicMock()
+# Mock heavy dependencies only for import phase
+_module_backup: dict[str, object | None] = {}
+
+
+def _set_mocked_module(name: str, module: object | None = None) -> object:
+    _module_backup[name] = sys.modules.get(name)
+    mocked = module if module is not None else MagicMock()
+    sys.modules[name] = mocked  # type: ignore[assignment]
+    return mocked
+
+
+_set_mocked_module("semantic_kernel")
+_set_mocked_module("semantic_kernel.kernel")
+_set_mocked_module("semantic_kernel.contents")
+_set_mocked_module("semantic_kernel.contents.chat_history")
+_set_mocked_module("semantic_kernel.contents.chat_message_content")
+_set_mocked_module("semantic_kernel.contents.function_result_content")
+_set_mocked_module("semantic_kernel.contents.text_content")
+_set_mocked_module("semantic_kernel.contents.utils")
+_set_mocked_module("semantic_kernel.contents.utils.author_role")
+_set_mocked_module("semantic_kernel.connectors")
+_set_mocked_module("semantic_kernel.connectors.ai")
+_set_mocked_module("semantic_kernel.connectors.ai.open_ai")
+_set_mocked_module("semantic_kernel.functions")
 
 
 # helper to allow @kernel_function decorator to work as identity or mock
@@ -29,13 +39,14 @@ def mock_kernel_function(func=None, **kwargs):
 
 sys.modules["semantic_kernel.functions"].kernel_function = mock_kernel_function
 
-sys.modules["venom_core.core.orchestrator"] = MagicMock()
+_set_mocked_module("venom_core.core.orchestrator")
 # Mock ModelDiagnosticSettings issue
-sys.modules["semantic_kernel.utils.telemetry.model_diagnostics"] = MagicMock()
+_set_mocked_module("semantic_kernel.utils.telemetry.model_diagnostics")
 # Mock Config Settings to avoid validation errors
-sys.modules["venom_core.config"] = MagicMock()
-sys.modules["venom_core.config"].SETTINGS = MagicMock()
-sys.modules["venom_core.config"].SETTINGS.ENABLE_META_LEARNING = False
+config_module = MagicMock()
+config_module.SETTINGS = MagicMock()
+config_module.SETTINGS.ENABLE_META_LEARNING = False
+_set_mocked_module("venom_core.config", config_module)
 
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
@@ -57,6 +68,12 @@ from venom_core.api.routes import system_status as system_status_routes  # noqa:
 from venom_core.core.model_router import ComplexityScore, ServiceId  # noqa: E402
 from venom_core.execution.skills.chrono_skill import ChronoSkill  # noqa: E402
 from venom_core.execution.skills.complexity_skill import ComplexitySkill  # noqa: E402
+
+for _name, _original in _module_backup.items():
+    if _original is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original  # type: ignore[assignment]
 
 # --- Agents & Skills Tests ---
 

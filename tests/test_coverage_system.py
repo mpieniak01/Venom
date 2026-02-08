@@ -1,37 +1,50 @@
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# --- Mocks for Heavy Dependencies ---
-sys.modules["semantic_kernel"] = MagicMock()
-sys.modules["semantic_kernel.kernel"] = MagicMock()
-sys.modules["semantic_kernel.contents"] = MagicMock()
-sys.modules["semantic_kernel.contents.chat_history"] = MagicMock()
-sys.modules["semantic_kernel.contents.chat_history"] = MagicMock()
-sys.modules["semantic_kernel.contents.chat_message_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.function_result_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.text_content"] = MagicMock()
-sys.modules["semantic_kernel.contents.utils"] = MagicMock()
-sys.modules["semantic_kernel.contents.utils.author_role"] = MagicMock()
-sys.modules["semantic_kernel.connectors"] = MagicMock()
-sys.modules["semantic_kernel.connectors.ai"] = MagicMock()
-sys.modules["semantic_kernel.connectors.ai.open_ai"] = MagicMock()
-sys.modules["venom_core.config"] = MagicMock()
-sys.modules["venom_core.config"].SETTINGS = MagicMock()
-sys.modules["venom_core.config"].SETTINGS.AI_MODE = "HYBRID"
+# --- Mocks for Heavy Dependencies (only for imports in this module) ---
+_module_backup: dict[str, object | None] = {}
+
+
+def _set_mocked_module(name: str, module: object | None = None) -> object:
+    _module_backup[name] = sys.modules.get(name)
+    mocked = module if module is not None else MagicMock()
+    sys.modules[name] = mocked  # type: ignore[assignment]
+    return mocked
+
+
+_set_mocked_module("semantic_kernel")
+_set_mocked_module("semantic_kernel.kernel")
+_set_mocked_module("semantic_kernel.contents")
+_set_mocked_module("semantic_kernel.contents.chat_history")
+_set_mocked_module("semantic_kernel.contents.chat_message_content")
+_set_mocked_module("semantic_kernel.contents.function_result_content")
+_set_mocked_module("semantic_kernel.contents.text_content")
+_set_mocked_module("semantic_kernel.contents.utils")
+_set_mocked_module("semantic_kernel.contents.utils.author_role")
+_set_mocked_module("semantic_kernel.connectors")
+_set_mocked_module("semantic_kernel.connectors.ai")
+_set_mocked_module("semantic_kernel.connectors.ai.open_ai")
+
+config_module = MagicMock()
+config_module.SETTINGS = MagicMock()
+config_module.SETTINGS.AI_MODE = "HYBRID"
+_set_mocked_module("venom_core.config", config_module)
 
 # Mock venom_core.services.config_manager
 mock_config_manager = MagicMock()
-sys.modules["venom_core.services.config_manager"] = MagicMock()
-sys.modules["venom_core.services.config_manager"].config_manager = mock_config_manager
+config_manager_module = MagicMock()
+config_manager_module.config_manager = mock_config_manager
+_set_mocked_module("venom_core.services.config_manager", config_manager_module)
 
 # Mock venom_core.core.permission_guard
 mock_permission_guard = MagicMock()
-sys.modules["venom_core.core.permission_guard"] = MagicMock()
-sys.modules["venom_core.core.permission_guard"].permission_guard = mock_permission_guard
+permission_guard_module = MagicMock()
+permission_guard_module.permission_guard = mock_permission_guard
+_set_mocked_module("venom_core.core.permission_guard", permission_guard_module)
 
 # Mock venom_core.api.routes.system_deps
 mock_system_deps = MagicMock()
-sys.modules["venom_core.api.routes.system_deps"] = mock_system_deps
+_set_mocked_module("venom_core.api.routes.system_deps", mock_system_deps)
 
 import pytest  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
@@ -49,6 +62,12 @@ from venom_core.api.routes import system_runtime  # noqa: E402
 from venom_core.api.routes import system_scheduler  # noqa: E402
 from venom_core.api.routes import system_services  # noqa: E402
 from venom_core.utils.ttl_cache import TTLCache  # noqa: E402
+
+for _name, _original in _module_backup.items():
+    if _original is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original  # type: ignore[assignment]
 
 # --- App Fixture ---
 

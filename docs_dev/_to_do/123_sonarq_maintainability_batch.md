@@ -248,6 +248,7 @@ Decyzja: dopasowanie argumentów do sygnatur (cast/protocol/test-double), bez zm
   - `a6ff052` `refactor(api): reduce cognitive complexity in workflow and knowledge routes (123-c)`
   - `99fb8c8` `refactor(api): reduce cognitive complexity in memory and system routes (123-c)`
   - `0fb0807` `refactor(api): reduce cognitive complexity in remaining route handlers (123-c)`
+  - `dcce10f` `refactor(agents): reduce cognitive complexity in system status report flow (123-c)`
 - [x] `123-d`: complexity `venom_core/core/**` + `execution/**` + `memory/**` + `services/**` + `venom_spore/main.py` + `web-next/components/**`
   - `4c9e30b` `refactor(core): reduce cognitive complexity in entrypoint and model flows (123-d)`
   - `7f8b49d` `refactor(spore): reduce cognitive complexity in spore runtime executors (123-d)`
@@ -268,7 +269,7 @@ Decyzja: dopasowanie argumentów do sygnatur (cast/protocol/test-double), bez zm
 - `123-b`: tests/scripts/frontend test nesting
   - `3e05220`, `17686d4`, `5d75647`
 - `123-c`: agents + api routes
-  - `26a2717`, `9bd85ce`, `af52d00`, `a6ff052`, `99fb8c8`, `0fb0807`
+  - `26a2717`, `9bd85ce`, `af52d00`, `a6ff052`, `99fb8c8`, `0fb0807`, `dcce10f`
 - `123-d`: core/execution/memory/services/spore/perception/simulation/web-next
   - `4c9e30b`, `7f8b49d`, `d32a693`, `e14ed77`, `1445d00`, `d64af72`, `b9bef66`, `d4ff1bf`
 
@@ -287,7 +288,6 @@ Poniższe pozycje z `123_wsad.md` oznaczono jako `deferred` z powodu ryzyka regr
 - `venom_core/agents/release_manager.py`
 - `venom_core/agents/shadow.py`
 - `venom_core/agents/strategist.py`
-- `venom_core/agents/system_status.py`
 - `venom_core/agents/ux_analyst.py`
 - `venom_core/core/chronos.py`
 - `venom_core/core/dream_engine.py`

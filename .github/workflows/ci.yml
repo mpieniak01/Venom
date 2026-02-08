@@ -28,17 +28,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-ci-lite.txt
 
-      - name: Run lightweight backend tests
-        timeout-minutes: 10
-        run: |
-          make audit-ci-lite
-          make test-ci-lite
-
-      - name: Generate backend Sonar reports
+      - name: Run backend lite tests with Sonar reports
         timeout-minutes: 10
         run: |
           python -m pip install pytest-cov
           mkdir -p test-results/sonar
+          make audit-ci-lite
           pytest -q $(grep -vE '^\s*(#|$)' config/pytest-groups/ci-lite.txt) \
             --cov=venom_core \
             --cov-report=xml:test-results/sonar/python-coverage.xml \
@@ -52,7 +47,7 @@ jobs:
           if-no-files-found: error
 
   frontend-lite:
-    name: Frontend lite (lint + few unit tests)
+    name: Frontend lite (lint + unit coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -76,7 +71,7 @@ jobs:
         run: npm --prefix web-next run lint
 
       - name: Unit tests with coverage (Sonar)
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: npm --prefix web-next run test:unit:coverage
 
       - name: Upload frontend Sonar artifacts

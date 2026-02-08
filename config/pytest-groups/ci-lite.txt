@@ -11,3 +11,19 @@ tests/test_dispatcher.py
 tests/test_parse_intent.py
 tests/test_toolmaker_agent.py
 tests/test_ux_analyst.py
+
+# Sonar new-code coverage additions (task 122/123)
+tests/test_executive_agent_roi.py
+tests/test_shadow_agent.py
+tests/test_evolution_coordinator.py
+tests/test_overmind_integration.py
+tests/test_hardware_bridge.py
+tests/test_operator_agent.py
+tests/test_ingestion_engine.py
+tests/test_ingestion_engine_roi.py
+tests/test_node_manager.py
+tests/test_evolution_basic.py
+tests/test_foreman_agent.py
+tests/test_ota_manager.py
+tests/test_tracer.py
+tests/test_tracer_persistence.py

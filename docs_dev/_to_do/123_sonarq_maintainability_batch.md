@@ -247,12 +247,14 @@ Decyzja: dopasowanie argumentów do sygnatur (cast/protocol/test-double), bez zm
   - `af52d00` `refactor(agents): reduce cognitive complexity in remaining specialist agents (123-c)`
   - `a6ff052` `refactor(api): reduce cognitive complexity in workflow and knowledge routes (123-c)`
   - `99fb8c8` `refactor(api): reduce cognitive complexity in memory and system routes (123-c)`
+  - `0fb0807` `refactor(api): reduce cognitive complexity in remaining route handlers (123-c)`
 - [x] `123-d`: complexity `venom_core/core/**` + `execution/**` + `memory/**` + `services/**` + `venom_spore/main.py` + `web-next/components/**`
   - `4c9e30b` `refactor(core): reduce cognitive complexity in entrypoint and model flows (123-d)`
   - `7f8b49d` `refactor(spore): reduce cognitive complexity in spore runtime executors (123-d)`
   - `d32a693` `refactor(core): reduce cognitive complexity in orchestration and state paths (123-d)`
   - `e14ed77` `refactor(execution): reduce cognitive complexity in kernel/router/skills orchestration (123-d)`
   - `1445d00` `refactor(memory-services): reduce cognitive complexity in memory and runtime services (123-d)`
+  - `d64af72` `refactor(memory-services): reduce cognitive complexity in runtime controller flows (123-d)`
   - `b9bef66` `refactor(perception-sim): reduce cognitive complexity in sensors and simulation flows (123-d)`
   - `d4ff1bf` `refactor(web-next): reduce cognitive complexity in selected UI components (123-d)`
 - [x] `123-e`: finalny sweep + pełne mapowanie issue->commit + statusy deferred
@@ -266,9 +268,9 @@ Decyzja: dopasowanie argumentów do sygnatur (cast/protocol/test-double), bez zm
 - `123-b`: tests/scripts/frontend test nesting
   - `3e05220`, `17686d4`, `5d75647`
 - `123-c`: agents + api routes
-  - `26a2717`, `9bd85ce`, `af52d00`, `a6ff052`, `99fb8c8`
+  - `26a2717`, `9bd85ce`, `af52d00`, `a6ff052`, `99fb8c8`, `0fb0807`
 - `123-d`: core/execution/memory/services/spore/perception/simulation/web-next
-  - `4c9e30b`, `7f8b49d`, `d32a693`, `e14ed77`, `1445d00`, `b9bef66`, `d4ff1bf`
+  - `4c9e30b`, `7f8b49d`, `d32a693`, `e14ed77`, `1445d00`, `d64af72`, `b9bef66`, `d4ff1bf`
 
 ### Deferred (z uzasadnieniem)
 
@@ -287,10 +289,6 @@ Poniższe pozycje z `123_wsad.md` oznaczono jako `deferred` z powodu ryzyka regr
 - `venom_core/agents/strategist.py`
 - `venom_core/agents/system_status.py`
 - `venom_core/agents/ux_analyst.py`
-- `venom_core/api/routes/knowledge.py`
-- `venom_core/api/routes/learning.py`
-- `venom_core/api/routes/system_llm.py`
-- `venom_core/api/routes/tasks.py`
 - `venom_core/core/chronos.py`
 - `venom_core/core/dream_engine.py`
 - `venom_core/core/energy_manager.py`
@@ -320,7 +318,6 @@ Poniższe pozycje z `123_wsad.md` oznaczono jako `deferred` z powodu ryzyka regr
 - `venom_core/perception/desktop_sensor.py`
 - `venom_core/services/benchmark.py`
 - `venom_core/services/config_manager.py`
-- `venom_core/services/runtime_controller.py`
 
 Uwaga techniczna dla wsadu:
 - wpisy `web-next/components/*/*.ts` w wsadzie odpowiadają komponentom `.tsx` i zostały pokryte commitami `123-d`.

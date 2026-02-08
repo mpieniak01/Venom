@@ -79,13 +79,15 @@ def check_file(filepath):
         visitor.visit(tree)
         for issue in visitor.issues:
             print(f"ISSUE: {issue}")
-    except Exception:
+    except (SyntaxError, UnicodeDecodeError):
         # Ignore errors (e.g. syntax errors in template files)
         pass
 
 
 if __name__ == "__main__":
-    base_dir = "/home/ubuntu/venom"
+    import sys
+
+    base_dir = sys.argv[1] if len(sys.argv) > 1 else "/home/ubuntu/venom"
     print(f"Scanning all .py files in {base_dir}...")
 
     count = 0

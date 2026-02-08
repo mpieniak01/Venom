@@ -16,13 +16,13 @@ class DummyGitSkill:
         self._status = status
         self.workspace_root = workspace_root
 
-    def get_current_branch(self):
+    async def get_current_branch(self):
         return self._branch
 
-    def get_status(self):
+    async def get_status(self):
         return self._status
 
-    def init_repo(self, url=None):
+    async def init_repo(self, url=None):
         return "✅ initialized" if not url else "❌ failed"
 
 
@@ -75,13 +75,13 @@ async def test_run_git_command_and_wrappers(monkeypatch):
     result = await git_routes._run_git_command(Path("."), ["status"])
     assert result.returncode == 0
 
-    def fake_run_git_command_ok(*_args, **_kwargs):
+    async def fake_run_git_command_ok(*_args, **_kwargs):
         return _FakeCompleted(0, "x\n")
 
     monkeypatch.setattr(git_routes, "_run_git_command", fake_run_git_command_ok)
     assert await git_routes._run_git(Path("."), ["status"]) == "x"
 
-    def fake_run_git_command_err(*_args, **_kwargs):
+    async def fake_run_git_command_err(*_args, **_kwargs):
         return _FakeCompleted(1, "", "err")
 
     monkeypatch.setattr(git_routes, "_run_git_command", fake_run_git_command_err)
@@ -92,7 +92,7 @@ async def test_run_git_command_and_wrappers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_collect_compare_state_no_local_main(monkeypatch):
-    def fake_run_git_ok(_repo_root: Path, args: list[str]) -> bool:
+    async def fake_run_git_ok(_repo_root: Path, args: list[str]) -> bool:
         if args[-1] == "refs/heads/main":
             return False
         return True
@@ -108,10 +108,10 @@ async def test_collect_compare_state_no_local_main(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_collect_compare_state_diverged(monkeypatch):
-    def fake_run_git_ok(_repo_root: Path, args: list[str]) -> bool:
+    async def fake_run_git_ok(_repo_root: Path, args: list[str]) -> bool:
         return True
 
-    def fake_run_git(_repo_root: Path, args: list[str]) -> str:
+    async def fake_run_git(_repo_root: Path, args: list[str]) -> str:
         assert args[:3] == ["rev-list", "--left-right", "--count"]
         return "3 2"
 
@@ -127,7 +127,7 @@ async def test_collect_compare_state_diverged(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_collect_compare_state_other_statuses(monkeypatch):
-    def fake_run_git_ok_no_remote(_repo_root: Path, args: list[str]) -> bool:
+    async def fake_run_git_ok_no_remote(_repo_root: Path, args: list[str]) -> bool:
         if args[:3] == ["remote", "get-url", "origin"]:
             return False
         return True
@@ -137,7 +137,7 @@ async def test_collect_compare_state_other_statuses(monkeypatch):
         "compare_status"
     ] == "no_remote"
 
-    def fake_run_git_ok_no_remote_main(_repo_root: Path, args: list[str]) -> bool:
+    async def fake_run_git_ok_no_remote_main(_repo_root: Path, args: list[str]) -> bool:
         if args[-1] == "refs/remotes/origin/main":
             return False
         return True
@@ -147,16 +147,16 @@ async def test_collect_compare_state_other_statuses(monkeypatch):
         "compare_status"
     ] == "no_remote_main"
 
-    def fake_run_git_ok_all(_repo_root: Path, args: list[str]) -> bool:
+    async def fake_run_git_ok_all(_repo_root: Path, args: list[str]) -> bool:
         return True
 
-    def fake_run_git_ahead(*_args, **_kwargs):
+    async def fake_run_git_ahead(*_args, **_kwargs):
         return "0 1"
 
-    def fake_run_git_behind(*_args, **_kwargs):
+    async def fake_run_git_behind(*_args, **_kwargs):
         return "2 0"
 
-    def fake_run_git_equal(*_args, **_kwargs):
+    async def fake_run_git_equal(*_args, **_kwargs):
         return "0 0"
 
     monkeypatch.setattr(git_routes, "_run_git_ok", fake_run_git_ok_all)
@@ -176,7 +176,7 @@ async def test_collect_compare_state_other_statuses(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_local_repo_status_returns_workspace_error(monkeypatch):
-    def fake_run_git(_repo_root: Path, _args: list[str]) -> str:
+    async def fake_run_git(_repo_root: Path, _args: list[str]) -> str:
         raise RuntimeError("fatal: not a git repository")
 
     monkeypatch.setattr(git_routes, "_run_git", fake_run_git)
@@ -189,7 +189,7 @@ async def test_build_local_repo_status_returns_workspace_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_local_repo_status_success(monkeypatch):
-    def fake_run_git(_repo_root: Path, args: list[str]) -> str:
+    async def fake_run_git(_repo_root: Path, args: list[str]) -> str:
         if args == ["rev-parse", "--abbrev-ref", "HEAD"]:
             return "feat/test"
         if args == ["status"]:
@@ -198,7 +198,7 @@ async def test_build_local_repo_status_success(monkeypatch):
             return " M a.py\n?? b.py\n"
         return "true"
 
-    def fake_compare(_repo_root: Path) -> dict:
+    async def fake_compare(_repo_root: Path) -> dict:
         return {
             "compare_branch": "main",
             "compare_ref": "origin/main",
@@ -272,7 +272,7 @@ async def test_get_git_status_impl_local_repo_path(monkeypatch, tmp_path):
         SimpleNamespace(REPO_ROOT=str(tmp_path), WORKSPACE_ROOT=str(tmp_path)),
     )
 
-    def fake_build(_repo_root: Path) -> dict:
+    async def fake_build(_repo_root: Path) -> dict:
         return {"status": "success", "branch": "local"}
 
     monkeypatch.setattr(git_routes, "_build_local_repo_status", fake_build)
@@ -290,7 +290,7 @@ async def test_get_git_status_impl_local_repo_runtime_error(monkeypatch, tmp_pat
         SimpleNamespace(REPO_ROOT=str(tmp_path), WORKSPACE_ROOT=str(tmp_path)),
     )
 
-    def boom(_repo_root: Path) -> dict:
+    async def boom(_repo_root: Path) -> dict:
         raise RuntimeError("git failed")
 
     monkeypatch.setattr(git_routes, "_build_local_repo_status", boom)
@@ -325,7 +325,7 @@ async def test_get_git_status_impl_git_skill_failure_raises_500(monkeypatch, tmp
     )
     git_routes.set_dependencies(object())
 
-    def boom() -> dict:
+    async def boom() -> dict:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(git_routes, "_build_git_skill_status", boom)
@@ -385,7 +385,7 @@ async def test_get_git_status_impl_uses_git_skill_when_no_dot_git(
     )
     git_routes.set_dependencies(object())
 
-    def fake_build_skill() -> dict:
+    async def fake_build_skill() -> dict:
         return {"status": "success", "branch": "skill-branch"}
 
     monkeypatch.setattr(git_routes, "_build_git_skill_status", fake_build_skill)

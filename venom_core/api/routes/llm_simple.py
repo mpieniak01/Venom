@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import AsyncIterator, Optional
@@ -289,7 +290,8 @@ class SimpleChatRequest(BaseModel):
         503: {"description": "Brak dostępnego endpointu LLM"},
     },
 )
-def stream_simple_chat(request: SimpleChatRequest):
+async def stream_simple_chat(request: SimpleChatRequest):
+    await asyncio.sleep(0)
     runtime = get_active_llm_runtime()
     model_name = request.model or runtime.model_name
     if not model_name:

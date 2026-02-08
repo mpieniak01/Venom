@@ -23,7 +23,5 @@ tests/test_ingestion_engine.py
 tests/test_ingestion_engine_roi.py
 tests/test_node_manager.py
 tests/test_evolution_basic.py
-tests/test_foreman_agent.py
-tests/test_ota_manager.py
 tests/test_tracer.py
 tests/test_tracer_persistence.py

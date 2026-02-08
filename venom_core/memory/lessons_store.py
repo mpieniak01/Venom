@@ -188,22 +188,7 @@ class LessonsStore:
         self.lessons[lesson.lesson_id] = lesson
 
         # Indeksuj w vector store jeśli dostępny
-        if self.vector_store:
-            try:
-                lesson_text = lesson.to_text()
-                self.vector_store.upsert(
-                    text=lesson_text,
-                    metadata={
-                        "lesson_id": lesson.lesson_id,
-                        "category": "lesson",
-                        "timestamp": lesson.timestamp,
-                        "tags": ",".join(lesson.tags) if lesson.tags else "",
-                    },
-                    chunk_text=False,  # Lekcje są zwykle krótkie
-                )
-                logger.debug(f"Lekcja {lesson.lesson_id} zaindeksowana w vector store")
-            except Exception as e:
-                logger.warning(f"Nie udało się zaindeksować lekcji: {e}")
+        self._index_lesson(lesson)
 
         # Zapisz na dysku jeśli auto_save włączone
         if self.auto_save:
@@ -211,6 +196,25 @@ class LessonsStore:
 
         logger.info(f"Dodano nową lekcję: {lesson.lesson_id}")
         return lesson
+
+    def _index_lesson(self, lesson: Lesson) -> None:
+        if not self.vector_store:
+            return
+        try:
+            lesson_text = lesson.to_text()
+            self.vector_store.upsert(
+                text=lesson_text,
+                metadata={
+                    "lesson_id": lesson.lesson_id,
+                    "category": "lesson",
+                    "timestamp": lesson.timestamp,
+                    "tags": ",".join(lesson.tags) if lesson.tags else "",
+                },
+                chunk_text=False,
+            )
+            logger.debug(f"Lekcja {lesson.lesson_id} zaindeksowana w vector store")
+        except Exception as exc:
+            logger.warning(f"Nie udało się zaindeksować lekcji: {exc}")
 
     def get_lesson(self, lesson_id: str) -> Optional[Lesson]:
         """
@@ -243,27 +247,8 @@ class LessonsStore:
             return []
 
         try:
-            # Wyszukaj w vector store
-            results = self.vector_store.search(query, limit=limit * 2)  # Pobierz więcej
-
-            # Filtruj po tagach jeśli podano
-            lessons = []
-            for result in results:
-                metadata = result.get("metadata", {})
-                lesson_id = metadata.get("lesson_id")
-
-                if lesson_id and lesson_id in self.lessons:
-                    lesson = self.lessons[lesson_id]
-
-                    # Filtruj po tagach
-                    if tags:
-                        if not any(tag in lesson.tags for tag in tags):
-                            continue
-
-                    lessons.append(lesson)
-
-                    if len(lessons) >= limit:
-                        break
+            results = self.vector_store.search(query, limit=limit * 2)
+            lessons = self._collect_lessons_from_results(results, limit, tags)
 
             logger.info(f"Znaleziono {len(lessons)} lekcji dla zapytania: {query[:50]}")
             return lessons
@@ -271,6 +256,26 @@ class LessonsStore:
         except Exception as e:
             logger.error(f"Błąd podczas wyszukiwania lekcji: {e}")
             return []
+
+    def _collect_lessons_from_results(
+        self,
+        results: List[Dict[str, Any]],
+        limit: int,
+        tags: Optional[List[str]],
+    ) -> List[Lesson]:
+        lessons: list[Lesson] = []
+        for result in results:
+            metadata = result.get("metadata", {})
+            lesson_id = metadata.get("lesson_id")
+            if not lesson_id or lesson_id not in self.lessons:
+                continue
+            lesson = self.lessons[lesson_id]
+            if tags and not any(tag in lesson.tags for tag in tags):
+                continue
+            lessons.append(lesson)
+            if len(lessons) >= limit:
+                break
+        return lessons
 
     def list_lessons(self, limit: Optional[int] = None) -> List[Lesson]:
         """Alias kompatybilności ze starszym API."""

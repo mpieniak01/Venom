@@ -145,42 +145,52 @@ LEKCJE:
             Tuple (summary, lessons)
         """
         summary = ""
-        lessons = []
-
-        # Podziel na sekcje
+        lessons: list[str] = []
         lines = response.split("\n")
         current_section = None
 
-        for line in lines:
-            line_stripped = line.strip()
-
-            if "PODSUMOWANIE:" in line_stripped.upper():
+        for raw_line in lines:
+            line = raw_line.strip()
+            if self._is_summary_header(line):
                 current_section = "summary"
                 continue
-            elif (
-                "LEKCJE:" in line_stripped.upper()
-                or "LESSONS:" in line_stripped.upper()
-            ):
+            if self._is_lessons_header(line):
                 current_section = "lessons"
                 continue
-
-            if current_section == "summary" and line_stripped:
-                summary += line_stripped + " "
-            elif current_section == "lessons" and line_stripped:
-                # Usuń numery z lekcji (1. , 2. , etc.)
-                lesson = re.sub(r"^\d+\.\s*", "", line_stripped)
-                if lesson and lesson not in ["", "-"]:
+            if current_section == "summary" and line:
+                summary += line + " "
+                continue
+            if current_section == "lessons":
+                lesson = self._normalize_lesson_line(line)
+                if lesson:
                     lessons.append(lesson)
 
-        # Fallback jeśli parsowanie nie powiodło się
-        if not summary:
-            summary = response[:200]  # Weź pierwsze 200 znaków jako summary
-
+        summary = summary.strip() or response[:200]
         if not lessons:
-            # Spróbuj wyciągnąć linie zaczynające się od cyfr jako lekcje
-            for line in lines:
-                if re.match(r"^\d+\.", line.strip()):
-                    lesson = re.sub(r"^\d+\.\s*", "", line.strip())
-                    lessons.append(lesson)
+            lessons = self._fallback_numbered_lessons(lines)
+        return summary, lessons
 
-        return summary.strip(), lessons
+    def _is_summary_header(self, line: str) -> bool:
+        return "PODSUMOWANIE:" in line.upper()
+
+    def _is_lessons_header(self, line: str) -> bool:
+        upper = line.upper()
+        return "LEKCJE:" in upper or "LESSONS:" in upper
+
+    def _normalize_lesson_line(self, line: str) -> str | None:
+        if not line:
+            return None
+        lesson = re.sub(r"^\d+\.\s*", "", line)
+        if not lesson or lesson == "-":
+            return None
+        return lesson
+
+    def _fallback_numbered_lessons(self, lines: list[str]) -> list[str]:
+        lessons: list[str] = []
+        for line in lines:
+            if not re.match(r"^\d+\.", line.strip()):
+                continue
+            lesson = re.sub(r"^\d+\.\s*", "", line.strip())
+            if lesson:
+                lessons.append(lesson)
+        return lessons

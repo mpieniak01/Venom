@@ -86,7 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [backend-lite, frontend-lite]
-    if: ${{ secrets.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    # secrets context is not available in job-level `if`, so gate by event/repo only.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     env:
       CI: "true"
       PYTHONUNBUFFERED: "1"

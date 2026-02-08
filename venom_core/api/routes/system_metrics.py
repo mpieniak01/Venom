@@ -23,7 +23,7 @@ def set_dependencies(token_economist=None):
 
 
 @router.get("/tokens")
-async def get_token_metrics():
+def get_token_metrics():
     """
     Pobiera metryki użycia tokenów i koszty.
 
@@ -40,12 +40,12 @@ async def get_token_metrics():
     if cached is not None:
         return cached
 
-    res = await _get_token_metrics_impl()
+    res = _get_token_metrics_impl()
     _token_metrics_cache.set(res)
     return res
 
 
-async def _get_token_metrics_impl():
+def _get_token_metrics_impl():
     """Implementacja pobierania metryk tokenów (bez cache)."""
     collector = metrics_module.metrics_collector
     if _token_economist is None:
@@ -114,7 +114,7 @@ async def _get_token_metrics_impl():
 
 
 @router.get("/system")
-async def get_system_metrics():
+def get_system_metrics():
     """
     Pobiera metryki systemowe (zadania, uptime, network).
 
@@ -141,7 +141,7 @@ async def get_system_metrics():
 
 
 @router.get("")
-async def get_metrics():
+def get_metrics():
     """
     Zwraca metryki systemowe (root endpoint).
     Tożsame z /system, ale z krótkim cache (1.0s) dla wysokiej wydajności dashboardu.

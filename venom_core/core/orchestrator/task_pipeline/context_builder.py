@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
@@ -81,6 +82,7 @@ class ContextBuilder:
             )
 
     async def _handle_session_reset(self, task_id: UUID, request: TaskRequest) -> None:
+        await asyncio.sleep(0)
         request.session_id = request.session_id or f"session-{uuid4()}"
         self.orch.state_manager.update_context(
             task_id,
@@ -213,6 +215,7 @@ class ContextBuilder:
 
     async def add_hidden_prompts(self, task_id: UUID, context: str, intent: str) -> str:
         """Dodaje hidden prompts do kontekstu."""
+        await asyncio.sleep(0)
         runtime_info = get_active_llm_runtime()
         runtime_limit = self.orch._get_runtime_context_char_limit(runtime_info)
         include_hidden = True

@@ -122,7 +122,7 @@ class GraphRAGService:
             # Sanityzuj tekst przed wstawieniem do promptu
             sanitized_text = text[:2000]
             # Usuń markdown code blocks, które mogłyby zamknąć kontekst
-            sanitized_text = re.sub(r"```", "", sanitized_text)
+            sanitized_text = sanitized_text.replace("```", "")
 
             extraction_prompt = f"""Przeanalizuj poniższy tekst i wyekstrahuj kluczowe fakty w formie trójek (podmiot, relacja, dopełnienie).
 

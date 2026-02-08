@@ -7,8 +7,15 @@ const normalize = (value: string | undefined, fallback: string): string => {
 };
 
 const isPrivateIpv4 = (host: string): boolean => {
-  const parts = host.split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+  const rawParts = host.split(".");
+  if (rawParts.length !== 4) {
+    return false;
+  }
+  if (!rawParts.every((part) => /^\d{1,3}$/.test(part))) {
+    return false;
+  }
+  const parts = rawParts.map((part) => Number.parseInt(part, 10));
+  if (parts.some((part) => part < 0 || part > 255)) {
     return false;
   }
   if (parts[0] === 10) return true;

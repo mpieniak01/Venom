@@ -51,9 +51,9 @@ export function BenchmarkConfigurator({
   return (
     <div className="space-y-4">
       {/* Runtime Selection */}
-      <div>
-        <p className="mb-2 block text-sm font-medium text-zinc-300">Runtime</p>
-        <div className="flex gap-2" role="group" aria-label="Wybór runtime">
+      <fieldset className="space-y-2 border-0 p-0 m-0">
+        <legend className="mb-2 block text-sm font-medium text-zinc-300">Runtime</legend>
+        <div className="flex gap-2" role="radiogroup" aria-label="Wybór runtime">
           <Button
             type="button"
             role="radio"
@@ -97,7 +97,7 @@ export function BenchmarkConfigurator({
             Ollama
           </Button>
         </div>
-      </div>
+      </fieldset>
 
       {/* Models Multi-Select */}
       <div>

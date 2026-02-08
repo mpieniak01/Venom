@@ -1,10 +1,11 @@
-# 119 — Web-Next Brain-Overload Remediation (Sonar Critical)
+# 119 — Web-Next Brain-Overload + Readability Remediation (Sonar)
 
 ## Cel zadania
 
-Domknięcie zgłoszeń Sonar typu **Code Smell / Critical** dla obszaru `web-next` i testów frontendowych, dotyczących:
+Domknięcie zgłoszeń Sonar dla obszaru `web-next` i testów frontendowych, dotyczących:
 - zbyt wysokiej **Cognitive Complexity**,
 - zbyt głębokiego zagnieżdżenia funkcji ("nest functions more than 4 levels deep").
+- drobnych zgłoszeń **readability** typu "This pattern can be replaced with ...".
 
 Priorytet: poprawa utrzymywalności bez zmiany zachowania biznesowego UI/UX.
 
@@ -46,6 +47,15 @@ Priorytet: poprawa utrzymywalności bez zmiany zachowania biznesowego UI/UX.
 - `web-next/tests/chat-mode-routing.spec.ts` — L427
 - `web-next/tests/streaming.spec.ts` — L123
 
+### C. Readability (pattern can be replaced with literal)
+- `web-next/app/inspector/page.tsx` — L910 (replaceable with `"`).
+- `web-next/app/inspector/page.tsx` — L972 (replaceable with `--`).
+- `web-next/components/ui/markdown.tsx` — L94 (replaceable with `&`).
+- `web-next/components/ui/markdown.tsx` — L95 (replaceable with `<`).
+- `web-next/components/ui/markdown.tsx` — L96 (replaceable with `>`).
+- `web-next/components/ui/markdown.tsx` — L97 (replaceable with `"`).
+- `web-next/components/ui/markdown.tsx` — zgłoszenie replaceable with `'` (linia wg Sonar).
+
 ## Założenia architektoniczne
 
 - Nie zmieniamy kontraktów API backendu.
@@ -84,6 +94,11 @@ Priorytet: poprawa utrzymywalności bez zmiany zachowania biznesowego UI/UX.
 3. `web-next/tests/perf/chat-latency.spec.ts`.
 4. `web-next/tests/streaming.spec.ts`.
 
+### PR-5: Readability quick wins (es2021)
+1. `web-next/app/inspector/page.tsx` — uproszczenie patternów do literalnych zamienników.
+2. `web-next/components/ui/markdown.tsx` — uproszczenie patternów do literalnych zamienników.
+3. Weryfikacja, że uproszczenia nie zmieniają semantyki escapingu/formatowania.
+
 ## Wzorzec naprawczy (obowiązkowy)
 
 Dla każdego hotspotu:
@@ -97,6 +112,7 @@ Dla każdego hotspotu:
 
 - [ ] Wszystkie wymienione zgłoszenia Sonar przechodzą do stanu `Resolved`.
 - [ ] Brak nowych `Critical` dla reguł complexity/nesting w dotkniętych plikach.
+- [ ] Zgłoszenia `readability` z sekcji C są zamknięte bez regresji formatowania tekstu.
 - [ ] `npm --prefix web-next run lint` przechodzi.
 - [ ] `npm --prefix web-next run build` przechodzi.
 - [ ] `make e2e` lub równoważny pakiet testów przechodzi dla zmienionych scenariuszy.

@@ -61,6 +61,7 @@ web-next/.turbo/
 web-next/.next/
 web-next/node_modules/
 web-next/.pytest_cache/
+web-next/coverage/
 web-next/out/
 web-next/.cache/
 web-next/.eslintcache

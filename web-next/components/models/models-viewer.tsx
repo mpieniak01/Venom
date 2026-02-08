@@ -52,6 +52,43 @@ const getStatusTone = (status?: string) => {
   return "neutral";
 };
 
+const readStorageJson = <T,>(key: string): T | null => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+};
+
+const writeStorageJson = (key: string, value: unknown) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+type CatalogCachePayload = {
+  data: ModelCatalogEntry[];
+  stale?: boolean;
+  error?: string | null;
+};
+
+type NewsItem = {
+  title?: string | null;
+  url?: string | null;
+  summary?: string | null;
+  published_at?: string | null;
+  authors?: string[] | null;
+};
+
+type NewsCachePayload = {
+  items: NewsItem[];
+  stale?: boolean;
+  error?: string | null;
+};
+
 const SectionHeader = ({
   title,
   subtitle,
@@ -377,85 +414,27 @@ export const ModelsViewer = () => {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const cachedHf = window.localStorage.getItem("models-trending-hf");
-    const cachedOllama = window.localStorage.getItem("models-trending-ollama");
-    if (cachedHf) {
-      try {
-        const payload = JSON.parse(cachedHf) as {
-          data: ModelCatalogEntry[];
-          stale?: boolean;
-          error?: string | null;
-        };
-        setTrendingHf((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem("models-trending-hf");
-      }
-    }
-    if (cachedOllama) {
-      try {
-        const payload = JSON.parse(cachedOllama) as {
-          data: ModelCatalogEntry[];
-          stale?: boolean;
-          error?: string | null;
-        };
-        setTrendingOllama((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem("models-trending-ollama");
-      }
-    }
-    const cachedCatalogHf = window.localStorage.getItem("models-catalog-hf");
-    const cachedCatalogOllama = window.localStorage.getItem("models-catalog-ollama");
-    if (cachedCatalogHf) {
-      try {
-        const payload = JSON.parse(cachedCatalogHf) as {
-          data: ModelCatalogEntry[];
-          stale?: boolean;
-          error?: string | null;
-        };
-        setCatalogHf((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem("models-catalog-hf");
-      }
-    }
-    if (cachedCatalogOllama) {
-      try {
-        const payload = JSON.parse(cachedCatalogOllama) as {
-          data: ModelCatalogEntry[];
-          stale?: boolean;
-          error?: string | null;
-        };
-        setCatalogOllama((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem("models-catalog-ollama");
-      }
-    }
-    const cachedNewsSort = window.localStorage.getItem("models-news-sort");
+    const cachedHf = readStorageJson<CatalogCachePayload>("models-trending-hf");
+    const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
+    const cachedCatalogHf = readStorageJson<CatalogCachePayload>("models-catalog-hf");
+    const cachedCatalogOllama = readStorageJson<CatalogCachePayload>("models-catalog-ollama");
+    const cachedNewsSort =
+      typeof window !== "undefined" ? window.localStorage.getItem("models-news-sort") : null;
+
+    if (cachedHf) setTrendingHf((prev) => ({ ...prev, ...cachedHf, loading: false }));
+    if (cachedOllama) setTrendingOllama((prev) => ({ ...prev, ...cachedOllama, loading: false }));
+    if (cachedCatalogHf) setCatalogHf((prev) => ({ ...prev, ...cachedCatalogHf, loading: false }));
+    if (cachedCatalogOllama) setCatalogOllama((prev) => ({ ...prev, ...cachedCatalogOllama, loading: false }));
     if (cachedNewsSort === "newest" || cachedNewsSort === "oldest") {
       setNewsSort(cachedNewsSort);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const cachedNewsHf = window.localStorage.getItem(newsBlogCacheKey);
+    const cachedNewsHf = readStorageJson<NewsCachePayload>(newsBlogCacheKey);
+    const cachedPapersHf = readStorageJson<NewsCachePayload>(newsPapersCacheKey);
     if (cachedNewsHf) {
-      try {
-        const payload = JSON.parse(cachedNewsHf) as {
-          items: Array<{
-            title?: string | null;
-            url?: string | null;
-            summary?: string | null;
-            published_at?: string | null;
-            authors?: string[] | null;
-          }>;
-          stale?: boolean;
-          error?: string | null;
-        };
-        setNewsHf((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem(newsBlogCacheKey);
-      }
+      setNewsHf((prev) => ({ ...prev, ...cachedNewsHf, loading: false }));
     } else {
       setNewsHf((prev) => ({
         ...prev,
@@ -466,24 +445,8 @@ export const ModelsViewer = () => {
       }));
     }
 
-    const cachedPapersHf = window.localStorage.getItem(newsPapersCacheKey);
     if (cachedPapersHf) {
-      try {
-        const payload = JSON.parse(cachedPapersHf) as {
-          items: Array<{
-            title?: string | null;
-            url?: string | null;
-            summary?: string | null;
-            published_at?: string | null;
-            authors?: string[] | null;
-          }>;
-          stale?: boolean;
-          error?: string | null;
-        };
-        setPapersHf((prev) => ({ ...prev, ...payload, loading: false }));
-      } catch {
-        window.localStorage.removeItem(newsPapersCacheKey);
-      }
+      setPapersHf((prev) => ({ ...prev, ...cachedPapersHf, loading: false }));
     } else {
       setPapersHf((prev) => ({
         ...prev,
@@ -671,13 +634,8 @@ export const ModelsViewer = () => {
       };
       setTrendingHf({ ...hfPayload, loading: false });
       setTrendingOllama({ ...ollamaPayload, loading: false });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("models-trending-hf", JSON.stringify(hfPayload));
-        window.localStorage.setItem(
-          "models-trending-ollama",
-          JSON.stringify(ollamaPayload),
-        );
-      }
+      writeStorageJson("models-trending-hf", hfPayload);
+      writeStorageJson("models-trending-ollama", ollamaPayload);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Nie udało się pobrać trendów.";
@@ -713,13 +671,8 @@ export const ModelsViewer = () => {
       };
       setCatalogHf({ ...hfPayload, loading: false });
       setCatalogOllama({ ...ollamaPayload, loading: false });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("models-catalog-hf", JSON.stringify(hfPayload));
-        window.localStorage.setItem(
-          "models-catalog-ollama",
-          JSON.stringify(ollamaPayload),
-        );
-      }
+      writeStorageJson("models-catalog-hf", hfPayload);
+      writeStorageJson("models-catalog-ollama", ollamaPayload);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Nie udało się pobrać katalogu.";
@@ -751,9 +704,7 @@ export const ModelsViewer = () => {
         error: response.error,
       };
       setNewsHf({ ...payload, loading: false });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(newsBlogCacheKey, JSON.stringify(payload));
-      }
+      writeStorageJson(newsBlogCacheKey, payload);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Nie udało się pobrać newsów.";
@@ -788,9 +739,7 @@ export const ModelsViewer = () => {
         error: response.error,
       };
       setPapersHf({ ...payload, loading: false });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(newsPapersCacheKey, JSON.stringify(payload));
-      }
+      writeStorageJson(newsPapersCacheKey, payload);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : t("models.sections.papers.fetchError");

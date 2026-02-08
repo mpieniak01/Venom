@@ -53,7 +53,7 @@ const getStatusTone = (status?: string) => {
 };
 
 const readStorageJson = <T,>(key: string): T | null => {
-  if (typeof globalThis.window === "undefined") return null;
+  if (globalThis.window === undefined) return null;
   const raw = globalThis.window.localStorage.getItem(key);
   if (!raw) return null;
   try {
@@ -65,8 +65,13 @@ const readStorageJson = <T,>(key: string): T | null => {
 };
 
 const writeStorageJson = (key: string, value: unknown) => {
-  if (typeof globalThis.window === "undefined") return;
+  if (globalThis.window === undefined) return;
   globalThis.window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+const readStorageItem = (key: string): string | null => {
+  if (globalThis.window === undefined) return null;
+  return globalThis.window.localStorage.getItem(key);
 };
 
 type CatalogCachePayload = {
@@ -418,10 +423,7 @@ export const ModelsViewer = () => {
     const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
     const cachedCatalogHf = readStorageJson<CatalogCachePayload>("models-catalog-hf");
     const cachedCatalogOllama = readStorageJson<CatalogCachePayload>("models-catalog-ollama");
-    const cachedNewsSort =
-      typeof globalThis.window !== "undefined"
-        ? globalThis.window.localStorage.getItem("models-news-sort")
-        : null;
+    const cachedNewsSort = readStorageItem("models-news-sort");
 
     if (cachedHf) setTrendingHf((prev) => ({ ...prev, ...cachedHf, loading: false }));
     if (cachedOllama) setTrendingOllama((prev) => ({ ...prev, ...cachedOllama, loading: false }));
@@ -460,8 +462,8 @@ export const ModelsViewer = () => {
     }
   }, [language, newsBlogCacheKey, newsPapersCacheKey]);
   useEffect(() => {
-    if (!globalThis.window) return;
-    globalThis.window.localStorage.setItem("models-news-sort", newsSort);
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("models-news-sort", newsSort);
   }, [newsSort]);
 
   const setPending = (key: string, value: boolean) => {

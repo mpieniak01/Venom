@@ -84,6 +84,36 @@ function resolveTimeLabel(timestamp: string) {
   }).format(date);
 }
 
+function renderMessageBody(input: {
+  showTyping: boolean;
+  visibleText: string;
+  text: string;
+  isUser: boolean;
+  t: ReturnType<typeof useTranslation>;
+}): ReactNode {
+  const { showTyping, visibleText, text, isUser, t } = input;
+  if (showTyping) {
+    return (
+      <p className="whitespace-pre-wrap text-sm text-white/90">
+        {visibleText}
+        <span className="typing-dots" aria-hidden="true">
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+        </span>
+      </p>
+    );
+  }
+  if (text.trim().length > 0) {
+    return (
+      <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
+    );
+  }
+  return (
+    <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
+  );
+}
+
 export function ConversationBubble({
   role,
   timestamp,
@@ -112,7 +142,7 @@ export function ConversationBubble({
   const typingText =
     text.trim().length > 0 ? text : t("cockpit.chatLabels.generating");
   const [visibleText, setVisibleText] = useState(text);
-  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (isUser) {
       setVisibleText(text);
@@ -129,7 +159,7 @@ export function ConversationBubble({
   }, [isUser, showTyping, text, typingText]);
   useEffect(() => {
     if (isUser || !showTyping) return undefined;
-    typingTimerRef.current = globalThis.setInterval(() => {
+    typingTimerRef.current = window.setInterval(() => {
       setVisibleText((prev) => {
         if (prev.length >= typingText.length) return prev;
         const remaining = typingText.length - prev.length;
@@ -143,7 +173,7 @@ export function ConversationBubble({
     }, TYPING_EFFECT.INTERVAL_MS);
     return () => {
       if (typingTimerRef.current) {
-        globalThis.clearInterval(typingTimerRef.current);
+        window.clearInterval(typingTimerRef.current);
         typingTimerRef.current = null;
       }
     };
@@ -152,28 +182,13 @@ export function ConversationBubble({
   const modeLabelText = resolveModeLabelText(modeLabel, t);
   const footerClickable = !disabled && !pending && !isUser;
   const timeLabel = resolveTimeLabel(timestamp);
-
-  let messageBody: ReactNode;
-  if (showTyping) {
-    messageBody = (
-      <p className="whitespace-pre-wrap text-sm text-white/90">
-        {visibleText}
-        <span className="typing-dots" aria-hidden="true">
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-        </span>
-      </p>
-    );
-  } else if (text.trim().length > 0) {
-    messageBody = (
-      <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
-    );
-  } else {
-    messageBody = (
-      <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
-    );
-  }
+  const messageBody = renderMessageBody({
+    showTyping,
+    visibleText,
+    text,
+    isUser,
+    t,
+  });
 
   return (
     <div

@@ -224,6 +224,73 @@ def _serialize_context_used(task: Optional[VenomTask]) -> Optional[dict]:
     return None
 
 
+def _should_emit_stream_event(
+    *,
+    status_changed: bool,
+    logs_delta: list[str],
+    result_changed: bool,
+    ticks_since_emit: int,
+    heartbeat_every_ticks: int,
+) -> bool:
+    return (
+        status_changed
+        or bool(logs_delta)
+        or result_changed
+        or ticks_since_emit >= heartbeat_every_ticks
+    )
+
+
+def _build_stream_payload(task: VenomTask, logs_delta: list[str]) -> dict[str, Any]:
+    runtime_info = _get_llm_runtime(task)
+    return {
+        "task_id": str(task.id),
+        "status": task.status,
+        "logs": logs_delta,
+        "result": task.result,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "llm_provider": runtime_info.get("provider"),
+        "llm_model": runtime_info.get("model"),
+        "llm_endpoint": runtime_info.get("endpoint"),
+        "llm_status": runtime_info.get("status"),
+        "context_history": task.context_history,
+    }
+
+
+def _build_task_finished_payload(task: VenomTask) -> dict[str, Any]:
+    runtime_info = _get_llm_runtime(task)
+    return {
+        "task_id": str(task.id),
+        "status": task.status,
+        "result": task.result,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "llm_provider": runtime_info.get("provider"),
+        "llm_model": runtime_info.get("model"),
+        "llm_endpoint": runtime_info.get("endpoint"),
+        "llm_status": runtime_info.get("status"),
+        "context_history": task.context_history,
+    }
+
+
+def _resolve_stream_event_name(
+    *, status_changed: bool, logs_delta: list[str], result_changed: bool
+) -> str:
+    if status_changed or logs_delta or result_changed:
+        return "task_update"
+    return "heartbeat"
+
+
+def _resolve_poll_interval(
+    *,
+    previous_result: Optional[str],
+    status: TaskStatus,
+    fast_poll_interval_seconds: float,
+    poll_interval_seconds: float,
+) -> float:
+    if previous_result is None and status == TaskStatus.PROCESSING:
+        return fast_poll_interval_seconds
+    return poll_interval_seconds
+
+
 def _bootstrap_orchestrator_if_testing():
     """
     Zachowane dla kompatybilności wstecznej.
@@ -346,32 +413,20 @@ def stream_task(task_id: UUID):
             logs_delta = task.logs[previous_log_index:]
             status_changed = task.status != previous_status
             result_changed = task.result != previous_result
-            should_emit = (
-                status_changed
-                or logs_delta
-                or result_changed
-                or ticks_since_emit >= heartbeat_every_ticks
+            should_emit = _should_emit_stream_event(
+                status_changed=status_changed,
+                logs_delta=logs_delta,
+                result_changed=result_changed,
+                ticks_since_emit=ticks_since_emit,
+                heartbeat_every_ticks=heartbeat_every_ticks,
             )
 
             if should_emit:
-                runtime_info = _get_llm_runtime(task)
-                payload = {
-                    "task_id": str(task.id),
-                    "status": task.status,
-                    "logs": logs_delta,
-                    "result": task.result,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "llm_provider": runtime_info.get("provider"),
-                    "llm_model": runtime_info.get("model"),
-                    "llm_endpoint": runtime_info.get("endpoint"),
-                    "llm_status": runtime_info.get("status"),
-                    "context_history": task.context_history,
-                }
-
-                event_name = (
-                    "task_update"
-                    if (status_changed or logs_delta or result_changed)
-                    else "heartbeat"
+                payload = _build_stream_payload(task, logs_delta)
+                event_name = _resolve_stream_event_name(
+                    status_changed=status_changed,
+                    logs_delta=logs_delta,
+                    result_changed=result_changed,
                 )
 
                 # json.dumps nie obsługuje Enum więc wymuś str()
@@ -389,28 +444,18 @@ def stream_task(task_id: UUID):
 
             if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                 # Wyślij końcowy event i zamknij stream
-                runtime_info = _get_llm_runtime(task)
-                complete_payload = {
-                    "task_id": str(task.id),
-                    "status": task.status,
-                    "result": task.result,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "llm_provider": runtime_info.get("provider"),
-                    "llm_model": runtime_info.get("model"),
-                    "llm_endpoint": runtime_info.get("endpoint"),
-                    "llm_status": runtime_info.get("status"),
-                    "context_history": task.context_history,
-                }
+                complete_payload = _build_task_finished_payload(task)
                 yield "event:task_finished\ndata:{data}\n\n".format(
                     data=json.dumps(complete_payload, default=str),
                 )
                 break
 
             try:
-                interval = (
-                    fast_poll_interval_seconds
-                    if previous_result is None and task.status == TaskStatus.PROCESSING
-                    else poll_interval_seconds
+                interval = _resolve_poll_interval(
+                    previous_result=previous_result,
+                    status=task.status,
+                    fast_poll_interval_seconds=fast_poll_interval_seconds,
+                    poll_interval_seconds=poll_interval_seconds,
                 )
                 await asyncio.sleep(interval)
             except asyncio.CancelledError:

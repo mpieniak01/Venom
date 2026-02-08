@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from typing import Dict, List, Union
+from typing import Dict, List
 
 from semantic_kernel import Kernel
 
@@ -20,7 +20,7 @@ class TaskMetrics:
         self,
         task_id: str,
         complexity: ComplexityScore,
-        selected_service: Union[ServiceId, str],  # Accept both ServiceId and str
+        selected_service: ServiceId | str,  # Accept both ServiceId and str
         success: bool,
         cost_usd: float = 0.0,
         duration_seconds: float = 0.0,

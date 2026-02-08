@@ -155,6 +155,206 @@ def _normalize_lessons_for_graph(
     return lessons
 
 
+def _build_memory_graph_filters(
+    session_id: str, only_pinned: bool
+) -> dict[str, object]:
+    filters: dict[str, object] = {}
+    if session_id:
+        filters["session_id"] = session_id
+    if only_pinned:
+        filters["pinned"] = True
+    return filters
+
+
+def _entry_id(entry: dict[str, Any], meta: dict[str, Any]) -> str:
+    raw_id = entry.get("id") or meta.get("id") or meta.get("uuid") or meta.get("pk")
+    if raw_id:
+        return str(raw_id)
+    return f"mem-{abs(hash(entry.get('text', '')))}"
+
+
+def _build_memory_node(entry: dict[str, Any]) -> dict[str, Any]:
+    meta = entry.get("metadata") or {}
+    eid = _entry_id(entry, meta)
+    label = meta.get("title") or (entry.get("text") or "")[:80] or eid
+    sess = meta.get("session_id")
+    user = meta.get("user_id") or DEFAULT_USER_ID
+    node_payload: dict[str, Any] = {
+        "data": {
+            "id": eid,
+            "label": label,
+            "type": "memory",
+            "memory_kind": meta.get("type") or "fact",
+            "session_id": sess,
+            "user_id": user,
+            "scope": meta.get("scope") or ("session" if sess else "global"),
+            "pinned": bool(meta.get("pinned")),
+            "topic": meta.get("topic"),
+            "meta": meta,
+        }
+    }
+    if "x" in meta and "y" in meta:
+        node_payload["position"] = {"x": meta.get("x"), "y": meta.get("y")}
+    return node_payload
+
+
+def _ensure_session_node(
+    session_nodes: dict[str, dict[str, Any]], session_id: str | None
+) -> None:
+    if not session_id or session_id in session_nodes:
+        return
+    session_nodes[session_id] = {
+        "data": {
+            "id": f"session:{session_id}",
+            "label": session_id,
+            "type": "memory",
+            "memory_kind": "session",
+            "session_id": session_id,
+        }
+    }
+
+
+def _ensure_user_node(
+    user_nodes: dict[str, dict[str, Any]], user_id: str | None
+) -> None:
+    if not user_id or user_id in user_nodes:
+        return
+    user_nodes[user_id] = {
+        "data": {
+            "id": f"user:{user_id}",
+            "label": user_id,
+            "type": "memory",
+            "memory_kind": "user",
+            "user_id": user_id,
+        }
+    }
+
+
+def _build_relation_edges(
+    node_id: str, session_id: str | None, user_id: str | None
+) -> list[dict[str, Any]]:
+    relation_edges: list[dict[str, Any]] = []
+    if session_id:
+        relation_edges.append(
+            {
+                "data": {
+                    "id": f"edge:{session_id}->{node_id}",
+                    "source": f"session:{session_id}",
+                    "target": node_id,
+                    "label": "session",
+                    "type": "memory",
+                }
+            }
+        )
+    if user_id:
+        relation_edges.append(
+            {
+                "data": {
+                    "id": f"edge:{user_id}->{node_id}",
+                    "source": f"user:{user_id}",
+                    "target": node_id,
+                    "label": "user",
+                    "type": "memory",
+                }
+            }
+        )
+    return relation_edges
+
+
+def _collect_lesson_graph(
+    lessons_store: LessonsStore | None, limit: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    lesson_nodes: list[dict[str, Any]] = []
+    lesson_edges: list[dict[str, Any]] = []
+    if not lessons_store:
+        return lesson_nodes, lesson_edges
+    try:
+        if hasattr(lessons_store, "get_all_lessons"):
+            raw_lessons = lessons_store.get_all_lessons(limit=limit)
+            lessons = _normalize_lessons_for_graph(
+                raw_lessons, allow_fallback=is_testing_mode(), limit=limit
+            )
+        elif hasattr(lessons_store, "lessons"):
+            lessons = _normalize_lessons_for_graph(
+                lessons_store.lessons, allow_fallback=is_testing_mode(), limit=limit
+            )
+        else:
+            lessons = []
+
+        for raw_lesson in lessons:
+            lesson_data = raw_lesson
+            if not isinstance(lesson_data, dict):
+                lesson_data = (
+                    lesson_data.to_dict()
+                    if hasattr(lesson_data, "to_dict")
+                    else (vars(lesson_data) if hasattr(lesson_data, "__dict__") else {})
+                )
+            raw_id = lesson_data.get("id") or lesson_data.get("lesson_id")
+            lesson_id = str(raw_id) if raw_id is not None else ""
+            if not lesson_id:
+                continue
+            label = lesson_data.get("title") or lesson_id
+            lesson_nodes.append(
+                {
+                    "data": {
+                        "id": f"lesson:{lesson_id}",
+                        "label": label,
+                        "type": "memory",
+                        "memory_kind": "lesson",
+                        "lesson_id": lesson_id,
+                        "meta": {
+                            "tags": lesson_data.get("tags"),
+                            "timestamp": lesson_data.get("timestamp"),
+                        },
+                    }
+                }
+            )
+            lesson_edges.append(
+                {
+                    "data": {
+                        "id": f"edge:lesson:{lesson_id}->user:{DEFAULT_USER_ID}",
+                        "source": f"lesson:{lesson_id}",
+                        "target": f"user:{DEFAULT_USER_ID}",
+                        "label": "lesson",
+                        "type": "lesson",
+                    }
+                }
+            )
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"Nie udało się pobrać lekcji do grafu: {e}")
+    return lesson_nodes, lesson_edges
+
+
+def _append_flow_edges(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> None:
+    try:
+
+        def _flow_timestamp(node: dict[str, Any]) -> str:
+            meta_value = node.get("data", {}).get("meta")
+            meta = meta_value if isinstance(meta_value, dict) else {}
+            return str(meta.get("timestamp", ""))
+
+        entries_for_flow = sorted(nodes, key=_flow_timestamp)
+    except Exception:
+        entries_for_flow = nodes
+
+    for idx in range(len(entries_for_flow) - 1):
+        src = entries_for_flow[idx]["data"]["id"]
+        tgt = entries_for_flow[idx + 1]["data"]["id"]
+        edges.append(
+            {
+                "data": {
+                    "id": f"flow:{src}->{tgt}",
+                    "source": src,
+                    "target": tgt,
+                    "label": "next",
+                    "type": "flow",
+                }
+            }
+        )
+
+
 # Modele
 class MemoryIngestRequest(BaseModel):
     """Model żądania ingestion do pamięci."""
@@ -409,156 +609,35 @@ def memory_graph(
     Zwraca uproszczony graf pamięci (węzły/krawędzie) do wizualizacji w /brain.
     """
     _ = vector_store  # Ensure it is used
-    filters: dict[str, object] = {}
-    if session_id:
-        filters["session_id"] = session_id
-    if only_pinned:
-        filters["pinned"] = True
-
+    filters = _build_memory_graph_filters(session_id, only_pinned)
     entries = vector_store.list_entries(limit=limit, metadata_filters=filters)
 
-    nodes = []
-    edges = []
-    session_nodes = {}
-    user_nodes = {}
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    session_nodes: dict[str, dict[str, Any]] = {}
+    user_nodes: dict[str, dict[str, Any]] = {}
 
     for entry in entries:
-        meta = entry.get("metadata") or {}
-        eid = entry.get("id") or meta.get("id") or meta.get("uuid") or meta.get("pk")
-        if not eid:
-            eid = f"mem-{abs(hash(entry.get('text', '')))}"
-        label = meta.get("title") or (entry.get("text") or "")[:80] or eid
-        mem_type = meta.get("type") or "fact"
-        sess = meta.get("session_id")
-        user = meta.get("user_id") or DEFAULT_USER_ID
-        pinned = bool(meta.get("pinned"))
-        scope = meta.get("scope") or ("session" if sess else "global")
-        node_payload = {
-            "data": {
-                "id": eid,
-                "label": label,
-                "type": "memory",
-                "memory_kind": mem_type,
-                "session_id": sess,
-                "user_id": user,
-                "scope": scope,
-                "pinned": pinned,
-                "topic": meta.get("topic"),
-                "meta": meta,
-            }
-        }
-        if "x" in meta and "y" in meta:
-            node_payload["position"] = {"x": meta.get("x"), "y": meta.get("y")}
+        node_payload = _build_memory_node(entry)
         nodes.append(node_payload)
-        if sess and sess not in session_nodes:
-            session_nodes[sess] = {
-                "data": {
-                    "id": f"session:{sess}",
-                    "label": sess,
-                    "type": "memory",
-                    "memory_kind": "session",
-                    "session_id": sess,
-                }
-            }
-        if user and user not in user_nodes:
-            user_nodes[user] = {
-                "data": {
-                    "id": f"user:{user}",
-                    "label": user,
-                    "type": "memory",
-                    "memory_kind": "user",
-                    "user_id": user,
-                }
-            }
-        if sess:
-            edges.append(
-                {
-                    "data": {
-                        "id": f"edge:{sess}->{eid}",
-                        "source": f"session:{sess}",
-                        "target": eid,
-                        "label": "session",
-                        "type": "memory",
-                    }
-                }
+        node_data = node_payload["data"]
+        node_id = str(node_data["id"])
+        sess = node_data.get("session_id")
+        user = node_data.get("user_id")
+        _ensure_session_node(session_nodes, sess if isinstance(sess, str) else None)
+        _ensure_user_node(user_nodes, user if isinstance(user, str) else None)
+        edges.extend(
+            _build_relation_edges(
+                node_id,
+                sess if isinstance(sess, str) else None,
+                user if isinstance(user, str) else None,
             )
-        if user:
-            edges.append(
-                {
-                    "data": {
-                        "id": f"edge:{user}->{eid}",
-                        "source": f"user:{user}",
-                        "target": eid,
-                        "label": "user",
-                        "type": "memory",
-                    }
-                }
-            )
+        )
 
-    lesson_nodes = []
-    lesson_edges = []
-    if include_lessons and lessons_store:
-        try:
-            # Obsługa różnych wersji LessonsStore (szczególnie w mockach testowych)
-            if hasattr(lessons_store, "get_all_lessons"):
-                raw_lessons = lessons_store.get_all_lessons(limit=limit)
-                lessons = _normalize_lessons_for_graph(
-                    raw_lessons, allow_fallback=is_testing_mode(), limit=limit
-                )
-            elif hasattr(lessons_store, "lessons"):
-                # fallback dla prostych mocków/SimpleNamespace w testach
-                raw_lessons_data = lessons_store.lessons
-                lessons = _normalize_lessons_for_graph(
-                    raw_lessons_data, allow_fallback=is_testing_mode(), limit=limit
-                )
-            else:
-                lessons = []
-
-            for raw_lesson in lessons:
-                # Jeśli to już jest słownik (z moich konwersji wyżej) to super
-                if not isinstance(raw_lesson, dict):
-                    raw_lesson = (
-                        raw_lesson.to_dict()
-                        if hasattr(raw_lesson, "to_dict")
-                        else (
-                            vars(raw_lesson) if hasattr(raw_lesson, "__dict__") else {}
-                        )
-                    )
-
-                raw_id = raw_lesson.get("id") or raw_lesson.get("lesson_id")
-                lesson_id = str(raw_id) if raw_id is not None else ""
-                if not lesson_id:
-                    continue
-                label = raw_lesson.get("title") or lesson_id
-                lesson_nodes.append(
-                    {
-                        "data": {
-                            "id": f"lesson:{lesson_id}",
-                            "label": label,
-                            "type": "memory",
-                            "memory_kind": "lesson",
-                            "lesson_id": lesson_id,
-                            "meta": {
-                                "tags": raw_lesson.get("tags"),
-                                "timestamp": raw_lesson.get("timestamp"),
-                            },
-                        }
-                    }
-                )
-                # opcjonalna krawędź do user_default
-                lesson_edges.append(
-                    {
-                        "data": {
-                            "id": f"edge:lesson:{lesson_id}->user:{DEFAULT_USER_ID}",
-                            "source": f"lesson:{lesson_id}",
-                            "target": f"user:{DEFAULT_USER_ID}",
-                            "label": "lesson",
-                            "type": "lesson",
-                        }
-                    }
-                )
-        except Exception as e:  # pragma: no cover
-            logger.warning(f"Nie udało się pobrać lekcji do grafu: {e}")
+    lesson_nodes: list[dict[str, Any]] = []
+    lesson_edges: list[dict[str, Any]] = []
+    if include_lessons:
+        lesson_nodes, lesson_edges = _collect_lesson_graph(lessons_store, limit)
 
     all_nodes = (
         list(session_nodes.values()) + list(user_nodes.values()) + nodes + lesson_nodes
@@ -567,30 +646,7 @@ def memory_graph(
 
     if mode == "flow":
         # Dodaj krawędzie sekwencyjne (prosty tok) wg metadanej timestamp, fallback: kolejność entries
-        try:
-
-            def _flow_timestamp(node: dict) -> str:
-                meta_value = node.get("data", {}).get("meta")
-                meta = meta_value if isinstance(meta_value, dict) else {}
-                return str(meta.get("timestamp", ""))
-
-            entries_for_flow = sorted(nodes, key=_flow_timestamp)
-        except Exception:
-            entries_for_flow = nodes
-        for idx in range(len(entries_for_flow) - 1):
-            src = entries_for_flow[idx]["data"]["id"]
-            tgt = entries_for_flow[idx + 1]["data"]["id"]
-            all_edges.append(
-                {
-                    "data": {
-                        "id": f"flow:{src}->{tgt}",
-                        "source": src,
-                        "target": tgt,
-                        "label": "next",
-                        "type": "flow",
-                    }
-                }
-            )
+        _append_flow_edges(nodes, all_edges)
 
     return {
         "status": "success",

@@ -1,5 +1,7 @@
 """Moduł: routes/metrics - Endpointy API dla metryk i tokenomics."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from venom_core.core import metrics as metrics_module
@@ -10,15 +12,15 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
-TOKEN_METRICS_RESPONSES = {
+TOKEN_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "Metrics collector nie jest dostępny"},
     500: {"description": "Błąd podczas pobierania metryk tokenów"},
 }
-SYSTEM_METRICS_RESPONSES = {
+SYSTEM_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "Metrics collector nie jest dostępny"},
     500: {"description": "Błąd podczas pobierania metryk systemowych"},
 }
-METRICS_ROOT_RESPONSES = {
+METRICS_ROOT_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "Metrics collector nie jest dostępny"},
 }
 

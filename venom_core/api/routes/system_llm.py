@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import time
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 import httpx
@@ -27,18 +27,20 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
-LLM_SERVERS_RESPONSES = {
+LLM_SERVERS_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": "LLMController nie jest dostępny"},
 }
-LLM_SERVER_CONTROL_RESPONSES = {
+LLM_SERVER_CONTROL_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowa akcja lub parametry sterowania serwerem"},
     503: {"description": "LLMController nie jest dostępny"},
     500: {"description": "Błąd podczas wykonywania komendy serwera LLM"},
 }
-LLM_RUNTIME_ACTIVATE_RESPONSES = {
-    400: {"description": "Nieprawidłowy provider/model lub brak wymaganej konfiguracji"},
+LLM_RUNTIME_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {
+        "description": "Nieprawidłowy provider/model lub brak wymaganej konfiguracji"
+    },
 }
-LLM_SERVER_ACTIVATE_RESPONSES = {
+LLM_SERVER_ACTIVATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Nieznany serwer LLM lub brak konfiguracji"},
     503: {"description": "LLMController lub ModelManager nie jest dostępny"},
     500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},

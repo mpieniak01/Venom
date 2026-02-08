@@ -112,14 +112,14 @@ Dla każdego hotspotu:
 
 ## Kryteria akceptacji
 
-- [ ] Wszystkie wymienione zgłoszenia Sonar przechodzą do stanu `Resolved`.
-- [ ] Brak nowych `Critical` dla reguł complexity/nesting w dotkniętych plikach.
-- [ ] Zgłoszenia `readability` z sekcji C są zamknięte bez regresji formatowania tekstu.
-- [ ] `npm --prefix web-next run lint` przechodzi.
-- [ ] `npm --prefix web-next run build` przechodzi.
+- [ ] Wszystkie wymienione zgłoszenia Sonar przechodzą do stanu `Resolved` (po pełnym reskanie Sonar).
+- [ ] Brak nowych `Critical` dla reguł complexity/nesting w dotkniętych plikach (po pełnym reskanie Sonar).
+- [x] Zgłoszenia `readability` z sekcji C są zamknięte bez regresji formatowania tekstu.
+- [x] `npm --prefix web-next run lint` przechodzi.
+- [x] `npm --prefix web-next run build` przechodzi.
 - [ ] `make e2e` lub równoważny pakiet testów przechodzi dla zmienionych scenariuszy.
-- [ ] Brak regresji funkcjonalnej w kluczowych widokach: Brain, Cockpit, Models, Strategy.
-- [ ] Brak regresji funkcjonalnej w demo `examples/apprentice_demo.py`.
+- [ ] Brak regresji funkcjonalnej w kluczowych widokach: Brain, Cockpit, Models, Strategy (do potwierdzenia po e2e/build).
+- [ ] Brak regresji funkcjonalnej w demo `examples/apprentice_demo.py` (do potwierdzenia testem/manualem).
 
 ## Status realizacji (aktualny)
 
@@ -151,24 +151,7 @@ Dla każdego hotspotu:
 - `web-next/tests/streaming.spec.ts` (SSE mock helper extraction)
 - `sonar-project.properties` (CPD exclusions dla locale i18n)
 
-### Do domknięcia
-- pozostałe głębokie hotspoty w `cockpit-chat-send.ts`/`use-cockpit-logic.ts` jeżeli Sonar nadal raportuje po aktualnym refactorze (wymaga reskanu Sonar i ewentualnego finalnego splitu modułów)
-- ewentualne pozostałe hotspoty frontend e2e po ponownym skanie Sonar (do potwierdzenia raportem)
-
-## Ryzyka
-
-- Duże refactory hooków (`use-cockpit-logic`) mogą naruszyć sekwencję efektów ubocznych.
-- Rozbijanie dużych komponentów może zmienić kolejność renderowania i drobne zachowania UI.
-- Refactor testów e2e może zwiększyć flakiness bez stabilnych helperów synchronizacji.
-
-## Mitigacje
-
-- Małe, atomowe commity per plik/obszar.
-- Testy smoke po każdym dużym pliku (lint + build + targeted e2e).
-- Wydzielenie helperów z testami jednostkowymi tam, gdzie logika jest złożona.
-
-## Out of scope
-
-- Zmiana designu UI.
-- Zmiana kontraktów backend API.
-- Globalny cleanup wszystkich innych reguł Sonar spoza tej listy.
+### Do domknięcia przed release
+- uruchomienie `make e2e` na środowisku z działającym `http://127.0.0.1:3000` (obecny blocker: preflight fail - cockpit nieosiągalny),
+- finalny reskan Sonar i potwierdzenie zamknięcia zgłoszeń z listy wejściowej,
+- krótkie manualne sanity-check dla widoków: Cockpit, Models, Strategy, Brain.

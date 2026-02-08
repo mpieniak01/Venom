@@ -103,6 +103,7 @@ export function BenchmarkConfigurator({
       <div>
         <p className="mb-2 block text-sm font-medium text-zinc-300">
           Modele do testowania
+          {" "}
           <span className="ml-2 text-xs text-zinc-500">
             ({selectedModels.length} wybrano)
           </span>
@@ -114,7 +115,7 @@ export function BenchmarkConfigurator({
             </p>
           ) : (
             filteredModels.map((model) => {
-              const checkboxId = `model-${model.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
+              const checkboxId = `model-${model.name.replaceAll(/[^a-zA-Z0-9]/g, "-")}`;
               return (
                 <label
                   key={model.name}

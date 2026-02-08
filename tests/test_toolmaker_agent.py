@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -16,7 +18,7 @@ def mock_kernel():
 @pytest.fixture
 def mock_file_skill():
     skill = MagicMock(spec=FileSkill)
-    skill.workspace_root = "/tmp/test_workspace"
+    skill.workspace_root = str(Path(tempfile.gettempdir()) / "test_workspace")
     skill.write_file = AsyncMock()
     return skill
 

@@ -1,6 +1,7 @@
 """Testy dla ota_manager - Over-The-Air Updates."""
 
 import hashlib
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -47,7 +48,7 @@ def test_ota_package_creation():
     package = OTAPackage(
         version="1.0.0",
         description="Test package",
-        package_path=Path("/tmp/test.zip"),
+        package_path=Path(tempfile.gettempdir()) / "test.zip",
         checksum="abc123",
     )
 

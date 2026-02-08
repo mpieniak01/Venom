@@ -1,5 +1,8 @@
 """Testy dla HybridModelRouter."""
 
+import tempfile
+from pathlib import Path
+
 from venom_core.config import Settings
 from venom_core.execution.model_router import AIMode, HybridModelRouter, TaskType
 
@@ -169,7 +172,11 @@ class TestHybridModelRouter:
         settings = Settings(
             AI_MODE="HYBRID", GOOGLE_API_KEY="test-key", HYBRID_CLOUD_PROVIDER="google"
         )
-        state_manager = StateManager(state_file_path="/tmp/test_state_research.json")
+        state_manager = StateManager(
+            state_file_path=str(
+                Path(tempfile.gettempdir()) / "test_state_research.json"
+            )
+        )
         state_manager.set_paid_mode(True)  # Enable paid mode
 
         router = HybridModelRouter(settings=settings, state_manager=state_manager)
@@ -186,7 +193,9 @@ class TestHybridModelRouter:
 
         settings = Settings(AI_MODE="HYBRID", GOOGLE_API_KEY="")
         state_manager = StateManager(
-            state_file_path="/tmp/test_state_research_no_cloud.json"
+            state_file_path=str(
+                Path(tempfile.gettempdir()) / "test_state_research_no_cloud.json"
+            )
         )
         state_manager.set_paid_mode(True)  # Even with paid mode, no API key = fallback
 
@@ -205,7 +214,9 @@ class TestHybridModelRouter:
             AI_MODE="HYBRID", GOOGLE_API_KEY="test-key", HYBRID_CLOUD_PROVIDER="google"
         )
         state_manager = StateManager(
-            state_file_path="/tmp/test_state_research_off.json"
+            state_file_path=str(
+                Path(tempfile.gettempdir()) / "test_state_research_off.json"
+            )
         )
         state_manager.set_paid_mode(False)  # Disable paid mode
 

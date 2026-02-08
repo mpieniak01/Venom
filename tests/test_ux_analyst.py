@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -16,19 +17,22 @@ def mock_kernel():
 @pytest.fixture
 def ux_analyst(mock_kernel):
     with patch("venom_core.agents.ux_analyst.SETTINGS") as mock_settings:
-        mock_settings.WORKSPACE_ROOT = "/tmp/test_workspace"
+        mock_settings.WORKSPACE_ROOT = str(
+            Path(tempfile.gettempdir()) / "test_workspace"
+        )
         agent = UXAnalystAgent(mock_kernel)
         return agent
 
 
 def test_initialization(ux_analyst):
-    assert ux_analyst.logs_dir == Path("/tmp/test_workspace/simulation_logs")
+    expected = Path(tempfile.gettempdir()) / "test_workspace" / "simulation_logs"
+    assert ux_analyst.logs_dir == expected
     assert "Jesteś ekspertem UX" in ux_analyst.SYSTEM_PROMPT
 
 
 def test_load_session_logs_valid(ux_analyst):
     log_content = '{"event_type": "test_event", "session_id": "123"}\n'
-    mock_file = Path("/tmp/test_log.jsonl")
+    mock_file = Path(tempfile.gettempdir()) / "test_log.jsonl"
 
     with patch("builtins.open", mock_open(read_data=log_content)):
         with patch.object(Path, "exists", return_value=True):
@@ -40,7 +44,7 @@ def test_load_session_logs_valid(ux_analyst):
 
 
 def test_load_session_logs_missing(ux_analyst):
-    mock_file = Path("/tmp/missing_log.jsonl")
+    mock_file = Path(tempfile.gettempdir()) / "missing_log.jsonl"
 
     with patch.object(Path, "exists", return_value=False):
         events = ux_analyst._load_session_logs([mock_file])

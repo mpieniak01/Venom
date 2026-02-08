@@ -255,7 +255,8 @@ def test_state_manager_load_corrupted_state():
 def test_state_manager_load_nonexistent_file():
     """Test ładowania nieistniejącego pliku stanu."""
     # Powinien utworzyć nowy pusty stan
-    state_manager = StateManager(state_file_path="/tmp/test_nonexistent_file.json")
+    missing_path = Path(tempfile.gettempdir()) / "test_nonexistent_file.json"
+    state_manager = StateManager(state_file_path=str(missing_path))
     assert state_manager._tasks == {}
 
 

@@ -125,7 +125,7 @@ async def test_submit_feedback_save_error_returns_500(monkeypatch):
     state = SimpleNamespace(get_task=lambda _task_id: task)
     feedback_routes.set_dependencies(orchestrator=None, state_manager=state)
 
-    def failing_save(*_args, **_kwargs):
+    async def failing_save(*_args, **_kwargs):
         raise RuntimeError("disk error")
 
     monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", failing_save)
@@ -189,7 +189,7 @@ async def test_submit_feedback_down_with_followup_error_and_metrics(monkeypatch)
 
     saved = []
 
-    def fake_save(path, entry, _msg):
+    async def fake_save(path, entry, _msg):
         saved.append((path, entry))
 
     monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", fake_save)
@@ -223,7 +223,7 @@ async def test_submit_feedback_up_hidden_prompt_save_error(monkeypatch):
     state = SimpleNamespace(get_task=lambda _task_id: task)
     calls = {"count": 0}
 
-    def fake_save(path, entry, _msg):
+    async def fake_save(path, entry, _msg):
         calls["count"] += 1
         if calls["count"] == 2:
             raise RuntimeError("hidden save failed")

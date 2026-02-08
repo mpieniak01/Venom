@@ -1,5 +1,6 @@
 """Moduł: analyst - agent analityczny audytujący wydajność i koszty."""
 
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Union
 
@@ -94,8 +95,6 @@ class AnalystAgent(BaseAgent):
             Raport z analizy
         """
         # Yield control to event loop since this method is synchronous but implements async interface
-        import asyncio
-
         await asyncio.sleep(0)
 
         logger.info("AnalystAgent generuje raport analityczny")

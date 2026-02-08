@@ -25,13 +25,13 @@ class DummyStreamResponse:
     def __init__(self, lines: list[str]):
         self._lines = lines
 
-    def __aenter__(self):
+    async def __aenter__(self):
         return self
 
-    def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc, tb):
         return False
 
-    def aiter_lines(self):
+    async def aiter_lines(self):
         for line in self._lines:
             yield line
 
@@ -43,10 +43,10 @@ class DummyAsyncClient:
     def __init__(self, *args, **kwargs):
         self._lines = []
 
-    def __aenter__(self):
+    async def __aenter__(self):
         return self
 
-    def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc, tb):
         return False
 
     def stream(self, method: str, url: str, json: dict):

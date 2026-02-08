@@ -1,5 +1,8 @@
 """Testy jednostkowe dla PolicyEngine."""
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from venom_core.core.policy_engine import PolicyEngine
@@ -184,11 +187,12 @@ function calculateSum(a, b) {
 
 def test_multiple_violations(policy_engine):
     """Test wykrywania wielu naruszeń jednocześnie."""
-    code = """
+    safe_tmp = Path(tempfile.gettempdir()) / "test"
+    code = f"""
 api_key = "sk-proj-test123456789012345678901234"
 
 def unsafe_function():
-    os.system("rm -rf /tmp/test")
+    os.system("rm -rf {safe_tmp}")
     return api_key
 """
     violations = policy_engine.check_safety(code)

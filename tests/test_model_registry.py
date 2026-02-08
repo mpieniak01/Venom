@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -195,7 +197,9 @@ async def test_huggingface_provider_install_model():
     with patch("huggingface_hub.snapshot_download") as mock_download:
         mock_download.return_value = "/path/to/model"
 
-        provider = HuggingFaceModelProvider(cache_dir="/tmp/test_cache")
+        provider = HuggingFaceModelProvider(
+            cache_dir=str(Path(tempfile.gettempdir()) / "test_cache")
+        )
         result = await provider.install_model("google/gemma-2b-it")
 
         assert result is True

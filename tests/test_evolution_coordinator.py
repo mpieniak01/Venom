@@ -77,7 +77,7 @@ def mock_system_engineer():
 
 
 @pytest.fixture
-def mock_mirror_world():
+def mock_mirror_world(tmp_path):
     """Mock MirrorWorld."""
     mirror = MagicMock()
 
@@ -85,7 +85,7 @@ def mock_mirror_world():
         instance_id="test_instance",
         port=8001,
         branch_name="evolution/test",
-        workspace_path=Path("/tmp/mirrors/test"),
+        workspace_path=tmp_path / "mirrors" / "test",
         status="initialized",
     )
     mirror.spawn_shadow_instance = MagicMock(return_value=instance_info)
@@ -157,13 +157,15 @@ class TestEvolutionCoordinator:
         assert instance_info.branch_name == "evolution/test"
 
     @pytest.mark.asyncio
-    async def test_verify_shadow_instance_success(self, evolution_coordinator):
+    async def test_verify_shadow_instance_success(
+        self, evolution_coordinator, tmp_path
+    ):
         """Test pomyślnej weryfikacji."""
         instance_info = InstanceInfo(
             instance_id="test",
             port=8001,
             branch_name="evolution/test",
-            workspace_path=Path("/tmp/test_verify"),
+            workspace_path=tmp_path / "test_verify",
             status="initialized",
         )
 
@@ -174,12 +176,10 @@ class TestEvolutionCoordinator:
 
         assert result["success"] is True
 
-        import shutil
-
-        shutil.rmtree(instance_info.workspace_path, ignore_errors=True)
-
     @pytest.mark.asyncio
-    async def test_verify_shadow_instance_syntax_error(self, evolution_coordinator):
+    async def test_verify_shadow_instance_syntax_error(
+        self, evolution_coordinator, tmp_path
+    ):
         """Test weryfikacji z błędem składni."""
         evolution_coordinator.core_skill.verify_syntax = AsyncMock(
             return_value="❌ Błąd składni"
@@ -189,7 +189,7 @@ class TestEvolutionCoordinator:
             instance_id="test",
             port=8001,
             branch_name="evolution/test",
-            workspace_path=Path("/tmp/test_syntax_error"),
+            workspace_path=tmp_path / "test_syntax_error",
             status="initialized",
         )
 
@@ -199,10 +199,6 @@ class TestEvolutionCoordinator:
         result = await evolution_coordinator._verify_shadow_instance(instance_info)
 
         assert result["success"] is False
-
-        import shutil
-
-        shutil.rmtree(instance_info.workspace_path, ignore_errors=True)
 
     @pytest.mark.asyncio
     async def test_trigger_restart_no_confirm(self, evolution_coordinator):

@@ -76,6 +76,7 @@ async function fillPromptForTarget(page: Page, target: TargetConfig, prompt: str
       return false;
     }
     await diagnosePromptFillError(page, error);
+    return false;
   }
 }
 

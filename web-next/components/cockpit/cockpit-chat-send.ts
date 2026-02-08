@@ -106,11 +106,11 @@ type LocalHistoryEntry = {
 };
 
 const resolveForcedRuntimeProvider = (
-  provider: string | null,
+  provider: string | null | undefined,
 ): "openai" | "google" | string | null => {
   if (provider === "gpt") return "openai";
   if (provider === "gem") return "google";
-  return provider;
+  return provider ?? null;
 };
 
 const buildRuntimeMeta = (
@@ -185,7 +185,7 @@ const buildSimpleRequestSteps = (
           details: `ttft_ms=${Math.round(timing.ttftMs)}`,
         }
       : null,
-  ].filter(Boolean) as HistoryRequestDetail["steps"];
+  ].filter(Boolean) as NonNullable<HistoryRequestDetail["steps"]>;
   return steps.length > 0 ? steps : undefined;
 };
 

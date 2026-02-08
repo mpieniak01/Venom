@@ -47,7 +47,7 @@ export default function RootLayout({
                 <Suspense fallback={<TopBarSkeleton />}>
                   <TopBarWrapper />
                 </Suspense>
-                <main className="flex-1 overflow-y-auto px-4 py-10 pb-24 sm:px-8 lg:px-10 xl:px-12">
+                <main className="flex-1 overflow-y-auto px-4 py-10 pb-28 sm:px-8 lg:px-10 lg:pb-32 xl:px-12">
                   <div className="mr-auto w-full max-w-[1320px] xl:max-w-[1536px] 2xl:max-w-[85vw] space-y-6">
                     {children}
                   </div>

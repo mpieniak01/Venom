@@ -321,8 +321,8 @@ function upsertHydratedAssistantMessage(
 }
 
 function extractFeedbackUpdates(
-    history: Array<{ request_id?: string; feedback?: { rating?: string; comment?: string | null } }> | null | undefined,
-    detail: { request_id?: string; feedback?: { rating?: string; comment?: string | null } } | null | undefined,
+    history: Array<{ request_id?: string; feedback?: { rating?: string; comment?: string | null } | null }> | null | undefined,
+    detail: { request_id?: string; feedback?: { rating?: string; comment?: string | null } | null } | null | undefined,
 ): Record<string, FeedbackValue> {
     const updates: Record<string, FeedbackValue> = {};
     if (history) {
@@ -439,12 +439,13 @@ export function useCockpitLogic({
         data: sessionHistoryData,
         refresh: refreshSessionHistory,
     } = useSessionHistory(sessionId, 0);
+    const refreshHistory = data.refresh.history;
     const refreshSessionHistoryVoid = useCallback(() => {
         void refreshSessionHistory();
     }, [refreshSessionHistory]);
     const refreshHistoryVoid = useCallback(() => {
-        void data.refresh.history();
-    }, [data.refresh]);
+        void refreshHistory();
+    }, [refreshHistory]);
 
     const {
         sessionHistory,
@@ -565,21 +566,17 @@ export function useCockpitLogic({
     });
 
     // Refresh Loop based on Streams
+    const hadActiveStreamsRef = useRef(false);
     useEffect(() => {
-        let shouldRefresh = false;
-
         const activeStreams = Object.values(taskStreams) as { status: string }[];
         const hasActive = activeStreams.some(
-            (s) => s.status === "processing" || s.status === "pending"
+            (s) => s.status === "PROCESSING" || s.status === "PENDING"
         );
-        if (!hasActive && activeStreams.length > 0) {
-            // Just finished?
-            // Simplified check: if any stream is done or we have optimistic requests that might have completed
-            shouldRefresh = true;
-        }
+        const shouldRefreshOnFinish =
+            hadActiveStreamsRef.current && !hasActive && activeStreams.length > 0;
+        hadActiveStreamsRef.current = hasActive;
 
-        // Telemetry check (simplified from original)
-        if (shouldRefresh) {
+        if (shouldRefreshOnFinish) {
             data.refresh.history();
             data.refresh.tasks();
             refreshSessionHistory();
@@ -638,7 +635,7 @@ export function useCockpitLogic({
     useEffect(() => {
         const updates = extractFeedbackUpdates(
             data.history,
-            interactive.state.historyDetail as { request_id?: string; feedback?: { rating?: string; comment?: string | null } } | null,
+            interactive.state.historyDetail as { request_id?: string; feedback?: { rating?: string; comment?: string | null } | null } | null,
         );
         if (Object.keys(updates).length > 0) {
             interactive.setters.setFeedbackByRequest((prev) => mergeFeedbackUpdates(prev, updates));

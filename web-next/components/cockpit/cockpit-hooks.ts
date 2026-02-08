@@ -253,6 +253,7 @@ export function useSessionHistoryState({
   );
   const [localSessionHistory, setLocalSessionHistory] = useState<SessionHistoryEntry[]>([]);
   const lastSessionIdRef = useRef<string | null>(null);
+  const initializedStorageKeyRef = useRef<string | null>(null);
   const [bootId, setBootId] = useState<string | null>(null);
   const sessionHistoryStorageKey =
     sessionId && bootId ? `venom-session-history:${sessionId}:${bootId}` : null;
@@ -272,6 +273,9 @@ export function useSessionHistoryState({
 
   useEffect(() => {
     if (!sessionId) return;
+    const initKey = sessionHistoryStorageKey ?? `session:${sessionId}`;
+    if (initializedStorageKeyRef.current === initKey) return;
+    initializedStorageKeyRef.current = initKey;
     if (lastSessionIdRef.current && lastSessionIdRef.current !== sessionId) {
       setLocalSessionHistory([]);
     }
@@ -282,7 +286,12 @@ export function useSessionHistoryState({
         if (cached) {
           const parsed = JSON.parse(cached) as SessionHistoryEntry[];
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setLocalSessionHistory(parsed);
+            const normalized = parsed.slice(-MAX_SESSION_HISTORY_ENTRIES);
+            setLocalSessionHistory((prev) => {
+              const prevKey = prev.map(sessionEntryKey).join("|");
+              const nextKey = normalized.map(sessionEntryKey).join("|");
+              return prevKey === nextKey ? prev : normalized;
+            });
           }
         }
       } catch {

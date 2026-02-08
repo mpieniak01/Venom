@@ -22,7 +22,7 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
 
   useEffect(() => {
     if (!content || content.trim().length === 0) {
-      setHtml("");
+      setHtml((prev) => (prev === "" ? prev : ""));
       return;
     }
 
@@ -37,11 +37,12 @@ export function MarkdownPreview({ content, emptyState, mode = "final" }: Markdow
         mode === "final" && hasSources ? decorateSourcesLabel(tokenized) : tokenized;
       const rendered = marked(withSources, { async: false });
       const withMath = tokens.length > 0 ? renderMathTokens(rendered, tokens) : rendered;
-      const sanitized = DOMPurify.sanitize(withMath);
-      setHtml(sanitized);
+      const nextHtml = DOMPurify.sanitize(withMath);
+      setHtml((prev) => (prev === nextHtml ? prev : nextHtml));
     } catch (err) {
       console.error("Markdown render error:", err);
-      setHtml(DOMPurify.sanitize(content));
+      const fallback = DOMPurify.sanitize(content);
+      setHtml((prev) => (prev === fallback ? prev : fallback));
     }
   }, [content, mode, hasSources]);
 

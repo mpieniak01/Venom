@@ -74,23 +74,25 @@ export function ConversationBubble({
   }, [isUser, showTyping, text, typingText]);
   useEffect(() => {
     if (isUser || !showTyping) return undefined;
-    if (visibleText.length >= typingText.length) return undefined;
-    if (typingTimerRef.current) {
-      window.clearTimeout(typingTimerRef.current);
-    }
-    const remaining = typingText.length - visibleText.length;
-    const step = Math.max(1, Math.min(Math.ceil(typingText.length / TYPING_EFFECT.MAX_STEPS), remaining));
-    typingTimerRef.current = window.setTimeout(() => {
-      window.requestAnimationFrame(() => {
-        setVisibleText(typingText.slice(0, Math.min(visibleText.length + step, typingText.length)));
+    typingTimerRef.current = window.setInterval(() => {
+      setVisibleText((prev) => {
+        if (prev.length >= typingText.length) return prev;
+        const remaining = typingText.length - prev.length;
+        const step = Math.max(
+          1,
+          Math.min(Math.ceil(typingText.length / TYPING_EFFECT.MAX_STEPS), remaining),
+        );
+        const next = typingText.slice(0, Math.min(prev.length + step, typingText.length));
+        return next === prev ? prev : next;
       });
     }, TYPING_EFFECT.INTERVAL_MS);
     return () => {
       if (typingTimerRef.current) {
-        window.clearTimeout(typingTimerRef.current);
+        window.clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
       }
     };
-  }, [isUser, showTyping, typingText, visibleText]);
+  }, [isUser, showTyping, typingText]);
   const statusLabel = (() => {
     if (!status) return null;
     const normalized = status.toUpperCase();
@@ -166,8 +168,10 @@ export function ConversationBubble({
               <span className="typing-dot" />
             </span>
           </p>
-        ) : (
+        ) : text.trim().length > 0 ? (
           <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
+        ) : (
+          <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
         )}
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (

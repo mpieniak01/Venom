@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import psutil
+
 from venom_core.services import runtime_controller
 from venom_core.services.runtime_controller import (
     RuntimeController,
@@ -162,3 +164,270 @@ def test_apply_profile_light_starts_core_services(monkeypatch):
     assert ServiceType.UI in started
     assert ServiceType.LLM_OLLAMA in stopped
     assert ServiceType.LLM_VLLM in stopped
+
+
+def test_update_pid_file_service_status_backend_and_ui(tmp_path):
+    controller = RuntimeController()
+    backend_pid = tmp_path / ".venom.pid"
+    ui_pid = tmp_path / ".web-next.pid"
+    backend_pid.write_text("123", encoding="utf-8")
+    ui_pid.write_text("321", encoding="utf-8")
+    controller.pid_files = {ServiceType.BACKEND: backend_pid, ServiceType.UI: ui_pid}
+    controller._get_process_info = lambda _pid: {"cpu_percent": 1.0, "memory_mb": 2.0}
+
+    backend_info = ServiceInfo("backend", ServiceType.BACKEND, ServiceStatus.UNKNOWN)
+    controller._update_pid_file_service_status(backend_info, ServiceType.BACKEND)
+    assert backend_info.status == ServiceStatus.RUNNING
+    assert backend_info.port == 8000
+
+    ui_info = ServiceInfo("ui", ServiceType.UI, ServiceStatus.UNKNOWN)
+    controller._update_pid_file_service_status(ui_info, ServiceType.UI)
+    assert ui_info.status == ServiceStatus.RUNNING
+    assert ui_info.port == 3000
+
+
+def test_update_pid_file_service_status_stopped_and_error(monkeypatch):
+    controller = RuntimeController()
+    info = ServiceInfo("backend", ServiceType.BACKEND, ServiceStatus.UNKNOWN)
+    monkeypatch.setattr(controller, "_read_pid_file", lambda _st: None)
+    controller._update_pid_file_service_status(info, ServiceType.BACKEND)
+    assert info.status == ServiceStatus.STOPPED
+
+    info2 = ServiceInfo("backend", ServiceType.BACKEND, ServiceStatus.UNKNOWN)
+    monkeypatch.setattr(
+        controller,
+        "_read_pid_file",
+        lambda _st: (_ for _ in ()).throw(ValueError("bad")),
+    )
+    controller._update_pid_file_service_status(info2, ServiceType.BACKEND)
+    assert info2.status == ServiceStatus.ERROR
+
+
+def test_update_llm_status_stopped_and_running(monkeypatch):
+    controller = RuntimeController()
+    info = ServiceInfo("ollama", ServiceType.LLM_OLLAMA, ServiceStatus.UNKNOWN)
+    monkeypatch.setattr(controller, "_check_port_listening", lambda _port: False)
+    controller._update_llm_status(info, port=11434, process_match="ollama")
+    assert info.status == ServiceStatus.STOPPED
+
+    class DummyProc:
+        def __init__(self):
+            self.info = {"pid": 99, "name": "ollama", "cmdline": ["serve"]}
+
+    info2 = ServiceInfo("ollama", ServiceType.LLM_OLLAMA, ServiceStatus.UNKNOWN)
+    monkeypatch.setattr(controller, "_check_port_listening", lambda _port: True)
+    monkeypatch.setattr(psutil, "process_iter", lambda _attrs: [DummyProc()])
+    monkeypatch.setattr(
+        controller, "_apply_process_metrics", lambda _i, pid: setattr(_i, "pid", pid)
+    )
+    controller._update_llm_status(info2, port=11434, process_match="ollama")
+    assert info2.status == ServiceStatus.RUNNING
+    assert info2.pid == 99
+
+
+def test_update_config_managed_status_variants(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(
+            ENABLE_HIVE=True,
+            ENABLE_NEXUS=True,
+            NEXUS_PORT=7788,
+            VENOM_PAUSE_BACKGROUND_TASKS=True,
+        ),
+    )
+    hive = ServiceInfo("hive", ServiceType.HIVE, ServiceStatus.UNKNOWN)
+    controller._update_config_managed_status(hive, ServiceType.HIVE)
+    assert hive.status == ServiceStatus.RUNNING
+
+    nexus = ServiceInfo("nexus", ServiceType.NEXUS, ServiceStatus.UNKNOWN)
+    controller._update_config_managed_status(nexus, ServiceType.NEXUS)
+    assert nexus.status == ServiceStatus.RUNNING
+    assert nexus.port == 7788
+
+    bg = ServiceInfo("bg", ServiceType.BACKGROUND_TASKS, ServiceStatus.UNKNOWN)
+    controller._update_config_managed_status(bg, ServiceType.BACKGROUND_TASKS)
+    assert bg.status == ServiceStatus.STOPPED
+
+
+def test_stop_and_restart_paths(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo("svc", ServiceType.BACKEND, ServiceStatus.STOPPED),
+    )
+    stopped = controller.stop_service(ServiceType.BACKEND)
+    assert stopped["success"] is True
+
+    monkeypatch.setattr(
+        controller, "stop_service", lambda _st: {"success": False, "message": "fail"}
+    )
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo("svc", ServiceType.BACKEND, ServiceStatus.RUNNING),
+    )
+    assert controller.restart_service(ServiceType.BACKEND)["success"] is False
+
+    monkeypatch.setattr(
+        controller, "stop_service", lambda _st: {"success": True, "message": "ok"}
+    )
+    monkeypatch.setattr(
+        controller, "start_service", lambda _st: {"success": True, "message": "started"}
+    )
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda _s: None)
+    assert controller.restart_service(ServiceType.BACKEND)["success"] is True
+
+
+def test_start_backend_stop_backend_and_ui(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda *args, **kwargs: SimpleNamespace(pid=1),
+    )
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo(
+            "backend", ServiceType.BACKEND, ServiceStatus.RUNNING, pid=11
+        ),
+    )
+    assert controller._start_backend()["success"] is True
+
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr=""),
+    )
+    assert controller._stop_backend()["success"] is True
+
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo("ui", ServiceType.UI, ServiceStatus.STOPPED),
+    )
+    assert controller._start_ui()["success"] is False
+    assert controller._stop_ui()["success"] is True
+
+
+def test_ollama_and_vllm_start_stop(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(
+            OLLAMA_START_COMMAND="echo start_o",
+            OLLAMA_STOP_COMMAND="echo stop_o",
+            VLLM_START_COMMAND="echo start_v",
+            VLLM_STOP_COMMAND="echo stop_v",
+        ),
+    )
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda *args, **kwargs: SimpleNamespace(pid=1),
+    )
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr=""),
+    )
+
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda service: ServiceInfo(
+            service.value, service, ServiceStatus.RUNNING, pid=1
+        ),
+    )
+    assert controller._start_ollama()["success"] is True
+    assert controller._stop_ollama()["success"] is True
+    assert controller._start_vllm()["success"] is True
+    assert controller._stop_vllm()["success"] is True
+
+
+def test_get_history_limit():
+    controller = RuntimeController()
+    controller._add_to_history("a", "start", True, "m1")
+    controller._add_to_history("b", "stop", False, "m2")
+    assert len(controller.get_history(limit=1)) == 1
+
+
+def test_start_service_dependency_and_exception_paths(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo("svc", ServiceType.BACKEND, ServiceStatus.STOPPED),
+    )
+    monkeypatch.setattr(
+        controller, "_check_service_dependencies", lambda _st: "deps missing"
+    )
+    result = controller.start_service(ServiceType.BACKEND)
+    assert result["success"] is False
+    assert "deps missing" in result["message"]
+
+    monkeypatch.setattr(controller, "_check_service_dependencies", lambda _st: None)
+    monkeypatch.setattr(
+        controller,
+        "_perform_action",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("explode")),
+    )
+    result2 = controller.start_service(ServiceType.BACKEND)
+    assert result2["success"] is False
+    assert "explode" in result2["message"]
+
+
+def test_stop_service_exception_path(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(
+        controller,
+        "get_service_status",
+        lambda _st: ServiceInfo("svc", ServiceType.BACKEND, ServiceStatus.RUNNING),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_perform_action",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("stop-fail")),
+    )
+    result = controller.stop_service(ServiceType.BACKEND)
+    assert result["success"] is False
+    assert "stop-fail" in result["message"]
+
+
+def test_backend_and_llm_command_failure_paths(monkeypatch):
+    controller = RuntimeController()
+    monkeypatch.setattr(runtime_controller.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("popen-fail")),
+    )
+    assert controller._start_backend()["success"] is False
+
+    monkeypatch.setattr(
+        runtime_controller.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stderr="bad"),
+    )
+    assert controller._stop_backend()["success"] is False
+
+    monkeypatch.setattr(
+        runtime_controller,
+        "SETTINGS",
+        SimpleNamespace(
+            OLLAMA_START_COMMAND="",
+            OLLAMA_STOP_COMMAND="",
+            VLLM_START_COMMAND="",
+            VLLM_STOP_COMMAND="",
+        ),
+    )
+    assert controller._start_ollama()["success"] is False
+    assert controller._stop_ollama()["success"] is False
+    assert controller._start_vllm()["success"] is False
+    assert controller._stop_vllm()["success"] is False

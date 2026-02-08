@@ -25,8 +25,7 @@ const getBuildId = () => {
 
 const createSessionId = () => {
   const rand = (() => {
-    const webCrypto: Crypto | undefined =
-      typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+    const webCrypto: Crypto | undefined = globalThis.crypto;
 
     if (webCrypto?.randomUUID) {
       return webCrypto.randomUUID().slice(0, 8);

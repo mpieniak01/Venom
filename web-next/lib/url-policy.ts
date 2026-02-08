@@ -28,7 +28,12 @@ const isPrivateIpv4 = (host: string): boolean => {
 export const isLocalOrPrivateHost = (host: string): boolean => {
   const hostname = host.trim().toLowerCase();
   if (!hostname) return false;
-  if (hostname === "localhost" || hostname === "0.0.0.0" || hostname === "[::1]") {
+  if (
+    hostname === "localhost" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
+  ) {
     return true;
   }
   if (hostname.endsWith(".localhost") || hostname.endsWith(".local")) {

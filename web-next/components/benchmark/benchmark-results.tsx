@@ -40,7 +40,7 @@ export function BenchmarkResults({ currentResults }: BenchmarkResultsProps) {
   }, [apiBase]);
 
   useEffect(() => {
-    void fetchHistory();
+    fetchHistory();
   }, [safeResults, fetchHistory]); // Odśwież jak zmienią się bieżące wyniki (np. po zakończeniu testu)
 
   const handleDelete = async (id: string) => {

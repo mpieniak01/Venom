@@ -7,6 +7,10 @@ const getEnv = (key: string): string | undefined => {
   return process.env[key];
 };
 
+const getBrowserWindow = (): Window | undefined => {
+  return typeof globalThis.window === "undefined" ? undefined : globalThis.window;
+};
+
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");
 
 const normalizeWs = (url: string): string => {
@@ -28,12 +32,16 @@ const envApiBase =
 
 const resolveBrowserBase = (): string => {
   if (!envApiBase) return "";
-  if (typeof window === "undefined") return sanitizeBase(applyHttpPolicyToUrl(envApiBase));
+  const browserWindow = getBrowserWindow();
+  if (!browserWindow) return sanitizeBase(applyHttpPolicyToUrl(envApiBase));
   if (!envApiBase.startsWith("http")) return sanitizeBase(envApiBase);
 
   try {
     const parsed = new URL(envApiBase);
-    if (isLocalOrPrivateHost(parsed.hostname) && !isLocalOrPrivateHost(window.location.hostname)) {
+    if (
+      isLocalOrPrivateHost(parsed.hostname) &&
+      !isLocalOrPrivateHost(browserWindow.location.hostname)
+    ) {
       return "";
     }
   } catch {
@@ -44,8 +52,9 @@ const resolveBrowserBase = (): string => {
 };
 
 const resolveDefaultLocalApiBase = (): string => {
-  if (typeof window === "undefined") return "";
-  const hostname = window.location.hostname;
+  const browserWindow = getBrowserWindow();
+  if (!browserWindow) return "";
+  const hostname = browserWindow.location.hostname;
   if (isLocalOrPrivateHost(hostname)) {
     return buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT);
   }
@@ -53,10 +62,11 @@ const resolveDefaultLocalApiBase = (): string => {
 };
 
 const resolveBrowserWsBase = (): string => {
-  if (typeof window === "undefined") {
+  const browserWindow = getBrowserWindow();
+  if (!browserWindow) {
     return normalizeWs(buildHttpBaseUrl("127.0.0.1", DEFAULT_API_PORT));
   }
-  const origin = window.location.origin;
+  const origin = browserWindow.location.origin;
   try {
     const parsed = new URL(origin);
     if (isLocalOrPrivateHost(parsed.hostname) && parsed.port && Number(parsed.port) !== DEFAULT_API_PORT) {

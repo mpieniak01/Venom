@@ -180,16 +180,9 @@ class SessionHandler:
             if task and isinstance(getattr(task, "context_history", {}), dict):
                 if not self._testing_mode:
                     self._ensure_session_summary(task_id, task)
-                summary = None
-                if session_id and self.session_store:
-                    summary = self.session_store.get_summary(session_id)
-                    history = self.session_store.get_history(
-                        session_id, SESSION_HISTORY_LIMIT
-                    )
-                if not summary:
-                    summary = task.context_history.get("session_summary")
-                if not history:
-                    history = task.context_history.get("session_history") or []
+                summary, history = self._load_session_summary_and_history(
+                    task, session_id
+                )
                 if not summary and history and self._should_generate_summary(request):
                     summary = self._heuristic_summary(history)
                     self.state_manager.update_context(
@@ -200,54 +193,7 @@ class SessionHandler:
                 if summary:
                     parts.append("[STRESZCZENIE SESJI]\n" + summary)
                 if not self._testing_mode and include_memory:
-                    if self._should_include_memory(request, len(history)):
-                        memory_block, memory_ids = self._retrieve_relevant_memory(
-                            request,
-                            task.context_history.get("session", {}).get("session_id"),
-                        )
-                        if memory_block:
-                            parts.append("[PAMIĘĆ]\n" + memory_block)
-                            # Zaktualizuj context_used w zadaniu
-                            if memory_ids:
-                                current_used = task.context_used
-
-                                # 1) Migracja starego formatu (dict) na model ContextUsed
-                                if isinstance(current_used, dict):
-                                    try:
-                                        # Bezpieczna konwersja dict -> ContextUsed, używamy tylko znanych pól
-                                        task.context_used = ContextUsed(
-                                            lessons=current_used.get("lessons", []),
-                                            memory_entries=current_used.get(
-                                                "memory_entries", []
-                                            ),
-                                        )
-                                        current_used = task.context_used
-                                    except Exception as e:
-                                        # W przypadku błędu migracji, tworzymy pusty obiekt
-                                        self.logger.warning(
-                                            f"Błąd migracji context_used: {e}"
-                                        )
-                                        task.context_used = ContextUsed(
-                                            memory_entries=memory_ids
-                                        )
-                                        current_used = task.context_used
-
-                                # 2) Jeśli ContextUsed już istnieje – rozszerz listę wpisów pamięci
-                                if current_used is not None:
-                                    current_used.memory_entries.extend(memory_ids)
-                                    # Deduplikacja
-                                    current_used.memory_entries = list(
-                                        set(current_used.memory_entries)
-                                    )
-                                # 3) Brak context_used – utwórz nowy obiekt
-                                else:
-                                    task.context_used = ContextUsed(
-                                        memory_entries=memory_ids
-                                    )
-
-                                self.state_manager.update_context(
-                                    task_id, {"context_used": task.context_used}
-                                )
+                    self._attach_memory_block(task_id, task, request, history, parts)
             if history:
                 lines = []
                 for entry in history[-SESSION_HISTORY_LIMIT:]:
@@ -259,6 +205,61 @@ class SessionHandler:
             logger.warning(f"Nie udało się zbudować historii sesji: {exc}")
 
         return "\n\n".join(parts).strip()
+
+    def _load_session_summary_and_history(
+        self, task: "VenomTask", session_id: Optional[str]
+    ) -> tuple[Optional[str], list[Dict[str, Any]]]:
+        summary = None
+        history: list[Dict[str, Any]] = []
+        if session_id and self.session_store:
+            summary = self.session_store.get_summary(session_id)
+            history = self.session_store.get_history(session_id, SESSION_HISTORY_LIMIT)
+        if not summary:
+            summary = task.context_history.get("session_summary")
+        if not history:
+            history = task.context_history.get("session_history") or []
+        return summary, history
+
+    def _attach_memory_block(
+        self,
+        task_id: UUID,
+        task: "VenomTask",
+        request: TaskRequest,
+        history: list[Dict[str, Any]],
+        parts: list[str],
+    ) -> None:
+        if not self._should_include_memory(request, len(history)):
+            return
+        memory_block, memory_ids = self._retrieve_relevant_memory(
+            request,
+            task.context_history.get("session", {}).get("session_id"),
+        )
+        if memory_block:
+            parts.append("[PAMIĘĆ]\n" + memory_block)
+        if memory_ids:
+            self._update_context_used_memory_entries(task_id, task, memory_ids)
+
+    def _update_context_used_memory_entries(
+        self, task_id: UUID, task: "VenomTask", memory_ids: list[str]
+    ) -> None:
+        current_used = task.context_used
+        if isinstance(current_used, dict):
+            try:
+                task.context_used = ContextUsed(
+                    lessons=current_used.get("lessons", []),
+                    memory_entries=current_used.get("memory_entries", []),
+                )
+                current_used = task.context_used
+            except Exception as exc:
+                logger.warning(f"Błąd migracji context_used: {exc}")
+                task.context_used = ContextUsed(memory_entries=memory_ids)
+                current_used = task.context_used
+        if current_used is not None:
+            current_used.memory_entries.extend(memory_ids)
+            current_used.memory_entries = list(set(current_used.memory_entries))
+        else:
+            task.context_used = ContextUsed(memory_entries=memory_ids)
+        self.state_manager.update_context(task_id, {"context_used": task.context_used})
 
     def _should_include_memory(self, request: TaskRequest, history_len: int) -> bool:
         """Heuristic gating for memory retrieval to reduce token usage."""

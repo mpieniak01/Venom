@@ -1,5 +1,7 @@
 """Moduł: routes/system_scheduler - Endpointy schedulera."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from venom_core.api.routes import system_deps
@@ -11,7 +13,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 
 BACKGROUND_SCHEDULER_UNAVAILABLE = "BackgroundScheduler nie jest dostępny"
 
-SCHEDULER_RESPONSES = {
+SCHEDULER_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": BACKGROUND_SCHEDULER_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas obsługi schedulera"},
 }

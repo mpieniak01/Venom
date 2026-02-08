@@ -46,7 +46,6 @@ async def test_guardian_initialization(mock_kernel, mock_test_skill):
         with patch("venom_core.agents.guardian.GitSkill"):
             agent = GuardianAgent(kernel=mock_kernel, test_skill=mock_test_skill)
 
-            assert agent is not None
             assert agent.test_skill == mock_test_skill
             assert agent.kernel == mock_kernel
 

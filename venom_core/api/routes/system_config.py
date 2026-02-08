@@ -11,7 +11,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
 
-@router.get("/config/runtime")
+@router.get(
+    "/config/runtime",
+    responses={
+        500: {"description": "Błąd wewnętrzny podczas pobierania konfiguracji runtime"},
+    },
+)
 async def get_runtime_config(mask_secrets: bool = True):
     """
     Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
@@ -31,7 +36,14 @@ class ConfigUpdateRequest(BaseModel):
     updates: dict
 
 
-@router.post("/config/runtime")
+@router.post(
+    "/config/runtime",
+    responses={
+        500: {
+            "description": "Błąd wewnętrzny podczas aktualizacji konfiguracji runtime"
+        },
+    },
+)
 async def update_runtime_config(request: ConfigUpdateRequest):
     """
     Aktualizuje konfigurację runtime (zapis do .env z backupem).
@@ -45,7 +57,14 @@ async def update_runtime_config(request: ConfigUpdateRequest):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/config/backups")
+@router.get(
+    "/config/backups",
+    responses={
+        500: {
+            "description": "Błąd wewnętrzny podczas pobierania listy backupów konfiguracji"
+        },
+    },
+)
 async def get_config_backups(limit: int = 20):
     """
     Zwraca listę backupów .env.
@@ -65,7 +84,14 @@ class RestoreBackupRequest(BaseModel):
     backup_filename: str
 
 
-@router.post("/config/restore")
+@router.post(
+    "/config/restore",
+    responses={
+        500: {
+            "description": "Błąd wewnętrzny podczas przywracania backupu konfiguracji"
+        },
+    },
+)
 async def restore_config_backup(request: RestoreBackupRequest):
     """
     Przywraca .env z backupu.

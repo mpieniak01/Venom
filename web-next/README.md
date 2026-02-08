@@ -92,3 +92,17 @@ npm run start
    ```
    (opcjonalnie `BASE_URL=http://127.0.0.1:3001` gdy chcesz wymusić inny adres).
 3. Raporty i materiały z nieudanych testów znajdują się w `web-next/test-results/`.
+
+## Testy unit + coverage pod Sonar
+Uruchamianie lokalne:
+
+```bash
+cd web-next
+npm run test:unit:coverage
+```
+
+Raport coverage dla Sonara zapisuje się do:
+- `web-next/coverage/lcov.info`
+
+Uwaga:
+- pliki raportów (`web-next/coverage/**`, `test-results/**`) są artefaktami lokalnymi/CI i nie powinny być commitowane do repo.

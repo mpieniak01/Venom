@@ -25,7 +25,6 @@ def mock_hf_api():
 def test_github_skill_can_be_instantiated(mock_github_api):
     """Test że GitHubSkill może być utworzony (wymagane dla agentów)."""
     skill = GitHubSkill()
-    assert skill is not None
     assert hasattr(skill, "search_repos")
     assert hasattr(skill, "get_readme")
     assert hasattr(skill, "get_trending")
@@ -34,7 +33,6 @@ def test_github_skill_can_be_instantiated(mock_github_api):
 def test_huggingface_skill_can_be_instantiated(mock_hf_api):
     """Test że HuggingFaceSkill może być utworzony (wymagane dla agentów)."""
     skill = HuggingFaceSkill()
-    assert skill is not None
     assert hasattr(skill, "search_models")
     assert hasattr(skill, "get_model_card")
     assert hasattr(skill, "search_datasets")
@@ -134,8 +132,8 @@ def test_github_and_huggingface_skills_work_together():
             hf_skill = HuggingFaceSkill()
 
             # Oba powinny być niezależne
-            assert github_skill is not None
-            assert hf_skill is not None
+            assert hasattr(github_skill, "search_repos")
+            assert hasattr(hf_skill, "search_models")
 
             # Mock repozytoriów
             mock_repo = MagicMock()

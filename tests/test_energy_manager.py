@@ -38,7 +38,7 @@ class TestEnergyManager:
         assert em.memory_threshold == 0.8
         assert not em.is_monitoring
         assert len(em._alert_callbacks) == 0
-        assert em.sensors_active is True  # Nowa flaga dla sensorów
+        assert em.sensors_active  # Nowa flaga dla sensorów
 
     def test_get_metrics(self):
         """Test pobierania metryki systemu."""
@@ -118,7 +118,8 @@ class TestEnergyManager:
         em = EnergyManager()
 
         def dummy_callback():
-            pass
+            """No-op callback używany wyłącznie do testu rejestracji."""
+            return None
 
         em.register_alert_callback(dummy_callback)
 

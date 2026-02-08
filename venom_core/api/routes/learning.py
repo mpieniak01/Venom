@@ -22,6 +22,13 @@ except Exception:  # pragma: no cover
 
 router = APIRouter(prefix="/api/v1/learning", tags=["learning"])
 
+LEARNING_READ_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania danych learning"},
+}
+LEARNING_TOGGLE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny podczas aktualizacji danych learning"},
+}
+
 
 def set_dependencies(orchestrator=None, state_manager=None, request_tracer=None):
     """Ustawia zależności (używane głównie w testach)."""
@@ -36,7 +43,7 @@ def set_dependencies(orchestrator=None, state_manager=None, request_tracer=None)
 LEARNING_LOG_PATH = Path("./data/learning/requests.jsonl")
 
 
-@router.get("/logs")
+@router.get("/logs", responses=LEARNING_READ_RESPONSES)
 async def get_learning_logs(
     limit: int = 50,
     intent: Optional[str] = None,
@@ -86,7 +93,7 @@ async def get_learning_logs(
     return {"count": len(items), "items": items}
 
 
-@router.get("/hidden-prompts")
+@router.get("/hidden-prompts", responses=LEARNING_READ_RESPONSES)
 async def get_hidden_prompts(
     limit: int = 50,
     intent: Optional[str] = None,
@@ -104,14 +111,14 @@ async def get_hidden_prompts(
     return {"count": len(items), "items": items}
 
 
-@router.get("/hidden-prompts/active")
+@router.get("/hidden-prompts/active", responses=LEARNING_READ_RESPONSES)
 async def get_active_hidden_prompts_endpoint(intent: Optional[str] = None) -> dict:
     """Zwraca aktywne hidden prompts."""
     items = get_active_hidden_prompts(intent=intent)
     return {"count": len(items), "items": items}
 
 
-@router.post("/hidden-prompts/active")
+@router.post("/hidden-prompts/active", responses=LEARNING_TOGGLE_RESPONSES)
 async def set_active_hidden_prompt_endpoint(payload: dict) -> dict:
     """Aktywuje lub wyłącza hidden prompt."""
     active = bool(payload.get("active", True))

@@ -1,6 +1,6 @@
 """Moduł: routes/system_iot - Endpointy IoT bridge."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -13,6 +13,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+IOT_STATUS_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania statusu IoT bridge"},
+}
+
 
 class IoTStatusResponse(BaseModel):
     connected: bool
@@ -22,7 +26,11 @@ class IoTStatusResponse(BaseModel):
     message: Optional[str] = None
 
 
-@router.get("/iot/status", response_model=IoTStatusResponse)
+@router.get(
+    "/iot/status",
+    response_model=IoTStatusResponse,
+    responses=IOT_STATUS_RESPONSES,
+)
 async def get_iot_status():
     """
     Zwraca podstawowy status Rider-Pi (IoT bridge).

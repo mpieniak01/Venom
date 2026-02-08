@@ -14,7 +14,14 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["models"])
 
 
-@router.post("/models/registry/install")
+@router.post(
+    "/models/registry/install",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        400: {"description": "Nieprawidłowe dane wejściowe dla instalacji modelu"},
+        500: {"description": "Błąd serwera podczas uruchamiania instalacji modelu"},
+    },
+)
 async def install_model_registry(request: ModelRegistryInstallRequest):
     """
     Instaluje model przez ModelRegistry (HuggingFace lub Ollama).
@@ -52,7 +59,14 @@ async def install_model_registry(request: ModelRegistryInstallRequest):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.delete("/models/registry/{model_name}")
+@router.delete(
+    "/models/registry/{model_name}",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        404: {"description": "Model nie został znaleziony"},
+        500: {"description": "Błąd serwera podczas usuwania modelu"},
+    },
+)
 async def remove_model_registry(model_name: str):
     """
     Usuwa model przez ModelRegistry.
@@ -77,7 +91,13 @@ async def remove_model_registry(model_name: str):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.post("/models/activate")
+@router.post(
+    "/models/activate",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        500: {"description": "Błąd serwera podczas aktywacji modelu"},
+    },
+)
 async def activate_model_endpoint(request: ModelActivateRequest):
     """
     Aktywuje model dla danego runtime.
@@ -115,7 +135,13 @@ async def activate_model_endpoint(request: ModelActivateRequest):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.get("/models/operations")
+@router.get(
+    "/models/operations",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        500: {"description": "Błąd serwera podczas pobierania listy operacji"},
+    },
+)
 async def list_model_operations(limit: int = 10):
     """
     Lista ostatnich operacji na modelach.
@@ -137,7 +163,14 @@ async def list_model_operations(limit: int = 10):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.get("/models/operations/{operation_id}")
+@router.get(
+    "/models/operations/{operation_id}",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        404: {"description": "Operacja nie została znaleziona"},
+        500: {"description": "Błąd serwera podczas pobierania statusu operacji"},
+    },
+)
 async def get_operation_status_endpoint(operation_id: str):
     """
     Pobiera status operacji.

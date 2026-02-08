@@ -36,7 +36,7 @@ def embedding_service(monkeypatch):
             self.model_name = model_name
 
         def encode(self, text, convert_to_numpy=True):
-            assert convert_to_numpy is True
+            assert convert_to_numpy
             if isinstance(text, list):
                 return [_FakeVector([0.1] * 384) for _ in text]
             return _FakeVector([0.1] * 384)
@@ -293,5 +293,4 @@ class TestMemorySkillIntegration:
         from venom_core.memory.memory_skill import MemorySkill
 
         skill = MemorySkill()
-        assert skill is not None
         assert skill.vector_store is not None

@@ -11,7 +11,13 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
 
-@router.get("/system/status")
+@router.get(
+    "/system/status",
+    responses={
+        503: {"description": "ServiceMonitor nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu systemu"},
+    },
+)
 async def get_system_status():
     """
     Zwraca status systemu wraz z metrykami użycia pamięci RAM i VRAM.

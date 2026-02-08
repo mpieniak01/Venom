@@ -22,8 +22,6 @@ def test_graph_rag_service_init(tmp_path):
     graph_file = tmp_path / "test_graph.json"
     service = GraphRAGService(graph_file=str(graph_file))
 
-    assert service is not None
-    assert service.graph is not None
     assert isinstance(service.graph, nx.DiGraph)
     assert service.graph_file == graph_file
 
@@ -220,7 +218,7 @@ def test_save_and_load_graph(tmp_path):
     service2 = GraphRAGService(graph_file=str(graph_file))
     loaded = service2.load_graph()
 
-    assert loaded is True
+    assert loaded
     assert service2.graph.number_of_nodes() == 2
     assert service2.graph.number_of_edges() == 1
     assert "entity1" in service2.graph
@@ -233,7 +231,7 @@ def test_load_graph_nonexistent_file(tmp_path):
     service = GraphRAGService(graph_file=str(graph_file))
 
     loaded = service.load_graph()
-    assert loaded is False
+    assert not loaded
 
 
 def test_get_stats(graph_rag_service):

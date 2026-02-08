@@ -1,5 +1,7 @@
 """Moduł: routes/metrics - Endpointy API dla metryk i tokenomics."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from venom_core.core import metrics as metrics_module
@@ -14,15 +16,15 @@ METRICS_COLLECTOR_UNAVAILABLE = "Metrics collector nie jest dostępny"
 TOKEN_METRICS_FETCH_ERROR = "Błąd podczas pobierania metryk tokenów"
 SYSTEM_METRICS_FETCH_ERROR = "Błąd podczas pobierania metryk systemowych"
 
-TOKEN_METRICS_RESPONSES = {
+TOKEN_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
     500: {"description": TOKEN_METRICS_FETCH_ERROR},
 }
-SYSTEM_METRICS_RESPONSES = {
+SYSTEM_METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
     500: {"description": SYSTEM_METRICS_FETCH_ERROR},
 }
-METRICS_ROOT_RESPONSES = {
+METRICS_ROOT_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": METRICS_COLLECTOR_UNAVAILABLE},
 }
 

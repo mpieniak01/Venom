@@ -18,7 +18,15 @@ def _get_translation_service():
 router = APIRouter(prefix="/api/v1", tags=["models"])
 
 
-@router.post("/translate")
+@router.post(
+    "/translate",
+    responses={
+        400: {
+            "description": "Nieprawidłowy język docelowy lub niepoprawne dane tłumaczenia"
+        },
+        500: {"description": "Błąd serwera podczas tłumaczenia tekstu"},
+    },
+)
 async def translate_text_endpoint(request: TranslationRequest):
     """Uniwersalny endpoint do tlumaczenia tresci z uzyciem aktywnego modelu."""
     try:

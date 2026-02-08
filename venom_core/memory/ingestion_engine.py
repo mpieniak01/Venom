@@ -182,9 +182,9 @@ class IngestionEngine:
 
         # Wybierz odpowiednią metodę przetwarzania
         if file_type == "pdf":
-            text = self._process_pdf(path)
+            text = await asyncio.to_thread(self._process_pdf, path)
         elif file_type == "docx":
-            text = self._process_docx(path)
+            text = await asyncio.to_thread(self._process_docx, path)
         elif file_type == "image":
             text = await self._process_image(path)
         elif file_type == "audio":

@@ -153,14 +153,80 @@ function parseContextPreviewMeta(
     selectedTask: { context_history?: Record<string, unknown> } | null,
     detail: { steps?: Array<{ component?: string; action?: string; details?: string | null }> } | null,
 ) {
+    const resolvePreviewFromContext = (ctx: Record<string, unknown>) => {
+        if (typeof ctx.preview === "string") return ctx.preview;
+        if (typeof ctx.prompt_context_preview === "string") return ctx.prompt_context_preview;
+        return null;
+    };
+    const exec = (pattern: RegExp, value: string) => pattern.exec(value);
+    const parseContextStepDetails = (
+        details: string,
+    ): {
+        preview: string | null;
+        truncated: boolean;
+        hiddenPrompts: number | null;
+        mode: string | null;
+    } | null => {
+        if (details.startsWith("{")) {
+            try {
+                const parsed = JSON.parse(details) as Record<string, unknown>;
+                return {
+                    preview:
+                        (parsed.preview as string) ||
+                        (parsed.context as string) ||
+                        (parsed.prompt as string) ||
+                        (parsed.prompt_context_preview as string) ||
+                        null,
+                    truncated: !!parsed.truncated || !!parsed.prompt_context_truncated,
+                    hiddenPrompts: typeof parsed.hidden_prompts_count === "number" ? parsed.hidden_prompts_count : null,
+                    mode: typeof parsed.mode === "string" ? parsed.mode : null,
+                };
+            } catch {
+                return null;
+            }
+        }
+        const previewMatch = exec(/(?:preview|prompt|context|prompt_context_preview)=([\s\S]*?)(?:$|\s\w+=)/, details);
+        const hiddenMatch = exec(/hidden_prompts_count=(\d+)/, details);
+        const modeMatch = exec(/mode=(\w+)/, details);
+        if (!previewMatch && !hiddenMatch) return null;
+        return {
+            preview: previewMatch ? previewMatch[1].trim() : null,
+            truncated: details.includes("truncated=true") || details.includes("truncated\":true"),
+            hiddenPrompts: hiddenMatch ? Number.parseInt(hiddenMatch[1], 10) : null,
+            mode: modeMatch ? modeMatch[1] : null,
+        };
+    };
+    const parseLlmStepDetails = (details: string) => {
+        if (details.startsWith("{")) {
+            try {
+                const parsed = JSON.parse(details) as Record<string, unknown>;
+                return {
+                    preview:
+                        (parsed.prompt as string) ||
+                        (parsed.payload as string) ||
+                        (parsed.input as string) ||
+                        null,
+                    truncated: false,
+                    hiddenPrompts: null,
+                    mode: null,
+                };
+            } catch {
+                return null;
+            }
+        }
+        const promptMatch = exec(/(?:prompt|payload|input)=([\s\S]*?)(?:$|\s\w+=)/, details);
+        if (!promptMatch) return null;
+        return {
+            preview: promptMatch[1].trim(),
+            truncated: false,
+            hiddenPrompts: null,
+            mode: null,
+        };
+    };
+
     if (selectedTask?.context_history) {
         const ctx = selectedTask.context_history;
-        const preview =
-            typeof ctx.preview === "string"
-                ? ctx.preview
-                : typeof ctx.prompt_context_preview === "string"
-                    ? ctx.prompt_context_preview
-                    : null;
+        const preview = resolvePreviewFromContext(ctx);
         if (preview) {
             return {
                 preview,
@@ -197,37 +263,7 @@ function parseContextPreviewMeta(
 
     if (contextStep?.details) {
         const details = contextStep.details.trim();
-        if (details.startsWith("{")) {
-            try {
-                const parsed = JSON.parse(details) as Record<string, unknown>;
-                meta = {
-                    preview:
-                        (parsed.preview as string) ||
-                        (parsed.context as string) ||
-                        (parsed.prompt as string) ||
-                        (parsed.prompt_context_preview as string) ||
-                        null,
-                    truncated: !!parsed.truncated || !!parsed.prompt_context_truncated,
-                    hiddenPrompts: typeof parsed.hidden_prompts_count === "number" ? parsed.hidden_prompts_count : null,
-                    mode: typeof parsed.mode === "string" ? parsed.mode : null,
-                };
-            } catch {
-                // ignore
-            }
-        }
-        if (!meta) {
-            const previewMatch = details.match(/(?:preview|prompt|context|prompt_context_preview)=([\s\S]*?)(?:$|\s\w+=)/);
-            const hiddenMatch = details.match(/hidden_prompts_count=(\d+)/);
-            const modeMatch = details.match(/mode=(\w+)/);
-            if (previewMatch || hiddenMatch) {
-                meta = {
-                    preview: previewMatch ? previewMatch[1].trim() : null,
-                    truncated: details.includes("truncated=true") || details.includes("truncated\":true"),
-                    hiddenPrompts: hiddenMatch ? Number.parseInt(hiddenMatch[1], 10) : null,
-                    mode: modeMatch ? modeMatch[1] : null,
-                };
-            }
-        }
+        meta = parseContextStepDetails(details);
     }
 
     if (!meta && !contextStep) {
@@ -241,41 +277,14 @@ function parseContextPreviewMeta(
         );
         if (llmStep?.details) {
             const details = llmStep.details.trim();
-            if (details.startsWith("{")) {
-                try {
-                    const parsed = JSON.parse(details) as Record<string, unknown>;
-                    meta = {
-                        preview:
-                            (parsed.prompt as string) ||
-                            (parsed.payload as string) ||
-                            (parsed.input as string) ||
-                            null,
-                        truncated: false,
-                        hiddenPrompts: null,
-                        mode: null,
-                    };
-                } catch {
-                    // ignore
-                }
-            }
-            if (!meta) {
-                const promptMatch = details.match(/(?:prompt|payload|input)=([\s\S]*?)(?:$|\s\w+=)/);
-                if (promptMatch) {
-                    meta = {
-                        preview: promptMatch[1].trim(),
-                        truncated: false,
-                        hiddenPrompts: null,
-                        mode: null,
-                    };
-                }
-            }
+            meta = parseLlmStepDetails(details);
         }
     }
 
     if (hiddenStep?.details) {
         const hiddenMatch =
-            hiddenStep.details.match(/hidden_prompts:?\s*(\d+)/i) ||
-            hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
+            exec(/hidden_prompts:?\s*(\d+)/i, hiddenStep.details) ||
+            exec(/hidden_prompts_count=(\d+)/, hiddenStep.details);
         if (hiddenMatch) {
             if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
             meta.hiddenPrompts = Number.parseInt(hiddenMatch[1], 10);
@@ -300,7 +309,7 @@ function shouldHydrateCompletedTask(
     );
     if (hasAssistantMessage) return false;
     const stream = taskStreams[task.request_id];
-    return !(stream && stream.result);
+    return !stream?.result;
 }
 
 function upsertHydratedAssistantMessage(
@@ -318,6 +327,33 @@ function upsertHydratedAssistantMessage(
         request_id: requestId,
         timestamp,
     }].sort((a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime());
+}
+
+async function hydrateCompletedTask(input: {
+    requestId: string;
+    sessionId: string;
+    setLocalSessionHistory: (updater: (prev: HistoryEntryLike[]) => HistoryEntryLike[]) => void;
+}) {
+    const { requestId, sessionId, setLocalSessionHistory } = input;
+    try {
+        const taskDetail = await fetchTaskDetail(requestId);
+        const detail = taskDetail as TaskDetailLike;
+        const detailSession = detail.context_history?.session?.session_id ?? null;
+        if (detailSession && detailSession !== sessionId) return;
+        if (!detail.result) return;
+        setLocalSessionHistory((prev) =>
+            upsertHydratedAssistantMessage(
+                prev as HistoryEntryLike[],
+                requestId,
+                detail.result || "",
+                detail.created_at || new Date().toISOString(),
+            ),
+        );
+    } catch (err: unknown) {
+        if ((err as { status?: number })?.status !== 404 && !(err as { message?: string })?.message?.includes("404")) {
+            console.error("Failed to hydrate task", requestId, err);
+        }
+    }
 }
 
 function extractFeedbackUpdates(
@@ -608,26 +644,11 @@ export function useCockpitLogic({
             }
             const requestId = normalized.request_id;
             hydratedRefs.current.add(requestId);
-            fetchTaskDetail(requestId)
-                .then((taskDetail) => {
-                    const detail = taskDetail as TaskDetailLike;
-                    const detailSession = detail.context_history?.session?.session_id ?? null;
-                    if (detailSession && detailSession !== sessionId) return;
-                    if (!detail.result) return;
-                    setLocalSessionHistory((prev) =>
-                        upsertHydratedAssistantMessage(
-                            prev as HistoryEntryLike[],
-                            requestId,
-                            detail.result || "",
-                            detail.created_at || new Date().toISOString(),
-                        ),
-                    );
-                })
-                .catch((err) => {
-                    if (err?.status !== 404 && !err?.message?.includes("404")) {
-                        console.error("Failed to hydrate task", requestId, err);
-                    }
-                });
+            void hydrateCompletedTask({
+                requestId,
+                sessionId,
+                setLocalSessionHistory: setLocalSessionHistory as (updater: (prev: HistoryEntryLike[]) => HistoryEntryLike[]) => void,
+            });
         });
     }, [data.history, localSessionHistory, taskStreams, setLocalSessionHistory, sessionId]);
 

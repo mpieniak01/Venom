@@ -193,7 +193,7 @@ function usePolling<T>(
     if (!isBrowser || pollingDisabled) return;
     const actualEntry = ensureEntry(key, fetcherRef.current, intervalMs);
     entryRef.current = actualEntry;
-    setReady((prev) => (prev ? prev : true));
+    setReady(true);
   }, [isBrowser, pollingDisabled, key, intervalMs]);
 
   useEffect(() => {

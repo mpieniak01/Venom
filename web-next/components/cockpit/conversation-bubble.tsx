@@ -29,6 +29,61 @@ type ConversationBubbleProps = {
   } | null;
 };
 
+function resolveStatusLabel(
+  status: string | null | undefined,
+  t: ReturnType<typeof useTranslation>,
+) {
+  if (!status) return null;
+  const normalized = status.toUpperCase();
+  switch (normalized) {
+    case "COMPLETED":
+      return t("cockpit.chatStatus.completed");
+    case "FAILED":
+      return t("cockpit.chatStatus.failed");
+    case "LOST":
+      return t("cockpit.chatStatus.lost");
+    case "PENDING":
+      return t("cockpit.chatStatus.pending");
+    case "PROCESSING":
+      return t("cockpit.chatStatus.processing");
+    default:
+      break;
+  }
+  const localizedMap: Record<string, string> = {
+    "W TOKU": t("cockpit.chatStatus.inProgress"),
+    "WYSŁANO": t("cockpit.chatStatus.sent"),
+    "WYSYŁANO": t("cockpit.chatStatus.sent"),
+    "W KOLEJCE": t("cockpit.chatStatus.queued"),
+    "BŁĄD STRUMIENIA": t("cockpit.chatStatus.streamError"),
+  };
+  return localizedMap[normalized] ?? status;
+}
+
+function resolveModeLabelText(
+  modeLabel: string | null | undefined,
+  t: ReturnType<typeof useTranslation>,
+) {
+  if (!modeLabel) return null;
+  const normalized = modeLabel.toLowerCase();
+  if (normalized === "direct") return t("cockpit.chatMode.direct");
+  if (normalized === "normal") return t("cockpit.chatMode.normal");
+  if (normalized === "complex") return t("cockpit.chatMode.complex");
+  return modeLabel;
+}
+
+function resolveTimeLabel(timestamp: string) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("pl-PL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
+}
+
 export function ConversationBubble({
   role,
   timestamp,
@@ -57,7 +112,7 @@ export function ConversationBubble({
   const typingText =
     text.trim().length > 0 ? text : t("cockpit.chatLabels.generating");
   const [visibleText, setVisibleText] = useState(text);
-  const typingTimerRef = useRef<number | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (isUser) {
       setVisibleText(text);
@@ -74,7 +129,7 @@ export function ConversationBubble({
   }, [isUser, showTyping, text, typingText]);
   useEffect(() => {
     if (isUser || !showTyping) return undefined;
-    typingTimerRef.current = window.setInterval(() => {
+    typingTimerRef.current = globalThis.setInterval(() => {
       setVisibleText((prev) => {
         if (prev.length >= typingText.length) return prev;
         const remaining = typingText.length - prev.length;
@@ -88,58 +143,37 @@ export function ConversationBubble({
     }, TYPING_EFFECT.INTERVAL_MS);
     return () => {
       if (typingTimerRef.current) {
-        window.clearInterval(typingTimerRef.current);
+        globalThis.clearInterval(typingTimerRef.current);
         typingTimerRef.current = null;
       }
     };
   }, [isUser, showTyping, typingText]);
-  const statusLabel = (() => {
-    if (!status) return null;
-    const normalized = status.toUpperCase();
-    switch (normalized) {
-      case "COMPLETED":
-        return t("cockpit.chatStatus.completed");
-      case "FAILED":
-        return t("cockpit.chatStatus.failed");
-      case "LOST":
-        return t("cockpit.chatStatus.lost");
-      case "PENDING":
-        return t("cockpit.chatStatus.pending");
-      case "PROCESSING":
-        return t("cockpit.chatStatus.processing");
-      default:
-        break;
-    }
-    const localizedMap: Record<string, string> = {
-      "W TOKU": t("cockpit.chatStatus.inProgress"),
-      "WYSŁANO": t("cockpit.chatStatus.sent"),
-      "WYSYŁANO": t("cockpit.chatStatus.sent"),
-      "W KOLEJCE": t("cockpit.chatStatus.queued"),
-      "BŁĄD STRUMIENIA": t("cockpit.chatStatus.streamError"),
-    };
-    return localizedMap[normalized] ?? status;
-  })();
-  const modeLabelText = (() => {
-    if (!modeLabel) return null;
-    const normalized = modeLabel.toLowerCase();
-    if (normalized === "direct") return t("cockpit.chatMode.direct");
-    if (normalized === "normal") return t("cockpit.chatMode.normal");
-    if (normalized === "complex") return t("cockpit.chatMode.complex");
-    return modeLabel;
-  })();
+  const statusLabel = resolveStatusLabel(status, t);
+  const modeLabelText = resolveModeLabelText(modeLabel, t);
   const footerClickable = !disabled && !pending && !isUser;
-  const timeLabel = (() => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return "";
-    return new Intl.DateTimeFormat("pl-PL", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-      timeZone: "UTC",
-    }).format(date);
-  })();
+  const timeLabel = resolveTimeLabel(timestamp);
+
+  let messageBody: ReactNode;
+  if (showTyping) {
+    messageBody = (
+      <p className="whitespace-pre-wrap text-sm text-white/90">
+        {visibleText}
+        <span className="typing-dots" aria-hidden="true">
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+        </span>
+      </p>
+    );
+  } else if (text.trim().length > 0) {
+    messageBody = (
+      <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
+    );
+  } else {
+    messageBody = (
+      <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
+    );
+  }
 
   return (
     <div
@@ -159,20 +193,7 @@ export function ConversationBubble({
             {t("cockpit.chatLabels.computationResult")}
           </p>
         )}
-        {showTyping ? (
-          <p className="whitespace-pre-wrap text-sm text-white/90">
-            {visibleText}
-            <span className="typing-dots" aria-hidden="true">
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-            </span>
-          </p>
-        ) : text.trim().length > 0 ? (
-          <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
-        ) : (
-          <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
-        )}
+        {messageBody}
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
         <div

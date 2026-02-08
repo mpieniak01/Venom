@@ -1,5 +1,6 @@
 """Moduł: routes/queue - Endpointy API dla zarządzania kolejką zadań."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -14,11 +15,11 @@ router = APIRouter(prefix="/api/v1/queue", tags=["queue"])
 
 ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
 
-QUEUE_BASE_RESPONSES = {
+QUEUE_BASE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas operacji na kolejce"},
 }
-QUEUE_ABORT_RESPONSES = {
+QUEUE_ABORT_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: {"description": "Zadanie nie istnieje lub nie jest aktywne"},
     503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas przerywania zadania"},

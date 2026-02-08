@@ -17,7 +17,6 @@ def ingestion_engine():
 def test_ingestion_engine_init():
     """Test inicjalizacji IngestionEngine."""
     engine = IngestionEngine()
-    assert engine is not None
     assert engine._vision_engine is None
     assert engine._audio_engine is None
 

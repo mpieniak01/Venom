@@ -14,17 +14,17 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["system"])
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-RUNTIME_STATUS_RESPONSES = {
+RUNTIME_STATUS_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania statusu runtime"},
 }
-RUNTIME_PROFILE_RESPONSES = {
+RUNTIME_PROFILE_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas aplikowania profilu runtime"},
 }
-RUNTIME_ACTION_RESPONSES = {
+RUNTIME_ACTION_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowa usługa lub akcja runtime"},
     500: {"description": "Błąd wewnętrzny podczas wykonywania akcji runtime"},
 }
-RUNTIME_HISTORY_RESPONSES = {
+RUNTIME_HISTORY_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Błąd wewnętrzny podczas pobierania historii runtime"},
 }
 

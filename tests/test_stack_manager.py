@@ -37,7 +37,7 @@ def test_stack_manager_check_docker_compose():
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = StackManager(workspace_root=tmpdir)
-            assert manager is not None
+            assert manager.workspace_root == Path(tmpdir).resolve()
     except RuntimeError:
         pytest.skip("Docker Compose nie jest dostępny w środowisku testowym")
 

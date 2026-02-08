@@ -28,14 +28,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-ci-lite.txt
 
-      - name: Run lightweight backend tests
+      - name: Run backend lite tests with Sonar reports
         timeout-minutes: 10
         run: |
+          python -m pip install pytest-cov
+          mkdir -p test-results/sonar
           make audit-ci-lite
-          make test-ci-lite
+          pytest -q $(grep -vE '^\s*(#|$)' config/pytest-groups/ci-lite.txt) \
+            --cov=venom_core \
+            --cov-report=xml:test-results/sonar/python-coverage.xml \
+            --junitxml=test-results/sonar/python-junit.xml
+
+      - name: Upload backend Sonar artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-backend-reports
+          path: test-results/sonar/**
+          if-no-files-found: error
 
   frontend-lite:
-    name: Frontend lite (lint + few unit tests)
+    name: Frontend lite (lint + unit coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -58,6 +70,46 @@ jobs:
         timeout-minutes: 5
         run: npm --prefix web-next run lint
 
-      - name: Unit tests (ci-lite)
-        timeout-minutes: 5
-        run: npm --prefix web-next run test:unit:ci-lite
+      - name: Unit tests with coverage (Sonar)
+        timeout-minutes: 10
+        run: npm --prefix web-next run test:unit:coverage
+
+      - name: Upload frontend Sonar artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-frontend-reports
+          path: web-next/coverage/lcov.info
+          if-no-files-found: error
+
+  sonar:
+    name: SonarCloud Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend-lite, frontend-lite]
+    if: ${{ secrets.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    env:
+      CI: "true"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download backend Sonar artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sonar-backend-reports
+          path: test-results/sonar
+
+      - name: Download frontend Sonar artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sonar-frontend-reports
+          path: web-next/coverage
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@bfd4e558cda28cda6b5defafb9232d191be8c203
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

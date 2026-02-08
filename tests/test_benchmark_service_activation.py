@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from venom_core.services.benchmark import BenchmarkService
+from venom_core.services.benchmark import BenchmarkQuestion, BenchmarkService
 
 
 class DummyController:
@@ -79,7 +79,7 @@ async def test_benchmark_restarts_runtime_on_activate(monkeypatch):
         tokens_per_second=None,
         startup_latency_ms=None,
     )
-    questions = [types.SimpleNamespace(id="q1", question="hi", category="general")]
+    questions = [BenchmarkQuestion(id="q1", question="hi", category="general")]
 
     # Mock httpx to simulate connection refused (model not running)
     mock_client = AsyncMock()

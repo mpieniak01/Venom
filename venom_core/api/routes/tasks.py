@@ -3,7 +3,7 @@
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -23,26 +23,26 @@ ORCHESTRATOR_UNAVAILABLE = "Orchestrator nie jest dostępny"
 STATE_MANAGER_UNAVAILABLE = "StateManager nie jest dostępny"
 REQUEST_TRACER_UNAVAILABLE = "RequestTracer nie jest dostępny"
 
-TASK_CREATE_RESPONSES = {
+TASK_CREATE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": ORCHESTRATOR_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas tworzenia zadania"},
 }
-TASK_GET_RESPONSES = {
+TASK_GET_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": STATE_MANAGER_UNAVAILABLE},
     404: {"description": "Zadanie o podanym ID nie istnieje"},
 }
-TASK_STREAM_RESPONSES = {
+TASK_STREAM_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": STATE_MANAGER_UNAVAILABLE},
     404: {"description": "Zadanie o podanym ID nie istnieje"},
 }
-TASKS_LIST_RESPONSES = {
+TASKS_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": STATE_MANAGER_UNAVAILABLE},
 }
-HISTORY_LIST_RESPONSES = {
+HISTORY_LIST_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"description": "Nieprawidłowy filtr statusu"},
     503: {"description": REQUEST_TRACER_UNAVAILABLE},
 }
-HISTORY_DETAIL_RESPONSES = {
+HISTORY_DETAIL_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"description": REQUEST_TRACER_UNAVAILABLE},
     404: {"description": "Request o podanym ID nie istnieje"},
 }

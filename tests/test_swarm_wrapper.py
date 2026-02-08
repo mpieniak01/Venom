@@ -1,8 +1,10 @@
 import asyncio
+from typing import cast
 
 import pytest
 
 import venom_core.core.swarm as swarm_mod
+from venom_core.agents.base import BaseAgent
 
 
 class DummyKernel:
@@ -52,7 +54,9 @@ def test_swarm_wrapper_registers_functions(monkeypatch):
         }
     )
     agent = DummyAgent(kernel=kernel)
-    wrapper = swarm_mod.create_venom_agent_wrapper(agent, name="AlphaAgent")
+    wrapper = swarm_mod.create_venom_agent_wrapper(
+        cast(BaseAgent, agent), name="AlphaAgent"
+    )
 
     assert "Alpha_ping" in registered
     assert "Beta_do" in registered
@@ -62,7 +66,9 @@ def test_swarm_wrapper_registers_functions(monkeypatch):
 @pytest.mark.asyncio
 async def test_swarm_wrapper_process_error():
     agent = DummyAgent(kernel=DummyKernel(), raise_error=True)
-    wrapper = swarm_mod.create_venom_agent_wrapper(agent, name="ErrAgent")
+    wrapper = swarm_mod.create_venom_agent_wrapper(
+        cast(BaseAgent, agent), name="ErrAgent"
+    )
 
     result = await wrapper.a_process_venom("hi")
 
@@ -78,7 +84,7 @@ def test_swarm_wrapper_handles_missing_kernel(monkeypatch):
     monkeypatch.setattr(swarm_mod.VenomAgent, "register_function", fake_register)
 
     agent = DummyAgent(kernel=None)
-    swarm_mod.create_venom_agent_wrapper(agent, name="NoKernelAgent")
+    swarm_mod.create_venom_agent_wrapper(cast(BaseAgent, agent), name="NoKernelAgent")
 
     assert registered == {}
 
@@ -93,7 +99,7 @@ def test_swarm_wrapper_handles_missing_plugins(monkeypatch):
 
     kernel = object()
     agent = DummyAgent(kernel=kernel)
-    swarm_mod.create_venom_agent_wrapper(agent, name="NoPluginsAgent")
+    swarm_mod.create_venom_agent_wrapper(cast(BaseAgent, agent), name="NoPluginsAgent")
 
     assert registered == {}
 
@@ -107,4 +113,4 @@ def test_swarm_wrapper_register_error(monkeypatch):
     kernel = DummyKernel(plugins={"Alpha": PluginWithFunctions()})
     agent = DummyAgent(kernel=kernel)
 
-    swarm_mod.create_venom_agent_wrapper(agent, name="FailRegister")
+    swarm_mod.create_venom_agent_wrapper(cast(BaseAgent, agent), name="FailRegister")

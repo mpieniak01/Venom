@@ -1,6 +1,8 @@
 import asyncio
+from typing import cast
 
 import pytest
+from fastapi import WebSocket
 
 from venom_core.core.node_manager import NodeManager
 from venom_core.nodes.protocol import (
@@ -30,7 +32,7 @@ async def test_register_node_rejects_invalid_token():
         token="wrong",
     )
 
-    result = await manager.register_node(handshake, DummyWebSocket())
+    result = await manager.register_node(handshake, cast(WebSocket, DummyWebSocket()))
 
     assert result is False
     assert manager.nodes == {}
@@ -48,10 +50,10 @@ async def test_register_node_updates_existing_entry():
     ws1 = DummyWebSocket()
     ws2 = DummyWebSocket()
 
-    assert await manager.register_node(handshake, ws1) is True
+    assert await manager.register_node(handshake, cast(WebSocket, ws1)) is True
     manager.nodes["node-1"].is_online = False
 
-    assert await manager.register_node(handshake, ws2) is True
+    assert await manager.register_node(handshake, cast(WebSocket, ws2)) is True
     assert manager.nodes["node-1"].websocket is ws2
     assert manager.nodes["node-1"].is_online is True
 
@@ -65,7 +67,7 @@ async def test_update_heartbeat_refreshes_node_metrics():
         capabilities=Capabilities(skills=["alpha"], tags=["lab"]),
         token="secret",
     )
-    await manager.register_node(handshake, DummyWebSocket())
+    await manager.register_node(handshake, cast(WebSocket, DummyWebSocket()))
 
     heartbeat = HeartbeatMessage(
         node_id="node-1",
@@ -97,8 +99,8 @@ async def test_list_and_filter_nodes():
         capabilities=Capabilities(skills=["beta"], tags=["prod"]),
         token="secret",
     )
-    await manager.register_node(node_a, DummyWebSocket())
-    await manager.register_node(node_b, DummyWebSocket())
+    await manager.register_node(node_a, cast(WebSocket, DummyWebSocket()))
+    await manager.register_node(node_b, cast(WebSocket, DummyWebSocket()))
     manager.nodes["node-b"].is_online = False
 
     assert len(manager.list_nodes()) == 2
@@ -117,7 +119,7 @@ async def test_select_best_node_prefers_low_load():
             capabilities=Capabilities(skills=["alpha"], tags=[]),
             token="secret",
         ),
-        DummyWebSocket(),
+        cast(WebSocket, DummyWebSocket()),
     )
     await manager.register_node(
         NodeHandshake(
@@ -126,7 +128,7 @@ async def test_select_best_node_prefers_low_load():
             capabilities=Capabilities(skills=["alpha"], tags=[]),
             token="secret",
         ),
-        DummyWebSocket(),
+        cast(WebSocket, DummyWebSocket()),
     )
     manager.nodes["node-a"].cpu_usage = 0.1
     manager.nodes["node-a"].memory_usage = 0.1
@@ -151,7 +153,7 @@ async def test_execute_skill_on_node_success():
         capabilities=Capabilities(skills=["alpha"], tags=[]),
         token="secret",
     )
-    await manager.register_node(handshake, websocket)
+    await manager.register_node(handshake, cast(WebSocket, websocket))
 
     task = asyncio.create_task(
         manager.execute_skill_on_node("node-1", "alpha", "run", {"value": 1}, timeout=1)
@@ -190,7 +192,7 @@ async def test_execute_skill_on_node_errors():
         capabilities=Capabilities(skills=["alpha"], tags=[]),
         token="secret",
     )
-    await manager.register_node(handshake, DummyWebSocket())
+    await manager.register_node(handshake, cast(WebSocket, DummyWebSocket()))
     manager.nodes["node-1"].is_online = False
 
     with pytest.raises(ValueError):

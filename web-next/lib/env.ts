@@ -8,8 +8,8 @@ const getEnv = (key: string): string | undefined => {
 };
 
 const getBrowserWindow = (): Window | undefined => {
-  if (typeof window === "undefined") return undefined;
-  return window;
+  if (globalThis.window === undefined) return undefined;
+  return globalThis.window;
 };
 
 const sanitizeBase = (value: string): string => value.replace(/\/$/, "");

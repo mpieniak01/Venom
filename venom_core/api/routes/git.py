@@ -3,7 +3,7 @@
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -30,6 +30,229 @@ class InitRepoRequest(BaseModel):
     url: Optional[str] = None
 
 
+def _workspace_not_git_response(message: str) -> dict:
+    return {
+        "status": "error",
+        "is_git_repo": False,
+        "message": message,
+    }
+
+
+async def _run_git_command(
+    repo_root: Path, args: list[str]
+) -> subprocess.CompletedProcess:
+    return await asyncio.to_thread(
+        subprocess.run,
+        ["git", "-C", str(repo_root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+async def _run_git(repo_root: Path, args: list[str]) -> str:
+    result = await _run_git_command(repo_root, args)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout).strip())
+    return result.stdout.strip()
+
+
+async def _run_git_ok(repo_root: Path, args: list[str]) -> bool:
+    result = await _run_git_command(repo_root, args)
+    return result.returncode == 0
+
+
+async def _collect_compare_state(repo_root: Path) -> dict:
+    compare_branch = "main"
+    compare_ref = "origin/main"
+    compare_status = None
+    ahead_count = 0
+    behind_count = 0
+
+    local_main_ok = await _run_git_ok(
+        repo_root,
+        ["show-ref", "--verify", "--quiet", "refs/heads/main"],
+    )
+    if not local_main_ok:
+        compare_status = "no_local_main"
+    else:
+        remote_ok = await _run_git_ok(repo_root, ["remote", "get-url", "origin"])
+        if not remote_ok:
+            compare_status = "no_remote"
+        else:
+            remote_main_ok = await _run_git_ok(
+                repo_root,
+                ["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"],
+            )
+            if not remote_main_ok:
+                compare_status = "no_remote_main"
+            else:
+                counts = await _run_git(
+                    repo_root,
+                    [
+                        "rev-list",
+                        "--left-right",
+                        "--count",
+                        "origin/main...main",
+                    ],
+                )
+                parts = counts.split()
+                if len(parts) == 2:
+                    behind_count = int(parts[0])
+                    ahead_count = int(parts[1])
+                if ahead_count > 0 and behind_count > 0:
+                    compare_status = "diverged"
+                elif ahead_count > 0:
+                    compare_status = "ahead"
+                elif behind_count > 0:
+                    compare_status = "behind"
+                else:
+                    compare_status = "equal"
+
+    return {
+        "compare_branch": compare_branch,
+        "compare_ref": compare_ref,
+        "compare_status": compare_status,
+        "ahead_count": ahead_count,
+        "behind_count": behind_count,
+    }
+
+
+async def _build_local_repo_status(repo_root: Path) -> dict:
+    try:
+        await _run_git(repo_root, ["rev-parse", "--is-inside-work-tree"])
+    except RuntimeError as exc:
+        return _workspace_not_git_response(
+            str(exc) or "Workspace nie jest repozytorium Git."
+        )
+
+    branch = await _run_git(repo_root, ["rev-parse", "--abbrev-ref", "HEAD"])
+    status_output = await _run_git(repo_root, ["status"])
+    porcelain = await _run_git(repo_root, ["status", "--porcelain"])
+    lines = [line for line in porcelain.splitlines() if line.strip()]
+    has_changes = len(lines) > 0
+    modified_count = len(lines)
+    compare_state = await _collect_compare_state(repo_root)
+    return {
+        "status": "success",
+        "is_git_repo": True,
+        "branch": branch,
+        "has_changes": has_changes,
+        "modified_count": modified_count,
+        "status_output": status_output,
+        **compare_state,
+    }
+
+
+def _count_modified_from_status_output(status_output: str) -> int:
+    modified_count = 0
+    for line in status_output.split("\n"):
+        if (
+            "modified:" in line
+            or "new file:" in line
+            or "deleted:" in line
+            or "renamed:" in line
+        ):
+            modified_count += 1
+    return modified_count
+
+
+def _build_skill_compare_state(repo) -> tuple[str | None, int, int]:
+    compare_ref = "origin/main"
+    compare_branch = "main"
+    compare_status = None
+    ahead_count = 0
+    behind_count = 0
+
+    has_remote = "origin" in repo.remotes
+    has_local_main = compare_branch in repo.heads
+    if not has_local_main:
+        return "no_local_main", ahead_count, behind_count
+    if not has_remote:
+        return "no_remote", ahead_count, behind_count
+
+    from git import GitCommandError
+
+    try:
+        repo.commit(compare_ref)
+    except (ValueError, GitCommandError):
+        compare_status = "no_remote_main"
+    else:
+        ahead_count = sum(
+            1 for _ in repo.iter_commits(f"{compare_ref}..{compare_branch}")
+        )
+        behind_count = sum(
+            1 for _ in repo.iter_commits(f"{compare_branch}..{compare_ref}")
+        )
+        if ahead_count > 0 and behind_count > 0:
+            compare_status = "diverged"
+        elif ahead_count > 0:
+            compare_status = "ahead"
+        elif behind_count > 0:
+            compare_status = "behind"
+        else:
+            compare_status = "equal"
+    return compare_status, ahead_count, behind_count
+
+
+def _build_skill_modified_count(repo) -> int:
+    if repo.head.is_valid():
+        return len(repo.index.diff("HEAD")) + len(repo.untracked_files)
+    return len(repo.untracked_files)
+
+
+async def _build_git_skill_status() -> dict:
+    if _git_skill is None:
+        return _workspace_not_git_response("Repozytorium Git nie zostało wykryte.")
+
+    branch = await _git_skill.get_current_branch()
+    if _is_workspace_git_error(branch):
+        return _workspace_not_git_response(branch)
+
+    status_output = await _git_skill.get_status()
+    if _is_workspace_git_error(status_output):
+        return {
+            "status": "error",
+            "is_git_repo": False,
+            "branch": branch,
+            "message": status_output,
+        }
+
+    has_changes = (
+        "nothing to commit" not in status_output
+        and "working tree clean" not in status_output
+    )
+
+    modified_count = 0
+    compare_status = None
+    ahead_count = 0
+    behind_count = 0
+    compare_ref = "origin/main"
+    compare_branch = "main"
+    try:
+        from git import Repo
+
+        repo = Repo(_git_skill.workspace_root)
+        modified_count = _build_skill_modified_count(repo)
+        compare_status, ahead_count, behind_count = _build_skill_compare_state(repo)
+    except Exception:
+        modified_count = _count_modified_from_status_output(status_output)
+
+    return {
+        "status": "success",
+        "is_git_repo": True,
+        "branch": branch,
+        "has_changes": has_changes,
+        "modified_count": modified_count,
+        "status_output": status_output,
+        "compare_branch": compare_branch,
+        "compare_ref": compare_ref,
+        "compare_status": compare_status,
+        "ahead_count": ahead_count,
+        "behind_count": behind_count,
+    }
+
+
 def _is_workspace_git_error(message: str) -> bool:
     """Sprawdza, czy komunikat pochodzi z GitSkill i oznacza brak repozytorium."""
     if not isinstance(message, str):
@@ -45,7 +268,7 @@ def _is_workspace_git_error(message: str) -> bool:
     )
 
 
-def set_dependencies(git_skill):
+def set_dependencies(git_skill: Any):
     """Ustaw zależności dla routera."""
     global _git_skill
     _git_skill = git_skill
@@ -82,101 +305,7 @@ async def _get_git_status_impl():
     repo_root = Path(getattr(SETTINGS, "REPO_ROOT", SETTINGS.WORKSPACE_ROOT)).resolve()
     if (repo_root / ".git").exists():
         try:
-
-            async def run_git(args: list[str]) -> str:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    ["git", "-C", str(repo_root), *args],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    raise RuntimeError((result.stderr or result.stdout).strip())
-                return result.stdout.strip()
-
-            async def run_git_ok(args: list[str]) -> bool:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    ["git", "-C", str(repo_root), *args],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                return result.returncode == 0
-
-            try:
-                await run_git(["rev-parse", "--is-inside-work-tree"])
-            except RuntimeError as exc:
-                return {
-                    "status": "error",
-                    "is_git_repo": False,
-                    "message": str(exc) or "Workspace nie jest repozytorium Git.",
-                }
-
-            branch = await run_git(["rev-parse", "--abbrev-ref", "HEAD"])
-            status_output = await run_git(["status"])
-            porcelain = await run_git(["status", "--porcelain"])
-            lines = [line for line in porcelain.splitlines() if line.strip()]
-            has_changes = len(lines) > 0
-            modified_count = len(lines)
-
-            compare_branch = "main"
-            compare_ref = "origin/main"
-            compare_status = None
-            ahead_count = 0
-            behind_count = 0
-
-            local_main_ok = await run_git_ok(
-                ["show-ref", "--verify", "--quiet", "refs/heads/main"]
-            )
-            if not local_main_ok:
-                compare_status = "no_local_main"
-            else:
-                remote_ok = await run_git_ok(["remote", "get-url", "origin"])
-                if not remote_ok:
-                    compare_status = "no_remote"
-                else:
-                    remote_main_ok = await run_git_ok(
-                        ["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"]
-                    )
-                    if not remote_main_ok:
-                        compare_status = "no_remote_main"
-                    else:
-                        counts = await run_git(
-                            [
-                                "rev-list",
-                                "--left-right",
-                                "--count",
-                                "origin/main...main",
-                            ]
-                        )
-                        parts = counts.split()
-                        if len(parts) == 2:
-                            behind_count = int(parts[0])
-                            ahead_count = int(parts[1])
-                        if ahead_count > 0 and behind_count > 0:
-                            compare_status = "diverged"
-                        elif ahead_count > 0:
-                            compare_status = "ahead"
-                        elif behind_count > 0:
-                            compare_status = "behind"
-                        else:
-                            compare_status = "equal"
-
-            return {
-                "status": "success",
-                "is_git_repo": True,
-                "branch": branch,
-                "has_changes": has_changes,
-                "modified_count": modified_count,
-                "status_output": status_output,
-                "compare_branch": compare_branch,
-                "compare_ref": compare_ref,
-                "compare_status": compare_status,
-                "ahead_count": ahead_count,
-                "behind_count": behind_count,
-            }
+            return await _build_local_repo_status(repo_root)
         except Exception:
             raise HTTPException(
                 status_code=503,
@@ -184,113 +313,10 @@ async def _get_git_status_impl():
             )
 
     if _git_skill is None:
-        return {
-            "status": "error",
-            "is_git_repo": False,
-            "message": "Repozytorium Git nie zostało wykryte.",
-        }
+        return _workspace_not_git_response("Repozytorium Git nie zostało wykryte.")
 
     try:
-        # Pobierz aktualny branch
-        branch = await _git_skill.get_current_branch()
-
-        if _is_workspace_git_error(branch):
-            return {
-                "status": "error",
-                "is_git_repo": False,
-                "message": branch,
-            }
-
-        # Pobierz status repozytorium
-        status_output = await _git_skill.get_status()
-        if _is_workspace_git_error(status_output):
-            return {
-                "status": "error",
-                "is_git_repo": False,
-                "branch": branch,
-                "message": status_output,
-            }
-
-        # Parsuj status aby określić czy są zmiany
-        has_changes = (
-            "nothing to commit" not in status_output
-            and "working tree clean" not in status_output
-        )
-
-        # Użyj GitPython do dokładniejszego liczenia zmian + porównania z origin/main
-        modified_count = 0
-        compare_status = None
-        ahead_count = 0
-        behind_count = 0
-        compare_ref = "origin/main"
-        compare_branch = "main"
-        try:
-            # Pobierz obiekt Repo i policz zmiany
-            from git import GitCommandError, Repo
-
-            repo = Repo(_git_skill.workspace_root)
-            # Sprawdź czy HEAD istnieje (czy repo ma commity)
-            if repo.head.is_valid():
-                # Zmodyfikowane i staged pliki względem HEAD
-                modified_count = len(repo.index.diff("HEAD"))
-            else:
-                # Brak HEAD — policz tylko nieśledzone pliki
-                modified_count = len(repo.untracked_files)
-            # Dodaj nieśledzone pliki (jeśli HEAD istnieje)
-            if repo.head.is_valid():
-                modified_count += len(repo.untracked_files)
-
-            has_remote = "origin" in repo.remotes
-            has_local_main = compare_branch in repo.heads
-            if not has_local_main:
-                compare_status = "no_local_main"
-            elif not has_remote:
-                compare_status = "no_remote"
-            else:
-                try:
-                    repo.commit(compare_ref)
-                except (ValueError, GitCommandError):
-                    compare_status = "no_remote_main"
-                else:
-                    ahead_count = sum(
-                        1 for _ in repo.iter_commits(f"{compare_ref}..{compare_branch}")
-                    )
-                    behind_count = sum(
-                        1 for _ in repo.iter_commits(f"{compare_branch}..{compare_ref}")
-                    )
-                    if ahead_count > 0 and behind_count > 0:
-                        compare_status = "diverged"
-                    elif ahead_count > 0:
-                        compare_status = "ahead"
-                    elif behind_count > 0:
-                        compare_status = "behind"
-                    else:
-                        compare_status = "equal"
-        except (GitCommandError, ValueError, ImportError):
-            # Fallback: proste parsowanie jeśli GitPython zawiedzie (np. HEAD nie istnieje)
-            lines = status_output.split("\n")
-            for line in lines:
-                if (
-                    "modified:" in line
-                    or "new file:" in line
-                    or "deleted:" in line
-                    or "renamed:" in line
-                ):
-                    modified_count += 1
-
-        return {
-            "status": "success",
-            "is_git_repo": True,
-            "branch": branch,
-            "has_changes": has_changes,
-            "modified_count": modified_count,
-            "status_output": status_output,
-            "compare_branch": compare_branch,
-            "compare_ref": compare_ref,
-            "compare_status": compare_status,
-            "ahead_count": ahead_count,
-            "behind_count": behind_count,
-        }
+        return await _build_git_skill_status()
 
     except Exception as e:
         logger.exception("Błąd podczas pobierania statusu Git")

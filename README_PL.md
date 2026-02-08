@@ -735,13 +735,21 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 - `pytest tests/test_researcher_agent.py` / `tests/test_architect_agent.py` — scenariusze agentów.
 - `pytest tests/perf/test_chat_pipeline.py -m performance` — pomiar SSE (task_update → task_finished) + batch równoległy.
 - `pytest --cov=venom_core --cov-report=html` — raport pokrycia.
+- `make sonar-reports-backend` — generuje raporty backendu pod Sonar:
+  - `test-results/sonar/python-coverage.xml`
+  - `test-results/sonar/python-junit.xml`
 
 ### Frontend Next.js
 - `npm --prefix web-next run lint`
 - `npm --prefix web-next run build`
 - `npm --prefix web-next run test:e2e` — Playwright na buildzie prod.
+- `npm --prefix web-next run test:unit:coverage` — generuje frontendowy raport Sonar:
+  - `web-next/coverage/lcov.info`
 - Optymalnie (nasze środowisko): `test:e2e:latency` działa na 1 workerze, `test:e2e:functional` na 4 workerach.
 - W razie problemów uruchamiaj testy seryjnie (patrz “Tryb awaryjny” powyżej).
+
+### Pakiet raportów Sonar (lokalny pre-check)
+- `make sonar-reports` — uruchamia generowanie raportów backend + frontend używanych w workflow SonarCloud.
 
 ### Czas reakcji i wydajność chatu
 - `npm --prefix web-next run test:perf` — Playwright mierzący latency Next Cockpit (raport HTML odkłada się do `test-results/perf-report`).
@@ -751,6 +759,7 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 - `./scripts/archive-perf-results.sh` — zrzut `test-results/`, raportów Playwright/Locust do `perf-artifacts/<timestamp>/`.
 
 > Wyniki testów NIE trafiają do repo (ignorujemy `**/test-results/`, `perf-artifacts/`, `playwright-report/`, itd.) – dzięki temu przechowujesz je lokalnie bez ryzyka ujawnienia danych.
+> Dotyczy to również artefaktów Sonar: `test-results/sonar/python-junit.xml`, `test-results/sonar/python-coverage.xml` oraz `web-next/coverage/lcov.info`.
 
 ## 📦 Paczka Docker (użytkownik końcowy)
 

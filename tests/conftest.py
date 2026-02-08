@@ -161,24 +161,35 @@ class FakeVectorStore:
         self.entries.append(entry)
         return {"message": "success", "chunks_count": 1}
 
+    @staticmethod
+    def _matches_entry_id(entry: dict, entry_id) -> bool:
+        return not entry_id or entry["id"] == entry_id
+
+    @staticmethod
+    def _matches_collection(entry: dict, collection_name) -> bool:
+        return not collection_name or entry["collection"] == collection_name
+
+    @staticmethod
+    def _matches_metadata(entry: dict, metadata_filters) -> bool:
+        if not metadata_filters:
+            return True
+        entry_meta = entry.get("metadata", {})
+        for key, value in metadata_filters.items():
+            if entry_meta.get(key) != value:
+                return False
+        return True
+
     def list_entries(
         self, limit=200, metadata_filters=None, collection_name=None, entry_id=None
     ):
         results = []
         for entry in self.entries:
-            if entry_id and entry["id"] != entry_id:
+            if not self._matches_entry_id(entry, entry_id):
                 continue
-            if collection_name and entry["collection"] != collection_name:
+            if not self._matches_collection(entry, collection_name):
                 continue
-            if metadata_filters:
-                match = True
-                entry_meta = entry.get("metadata", {})
-                for k, v in metadata_filters.items():
-                    if entry_meta.get(k) != v:
-                        match = False
-                        break
-                if not match:
-                    continue
+            if not self._matches_metadata(entry, metadata_filters):
+                continue
             results.append(entry)
         return results
 

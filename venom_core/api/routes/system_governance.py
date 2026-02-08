@@ -12,6 +12,21 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+COST_MODE_RESPONSES = {
+    503: {"description": "StateManager nie jest dostępny (Cost Guard)"},
+    500: {"description": "Błąd wewnętrzny podczas obsługi Cost Guard"},
+}
+AUTONOMY_GET_RESPONSES = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania poziomu autonomii"},
+}
+AUTONOMY_SET_RESPONSES = {
+    400: {"description": "Nieprawidłowy poziom autonomii"},
+    500: {"description": "Błąd wewnętrzny podczas zmiany poziomu autonomii"},
+}
+AUTONOMY_LEVELS_RESPONSES = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania listy poziomów"},
+}
+
 
 class CostModeRequest(BaseModel):
     """Request do zmiany trybu kosztowego."""
@@ -26,7 +41,11 @@ class CostModeResponse(BaseModel):
     provider: str
 
 
-@router.get("/system/cost-mode", response_model=CostModeResponse)
+@router.get(
+    "/system/cost-mode",
+    response_model=CostModeResponse,
+    responses=COST_MODE_RESPONSES,
+)
 async def get_cost_mode():
     """
     Zwraca aktualny stan Global Cost Guard.
@@ -50,7 +69,7 @@ async def get_cost_mode():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/system/cost-mode")
+@router.post("/system/cost-mode", responses=COST_MODE_RESPONSES)
 async def set_cost_mode(request: CostModeRequest):
     """
     Ustawia tryb kosztowy (Eco/Pro).
@@ -104,7 +123,11 @@ class AutonomyLevelResponse(BaseModel):
     risk_level: str
 
 
-@router.get("/system/autonomy", response_model=AutonomyLevelResponse)
+@router.get(
+    "/system/autonomy",
+    response_model=AutonomyLevelResponse,
+    responses=AUTONOMY_GET_RESPONSES,
+)
 async def get_autonomy_level():
     """
     Zwraca aktualny poziom autonomii AutonomyGate.
@@ -133,7 +156,7 @@ async def get_autonomy_level():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/system/autonomy")
+@router.post("/system/autonomy", responses=AUTONOMY_SET_RESPONSES)
 async def set_autonomy_level(request: AutonomyLevelRequest):
     """
     Ustawia nowy poziom autonomii.
@@ -174,7 +197,7 @@ async def set_autonomy_level(request: AutonomyLevelRequest):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/system/autonomy/levels")
+@router.get("/system/autonomy/levels", responses=AUTONOMY_LEVELS_RESPONSES)
 async def get_all_autonomy_levels():
     """
     Zwraca listę wszystkich dostępnych poziomów autonomii.

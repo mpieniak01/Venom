@@ -10,6 +10,18 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
+TOKEN_METRICS_RESPONSES = {
+    503: {"description": "Metrics collector nie jest dostępny"},
+    500: {"description": "Błąd podczas pobierania metryk tokenów"},
+}
+SYSTEM_METRICS_RESPONSES = {
+    503: {"description": "Metrics collector nie jest dostępny"},
+    500: {"description": "Błąd podczas pobierania metryk systemowych"},
+}
+METRICS_ROOT_RESPONSES = {
+    503: {"description": "Metrics collector nie jest dostępny"},
+}
+
 _metrics_cache = TTLCache[dict](ttl_seconds=1.0)
 _token_metrics_cache = TTLCache[dict](ttl_seconds=2.0)
 _token_economist = None
@@ -22,7 +34,7 @@ def set_dependencies(token_economist=None):
     _token_metrics_cache.clear()
 
 
-@router.get("/tokens")
+@router.get("/tokens", responses=TOKEN_METRICS_RESPONSES)
 def get_token_metrics():
     """
     Pobiera metryki użycia tokenów i koszty.
@@ -113,7 +125,7 @@ def _get_token_metrics_impl():
         ) from e
 
 
-@router.get("/system")
+@router.get("/system", responses=SYSTEM_METRICS_RESPONSES)
 def get_system_metrics():
     """
     Pobiera metryki systemowe (zadania, uptime, network).
@@ -140,7 +152,7 @@ def get_system_metrics():
         ) from e
 
 
-@router.get("")
+@router.get("", responses=METRICS_ROOT_RESPONSES)
 def get_metrics():
     """
     Zwraca metryki systemowe (root endpoint).

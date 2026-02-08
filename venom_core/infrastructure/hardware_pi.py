@@ -4,6 +4,7 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -120,7 +121,7 @@ class HardwareBridge:
 
             # Test połączenia
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"http://{self.host}:{self.port}/")
+                response = await client.get(build_http_url(self.host, self.port, "/"))
                 if response.status_code == 200:
                     self.connected = True
                     logger.info(f"Połączono z Raspberry Pi przez HTTP: {self.host}")
@@ -250,10 +251,12 @@ class HardwareBridge:
 
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     # Set pin mode to output
-                    await client.get(f"http://{self.host}:{self.port}/mode/{pin}/w")
+                    await client.get(
+                        build_http_url(self.host, self.port, f"/mode/{pin}/w")
+                    )
                     # Set pin state
                     response = await client.get(
-                        f"http://{self.host}:{self.port}/w/{pin}/{state_value}"
+                        build_http_url(self.host, self.port, f"/w/{pin}/{state_value}")
                     )
                     success = response.status_code == 200
             else:

@@ -1,5 +1,7 @@
 """Testy jednostkowe dla modułu Council (bez dependencies na pełny kernel)."""
 
+import pytest
+
 from venom_core.core.council import create_local_llm_config
 
 
@@ -11,7 +13,7 @@ def test_create_local_llm_config():
     assert len(config["config_list"]) > 0
     assert config["config_list"][0]["model"] == "llama3"
     assert config["config_list"][0]["api_key"] == "EMPTY"
-    assert config["temperature"] == 0.7
+    assert config["temperature"] == pytest.approx(0.7)
 
 
 def test_create_local_llm_config_custom_params():
@@ -24,7 +26,7 @@ def test_create_local_llm_config_custom_params():
 
     assert config["config_list"][0]["model"] == "mixtral"
     assert config["config_list"][0]["base_url"] == "http://localhost:8080/v1"
-    assert config["temperature"] == 0.5
+    assert config["temperature"] == pytest.approx(0.5)
     assert config["timeout"] == 120
 
 
@@ -78,10 +80,10 @@ def test_create_local_llm_config_invalid_model_empty():
 def test_create_local_llm_config_edge_case_temperature_zero():
     """Test edge case - temperatura 0.0 powinna być akceptowana."""
     config = create_local_llm_config(temperature=0.0)
-    assert config["temperature"] == 0.0
+    assert config["temperature"] == pytest.approx(0.0)
 
 
 def test_create_local_llm_config_edge_case_temperature_one():
     """Test edge case - temperatura 1.0 powinna być akceptowana."""
     config = create_local_llm_config(temperature=1.0)
-    assert config["temperature"] == 1.0
+    assert config["temperature"] == pytest.approx(1.0)

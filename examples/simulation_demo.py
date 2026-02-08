@@ -18,6 +18,7 @@ from venom_core.execution.kernel_builder import build_kernel
 from venom_core.simulation.director import SimulationDirector
 from venom_core.simulation.persona_factory import PersonaFactory
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -164,7 +165,7 @@ async def demo_full_simulation_with_app():
     # Przykładowa konfiguracja - musisz dostosować do swojej aplikacji
     scenario_config = {
         "stack_name": "test-app",
-        "target_url": "http://localhost:3000",  # Twoja aplikacja
+        "target_url": build_http_url("localhost", 3000),  # Twoja aplikacja
         "scenario_desc": "Zarejestrować nowe konto użytkownika",
         "user_count": 5,
         "max_steps_per_user": 10,

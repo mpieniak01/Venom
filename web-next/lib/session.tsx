@@ -25,12 +25,14 @@ const getBuildId = () => {
 
 const createSessionId = () => {
   const rand = (() => {
-    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-      return crypto.randomUUID().slice(0, 8);
+    const webCrypto: Crypto | undefined = globalThis.crypto;
+
+    if (webCrypto?.randomUUID) {
+      return webCrypto.randomUUID().slice(0, 8);
     }
-    if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    if (webCrypto?.getRandomValues) {
       const bytes = new Uint8Array(4);
-      crypto.getRandomValues(bytes);
+      webCrypto.getRandomValues(bytes);
       return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
     }
     sessionIdFallbackCounter += 1;

@@ -11,6 +11,7 @@ from pathlib import Path
 from venom_core.agents.gardener import GardenerAgent
 from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
+from venom_core.utils.url_policy import build_http_url
 
 
 def demo_graph_store():
@@ -224,8 +225,10 @@ async def main():
         print("✓ Wszystkie dema zakończone pomyślnie!")
         print("=" * 60)
         print("\nKolej na Ciebie! Sprawdź:")
-        print("  - Dashboard: http://localhost:8000 (zakładka 🧠 Memory)")
-        print("  - API: http://localhost:8000/api/v1/graph/summary")
+        print(
+            f"  - Dashboard: {build_http_url('localhost', 8000)} (zakładka 🧠 Memory)"
+        )
+        print(f"  - API: {build_http_url('localhost', 8000, '/api/v1/graph/summary')}")
         print("  - Dokumentacja: docs/MEMORY_LAYER_GUIDE.md")
         print("\n")
 

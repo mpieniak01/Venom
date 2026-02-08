@@ -11,6 +11,7 @@ import httpx
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
 from venom_core.utils.port_authority import find_free_port
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -259,7 +260,7 @@ class MirrorWorld:
         logger.info(f"Weryfikacja instancji {instance_id} na porcie {info.port}")
 
         # URL do instancji
-        base_url = f"http://localhost:{info.port}"
+        base_url = build_http_url("localhost", info.port)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

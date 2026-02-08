@@ -15,6 +15,7 @@ import httpx
 import psutil
 
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import apply_http_policy_to_url, build_http_url
 
 logger = get_logger(__name__)
 
@@ -104,15 +105,18 @@ class ModelManager:
         """
         Zwraca URL /api/tags dla Ollama zgodny z aktualnym runtime.
 
-        W Dockerze endpoint bywa ustawiony jako http://ollama:11434/v1,
-        a lokalnie często http://localhost:11434/v1.
+        W Dockerze endpoint bywa ustawiony jako ollama:11434/v1,
+        a lokalnie często localhost:11434/v1.
         """
-        endpoint = os.getenv("LLM_LOCAL_ENDPOINT", "http://localhost:11434/v1")
+        endpoint = os.getenv(
+            "LLM_LOCAL_ENDPOINT", build_http_url("localhost", 11434, "/v1")
+        )
+        endpoint = apply_http_policy_to_url(endpoint)
         parsed = urlparse(endpoint)
         if parsed.scheme and parsed.netloc:
             base = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
             return f"{base}/api/tags"
-        return "http://localhost:11434/api/tags"
+        return build_http_url("localhost", 11434, "/api/tags")
 
     def register_version(
         self,

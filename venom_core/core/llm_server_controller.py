@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 
 from venom_core.config import Settings
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -83,8 +84,8 @@ class LlmServerController:
             display_name="Ollama",
             provider="ollama",
             description="Daemon Ollama (port 11434) dla modeli typu GGUF.",
-            endpoint="http://localhost:11434",
-            health_url="http://localhost:11434/api/tags",
+            endpoint=build_http_url("localhost", 11434),
+            health_url=build_http_url("localhost", 11434, "/api/tags"),
             commands={
                 "start": ollama_start_cmd,
                 "stop": ollama_stop_cmd,

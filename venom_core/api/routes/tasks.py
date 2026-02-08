@@ -146,6 +146,84 @@ def _extract_context_preview(steps: list) -> Optional[dict]:
     return None
 
 
+def _build_history_summary(trace) -> HistoryRequestSummary:
+    duration = (
+        (trace.finished_at - trace.created_at).total_seconds()
+        if trace.finished_at
+        else None
+    )
+    return HistoryRequestSummary(
+        request_id=trace.request_id,
+        prompt=trace.prompt,
+        status=trace.status,
+        session_id=trace.session_id,
+        created_at=trace.created_at.isoformat(),
+        finished_at=(trace.finished_at.isoformat() if trace.finished_at else None),
+        duration_seconds=duration,
+        llm_provider=trace.llm_provider,
+        llm_model=trace.llm_model,
+        llm_endpoint=trace.llm_endpoint,
+        llm_config_hash=trace.llm_config_hash,
+        llm_runtime_id=trace.llm_runtime_id,
+        forced_tool=trace.forced_tool,
+        forced_provider=trace.forced_provider,
+        forced_intent=trace.forced_intent,
+        error_code=trace.error_code,
+        error_class=trace.error_class,
+        error_message=trace.error_message,
+        error_details=trace.error_details,
+        error_stage=trace.error_stage,
+        error_retryable=trace.error_retryable,
+        feedback=trace.feedback,
+    )
+
+
+def _validate_trace_status(status: Optional[str]) -> None:
+    if status is None:
+        return
+    valid_statuses = [s.value for s in TraceStatus]
+    if status in valid_statuses:
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=f"Nieprawidłowy status. Dozwolone wartości: {', '.join(valid_statuses)}",
+    )
+
+
+def _serialize_trace_steps(trace) -> list[dict[str, Any]]:
+    return [
+        {
+            "component": step.component,
+            "action": step.action,
+            "timestamp": step.timestamp.isoformat(),
+            "status": step.status,
+            "details": step.details,
+        }
+        for step in trace.steps
+    ]
+
+
+def _extract_task_context(task: Optional[VenomTask]) -> dict[str, Any]:
+    if task is None:
+        return {}
+    return getattr(task, "context_history", {}) or {}
+
+
+def _serialize_context_used(task: Optional[VenomTask]) -> Optional[dict]:
+    if task is None or not hasattr(task, "context_used") or not task.context_used:
+        return None
+    context_used = task.context_used
+    if isinstance(context_used, dict):
+        return context_used
+    if hasattr(context_used, "model_dump"):
+        return context_used.model_dump()
+    if hasattr(context_used, "dict"):
+        return context_used.dict()
+    if hasattr(context_used, "__dict__"):
+        return dict(context_used.__dict__)
+    return None
+
+
 def _bootstrap_orchestrator_if_testing():
     """
     Zachowane dla kompatybilności wstecznej.
@@ -391,55 +469,12 @@ async def get_request_history(
     if _request_tracer is None:
         raise HTTPException(status_code=503, detail=REQUEST_TRACER_UNAVAILABLE)
 
-    # Walidacja statusu jeśli podano
-    if status is not None:
-        valid_statuses = [s.value for s in TraceStatus]
-        if status not in valid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Nieprawidłowy status. Dozwolone wartości: {', '.join(valid_statuses)}",
-            )
+    _validate_trace_status(status)
 
     traces = _request_tracer.get_all_traces(
         limit=limit, offset=offset, status_filter=status
     )
-
-    result = []
-    for trace in traces:
-        duration = None
-        if trace.finished_at:
-            duration = (trace.finished_at - trace.created_at).total_seconds()
-
-        result.append(
-            HistoryRequestSummary(
-                request_id=trace.request_id,
-                prompt=trace.prompt,
-                status=trace.status,
-                session_id=trace.session_id,
-                created_at=trace.created_at.isoformat(),
-                finished_at=(
-                    trace.finished_at.isoformat() if trace.finished_at else None
-                ),
-                duration_seconds=duration,
-                llm_provider=trace.llm_provider,
-                llm_model=trace.llm_model,
-                llm_endpoint=trace.llm_endpoint,
-                llm_config_hash=trace.llm_config_hash,
-                llm_runtime_id=trace.llm_runtime_id,
-                forced_tool=trace.forced_tool,
-                forced_provider=trace.forced_provider,
-                forced_intent=trace.forced_intent,
-                error_code=trace.error_code,
-                error_class=trace.error_class,
-                error_message=trace.error_message,
-                error_details=trace.error_details,
-                error_stage=trace.error_stage,
-                error_retryable=trace.error_retryable,
-                feedback=trace.feedback,
-            )
-        )
-
-    return result
+    return [_build_history_summary(trace) for trace in traces]
 
 
 @router.get(
@@ -469,46 +504,13 @@ async def get_request_detail(request_id: UUID):
             status_code=404, detail=f"Request {request_id} nie istnieje w historii"
         )
 
-    duration = None
-    if trace.finished_at:
-        duration = (trace.finished_at - trace.created_at).total_seconds()
-
-    # Konwertuj steps do słowników dla serializacji
-    steps_list = []
-    for step in trace.steps:
-        steps_list.append(
-            {
-                "component": step.component,
-                "action": step.action,
-                "timestamp": step.timestamp.isoformat(),
-                "status": step.status,
-                "details": step.details,
-            }
-        )
-
-    first_token = None
-    streaming = None
-    context_used = None
-    context_preview = None
-    generation_params = None
-    llm_runtime = None
-    if _state_manager is not None:
-        task = _state_manager.get_task(request_id)
-        context = getattr(task, "context_history", {}) or {} if task else {}
-        first_token = context.get("first_token")
-        streaming = context.get("streaming")
-        generation_params = context.get("generation_params")
-        llm_runtime = context.get("llm_runtime")
-        # Extract context_used if available
-        if task and hasattr(task, "context_used") and task.context_used:
-            # Convert model to dict
-            if hasattr(task.context_used, "model_dump"):
-                context_used = task.context_used.model_dump()
-            elif hasattr(task.context_used, "dict"):
-                context_used = task.context_used.dict()
-            else:
-                context_used = task.context_used
-
+    duration = (
+        (trace.finished_at - trace.created_at).total_seconds()
+        if trace.finished_at
+        else None
+    )
+    task = _state_manager.get_task(request_id) if _state_manager is not None else None
+    context = _extract_task_context(task)
     context_preview = _extract_context_preview(trace.steps)
 
     return HistoryRequestDetail(
@@ -519,7 +521,7 @@ async def get_request_detail(request_id: UUID):
         created_at=trace.created_at.isoformat(),
         finished_at=trace.finished_at.isoformat() if trace.finished_at else None,
         duration_seconds=duration,
-        steps=steps_list,
+        steps=_serialize_trace_steps(trace),
         llm_provider=trace.llm_provider,
         llm_model=trace.llm_model,
         llm_endpoint=trace.llm_endpoint,
@@ -528,12 +530,12 @@ async def get_request_detail(request_id: UUID):
         forced_tool=trace.forced_tool,
         forced_provider=trace.forced_provider,
         forced_intent=trace.forced_intent,
-        first_token=first_token,
-        streaming=streaming,
+        first_token=context.get("first_token"),
+        streaming=context.get("streaming"),
         context_preview=context_preview,
-        generation_params=generation_params,
-        llm_runtime=llm_runtime,
-        context_used=context_used,
+        generation_params=context.get("generation_params"),
+        llm_runtime=context.get("llm_runtime"),
+        context_used=_serialize_context_used(task),
         error_code=trace.error_code,
         error_class=trace.error_class,
         error_message=trace.error_message,

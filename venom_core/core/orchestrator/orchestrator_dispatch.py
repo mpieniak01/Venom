@@ -33,6 +33,28 @@ from .task_pipeline.execution_strategy import ExecutionStrategy
 logger = get_logger(__name__)
 
 
+def _trace_context_preview(orch: "Orchestrator", task_id: UUID, context: str) -> None:
+    if not orch.request_tracer:
+        return
+    max_len = 2000
+    truncated = len(context) > max_len
+    context_preview = context[:max_len] + "...(truncated)" if truncated else context
+    orch.request_tracer.add_step(
+        task_id,
+        "DecisionGate",
+        "context_preview",
+        status="ok",
+        details=json.dumps(
+            {
+                "mode": "normal",
+                "prompt_context_preview": context_preview,
+                "prompt_context_truncated": truncated,
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
 async def run_task(
     orch: "Orchestrator",
     task_id: UUID,
@@ -206,28 +228,7 @@ async def run_task(
             context = await orch.context_builder.add_hidden_prompts(
                 task_id, context, intent
             )
-
-            # Simple context preview trace
-            if orch.request_tracer:
-                max_len = 2000
-                truncated = len(context) > max_len
-                context_preview = (
-                    context[:max_len] + "...(truncated)" if truncated else context
-                )
-                orch.request_tracer.add_step(
-                    task_id,
-                    "DecisionGate",
-                    "context_preview",
-                    status="ok",
-                    details=json.dumps(
-                        {
-                            "mode": "normal",
-                            "prompt_context_preview": context_preview,
-                            "prompt_context_truncated": truncated,
-                        },
-                        ensure_ascii=False,
-                    ),
-                )
+            _trace_context_preview(orch, task_id, context)
 
         orch.state_manager.add_log(
             task_id, f"Sklasyfikowana intencja: {intent} - {datetime.now().isoformat()}"

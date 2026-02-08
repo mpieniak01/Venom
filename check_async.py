@@ -19,10 +19,12 @@ class AwaitFinder(ast.NodeVisitor):
     # We want to check if the CURRENT function has await, not its children.
     # The children will be visited by the main AsyncVisitor when it walks the tree.
     def visit_AsyncFunctionDef(self, node):
-        pass
+        # Intencjonalnie pomijamy zagnieżdżone funkcje async.
+        return
 
     def visit_FunctionDef(self, node):
-        pass
+        # Intencjonalnie pomijamy zagnieżdżone funkcje sync.
+        return
 
 
 class AsyncVisitor(ast.NodeVisitor):
@@ -30,41 +32,44 @@ class AsyncVisitor(ast.NodeVisitor):
         self.issues = []
         self.filepath = filepath
 
-    def visit_AsyncFunctionDef(self, node):
-        # We need to scan the body of THIS function for await.
+    def _scan_function_for_await(self, node: ast.AsyncFunctionDef) -> bool:
         finder = AwaitFinder()
         for child in node.body:
             finder.visit(child)
+        return finder.found_await
 
-        if not finder.found_await:
-            # Check for @abstractmethod
-            is_abstract = False
-            for decorator in node.decorator_list:
-                if isinstance(decorator, ast.Name) and decorator.id == "abstractmethod":
-                    is_abstract = True
-                elif (
-                    isinstance(decorator, ast.Attribute)
-                    and decorator.attr == "abstractmethod"
-                ):
-                    is_abstract = True
+    def _is_abstract_async(self, node: ast.AsyncFunctionDef) -> bool:
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Name) and decorator.id == "abstractmethod":
+                return True
+            if (
+                isinstance(decorator, ast.Attribute)
+                and decorator.attr == "abstractmethod"
+            ):
+                return True
+        return False
 
-            # Check if empty (pass/docstring only)
-            if not is_abstract:
-                is_empty_or_doc_only = True
-                for stmt in node.body:
-                    if isinstance(stmt, ast.Pass):
-                        continue
-                    if isinstance(stmt, ast.Expr) and isinstance(
-                        stmt.value, (ast.Constant, ast.Str)
-                    ):
-                        continue
-                    is_empty_or_doc_only = False
-                    break
+    def _is_empty_or_doc_only(self, node: ast.AsyncFunctionDef) -> bool:
+        for stmt in node.body:
+            if isinstance(stmt, ast.Pass):
+                continue
+            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
+                continue
+            return False
+        return True
 
-                if not is_empty_or_doc_only:
-                    self.issues.append(
-                        f"{self.filepath}:{node.lineno} Function '{node.name}' is async but has no await."
-                    )
+    def _report_issue(self, node: ast.AsyncFunctionDef) -> None:
+        self.issues.append(
+            f"{self.filepath}:{node.lineno} Function '{node.name}' is async but has no await."
+        )
+
+    def visit_AsyncFunctionDef(self, node):
+        if (
+            not self._scan_function_for_await(node)
+            and not self._is_abstract_async(node)
+            and not self._is_empty_or_doc_only(node)
+        ):
+            self._report_issue(node)
 
         # Continue visiting to find nested functions
         self.generic_visit(node)

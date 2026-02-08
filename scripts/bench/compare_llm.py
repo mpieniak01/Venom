@@ -133,6 +133,39 @@ def check_health(endpoint: str, timeout: int = 3) -> bool:
         return False
 
 
+def _resolve_vllm_start_command(start_cmd: str) -> str:
+    if start_cmd:
+        return start_cmd
+    default_script = os.path.join(os.getcwd(), "scripts/llm/vllm_service.sh")
+    if os.path.exists(default_script):
+        return f"bash {default_script} start"
+    return ""
+
+
+def _wait_for_vllm_health(endpoint: str, max_wait: int, interval: int) -> bool:
+    waited = 0
+    while waited < max_wait:
+        if check_health(endpoint):
+            return True
+        if waited % 10 == 0:
+            print(f"[bench] czekam na vLLM... ({waited}/{max_wait}s)")
+        time.sleep(interval)
+        waited += interval
+    return False
+
+
+def _tail_vllm_log(lines_count: int = 20) -> str:
+    log_path = os.path.join(os.getcwd(), "logs", "vllm.log")
+    if not os.path.exists(log_path):
+        return ""
+    try:
+        with open(log_path, "r") as f:
+            return "".join(f.readlines()[-lines_count:])
+    except Exception:
+        # Ignorowanie błędów odczytu logów - nie krytyczne dla diagnostyki
+        return ""
+
+
 def ensure_vllm_running(endpoint: str, start_cmd: str) -> bool:
     """
     Jeśli vLLM nie odpowiada, spróbuj uruchomić go komendą z ENV.
@@ -140,11 +173,7 @@ def ensure_vllm_running(endpoint: str, start_cmd: str) -> bool:
     """
     if check_health(endpoint):
         return False
-    # Fallback do lokalnego skryptu jeśli brak zmiennej
-    if not start_cmd:
-        default_script = os.path.join(os.getcwd(), "scripts/llm/vllm_service.sh")
-        if os.path.exists(default_script):
-            start_cmd = f"bash {default_script} start"
+    start_cmd = _resolve_vllm_start_command(start_cmd)
     if not start_cmd:
         raise RuntimeError(
             "vLLM nie odpowiada, a VLLM_START_COMMAND nie jest ustawione."
@@ -160,26 +189,10 @@ def ensure_vllm_running(endpoint: str, start_cmd: str) -> bool:
         os.getenv("VLLM_HEALTH_TIMEOUT", "90")
     )  # dłuższy limit dla wolnych startów/WSL
     interval = int(os.getenv("VLLM_HEALTH_INTERVAL", "3"))
-    waited = 0
-    while waited < max_wait:
-        if check_health(endpoint):
-            print("[bench] vLLM gotowy.")
-            return True
-        if waited % 10 == 0:
-            print(f"[bench] czekam na vLLM... ({waited}/{max_wait}s)")
-        time.sleep(interval)
-        waited += interval
-    # Przy timeout dołącz ostatnie linie z logs/vllm.log (jeśli istnieje)
-    log_path = os.path.join(os.getcwd(), "logs", "vllm.log")
-    tail = ""
-    if os.path.exists(log_path):
-        try:
-            with open(log_path, "r") as f:
-                lines = f.readlines()[-20:]
-                tail = "".join(lines)
-        except Exception:
-            # Ignorowanie błędów odczytu logów - nie krytyczne dla diagnostyki
-            pass
+    if _wait_for_vllm_health(endpoint, max_wait, interval):
+        print("[bench] vLLM gotowy.")
+        return True
+    tail = _tail_vllm_log(lines_count=20)
     raise RuntimeError(
         f"vLLM nie odpowiada po uruchomieniu (timeout {max_wait}s). "
         f"Ostatnie logi:\n{tail or 'brak logów/nie udało się odczytać.'}"

@@ -187,4 +187,5 @@ def test_headless_detection():
         mock_get.side_effect = Exception("No local model")
 
         eyes = Eyes()
-        assert eyes is not None
+        assert eyes.use_openai is False
+        assert eyes.local_vision_available is False

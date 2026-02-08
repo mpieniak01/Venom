@@ -58,6 +58,22 @@ async def _poll_task_completion(task_id: str) -> str | None:
     return None
 
 
+async def _resolve_timeout_result(
+    task_id: str, start: float, first_token_time: float | None, event: str
+) -> Tuple[float, float]:
+    status = await _poll_task_completion(task_id)
+    if status == "COMPLETED":
+        total_time = time.perf_counter() - start
+        if first_token_time is None:
+            first_token_time = total_time
+        return first_token_time, total_time
+    if status in {"FAILED", "LOST"}:
+        pytest.skip(f"Task zakończony statusem {status} po timeout SSE.")
+    raise TimeoutError(
+        f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (ostatnie zdarzenie: {event})",
+    )
+
+
 async def _measure_latency(prompt: str) -> Tuple[float, float]:
     task_id = await submit_task(prompt, store_knowledge=False)
     start = time.perf_counter()
@@ -74,53 +90,35 @@ async def _measure_latency(prompt: str) -> Tuple[float, float]:
                 first_token_time = total_time
             return first_token_time, total_time
         if elapsed > STREAM_TIMEOUT:
-            status = await _poll_task_completion(task_id)
-            if status == "COMPLETED":
-                total_time = time.perf_counter() - start
-                if first_token_time is None:
-                    first_token_time = total_time
-                return first_token_time, total_time
-            if status in {"FAILED", "LOST"}:
-                pytest.skip(f"Task zakończony statusem {status} po timeout SSE.")
-            raise TimeoutError(
-                f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (ostatnie zdarzenie: {event})",
+            return await _resolve_timeout_result(
+                task_id, start, first_token_time, event
             )
     raise RuntimeError("Stream zakończył się bez eventu task_finished")
 
 
-@pytest.mark.smoke
-async def test_llm_latency_e2e():
-    await _skip_if_backend_unavailable()
-
-    payload = await _list_models()
+def _resolve_active_model(payload: Dict[str, object]) -> str:
     models = payload.get("models", [])
     active_payload = payload.get("active") or {}
     active_model = active_payload.get("model")
     available = {str(model.get("name")) for model in models if model.get("name")}
 
     if active_model and active_model in available:
-        model_to_use = active_model
-    elif MODEL_NAME in available:
+        return str(active_model)
+    if MODEL_NAME in available:
         pytest.skip(
             f"Aktywny model ({active_model}) nie pasuje do testu; oczekiwano aktywnego {MODEL_NAME}.",
         )
-    else:
-        pytest.skip(
-            f"Brak aktywnego modelu do testu (aktywny={active_model}, dostępne={len(available)}).",
-        )
+    pytest.skip(
+        f"Brak aktywnego modelu do testu (aktywny={active_model}, dostępne={len(available)}).",
+    )
 
-    runtime_info = await _get_active_runtime()
 
-    first_tokens: List[float] = []
-    totals: List[float] = []
-    for idx in range(REPEATS):
-        prompt = f"Latency test {model_to_use} #{idx}: odpowiedz krótko OK."
-        first_token, total = await _measure_latency(prompt)
-        first_tokens.append(first_token)
-        totals.append(total)
-
-    assert all(value > 0 for value in first_tokens)
-    assert all(value > 0 for value in totals)
+def _print_latency_summary(
+    model_to_use: str,
+    runtime_info: Dict[str, object],
+    first_tokens: List[float],
+    totals: List[float],
+):
     print(
         "LLM latency summary:",
         f"model={model_to_use}",
@@ -130,3 +128,30 @@ async def test_llm_latency_e2e():
         f"min={min(totals):.2f}s",
         f"max={max(totals):.2f}s",
     )
+
+
+async def _collect_latency_samples(
+    model_to_use: str,
+) -> Tuple[List[float], List[float]]:
+    first_tokens: List[float] = []
+    totals: List[float] = []
+    for idx in range(REPEATS):
+        prompt = f"Latency test {model_to_use} #{idx}: odpowiedz krótko OK."
+        first_token, total = await _measure_latency(prompt)
+        first_tokens.append(first_token)
+        totals.append(total)
+    return first_tokens, totals
+
+
+@pytest.mark.smoke
+async def test_llm_latency_e2e():
+    await _skip_if_backend_unavailable()
+
+    payload = await _list_models()
+    model_to_use = _resolve_active_model(payload)
+    runtime_info = await _get_active_runtime()
+    first_tokens, totals = await _collect_latency_samples(model_to_use)
+
+    assert all(value > 0 for value in first_tokens)
+    assert all(value > 0 for value in totals)
+    _print_latency_summary(model_to_use, runtime_info, first_tokens, totals)

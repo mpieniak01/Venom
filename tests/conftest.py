@@ -53,6 +53,18 @@ DOCKER_AVAILABLE = _has_docker()
 DOCKER_COMPOSE_AVAILABLE = _has_docker_compose()
 
 
+def _resolve_skip_marker(item, *, run_integration: bool):
+    if "requires_docker_compose" in item.keywords and not DOCKER_COMPOSE_AVAILABLE:
+        return pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
+    if "requires_docker" in item.keywords and not DOCKER_AVAILABLE:
+        return pytest.mark.skip(reason="pomijam - Docker daemon nie jest dostępny")
+    if "integration" in item.keywords and not run_integration:
+        return pytest.mark.skip(
+            reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
+        )
+    return None
+
+
 def pytest_addoption(parser):
     parser.addoption(
         "--run-integration",
@@ -78,21 +90,11 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     run_integration = config.getoption("--run-integration")
-    skip_integration = pytest.mark.skip(
-        reason="pomijam testy integracyjne (użyj --run-integration aby uruchomić)"
-    )
-    skip_docker = pytest.mark.skip(reason="pomijam - Docker daemon nie jest dostępny")
-    skip_compose = pytest.mark.skip(reason="pomijam - Docker Compose nie jest dostępny")
 
     for item in items:
-        if "requires_docker_compose" in item.keywords and not DOCKER_COMPOSE_AVAILABLE:
-            item.add_marker(skip_compose)
-            continue
-        if "requires_docker" in item.keywords and not DOCKER_AVAILABLE:
-            item.add_marker(skip_docker)
-            continue
-        if "integration" in item.keywords and not run_integration:
-            item.add_marker(skip_integration)
+        marker = _resolve_skip_marker(item, run_integration=run_integration)
+        if marker:
+            item.add_marker(marker)
 
 
 @pytest.fixture(scope="session", autouse=True)

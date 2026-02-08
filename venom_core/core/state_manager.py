@@ -31,6 +31,7 @@ class StateManager:
             state_file_path: Ścieżka do pliku z zapisem stanu
         """
         self._tasks: Dict[UUID, VenomTask] = {}
+        self._uses_custom_state_file = state_file_path is not None
         settings_path = getattr(SETTINGS, "STATE_FILE_PATH", None)
         resolved_path = state_file_path or (
             settings_path
@@ -51,7 +52,10 @@ class StateManager:
         # Upewnij się, że katalog istnieje
         self._state_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self._ensure_boot_id()
+        # boot_id reset dotyczy tylko globalnego pliku runtime.
+        # Dla jawnie przekazanych ścieżek (np. testowych) nie czyścimy stanu.
+        if not self._uses_custom_state_file:
+            self._ensure_boot_id()
         # Załaduj stan z pliku jeśli istnieje
         self._load_state()
 

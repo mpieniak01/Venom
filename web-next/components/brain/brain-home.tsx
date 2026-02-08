@@ -285,6 +285,145 @@ function prepareGraphElements(
   return { nodes, edges };
 }
 
+function resolveBrainNodeColor(ele: cytoscapeType.NodeSingular): string {
+  const topicColor = ele.data("node_color");
+  if (topicColor) return topicColor;
+  const type = ele.data("type");
+  if (type === "agent") return "#22c55e";
+  if (type === "memory") return "#f59e0b";
+  if (type === "memory_session") return "#38bdf8";
+  if (type === "memory_user") return "#0ea5e9";
+  if (type === "lesson") return "#a855f7";
+  return "#6366f1";
+}
+
+function resolveBrainNodeOpacity(ele: cytoscapeType.NodeSingular): number {
+  const ts = ele.data("_ts");
+  if (!ts) return 1;
+  const now = Date.now();
+  const diffHours = Math.max(0, (now - Number(ts)) / (1000 * 60 * 60));
+  if (diffHours <= 1) return 1;
+  if (diffHours >= 48) return 0.35;
+  const interpolation = Math.min(1, Math.max(0, (diffHours - 1) / 47));
+  return 1 - 0.65 * interpolation;
+}
+
+function buildGraphStyles(showEdgeLabels: boolean): cytoscapeType.StylesheetJson {
+  return [
+    {
+      selector: "node",
+      style: {
+        "background-color": resolveBrainNodeColor,
+        label: "data(label_short)",
+        color: "#e5e7eb",
+        "font-size": 10,
+        "text-wrap": "wrap",
+        "text-max-width": 100,
+        "border-width": 1,
+        "border-color": "#1f2937",
+        opacity: resolveBrainNodeOpacity,
+      },
+    },
+    {
+      selector: "node.highlighted",
+      style: {
+        "border-width": 4,
+        "border-color": "#c084fc",
+        "background-color": "#6d28d9",
+        "shadow-blur": 15,
+        "shadow-color": "#7c3aed",
+      },
+    },
+    {
+      selector: "node.neighbour",
+      style: {
+        "border-width": 3,
+        "border-color": "#fbbf24",
+      },
+    },
+    {
+      selector: "node.faded",
+      style: {
+        opacity: 0.2,
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: 1.5,
+        "line-color": "#475569",
+        "target-arrow-color": "#475569",
+        "target-arrow-shape": "triangle",
+        "curve-style": "bezier",
+        label: showEdgeLabels ? "data(label_short)" : "",
+        "font-size": 9,
+        color: "#94a3b8",
+        "text-background-opacity": 0.4,
+        "text-background-color": "#0f172a",
+        "text-background-padding": 2,
+        "text-overflow": "ellipsis",
+      },
+    },
+  ] as unknown as cytoscapeType.StylesheetJson;
+}
+
+function buildRelationEntries(
+  node: cytoscapeType.NodeSingular,
+  edges: cytoscapeType.EdgeCollection,
+): RelationEntry[] {
+  return edges.map((edge: cytoscapeType.EdgeSingular) => {
+    const edgeData = edge.data();
+    const source = edge.source();
+    const target = edge.target();
+    const isOutgoing = source.id() === node.id();
+    const neighbor = isOutgoing ? target : source;
+    return {
+      id: neighbor.id(),
+      label: neighbor.data("label") || neighbor.id(),
+      type: edgeData.label || edgeData.type,
+      direction: isOutgoing ? "out" : "in",
+    };
+  });
+}
+
+function buildLessonStatsEntries(
+  raw:
+    | {
+        total_lessons?: number;
+        total?: number;
+        unique_tags?: number;
+        tags_count?: number;
+        tag_distribution?: Record<string, number>;
+      }
+    | null
+    | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): { label: string; value: string | number; hint?: string }[] {
+  if (!raw) return [];
+  const entries: { label: string; value: string | number; hint?: string }[] = [];
+  const total = raw.total_lessons ?? raw.total;
+  if (typeof total === "number") {
+    entries.push({ label: t("brain.stats.lessons"), value: total, hint: t("brain.stats.totalHint") });
+  }
+  const uniqueTags = raw.unique_tags ?? raw.tags_count;
+  if (typeof uniqueTags === "number") {
+    entries.push({ label: t("brain.stats.uniqueTags"), value: uniqueTags, hint: t("brain.stats.totalHint") });
+  }
+  if (raw.tag_distribution && typeof raw.tag_distribution === "object") {
+    const topTags = Object.entries(raw.tag_distribution)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([tag, count]) => `${tag} (${count})`)
+      .join(", ");
+    entries.push({
+      label: t("brain.stats.topTags"),
+      value: topTags || "—",
+      hint: t("brain.stats.topTagsHint"),
+    });
+  }
+  return entries;
+}
+
 export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const t = useTranslation();
   const { data: liveSummary, refresh: refreshSummary } = useGraphSummary();
@@ -446,31 +585,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
   const summaryUpdated =
     summary?.lastUpdated || legacySummaryStats?.last_updated || legacySummary?.last_updated;
   const lessonStatsEntries = useMemo(() => {
-    const raw = lessonsStats?.stats;
-    if (!raw) return [];
-    const entries: { label: string; value: string | number; hint?: string }[] = [];
-    const total = raw.total_lessons ?? raw.total;
-    const uniqueTags = raw.unique_tags ?? raw.tags_count;
-    if (typeof total === "number") {
-      entries.push({ label: t("brain.stats.lessons"), value: total, hint: t("brain.stats.totalHint") });
-    }
-    if (typeof uniqueTags === "number") {
-      entries.push({ label: t("brain.stats.uniqueTags"), value: uniqueTags, hint: t("brain.stats.totalHint") });
-    }
-    const tagDistribution = raw.tag_distribution as Record<string, number> | undefined;
-    if (tagDistribution && typeof tagDistribution === "object") {
-      const topTags = Object.entries(tagDistribution)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([tag, count]) => `${tag} (${count})`)
-        .join(", ");
-      entries.push({
-        label: t("brain.stats.topTags"),
-        value: topTags || "—",
-        hint: t("brain.stats.topTagsHint"),
-      });
-    }
-    return entries;
+    return buildLessonStatsEntries(lessonsStats?.stats, t);
   }, [lessonsStats?.stats, t]);
   const applyFiltersToGraph = useCallback(
     (nextFilters: GraphFilterType[]) => {
@@ -688,85 +803,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
       const cytoscape = (await import("cytoscape")).default as typeof cytoscapeType;
       if (!cyRef.current) return;
       const elements = preparedElements as unknown as cytoscapeType.ElementsDefinition;
-      const styles = [
-        {
-          selector: "node",
-          style: {
-            "background-color": (ele: cytoscapeType.NodeSingular) => {
-              const topicColor = ele.data("node_color");
-              if (topicColor) return topicColor;
-              return ele.data("type") === "agent"
-                ? "#22c55e"
-                : ele.data("type") === "memory"
-                  ? "#f59e0b"
-                  : ele.data("type") === "memory_session"
-                    ? "#38bdf8"
-                    : ele.data("type") === "memory_user"
-                      ? "#0ea5e9"
-                      : ele.data("type") === "lesson"
-                        ? "#a855f7"
-                        : "#6366f1";
-            },
-            label: "data(label_short)",
-            color: "#e5e7eb",
-            "font-size": 10,
-            "text-wrap": "wrap",
-            "text-max-width": 100,
-            "border-width": 1,
-            "border-color": "#1f2937",
-            opacity: (ele: cytoscapeType.NodeSingular) => {
-              const ts = ele.data("_ts");
-              if (!ts) return 1;
-              const now = Date.now();
-              const diffHours = Math.max(0, (now - Number(ts)) / (1000 * 60 * 60));
-              if (diffHours <= 1) return 1;
-              if (diffHours >= 48) return 0.35;
-              const t = Math.min(1, Math.max(0, (diffHours - 1) / (48 - 1)));
-              return 1 - 0.65 * t;
-            },
-          },
-        },
-        {
-          selector: "node.highlighted",
-          style: {
-            "border-width": 4,
-            "border-color": "#c084fc",
-            "background-color": "#6d28d9",
-            "shadow-blur": 15,
-            "shadow-color": "#7c3aed",
-          },
-        },
-        {
-          selector: "node.neighbour",
-          style: {
-            "border-width": 3,
-            "border-color": "#fbbf24",
-          },
-        },
-        {
-          selector: "node.faded",
-          style: {
-            opacity: 0.2,
-          },
-        },
-        {
-          selector: "edge",
-          style: {
-            width: 1.5,
-            "line-color": "#475569",
-            "target-arrow-color": "#475569",
-            "target-arrow-shape": "triangle",
-            "curve-style": "bezier",
-            label: showEdgeLabels ? "data(label_short)" : "",
-            "font-size": 9,
-            color: "#94a3b8",
-            "text-background-opacity": 0.4,
-            "text-background-color": "#0f172a",
-            "text-background-padding": 2,
-            "text-overflow": "ellipsis",
-          },
-        },
-      ] as unknown as cytoscapeType.StylesheetJson;
+      const styles = buildGraphStyles(showEdgeLabels);
       cyInstance = cytoscape({
         container: cyRef.current,
         elements,
@@ -779,19 +816,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
         setDetailsSheetOpen(true);
         setHighlightTag(null);
         const edges = evt.target.connectedEdges();
-        const relEntries: RelationEntry[] = edges.map((edge: cytoscapeType.EdgeSingular) => {
-          const edgeData = edge.data();
-          const source = edge.source();
-          const target = edge.target();
-          const isOut = source.id() === evt.target.id();
-          const otherNode = isOut ? target : source;
-          return {
-            id: otherNode.id(),
-            label: otherNode.data("label") || otherNode.id(),
-            type: edgeData.label || edgeData.type,
-            direction: isOut ? "out" : "in",
-          };
-        });
+        const relEntries = buildRelationEntries(evt.target, edges);
         setRelations(relEntries);
         focusNodeWithNeighbors(evt.target);
       });

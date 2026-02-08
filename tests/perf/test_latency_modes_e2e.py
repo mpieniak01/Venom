@@ -74,6 +74,41 @@ async def _resolve_timeout_result(
     )
 
 
+def _extract_first_token_elapsed(
+    event: str,
+    payload: object,
+    elapsed: float,
+    first_token_time: float | None,
+) -> float | None:
+    if event != "task_update" or first_token_time is not None:
+        return first_token_time
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if isinstance(result, str) and result.strip():
+        return elapsed
+    return first_token_time
+
+
+def _finalize_on_task_finished(
+    first_token_time: float | None, elapsed: float
+) -> Tuple[float, float]:
+    total_time = elapsed
+    if first_token_time is None:
+        first_token_time = total_time
+    return first_token_time, total_time
+
+
+async def _handle_stream_timeout(
+    elapsed: float,
+    task_id: str,
+    start: float,
+    first_token_time: float | None,
+    event: str,
+) -> Tuple[float, float] | None:
+    if elapsed <= STREAM_TIMEOUT:
+        return None
+    return await _resolve_timeout_result(task_id, start, first_token_time, event)
+
+
 async def _measure_direct_latency(prompt: str, model: str) -> Tuple[float, float]:
     start = time.perf_counter()
     first_token_time = None
@@ -112,19 +147,16 @@ async def _measure_task_latency(
     first_token_time = None
     async for event, payload in stream_task(task_id):
         elapsed = time.perf_counter() - start
-        if event == "task_update" and first_token_time is None:
-            result = payload.get("result") if isinstance(payload, dict) else None
-            if isinstance(result, str) and result.strip():
-                first_token_time = elapsed
+        first_token_time = _extract_first_token_elapsed(
+            event, payload, elapsed, first_token_time
+        )
         if event == "task_finished":
-            total_time = elapsed
-            if first_token_time is None:
-                first_token_time = total_time
-            return first_token_time, total_time
-        if elapsed > STREAM_TIMEOUT:
-            return await _resolve_timeout_result(
-                task_id, start, first_token_time, event
-            )
+            return _finalize_on_task_finished(first_token_time, elapsed)
+        timeout_result = await _handle_stream_timeout(
+            elapsed, task_id, start, first_token_time, event
+        )
+        if timeout_result is not None:
+            return timeout_result
     raise RuntimeError("Stream zakończył się bez eventu task_finished")
 
 

@@ -223,14 +223,7 @@ class SkillManager:
             tree = ast.parse(source_code, filename=file_path)
 
             # Sprawdź niebezpieczne konstrukcje
-            dangerous_nodes = []
-            for node in ast.walk(tree):
-                # Sprawdź eval, exec, compile
-                if isinstance(node, ast.Call):
-                    if isinstance(node.func, ast.Name):
-                        if node.func.id in ["eval", "exec", "compile", "__import__"]:
-                            dangerous_nodes.append(node.func.id)
-
+            dangerous_nodes = self._find_dangerous_nodes(tree)
             if dangerous_nodes:
                 raise SkillValidationError(
                     f"Kod zawiera niebezpieczne funkcje: {', '.join(set(dangerous_nodes))}"
@@ -242,31 +235,7 @@ class SkillManager:
                 raise SkillValidationError("Plik nie zawiera żadnej klasy skill")
 
             # Sprawdź czy przynajmniej jedna klasa ma metodę z dekoratorem
-            has_kernel_function = False
-            for class_node in classes:
-                for item in class_node.body:
-                    if isinstance(item, ast.FunctionDef):
-                        # Sprawdź dekoratory
-                        for decorator in item.decorator_list:
-                            # Dekorator może być Name lub Call
-                            decorator_name = None
-                            if isinstance(decorator, ast.Name):
-                                decorator_name = decorator.id
-                            elif isinstance(decorator, ast.Call):
-                                if isinstance(decorator.func, ast.Name):
-                                    decorator_name = decorator.func.id
-
-                            if decorator_name == "kernel_function":
-                                has_kernel_function = True
-                                break
-
-                    if has_kernel_function:
-                        break
-
-                if has_kernel_function:
-                    break
-
-            if not has_kernel_function:
+            if not self._has_kernel_function(classes):
                 raise SkillValidationError(
                     "Żadna metoda nie ma dekoratora @kernel_function"
                 )
@@ -280,6 +249,37 @@ class SkillManager:
             if isinstance(e, SkillValidationError):
                 raise
             raise SkillValidationError(f"Błąd podczas walidacji: {e}") from e
+
+    def _find_dangerous_nodes(self, tree: ast.AST) -> list[str]:
+        dangerous = {"eval", "exec", "compile", "__import__"}
+        matches: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id in dangerous:
+                matches.append(node.func.id)
+        return matches
+
+    def _has_kernel_function(self, classes: list[ast.ClassDef]) -> bool:
+        for class_node in classes:
+            for item in class_node.body:
+                if not isinstance(item, ast.FunctionDef):
+                    continue
+                if any(
+                    self._decorator_name(decorator) == "kernel_function"
+                    for decorator in item.decorator_list
+                ):
+                    return True
+        return False
+
+    def _decorator_name(self, decorator: ast.expr) -> str | None:
+        if isinstance(decorator, ast.Name):
+            return decorator.id
+        if isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Name):
+            return decorator.func.id
+        return None
 
     def _load_module(self, skill_name: str, skill_file: Path) -> Any:
         """

@@ -119,26 +119,8 @@ class HybridModelRouter:
         Returns:
             Dict z informacjami o routingu
         """
-        # RESEARCH - routing zależy od paid_mode
-        # Router sprawdza paid_mode_enabled i decyduje o użyciu Google Grounding vs DuckDuckGo
         if task_type == TaskType.RESEARCH:
-            # Sprawdź czy paid mode jest włączony
-            paid_mode_enabled = False
-            if self.state_manager:
-                paid_mode_enabled = self.state_manager.is_paid_mode_enabled()
-
-            if paid_mode_enabled and self._has_cloud_access():
-                # Paid mode ON + API key available -> Google Grounding
-                logger.info("[Router] Research mode: GROUNDING (Paid)")
-                return self._route_to_cloud(
-                    "Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
-                )
-            else:
-                # Paid mode OFF or no API key -> DuckDuckGo
-                logger.info("[Router] Research mode: DUCKDUCKGO (Free)")
-                return self._route_to_local(
-                    "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo)"
-                )
+            return self._route_research_task()
 
         # Oblicz złożoność zadania (0-10)
         complexity = self.calculate_complexity(prompt, task_type)
@@ -156,47 +138,59 @@ class HybridModelRouter:
                 f"Tryb HYBRID: proste zadanie {task_type.value} -> LOCAL"
             )
 
-        # Zadania złożone -> CLOUD (jeśli dostępna konfiguracja + Cost Guard)
-        # LOW-COST ROUTING: Sprawdź estymowany koszt przed użyciem CLOUD_HIGH
         if task_type in [
             TaskType.CODING_COMPLEX,
             TaskType.ANALYSIS,
             TaskType.GENERATION,
         ]:
-            # Sprawdź czy mamy klucz API dla chmury
-            if self._has_cloud_access():
-                # Estymuj koszt dla CLOUD_HIGH (np. GPT-4o)
-                cloud_high_model = self.settings.HYBRID_CLOUD_MODEL
-                cost_estimate = self.token_economist.estimate_task_cost(
-                    cloud_high_model, len(prompt)
-                )
-
-                if cost_estimate["estimated_cost_usd"] > SETTINGS.COST_THRESHOLD_USD:
-                    logger.warning(
-                        f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                        f"${cost_estimate['estimated_cost_usd']:.4f} > ${SETTINGS.COST_THRESHOLD_USD} -> "
-                        f"Fallback do CLOUD_FAST"
-                    )
-                    # Fallback do CLOUD_FAST (np. GPT-4o-mini)
-                    return self._route_to_cloud_fast(
-                        "Tryb HYBRID: koszt zbyt wysoki -> CLOUD_FAST (oszczędność)"
-                    )
-
-                logger.info(
-                    f"[Low-Cost Guard] Koszt {cloud_high_model}: "
-                    f"${cost_estimate['estimated_cost_usd']:.4f} <= ${SETTINGS.COST_THRESHOLD_USD} -> OK"
-                )
-
-                return self._route_to_cloud_with_guard(
-                    f"Tryb HYBRID: złożone zadanie {task_type.value} -> CLOUD"
-                )
-            else:
-                return self._route_to_local(
-                    "Tryb HYBRID: brak dostępu do chmury -> LOCAL (fallback)"
-                )
+            return self._route_complex_task(task_type, prompt)
 
         # Domyślnie -> LOCAL
         return self._route_to_local("Tryb HYBRID: domyślny routing -> LOCAL")
+
+    def _route_research_task(self) -> dict:
+        paid_mode_enabled = False
+        if self.state_manager:
+            paid_mode_enabled = self.state_manager.is_paid_mode_enabled()
+
+        if paid_mode_enabled and self._has_cloud_access():
+            logger.info("[Router] Research mode: GROUNDING (Paid)")
+            return self._route_to_cloud(
+                "Tryb HYBRID: zadanie RESEARCH -> CLOUD (Google Grounding)"
+            )
+
+        logger.info("[Router] Research mode: DUCKDUCKGO (Free)")
+        return self._route_to_local(
+            "Tryb HYBRID: zadanie RESEARCH -> LOCAL (DuckDuckGo)"
+        )
+
+    def _route_complex_task(self, task_type: TaskType, prompt: str) -> dict:
+        if not self._has_cloud_access():
+            return self._route_to_local(
+                "Tryb HYBRID: brak dostępu do chmury -> LOCAL (fallback)"
+            )
+
+        cloud_high_model = self.settings.HYBRID_CLOUD_MODEL
+        cost_estimate = self.token_economist.estimate_task_cost(
+            cloud_high_model, len(prompt)
+        )
+        if cost_estimate["estimated_cost_usd"] > SETTINGS.COST_THRESHOLD_USD:
+            logger.warning(
+                f"[Low-Cost Guard] Koszt {cloud_high_model}: "
+                f"${cost_estimate['estimated_cost_usd']:.4f} > ${SETTINGS.COST_THRESHOLD_USD} -> "
+                f"Fallback do CLOUD_FAST"
+            )
+            return self._route_to_cloud_fast(
+                "Tryb HYBRID: koszt zbyt wysoki -> CLOUD_FAST (oszczędność)"
+            )
+
+        logger.info(
+            f"[Low-Cost Guard] Koszt {cloud_high_model}: "
+            f"${cost_estimate['estimated_cost_usd']:.4f} <= ${SETTINGS.COST_THRESHOLD_USD} -> OK"
+        )
+        return self._route_to_cloud_with_guard(
+            f"Tryb HYBRID: złożone zadanie {task_type.value} -> CLOUD"
+        )
 
     def _route_to_local(self, reason: str) -> dict:
         """

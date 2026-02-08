@@ -9,6 +9,11 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["strategy"])
 
+STRATEGY_ROUTE_RESPONSES = {
+    503: {"description": "Orchestrator nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas obsługi endpointu strategii"},
+}
+
 
 class RoadmapCreateRequest(BaseModel):
     """Request dla utworzenia roadmapy."""
@@ -26,7 +31,7 @@ def set_dependencies(orchestrator):
     _orchestrator = orchestrator
 
 
-@router.get("/api/roadmap")
+@router.get("/api/roadmap", responses=STRATEGY_ROUTE_RESPONSES)
 async def get_roadmap():
     """
     Pobiera aktualną roadmapę projektu.
@@ -116,7 +121,7 @@ async def get_roadmap():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/api/roadmap/create")
+@router.post("/api/roadmap/create", responses=STRATEGY_ROUTE_RESPONSES)
 async def create_roadmap(request: RoadmapCreateRequest):
     """
     Tworzy roadmapę na podstawie wizji użytkownika.
@@ -148,7 +153,7 @@ async def create_roadmap(request: RoadmapCreateRequest):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/api/roadmap/status")
+@router.get("/api/roadmap/status", responses=STRATEGY_ROUTE_RESPONSES)
 async def get_roadmap_status():
     """
     Generuje raport statusu wykonawczy.
@@ -173,7 +178,7 @@ async def get_roadmap_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/api/campaign/start")
+@router.post("/api/campaign/start", responses=STRATEGY_ROUTE_RESPONSES)
 async def start_campaign():
     """
     Uruchamia Tryb Kampanii (autonomiczna realizacja roadmapy).

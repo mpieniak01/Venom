@@ -19,6 +19,30 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["tasks"])
 
+TASK_CREATE_RESPONSES = {
+    503: {"description": "Orchestrator nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas tworzenia zadania"},
+}
+TASK_GET_RESPONSES = {
+    503: {"description": "StateManager nie jest dostępny"},
+    404: {"description": "Zadanie o podanym ID nie istnieje"},
+}
+TASK_STREAM_RESPONSES = {
+    503: {"description": "StateManager nie jest dostępny"},
+    404: {"description": "Zadanie o podanym ID nie istnieje"},
+}
+TASKS_LIST_RESPONSES = {
+    503: {"description": "StateManager nie jest dostępny"},
+}
+HISTORY_LIST_RESPONSES = {
+    400: {"description": "Nieprawidłowy filtr statusu"},
+    503: {"description": "RequestTracer nie jest dostępny"},
+}
+HISTORY_DETAIL_RESPONSES = {
+    503: {"description": "RequestTracer nie jest dostępny"},
+    404: {"description": "Request o podanym ID nie istnieje"},
+}
+
 
 # Modele dla history endpoints
 class HistoryRequestSummary(BaseModel):
@@ -134,7 +158,12 @@ def _bootstrap_orchestrator_if_testing():
     return
 
 
-@router.post("/tasks", response_model=TaskResponse, status_code=201)
+@router.post(
+    "/tasks",
+    response_model=TaskResponse,
+    status_code=201,
+    responses=TASK_CREATE_RESPONSES,
+)
 async def create_task(request: TaskRequest):
     """
     Tworzy nowe zadanie i uruchamia je w tle.
@@ -168,7 +197,7 @@ async def create_task(request: TaskRequest):
         ) from e
 
 
-@router.get("/tasks/{task_id}", response_model=VenomTask)
+@router.get("/tasks/{task_id}", response_model=VenomTask, responses=TASK_GET_RESPONSES)
 async def get_task(task_id: UUID):
     """
     Pobiera szczegóły zadania po ID.
@@ -191,7 +220,7 @@ async def get_task(task_id: UUID):
     return task
 
 
-@router.get("/tasks/{task_id}/stream")
+@router.get("/tasks/{task_id}/stream", responses=TASK_STREAM_RESPONSES)
 async def stream_task(task_id: UUID):
     """
     Strumieniuje zmiany zadania jako Server-Sent Events (SSE).
@@ -309,7 +338,7 @@ async def stream_task(task_id: UUID):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/tasks", response_model=list[VenomTask])
+@router.get("/tasks", response_model=list[VenomTask], responses=TASKS_LIST_RESPONSES)
 async def get_all_tasks():
     """
     Pobiera listę wszystkich zadań.
@@ -323,7 +352,11 @@ async def get_all_tasks():
     return _state_manager.get_all_tasks()
 
 
-@router.get("/history/requests", response_model=list[HistoryRequestSummary])
+@router.get(
+    "/history/requests",
+    response_model=list[HistoryRequestSummary],
+    responses=HISTORY_LIST_RESPONSES,
+)
 async def get_request_history(
     limit: Annotated[
         int, Query(ge=1, le=1000, description="Maksymalna liczba wyników")
@@ -405,7 +438,11 @@ async def get_request_history(
     return result
 
 
-@router.get("/history/requests/{request_id}", response_model=HistoryRequestDetail)
+@router.get(
+    "/history/requests/{request_id}",
+    response_model=HistoryRequestDetail,
+    responses=HISTORY_DETAIL_RESPONSES,
+)
 async def get_request_detail(request_id: UUID):
     """
     Pobiera szczegóły requestu z pełną listą kroków.

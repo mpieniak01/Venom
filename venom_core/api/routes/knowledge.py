@@ -32,6 +32,13 @@ GRAPH_FILE_ROUTE_RESPONSES: dict[int | str, dict[str, Any]] = {
     **BAD_REQUEST_RESPONSES,
     **INTERNAL_ERROR_RESPONSES,
 }
+LESSONS_READ_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **INTERNAL_ERROR_RESPONSES,
+}
+LESSONS_MUTATION_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"description": "Nieprawidłowe parametry żądania"},
+    **INTERNAL_ERROR_RESPONSES,
+}
 
 
 def _normalize_graph_file_path(file_path: str) -> str:
@@ -60,7 +67,7 @@ def set_dependencies(graph_store=None, lessons_store=None):
         api_deps.set_lessons_store(lessons_store)
 
 
-@router.get("/knowledge/graph")
+@router.get("/knowledge/graph", responses=INTERNAL_ERROR_RESPONSES)
 async def get_knowledge_graph(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
     limit: Annotated[
@@ -469,7 +476,7 @@ async def trigger_graph_scan(
         raise HTTPException(status_code=500, detail=INTERNAL_ERROR_DETAIL) from e
 
 
-@router.get("/lessons")
+@router.get("/lessons", responses=LESSONS_READ_RESPONSES)
 async def get_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: int = 10,
@@ -508,7 +515,7 @@ async def get_lessons(
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/lessons/stats")
+@router.get("/lessons/stats", responses=LESSONS_READ_RESPONSES)
 async def get_lessons_stats(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
@@ -532,7 +539,7 @@ async def get_lessons_stats(
 # --- Lesson Management Endpoints (moved from memory.py) ---
 
 
-@router.delete("/lessons/prune/latest")
+@router.delete("/lessons/prune/latest", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_latest_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     count: Annotated[
@@ -558,7 +565,7 @@ async def prune_latest_lessons(
         ) from e
 
 
-@router.delete("/lessons/prune/range")
+@router.delete("/lessons/prune/range", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: Annotated[
@@ -607,7 +614,7 @@ async def prune_lessons_by_range(
         ) from e
 
 
-@router.delete("/lessons/prune/tag")
+@router.delete("/lessons/prune/tag", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(..., description="Tag do wyszukania i usunięcia")],
@@ -631,7 +638,7 @@ async def prune_lessons_by_tag(
         ) from e
 
 
-@router.delete("/lessons/purge")
+@router.delete("/lessons/purge", responses=LESSONS_MUTATION_RESPONSES)
 async def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     force: Annotated[
@@ -669,7 +676,7 @@ async def purge_all_lessons(
         ) from e
 
 
-@router.delete("/lessons/prune/ttl")
+@router.delete("/lessons/prune/ttl", responses=LESSONS_MUTATION_RESPONSES)
 async def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
@@ -690,7 +697,7 @@ async def prune_lessons_by_ttl(
         ) from e
 
 
-@router.post("/lessons/dedupe")
+@router.post("/lessons/dedupe", responses=INTERNAL_ERROR_RESPONSES)
 async def dedupe_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
@@ -719,7 +726,7 @@ class LearningToggleRequest(BaseModel):
     enabled: bool
 
 
-@router.post("/lessons/learning/toggle")
+@router.post("/lessons/learning/toggle", responses=INTERNAL_ERROR_RESPONSES)
 async def toggle_learning(request: LearningToggleRequest):
     """Włącza/wyłącza globalny zapis lekcji."""
     try:

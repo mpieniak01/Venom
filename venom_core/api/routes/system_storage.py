@@ -19,6 +19,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+SYSTEM_STORAGE_RESPONSES = {
+    500: {"description": "Błąd wewnętrzny podczas pobierania snapshotu storage"},
+}
+
 STORAGE_ENTRIES: tuple[tuple[str, str, str], ...] = (
     ("llm_models", "models", "models"),
     ("llm_cache", "models_cache", "cache"),
@@ -71,7 +75,7 @@ PROJECT_ROOT = _detect_project_root()
 _storage_cache = TTLCache[dict](ttl_seconds=3600.0)  # Zwiększony TTL do 1h
 
 
-@router.get("/system/storage")
+@router.get("/system/storage", responses=SYSTEM_STORAGE_RESPONSES)
 async def get_storage_snapshot():
     """
     Zwraca snapshot użycia dysku oraz największe katalogi (whitelist).

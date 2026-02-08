@@ -9,6 +9,23 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/nodes", tags=["nodes"])
 
+NODES_LIST_RESPONSES = {
+    503: {"description": "NodeManager nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas pobierania listy węzłów"},
+}
+NODE_INFO_RESPONSES = {
+    503: {"description": "NodeManager nie jest dostępny"},
+    404: {"description": "Węzeł o podanym ID nie istnieje"},
+    500: {"description": "Błąd wewnętrzny podczas pobierania informacji o węźle"},
+}
+NODE_EXECUTE_RESPONSES = {
+    400: {"description": "Węzeł jest offline lub żądanie jest nieprawidłowe"},
+    404: {"description": "Węzeł o podanym ID nie istnieje"},
+    503: {"description": "NodeManager nie jest dostępny"},
+    504: {"description": "Przekroczono timeout wykonywania na węźle"},
+    500: {"description": "Błąd wewnętrzny podczas wykonywania na węźle"},
+}
+
 
 class NodeExecuteRequest(BaseModel):
     """Model żądania wykonania skilla na węźle."""
@@ -29,7 +46,7 @@ def set_dependencies(node_manager):
     _node_manager = node_manager
 
 
-@router.get("")
+@router.get("", responses=NODES_LIST_RESPONSES)
 async def list_nodes(online_only: bool = False):
     """
     Zwraca listę zarejestrowanych węzłów.
@@ -63,7 +80,7 @@ async def list_nodes(online_only: bool = False):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/{node_id}")
+@router.get("/{node_id}", responses=NODE_INFO_RESPONSES)
 async def get_node_info(node_id: str):
     """
     Zwraca szczegółowe informacje o węźle.
@@ -96,7 +113,7 @@ async def get_node_info(node_id: str):
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/{node_id}/execute")
+@router.post("/{node_id}/execute", responses=NODE_EXECUTE_RESPONSES)
 async def execute_on_node(node_id: str, request: NodeExecuteRequest):
     """
     Wykonuje skill na określonym węźle.

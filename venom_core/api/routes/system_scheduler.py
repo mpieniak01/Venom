@@ -9,8 +9,13 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+SCHEDULER_RESPONSES = {
+    503: {"description": "BackgroundScheduler nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas obsługi schedulera"},
+}
 
-@router.get("/scheduler/status")
+
+@router.get("/scheduler/status", responses=SCHEDULER_RESPONSES)
 async def get_scheduler_status():
     """
     Zwraca status schedulera zadań w tle.
@@ -29,7 +34,7 @@ async def get_scheduler_status():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/scheduler/jobs")
+@router.get("/scheduler/jobs", responses=SCHEDULER_RESPONSES)
 async def get_scheduler_jobs():
     """
     Zwraca listę zadań w tle.
@@ -48,7 +53,7 @@ async def get_scheduler_jobs():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/scheduler/pause")
+@router.post("/scheduler/pause", responses=SCHEDULER_RESPONSES)
 async def pause_scheduler():
     """
     Wstrzymuje wszystkie zadania w tle.
@@ -67,7 +72,7 @@ async def pause_scheduler():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/scheduler/resume")
+@router.post("/scheduler/resume", responses=SCHEDULER_RESPONSES)
 async def resume_scheduler():
     """
     Wznawia wszystkie zadania w tle.

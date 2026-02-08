@@ -27,6 +27,23 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+LLM_SERVERS_RESPONSES = {
+    503: {"description": "LLMController nie jest dostępny"},
+}
+LLM_SERVER_CONTROL_RESPONSES = {
+    400: {"description": "Nieprawidłowa akcja lub parametry sterowania serwerem"},
+    503: {"description": "LLMController nie jest dostępny"},
+    500: {"description": "Błąd podczas wykonywania komendy serwera LLM"},
+}
+LLM_RUNTIME_ACTIVATE_RESPONSES = {
+    400: {"description": "Nieprawidłowy provider/model lub brak wymaganej konfiguracji"},
+}
+LLM_SERVER_ACTIVATE_RESPONSES = {
+    404: {"description": "Nieznany serwer LLM lub brak konfiguracji"},
+    503: {"description": "LLMController lub ModelManager nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas przełączania aktywnego serwera"},
+}
+
 
 class ActiveLlmServerRequest(BaseModel):
     server_name: str
@@ -38,7 +55,7 @@ class LlmRuntimeActivateRequest(BaseModel):
     model: str | None = Field(default=None, description="Opcjonalny model LLM")
 
 
-@router.get("/system/llm-servers")
+@router.get("/system/llm-servers", responses=LLM_SERVERS_RESPONSES)
 async def get_llm_servers():
     """
     Zwraca listę znanych serwerów LLM z informacją o dostępnych akcjach.
@@ -96,7 +113,10 @@ async def get_llm_servers():
     return {"status": "success", "servers": servers, "count": len(servers)}
 
 
-@router.post("/system/llm-servers/{server_name}/{action}")
+@router.post(
+    "/system/llm-servers/{server_name}/{action}",
+    responses=LLM_SERVER_CONTROL_RESPONSES,
+)
 async def control_llm_server(server_name: str, action: str):
     """
     Wykonuje akcję (start/stop/restart) na wskazanym serwerze LLM.
@@ -160,7 +180,10 @@ async def get_active_llm_runtime_info():
     return {"status": "success", "runtime": runtime.to_payload()}
 
 
-@router.post("/system/llm-runtime/active")
+@router.post(
+    "/system/llm-runtime/active",
+    responses=LLM_RUNTIME_ACTIVATE_RESPONSES,
+)
 async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na cloud provider (openai/google).
@@ -227,7 +250,10 @@ async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     }
 
 
-@router.post("/system/llm-servers/active")
+@router.post(
+    "/system/llm-servers/active",
+    responses=LLM_SERVER_ACTIVATE_RESPONSES,
+)
 async def set_active_llm_server(request: ActiveLlmServerRequest):
     """
     Ustawia aktywny runtime LLM, zatrzymuje inne serwery i aktywuje model.

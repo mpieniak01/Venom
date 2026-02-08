@@ -12,8 +12,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+STATE_MANAGER_COST_GUARD_UNAVAILABLE = "StateManager nie jest dostępny (Cost Guard)"
+
 COST_MODE_RESPONSES = {
-    503: {"description": "StateManager nie jest dostępny (Cost Guard)"},
+    503: {"description": STATE_MANAGER_COST_GUARD_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas obsługi Cost Guard"},
 }
 AUTONOMY_GET_RESPONSES = {
@@ -53,7 +55,7 @@ async def get_cost_mode():
     state_manager = system_deps.get_state_manager()
     if state_manager is None:
         raise HTTPException(
-            status_code=503, detail="StateManager nie jest dostępny (Cost Guard)"
+            status_code=503, detail=STATE_MANAGER_COST_GUARD_UNAVAILABLE
         )
 
     try:
@@ -77,7 +79,7 @@ async def set_cost_mode(request: CostModeRequest):
     state_manager = system_deps.get_state_manager()
     if state_manager is None:
         raise HTTPException(
-            status_code=503, detail="StateManager nie jest dostępny (Cost Guard)"
+            status_code=503, detail=STATE_MANAGER_COST_GUARD_UNAVAILABLE
         )
 
     try:

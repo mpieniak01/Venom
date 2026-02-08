@@ -9,8 +9,10 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["system"])
 
+BACKGROUND_SCHEDULER_UNAVAILABLE = "BackgroundScheduler nie jest dostępny"
+
 SCHEDULER_RESPONSES = {
-    503: {"description": "BackgroundScheduler nie jest dostępny"},
+    503: {"description": BACKGROUND_SCHEDULER_UNAVAILABLE},
     500: {"description": "Błąd wewnętrzny podczas obsługi schedulera"},
 }
 
@@ -22,9 +24,7 @@ async def get_scheduler_status():
     """
     background_scheduler = system_deps.get_background_scheduler()
     if background_scheduler is None:
-        raise HTTPException(
-            status_code=503, detail="BackgroundScheduler nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail=BACKGROUND_SCHEDULER_UNAVAILABLE)
 
     try:
         status = background_scheduler.get_status()
@@ -41,9 +41,7 @@ async def get_scheduler_jobs():
     """
     background_scheduler = system_deps.get_background_scheduler()
     if background_scheduler is None:
-        raise HTTPException(
-            status_code=503, detail="BackgroundScheduler nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail=BACKGROUND_SCHEDULER_UNAVAILABLE)
 
     try:
         jobs = background_scheduler.get_jobs()
@@ -60,9 +58,7 @@ async def pause_scheduler():
     """
     background_scheduler = system_deps.get_background_scheduler()
     if background_scheduler is None:
-        raise HTTPException(
-            status_code=503, detail="BackgroundScheduler nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail=BACKGROUND_SCHEDULER_UNAVAILABLE)
 
     try:
         await background_scheduler.pause_all_jobs()
@@ -79,9 +75,7 @@ async def resume_scheduler():
     """
     background_scheduler = system_deps.get_background_scheduler()
     if background_scheduler is None:
-        raise HTTPException(
-            status_code=503, detail="BackgroundScheduler nie jest dostępny"
-        )
+        raise HTTPException(status_code=503, detail=BACKGROUND_SCHEDULER_UNAVAILABLE)
 
     try:
         await background_scheduler.resume_all_jobs()

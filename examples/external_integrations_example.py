@@ -16,7 +16,7 @@ from venom_core.config import SETTINGS
 from venom_core.execution.skills.platform_skill import PlatformSkill
 
 
-async def example_check_github_connection():
+def example_check_github_connection():
     """Przykład 1: Sprawdzenie połączenia z GitHub i Discord."""
     print("=" * 60)
     print("Przykład 1: Sprawdzenie połączenia z platformami")
@@ -83,7 +83,7 @@ async def example_send_notification():
     print(f"\n{result}")
 
 
-async def example_handle_issue_workflow():
+def example_handle_issue_workflow():
     """Przykład 5: Kompletny workflow obsługi Issue (wymaga skonfigurowanego Orchestratora)."""
     print("\n" + "=" * 60)
     print("Przykład 5: Workflow Issue-to-PR (ZAAWANSOWANE)")
@@ -110,7 +110,7 @@ async def example_handle_issue_workflow():
     """)
 
 
-async def example_manual_pr_creation():
+def example_manual_pr_creation():
     """Przykład 6: Ręczne utworzenie Pull Requesta."""
     print("\n" + "=" * 60)
     print("Przykład 6: Ręczne utworzenie Pull Requesta")
@@ -152,7 +152,7 @@ async def example_manual_pr_creation():
     print("\n❌ Przykład wyłączony - odkomentuj kod aby utworzyć PR")
 
 
-async def example_comment_on_issue():
+def example_comment_on_issue():
     """Przykład 7: Dodanie komentarza do Issue."""
     print("\n" + "=" * 60)
     print("Przykład 7: Komentarz w Issue")
@@ -202,7 +202,7 @@ async def main():
 
     try:
         # Przykład 1: Sprawdzenie połączenia
-        await example_check_github_connection()
+        example_check_github_connection()
 
         # Przykład 2: Lista Issues
         await example_list_issues()
@@ -214,13 +214,13 @@ async def main():
         # await example_send_notification()
 
         # Przykład 5: Workflow Issue-to-PR
-        await example_handle_issue_workflow()
+        example_handle_issue_workflow()
 
         # Przykład 6: Ręczne PR
-        await example_manual_pr_creation()
+        example_manual_pr_creation()
 
         # Przykład 7: Komentarz
-        await example_comment_on_issue()
+        example_comment_on_issue()
 
         print("\n" + "=" * 60)
         print("✅ Przykłady zakończone")

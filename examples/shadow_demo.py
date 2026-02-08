@@ -20,7 +20,7 @@ from venom_core.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def demo_privacy_filter():
+def demo_privacy_filter():
     """Demo 1: Privacy Filter - filtrowanie wrażliwych danych."""
     print("\n" + "=" * 60)
     print("DEMO 1: Privacy Filter")
@@ -140,7 +140,7 @@ async def demo_shadow_agent_detection():
     await shadow.stop()
 
 
-async def demo_desktop_sensor():
+def demo_desktop_sensor():
     """Demo 3: Desktop Sensor - monitorowanie schowka (symulacja)."""
     print("\n" + "=" * 60)
     print("DEMO 3: Desktop Sensor - Monitorowanie")
@@ -148,12 +148,16 @@ async def demo_desktop_sensor():
 
     events_received = []
 
-    async def clipboard_callback(data):
-        """Callback dla zmian w schowku."""
+    def _clipboard_callback_sync(data):
+        """Sync część callbacku dla zmian w schowku."""
         events_received.append(data)
         print("\n📋 Zmiana w schowku!")
         print(f"   Długość: {data.get('length')} znaków")
         print(f"   Czas: {data.get('timestamp')}")
+
+    async def clipboard_callback(data):
+        """Async callback kompatybilny z DesktopSensor."""
+        await asyncio.to_thread(_clipboard_callback_sync, data)
 
     # Utwórz sensor
     sensor = DesktopSensor(clipboard_callback=clipboard_callback, privacy_filter=True)
@@ -181,10 +185,14 @@ async def demo_notifier():
 
     action_triggered = []
 
-    async def action_handler(payload):
-        """Handler dla akcji z powiadomień."""
+    def _action_handler_sync(payload):
+        """Sync część handlera akcji z powiadomień."""
         action_triggered.append(payload)
         print(f"\n🎬 Akcja wykonana: {payload}")
+
+    async def action_handler(payload):
+        """Async handler kompatybilny z Notifier."""
+        await asyncio.to_thread(_action_handler_sync, payload)
 
     # Utwórz notifier
     notifier = Notifier(webhook_handler=action_handler)
@@ -219,9 +227,9 @@ async def main():
 
     try:
         # Uruchom wszystkie demo
-        await demo_privacy_filter()
+        demo_privacy_filter()
         await demo_shadow_agent_detection()
-        await demo_desktop_sensor()
+        demo_desktop_sensor()
         await demo_notifier()
 
         print("\n" + "=" * 60)

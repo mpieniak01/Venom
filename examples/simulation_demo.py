@@ -23,7 +23,7 @@ from venom_core.utils.url_policy import build_http_url
 logger = get_logger(__name__)
 
 
-async def demo_persona_factory():
+def demo_persona_factory():
     """Demonstracja generowania person użytkowników."""
     print("\n" + "=" * 70)
     print("DEMO 1: Fabryka Person")
@@ -244,7 +244,7 @@ async def main():
     print("=" * 70)
 
     # Demo 1: Fabryka Person
-    await demo_persona_factory()
+    demo_persona_factory()
 
     # Demo 2: Prosta symulacja (mock)
     await demo_simple_simulation()

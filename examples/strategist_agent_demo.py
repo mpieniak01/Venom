@@ -55,7 +55,7 @@ async def demo_analyze_complex_task():
     print(result)
 
 
-async def demo_task_monitoring():
+def demo_task_monitoring():
     """Demo monitorowania postępu zadania."""
     print("\n" + "=" * 80)
     print("DEMO 3: Monitorowanie postępu zadania")
@@ -97,7 +97,7 @@ async def demo_task_monitoring():
     print(f"\n⚠️ Czy zadanie powinno być wstrzymane? {should_pause}")
 
 
-async def demo_api_usage_tracking():
+def demo_api_usage_tracking():
     """Demo śledzenia wykorzystania API."""
     print("\n" + "=" * 80)
     print("DEMO 4: Śledzenie wykorzystania zewnętrznych API")
@@ -150,7 +150,7 @@ async def demo_api_usage_tracking():
     )
 
 
-async def demo_full_report():
+def demo_full_report():
     """Demo pełnego raportu z Work Ledger."""
     print("\n" + "=" * 80)
     print("DEMO 5: Raport operacyjny")
@@ -230,9 +230,9 @@ async def main():
 
     await demo_analyze_simple_task()
     await demo_analyze_complex_task()
-    await demo_task_monitoring()
-    await demo_api_usage_tracking()
-    await demo_full_report()
+    demo_task_monitoring()
+    demo_api_usage_tracking()
+    demo_full_report()
     await demo_epic_task_split()
 
     print("\n" + "=" * 80)

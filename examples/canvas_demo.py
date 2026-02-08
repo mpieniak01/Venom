@@ -1,12 +1,10 @@
 """Przykład: THE_CANVAS - Dynamiczna generacja UI."""
 
-import asyncio
-
 from venom_core.execution.skills.render_skill import RenderSkill
 from venom_core.ui.component_engine import ComponentEngine
 
 
-async def main():
+def main():
     """Demo THE_CANVAS - różne typy widgetów."""
     print("🎨 THE_CANVAS Demo - Dynamiczna Generacja UI\n")
 
@@ -179,4 +177,4 @@ graph TD
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

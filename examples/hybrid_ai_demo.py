@@ -9,7 +9,7 @@ from venom_core.config import Settings
 from venom_core.execution.model_router import HybridModelRouter, TaskType
 
 
-async def demo_local_mode():
+def demo_local_mode():
     """Demo trybu LOCAL - wszystko lokalnie."""
     print("=" * 60)
     print("DEMO 1: Tryb LOCAL (100% prywatności, $0 kosztów)")
@@ -34,7 +34,7 @@ async def demo_local_mode():
         print(f"  Reason: {routing['reason']}")
 
 
-async def demo_hybrid_mode():
+def demo_hybrid_mode():
     """Demo trybu HYBRID - inteligentny routing."""
     print("\n" + "=" * 60)
     print("DEMO 2: Tryb HYBRID (Smart routing)")
@@ -69,7 +69,7 @@ async def demo_hybrid_mode():
         print(f"  Model: {routing['model_name']}")
 
 
-async def demo_cloud_mode():
+def demo_cloud_mode():
     """Demo trybu CLOUD - wszystko w chmurze (oprócz wrażliwych)."""
     print("\n" + "=" * 60)
     print("DEMO 3: Tryb CLOUD (Max power)")
@@ -96,7 +96,7 @@ async def demo_cloud_mode():
         print(f"  Model: {routing['model_name']}")
 
 
-async def demo_sensitive_detection():
+def demo_sensitive_detection():
     """Demo automatycznego wykrywania wrażliwych danych."""
     print("\n" + "=" * 60)
     print("DEMO 4: Automatyczne wykrywanie wrażliwych danych")
@@ -129,7 +129,7 @@ async def demo_sensitive_detection():
         )
 
 
-async def demo_fallback():
+def demo_fallback():
     """Demo fallback gdy brak dostępu do chmury."""
     print("\n" + "=" * 60)
     print("DEMO 5: Fallback (brak klucza API)")
@@ -158,11 +158,11 @@ async def main():
     print("   Local First • Privacy • Zero Cost")
     print("🚀 " + "=" * 58 + " 🚀")
 
-    await demo_local_mode()
-    await demo_hybrid_mode()
-    await demo_cloud_mode()
-    await demo_sensitive_detection()
-    await demo_fallback()
+    demo_local_mode()
+    demo_hybrid_mode()
+    demo_cloud_mode()
+    demo_sensitive_detection()
+    demo_fallback()
 
     print("\n" + "=" * 60)
     print("✅ Demo zakończone!")

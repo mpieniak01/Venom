@@ -102,7 +102,7 @@ async def demo_apprentice_basic():
     logger.info("✅ Demo zakończone!")
 
 
-async def demo_workflow_store():
+def demo_workflow_store():
     """Demo WorkflowStore."""
     logger.info("=== Demo: Workflow Store ===\n")
 
@@ -221,7 +221,7 @@ async def main():
         if choice == "1":
             await demo_apprentice_basic()
         elif choice == "2":
-            await demo_workflow_store()
+            demo_workflow_store()
         elif choice == "3":
             await interactive_demo()
         elif choice == "0":

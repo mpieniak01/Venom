@@ -1,5 +1,6 @@
 """Moduł: chrono_skill - Umiejętności Czasowe (Timeline Branching & State Management)."""
 
+import asyncio
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -48,6 +49,7 @@ class ChronoSkill(BaseSkill):
         """
         Tworzy checkpoint całego stanu systemu.
         """
+        await asyncio.sleep(0)
         checkpoint_id = self.chronos.create_checkpoint(
             name=name, description=description, timeline=timeline
         )
@@ -71,6 +73,7 @@ class ChronoSkill(BaseSkill):
         """
         Przywraca system do stanu z checkpointu.
         """
+        await asyncio.sleep(0)
         success = self.chronos.restore_checkpoint(
             checkpoint_id=checkpoint_id, timeline=timeline
         )
@@ -99,6 +102,7 @@ class ChronoSkill(BaseSkill):
         """
         Wyświetla listę checkpointów.
         """
+        await asyncio.sleep(0)
         checkpoints = self.chronos.list_checkpoints(timeline=timeline)
 
         if not checkpoints:
@@ -128,6 +132,7 @@ class ChronoSkill(BaseSkill):
         """
         Usuwa checkpoint.
         """
+        await asyncio.sleep(0)
         success = self.chronos.delete_checkpoint(
             checkpoint_id=checkpoint_id, timeline=timeline
         )
@@ -149,6 +154,7 @@ class ChronoSkill(BaseSkill):
         """
         Tworzy nową linię czasową (branch).
         """
+        await asyncio.sleep(0)
         # Najpierw utwórz nową timeline
         success = self.chronos.create_timeline(name=name)
 
@@ -188,6 +194,7 @@ class ChronoSkill(BaseSkill):
         """
         Wyświetla listę wszystkich linii czasowych.
         """
+        await asyncio.sleep(0)
         timelines = self.chronos.list_timelines()
 
         if not timelines:
@@ -213,6 +220,7 @@ class ChronoSkill(BaseSkill):
         """
         Scala wiedzę z dwóch linii czasowych (zaawansowane).
         """
+        await asyncio.sleep(0)
         # Placeholder
         return (
             f"⚠️ Merge timeline to zaawansowana funkcja.\n"

@@ -137,7 +137,7 @@ def set_dependencies(graph_store=None, lessons_store=None):
 
 
 @router.get("/knowledge/graph", responses=INTERNAL_ERROR_RESPONSES)
-async def get_knowledge_graph(
+def get_knowledge_graph(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
     limit: Annotated[
         int,
@@ -342,7 +342,7 @@ def _get_mock_knowledge_graph(limit: int = 500):
 
 
 @router.get("/graph/summary", responses=INTERNAL_ERROR_RESPONSES)
-async def get_graph_summary(
+def get_graph_summary(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
 ):
     """
@@ -394,7 +394,7 @@ async def get_graph_summary(
 
 
 @router.get("/graph/file/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
-async def get_file_graph_info(
+def get_file_graph_info(
     file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
     """
@@ -426,7 +426,7 @@ async def get_file_graph_info(
 
 
 @router.get("/graph/impact/{file_path:path}", responses=GRAPH_FILE_ROUTE_RESPONSES)
-async def get_impact_analysis(
+def get_impact_analysis(
     file_path: str, graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)]
 ):
     """
@@ -458,7 +458,7 @@ async def get_impact_analysis(
 
 
 @router.post("/graph/scan", responses=INTERNAL_ERROR_RESPONSES)
-async def trigger_graph_scan(
+def trigger_graph_scan(
     graph_store: Annotated[CodeGraphStore, Depends(get_graph_store)],
 ):
     """
@@ -487,7 +487,7 @@ async def trigger_graph_scan(
 
 
 @router.get("/lessons", responses=LESSONS_READ_RESPONSES)
-async def get_lessons(
+def get_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     limit: int = 10,
     tags: Optional[str] = None,
@@ -526,7 +526,7 @@ async def get_lessons(
 
 
 @router.get("/lessons/stats", responses=LESSONS_READ_RESPONSES)
-async def get_lessons_stats(
+def get_lessons_stats(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
     """
@@ -550,7 +550,7 @@ async def get_lessons_stats(
 
 
 @router.delete("/lessons/prune/latest", responses=LESSONS_MUTATION_RESPONSES)
-async def prune_latest_lessons(
+def prune_latest_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     count: Annotated[
         int,
@@ -576,7 +576,7 @@ async def prune_latest_lessons(
 
 
 @router.delete("/lessons/prune/range", responses=LESSONS_MUTATION_RESPONSES)
-async def prune_lessons_by_range(
+def prune_lessons_by_range(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     start: Annotated[
         str,
@@ -625,7 +625,7 @@ async def prune_lessons_by_range(
 
 
 @router.delete("/lessons/prune/tag", responses=LESSONS_MUTATION_RESPONSES)
-async def prune_lessons_by_tag(
+def prune_lessons_by_tag(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     tag: Annotated[str, Query(..., description="Tag do wyszukania i usunięcia")],
 ):
@@ -649,7 +649,7 @@ async def prune_lessons_by_tag(
 
 
 @router.delete("/lessons/purge", responses=LESSONS_MUTATION_RESPONSES)
-async def purge_all_lessons(
+def purge_all_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     force: Annotated[
         bool, Query(description="Wymagane potwierdzenie dla operacji nuklearnej")
@@ -687,7 +687,7 @@ async def purge_all_lessons(
 
 
 @router.delete("/lessons/prune/ttl", responses=LESSONS_MUTATION_RESPONSES)
-async def prune_lessons_by_ttl(
+def prune_lessons_by_ttl(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
     days: Annotated[int, Query(..., ge=1, description="Liczba dni retencji (TTL)")],
 ):
@@ -708,7 +708,7 @@ async def prune_lessons_by_ttl(
 
 
 @router.post("/lessons/dedupe", responses=INTERNAL_ERROR_RESPONSES)
-async def dedupe_lessons(
+def dedupe_lessons(
     lessons_store: Annotated[LessonsStore, Depends(get_lessons_store)],
 ):
     """Deduplikuje lekcje na podstawie podpisu treści."""
@@ -727,7 +727,7 @@ async def dedupe_lessons(
 
 
 @router.get("/lessons/learning/status", responses=LESSONS_READ_RESPONSES)
-async def get_learning_status():
+def get_learning_status():
     """Zwraca status globalnego zapisu lekcji."""
     return {"status": "success", "enabled": SETTINGS.ENABLE_META_LEARNING}
 
@@ -737,7 +737,7 @@ class LearningToggleRequest(BaseModel):
 
 
 @router.post("/lessons/learning/toggle", responses=INTERNAL_ERROR_RESPONSES)
-async def toggle_learning(request: LearningToggleRequest):
+def toggle_learning(request: LearningToggleRequest):
     """Włącza/wyłącza globalny zapis lekcji."""
     try:
         SETTINGS.ENABLE_META_LEARNING = request.enabled

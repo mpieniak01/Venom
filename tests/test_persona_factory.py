@@ -176,8 +176,7 @@ def test_persona_traits_are_copied():
     assert "custom_trait" not in persona2.traits
 
 
-@pytest.mark.asyncio
-async def test_persona_factory_with_kernel():
+def test_persona_factory_with_kernel():
     """Test PersonaFactory z kernelem (dla LLM enhancement)."""
     # TODO: Wymaga mock kernela lub prawdziwej konfiguracji
     # Dla MVP używamy prostej wersji bez LLM

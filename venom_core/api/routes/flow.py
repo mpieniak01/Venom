@@ -83,7 +83,7 @@ def _build_duration_seconds(trace) -> Optional[float]:
         503: {"description": "RequestTracer nie jest dostępny"},
     },
 )
-async def get_flow_trace(task_id: UUID):
+def get_flow_trace(task_id: UUID):
     """
     Pobiera szczegółowy ślad przepływu zadania dla Flow Inspector.
 

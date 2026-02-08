@@ -1,5 +1,7 @@
 """Moduł: unsupported - agent zwracający informację o braku obsługi."""
 
+import asyncio
+
 from semantic_kernel import Kernel
 
 from venom_core.agents.base import BaseAgent
@@ -17,6 +19,9 @@ class UnsupportedAgent(BaseAgent):
         super().__init__(kernel)
 
     async def process(self, input_text: str) -> str:
+        # Oddaj kontrolę pętli zdarzeń: metoda logicznie synchroniczna implementuje interfejs async
+        await asyncio.sleep(0)
+
         logger.info("UnsupportedAgent obsługuje zapytanie bez dopasowania.")
         return (
             "Nie mam jeszcze umiejętności do tego zadania. "

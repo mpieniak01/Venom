@@ -153,8 +153,7 @@ class TestGenerationParamsIntegration:
         not LOCAL_LLM_AVAILABLE,
         reason="Wymaga lokalnego środowiska LLM",
     )
-    @pytest.mark.asyncio
-    async def test_adapter_maps_params_correctly_for_provider(self):
+    def test_adapter_maps_params_correctly_for_provider(self):
         """
         Test sprawdzający czy adapter poprawnie mapuje parametry dla aktywnego providera.
         """

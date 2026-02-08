@@ -18,8 +18,7 @@ async def browser_skill():
         pass
 
 
-@pytest.mark.asyncio
-async def test_browser_skill_initialization(browser_skill):
+def test_browser_skill_initialization(browser_skill):
     """Test inicjalizacji BrowserSkill."""
     assert browser_skill is not None
     assert browser_skill.screenshots_dir.exists()

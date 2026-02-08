@@ -38,8 +38,7 @@ def mock_kernel():
     return kernel
 
 
-@pytest.mark.asyncio
-async def test_coder_agent_initialization(mock_kernel):
+def test_coder_agent_initialization(mock_kernel):
     """Test inicjalizacji CoderAgent z ShellSkill."""
     from venom_core.agents.coder import CoderAgent
 
@@ -50,8 +49,7 @@ async def test_coder_agent_initialization(mock_kernel):
     assert mock_kernel.add_plugin.call_count >= 2
 
 
-@pytest.mark.asyncio
-async def test_coder_agent_initialization_without_self_repair(mock_kernel):
+def test_coder_agent_initialization_without_self_repair(mock_kernel):
     """Test inicjalizacji CoderAgent bez samonaprawy."""
     from venom_core.agents.coder import CoderAgent
 
@@ -188,8 +186,7 @@ async def test_sandbox_file_visibility():
 
 
 @pytest.mark.skipif(True, reason="SSL issues in CI environment")
-@pytest.mark.asyncio
-async def test_sandbox_pip_isolation():
+def test_sandbox_pip_isolation():
     """Test czy instalacja pip w sandbox nie wpływa na hosta."""
     # Pomiń jeśli Docker nie jest dostępny
     try:

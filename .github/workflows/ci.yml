@@ -30,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-ci-lite.txt
 
-      - name: Run backend lite tests with Sonar reports
+      - name: Run backend lite + sonar new-code tests with Sonar reports
         timeout-minutes: 10
         run: |
           python -m pip install pytest-cov
@@ -38,8 +38,11 @@ jobs:
           make audit-ci-lite
           pytest -q $(grep -vE '^\s*(#|$)' config/pytest-groups/ci-lite.txt) \
             --cov=venom_core \
-            --cov-report=xml:test-results/sonar/python-coverage.xml \
             --junitxml=test-results/sonar/python-junit.xml
+          pytest -q $(grep -vE '^\s*(#|$)' config/pytest-groups/sonar-new-code.txt) \
+            --cov=venom_core \
+            --cov-append \
+            --cov-report=xml:test-results/sonar/python-coverage.xml
 
       - name: Upload backend Sonar artifacts
         uses: actions/upload-artifact@v4

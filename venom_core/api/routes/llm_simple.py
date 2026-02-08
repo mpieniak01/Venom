@@ -48,7 +48,13 @@ class SimpleChatRequest(BaseModel):
     session_id: Optional[str] = None
 
 
-@router.post("/simple/stream")
+@router.post(
+    "/simple/stream",
+    responses={
+        400: {"description": "Nieprawidłowe dane wejściowe (np. brak modelu)"},
+        503: {"description": "Brak dostępnego endpointu LLM"},
+    },
+)
 async def stream_simple_chat(request: SimpleChatRequest):
     runtime = get_active_llm_runtime()
     model_name = request.model or runtime.model_name

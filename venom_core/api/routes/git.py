@@ -51,7 +51,13 @@ def set_dependencies(git_skill):
     _git_skill = git_skill
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    responses={
+        503: {"description": "Git status nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu Git"},
+    },
+)
 async def get_git_status():
     """
     Zwraca status repozytorium Git (aktualny branch, zmiany, liczba zmodyfikowanych plików).
@@ -291,7 +297,12 @@ async def _get_git_status_impl():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.post("/init")
+@router.post(
+    "/init",
+    responses={
+        503: {"description": "GitSkill nie jest dostępny"},
+    },
+)
 async def init_repository(request: InitRepoRequest):
     """
     Inicjalizuje repozytorium w workspace lub klonuje istniejące.
@@ -313,7 +324,13 @@ async def init_repository(request: InitRepoRequest):
     return {"status": status, "message": result}
 
 
-@router.post("/sync")
+@router.post(
+    "/sync",
+    responses={
+        503: {"description": "GitSkill nie jest dostępny"},
+        501: {"description": "Synchronizacja repozytorium nie jest zaimplementowana"},
+    },
+)
 async def sync_repository():
     """
     Synchronizuje repozytorium (pull z remote).
@@ -334,7 +351,13 @@ async def sync_repository():
     )
 
 
-@router.post("/undo")
+@router.post(
+    "/undo",
+    responses={
+        503: {"description": "GitSkill nie jest dostępny"},
+        501: {"description": "Cofnięcie zmian nie jest zaimplementowane"},
+    },
+)
 async def undo_changes():
     """
     Cofa wszystkie niezapisane zmiany (git reset --hard).

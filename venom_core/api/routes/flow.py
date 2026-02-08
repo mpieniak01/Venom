@@ -53,7 +53,14 @@ def set_dependencies(request_tracer):
     _request_tracer = request_tracer
 
 
-@router.get("/flow/{task_id}", response_model=FlowTraceResponse)
+@router.get(
+    "/flow/{task_id}",
+    response_model=FlowTraceResponse,
+    responses={
+        404: {"description": "Zadanie nie istnieje w historii"},
+        503: {"description": "RequestTracer nie jest dostępny"},
+    },
+)
 async def get_flow_trace(task_id: UUID):
     """
     Pobiera szczegółowy ślad przepływu zadania dla Flow Inspector.

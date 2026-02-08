@@ -173,7 +173,18 @@ class TestEyes:
 
 
 def test_headless_detection():
-    """Test sprawdzający mechanizm importu Eyes w środowisku headless."""
-    # Assert
-    if HEADLESS:
-        assert Eyes is not None
+    """Weryfikuje, że import i inicjalizacja Eyes działa w trybie headless."""
+    if not HEADLESS:
+        pytest.skip("Test dotyczy wyłącznie środowiska headless.")
+
+    with (
+        patch("venom_core.perception.eyes.SETTINGS") as mock_settings,
+        patch("venom_core.perception.eyes.httpx.get") as mock_get,
+    ):
+        mock_settings.OPENAI_API_KEY = ""
+        mock_settings.LLM_LOCAL_ENDPOINT = LOCALHOST_11434_V1
+        mock_settings.OLLAMA_CHECK_TIMEOUT = 5
+        mock_get.side_effect = Exception("No local model")
+
+        eyes = Eyes()
+        assert eyes is not None

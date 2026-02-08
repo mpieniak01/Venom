@@ -13,7 +13,13 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
 _services_cache = TTLCache[dict](ttl_seconds=2.0)
 
 
-@router.get("/system/services")
+@router.get(
+    "/system/services",
+    responses={
+        503: {"description": "ServiceMonitor nie jest dostępny"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania listy usług"},
+    },
+)
 async def get_all_services():
     """
     Zwraca listę wszystkich monitorowanych usług.
@@ -54,7 +60,14 @@ async def get_all_services():
         raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
 
 
-@router.get("/system/services/{service_name}")
+@router.get(
+    "/system/services/{service_name}",
+    responses={
+        503: {"description": "ServiceMonitor nie jest dostępny"},
+        404: {"description": "Usługa o podanej nazwie nie istnieje"},
+        500: {"description": "Błąd wewnętrzny podczas pobierania statusu usługi"},
+    },
+)
 async def get_service_status(service_name: str):
     """
     Zwraca szczegółowy status konkretnej usługi.

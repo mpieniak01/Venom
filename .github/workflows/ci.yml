@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,7 +36,31 @@ jobs:
           python -m pip install pytest-cov
           mkdir -p test-results/sonar
           make audit-ci-lite
-          pytest -q $(grep -vE '^\s*(#|$)' config/pytest-groups/ci-lite.txt) \
+          BASE_REF="${{ github.base_ref }}"
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="main"
+          fi
+          git fetch --no-tags --prune --depth=1 origin "$BASE_REF"
+
+          mapfile -t LITE_TESTS < <(grep -vE '^\s*(#|$)' config/pytest-groups/ci-lite.txt)
+          mapfile -t CHANGED_TESTS < <(git diff --name-only "origin/$BASE_REF...HEAD" | grep -E '^tests/test_.*\.py$' || true)
+
+          declare -A SEEN
+          TESTS=()
+          for test_file in "${LITE_TESTS[@]}" "${CHANGED_TESTS[@]}"; do
+            if [ -n "$test_file" ] && [ -f "$test_file" ] && [ -z "${SEEN[$test_file]:-}" ]; then
+              TESTS+=("$test_file")
+              SEEN[$test_file]=1
+            fi
+          done
+
+          if [ ${#TESTS[@]} -eq 0 ]; then
+            echo "❌ Brak testów do uruchomienia dla Sonar coverage."
+            exit 1
+          fi
+
+          echo "▶️ Running ${#TESTS[@]} backend test files for Sonar coverage"
+          pytest -q "${TESTS[@]}" \
             --cov=venom_core \
             --cov-report=xml:test-results/sonar/python-coverage.xml \
             --junitxml=test-results/sonar/python-junit.xml

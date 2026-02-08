@@ -13,6 +13,7 @@ from zeroconf import ServiceInfo, Zeroconf
 
 from venom_core.config import SETTINGS
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -482,14 +483,14 @@ class CloudProvisioner:
             service_name: Nazwa usługi (domyślnie: venom)
 
         Returns:
-            URL usługi w formacie http://venom.local:8000
+            URL usługi w formacie venom.local:8000 (schemat dobierany polityką URL)
         """
         service_name = service_name or "venom"
         # Usuń .local jeśli już jest
         local_suffix = ".local"
         if service_name.endswith(local_suffix):
             service_name = service_name[: -len(local_suffix)]
-        return f"http://{service_name}.local:{self.service_port}"
+        return build_http_url(f"{service_name}.local", self.service_port)
 
     async def register_in_hive(
         self, hive_url: Optional[str] = None, metadata: Optional[dict] = None

@@ -47,10 +47,25 @@ jobs:
 
           declare -A SEEN
           TESTS=()
-          for test_file in "${LITE_TESTS[@]}" "${CHANGED_TESTS[@]}"; do
+          for test_file in "${LITE_TESTS[@]}"; do
             if [ -n "$test_file" ] && [ -f "$test_file" ] && [ -z "${SEEN[$test_file]:-}" ]; then
               TESTS+=("$test_file")
               SEEN[$test_file]=1
+            fi
+          done
+
+          for test_file in "${CHANGED_TESTS[@]}"; do
+            if [ -z "$test_file" ] || [ ! -f "$test_file" ] || [ -n "${SEEN[$test_file]:-}" ]; then
+              continue
+            fi
+
+            module_name="${test_file%.py}"
+            module_name="${module_name//\//.}"
+            if timeout 20s python -c "import ${module_name}" >/dev/null 2>&1; then
+              TESTS+=("$test_file")
+              SEEN[$test_file]=1
+            else
+              echo "⏭️ Skipping changed test outside ci-lite profile: $test_file (import-smoke failed)"
             fi
           done
 

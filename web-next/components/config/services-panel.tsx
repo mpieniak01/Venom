@@ -9,7 +9,7 @@ import { VenomWebSocket } from "@/lib/ws-client";
 interface ServiceInfo {
   name: string;
   service_type: string;
-  status: "running" | "stopped" | "unknown" | "error";
+  status: "running" | "stopped" | "unknown" | "error" | "degraded";
   pid: number | null;
   port: number | null;
   cpu_percent: number;
@@ -56,14 +56,18 @@ interface StorageSnapshot {
 const runtimeToServiceStatus: Record<string, ServiceInfo["status"]> = {
   online: "running",
   offline: "stopped",
-  degraded: "error",
+  degraded: "degraded",
   unknown: "unknown",
 };
 
 function normalizeServiceStatus(status: string | undefined): ServiceInfo["status"] {
   if (!status) return "unknown";
-  if (status in runtimeToServiceStatus) return runtimeToServiceStatus[status];
-  return status as ServiceInfo["status"];
+  const normalized = status.toLowerCase();
+  if (normalized in runtimeToServiceStatus) return runtimeToServiceStatus[normalized];
+  if (normalized === "running" || normalized === "stopped" || normalized === "error" || normalized === "degraded") {
+    return normalized;
+  }
+  return "unknown";
 }
 
 function mergeServiceUpdate(
@@ -312,6 +316,8 @@ export function ServicesPanel() {
         return "text-emerald-400";
       case "stopped":
         return "text-zinc-500";
+      case "degraded":
+        return "text-yellow-400";
       case "error":
         return "text-red-400";
       default:
@@ -325,6 +331,8 @@ export function ServicesPanel() {
         return "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
       case "stopped":
         return "bg-zinc-500/20 text-zinc-400 border-zinc-500/30";
+      case "degraded":
+        return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30";
       case "error":
         return "bg-red-500/20 text-red-300 border-red-500/30";
       default:

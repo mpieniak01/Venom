@@ -29,6 +29,91 @@ type ConversationBubbleProps = {
   } | null;
 };
 
+function resolveStatusLabel(
+  status: string | null | undefined,
+  t: ReturnType<typeof useTranslation>,
+) {
+  if (!status) return null;
+  const normalized = status.toUpperCase();
+  switch (normalized) {
+    case "COMPLETED":
+      return t("cockpit.chatStatus.completed");
+    case "FAILED":
+      return t("cockpit.chatStatus.failed");
+    case "LOST":
+      return t("cockpit.chatStatus.lost");
+    case "PENDING":
+      return t("cockpit.chatStatus.pending");
+    case "PROCESSING":
+      return t("cockpit.chatStatus.processing");
+    default:
+      break;
+  }
+  const localizedMap: Record<string, string> = {
+    "W TOKU": t("cockpit.chatStatus.inProgress"),
+    "WYSŁANO": t("cockpit.chatStatus.sent"),
+    "WYSYŁANO": t("cockpit.chatStatus.sent"),
+    "W KOLEJCE": t("cockpit.chatStatus.queued"),
+    "BŁĄD STRUMIENIA": t("cockpit.chatStatus.streamError"),
+  };
+  return localizedMap[normalized] ?? status;
+}
+
+function resolveModeLabelText(
+  modeLabel: string | null | undefined,
+  t: ReturnType<typeof useTranslation>,
+) {
+  if (!modeLabel) return null;
+  const normalized = modeLabel.toLowerCase();
+  if (normalized === "direct") return t("cockpit.chatMode.direct");
+  if (normalized === "normal") return t("cockpit.chatMode.normal");
+  if (normalized === "complex") return t("cockpit.chatMode.complex");
+  return modeLabel;
+}
+
+function resolveTimeLabel(timestamp: string) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("pl-PL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function renderMessageBody(input: {
+  showTyping: boolean;
+  visibleText: string;
+  text: string;
+  isUser: boolean;
+  t: ReturnType<typeof useTranslation>;
+}): ReactNode {
+  const { showTyping, visibleText, text, isUser, t } = input;
+  if (showTyping) {
+    return (
+      <p className="whitespace-pre-wrap text-sm text-white/90">
+        {visibleText}
+        <span className="typing-dots" aria-hidden="true">
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+          <span className="typing-dot" />
+        </span>
+      </p>
+    );
+  }
+  if (text.trim().length > 0) {
+    return (
+      <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
+    );
+  }
+  return (
+    <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
+  );
+}
+
 export function ConversationBubble({
   role,
   timestamp,
@@ -93,53 +178,17 @@ export function ConversationBubble({
       }
     };
   }, [isUser, showTyping, typingText]);
-  const statusLabel = (() => {
-    if (!status) return null;
-    const normalized = status.toUpperCase();
-    switch (normalized) {
-      case "COMPLETED":
-        return t("cockpit.chatStatus.completed");
-      case "FAILED":
-        return t("cockpit.chatStatus.failed");
-      case "LOST":
-        return t("cockpit.chatStatus.lost");
-      case "PENDING":
-        return t("cockpit.chatStatus.pending");
-      case "PROCESSING":
-        return t("cockpit.chatStatus.processing");
-      default:
-        break;
-    }
-    const localizedMap: Record<string, string> = {
-      "W TOKU": t("cockpit.chatStatus.inProgress"),
-      "WYSŁANO": t("cockpit.chatStatus.sent"),
-      "WYSYŁANO": t("cockpit.chatStatus.sent"),
-      "W KOLEJCE": t("cockpit.chatStatus.queued"),
-      "BŁĄD STRUMIENIA": t("cockpit.chatStatus.streamError"),
-    };
-    return localizedMap[normalized] ?? status;
-  })();
-  const modeLabelText = (() => {
-    if (!modeLabel) return null;
-    const normalized = modeLabel.toLowerCase();
-    if (normalized === "direct") return t("cockpit.chatMode.direct");
-    if (normalized === "normal") return t("cockpit.chatMode.normal");
-    if (normalized === "complex") return t("cockpit.chatMode.complex");
-    return modeLabel;
-  })();
+  const statusLabel = resolveStatusLabel(status, t);
+  const modeLabelText = resolveModeLabelText(modeLabel, t);
   const footerClickable = !disabled && !pending && !isUser;
-  const timeLabel = (() => {
-    if (!timestamp) return "";
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return "";
-    return new Intl.DateTimeFormat("pl-PL", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-      timeZone: "UTC",
-    }).format(date);
-  })();
+  const timeLabel = resolveTimeLabel(timestamp);
+  const messageBody = renderMessageBody({
+    showTyping,
+    visibleText,
+    text,
+    isUser,
+    t,
+  });
 
   return (
     <div
@@ -159,20 +208,7 @@ export function ConversationBubble({
             {t("cockpit.chatLabels.computationResult")}
           </p>
         )}
-        {showTyping ? (
-          <p className="whitespace-pre-wrap text-sm text-white/90">
-            {visibleText}
-            <span className="typing-dots" aria-hidden="true">
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-              <span className="typing-dot" />
-            </span>
-          </p>
-        ) : text.trim().length > 0 ? (
-          <MarkdownPreview content={text} emptyState={t("cockpit.chatLabels.emptyContent")} mode="final" />
-        ) : (
-          <p className="text-sm text-zinc-400">{isUser ? "…" : t("cockpit.chatLabels.generating")}</p>
-        )}
+        {messageBody}
       </div>
       {(footerActions || footerExtra || forcedLabel || (!isUser && (pending || status || requestId))) && (
         <div

@@ -53,20 +53,25 @@ const getStatusTone = (status?: string) => {
 };
 
 const readStorageJson = <T,>(key: string): T | null => {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(key);
+  if (globalThis.window === undefined) return null;
+  const raw = globalThis.window.localStorage.getItem(key);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
   } catch {
-    window.localStorage.removeItem(key);
+    globalThis.window.localStorage.removeItem(key);
     return null;
   }
 };
 
 const writeStorageJson = (key: string, value: unknown) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  if (globalThis.window === undefined) return;
+  globalThis.window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+const readStorageItem = (key: string): string | null => {
+  if (globalThis.window === undefined) return null;
+  return globalThis.window.localStorage.getItem(key);
 };
 
 type CatalogCachePayload = {
@@ -418,8 +423,7 @@ export const ModelsViewer = () => {
     const cachedOllama = readStorageJson<CatalogCachePayload>("models-trending-ollama");
     const cachedCatalogHf = readStorageJson<CatalogCachePayload>("models-catalog-hf");
     const cachedCatalogOllama = readStorageJson<CatalogCachePayload>("models-catalog-ollama");
-    const cachedNewsSort =
-      typeof window !== "undefined" ? window.localStorage.getItem("models-news-sort") : null;
+    const cachedNewsSort = readStorageItem("models-news-sort");
 
     if (cachedHf) setTrendingHf((prev) => ({ ...prev, ...cachedHf, loading: false }));
     if (cachedOllama) setTrendingOllama((prev) => ({ ...prev, ...cachedOllama, loading: false }));

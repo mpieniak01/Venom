@@ -136,16 +136,39 @@ def _collect_storage_entries() -> tuple[list[dict[str, int | str]], int]:
 def _extract_dreams_item(
     items: list[dict[str, int | str]],
 ) -> list[dict[str, int | str]]:
-    dreams_size = 0
     timelines_path = PROJECT_ROOT / "data/timelines"
-    if timelines_path.exists():
-        try:
-            for child in timelines_path.iterdir():
-                if child.is_dir() and child.name.startswith("dream_"):
-                    dreams_size += _dir_size_bytes_fast(child, timeout_sec=1.0) or 0
-        except Exception as exc:
-            logger.warning("Błąd podczas liczenia rozmiaru snów: %s", exc)
+    dreams_size = _calculate_dreams_size(timelines_path)
+    final_items = _normalize_timelines_items(items, dreams_size)
+    if dreams_size <= 0:
+        return final_items
 
+    final_items.append(
+        _item_payload(
+            name="dreaming",
+            path=timelines_path / "dream_*",
+            size_bytes=dreams_size,
+            kind="data",
+        )
+    )
+    return final_items
+
+
+def _calculate_dreams_size(timelines_path: Path) -> int:
+    dreams_size = 0
+    if not timelines_path.exists():
+        return dreams_size
+    try:
+        for child in timelines_path.iterdir():
+            if child.is_dir() and child.name.startswith("dream_"):
+                dreams_size += _dir_size_bytes_fast(child, timeout_sec=1.0) or 0
+    except Exception as exc:
+        logger.warning("Błąd podczas liczenia rozmiaru snów: %s", exc)
+    return dreams_size
+
+
+def _normalize_timelines_items(
+    items: list[dict[str, int | str]], dreams_size: int
+) -> list[dict[str, int | str]]:
     final_items = []
     for item in items:
         if item["name"] == "timelines" and dreams_size > 0:
@@ -154,15 +177,6 @@ def _extract_dreams_item(
             item["size_bytes"] = max(0, current_size - dreams_size)
             item["name"] = "timelines_user"
         final_items.append(item)
-    if dreams_size > 0:
-        final_items.append(
-            _item_payload(
-                name="dreaming",
-                path=timelines_path / "dream_*",
-                size_bytes=dreams_size,
-                kind="data",
-            )
-        )
     return final_items
 
 

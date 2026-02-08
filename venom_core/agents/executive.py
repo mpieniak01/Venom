@@ -209,6 +209,125 @@ Pamiętaj:
         # Sparsuj odpowiedź i utwórz strukturę w GoalStore
         return self._parse_and_create_roadmap(response, vision_text)
 
+    @staticmethod
+    def _extract_title(line: str, default: str) -> str:
+        parts = line.split(":", 1)
+        if len(parts) <= 1:
+            return default
+        title = parts[1].strip()
+        return title or default
+
+    @staticmethod
+    def _find_kpi_placeholder(lines: list[str], start_idx: int) -> list[KPI]:
+        for idx in range(start_idx + 1, min(start_idx + 5, len(lines))):
+            if "KPI:" in lines[idx]:
+                return [
+                    KPI(
+                        name="Główny wskaźnik postępu",
+                        target_value=100.0,
+                        unit="%",
+                    )
+                ]
+        return []
+
+    @staticmethod
+    def _parse_priority_and_description(
+        lines: list[str],
+        start_idx: int,
+        fallback_priority: int,
+    ) -> tuple[int, str]:
+        priority = 1
+        description = ""
+        for idx in range(start_idx + 1, min(start_idx + 5, len(lines))):
+            candidate = lines[idx]
+            if PRIORITY_LABEL in candidate:
+                try:
+                    priority = int(candidate.replace(PRIORITY_LABEL, "").strip())
+                except ValueError:
+                    priority = fallback_priority
+                continue
+            if DESCRIPTION_LABEL in candidate:
+                description = candidate.replace(DESCRIPTION_LABEL, "").strip()
+        return priority, description
+
+    def _ensure_vision_goal(self, lines: list[str], original_vision: str):
+        for idx, line in enumerate(lines):
+            if not line.startswith("VISION:"):
+                continue
+            vision_title = self._extract_title(line, "Wizja projektu")
+            kpis = self._find_kpi_placeholder(lines, idx)
+            vision_goal = self.goal_store.add_goal(
+                title=vision_title,
+                goal_type=GoalType.VISION,
+                description=original_vision,
+                priority=1,
+                kpis=kpis,
+            )
+            logger.info(f"Utworzono Vision: {vision_title}")
+            return vision_goal
+
+        return self.goal_store.add_goal(
+            title="Wizja projektu",
+            goal_type=GoalType.VISION,
+            description=original_vision,
+            priority=1,
+            kpis=[KPI(name="Postęp realizacji", target_value=100.0, unit="%")],
+        )
+
+    def _parse_milestones(self, lines: list[str], vision_goal_id: UUID) -> list[Any]:
+        milestones_created = []
+        milestone_count = 0
+        for idx, line in enumerate(lines):
+            if not line.startswith("MILESTONE"):
+                continue
+            milestone_count += 1
+            milestone_title = self._extract_title(line, f"Milestone {milestone_count}")
+            priority, description = self._parse_priority_and_description(
+                lines, idx, milestone_count
+            )
+            milestone = self.goal_store.add_goal(
+                title=milestone_title,
+                goal_type=GoalType.MILESTONE,
+                description=description
+                or f"Etap {milestone_count} realizacji projektu",
+                priority=priority,
+                parent_id=vision_goal_id,
+                kpis=[
+                    KPI(
+                        name="Ukończone zadania",
+                        target_value=100.0,
+                        unit="%",
+                    )
+                ],
+            )
+            milestones_created.append(milestone)
+            logger.info(f"Utworzono Milestone: {milestone_title}")
+        return milestones_created
+
+    def _parse_tasks_for_milestone(
+        self, lines: list[str], milestone_id: UUID
+    ) -> list[Any]:
+        tasks_created = []
+        task_count = 0
+        for idx, line in enumerate(lines):
+            if not (line.startswith("TASK") and ":" in line):
+                continue
+            task_count += 1
+            task_title = self._extract_title(line, f"Zadanie {task_count}")
+            priority, description = self._parse_priority_and_description(
+                lines, idx, task_count
+            )
+            task = self.goal_store.add_goal(
+                title=task_title,
+                goal_type=GoalType.TASK,
+                description=description or task_title,
+                priority=priority,
+                parent_id=milestone_id,
+            )
+            tasks_created.append(task)
+            logger.info(f"Utworzono Task: {task_title}")
+        return tasks_created
+
     def _parse_and_create_roadmap(
         self, llm_response: str, original_vision: str
     ) -> dict:
@@ -222,145 +341,17 @@ Pamiętaj:
         Returns:
             Dict z podsumowaniem utworzonych celów
         """
-        # Prosty parser - w produkcji można użyć structured output
         lines = llm_response.split("\n")
 
-        vision_goal = None
-        current_milestone = None
-        milestones_created = []
-        tasks_created = []
-
         try:
-            # Parse Vision
-            for i, line in enumerate(lines):
-                if line.startswith("VISION:"):
-                    vision_title = line.replace("VISION:", "").strip()
-                    vision_desc = original_vision
-
-                    # Szukaj KPI
-                    kpi_line = None
-                    for j in range(i + 1, min(i + 5, len(lines))):
-                        if "KPI:" in lines[j]:
-                            kpi_line = lines[j]
-                            break
-
-                    kpis = []
-                    if kpi_line:
-                        # Prosta ekstrakcja KPI
-                        kpis = [
-                            KPI(
-                                name="Główny wskaźnik postępu",
-                                target_value=100.0,
-                                unit="%",
-                            )
-                        ]
-
-                    vision_goal = self.goal_store.add_goal(
-                        title=vision_title,
-                        goal_type=GoalType.VISION,
-                        description=vision_desc,
-                        priority=1,
-                        kpis=kpis,
-                    )
-                    logger.info(f"Utworzono Vision: {vision_title}")
-                    break
-
-            if not vision_goal:
-                # Fallback - utwórz Vision z oryginalnego tekstu
-                vision_goal = self.goal_store.add_goal(
-                    title="Wizja projektu",
-                    goal_type=GoalType.VISION,
-                    description=original_vision,
-                    priority=1,
-                    kpis=[KPI(name="Postęp realizacji", target_value=100.0, unit="%")],
-                )
-
-            # Parse Milestones (uproszczone)
-            milestone_count = 0
-            for i, line in enumerate(lines):
-                if line.startswith("MILESTONE"):
-                    milestone_count += 1
-                    # Ekstrakcja tytułu
-                    parts = line.split(":", 1)
-                    milestone_title = (
-                        parts[1].strip()
-                        if len(parts) > 1
-                        else f"Milestone {milestone_count}"
-                    )
-
-                    # Szukaj opisu i priorytetu
-                    priority = 1
-                    description = ""
-                    for j in range(i + 1, min(i + 5, len(lines))):
-                        if PRIORITY_LABEL in lines[j]:
-                            try:
-                                priority = int(
-                                    lines[j].replace(PRIORITY_LABEL, "").strip()
-                                )
-                            except ValueError:
-                                priority = milestone_count
-                        elif DESCRIPTION_LABEL in lines[j]:
-                            description = (
-                                lines[j].replace(DESCRIPTION_LABEL, "").strip()
-                            )
-
-                    milestone = self.goal_store.add_goal(
-                        title=milestone_title,
-                        goal_type=GoalType.MILESTONE,
-                        description=description
-                        or f"Etap {milestone_count} realizacji projektu",
-                        priority=priority,
-                        parent_id=vision_goal.goal_id,
-                        kpis=[
-                            KPI(
-                                name="Ukończone zadania",
-                                target_value=100.0,
-                                unit="%",
-                            )
-                        ],
-                    )
-                    milestones_created.append(milestone)
-                    current_milestone = milestone
-                    logger.info(f"Utworzono Milestone: {milestone_title}")
-
-            # Parse Tasks (uproszczone - dla pierwszego milestone)
-            if current_milestone:
-                task_count = 0
-                for i, line in enumerate(lines):
-                    if line.startswith("TASK") and ":" in line:
-                        task_count += 1
-                        parts = line.split(":", 1)
-                        task_title = (
-                            parts[1].strip()
-                            if len(parts) > 1
-                            else f"Zadanie {task_count}"
-                        )
-
-                        # Szukaj opisu i priorytetu
-                        priority = 1
-                        description = ""
-                        for j in range(i + 1, min(i + 5, len(lines))):
-                            if PRIORITY_LABEL in lines[j]:
-                                try:
-                                    priority = int(
-                                        lines[j].replace(PRIORITY_LABEL, "").strip()
-                                    )
-                                except ValueError:
-                                    priority = task_count
-                            elif DESCRIPTION_LABEL in lines[j]:
-                                description = (
-                                    lines[j].replace(DESCRIPTION_LABEL, "").strip()
-                                )
-
-                        task = self.goal_store.add_goal(
-                            title=task_title,
-                            goal_type=GoalType.TASK,
-                            description=description or task_title,
-                            priority=priority,
-                            parent_id=current_milestone.goal_id,
-                        )
-                        tasks_created.append(task)
-                        logger.info(f"Utworzono Task: {task_title}")
+            vision_goal = self._ensure_vision_goal(lines, original_vision)
+            milestones_created = self._parse_milestones(lines, vision_goal.goal_id)
+            current_milestone = milestones_created[-1] if milestones_created else None
+            tasks_created = (
+                self._parse_tasks_for_milestone(lines, current_milestone.goal_id)
+                if current_milestone
+                else []
+            )
 
             return {
                 "success": True,

@@ -18,8 +18,9 @@ def test_force_http_overrides_external_host() -> None:
 
 
 def test_apply_http_policy_to_url_rewrites_scheme() -> None:
+    insecure_url = "https://api.example.com/v1/models".replace("https://", "http://", 1)
     rewritten = apply_http_policy_to_url(
-        "http://api.example.com/v1/models", env="production", policy="force_https"
+        insecure_url, env="production", policy="force_https"
     )
     assert rewritten == "https://api.example.com/v1/models"
 

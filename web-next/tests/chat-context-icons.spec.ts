@@ -103,6 +103,33 @@ type MockPayload = {
 const installMockEventSource = async (page: Page, payloads: MockPayload[]) => {
   await page.addInitScript(
     ({ payloads }) => {
+      const encodePayloads = (items: MockPayload[]) =>
+        items.map((payload) => ({
+          event: payload.event,
+          data: JSON.stringify(payload.data),
+        }));
+
+      const emitPayload = (
+        listeners: Record<string, Array<(event: MessageEvent) => void>>,
+        payload: { event: string; data: string },
+      ) => {
+        const event = new MessageEvent(payload.event, { data: payload.data });
+        for (const handler of listeners[payload.event] || []) {
+          handler(event);
+        }
+      };
+
+      const schedulePayloads = (
+        listeners: Record<string, Array<(event: MessageEvent) => void>>,
+        encoded: Array<{ event: string; data: string }>,
+      ) => {
+        for (let index = 0; index < encoded.length; index += 1) {
+          setTimeout(() => emitPayload(listeners, encoded[index]), 150 * (index + 1));
+        }
+      };
+
+      const encodedPayloads = encodePayloads(payloads);
+
       class MockEventSource {
         url: string;
         onopen: ((event: Event) => void) | null = null;
@@ -113,29 +140,8 @@ const installMockEventSource = async (page: Page, payloads: MockPayload[]) => {
           this.url = url;
           setTimeout(() => {
             this.onopen?.(new Event("open"));
-            const encoded = payloads.map((payload) => ({
-              event: payload.event,
-              data: JSON.stringify(payload.data),
-            }));
-            this.scheduleEncodedPayloads(encoded);
+            schedulePayloads(this.listeners, encodedPayloads);
           }, 50);
-        }
-
-        private emitPayload(payload: { event: string; data: string }) {
-          const event = new MessageEvent(payload.event, { data: payload.data });
-          for (const handler of this.listeners[payload.event] || []) {
-            handler(event);
-          }
-        }
-
-        private schedulePayload(payload: { event: string; data: string }, delayMs: number) {
-          setTimeout(() => this.emitPayload(payload), delayMs);
-        }
-
-        private scheduleEncodedPayloads(encoded: Array<{ event: string; data: string }>) {
-          for (let index = 0; index < encoded.length; index += 1) {
-            this.schedulePayload(encoded[index], 150 * (index + 1));
-          }
         }
 
         addEventListener(event: string, handler: (event: MessageEvent) => void) {

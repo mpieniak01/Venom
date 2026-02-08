@@ -1,8 +1,8 @@
-# 119 — Web-Next Brain-Overload + Readability Remediation (Sonar)
+# 119 — Brain-Overload + Readability Remediation (Sonar)
 
 ## Cel zadania
 
-Domknięcie zgłoszeń Sonar dla obszaru `web-next` i testów frontendowych, dotyczących:
+Domknięcie zgłoszeń Sonar dla obszaru `web-next`, testów frontendowych oraz `examples/`, dotyczących:
 - zbyt wysokiej **Cognitive Complexity**,
 - zbyt głębokiego zagnieżdżenia funkcji ("nest functions more than 4 levels deep").
 - drobnych zgłoszeń **readability** typu "This pattern can be replaced with ...".
@@ -29,6 +29,7 @@ Priorytet: poprawa utrzymywalności bez zmiany zachowania biznesowego UI/UX.
 - `web-next/components/models/models-viewer.tsx` — L247 (65 -> <=15)
 - `web-next/lib/date.ts` — L10 (22 -> <=15)
 - `web-next/tests/perf/chat-latency.spec.ts` — L56 (22 -> <=15)
+- `examples/apprentice_demo.py` — L143 (16 -> <=15)
 
 ### B. Nadmierne zagnieżdżenie funkcji
 - `web-next/components/brain/brain-home.tsx` — L782
@@ -87,6 +88,7 @@ Priorytet: poprawa utrzymywalności bez zmiany zachowania biznesowego UI/UX.
 7. `web-next/components/layout/status-pills.tsx`.
 8. `web-next/components/layout/system-status-bar.tsx`.
 9. `web-next/lib/date.ts`.
+10. `examples/apprentice_demo.py`.
 
 ### PR-4: Test cleanup (frontend e2e)
 1. `web-next/tests/chat-context-icons.spec.ts`.
@@ -117,6 +119,7 @@ Dla każdego hotspotu:
 - [ ] `npm --prefix web-next run build` przechodzi.
 - [ ] `make e2e` lub równoważny pakiet testów przechodzi dla zmienionych scenariuszy.
 - [ ] Brak regresji funkcjonalnej w kluczowych widokach: Brain, Cockpit, Models, Strategy.
+- [ ] Brak regresji funkcjonalnej w demo `examples/apprentice_demo.py`.
 
 ## Ryzyka
 

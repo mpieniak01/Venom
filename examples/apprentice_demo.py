@@ -161,35 +161,44 @@ async def interactive_demo():
     while True:
         try:
             user_input = (await asyncio.to_thread(input, "Venom> ")).strip()
-
-            if not user_input:
-                continue
-
-            if user_input.lower() in ["quit", "exit", "q"]:
-                logger.info("👋 Do zobaczenia!")
+            should_continue = await _handle_interactive_command(
+                user_input, apprentice, workflow_store
+            )
+            if not should_continue:
                 break
-
-            if user_input.lower() == "list":
-                sessions = apprentice.recorder.list_sessions()
-                logger.info(f"Dostępne sesje: {sessions}")
-                continue
-
-            if user_input.lower() == "workflows":
-                workflows = workflow_store.list_workflows()
-                logger.info(f"Dostępne workflow ({len(workflows)}):")
-                for wf in workflows:
-                    logger.info(f"  - {wf['workflow_id']}: {wf['name']}")
-                continue
-
-            # Przetwórz przez ApprenticeAgent
-            response = await apprentice.process(user_input)
-            logger.info(f"\n{response}\n")
 
         except KeyboardInterrupt:
             logger.info("\n👋 Przerwano przez użytkownika")
             break
         except Exception as e:
             logger.error(f"❌ Błąd: {e}")
+
+
+async def _handle_interactive_command(user_input, apprentice, workflow_store):
+    command = user_input.strip()
+    if not command:
+        return True
+
+    normalized = command.lower()
+    if normalized in ["quit", "exit", "q"]:
+        logger.info("👋 Do zobaczenia!")
+        return False
+
+    if normalized == "list":
+        sessions = apprentice.recorder.list_sessions()
+        logger.info(f"Dostępne sesje: {sessions}")
+        return True
+
+    if normalized == "workflows":
+        workflows = workflow_store.list_workflows()
+        logger.info(f"Dostępne workflow ({len(workflows)}):")
+        for wf in workflows:
+            logger.info(f"  - {wf['workflow_id']}: {wf['name']}")
+        return True
+
+    response = await apprentice.process(command)
+    logger.info(f"\n{response}\n")
+    return True
 
 
 async def main():

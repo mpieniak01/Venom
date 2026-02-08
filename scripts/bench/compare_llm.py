@@ -161,7 +161,7 @@ def _tail_vllm_log(lines_count: int = 20) -> str:
     try:
         with open(log_path, "r") as f:
             return "".join(f.readlines()[-lines_count:])
-    except Exception:
+    except (OSError, UnicodeError):
         # Ignorowanie błędów odczytu logów - nie krytyczne dla diagnostyki
         return ""
 

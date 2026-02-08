@@ -191,7 +191,9 @@ class FakeVectorStore:
             if not self._matches_metadata(entry, metadata_filters):
                 continue
             results.append(entry)
-        return results
+        if limit is None:
+            return results
+        return results[:limit]
 
     def delete_by_metadata(self, filters, collection_name=None):
         if not filters:

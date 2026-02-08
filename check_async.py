@@ -39,24 +39,21 @@ class AsyncVisitor(ast.NodeVisitor):
         return finder.found_await
 
     def _is_abstract_async(self, node: ast.AsyncFunctionDef) -> bool:
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Name) and decorator.id == "abstractmethod":
-                return True
-            if (
+        return any(
+            (isinstance(decorator, ast.Name) and decorator.id == "abstractmethod")
+            or (
                 isinstance(decorator, ast.Attribute)
                 and decorator.attr == "abstractmethod"
-            ):
-                return True
-        return False
+            )
+            for decorator in node.decorator_list
+        )
 
     def _is_empty_or_doc_only(self, node: ast.AsyncFunctionDef) -> bool:
-        for stmt in node.body:
-            if isinstance(stmt, ast.Pass):
-                continue
-            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
-                continue
-            return False
-        return True
+        return all(
+            isinstance(stmt, ast.Pass)
+            or (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant))
+            for stmt in node.body
+        )
 
     def _report_issue(self, node: ast.AsyncFunctionDef) -> None:
         self.issues.append(

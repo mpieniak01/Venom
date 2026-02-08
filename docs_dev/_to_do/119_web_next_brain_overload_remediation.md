@@ -121,6 +121,33 @@ Dla każdego hotspotu:
 - [ ] Brak regresji funkcjonalnej w kluczowych widokach: Brain, Cockpit, Models, Strategy.
 - [ ] Brak regresji funkcjonalnej w demo `examples/apprentice_demo.py`.
 
+## Status realizacji (aktualny)
+
+### Zrealizowane
+- `web-next/app/inspector/page.tsx` (readability literals)
+- `web-next/components/ui/markdown.tsx` (readability literals)
+- `examples/apprentice_demo.py` (obniżenie complexity przez wydzielenie obsługi komend)
+- `web-next/app/strategy/page.tsx` (helper extraction)
+- `web-next/lib/date.ts` (spłaszczenie logiki relative-time)
+- `web-next/components/cockpit/cockpit-kpi-section.tsx` (helper extraction)
+- `web-next/components/cockpit/cockpit-request-detail-drawer.tsx` (parser/error helper extraction)
+- `web-next/components/layout/sidebar.tsx` (storage/width helper extraction)
+- `web-next/components/layout/status-pills.tsx` (tone/status helper extraction)
+- `web-next/components/cockpit/cockpit-llm-server-actions.ts` (model/server activation helpers)
+- `web-next/components/cockpit/cockpit-chat-thread.tsx` (wydzielenie item renderer i feedback controls)
+- `web-next/components/cockpit/cockpit-chat-send.ts` (runtime/payload/reconcile helpers)
+- `web-next/components/cockpit/hooks/use-cockpit-logic.ts` (derived-state helper extraction)
+- `web-next/components/models/models-viewer.tsx` (cache/storage helper extraction)
+- `sonar-project.properties` (CPD exclusions dla locale i18n)
+
+### Do domknięcia
+- `web-next/components/brain/brain-home.tsx` (critical complexity + nesting)
+- pozostałe głębokie hotspoty w `cockpit-chat-send.ts`/`use-cockpit-logic.ts` jeżeli Sonar nadal raportuje po aktualnym refactorze
+- `web-next/tests/chat-context-icons.spec.ts`
+- `web-next/tests/chat-mode-routing.spec.ts`
+- `web-next/tests/perf/chat-latency.spec.ts`
+- `web-next/tests/streaming.spec.ts`
+
 ## Ryzyka
 
 - Duże refactory hooków (`use-cockpit-logic`) mogą naruszyć sekwencję efektów ubocznych.

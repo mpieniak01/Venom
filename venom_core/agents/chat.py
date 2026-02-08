@@ -293,70 +293,20 @@ Zasady:
         Returns:
             True jeśli model wspiera system prompt, False w przeciwnym razie
         """
-        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
-        model_id = raw_model_id.lower()
-
-        # Jeśli mamy ModelRegistry, sprawdź capabilities
-        model_registry = self.model_registry
-        if model_registry:
-            manifest = model_registry.manifest or {}
-            # Oblicz base name raz na początku
-            model_base = model_id.split("/")[-1]
-
-            def _resolve_support(manifest_key: str):
-                entry = manifest.get(manifest_key)
-                if not entry:
-                    return None
-                # Najpierw spróbuj użyć oficjalnej metody registry (łatwiej mockować w testach)
-                try:
-                    capabilities = model_registry.get_model_capabilities(manifest_key)
-                    if capabilities:
-                        return capabilities.supports_system_role
-                except Exception as exc:  # pragma: no cover - defensywne logowanie
-                    logger.debug(
-                        "Nie udało się pobrać capabilities z registry dla %s: %s",
-                        manifest_key,
-                        exc,
-                    )
-
-                # Fallback do danych zapisanych w manifeście
-                candidate = getattr(entry, "capabilities", None)
-                if candidate:
-                    return candidate.supports_system_role
-                return getattr(entry, "supports_system_role", None)
-
-            # Krok 1: spróbuj dokładnego dopasowania po kluczu słownika
-            supports = None
-            manifest_name_for_log = None
-
-            if raw_model_id and raw_model_id in manifest:
-                supports = _resolve_support(raw_model_id)
-                manifest_name_for_log = raw_model_id
-            elif model_id and model_id in manifest:
-                supports = _resolve_support(model_id)
-                manifest_name_for_log = model_id
-
-            if supports is not None:
-                logger.debug(
-                    f"Model {model_id} → manifest {manifest_name_for_log} (exact match): supports_system_role={supports}"
-                )
-                return supports
-
-            # Krok 2: dopasowanie po base name (case-insensitive)
-            for manifest_name, entry in manifest.items():
-                if not entry:
-                    continue
-
-                manifest_name_lower = manifest_name.lower()
-                manifest_base = manifest_name_lower.split("/")[-1]
-                if manifest_base == model_base:
-                    supports = _resolve_support(manifest_name)
-                    if supports is None:
-                        continue
-                    logger.debug(
-                        f"Model {model_id} → manifest {manifest_name} (base match): supports_system_role={supports}"
-                    )
-                    return supports
+        raw_model_id, model_id = self._get_model_ids(chat_service)
+        supports, source = self._resolve_model_capability(
+            raw_model_id=raw_model_id,
+            model_id=model_id,
+            capability_attr="supports_system_role",
+        )
+        if supports is not None:
+            logger.debug(
+                "Model %s → manifest %s: supports_system_role=%s",
+                model_id,
+                source,
+                supports,
+            )
+            return supports
 
         # Fallback do hardcoded listy jeśli brak ModelRegistry lub nie znaleziono w manifeście
         return not any(marker in model_id for marker in self.MODELS_WITHOUT_SYSTEM_ROLE)
@@ -375,54 +325,90 @@ Zasady:
         if SETTINGS.LLM_SERVICE_TYPE == "local":
             return False
 
-        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
-        model_id = raw_model_id.lower()
-
-        model_registry = self.model_registry
-        if model_registry:
-            manifest = model_registry.manifest or {}
-            model_base = model_id.split("/")[-1]
-
-            def _resolve_support(manifest_key: str):
-                entry = manifest.get(manifest_key)
-                if not entry:
-                    return None
-                try:
-                    capabilities = model_registry.get_model_capabilities(manifest_key)
-                    if capabilities:
-                        return capabilities.supports_function_calling
-                except Exception as exc:  # pragma: no cover - defensywne logowanie
-                    logger.debug(
-                        "Nie udało się pobrać capabilities z registry dla %s: %s",
-                        manifest_key,
-                        exc,
-                    )
-
-                candidate = getattr(entry, "capabilities", None)
-                if candidate:
-                    return candidate.supports_function_calling
-                return getattr(entry, "supports_function_calling", None)
-
-            supports = None
-            if raw_model_id and raw_model_id in manifest:
-                supports = _resolve_support(raw_model_id)
-            elif model_id and model_id in manifest:
-                supports = _resolve_support(model_id)
-
-            if supports is not None:
-                return supports
-
-            for manifest_name, entry in manifest.items():
-                if not entry:
-                    continue
-                manifest_base = manifest_name.lower().split("/")[-1]
-                if manifest_base == model_base:
-                    supports = _resolve_support(manifest_name)
-                    if supports is not None:
-                        return supports
+        raw_model_id, model_id = self._get_model_ids(chat_service)
+        supports, _ = self._resolve_model_capability(
+            raw_model_id=raw_model_id,
+            model_id=model_id,
+            capability_attr="supports_function_calling",
+        )
+        if supports is not None:
+            return supports
 
         # Domyślnie nie próbuj function calling bez potwierdzonego wsparcia.
         return False
+
+    def _get_model_ids(self, chat_service) -> tuple[str, str]:
+        raw_model_id = getattr(chat_service, "ai_model_id", "") or ""
+        return raw_model_id, raw_model_id.lower()
+
+    def _resolve_model_capability(
+        self,
+        *,
+        raw_model_id: str,
+        model_id: str,
+        capability_attr: str,
+    ) -> tuple[Optional[bool], Optional[str]]:
+        model_registry = self.model_registry
+        if not model_registry:
+            return None, None
+
+        manifest = model_registry.manifest or {}
+        exact_keys = [
+            key for key in (raw_model_id, model_id) if key and key in manifest
+        ]
+        for key in exact_keys:
+            support = self._resolve_manifest_capability(
+                model_registry=model_registry,
+                manifest=manifest,
+                manifest_key=key,
+                capability_attr=capability_attr,
+            )
+            if support is not None:
+                return support, f"{key} (exact match)"
+
+        model_base = model_id.split("/")[-1]
+        for manifest_name, entry in manifest.items():
+            if not entry:
+                continue
+            if manifest_name.lower().split("/")[-1] != model_base:
+                continue
+            support = self._resolve_manifest_capability(
+                model_registry=model_registry,
+                manifest=manifest,
+                manifest_key=manifest_name,
+                capability_attr=capability_attr,
+            )
+            if support is not None:
+                return support, f"{manifest_name} (base match)"
+
+        return None, None
+
+    def _resolve_manifest_capability(
+        self,
+        *,
+        model_registry,
+        manifest: dict[str, Any],
+        manifest_key: str,
+        capability_attr: str,
+    ) -> Optional[bool]:
+        entry = manifest.get(manifest_key)
+        if not entry:
+            return None
+        try:
+            capabilities = model_registry.get_model_capabilities(manifest_key)
+            if capabilities:
+                return getattr(capabilities, capability_attr, None)
+        except Exception as exc:  # pragma: no cover - defensywne logowanie
+            logger.debug(
+                "Nie udało się pobrać capabilities z registry dla %s: %s",
+                manifest_key,
+                exc,
+            )
+
+        candidate = getattr(entry, "capabilities", None)
+        if candidate:
+            return getattr(candidate, capability_attr, None)
+        return getattr(entry, capability_attr, None)
 
     async def _invoke_chat_service(
         self,

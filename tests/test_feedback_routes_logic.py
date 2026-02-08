@@ -53,6 +53,13 @@ def test_extract_result_from_trace_parses_last_simple_mode_response():
     assert feedback_routes._extract_result_from_trace(None) == ""
 
 
+def test_extract_result_from_trace_invalid_json_returns_empty():
+    trace = SimpleNamespace(
+        steps=[_make_step("SimpleMode", "response", details="{broken-json}")]
+    )
+    assert feedback_routes._extract_result_from_trace(trace) == ""
+
+
 def test_resolve_feedback_context_from_task():
     task_id = uuid4()
     task = SimpleNamespace(
@@ -155,3 +162,81 @@ async def test_get_feedback_logs_limits_and_invalid_lines(tmp_path, monkeypatch)
 
     none = await feedback_routes.get_feedback_logs(limit=0)
     assert "count" in none
+
+
+@pytest.mark.asyncio
+async def test_submit_feedback_down_with_followup_error_and_metrics(monkeypatch):
+    task_id = uuid4()
+    task = SimpleNamespace(
+        id=task_id, content="prompt", result="result", context_history={}
+    )
+    state = SimpleNamespace(get_task=lambda _task_id: task)
+
+    class DummyOrchestrator:
+        async def submit_task(self, _request):
+            raise RuntimeError("submit failed")
+
+    class DummyCollector:
+        def __init__(self):
+            self.up = 0
+            self.down = 0
+
+        def increment_feedback_up(self):
+            self.up += 1
+
+        def increment_feedback_down(self):
+            self.down += 1
+
+    saved = []
+
+    async def fake_save(path, entry, _msg):
+        saved.append((path, entry))
+
+    monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", fake_save)
+    collector = DummyCollector()
+    monkeypatch.setattr(
+        feedback_routes.metrics_module, "metrics_collector", collector, raising=False
+    )
+    feedback_routes.set_dependencies(
+        orchestrator=DummyOrchestrator(), state_manager=state, request_tracer=None
+    )
+
+    payload = feedback_routes.FeedbackRequest(
+        task_id=task_id, rating="down", comment="needs fix"
+    )
+    response = await feedback_routes.submit_feedback(payload)
+    assert response.status == "ok"
+    assert response.follow_up_task_id is None
+    assert collector.down == 1
+    assert saved
+
+
+@pytest.mark.asyncio
+async def test_submit_feedback_up_hidden_prompt_save_error(monkeypatch):
+    task_id = uuid4()
+    task = SimpleNamespace(
+        id=task_id,
+        content="prompt",
+        result="result",
+        context_history={"intent_debug": {"intent": "CHAT"}},
+    )
+    state = SimpleNamespace(get_task=lambda _task_id: task)
+    calls = {"count": 0}
+
+    async def fake_save(path, entry, _msg):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise RuntimeError("hidden save failed")
+
+    monkeypatch.setattr(feedback_routes, "_save_jsonl_entry", fake_save)
+    monkeypatch.setattr(
+        feedback_routes.metrics_module, "metrics_collector", None, raising=False
+    )
+    feedback_routes.set_dependencies(
+        orchestrator=None, state_manager=state, request_tracer=None
+    )
+
+    payload = feedback_routes.FeedbackRequest(task_id=task_id, rating="up")
+    response = await feedback_routes.submit_feedback(payload)
+    assert response.status == "ok"
+    assert calls["count"] == 2

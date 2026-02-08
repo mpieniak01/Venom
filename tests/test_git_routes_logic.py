@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +24,70 @@ class DummyGitSkill:
 
     async def init_repo(self, url=None):
         return "✅ initialized" if not url else "❌ failed"
+
+
+@dataclass
+class _FakeCompleted:
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+def _make_fake_repo(*, has_remote=True, has_local_main=True, ahead=0, behind=0):
+    class _Head:
+        def __init__(self, valid: bool):
+            self._valid = valid
+
+        def is_valid(self):
+            return self._valid
+
+    class _Index:
+        @staticmethod
+        def diff(_head):
+            return [1, 2]
+
+    class _Repo:
+        remotes = ["origin"] if has_remote else []
+        heads = ["main"] if has_local_main else []
+        head = _Head(valid=True)
+        index = _Index()
+        untracked_files = ["u1"]
+
+        @staticmethod
+        def commit(_ref):
+            return "ok"
+
+        @staticmethod
+        def iter_commits(spec: str):
+            count = ahead if spec == "origin/main..main" else behind
+            return [object() for _ in range(count)]
+
+    return _Repo()
+
+
+@pytest.mark.asyncio
+async def test_run_git_command_and_wrappers(monkeypatch):
+    monkeypatch.setattr(
+        git_routes.subprocess,
+        "run",
+        lambda *args, **kwargs: _FakeCompleted(returncode=0, stdout="ok\n"),
+    )
+    result = await git_routes._run_git_command(Path("."), ["status"])
+    assert result.returncode == 0
+
+    async def fake_run_git_command_ok(*_args, **_kwargs):
+        return _FakeCompleted(0, "x\n")
+
+    monkeypatch.setattr(git_routes, "_run_git_command", fake_run_git_command_ok)
+    assert await git_routes._run_git(Path("."), ["status"]) == "x"
+
+    async def fake_run_git_command_err(*_args, **_kwargs):
+        return _FakeCompleted(1, "", "err")
+
+    monkeypatch.setattr(git_routes, "_run_git_command", fake_run_git_command_err)
+    with pytest.raises(RuntimeError):
+        await git_routes._run_git(Path("."), ["status"])
+    assert await git_routes._run_git_ok(Path("."), ["status"]) is False
 
 
 @pytest.mark.asyncio
@@ -58,6 +123,55 @@ async def test_collect_compare_state_diverged(monkeypatch):
     assert state["compare_status"] == "diverged"
     assert state["behind_count"] == 3
     assert state["ahead_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_collect_compare_state_other_statuses(monkeypatch):
+    async def fake_run_git_ok_no_remote(_repo_root: Path, args: list[str]) -> bool:
+        if args[:3] == ["remote", "get-url", "origin"]:
+            return False
+        return True
+
+    monkeypatch.setattr(git_routes, "_run_git_ok", fake_run_git_ok_no_remote)
+    assert (await git_routes._collect_compare_state(Path(".")))[
+        "compare_status"
+    ] == "no_remote"
+
+    async def fake_run_git_ok_no_remote_main(_repo_root: Path, args: list[str]) -> bool:
+        if args[-1] == "refs/remotes/origin/main":
+            return False
+        return True
+
+    monkeypatch.setattr(git_routes, "_run_git_ok", fake_run_git_ok_no_remote_main)
+    assert (await git_routes._collect_compare_state(Path(".")))[
+        "compare_status"
+    ] == "no_remote_main"
+
+    async def fake_run_git_ok_all(_repo_root: Path, args: list[str]) -> bool:
+        return True
+
+    async def fake_run_git_ahead(*_args, **_kwargs):
+        return "0 1"
+
+    async def fake_run_git_behind(*_args, **_kwargs):
+        return "2 0"
+
+    async def fake_run_git_equal(*_args, **_kwargs):
+        return "0 0"
+
+    monkeypatch.setattr(git_routes, "_run_git_ok", fake_run_git_ok_all)
+    monkeypatch.setattr(git_routes, "_run_git", fake_run_git_ahead)
+    assert (await git_routes._collect_compare_state(Path(".")))[
+        "compare_status"
+    ] == "ahead"
+    monkeypatch.setattr(git_routes, "_run_git", fake_run_git_behind)
+    assert (await git_routes._collect_compare_state(Path(".")))[
+        "compare_status"
+    ] == "behind"
+    monkeypatch.setattr(git_routes, "_run_git", fake_run_git_equal)
+    assert (await git_routes._collect_compare_state(Path(".")))[
+        "compare_status"
+    ] == "equal"
 
 
 @pytest.mark.asyncio
@@ -116,6 +230,29 @@ def test_count_modified_from_status_output():
         ]
     )
     assert git_routes._count_modified_from_status_output(output) == 4
+
+
+def test_build_skill_compare_state_and_modified_count():
+    no_main = _make_fake_repo(has_local_main=False)
+    status, ahead, behind = git_routes._build_skill_compare_state(no_main)
+    assert (status, ahead, behind) == ("no_local_main", 0, 0)
+
+    no_remote = _make_fake_repo(has_remote=False)
+    status, ahead, behind = git_routes._build_skill_compare_state(no_remote)
+    assert (status, ahead, behind) == ("no_remote", 0, 0)
+
+    diverged = _make_fake_repo(ahead=2, behind=3)
+    status, ahead, behind = git_routes._build_skill_compare_state(diverged)
+    assert (status, ahead, behind) == ("diverged", 2, 3)
+
+    equal = _make_fake_repo(ahead=0, behind=0)
+    status, ahead, behind = git_routes._build_skill_compare_state(equal)
+    assert (status, ahead, behind) == ("equal", 0, 0)
+
+    assert git_routes._build_skill_modified_count(equal) == 3
+
+    equal.head._valid = False
+    assert git_routes._build_skill_modified_count(equal) == 1
 
 
 def test_is_workspace_git_error_variants():
@@ -285,3 +422,30 @@ async def test_sync_and_undo_raise_expected_http_errors():
     with pytest.raises(HTTPException) as undo_not_impl:
         await git_routes.undo_changes()
     assert undo_not_impl.value.status_code == 501
+
+
+@pytest.mark.asyncio
+async def test_get_git_status_uses_cache(monkeypatch):
+    git_routes._git_status_cache.set({"status": "success", "branch": "cached"})
+
+    async def should_not_run():
+        raise AssertionError("cache should short-circuit")
+
+    monkeypatch.setattr(git_routes, "_get_git_status_impl", should_not_run)
+    result = await git_routes.get_git_status()
+    assert result["branch"] == "cached"
+    git_routes._git_status_cache.clear()
+
+
+@pytest.mark.asyncio
+async def test_init_repository_variants():
+    git_routes.set_dependencies(None)
+    with pytest.raises(HTTPException) as exc:
+        await git_routes.init_repository(git_routes.InitRepoRequest(url=None))
+    assert exc.value.status_code == 503
+
+    git_routes.set_dependencies(DummyGitSkill(branch="main", status="ok"))
+    result = await git_routes.init_repository(
+        git_routes.InitRepoRequest(url="https://example.com/repo.git")
+    )
+    assert result["status"] == "error"

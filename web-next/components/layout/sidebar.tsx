@@ -66,12 +66,12 @@ type SidebarStoredState = {
 };
 
 const readSidebarStoredState = (): SidebarStoredState => {
-  if (typeof window === "undefined") {
+  if (globalThis.window === undefined) {
     return { collapsed: null, autonomySnapshot: null };
   }
 
-  const storedCollapsed = window.localStorage.getItem("sidebar-collapsed");
-  const storedAutonomy = window.localStorage.getItem("sidebar-autonomy");
+  const storedCollapsed = globalThis.window.localStorage.getItem("sidebar-collapsed");
+  const storedAutonomy = globalThis.window.localStorage.getItem("sidebar-autonomy");
   let autonomySnapshot: AutonomySnapshot | null = null;
 
   if (storedAutonomy) {
@@ -89,8 +89,8 @@ const readSidebarStoredState = (): SidebarStoredState => {
 };
 
 const persistSidebarWidth = (collapsed: boolean) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("sidebar-collapsed", String(collapsed));
+  if (globalThis.window === undefined) return;
+  globalThis.window.localStorage.setItem("sidebar-collapsed", String(collapsed));
   const root = document.documentElement;
   if (!root) return;
 

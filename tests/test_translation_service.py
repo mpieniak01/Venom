@@ -51,7 +51,8 @@ async def test_translate_text_uses_cache(monkeypatch):
 
     class DummyClient:
         def __init__(self, *args, **kwargs):
-            pass
+            # No-op: konstruktor tylko dla kompatybilności z httpx.AsyncClient
+            return None
 
         async def __aenter__(self):
             await asyncio.sleep(0)
@@ -84,7 +85,8 @@ async def test_translate_text_falls_back_on_error(monkeypatch):
 
     class DummyClient:
         def __init__(self, *args, **kwargs):
-            pass
+            # No-op: konstruktor tylko dla kompatybilności z httpx.AsyncClient
+            return None
 
         async def __aenter__(self):
             await asyncio.sleep(0)

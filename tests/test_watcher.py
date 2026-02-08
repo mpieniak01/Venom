@@ -21,7 +21,6 @@ async def test_watcher_initialization(temp_workspace):
     """Test inicjalizacji watchera."""
     watcher = FileWatcher(workspace_root=str(temp_workspace))
 
-    assert watcher is not None
     assert not watcher.is_running
     assert watcher.workspace_root == temp_workspace
 

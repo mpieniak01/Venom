@@ -21,7 +21,6 @@ async def test_documenter_initialization(temp_workspace):
     """Test inicjalizacji DocumenterAgent."""
     agent = DocumenterAgent(workspace_root=str(temp_workspace))
 
-    assert agent is not None
     assert agent.workspace_root == temp_workspace
 
 

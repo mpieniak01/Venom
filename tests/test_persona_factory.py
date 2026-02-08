@@ -88,7 +88,6 @@ def test_persona_factory_initialization():
     """Test inicjalizacji PersonaFactory."""
     factory = PersonaFactory()
 
-    assert factory is not None
     assert factory.kernel is None  # Brak kernela
 
 
@@ -98,7 +97,6 @@ def test_persona_factory_generate_persona():
 
     persona = factory.generate_persona(goal="Kupić buty")
 
-    assert persona is not None
     assert persona.name is not None
     assert persona.goal == "Kupić buty"
     assert persona.age > 0
@@ -148,7 +146,6 @@ def test_persona_factory_unknown_archetype():
     persona = factory.generate_persona(goal="Test", archetype="unknown_archetype")
 
     # Powinna być wygenerowana pomimo nieznanego archetypu
-    assert persona is not None
     assert persona.goal == "Test"
 
 
@@ -187,5 +184,4 @@ async def test_persona_factory_with_kernel():
     factory = PersonaFactory(kernel=None)
 
     persona = factory.generate_persona(goal="Test", use_llm=False)
-    assert persona is not None
     assert persona.description != ""  # Powinna mieć podstawowy opis

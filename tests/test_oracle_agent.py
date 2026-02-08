@@ -30,7 +30,6 @@ def test_oracle_agent_init(mock_kernel, mock_graph_rag_service):
     """Test inicjalizacji OracleAgent."""
     agent = OracleAgent(mock_kernel, mock_graph_rag_service)
 
-    assert agent is not None
     assert agent.kernel is mock_kernel
     assert agent.graph_rag is mock_graph_rag_service
     assert agent.ingestion_engine is not None

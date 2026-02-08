@@ -297,7 +297,7 @@ def test_get_gpu_memory_usage(service_monitor):
             result = service_monitor.get_gpu_memory_usage()
 
             assert result is not None
-            assert result == 2000.50  # Największe użycie z dwóch GPU
+            assert result == pytest.approx(2000.50)  # Największe użycie z dwóch GPU
 
 
 def test_get_gpu_memory_usage_error_handling(service_monitor):

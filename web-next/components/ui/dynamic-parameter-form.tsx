@@ -41,9 +41,9 @@ function ParameterControl({
     const numValue = Number(value);
 
     const handleNumericChange = (rawValue: string) => {
-      const parsed = type === "float" ? parseFloat(rawValue) : parseInt(rawValue, 10);
+      const parsed = type === "float" ? Number.parseFloat(rawValue) : Number.parseInt(rawValue, 10);
       // Walidacja NaN i zakresu
-      if (!isNaN(parsed)) {
+      if (!Number.isNaN(parsed)) {
         const clamped = Math.max(min ?? -Infinity, Math.min(max ?? Infinity, parsed));
         onChange(clamped);
       }

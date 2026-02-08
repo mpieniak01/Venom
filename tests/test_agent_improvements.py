@@ -110,17 +110,17 @@ class TestStrategistImprovements:
         # Test z JSON
         time_result_json = '{"minutes": 120}\n\nOszacowany czas: 120 minut'
         time = agent._extract_time(time_result_json)
-        assert time == 120.0
+        assert time == pytest.approx(120.0)
 
         # Test z tekstem bez JSON
         time_result_text = "Oszacowany czas: 45 minut"
         time = agent._extract_time(time_result_text)
-        assert time == 45.0
+        assert time == pytest.approx(45.0)
 
         # Test fallback
         time_result_invalid = "Brak informacji o czasie"
         time = agent._extract_time(time_result_invalid)
-        assert time == 30.0  # Wartość domyślna
+        assert time == pytest.approx(30.0)  # Wartość domyślna
 
     def test_complexity_skill_returns_json(self):
         """Test że ComplexitySkill zwraca JSON w wyniku."""

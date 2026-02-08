@@ -116,7 +116,7 @@ export function EventForm({ onSubmit, onCancel }: EventFormProps) {
         <select
           id="duration"
           value={formData.duration_minutes}
-          onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
+          onChange={(e) => setFormData({ ...formData, duration_minutes: Number.parseInt(e.target.value, 10) })}
           className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
           disabled={loading}
         >

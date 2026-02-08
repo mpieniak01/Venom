@@ -52,9 +52,7 @@ export function BenchmarkConfigurator({
     <div className="space-y-4">
       {/* Runtime Selection */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-zinc-300">
-          Runtime
-        </label>
+        <p className="mb-2 block text-sm font-medium text-zinc-300">Runtime</p>
         <div className="flex gap-2" role="group" aria-label="Wybór runtime">
           <Button
             type="button"
@@ -103,12 +101,12 @@ export function BenchmarkConfigurator({
 
       {/* Models Multi-Select */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-zinc-300">
+        <p className="mb-2 block text-sm font-medium text-zinc-300">
           Modele do testowania
           <span className="ml-2 text-xs text-zinc-500">
             ({selectedModels.length} wybrano)
           </span>
-        </label>
+        </p>
         <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl box-muted p-3">
           {filteredModels.length === 0 ? (
             <p className="text-sm text-zinc-500">
@@ -161,7 +159,7 @@ export function BenchmarkConfigurator({
           min="1"
           max="100"
           value={numQuestions}
-          onChange={(e) => setNumQuestions(Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+          onChange={(e) => setNumQuestions(Math.min(100, Math.max(1, Number.parseInt(e.target.value, 10) || 1)))}
           disabled={disabled}
           className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white outline-none transition focus:border-violet-400 disabled:cursor-not-allowed disabled:opacity-50"
         />

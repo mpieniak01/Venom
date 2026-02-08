@@ -100,10 +100,6 @@ class HybridModelRouter:
 
         # PRIORYTET 3: Tryb CLOUD - wszystko do chmury (jeśli nie wrażliwe)
         if self.ai_mode == AIMode.CLOUD:
-            if task_type == TaskType.SENSITIVE:
-                return self._route_to_local(
-                    "Dane wrażliwe - wymuszenie lokalnego modelu"
-                )
             # GLOBAL COST GUARD: Sprawdź czy tryb płatny jest włączony
             return self._route_to_cloud_with_guard(
                 f"Tryb CLOUD - zadanie {task_type.value}"

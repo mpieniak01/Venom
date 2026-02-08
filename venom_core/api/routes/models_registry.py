@@ -22,7 +22,14 @@ def _get_translation_service():
 router = APIRouter(prefix="/api/v1", tags=["models"])
 
 
-@router.get("/models/providers")
+@router.get(
+    "/models/providers",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        400: {"description": "Nieprawidłowy provider"},
+        500: {"description": "Błąd serwera podczas pobierania listy modeli providerów"},
+    },
+)
 async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
     """
     Lista dostępnych modeli ze wszystkich providerów.
@@ -74,7 +81,14 @@ async def list_model_providers(provider: Optional[str] = None, limit: int = 20):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.get("/models/trending")
+@router.get(
+    "/models/trending",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        400: {"description": "Nieprawidłowy provider"},
+        500: {"description": "Błąd serwera podczas pobierania trendujących modeli"},
+    },
+)
 async def list_trending_models(provider: str, limit: int = 12):
     """
     Lista trendujących modeli z zewnętrznych providerów.
@@ -111,7 +125,14 @@ async def list_trending_models(provider: str, limit: int = 12):
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.get("/models/search")
+@router.get(
+    "/models/search",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        400: {"description": "Nieprawidłowy provider lub parametry wyszukiwania"},
+        500: {"description": "Błąd serwera podczas wyszukiwania modeli"},
+    },
+)
 async def search_models(
     query: Annotated[str, Query(min_length=2)],
     provider: str = "huggingface",
@@ -152,7 +173,14 @@ async def search_models(
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.get("/models/news")
+@router.get(
+    "/models/news",
+    responses={
+        503: {"description": "ModelRegistry nie jest dostępny"},
+        400: {"description": "Nieprawidłowy provider lub język docelowy"},
+        500: {"description": "Błąd serwera podczas pobierania newsów modeli"},
+    },
+)
 async def list_model_news(
     provider: str = "huggingface",
     limit: int = 5,

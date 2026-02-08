@@ -14,7 +14,13 @@ router = APIRouter(prefix="/api/v1", tags=["models"])
 _models_usage_cache = TTLCache[dict](ttl_seconds=5.0)
 
 
-@router.get("/models/usage")
+@router.get(
+    "/models/usage",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        500: {"description": "Błąd serwera podczas pobierania metryk modeli"},
+    },
+)
 async def get_models_usage():
     """
     Zwraca metryki uzycia: zajetosc dysku (GB) oraz uzycie VRAM.
@@ -37,7 +43,13 @@ async def get_models_usage():
         raise HTTPException(status_code=500, detail=f"Błąd serwera: {str(exc)}")
 
 
-@router.post("/models/unload-all")
+@router.post(
+    "/models/unload-all",
+    responses={
+        503: {"description": "ModelManager nie jest dostępny"},
+        500: {"description": "Błąd serwera podczas zwalniania zasobów modeli"},
+    },
+)
 async def unload_all_models():
     """
     Panic Button - wymusza zwolnienie pamieci VRAM/RAM.

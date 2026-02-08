@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.helpers.url_fixtures import http_url
 from venom_core.skills.mcp_manager_skill import McpManagerSkill, McpToolMetadata
 
 
@@ -33,7 +34,7 @@ async def test_import_flow(manager):
     manager.generator.generate_skill_code = MagicMock(return_value="print('hello')")
 
     result = await manager.import_mcp_tool(
-        repo_url="http://git.fake/repo",
+        repo_url=http_url("git.fake", path="/repo"),
         tool_name="fake_tool",
         install_command="pip install .",
         server_entrypoint="python server.py",

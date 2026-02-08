@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import http_url
 from venom_core.core.service_monitor import (
     ServiceHealthMonitor,
     ServiceInfo,
@@ -19,7 +20,7 @@ async def test_service_status_broadcast():
     service = ServiceInfo(
         name="test_api",
         service_type="api",
-        endpoint="http://fake.api/health",
+        endpoint=http_url("fake.api", path="/health"),
         status=ServiceStatus.UNKNOWN,
     )
     registry.services["test_api"] = service

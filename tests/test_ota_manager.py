@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from tests.helpers.url_fixtures import http_url
 from venom_core.core.ota_manager import OTAManager, OTAPackage
 from venom_core.infrastructure.message_broker import MessageBroker
 
@@ -197,7 +198,7 @@ async def test_apply_update_checksum_mismatch(ota_manager, tmp_path):
 
     with patch.object(ota_manager, "_download_package", return_value=test_file):
         result = await ota_manager.apply_update(
-            package_url="http://example.com/package.zip",
+            package_url=http_url("example.com", path="/package.zip"),
             expected_checksum="wrong_checksum",
             restart_after=False,
         )

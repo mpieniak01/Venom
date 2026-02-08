@@ -1,52 +1,54 @@
 from pathlib import Path
 
+INIT_PY_FILE = "__init__.py"
+
 # --- STRUKTURA VENOMA v2 ---
 # Definicja katalogów i plików
 STRUCTURE = {
     ".": [".env", "requirements.txt", "README.md"],
     "docs": ["VENOM_DIAGRAM.md", "VENOM_MASTER_VISION_V2.md"],
     "data/memory": ["lessons_learned.json"],
-    "tests": ["test_healthz.py", "__init__.py"],
+    "tests": ["test_healthz.py", INIT_PY_FILE],
     "logs": [],  # katalog na logi Venoma
     "workspace": [],  # root na workspace (zgodnie z config.WORKSPACE_ROOT)
     "scripts": [],  # tu trzymamy genesis, migracje, narzędzia CLI
-    "venom_core": ["__init__.py", "main.py", "config.py"],
+    "venom_core": [INIT_PY_FILE, "main.py", "config.py"],
     "venom_core/core": [
-        "__init__.py",
+        INIT_PY_FILE,
         "orchestrator.py",
         "intent_manager.py",
         "policy_engine.py",
         "state_manager.py",
     ],
     "venom_core/agents": [
-        "__init__.py",
+        INIT_PY_FILE,
         "architect.py",
         "librarian.py",
         "coder.py",
         "critic.py",
         "writer.py",
     ],
-    "venom_core/execution": ["__init__.py", "kernel_builder.py"],
+    "venom_core/execution": [INIT_PY_FILE, "kernel_builder.py"],
     "venom_core/execution/skills": [
-        "__init__.py",
+        INIT_PY_FILE,
         "file_skill.py",
         "shell_skill.py",
         "git_skill.py",
     ],
-    "venom_core/perception": ["__init__.py", "eyes.py", "antenna.py"],
+    "venom_core/perception": [INIT_PY_FILE, "eyes.py", "antenna.py"],
     "venom_core/memory": [
-        "__init__.py",
+        INIT_PY_FILE,
         "graph_store.py",
         "vector_store.py",
         "lessons_store.py",
     ],
     "venom_core/infrastructure": [
-        "__init__.py",
+        INIT_PY_FILE,
         "onnx_runtime.py",
         "docker_habitat.py",
         "hardware_pi.py",
     ],
-    "venom_core/utils": ["__init__.py", "logger.py", "helpers.py"],
+    "venom_core/utils": [INIT_PY_FILE, "logger.py", "helpers.py"],
 }
 
 # --- TREŚCI STARTOWE (BOILERPLATE) ---

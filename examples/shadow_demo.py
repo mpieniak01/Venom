@@ -18,6 +18,7 @@ from venom_core.ui.notifier import Notifier
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+SUGGESTION_GENERATED_MESSAGE = "✅ Sugestia wygenerowana!"
 
 
 def demo_privacy_filter():
@@ -87,7 +88,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(sensor_data_error)
 
     if suggestion:
-        print("✅ Sugestia wygenerowana!")
+        print(SUGGESTION_GENERATED_MESSAGE)
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Tytuł: {suggestion.title}")
         print(f"   Treść: {suggestion.message}")
@@ -114,7 +115,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(sensor_data_code)
 
     if suggestion:
-        print("✅ Sugestia wygenerowana!")
+        print(SUGGESTION_GENERATED_MESSAGE)
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Pewność: {suggestion.confidence:.2%}")
     else:
@@ -131,7 +132,7 @@ async def demo_shadow_agent_detection():
     suggestion = await shadow.analyze_sensor_data(window_data)
 
     if suggestion:
-        print("✅ Sugestia wygenerowana!")
+        print(SUGGESTION_GENERATED_MESSAGE)
         print(f"   Typ: {suggestion.suggestion_type}")
         print(f"   Treść: {suggestion.message}")
     else:

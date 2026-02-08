@@ -483,7 +483,8 @@ class CloudProvisioner:
             service_name: Nazwa usługi (domyślnie: venom)
 
         Returns:
-            URL usługi w formacie venom.local:8000 (schemat dobierany polityką URL)
+            URL usługi w formacie http(s)://venom.local:8000
+            (schemat dobierany polityką URL)
         """
         service_name = service_name or "venom"
         # Usuń .local jeśli już jest

@@ -254,79 +254,96 @@ class BaseAgent(ABC):
 
                 return await chat_service.get_chat_message_content(**kwargs)
             except Exception as api_error:
-                error_text = str(api_error).lower()
-                inner = getattr(api_error, "inner_exception", None)
-                if inner:
-                    error_text += f" {str(inner).lower()}"
-
-                handled = False
-                token_match = re.search(
-                    r"maximum context length is (\d+) tokens.*request has (\d+) input tokens",
-                    error_text,
-                )
-                if token_match:
-                    try:
-                        max_ctx = int(token_match.group(1))
-                        input_tokens = int(token_match.group(2))
-                        safe_max = max(16, max_ctx - input_tokens - 8)
-                        if safe_max > 0:
-                            try:
-                                settings.max_tokens = safe_max
-                                logger.warning(
-                                    "Zmniejszam max_tokens do %s (max_ctx=%s, input=%s).",
-                                    safe_max,
-                                    max_ctx,
-                                    input_tokens,
-                                )
-                                handled = True
-                            except Exception:
-                                logger.debug(
-                                    "Nie udało się ustawić max_tokens w settings po błędzie kontekstu."
-                                )
-                    except Exception:
-                        # Ignorowanie innych błędów podczas retry - agent powtórzy próbę z innymi parametrami
-                        # Ignorujemy błędy przy próbie parsowania max_tokens z wiadomości błędu
-                        pass
-
-                if (
-                    "system role not supported" in error_text
-                    and not system_fallback_used
-                ):
+                error_text = self._build_error_text(api_error)
+                handled = self._apply_context_window_fallback(error_text, settings)
+                if self._should_apply_system_fallback(error_text, system_fallback_used):
                     chat_history = self._strip_system_messages(chat_history)
                     system_fallback_used = True
                     handled = True
-
-                if functions_enabled and (
-                    "does not support tools" in error_text
-                    or "kernel is required for function calls" in error_text
-                ):
+                if functions_enabled and self._should_disable_functions(error_text):
                     functions_enabled = False
-                    if hasattr(settings, "function_choice_behavior"):
-                        try:
-                            settings.function_choice_behavior = None
-                        except Exception:
-                            logger.debug(
-                                "Nie udało się wyłączyć function_choice_behavior w settings."
-                            )
-                    handled = True
-                if functions_enabled and (
-                    'auto" tool choice requires' in error_text
-                    or "auto tool choice requires" in error_text
-                ):
-                    functions_enabled = False
-                    if hasattr(settings, "function_choice_behavior"):
-                        try:
-                            settings.function_choice_behavior = None
-                        except Exception:
-                            logger.debug(
-                                "Nie udało się wyłączyć function_choice_behavior po błędzie auto tool choice."
-                            )
+                    self._disable_function_choice_behavior(settings, error_text)
                     handled = True
 
                 if not handled:
                     raise
 
         raise RuntimeError("Nie udało się uzyskać odpowiedzi z LLM po fallbackach.")
+
+    def _build_error_text(self, api_error: Exception) -> str:
+        error_text = str(api_error).lower()
+        inner = getattr(api_error, "inner_exception", None)
+        if inner:
+            error_text += f" {str(inner).lower()}"
+        return error_text
+
+    def _apply_context_window_fallback(
+        self,
+        error_text: str,
+        settings: OpenAIChatPromptExecutionSettings,
+    ) -> bool:
+        token_match = re.search(
+            r"maximum context length is (\d+) tokens.*request has (\d+) input tokens",
+            error_text,
+        )
+        if not token_match:
+            return False
+        try:
+            max_ctx = int(token_match.group(1))
+            input_tokens = int(token_match.group(2))
+            safe_max = max(16, max_ctx - input_tokens - 8)
+            if safe_max <= 0:
+                return False
+            settings.max_tokens = safe_max
+            logger.warning(
+                "Zmniejszam max_tokens do %s (max_ctx=%s, input=%s).",
+                safe_max,
+                max_ctx,
+                input_tokens,
+            )
+            return True
+        except Exception:
+            logger.debug(
+                "Nie udało się ustawić max_tokens w settings po błędzie kontekstu."
+            )
+            return False
+
+    def _should_apply_system_fallback(
+        self,
+        error_text: str,
+        system_fallback_used: bool,
+    ) -> bool:
+        return "system role not supported" in error_text and not system_fallback_used
+
+    def _should_disable_functions(self, error_text: str) -> bool:
+        return any(
+            marker in error_text
+            for marker in (
+                "does not support tools",
+                "kernel is required for function calls",
+                'auto" tool choice requires',
+                "auto tool choice requires",
+            )
+        )
+
+    def _disable_function_choice_behavior(
+        self,
+        settings: OpenAIChatPromptExecutionSettings,
+        error_text: str,
+    ) -> None:
+        if not hasattr(settings, "function_choice_behavior"):
+            return
+        try:
+            settings.function_choice_behavior = None
+        except Exception:
+            if "auto tool choice requires" in error_text:
+                logger.debug(
+                    "Nie udało się wyłączyć function_choice_behavior po błędzie auto tool choice."
+                )
+            else:
+                logger.debug(
+                    "Nie udało się wyłączyć function_choice_behavior w settings."
+                )
 
     async def _invoke_chat_streaming(self, chat_service, stream_callback, **kwargs):
         """

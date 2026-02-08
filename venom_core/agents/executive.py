@@ -413,12 +413,9 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
 
         return full_report
 
-    def run_status_meeting(self, council_session=None) -> str:
+    def run_status_meeting(self) -> str:
         """
         Przeprowadza "Daily Standup" - spotkanie statusowe z zespołem.
-
-        Args:
-            council_session: Opcjonalnie sesja Council do konsultacji
 
         Returns:
             Podsumowanie spotkania

@@ -301,7 +301,9 @@ class DemonstrationAnalyzer:
 
         return has_no_spaces and has_digits and has_special and is_short
 
-    def _describe_ui_element(self, crop: Image.Image, x: int, y: int) -> Optional[str]:
+    def _describe_ui_element(
+        self, crop: Image.Image, _x: int, _y: int
+    ) -> Optional[str]:
         """
         Używa VLM do opisania elementu UI.
 
@@ -328,7 +330,7 @@ class DemonstrationAnalyzer:
             logger.error(f"Błąd podczas opisywania elementu UI: {e}")
             return None
 
-    def _simple_element_detection(self, crop: Image.Image) -> str:
+    def _simple_element_detection(self, _crop: Image.Image) -> str:
         """
         Prosta detekcja elementu (placeholder).
 

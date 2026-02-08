@@ -28,6 +28,71 @@ SERVER_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+def _load_generation_schema(model_registry, model_name: str, *, update_mode: bool):
+    capabilities = model_registry.get_model_capabilities(model_name)
+    if capabilities is not None and capabilities.generation_schema is not None:
+        return capabilities.generation_schema
+
+    from venom_core.core.model_registry import _create_default_generation_schema
+
+    if update_mode:
+        logger.warning("Brak schematu w manifeście podczas zapisu, używam domyślnego")
+    else:
+        logger.warning("Brak schematu w manifeście, używam domyślnego")
+    return _create_default_generation_schema()
+
+
+def _resolve_runtime_key(runtime: Optional[str]) -> str:
+    runtime_info = get_active_llm_runtime()
+    provider = runtime if runtime else runtime_info.provider
+    return GenerationParamsAdapter.normalize_provider(provider)
+
+
+def _set_default_if_present(
+    schema: dict[str, dict[str, Any]], key: str, value: Any
+) -> None:
+    if key in schema and value is not None:
+        schema[key]["default"] = value
+
+
+def _apply_ollama_defaults(schema: dict[str, dict[str, Any]], model_name: str) -> None:
+    manifest_params = read_ollama_manifest_params(model_name)
+    mapped = {
+        "temperature": manifest_params.get("temperature"),
+        "top_p": manifest_params.get("top_p"),
+        "top_k": manifest_params.get("top_k"),
+        "repeat_penalty": manifest_params.get("repeat_penalty"),
+    }
+    num_predict = manifest_params.get("num_predict")
+    num_ctx = manifest_params.get("num_ctx")
+    mapped["max_tokens"] = num_predict if num_predict is not None else num_ctx
+    for key, value in mapped.items():
+        _set_default_if_present(schema, key, value)
+
+
+def _apply_vllm_defaults(schema: dict[str, dict[str, Any]], model_name: str) -> None:
+    gen_config = read_vllm_generation_config(model_name)
+    mapped = {
+        "temperature": gen_config.get("temperature"),
+        "top_p": gen_config.get("top_p"),
+        "top_k": gen_config.get("top_k"),
+        "repeat_penalty": gen_config.get("repetition_penalty"),
+        "max_tokens": gen_config.get("max_new_tokens"),
+    }
+    for key, value in mapped.items():
+        _set_default_if_present(schema, key, value)
+
+
+def _apply_runtime_defaults(
+    schema: dict[str, dict[str, Any]], runtime_key: str, model_name: str
+) -> None:
+    if runtime_key == "ollama":
+        _apply_ollama_defaults(schema, model_name)
+        return
+    if runtime_key == "vllm":
+        _apply_vllm_defaults(schema, model_name)
+
+
 @router.get("/models/{model_name}/capabilities", responses=SERVER_ERROR_RESPONSES)
 def get_model_capabilities_endpoint(model_name: str):
     """Pobiera capabilities modelu (wsparcie rol, templaty, etc.)."""
@@ -78,53 +143,13 @@ def get_model_config_endpoint(model_name: str, runtime: Optional[str] = None):
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
-        capabilities = model_registry.get_model_capabilities(model_name)
-        if capabilities is None or capabilities.generation_schema is None:
-            from venom_core.core.model_registry import _create_default_generation_schema
-
-            logger.warning("Brak schematu w manifeście, używam domyślnego")
-            generation_schema = _create_default_generation_schema()
-        else:
-            generation_schema = capabilities.generation_schema
+        generation_schema = _load_generation_schema(
+            model_registry, model_name, update_mode=False
+        )
 
         schema = {key: param.to_dict() for key, param in generation_schema.items()}
-        runtime_info = get_active_llm_runtime()
-        runtime_key = (
-            GenerationParamsAdapter.normalize_provider(runtime)
-            if runtime
-            else GenerationParamsAdapter.normalize_provider(runtime_info.provider)
-        )
-        if runtime_key == "ollama":
-            manifest_params = read_ollama_manifest_params(model_name)
-            mapped = {
-                "temperature": manifest_params.get("temperature"),
-                "top_p": manifest_params.get("top_p"),
-                "top_k": manifest_params.get("top_k"),
-                "repeat_penalty": manifest_params.get("repeat_penalty"),
-            }
-            num_predict = manifest_params.get("num_predict")
-            num_ctx = manifest_params.get("num_ctx")
-            if num_predict is not None:
-                mapped["max_tokens"] = num_predict
-            elif num_ctx is not None:
-                mapped["max_tokens"] = num_ctx
-            for key, value in mapped.items():
-                if key in schema and value is not None:
-                    schema[key]["default"] = value
-        if runtime_key == "vllm":
-            gen_config = read_vllm_generation_config(model_name)
-            mapped = {
-                "temperature": gen_config.get("temperature"),
-                "top_p": gen_config.get("top_p"),
-                "top_k": gen_config.get("top_k"),
-                "repeat_penalty": gen_config.get("repetition_penalty"),
-            }
-            max_new_tokens = gen_config.get("max_new_tokens")
-            if max_new_tokens is not None:
-                mapped["max_tokens"] = max_new_tokens
-            for key, value in mapped.items():
-                if key in schema and value is not None:
-                    schema[key]["default"] = value
+        runtime_key = _resolve_runtime_key(runtime)
+        _apply_runtime_defaults(schema, runtime_key, model_name)
         defaults = {key: spec.get("default") for key, spec in schema.items()}
         overrides = load_generation_overrides().get(runtime_key, {}).get(model_name, {})
         current_values = {**defaults, **overrides}
@@ -151,23 +176,10 @@ def update_model_config_endpoint(model_name: str, request: ModelConfigUpdateRequ
         raise HTTPException(status_code=503, detail=MODEL_REGISTRY_UNAVAILABLE_DETAIL)
 
     try:
-        capabilities = model_registry.get_model_capabilities(model_name)
-        if capabilities and capabilities.generation_schema is not None:
-            generation_schema = capabilities.generation_schema
-        else:
-            from venom_core.core.model_registry import _create_default_generation_schema
-
-            logger.warning(
-                "Brak schematu w manifeście podczas zapisu, używam domyślnego"
-            )
-            generation_schema = _create_default_generation_schema()
-
-        runtime_info = get_active_llm_runtime()
-        runtime_key = (
-            GenerationParamsAdapter.normalize_provider(request.runtime)
-            if request.runtime
-            else GenerationParamsAdapter.normalize_provider(runtime_info.provider)
+        generation_schema = _load_generation_schema(
+            model_registry, model_name, update_mode=True
         )
+        runtime_key = _resolve_runtime_key(request.runtime)
 
         schema = {key: param.to_dict() for key, param in generation_schema.items()}
 

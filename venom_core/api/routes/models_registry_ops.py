@@ -143,7 +143,7 @@ async def activate_model_endpoint(request: ModelActivateRequest):
         500: {"description": "Błąd serwera podczas pobierania listy operacji"},
     },
 )
-async def list_model_operations(limit: int = 10):
+def list_model_operations(limit: int = 10):
     """
     Lista ostatnich operacji na modelach.
     """
@@ -172,7 +172,7 @@ async def list_model_operations(limit: int = 10):
         500: {"description": "Błąd serwera podczas pobierania statusu operacji"},
     },
 )
-async def get_operation_status_endpoint(operation_id: str):
+def get_operation_status_endpoint(operation_id: str):
     """
     Pobiera status operacji.
     """

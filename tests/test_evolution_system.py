@@ -66,22 +66,19 @@ def core_skill(tmp_path):
 class TestSystemEngineerAgent:
     """Testy dla SystemEngineerAgent."""
 
-    @pytest.mark.asyncio
-    async def test_initialization(self, system_engineer, tmp_path):
+    def test_initialization(self, system_engineer, tmp_path):
         """Test inicjalizacji SystemEngineerAgent."""
         assert system_engineer.project_root == tmp_path
         assert system_engineer.graph_store is not None
         assert system_engineer.file_skill is not None
         assert system_engineer.git_skill is not None
 
-    @pytest.mark.asyncio
-    async def test_process_request(self, system_engineer):
+    def test_process_request(self, system_engineer):
         """Test przetwarzania żądania modyfikacji kodu."""
         # Skip this test as it requires full semantic-kernel setup
         pytest.skip("Wymaga pełnej konfiguracji semantic-kernel")
 
-    @pytest.mark.asyncio
-    async def test_analyze_impact(self, system_engineer):
+    def test_analyze_impact(self, system_engineer):
         """Test analizy wpływu modyfikacji."""
         impact = system_engineer.analyze_impact("test.py")
 
@@ -231,7 +228,7 @@ class TestCoreSkill:
         test_file.write_text("original content")
 
         # Zmodyfikuj plik
-        result = await core_skill.hot_patch(
+        result = core_skill.hot_patch(
             file_path=str(test_file), content="new content", create_backup=True
         )
 
@@ -247,7 +244,7 @@ class TestCoreSkill:
         test_file = tmp_path / "test.py"
         test_file.write_text("original")
 
-        result = await core_skill.hot_patch(
+        result = core_skill.hot_patch(
             file_path=str(test_file), content="modified", create_backup=False
         )
 
@@ -258,7 +255,7 @@ class TestCoreSkill:
     @pytest.mark.asyncio
     async def test_hot_patch_nonexistent_file(self, core_skill, tmp_path):
         """Test modyfikacji nieistniejącego pliku."""
-        result = await core_skill.hot_patch(
+        result = core_skill.hot_patch(
             file_path=str(tmp_path / "nonexistent.py"), content="content"
         )
 
@@ -272,10 +269,10 @@ class TestCoreSkill:
         test_file = tmp_path / "test.py"
         test_file.write_text("original")
 
-        await core_skill.hot_patch(str(test_file), "modified", create_backup=True)
+        core_skill.hot_patch(str(test_file), "modified", create_backup=True)
 
         # Wycofaj zmiany
-        result = await core_skill.rollback(file_path=str(test_file))
+        result = core_skill.rollback(file_path=str(test_file))
 
         assert "✅" in result
         assert test_file.read_text() == "original"
@@ -286,7 +283,7 @@ class TestCoreSkill:
         test_file = tmp_path / "test.py"
         test_file.write_text("content")
 
-        result = await core_skill.rollback(file_path=str(test_file))
+        result = core_skill.rollback(file_path=str(test_file))
 
         assert "❌" in result
         assert "Brak backupów" in result
@@ -304,13 +301,13 @@ class TestCoreSkill:
         with patch("venom_core.execution.skills.core_skill.datetime") as mock_datetime:
             # Pierwszy backup
             mock_datetime.now.return_value.strftime.return_value = "20251207_120000"
-            await core_skill.hot_patch(str(test_file), "v2", create_backup=True)
+            core_skill.hot_patch(str(test_file), "v2", create_backup=True)
 
             # Drugi backup z innym timestampem
             mock_datetime.now.return_value.strftime.return_value = "20251207_120001"
-            await core_skill.hot_patch(str(test_file), "v3", create_backup=True)
+            core_skill.hot_patch(str(test_file), "v3", create_backup=True)
 
-        result = await core_skill.list_backups(file_path=str(test_file))
+        result = core_skill.list_backups(file_path=str(test_file))
 
         # Może być 1 lub 2 backupy w zależności od implementacji mockowania
         assert "backup" in result.lower()
@@ -319,7 +316,7 @@ class TestCoreSkill:
     @pytest.mark.asyncio
     async def test_list_backups_empty(self, core_skill):
         """Test listowania gdy brak backupów."""
-        result = await core_skill.list_backups()
+        result = core_skill.list_backups()
 
         assert "Brak backupów" in result
 
@@ -329,7 +326,7 @@ class TestCoreSkill:
         test_file = tmp_path / "valid.py"
         test_file.write_text("def hello():\n    print('Hello')\n")
 
-        result = await core_skill.verify_syntax(file_path=str(test_file))
+        result = core_skill.verify_syntax(file_path=str(test_file))
 
         assert "✅" in result
         assert "poprawna" in result
@@ -340,7 +337,7 @@ class TestCoreSkill:
         test_file = tmp_path / "invalid.py"
         test_file.write_text("def hello(\n    print('Hello')\n")  # Błąd składni
 
-        result = await core_skill.verify_syntax(file_path=str(test_file))
+        result = core_skill.verify_syntax(file_path=str(test_file))
 
         assert "❌" in result
         assert "Błąd składni" in result
@@ -348,7 +345,7 @@ class TestCoreSkill:
     @pytest.mark.asyncio
     async def test_restart_service_no_confirm(self, core_skill):
         """Test restartu bez potwierdzenia."""
-        result = await core_skill.restart_service(confirm=False)
+        result = core_skill.restart_service(confirm=False)
 
         assert "❌" in result
         assert "wymaga potwierdzenia" in result
@@ -387,7 +384,7 @@ class TestEvolutionProcedure:
         cloned_file.write_text("def main(\n    print('Broken')\n")  # Błąd
 
         # Weryfikuj składnię
-        result = await core_skill.verify_syntax(str(cloned_file))
+        result = core_skill.verify_syntax(str(cloned_file))
 
         assert "❌" in result
         assert "Błąd składni" in result
@@ -424,11 +421,11 @@ class TestEvolutionProcedure:
         cloned_file.write_text(new_content)
 
         # Weryfikuj składnię
-        syntax_result = await core_skill.verify_syntax(str(cloned_file))
+        syntax_result = core_skill.verify_syntax(str(cloned_file))
         assert "✅" in syntax_result
 
         # Symuluj merge: zastosuj zmiany do głównego pliku
-        await core_skill.hot_patch(
+        core_skill.hot_patch(
             file_path=str(utils_file), content=new_content, create_backup=True
         )
 

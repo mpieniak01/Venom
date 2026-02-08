@@ -23,8 +23,7 @@ def mock_chat_service():
     return service
 
 
-@pytest.mark.asyncio
-async def test_intent_manager_initialization():
+def test_intent_manager_initialization():
     """Test inicjalizacji IntentManager z własnym kernelem."""
     mock_kernel = MagicMock(spec=Kernel)
     manager = IntentManager(kernel=mock_kernel)
@@ -161,9 +160,8 @@ async def test_intent_manager_strips_whitespace(mock_kernel, mock_chat_service):
     assert intent == "KNOWLEDGE_SEARCH"
 
 
-@pytest.mark.asyncio
 @patch("venom_core.core.intent_manager.KernelBuilder")
-async def test_intent_manager_creates_kernel_if_none_provided(mock_builder_class):
+def test_intent_manager_creates_kernel_if_none_provided(mock_builder_class):
     """Test że IntentManager tworzy kernel jeśli nie został przekazany."""
     mock_kernel = MagicMock(spec=Kernel)
     mock_builder_instance = MagicMock()

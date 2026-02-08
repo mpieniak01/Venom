@@ -129,7 +129,7 @@ async def start_benchmark(request: BenchmarkStartRequest):
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu"},
     },
 )
-async def get_benchmark_status(benchmark_id: str):
+def get_benchmark_status(benchmark_id: str):
     """
     Zwraca status i wyniki benchmarku.
 
@@ -181,7 +181,7 @@ async def get_benchmark_status(benchmark_id: str):
         500: {"description": "Błąd wewnętrzny podczas pobierania listy"},
     },
 )
-async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
+def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
     """
     Lista ostatnich benchmarków.
 
@@ -219,7 +219,7 @@ async def list_benchmarks(limit: Annotated[int, Query(ge=1, le=100)] = 10):
         500: {"description": "Błąd wewnętrzny podczas czyszczenia benchmarków"},
     },
 )
-async def clear_all_benchmarks():
+def clear_all_benchmarks():
     """
     Usuwa wszystkie wyniki benchmarków.
 
@@ -255,7 +255,7 @@ async def clear_all_benchmarks():
         500: {"description": "Błąd wewnętrzny podczas usuwania benchmarku"},
     },
 )
-async def delete_benchmark(benchmark_id: str):
+def delete_benchmark(benchmark_id: str):
     """
     Usuwa pojedynczy benchmark.
 

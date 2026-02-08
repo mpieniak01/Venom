@@ -49,7 +49,7 @@ class DocsSkill:
         description=f"Generuje plik konfiguracyjny {MKDOCS_CONFIG_FILE} dla dokumentacji. "
         "Użyj przed budowaniem strony dokumentacji.",
     )
-    async def generate_mkdocs_config(
+    def generate_mkdocs_config(
         self,
         site_name: Annotated[str, "Nazwa projektu/strony (np. 'My Project')"],
         theme: Annotated[
@@ -283,7 +283,7 @@ class DocsSkill:
         description="Uruchamia lokalny serwer deweloperski MkDocs z live-reload. "
         "Użyj do podglądu dokumentacji podczas pracy.",
     )
-    async def serve_docs(
+    def serve_docs(
         self,
         port: Annotated[int, "Port serwera (domyślnie 8000)"] = 8000,
     ) -> str:
@@ -330,7 +330,7 @@ class DocsSkill:
         description="Sprawdza strukturę katalogu docs/ i raportuje co zostało znalezione. "
         "Użyj przed generowaniem dokumentacji.",
     )
-    async def check_docs_structure(self) -> str:
+    def check_docs_structure(self) -> str:
         """
         Sprawdza strukturę dokumentacji.
 

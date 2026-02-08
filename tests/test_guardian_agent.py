@@ -39,8 +39,7 @@ def guardian_agent(mock_kernel, mock_test_skill):
                 return agent
 
 
-@pytest.mark.asyncio
-async def test_guardian_initialization(mock_kernel, mock_test_skill):
+def test_guardian_initialization(mock_kernel, mock_test_skill):
     """Test inicjalizacji GuardianAgent."""
     with patch("venom_core.agents.guardian.FileSkill"):
         with patch("venom_core.agents.guardian.GitSkill"):

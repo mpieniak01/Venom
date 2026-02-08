@@ -17,7 +17,7 @@ class BaseSkillTester(BaseSkill):
         return "Success"
 
     @async_safe_action
-    async def risky_method_async(self, should_fail=False):
+    def risky_method_async(self, should_fail=False):
         if should_fail:
             raise ValueError("Intentional async failure")
         return "Async Success"

@@ -117,8 +117,7 @@ async def test_check_service_health_nonexistent(compose_skill):
     assert "❌" in result or "nie można" in result.lower()
 
 
-@pytest.mark.asyncio
-async def test_process_port_placeholders_no_placeholders(compose_skill):
+def test_process_port_placeholders_no_placeholders(compose_skill):
     """Test przetwarzania zawartości bez placeholderów."""
     content = """
 version: '3.8'
@@ -132,8 +131,7 @@ services:
     assert result == content
 
 
-@pytest.mark.asyncio
-async def test_process_port_placeholders_simple(compose_skill):
+def test_process_port_placeholders_simple(compose_skill):
     """Test przetwarzania prostego placeholdera portu."""
     content = """
 version: '3.8'
@@ -157,8 +155,7 @@ services:
     assert 8000 <= port <= 9000
 
 
-@pytest.mark.asyncio
-async def test_process_port_placeholders_with_preferred(compose_skill):
+def test_process_port_placeholders_with_preferred(compose_skill):
     """Test przetwarzania placeholdera z preferowanym portem."""
     content = """
 version: '3.8'
@@ -241,8 +238,7 @@ def test_compose_skill_has_kernel_functions(compose_skill):
     )
 
 
-@pytest.mark.asyncio
-async def test_process_template_placeholders_secret_key(compose_skill):
+def test_process_template_placeholders_secret_key(compose_skill):
     """Test przetwarzania placeholdera {{SECRET_KEY}}."""
     content = """
 version: '3.8'
@@ -262,8 +258,7 @@ services:
     assert len(matches) == 1
 
 
-@pytest.mark.asyncio
-async def test_process_template_placeholders_host_ip(compose_skill):
+def test_process_template_placeholders_host_ip(compose_skill):
     """Test przetwarzania placeholdera {{HOST_IP}}."""
     content = """
 version: '3.8'
@@ -283,8 +278,7 @@ services:
     assert len(matches) >= 1
 
 
-@pytest.mark.asyncio
-async def test_process_template_placeholders_volume_root(compose_skill):
+def test_process_template_placeholders_volume_root(compose_skill):
     """Test przetwarzania placeholdera {{VOLUME_ROOT}}."""
     content = """
 version: '3.8'
@@ -306,8 +300,7 @@ services:
     assert volume_root in result
 
 
-@pytest.mark.asyncio
-async def test_process_template_placeholders_multiple(compose_skill):
+def test_process_template_placeholders_multiple(compose_skill):
     """Test przetwarzania wielu placeholderów jednocześnie."""
     content = """
 version: '3.8'

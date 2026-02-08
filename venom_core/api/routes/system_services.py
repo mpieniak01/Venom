@@ -68,7 +68,7 @@ async def get_all_services():
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu usługi"},
     },
 )
-async def get_service_status(service_name: str):
+def get_service_status(service_name: str):
     """
     Zwraca szczegółowy status konkretnej usługi.
     """

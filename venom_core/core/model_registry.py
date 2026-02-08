@@ -8,6 +8,7 @@ Odpowiedzialny za:
 - Monitoring operacji instalacji/usuwania
 """
 
+import abc
 import asyncio
 import json
 import re
@@ -189,26 +190,30 @@ class ModelOperation:
         }
 
 
-class BaseModelProvider:
+class BaseModelProvider(abc.ABC):
     """Bazowa klasa dla providerów modeli."""
 
+    @abc.abstractmethod
     async def list_available_models(self) -> List[ModelMetadata]:
         """Lista dostępnych modeli."""
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     async def install_model(
         self, model_name: str, progress_callback: Optional[Callable] = None
     ) -> bool:
         """Instaluje model."""
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     async def remove_model(self, model_name: str) -> bool:
         """Usuwa model."""
-        raise NotImplementedError
+        pass
 
+    @abc.abstractmethod
     async def get_model_info(self, model_name: str) -> Optional[ModelMetadata]:
         """Pobiera informacje o modelu."""
-        raise NotImplementedError
+        pass
 
 
 class OllamaModelProvider(BaseModelProvider):
@@ -381,6 +386,8 @@ class HuggingFaceModelProvider(BaseModelProvider):
                 ),
             ),
         ]
+        # Symuluj async operację
+        await asyncio.sleep(0)
         return popular_models
 
     async def install_model(
@@ -408,6 +415,8 @@ class HuggingFaceModelProvider(BaseModelProvider):
     async def remove_model(self, model_name: str) -> bool:
         """Usuwa model z cache HF."""
         try:
+            # Symuluj async operację
+            await asyncio.sleep(0)
             success = self.client.remove_cached_model(self.cache_dir, model_name)
             if success:
                 logger.info(f"✅ Model {model_name} usunięty z cache HF")
@@ -824,6 +833,7 @@ class ModelRegistry:
                 async def progress_callback(message: str):
                     operation.message = message
                     logger.info(f"[{operation.operation_id}] {message}")
+                    await asyncio.sleep(0)
 
                 provider_obj = self.providers[provider]
                 success = await provider_obj.install_model(

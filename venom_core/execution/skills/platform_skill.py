@@ -104,7 +104,7 @@ class PlatformSkill:
         name="get_assigned_issues",
         description="Pobiera Issues przypisane do bota z GitHub (domyślnie otwarte).",
     )
-    async def get_assigned_issues(
+    def get_assigned_issues(
         self,
         state: Annotated[str, "Stan Issues: 'open', 'closed', 'all'"] = "open",
         assignee: Annotated[
@@ -196,7 +196,7 @@ class PlatformSkill:
         name="get_issue_details",
         description="Pobiera szczegóły konkretnego Issue z GitHub (w tym komentarze).",
     )
-    async def get_issue_details(
+    def get_issue_details(
         self,
         issue_number: Annotated[int, "Numer Issue do pobrania"],
     ) -> str:
@@ -260,7 +260,7 @@ class PlatformSkill:
         name="create_pull_request",
         description="Tworzy Pull Request na GitHub z obecnego brancha.",
     )
-    async def create_pull_request(
+    def create_pull_request(
         self,
         branch: Annotated[str, "Nazwa brancha źródłowego (head)"],
         title: Annotated[str, "Tytuł Pull Requesta"],
@@ -314,7 +314,7 @@ class PlatformSkill:
         name="comment_on_issue",
         description="Dodaje komentarz do Issue na GitHub.",
     )
-    async def comment_on_issue(
+    def comment_on_issue(
         self,
         issue_number: Annotated[int, "Numer Issue"],
         text: Annotated[str, "Treść komentarza"],

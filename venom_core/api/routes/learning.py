@@ -113,7 +113,7 @@ async def get_learning_logs(
 
 
 @router.get("/hidden-prompts", responses=LEARNING_READ_RESPONSES)
-async def get_hidden_prompts(
+def get_hidden_prompts(
     limit: int = 50,
     intent: Optional[str] = None,
     min_score: int = 1,
@@ -128,14 +128,14 @@ async def get_hidden_prompts(
 
 
 @router.get("/hidden-prompts/active", responses=LEARNING_READ_RESPONSES)
-async def get_active_hidden_prompts_endpoint(intent: Optional[str] = None) -> dict:
+def get_active_hidden_prompts_endpoint(intent: Optional[str] = None) -> dict:
     """Zwraca aktywne hidden prompts."""
     items = get_active_hidden_prompts(intent=intent)
     return {"count": len(items), "items": items}
 
 
 @router.post("/hidden-prompts/active", responses=LEARNING_TOGGLE_RESPONSES)
-async def set_active_hidden_prompt_endpoint(payload: dict) -> dict:
+def set_active_hidden_prompt_endpoint(payload: dict) -> dict:
     """Aktywuje lub wyłącza hidden prompt."""
     active = bool(payload.get("active", True))
     actor = payload.get("actor")

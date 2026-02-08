@@ -126,8 +126,7 @@ class TestEnergyManager:
         assert len(em._alert_callbacks) == 1
         assert dummy_callback in em._alert_callbacks
 
-    @pytest.mark.asyncio
-    async def test_wake_up(self):
+    def test_wake_up(self):
         """Test funkcji wake_up."""
         em = EnergyManager()
 

@@ -46,7 +46,7 @@ class CoreSkill:
         name="hot_patch",
         description="Bezpiecznie modyfikuje plik z automatycznym backupem. Używaj TYLKO po weryfikacji w Mirror World.",
     )
-    async def hot_patch(
+    def hot_patch(
         self,
         file_path: Annotated[
             str, "Ścieżka do pliku do zmodyfikowania (relatywna lub bezwzględna)"
@@ -107,7 +107,7 @@ class CoreSkill:
         name="rollback",
         description="Przywraca plik z backupu (.bak). Używaj gdy zmiana spowodowała problemy.",
     )
-    async def rollback(
+    def rollback(
         self,
         file_path: Annotated[str, "Ścieżka do pliku do przywrócenia"],
         backup_file: Annotated[
@@ -163,7 +163,7 @@ class CoreSkill:
         name="list_backups",
         description="Wyświetla listę dostępnych backupów dla pliku.",
     )
-    async def list_backups(
+    def list_backups(
         self,
         file_path: Annotated[
             Optional[str],
@@ -214,7 +214,7 @@ class CoreSkill:
         name="restart_service",
         description="OSTROŻNIE: Restartuje proces Venom. Używaj TYLKO po pomyślnej weryfikacji zmian.",
     )
-    async def restart_service(
+    def restart_service(
         self,
         confirm: Annotated[bool, "Potwierdzenie restartu (musi być True)"] = False,
     ) -> str:
@@ -258,7 +258,7 @@ class CoreSkill:
         name="verify_syntax",
         description="Sprawdza poprawność składni Pythona w pliku bez wykonywania kodu.",
     )
-    async def verify_syntax(
+    def verify_syntax(
         self,
         file_path: Annotated[str, "Ścieżka do pliku .py do sprawdzenia"],
     ) -> str:

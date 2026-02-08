@@ -127,8 +127,7 @@ def evolution_coordinator(
 class TestEvolutionCoordinator:
     """Testy dla EvolutionCoordinator."""
 
-    @pytest.mark.asyncio
-    async def test_analyze_request_valid(self, evolution_coordinator):
+    def test_analyze_request_valid(self, evolution_coordinator):
         """Test analizy poprawnego żądania."""
         result = evolution_coordinator._analyze_request("Dodaj obsługę kolorów")
 
@@ -136,8 +135,7 @@ class TestEvolutionCoordinator:
         assert "branch_name" in result
         assert result["branch_name"].startswith("evolution/")
 
-    @pytest.mark.asyncio
-    async def test_analyze_request_invalid(self, evolution_coordinator):
+    def test_analyze_request_invalid(self, evolution_coordinator):
         """Test analizy niepoprawnego żądania."""
         result = evolution_coordinator._analyze_request("Hello")
 

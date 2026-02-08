@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
         500: {"description": "Błąd wewnętrzny podczas pobierania konfiguracji runtime"},
     },
 )
-async def get_runtime_config(mask_secrets: bool = True):
+def get_runtime_config(mask_secrets: bool = True):
     """
     Zwraca aktualną konfigurację runtime (whitelist parametrów z .env).
     """
@@ -44,7 +44,7 @@ class ConfigUpdateRequest(BaseModel):
         },
     },
 )
-async def update_runtime_config(request: ConfigUpdateRequest):
+def update_runtime_config(request: ConfigUpdateRequest):
     """
     Aktualizuje konfigurację runtime (zapis do .env z backupem).
     """
@@ -65,7 +65,7 @@ async def update_runtime_config(request: ConfigUpdateRequest):
         },
     },
 )
-async def get_config_backups(limit: int = 20):
+def get_config_backups(limit: int = 20):
     """
     Zwraca listę backupów .env.
     """
@@ -92,7 +92,7 @@ class RestoreBackupRequest(BaseModel):
         },
     },
 )
-async def restore_config_backup(request: RestoreBackupRequest):
+def restore_config_backup(request: RestoreBackupRequest):
     """
     Przywraca .env z backupu.
     """

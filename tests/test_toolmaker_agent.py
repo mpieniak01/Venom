@@ -123,8 +123,7 @@ async def test_create_test_success(toolmaker):
         )
 
 
-@pytest.mark.asyncio
-async def test_create_tool_ui_card(toolmaker):
+def test_create_tool_ui_card(toolmaker):
     """Test generowania UI card."""
     card = toolmaker.create_tool_ui_card("my_tool", "Description")
 

@@ -1,5 +1,6 @@
 """Moduł: chrono_skill - Umiejętności Czasowe (Timeline Branching & State Management)."""
 
+import asyncio
 from typing import Annotated, Optional
 
 from semantic_kernel.functions import kernel_function
@@ -45,6 +46,7 @@ class ChronoSkill(BaseSkill):
         description: Annotated[str, "Opcjonalny opis checkpointu"] = "",
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Tworzy checkpoint całego stanu systemu.
         """
@@ -68,6 +70,7 @@ class ChronoSkill(BaseSkill):
         checkpoint_id: Annotated[str, "ID checkpointu do przywrócenia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Przywraca system do stanu z checkpointu.
         """
@@ -96,6 +99,7 @@ class ChronoSkill(BaseSkill):
         self,
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Wyświetla listę checkpointów.
         """
@@ -125,6 +129,7 @@ class ChronoSkill(BaseSkill):
         checkpoint_id: Annotated[str, "ID checkpointu do usunięcia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Usuwa checkpoint.
         """
@@ -146,6 +151,7 @@ class ChronoSkill(BaseSkill):
         self,
         name: Annotated[str, "Nazwa nowej linii czasowej"],
     ) -> str:
+        await asyncio.sleep(0)
         """
         Tworzy nową linię czasową (branch).
         """
@@ -185,6 +191,7 @@ class ChronoSkill(BaseSkill):
     )
     @async_safe_action
     async def list_timelines(self) -> str:
+        await asyncio.sleep(0)
         """
         Wyświetla listę wszystkich linii czasowych.
         """
@@ -210,6 +217,7 @@ class ChronoSkill(BaseSkill):
         source: Annotated[str, "Nazwa źródłowej linii czasowej"],
         target: Annotated[str, "Nazwa docelowej linii czasowej"] = "main",
     ) -> str:
+        await asyncio.sleep(0)
         """
         Scala wiedzę z dwóch linii czasowych (zaawansowane).
         """

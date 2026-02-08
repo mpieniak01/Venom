@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["system"])
         500: {"description": "Błąd wewnętrzny podczas pobierania statusu systemu"},
     },
 )
-async def get_system_status():
+def get_system_status():
     """
     Zwraca status systemu wraz z metrykami użycia pamięci RAM i VRAM.
     """

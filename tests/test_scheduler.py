@@ -13,8 +13,7 @@ def scheduler():
     return BackgroundScheduler()
 
 
-@pytest.mark.asyncio
-async def test_scheduler_initialization(scheduler):
+def test_scheduler_initialization(scheduler):
     """Test inicjalizacji schedulera."""
     assert scheduler is not None
     assert not scheduler.is_running
@@ -58,8 +57,7 @@ async def test_add_interval_job(scheduler):
     await scheduler.stop()
 
 
-@pytest.mark.asyncio
-async def test_get_status(scheduler):
+def test_get_status(scheduler):
     """Test pobierania statusu schedulera."""
     status = scheduler.get_status()
 

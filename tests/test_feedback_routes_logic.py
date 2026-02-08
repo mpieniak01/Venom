@@ -173,7 +173,7 @@ async def test_submit_feedback_down_with_followup_error_and_metrics(monkeypatch)
     state = SimpleNamespace(get_task=lambda _task_id: task)
 
     class DummyOrchestrator:
-        async def submit_task(self, _request):
+        def submit_task(self, _request):
             raise RuntimeError("submit failed")
 
     class DummyCollector:

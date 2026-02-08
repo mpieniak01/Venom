@@ -16,8 +16,7 @@ class TestWhisperSkill:
         assert skill.device == "cpu"
         assert skill.model is None  # Lazy loading
 
-    @pytest.mark.asyncio
-    async def test_transcribe_empty_audio(self):
+    def test_transcribe_empty_audio(self):
         """Test transkrypcji pustego audio."""
         # Symuluj pusty bufor audio
         empty_audio = np.zeros(16000, dtype=np.int16)
@@ -121,8 +120,7 @@ class TestAudioEngine:
         assert engine.voice is not None
         assert engine.whisper.model_size == "tiny"
 
-    @pytest.mark.asyncio
-    async def test_listen(self):
+    def test_listen(self):
         """Test funkcji listen (STT)."""
         # Symuluj bufor audio
         audio_buffer = np.zeros(16000, dtype=np.int16)
@@ -140,8 +138,7 @@ class TestAudioEngine:
         assert result is not None
         assert isinstance(result, np.ndarray)
 
-    @pytest.mark.asyncio
-    async def test_process_voice_command(self):
+    def test_process_voice_command(self):
         """Test przetwarzania komendy głosowej."""
         # Symuluj bufor audio
         audio_buffer = np.zeros(16000, dtype=np.int16)

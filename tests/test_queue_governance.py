@@ -50,8 +50,7 @@ async def test_pause_resume_queue(orchestrator):
     assert not orchestrator.is_paused
 
 
-@pytest.mark.asyncio
-async def test_queue_status(orchestrator):
+def test_queue_status(orchestrator):
     """Test pobierania statusu kolejki."""
     status = orchestrator.get_queue_status()
 

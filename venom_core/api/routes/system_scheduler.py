@@ -20,7 +20,7 @@ SCHEDULER_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 @router.get("/scheduler/status", responses=SCHEDULER_RESPONSES)
-async def get_scheduler_status():
+def get_scheduler_status():
     """
     Zwraca status schedulera zadań w tle.
     """
@@ -37,7 +37,7 @@ async def get_scheduler_status():
 
 
 @router.get("/scheduler/jobs", responses=SCHEDULER_RESPONSES)
-async def get_scheduler_jobs():
+def get_scheduler_jobs():
     """
     Zwraca listę zadań w tle.
     """

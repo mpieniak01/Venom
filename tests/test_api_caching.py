@@ -11,8 +11,7 @@ def client():
     return TestClient(app)
 
 
-@pytest.mark.asyncio
-async def test_git_status_caching():
+def test_git_status_caching():
     # Reset cache before test
     from venom_core.api.routes.git import _git_status_cache
 
@@ -41,8 +40,7 @@ async def test_git_status_caching():
         # For the sake of test speed, we just verified it stays at 1.
 
 
-@pytest.mark.asyncio
-async def test_models_usage_caching():
+def test_models_usage_caching():
     from venom_core.api.routes.models_usage import _models_usage_cache
 
     _models_usage_cache.set(None)

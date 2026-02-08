@@ -266,7 +266,7 @@ class InputSkill:
         name="get_mouse_position",
         description="Zwraca aktualną pozycję kursora myszy.",
     )
-    async def get_mouse_position(self) -> str:
+    def get_mouse_position(self) -> str:
         """
         Zwraca aktualną pozycję kursora myszy.
 
@@ -285,7 +285,7 @@ class InputSkill:
         name="take_screenshot",
         description="Robi zrzut ekranu i zwraca jego wymiary.",
     )
-    async def take_screenshot(
+    def take_screenshot(
         self,
         region: Annotated[
             Optional[str],

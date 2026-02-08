@@ -5,6 +5,7 @@ Odpowiedzialny za analizę nagranych demonstracji i transformację
 surowych danych (piksele, kliki) na semantyczne kroki akcji.
 """
 
+import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +60,9 @@ class DemonstrationAnalyzer:
             Lista ActionIntent (semantyczne kroki)
         """
         logger.info(f"Rozpoczynam analizę sesji: {session.session_id}")
+
+        # Symuluj async operację (dla kompatybilności z interfejsem)
+        await asyncio.sleep(0)
 
         actions: List[ActionIntent] = []
         screenshots_dir = (

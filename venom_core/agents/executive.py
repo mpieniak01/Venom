@@ -413,7 +413,7 @@ Raport powinien być zrozumiały dla użytkownika (nie-technicznego stakeholdera
 
         return full_report
 
-    async def run_status_meeting(self, council_session=None) -> str:
+    def run_status_meeting(self, council_session=None) -> str:
         """
         Przeprowadza "Daily Standup" - spotkanie statusowe z zespołem.
 

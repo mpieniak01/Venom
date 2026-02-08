@@ -118,7 +118,7 @@ class ComposeSkill:
         "Automatycznie znajduje wolne porty jeśli są konflikty. "
         "Użyj gdy zadanie wymaga bazy danych, cache'a, kolejki lub innych serwisów.",
     )
-    async def create_environment(
+    def create_environment(
         self,
         compose_content: Annotated[
             str,
@@ -212,7 +212,7 @@ class ComposeSkill:
         description="Zatrzymuje i usuwa środowisko Docker Compose wraz z wolumenami. "
         "Użyj do czyszczenia zasobów po zakończeniu pracy.",
     )
-    async def destroy_environment(
+    def destroy_environment(
         self,
         stack_name: Annotated[str, "Nazwa środowiska/stacka do usunięcia"],
     ) -> str:
@@ -252,7 +252,7 @@ class ComposeSkill:
         description="Sprawdza czy serwis w środowisku działa poprawnie poprzez "
         "pobranie logów lub sprawdzenie statusu. Użyj do weryfikacji działania aplikacji.",
     )
-    async def check_service_health(
+    def check_service_health(
         self,
         stack_name: Annotated[str, "Nazwa środowiska/stacka"],
         service_name: Annotated[
@@ -304,7 +304,7 @@ class ComposeSkill:
         description="Listuje wszystkie aktywne środowiska Docker Compose. "
         "Użyj aby zobaczyć jakie stacki są obecnie uruchomione.",
     )
-    async def list_environments(self) -> str:
+    def list_environments(self) -> str:
         """
         Listuje aktywne środowiska.
 
@@ -335,7 +335,7 @@ class ComposeSkill:
         description="Pobiera szczegółowy status środowiska Docker Compose. "
         "Pokazuje które kontenery działają i ich stan.",
     )
-    async def get_environment_status(
+    def get_environment_status(
         self,
         stack_name: Annotated[str, "Nazwa środowiska/stacka"],
     ) -> str:

@@ -267,8 +267,7 @@ def test_professor_score_response(kernel):
     assert score >= 5.0
 
 
-@pytest.mark.asyncio
-async def test_professor_evaluate_model_no_candidate(kernel):
+def test_professor_evaluate_model_no_candidate(kernel):
     """Test ewaluacji bez modelu kandydującego."""
     professor = Professor(kernel)
 

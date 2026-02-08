@@ -54,7 +54,7 @@ def set_dependencies(node_manager):
 
 
 @router.get("", responses=NODES_LIST_RESPONSES)
-async def list_nodes(online_only: bool = False):
+def list_nodes(online_only: bool = False):
     """
     Zwraca listę zarejestrowanych węzłów.
 
@@ -88,7 +88,7 @@ async def list_nodes(online_only: bool = False):
 
 
 @router.get("/{node_id}", responses=NODE_INFO_RESPONSES)
-async def get_node_info(node_id: str):
+def get_node_info(node_id: str):
     """
     Zwraca szczegółowe informacje o węźle.
 

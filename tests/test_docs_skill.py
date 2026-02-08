@@ -11,8 +11,7 @@ def docs_skill(tmp_path):
     return DocsSkill(workspace_root=str(tmp_path))
 
 
-@pytest.mark.asyncio
-async def test_docs_skill_initialization(docs_skill):
+def test_docs_skill_initialization(docs_skill):
     """Test inicjalizacji DocsSkill."""
     assert docs_skill is not None
     assert docs_skill.docs_dir.exists()
@@ -61,8 +60,7 @@ async def test_check_docs_structure_with_files(docs_skill):
     assert "✅ Strona główna: index.md" in result
 
 
-@pytest.mark.asyncio
-async def test_generate_nav_structure(docs_skill):
+def test_generate_nav_structure(docs_skill):
     """Test generowania struktury nawigacji."""
     # Utwórz pliki testowe
     (docs_skill.docs_dir / "index.md").write_text("# Home")

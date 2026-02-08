@@ -267,8 +267,7 @@ async def test_watchdog_start_stop(tracer):
     assert tracer._watchdog_task is None
 
 
-@pytest.mark.asyncio
-async def test_watchdog_marks_lost_requests(tracer):
+def test_watchdog_marks_lost_requests(tracer):
     """Test że watchdog oznacza stare requesty jako LOST."""
     request_id = uuid4()
     tracer.create_trace(request_id, "Test request")
@@ -288,8 +287,7 @@ async def test_watchdog_marks_lost_requests(tracer):
     assert any(step.action == "timeout" for step in trace.steps)
 
 
-@pytest.mark.asyncio
-async def test_watchdog_does_not_mark_fresh_requests(tracer):
+def test_watchdog_does_not_mark_fresh_requests(tracer):
     """Test że watchdog nie oznacza świeżych requestów."""
     request_id = uuid4()
     tracer.create_trace(request_id, "Test request")
@@ -303,8 +301,7 @@ async def test_watchdog_does_not_mark_fresh_requests(tracer):
     assert trace.status == TraceStatus.PROCESSING
 
 
-@pytest.mark.asyncio
-async def test_watchdog_does_not_mark_completed_requests(tracer):
+def test_watchdog_does_not_mark_completed_requests(tracer):
     """Test że watchdog nie dotyka ukończonych requestów."""
     request_id = uuid4()
     tracer.create_trace(request_id, "Test request")

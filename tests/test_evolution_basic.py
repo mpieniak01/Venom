@@ -104,7 +104,7 @@ class TestCoreSkillBasic:
         test_file.write_text("original content")
 
         # Zmodyfikuj plik
-        result = await core_skill.hot_patch(
+        result = core_skill.hot_patch(
             file_path=str(test_file), content="new content", create_backup=True
         )
 
@@ -121,10 +121,10 @@ class TestCoreSkillBasic:
         test_file = tmp_path / "test.py"
         test_file.write_text("original")
 
-        await core_skill.hot_patch(str(test_file), "modified", create_backup=True)
+        core_skill.hot_patch(str(test_file), "modified", create_backup=True)
 
         # Wycofaj zmiany
-        result = await core_skill.rollback(file_path=str(test_file))
+        result = core_skill.rollback(file_path=str(test_file))
 
         assert "✅" in result
         assert test_file.read_text() == "original"
@@ -135,7 +135,7 @@ class TestCoreSkillBasic:
         test_file = tmp_path / "valid.py"
         test_file.write_text("def hello():\n    print('Hello')\n")
 
-        result = await core_skill.verify_syntax(file_path=str(test_file))
+        result = core_skill.verify_syntax(file_path=str(test_file))
 
         assert "✅" in result
         assert "poprawna" in result
@@ -146,7 +146,7 @@ class TestCoreSkillBasic:
         test_file = tmp_path / "invalid.py"
         test_file.write_text("def hello(\n    print('Hello')\n")  # Błąd składni
 
-        result = await core_skill.verify_syntax(file_path=str(test_file))
+        result = core_skill.verify_syntax(file_path=str(test_file))
 
         assert "❌" in result
         assert "Błąd składni" in result
@@ -181,7 +181,7 @@ class TestEvolutionScenarios:
         cloned_file.write_text("def main(\n    print('Broken')\n")  # Błąd
 
         # Weryfikuj składnię
-        result = await core_skill.verify_syntax(str(cloned_file))
+        result = core_skill.verify_syntax(str(cloned_file))
 
         assert "❌" in result
         assert "Błąd składni" in result
@@ -219,11 +219,11 @@ class TestEvolutionScenarios:
         cloned_file.write_text(new_content)
 
         # Weryfikuj składnię
-        syntax_result = await core_skill.verify_syntax(str(cloned_file))
+        syntax_result = core_skill.verify_syntax(str(cloned_file))
         assert "✅" in syntax_result
 
         # Symuluj merge: zastosuj zmiany do głównego pliku
-        await core_skill.hot_patch(
+        core_skill.hot_patch(
             file_path=str(utils_file), content=new_content, create_backup=True
         )
 

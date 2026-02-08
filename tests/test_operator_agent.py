@@ -45,8 +45,7 @@ class TestOperatorAgent:
 
         assert agent.hardware_bridge == mock_hardware_bridge
 
-    @pytest.mark.asyncio
-    async def test_is_hardware_command_true(self, mock_kernel):
+    def test_is_hardware_command_true(self, mock_kernel):
         """Test rozpoznawania komend sprzętowych."""
         agent = OperatorAgent(kernel=mock_kernel)
 
@@ -57,8 +56,7 @@ class TestOperatorAgent:
         assert agent._is_hardware_command("jaka jest temperatura?") is True
         assert agent._is_hardware_command("procedura awaryjna reset") is True
 
-    @pytest.mark.asyncio
-    async def test_is_hardware_command_false(self, mock_kernel):
+    def test_is_hardware_command_false(self, mock_kernel):
         """Test rozpoznawania komend niesprzętowych."""
         agent = OperatorAgent(kernel=mock_kernel)
 

@@ -349,7 +349,7 @@ class MediaSkill:
         name="resize_image",
         description="Zmienia rozmiar obrazu (przygotowanie assetów web)",
     )
-    async def resize_image(
+    def resize_image(
         self,
         image_path: Annotated[str, "Ścieżka do obrazu źródłowego"],
         width: Annotated[int, "Docelowa szerokość"],
@@ -399,7 +399,7 @@ class MediaSkill:
         name="list_assets",
         description="Wyświetla listę wygenerowanych assetów",
     )
-    async def list_assets(self) -> str:
+    def list_assets(self) -> str:
         """
         Wyświetla listę wszystkich wygenerowanych assetów.
 

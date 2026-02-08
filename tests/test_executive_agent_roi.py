@@ -1,13 +1,10 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from venom_core.agents.executive import ExecutiveAgent
 from venom_core.core.goal_store import GoalStore, GoalType
 
 
-@pytest.mark.asyncio
-async def test_parse_and_create_roadmap_creates_goals(tmp_path):
+def test_parse_and_create_roadmap_creates_goals(tmp_path):
     store = GoalStore(storage_path=str(tmp_path / "roadmap.json"))
     agent = ExecutiveAgent(kernel=MagicMock(), goal_store=store)
 

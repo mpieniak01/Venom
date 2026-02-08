@@ -88,7 +88,7 @@ def _ensure_calendar_skill():
         500: {"description": "Błąd wewnętrzny podczas pobierania wydarzeń"},
     },
 )
-async def get_calendar_events(
+def get_calendar_events(
     time_min: str = "now",
     hours: int = 24,
 ):
@@ -162,7 +162,7 @@ async def get_calendar_events(
         500: {"description": "Błąd wewnętrzny podczas tworzenia wydarzenia"},
     },
 )
-async def create_calendar_event(request: CreateEventRequest):
+def create_calendar_event(request: CreateEventRequest):
     """
     Tworzy nowe wydarzenie w kalendarzu Venoma.
 

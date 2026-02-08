@@ -16,8 +16,7 @@ def temp_workspace():
         yield Path(tmpdir)
 
 
-@pytest.mark.asyncio
-async def test_watcher_initialization(temp_workspace):
+def test_watcher_initialization(temp_workspace):
     """Test inicjalizacji watchera."""
     watcher = FileWatcher(workspace_root=str(temp_workspace))
 
@@ -37,8 +36,7 @@ async def test_watcher_start_stop(temp_workspace):
     assert not watcher.is_running
 
 
-@pytest.mark.asyncio
-async def test_watcher_get_status(temp_workspace):
+def test_watcher_get_status(temp_workspace):
     """Test pobierania statusu watchera."""
     watcher = FileWatcher(workspace_root=str(temp_workspace))
 

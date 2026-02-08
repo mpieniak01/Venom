@@ -67,8 +67,7 @@ def historian_agent(kernel, chronos_engine, lessons_store):
 class TestHistorianAgent:
     """Testy dla HistorianAgent."""
 
-    @pytest.mark.asyncio
-    async def test_historian_initialization(self, historian_agent):
+    def test_historian_initialization(self, historian_agent):
         """Test inicjalizacji HistorianAgent."""
         assert historian_agent.chronos is not None
         assert historian_agent.lessons_store is not None
@@ -156,8 +155,7 @@ class TestHistorianAgent:
         history = historian_agent.get_checkpoint_history()
         assert history == []
 
-    @pytest.mark.asyncio
-    async def test_analyze_failure(self, historian_agent, lessons_store):
+    def test_analyze_failure(self, historian_agent, lessons_store):
         """Test analizy błędu."""
         checkpoint_id = historian_agent.create_safety_checkpoint(
             "test", "Test checkpoint"
@@ -178,10 +176,7 @@ class TestHistorianAgent:
         assert "Test error message" in lesson.result
         assert checkpoint_id in lesson.feedback
 
-    @pytest.mark.asyncio
-    async def test_analyze_failure_without_checkpoint(
-        self, historian_agent, lessons_store
-    ):
+    def test_analyze_failure_without_checkpoint(self, historian_agent, lessons_store):
         """Test analizy błędu bez checkpointu."""
         historian_agent.analyze_failure(
             operation="Test operation", error="Test error", checkpoint_before=None

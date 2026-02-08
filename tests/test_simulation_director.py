@@ -6,7 +6,7 @@ from venom_core.simulation.director import SimulationDirector
 
 
 @pytest.fixture
-async def director_no_kernel():
+def director_no_kernel():
     """Fixture dla SimulationDirector bez kernela (dla testów podstawowych)."""
     # Używamy None - wymaga mock kernela dla pełnych testów
     return None
@@ -19,8 +19,7 @@ def test_director_initialization():
     assert callable(SimulationDirector)
 
 
-@pytest.mark.asyncio
-async def test_director_requires_kernel():
+def test_director_requires_kernel():
     """Test że SimulationDirector wymaga kernela."""
     # Próba stworzenia bez kernela powinna wymagać kernela
     with pytest.raises(TypeError):

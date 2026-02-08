@@ -38,7 +38,7 @@ def set_dependencies(vector_store):
         500: {"description": "Błąd wewnętrzny podczas projekcji embeddingów"},
     },
 )
-async def project_embeddings(limit: Annotated[int, Query(ge=2, le=1000)] = 200):
+def project_embeddings(limit: Annotated[int, Query(ge=2, le=1000)] = 200):
     """Prosta projekcja embeddingów do 2D (PCA) i zapis x,y w metadanych."""
     if _vector_store is None or _embedding_service is None:
         raise HTTPException(

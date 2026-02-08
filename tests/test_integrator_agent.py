@@ -34,8 +34,7 @@ def integrator_agent(mock_kernel):
         return agent
 
 
-@pytest.mark.asyncio
-async def test_integrator_agent_initialization(mock_kernel):
+def test_integrator_agent_initialization(mock_kernel):
     """Test inicjalizacji IntegratorAgent."""
     with (
         patch("venom_core.agents.integrator.GitSkill") as mock_git_skill,

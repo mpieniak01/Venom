@@ -16,16 +16,14 @@ def temp_workspace():
         yield Path(tmpdir)
 
 
-@pytest.mark.asyncio
-async def test_documenter_initialization(temp_workspace):
+def test_documenter_initialization(temp_workspace):
     """Test inicjalizacji DocumenterAgent."""
     agent = DocumenterAgent(workspace_root=str(temp_workspace))
 
     assert agent.workspace_root == temp_workspace
 
 
-@pytest.mark.asyncio
-async def test_documenter_get_status(temp_workspace):
+def test_documenter_get_status(temp_workspace):
     """Test pobierania statusu agenta."""
     agent = DocumenterAgent(workspace_root=str(temp_workspace))
 

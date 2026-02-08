@@ -215,8 +215,7 @@ async def test_orchestrator_intent_classification_error(
     assert "Błąd" in task.result
 
 
-@pytest.mark.asyncio
-async def test_orchestrator_creates_default_intent_manager(temp_state_file):
+def test_orchestrator_creates_default_intent_manager(temp_state_file):
     """Test że Orchestrator tworzy domyślny IntentManager jeśli nie przekazano."""
     state_manager = StateManager(state_file_path=temp_state_file)
 

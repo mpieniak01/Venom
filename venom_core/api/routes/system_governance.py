@@ -50,7 +50,7 @@ class CostModeResponse(BaseModel):
     response_model=CostModeResponse,
     responses=COST_MODE_RESPONSES,
 )
-async def get_cost_mode():
+def get_cost_mode():
     """
     Zwraca aktualny stan Global Cost Guard.
     """
@@ -74,7 +74,7 @@ async def get_cost_mode():
 
 
 @router.post("/system/cost-mode", responses=COST_MODE_RESPONSES)
-async def set_cost_mode(request: CostModeRequest):
+def set_cost_mode(request: CostModeRequest):
     """
     Ustawia tryb kosztowy (Eco/Pro).
     """
@@ -132,7 +132,7 @@ class AutonomyLevelResponse(BaseModel):
     response_model=AutonomyLevelResponse,
     responses=AUTONOMY_GET_RESPONSES,
 )
-async def get_autonomy_level():
+def get_autonomy_level():
     """
     Zwraca aktualny poziom autonomii AutonomyGate.
     """
@@ -161,7 +161,7 @@ async def get_autonomy_level():
 
 
 @router.post("/system/autonomy", responses=AUTONOMY_SET_RESPONSES)
-async def set_autonomy_level(request: AutonomyLevelRequest):
+def set_autonomy_level(request: AutonomyLevelRequest):
     """
     Ustawia nowy poziom autonomii.
     """
@@ -202,7 +202,7 @@ async def set_autonomy_level(request: AutonomyLevelRequest):
 
 
 @router.get("/system/autonomy/levels", responses=AUTONOMY_LEVELS_RESPONSES)
-async def get_all_autonomy_levels():
+def get_all_autonomy_levels():
     """
     Zwraca listę wszystkich dostępnych poziomów autonomii.
     """

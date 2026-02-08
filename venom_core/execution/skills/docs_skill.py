@@ -49,7 +49,7 @@ class DocsSkill:
         description=f"Generuje plik konfiguracyjny {MKDOCS_CONFIG_FILE} dla dokumentacji. "
         "Użyj przed budowaniem strony dokumentacji.",
     )
-    async def generate_mkdocs_config(
+    def generate_mkdocs_config(
         self,
         site_name: Annotated[str, "Nazwa projektu/strony (np. 'My Project')"],
         theme: Annotated[
@@ -194,6 +194,35 @@ class DocsSkill:
 
         return nav_lines
 
+    def _list_visible_subdirs(self) -> list[Path]:
+        return [
+            directory
+            for directory in self.docs_dir.iterdir()
+            if directory.is_dir() and not directory.name.startswith((".", "_"))
+        ]
+
+    def _resolve_homepage_name(self) -> str | None:
+        has_index = (self.docs_dir / INDEX_DOC_FILE).exists()
+        if has_index:
+            return INDEX_DOC_FILE
+        has_readme = (self.docs_dir / "README.md").exists()
+        if has_readme:
+            return "README.md"
+        return None
+
+    def _build_docs_sample_lines(
+        self, md_files: list[Path], limit: int = 10
+    ) -> list[str]:
+        if not md_files:
+            return []
+        lines = ["\n📋 Przykładowe pliki:"]
+        for md_file in md_files[:limit]:
+            rel_path = md_file.relative_to(self.docs_dir)
+            lines.append(f"  - {rel_path}")
+        if len(md_files) > limit:
+            lines.append(f"  ... i {len(md_files) - limit} więcej")
+        return lines
+
     @kernel_function(
         name="build_docs_site",
         description="Buduje statyczną stronę HTML z dokumentacji Markdown. "
@@ -283,7 +312,7 @@ class DocsSkill:
         description="Uruchamia lokalny serwer deweloperski MkDocs z live-reload. "
         "Użyj do podglądu dokumentacji podczas pracy.",
     )
-    async def serve_docs(
+    def serve_docs(
         self,
         port: Annotated[int, "Port serwera (domyślnie 8000)"] = 8000,
     ) -> str:
@@ -330,7 +359,7 @@ class DocsSkill:
         description="Sprawdza strukturę katalogu docs/ i raportuje co zostało znalezione. "
         "Użyj przed generowaniem dokumentacji.",
     )
-    async def check_docs_structure(self) -> str:
+    def check_docs_structure(self) -> str:
         """
         Sprawdza strukturę dokumentacji.
 
@@ -345,11 +374,7 @@ class DocsSkill:
 
             # Zbierz statystyki
             md_files = list(self.docs_dir.rglob("*.md"))
-            subdirs = [
-                d
-                for d in self.docs_dir.iterdir()
-                if d.is_dir() and not d.name.startswith((".", "_"))
-            ]
+            subdirs = self._list_visible_subdirs()
 
             # Przygotuj raport
             report_lines = [
@@ -365,28 +390,15 @@ class DocsSkill:
                         f"  - {subdir.name}/ ({len(subdir_files)} plików)"
                     )
 
-            # Sprawdź czy jest index/readme
-            has_index = (self.docs_dir / INDEX_DOC_FILE).exists()
-            has_readme = (self.docs_dir / "README.md").exists()
-
-            if has_index or has_readme:
-                report_lines.append(
-                    f"\n✅ Strona główna: {INDEX_DOC_FILE if has_index else 'README.md'}"
-                )
+            homepage_name = self._resolve_homepage_name()
+            if homepage_name:
+                report_lines.append(f"\n✅ Strona główna: {homepage_name}")
             else:
                 report_lines.append(
                     f"\n⚠️ Brak strony głównej ({INDEX_DOC_FILE} lub README.md)"
                 )
 
-            # Lista pierwszych 10 plików
-            if md_files:
-                report_lines.append("\n📋 Przykładowe pliki:")
-                for md_file in md_files[:10]:
-                    rel_path = md_file.relative_to(self.docs_dir)
-                    report_lines.append(f"  - {rel_path}")
-
-                if len(md_files) > 10:
-                    report_lines.append(f"  ... i {len(md_files) - 10} więcej")
+            report_lines.extend(self._build_docs_sample_lines(md_files))
 
             return "\n".join(report_lines)
 

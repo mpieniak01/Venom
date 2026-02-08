@@ -428,7 +428,7 @@ async def test_sync_and_undo_raise_expected_http_errors():
 async def test_get_git_status_uses_cache(monkeypatch):
     git_routes._git_status_cache.set({"status": "success", "branch": "cached"})
 
-    async def should_not_run():
+    def should_not_run():
         raise AssertionError("cache should short-circuit")
 
     monkeypatch.setattr(git_routes, "_get_git_status_impl", should_not_run)

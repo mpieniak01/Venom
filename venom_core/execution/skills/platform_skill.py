@@ -100,11 +100,68 @@ class PlatformSkill:
 
         logger.info("PlatformSkill zainicjalizowany")
 
+    def _fetch_issues(self, repo, state: str, assignee: Optional[str]):
+        if assignee:
+            return repo.get_issues(state=state, assignee=assignee)
+        return repo.get_issues(state=state)
+
+    def _issue_to_data(self, issue) -> dict[str, object]:
+        return {
+            "number": issue.number,
+            "title": issue.title,
+            "body": issue.body or "",
+            "state": issue.state,
+            "created_at": issue.created_at.isoformat(),
+            "updated_at": issue.updated_at.isoformat(),
+            "labels": [label.name for label in issue.labels],
+            "assignees": [issue_assignee.login for issue_assignee in issue.assignees],
+            "url": issue.html_url,
+        }
+
+    def _format_issues(self, issues_list: list[dict[str, object]], state: str) -> str:
+        if not issues_list:
+            return f"ℹ️ Brak Issues w stanie '{state}'"
+
+        result = f"Znaleziono {len(issues_list)} Issues:\n\n"
+        for issue_item in issues_list:
+            issue_number = cast(int, issue_item["number"])
+            issue_title = cast(str, issue_item["title"])
+            issue_state = cast(str, issue_item["state"])
+            issue_labels = cast(list[str], issue_item["labels"])
+            issue_url = cast(str, issue_item["url"])
+            issue_body = cast(str, issue_item["body"])
+
+            result += f"#{issue_number}: {issue_title}\n"
+            result += (
+                f"  Stan: {issue_state}, Labels: {', '.join(issue_labels) or 'brak'}\n"
+            )
+            result += f"  URL: {issue_url}\n"
+            if issue_body:
+                body_preview = (
+                    issue_body[:200] + "..." if len(issue_body) > 200 else issue_body
+                )
+                result += f"  Opis: {body_preview}\n"
+            result += "\n"
+        return result
+
+    def _format_github_error(self, exc: Exception, context: str) -> str:
+        if type(exc).__name__ == "GithubException":
+            error_msg = (
+                f"❌ Błąd GitHub API: {getattr(exc, 'status', 'Unknown')} - "
+                f"{getattr(exc, 'data', {}).get('message', str(exc))}"
+            )
+            logger.error(error_msg)
+            return error_msg
+
+        error_msg = f"❌ Błąd podczas {context}: {str(exc)}"
+        logger.error(error_msg)
+        return error_msg
+
     @kernel_function(
         name="get_assigned_issues",
         description="Pobiera Issues przypisane do bota z GitHub (domyślnie otwarte).",
     )
-    async def get_assigned_issues(
+    def get_assigned_issues(
         self,
         state: Annotated[str, "Stan Issues: 'open', 'closed', 'all'"] = "open",
         assignee: Annotated[
@@ -127,76 +184,25 @@ class PlatformSkill:
         try:
             repo = self.github_client.get_repo(self.github_repo_name)
             issues_list: list[dict[str, object]] = []
-
-            # Pobierz Issues (jeśli assignee nie podany, pobierz wszystkie)
-            if assignee:
-                issues = repo.get_issues(state=state, assignee=assignee)
-            else:
-                issues = repo.get_issues(state=state)
+            issues = self._fetch_issues(repo, state, assignee)
 
             for issue in issues:
                 # Pomiń Pull Requesty (GitHub API zwraca PR jako Issues)
                 if issue.pull_request:
                     continue
-
-                issue_data = {
-                    "number": issue.number,
-                    "title": issue.title,
-                    "body": issue.body or "",
-                    "state": issue.state,
-                    "created_at": issue.created_at.isoformat(),
-                    "updated_at": issue.updated_at.isoformat(),
-                    "labels": [label.name for label in issue.labels],
-                    "assignees": [assignee.login for assignee in issue.assignees],
-                    "url": issue.html_url,
-                }
-                issues_list.append(issue_data)
+                issues_list.append(self._issue_to_data(issue))
 
             logger.info(f"Pobrano {len(issues_list)} Issues (state={state})")
-
-            if not issues_list:
-                return f"ℹ️ Brak Issues w stanie '{state}'"
-
-            # Formatuj wynik
-            result = f"Znaleziono {len(issues_list)} Issues:\n\n"
-            for issue_item in issues_list:
-                issue_number = cast(int, issue_item["number"])
-                issue_title = cast(str, issue_item["title"])
-                issue_state = cast(str, issue_item["state"])
-                issue_labels = cast(list[str], issue_item["labels"])
-                issue_url = cast(str, issue_item["url"])
-                issue_body = cast(str, issue_item["body"])
-
-                result += f"#{issue_number}: {issue_title}\n"
-                result += f"  Stan: {issue_state}, Labels: {', '.join(issue_labels) or 'brak'}\n"
-                result += f"  URL: {issue_url}\n"
-                if issue_body:
-                    body_preview = (
-                        issue_body[:200] + "..."
-                        if len(issue_body) > 200
-                        else issue_body
-                    )
-                    result += f"  Opis: {body_preview}\n"
-                result += "\n"
-
-            return result
+            return self._format_issues(issues_list, state)
 
         except Exception as e:
-            # Handle PyGithub exceptions by name to avoid importing the class
-            if type(e).__name__ == "GithubException":
-                error_msg = f"❌ Błąd GitHub API: {getattr(e, 'status', 'Unknown')} - {getattr(e, 'data', {}).get('message', str(e))}"
-                logger.error(error_msg)
-                return error_msg
-
-            error_msg = f"❌ Błąd podczas pobierania Issues: {str(e)}"
-            logger.error(error_msg)
-            return error_msg
+            return self._format_github_error(e, "pobierania Issues")
 
     @kernel_function(
         name="get_issue_details",
         description="Pobiera szczegóły konkretnego Issue z GitHub (w tym komentarze).",
     )
-    async def get_issue_details(
+    def get_issue_details(
         self,
         issue_number: Annotated[int, "Numer Issue do pobrania"],
     ) -> str:
@@ -260,7 +266,7 @@ class PlatformSkill:
         name="create_pull_request",
         description="Tworzy Pull Request na GitHub z obecnego brancha.",
     )
-    async def create_pull_request(
+    def create_pull_request(
         self,
         branch: Annotated[str, "Nazwa brancha źródłowego (head)"],
         title: Annotated[str, "Tytuł Pull Requesta"],
@@ -314,7 +320,7 @@ class PlatformSkill:
         name="comment_on_issue",
         description="Dodaje komentarz do Issue na GitHub.",
     )
-    async def comment_on_issue(
+    def comment_on_issue(
         self,
         issue_number: Annotated[int, "Numer Issue"],
         text: Annotated[str, "Treść komentarza"],

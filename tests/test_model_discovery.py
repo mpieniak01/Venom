@@ -101,8 +101,7 @@ async def test_ollama_search_scraping_success(mock_ollama_html):
         assert model["description"].startswith("The most capable")
 
 
-@pytest.mark.asyncio
-async def test_api_search_endpoint():
+def test_api_search_endpoint():
     mock_registry_results = {
         "models": [
             {
@@ -136,8 +135,7 @@ async def test_api_search_endpoint():
         assert data["models"][0]["model_name"] == "test-model"
 
 
-@pytest.mark.asyncio
-async def test_api_search_validation():
+def test_api_search_validation():
     # Test min_length validation
     client = TestClient(app)
     response = client.get("/api/v1/models/search?query=a&provider=huggingface")

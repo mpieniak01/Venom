@@ -259,7 +259,7 @@ async def control_llm_server(server_name: str, action: str):
 
 
 @router.get("/system/llm-servers/active")
-async def get_active_llm_server():
+def get_active_llm_server():
     """Zwraca aktywny runtime LLM oraz zapamiętane modele."""
     runtime = get_active_llm_runtime()
     config = config_manager.get_config(mask_secrets=False)
@@ -280,7 +280,7 @@ async def get_active_llm_server():
 
 
 @router.get("/system/llm-runtime/active")
-async def get_active_llm_runtime_info():
+def get_active_llm_runtime_info():
     """Alias z pełnym payloadem aktywnego runtime LLM."""
     runtime = get_active_llm_runtime()
     return {"status": "success", "runtime": runtime.to_payload()}
@@ -290,7 +290,7 @@ async def get_active_llm_runtime_info():
     "/system/llm-runtime/active",
     responses=LLM_RUNTIME_ACTIVATE_RESPONSES,
 )
-async def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
+def set_active_llm_runtime(request: LlmRuntimeActivateRequest):
     """
     Przelacza runtime LLM na cloud provider (openai/google).
     """

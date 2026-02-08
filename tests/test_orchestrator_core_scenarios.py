@@ -151,8 +151,7 @@ async def test_emergency_stop(orchestrator_deps):
 # --- Kernel Management Tests ---
 
 
-@pytest.mark.asyncio
-async def test_kernel_refresh_on_drift(orchestrator_deps):
+def test_kernel_refresh_on_drift(orchestrator_deps):
     """Test that kernel is refreshed when runtime config changes."""
     orchestrator = Orchestrator(**orchestrator_deps)
 

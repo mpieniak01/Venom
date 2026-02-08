@@ -221,7 +221,7 @@ async def test_query_model_with_metrics(benchmark_service):
             mock_response.status_code = 200
 
             # Symuluj streaming response
-            async def mock_aiter_lines():
+            def mock_aiter_lines():
                 yield "data: {}"
                 yield "data: {}"
                 yield "data: {}"

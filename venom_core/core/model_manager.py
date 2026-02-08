@@ -510,59 +510,58 @@ PARAMETER top_k 40
         )
         return True
 
-    async def list_local_models(self) -> List[Dict[str, Any]]:
-        """
-        Skanuje katalog models/ i pobiera listę modeli z Ollama.
+    def _register_local_entry(
+        self,
+        models: Dict[str, Dict[str, Any]],
+        model_path: Path,
+        source: str,
+        provider: str = "vllm",
+    ) -> None:
+        size_bytes = 0
+        if model_path.is_file():
+            size_bytes = model_path.stat().st_size
+        else:
+            for file_path in model_path.rglob("*"):
+                if file_path.is_file():
+                    size_bytes += file_path.stat().st_size
 
-        Returns:
-            Lista słowników z informacjami o modelach:
-            {name, size_gb, type, quantization, path, active}
-        """
-        models: Dict[str, Dict[str, Any]] = {}
-
-        def _register_local_entry(
-            model_path: Path, source: str, provider: str = "vllm"
-        ):
-            size_bytes = 0
-            if model_path.is_file():
-                size_bytes = model_path.stat().st_size
-            else:
-                for file_path in model_path.rglob("*"):
-                    if file_path.is_file():
-                        size_bytes += file_path.stat().st_size
-
-            lower_path = str(model_path).lower()
-            if ".gguf" in lower_path:
-                model_type = "gguf"
-            elif model_path.suffix == ".onnx" or model_path.suffix == ".bin":
-                model_type = "onnx"
+        lower_path = str(model_path).lower()
+        if ".gguf" in lower_path:
+            model_type = "gguf"
+        elif model_path.suffix == ".onnx" or model_path.suffix == ".bin":
+            model_type = "onnx"
+            provider = "onnx"
+        elif model_path.is_dir():
+            model_type = "folder"
+            if "onnx" in model_path.name.lower():
                 provider = "onnx"
-            elif model_path.is_dir():
-                model_type = "folder"
-                if "onnx" in model_path.name.lower():
-                    provider = "onnx"
-            else:
-                model_type = "folder"
+        else:
+            model_type = "folder"
 
-            models[model_path.name] = {
-                "name": model_path.name,
-                "size_gb": size_bytes / (1024**3) if size_bytes else None,
-                "type": model_type,
-                "quantization": "unknown",
-                "path": str(model_path),
-                "source": source,
-                "provider": provider,
-                "active": False,
-            }
+        models[model_path.name] = {
+            "name": model_path.name,
+            "size_gb": size_bytes / (1024**3) if size_bytes else None,
+            "type": model_type,
+            "quantization": "unknown",
+            "path": str(model_path),
+            "source": source,
+            "provider": provider,
+            "active": False,
+        }
 
-        # 1. Skanowanie lokalnych katalogów modeli (data/models oraz ./models)
+    def _build_search_dirs(self) -> List[Path]:
         search_dirs = [self.models_dir]
         default_models_dir = Path("./models")
         if default_models_dir.exists() and default_models_dir not in search_dirs:
             search_dirs.append(default_models_dir)
+        return search_dirs
 
+    def _scan_local_dirs(
+        self,
+        search_dirs: List[Path],
+        models: Dict[str, Dict[str, Any]],
+    ) -> None:
         skip_dirs = {"hf_cache", "__pycache__", ".cache", "manifests", "blobs"}
-
         for base_dir in search_dirs:
             if not base_dir.exists():
                 continue
@@ -575,64 +574,162 @@ PARAMETER top_k 40
                     ".bin",
                 }:
                     try:
-                        _register_local_entry(
-                            model_path, source=base_dir.name, provider="vllm"
+                        self._register_local_entry(
+                            models,
+                            model_path,
+                            source=base_dir.name,
+                            provider="vllm",
                         )
                     except Exception as e:
                         logger.warning(
                             f"Nie udało się odczytać modelu {model_path}: {e}"
                         )
 
-        def _load_ollama_manifest_entries(manifests_dir: Path) -> List[Dict[str, Any]]:
-            entries: List[Dict[str, Any]] = []
-            if not manifests_dir.exists():
-                return entries
-            for manifest_path in manifests_dir.rglob("*"):
-                if not manifest_path.is_file():
-                    continue
-                try:
-                    relative_parts = manifest_path.relative_to(manifests_dir).parts
-                except ValueError:
-                    continue
-                if len(relative_parts) < 2:
-                    continue
-                registry = relative_parts[0]
-                tag = relative_parts[-1]
-                model = relative_parts[-2]
-                namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
-                if namespace and namespace != "library":
-                    entry_name = f"{namespace}/{model}:{tag}"
-                else:
-                    entry_name = f"{model}:{tag}"
-                size_bytes = 0
-                try:
-                    manifest_payload = json.loads(manifest_path.read_text("utf-8"))
-                    layers = manifest_payload.get("layers") or []
-                    size_bytes = sum(
-                        layer.get("size", 0)
-                        for layer in layers
-                        if isinstance(layer, dict)
-                    )
-                    config = manifest_payload.get("config") or {}
-                    if isinstance(config, dict):
-                        size_bytes += config.get("size", 0) or 0
-                except Exception as e:
-                    logger.warning(
-                        f"Nie udało się odczytać manifestu {manifest_path}: {e}"
-                    )
-                entries.append(
-                    {
-                        "name": entry_name,
-                        "size_gb": size_bytes / (1024**3) if size_bytes else None,
-                        "type": "ollama",
-                        "quantization": "unknown",
-                        "path": f"ollama://{registry}",
-                        "source": "ollama",
-                        "provider": "ollama",
-                        "active": False,
-                    }
-                )
+    def _load_ollama_manifest_entries(
+        self, manifests_dir: Path
+    ) -> List[Dict[str, Any]]:
+        entries: List[Dict[str, Any]] = []
+        if not manifests_dir.exists():
             return entries
+        for manifest_path in manifests_dir.rglob("*"):
+            if not manifest_path.is_file():
+                continue
+            try:
+                relative_parts = manifest_path.relative_to(manifests_dir).parts
+            except ValueError:
+                continue
+            if len(relative_parts) < 2:
+                continue
+            registry = relative_parts[0]
+            tag = relative_parts[-1]
+            model = relative_parts[-2]
+            namespace = relative_parts[-3] if len(relative_parts) >= 3 else ""
+            if namespace and namespace != "library":
+                entry_name = f"{namespace}/{model}:{tag}"
+            else:
+                entry_name = f"{model}:{tag}"
+            size_bytes = 0
+            try:
+                manifest_payload = json.loads(manifest_path.read_text("utf-8"))
+                layers = manifest_payload.get("layers") or []
+                size_bytes = sum(
+                    layer.get("size", 0) for layer in layers if isinstance(layer, dict)
+                )
+                config = manifest_payload.get("config") or {}
+                if isinstance(config, dict):
+                    size_bytes += config.get("size", 0) or 0
+            except Exception as e:
+                logger.warning(f"Nie udało się odczytać manifestu {manifest_path}: {e}")
+            entries.append(
+                {
+                    "name": entry_name,
+                    "size_gb": size_bytes / (1024**3) if size_bytes else None,
+                    "type": "ollama",
+                    "quantization": "unknown",
+                    "path": f"ollama://{registry}",
+                    "source": "ollama",
+                    "provider": "ollama",
+                    "active": False,
+                }
+            )
+        return entries
+
+    def _collect_ollama_entries(
+        self, ollama_models: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        ollama_models_by_digest: Dict[str, Dict[str, Any]] = {}
+        entries: List[Dict[str, Any]] = []
+        for model in ollama_models:
+            size_bytes = model.get("size", 0)
+            entry_name = model.get("name", "unknown")
+            digest = model.get("digest", "")
+            entry = {
+                "name": entry_name,
+                "size_gb": size_bytes / (1024**3),
+                "type": "ollama",
+                "quantization": model.get("details", {}).get(
+                    "quantization_level", "unknown"
+                ),
+                "path": "ollama://",
+                "source": "ollama",
+                "provider": "ollama",
+                "active": False,
+                "digest": digest,
+            }
+            if not digest:
+                entries.append(entry)
+                continue
+            existing = ollama_models_by_digest.get(digest)
+            if existing and (
+                not entry_name.endswith(":latest")
+                or existing["name"].endswith(":latest")
+            ):
+                continue
+            ollama_models_by_digest[digest] = entry
+        entries.extend(ollama_models_by_digest.values())
+        return entries
+
+    def _register_ollama_entries(
+        self,
+        models: Dict[str, Dict[str, Any]],
+        entries: List[Dict[str, Any]],
+    ) -> None:
+        for entry in entries:
+            entry_name = entry.get("name")
+            if entry_name:
+                models[f"ollama::{entry_name}"] = entry
+
+    def _save_ollama_cache(self, entries: List[Dict[str, Any]]) -> None:
+        if not entries:
+            return
+        try:
+            self.ollama_cache_path.write_text(
+                json.dumps(entries, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning(f"Nie udało się zapisać cache modeli Ollama: {e}")
+
+    def _load_ollama_cache(
+        self,
+        models: Dict[str, Dict[str, Any]],
+    ) -> None:
+        try:
+            if not self.ollama_cache_path.exists():
+                return
+            cached_entries = json.loads(self.ollama_cache_path.read_text("utf-8"))
+            for entry in cached_entries:
+                entry_name = entry.get("name")
+                if entry_name:
+                    models.setdefault(f"ollama::{entry_name}", entry)
+        except Exception as cache_error:
+            logger.warning(f"Nie udało się wczytać cache modeli Ollama: {cache_error}")
+
+    def _register_manifest_fallbacks(
+        self,
+        search_dirs: List[Path],
+        models: Dict[str, Dict[str, Any]],
+    ) -> None:
+        for base_dir in search_dirs:
+            manifest_root = base_dir / "manifests"
+            for entry in self._load_ollama_manifest_entries(manifest_root):
+                entry_name = entry.get("name")
+                if entry_name:
+                    models.setdefault(f"ollama::{entry_name}", entry)
+
+    async def list_local_models(self) -> List[Dict[str, Any]]:
+        """
+        Skanuje katalog models/ i pobiera listę modeli z Ollama.
+
+        Returns:
+            Lista słowników z informacjami o modelach:
+            {name, size_gb, type, quantization, path, active}
+        """
+        models: Dict[str, Dict[str, Any]] = {}
+
+        # 1. Skanowanie lokalnych katalogów modeli (data/models oraz ./models)
+        search_dirs = self._build_search_dirs()
+        self._scan_local_dirs(search_dirs, models)
 
         # 2. Pobieranie modeli z Ollama API
         live_query_success = False
@@ -642,59 +739,11 @@ PARAMETER top_k 40
                 if response.status_code == 200:
                     live_query_success = True
                     ollama_data = response.json()
-                    # 3. Deduplikacja modeli Ollama po digest (ten sam model pod różnymi tagami)
-                    ollama_models_by_digest: Dict[str, Dict[str, Any]] = {}
-
-                    for model in ollama_data.get("models", []):
-                        size_bytes = model.get("size", 0)
-                        entry_name = model.get("name", "unknown")
-                        digest = model.get("digest", "")
-
-                        entry = {
-                            "name": entry_name,
-                            "size_gb": size_bytes / (1024**3),
-                            "type": "ollama",
-                            "quantization": model.get("details", {}).get(
-                                "quantization_level", "unknown"
-                            ),
-                            "path": "ollama://",
-                            "source": "ollama",
-                            "provider": "ollama",
-                            "active": False,
-                            "digest": digest,
-                        }
-
-                        if not digest:
-                            models[f"ollama::{entry_name}"] = entry
-                            continue
-
-                        # Jeśli mamy już ten digest, sprawdź czy nowy ma lepszy tag
-                        if digest in ollama_models_by_digest:
-                            existing = ollama_models_by_digest[digest]
-                            # Faworyzujemy tag :latest
-                            if entry_name.endswith(":latest") and not existing[
-                                "name"
-                            ].endswith(":latest"):
-                                ollama_models_by_digest[digest] = entry
-                        else:
-                            ollama_models_by_digest[digest] = entry
-
-                    # Zarejestruj wybrane (unikalne) modele
-                    cached_entries: List[Dict[str, Any]] = []
-                    for entry in ollama_models_by_digest.values():
-                        entry_name = entry["name"]
-                        models[f"ollama::{entry_name}"] = entry
-                        cached_entries.append(entry)
-                    if cached_entries:
-                        try:
-                            self.ollama_cache_path.write_text(
-                                json.dumps(cached_entries, indent=2),
-                                encoding="utf-8",
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Nie udało się zapisać cache modeli Ollama: {e}"
-                            )
+                    entries = self._collect_ollama_entries(
+                        ollama_data.get("models", [])
+                    )
+                    self._register_ollama_entries(models, entries)
+                    self._save_ollama_cache(entries)
                 else:
                     logger.warning(
                         f"Nie udało się pobrać listy modeli z Ollama: {response.status_code}"
@@ -704,32 +753,14 @@ PARAMETER top_k 40
             if now - self._last_ollama_warning > 60:
                 logger.warning(f"Ollama nie jest dostępne: {e}")
                 self._last_ollama_warning = now
-            try:
-                if self.ollama_cache_path.exists():
-                    cached_entries = json.loads(
-                        self.ollama_cache_path.read_text("utf-8")
-                    )
-                    for entry in cached_entries:
-                        entry_name = entry.get("name")
-                        if not entry_name:
-                            continue
-                        models.setdefault(f"ollama::{entry_name}", entry)
-            except Exception as cache_error:
-                logger.warning(
-                    f"Nie udało się wczytać cache modeli Ollama: {cache_error}"
-                )
+            self._load_ollama_cache(models)
         except Exception as e:
             logger.error(f"Błąd podczas pobierania modeli z Ollama: {e}")
 
         # 3. Jeśli Ollama jest dostępna (live_query_success), to ufamy jej w 100%.
         # Jeśli nie (live_query_success=False), to ładujemy fallbacki z manifestów.
         if not live_query_success:
-            for base_dir in search_dirs:
-                manifest_root = base_dir / "manifests"
-                for entry in _load_ollama_manifest_entries(manifest_root):
-                    entry_name = entry.get("name")
-                    if entry_name:
-                        models.setdefault(f"ollama::{entry_name}", entry)
+            self._register_manifest_fallbacks(search_dirs, models)
 
         return list(models.values())
 

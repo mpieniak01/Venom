@@ -51,11 +51,11 @@ class TestOperatorAgent:
         agent = OperatorAgent(kernel=mock_kernel)
 
         # Komendy sprzętowe
-        assert await agent._is_hardware_command("status Rider-Pi") is True
-        assert await agent._is_hardware_command("włącz GPIO 17") is True
-        assert await agent._is_hardware_command("wyłącz pin 4") is True
-        assert await agent._is_hardware_command("jaka jest temperatura?") is True
-        assert await agent._is_hardware_command("procedura awaryjna reset") is True
+        assert agent._is_hardware_command("status Rider-Pi") is True
+        assert agent._is_hardware_command("włącz GPIO 17") is True
+        assert agent._is_hardware_command("wyłącz pin 4") is True
+        assert agent._is_hardware_command("jaka jest temperatura?") is True
+        assert agent._is_hardware_command("procedura awaryjna reset") is True
 
     @pytest.mark.asyncio
     async def test_is_hardware_command_false(self, mock_kernel):
@@ -63,11 +63,9 @@ class TestOperatorAgent:
         agent = OperatorAgent(kernel=mock_kernel)
 
         # Komendy niesprzętowe
-        assert (
-            await agent._is_hardware_command("jaki jest status repozytorium?") is False
-        )
-        assert await agent._is_hardware_command("napisz kod w Python") is False
-        assert await agent._is_hardware_command("zrób research o AI") is False
+        assert agent._is_hardware_command("jaki jest status repozytorium?") is False
+        assert agent._is_hardware_command("napisz kod w Python") is False
+        assert agent._is_hardware_command("zrób research o AI") is False
 
     @pytest.mark.asyncio
     async def test_handle_hardware_command_no_bridge(self, mock_kernel):

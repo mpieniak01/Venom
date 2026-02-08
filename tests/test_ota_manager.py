@@ -248,7 +248,7 @@ async def test_cleanup_old_packages(ota_manager):
         (ota_manager.ota_dir / filename).touch()
 
     # Zostaw tylko 3 najnowsze
-    await ota_manager.cleanup_old_packages(keep_latest=3)
+    ota_manager.cleanup_old_packages(keep_latest=3)
 
     packages = ota_manager.list_packages()
     assert len(packages) == 3
@@ -263,7 +263,7 @@ async def test_cleanup_old_packages_keep_all(ota_manager):
         (ota_manager.ota_dir / filename).touch()
 
     # Zostaw 5 najnowszych (więcej niż jest)
-    await ota_manager.cleanup_old_packages(keep_latest=5)
+    ota_manager.cleanup_old_packages(keep_latest=5)
 
     packages = ota_manager.list_packages()
     assert len(packages) == 3  # Wszystkie pozostały

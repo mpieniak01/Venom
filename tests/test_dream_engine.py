@@ -154,7 +154,7 @@ class TestDreamEngine:
             )
 
             # Mock dream_scenario - ustaw state na INTERRUPTED
-            async def interrupt_dream(scenario):
+            def interrupt_dream(scenario):
                 dream_engine.state = DreamState.INTERRUPTED
                 return {"success": False, "scenario": "Test"}
 
@@ -242,7 +242,7 @@ print(x)
         """Test callbacka wake_up."""
         dream_engine.state = DreamState.DREAMING
 
-        await dream_engine._handle_wake_up()
+        dream_engine._handle_wake_up()
 
         assert dream_engine.state == DreamState.INTERRUPTED
 
@@ -251,7 +251,7 @@ print(x)
         """Test callbacka wake_up gdy IDLE."""
         dream_engine.state = DreamState.IDLE
 
-        await dream_engine._handle_wake_up()
+        dream_engine._handle_wake_up()
 
         # State nie powinien się zmienić
         assert dream_engine.state == DreamState.IDLE

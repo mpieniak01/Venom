@@ -272,6 +272,6 @@ async def test_professor_evaluate_model_no_candidate(kernel):
     """Test ewaluacji bez modelu kandydującego."""
     professor = Professor(kernel)
 
-    result = await professor._evaluate_model()
+    result = professor._evaluate_model()
 
     assert "Brak nowego modelu" in result or "❌" in result

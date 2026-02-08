@@ -89,9 +89,7 @@ class TestVisionGrounding:
         """Test fallback lokalizacji (bez OpenAI)."""
         # Bez OpenAI i bez pytesseract - powinien zwrócić None (bezpieczeństwo)
         with patch.dict("sys.modules", {"pytesseract": None}):
-            result = await vision_grounding._locate_with_fallback(
-                sample_image, "button"
-            )
+            result = vision_grounding._locate_with_fallback(sample_image, "button")
 
             # Dla bezpieczeństwa fallback zwraca None zamiast środka ekranu
             assert result is None
@@ -119,7 +117,7 @@ class TestVisionGrounding:
             from venom_core.perception.vision_grounding import VisionGrounding
 
             vg = VisionGrounding()
-            result = await vg._locate_with_fallback(sample_image, "button")
+            result = vg._locate_with_fallback(sample_image, "button")
 
             assert result is not None
             # Środek znalezionego elementu: left + width/2, top + height/2

@@ -104,12 +104,9 @@ class TestAssistantSkill:
             ],
         }
 
-        async def mock_json():
-            return mock_response_data
-
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = mock_json
+        mock_response.json = AsyncMock(return_value=mock_response_data)
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 
@@ -153,12 +150,9 @@ class TestAssistantSkill:
             ],
         }
 
-        async def mock_json():
-            return mock_response_data
-
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = mock_json
+        mock_response.json = AsyncMock(return_value=mock_response_data)
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 
@@ -233,12 +227,9 @@ class TestAssistantSkill:
             ],
         }
 
-        async def mock_json():
-            return mock_response_data
-
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = mock_json
+        mock_response.json = AsyncMock(return_value=mock_response_data)
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 
@@ -289,12 +280,9 @@ class TestAssistantSkill:
             "nearest_area": [],
         }
 
-        async def mock_json():
-            return mock_response_data
-
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = mock_json
+        mock_response.json = AsyncMock(return_value=mock_response_data)
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 

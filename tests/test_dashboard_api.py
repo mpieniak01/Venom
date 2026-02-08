@@ -1,6 +1,7 @@
 """Testy dla modułu API - WebSocket i metryki."""
 
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import WebSocket
@@ -16,13 +17,11 @@ class MockWebSocket:
         self.should_fail = should_fail
         self.messages_sent = []
         self.closed = False
+        self.accept = AsyncMock(return_value=None)
+        self.send_text = AsyncMock(side_effect=self._send_text)
 
-    async def accept(self):
-        """Mock accept method."""
-        pass
-
-    async def send_text(self, message):
-        """Mock send_text method."""
+    def _send_text(self, message):
+        """Mock send_text implementation used by AsyncMock."""
         if self.should_fail:
             raise Exception("WebSocket send failed")
         self.messages_sent.append(message)

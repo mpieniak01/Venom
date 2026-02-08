@@ -163,7 +163,7 @@ class TestHistorianAgent:
             "test", "Test checkpoint"
         )
 
-        await historian_agent.analyze_failure(
+        historian_agent.analyze_failure(
             operation="Test operation",
             error="Test error message",
             checkpoint_before=checkpoint_id,
@@ -183,7 +183,7 @@ class TestHistorianAgent:
         self, historian_agent, lessons_store
     ):
         """Test analizy błędu bez checkpointu."""
-        await historian_agent.analyze_failure(
+        historian_agent.analyze_failure(
             operation="Test operation", error="Test error", checkpoint_before=None
         )
 
@@ -212,7 +212,7 @@ class TestHistorianIntegration:
         assert checkpoint_id is not None
 
         # 3. Symuluj błąd
-        await historian_agent.analyze_failure(
+        historian_agent.analyze_failure(
             operation=operation,
             error="SyntaxError: invalid syntax",
             checkpoint_before=checkpoint_id,

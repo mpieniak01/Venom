@@ -32,7 +32,9 @@ class TestGenerationParamsAdapter:
         assert result["max_tokens"] == 2048
         assert result["top_p"] == pytest.approx(0.9)
         assert result["top_k"] == 40
-        assert result["repetition_penalty"] == pytest.approx(1.1)  # Zmapowano na repetition_penalty
+        assert result["repetition_penalty"] == pytest.approx(
+            1.1
+        )  # Zmapowano na repetition_penalty
         assert "repeat_penalty" not in result
 
     def test_adapt_params_ollama(self):
@@ -116,7 +118,9 @@ class TestGenerationParamsAdapter:
 
         result = GenerationParamsAdapter.merge_with_defaults(user_params, defaults)
 
-        assert result["temperature"] == pytest.approx(0.3)  # Nadpisane przez użytkownika
+        assert result["temperature"] == pytest.approx(
+            0.3
+        )  # Nadpisane przez użytkownika
         assert result["max_tokens"] == 2048  # Z domyślnych
         assert result["top_p"] == pytest.approx(0.9)  # Z domyślnych
         assert result["top_k"] == 50  # Nowy od użytkownika

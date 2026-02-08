@@ -705,11 +705,19 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 - `pytest tests/test_researcher_agent.py` / `tests/test_architect_agent.py` — agent scenarios.
 - `pytest tests/perf/test_chat_pipeline.py -m performance` — SSE measurement (task_update → task_finished) + parallel batch.
 - `pytest --cov=venom_core --cov-report=html` — coverage report.
+- `make sonar-reports-backend` — generates Sonar backend reports:
+  - `test-results/sonar/python-coverage.xml`
+  - `test-results/sonar/python-junit.xml`
 
 ### Frontend Next.js
 - `npm --prefix web-next run lint`
 - `npm --prefix web-next run build`
 - `npm --prefix web-next run test:e2e` — Playwright on prod build.
+- `npm --prefix web-next run test:unit:coverage` — generates Sonar frontend coverage:
+  - `web-next/coverage/lcov.info`
+
+### Sonar report bundle (local pre-check)
+- `make sonar-reports` — runs backend + frontend report generation used by SonarCloud workflow.
 
 ### Response Time and Chat Performance
 - `npm --prefix web-next run test:perf` — Playwright measuring Next Cockpit latency (HTML report goes to `test-results/perf-report`).
@@ -719,6 +727,7 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 - `./scripts/archive-perf-results.sh` — dump `test-results/`, Playwright/Locust reports to `perf-artifacts/<timestamp>/`.
 
 > Test results do NOT go to repo (we ignore `**/test-results/`, `perf-artifacts/`, `playwright-report/`, etc.) – this way you store them locally without risk of data exposure.
+> This also includes Sonar report artifacts: `test-results/sonar/python-junit.xml`, `test-results/sonar/python-coverage.xml`, and `web-next/coverage/lcov.info`.
 
 ## 🛠️ Development Tools
 

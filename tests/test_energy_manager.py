@@ -161,7 +161,8 @@ class TestEnergyManager:
         callback_called = []
 
         async def alert_callback():
-            await asyncio.to_thread(callback_called.append, True)
+            callback_called.append(True)
+            await asyncio.sleep(0)
 
         # Ustaw bardzo niskie progi żeby wywołać callback
         em = EnergyManager(cpu_threshold=0.0, memory_threshold=0.0, check_interval=1)

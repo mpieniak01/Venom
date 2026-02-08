@@ -53,6 +53,41 @@ interface StorageSnapshot {
   }>;
 }
 
+const runtimeToServiceStatus: Record<string, ServiceInfo["status"]> = {
+  online: "running",
+  offline: "stopped",
+  degraded: "error",
+  unknown: "unknown",
+};
+
+function normalizeServiceStatus(status: string | undefined): ServiceInfo["status"] {
+  if (!status) return "unknown";
+  if (status in runtimeToServiceStatus) return runtimeToServiceStatus[status];
+  return status as ServiceInfo["status"];
+}
+
+function mergeServiceUpdate(
+  service: ServiceInfo,
+  update: Partial<ServiceInfo> & { status: string },
+): ServiceInfo {
+  return {
+    ...service,
+    ...update,
+    status: normalizeServiceStatus(update.status),
+  };
+}
+
+function applyServiceEventUpdate(
+  services: ServiceInfo[],
+  update: Partial<ServiceInfo> & { status: string; name?: string },
+): ServiceInfo[] {
+  if (!update.name) return services;
+  const normalizedName = update.name.toLowerCase();
+  return services.map((service) =>
+    service.name.toLowerCase() === normalizedName ? mergeServiceUpdate(service, update) : service,
+  );
+}
+
 export function ServicesPanel() {
   const t = useTranslation();
   const { language } = useLanguage();
@@ -192,24 +227,11 @@ export function ServicesPanel() {
     const ws = new VenomWebSocket("/ws/events", (payload: unknown) => {
       const event = payload as ServiceEvent;
       if (event.type === "SERVICE_STATUS_UPDATE" && event.data && event.data.name) {
-        const serviceData = event.data;
-        const statusMap: Record<string, string> = {
-          online: "running",
-          offline: "stopped",
-          degraded: "degraded",
-          unknown: "unknown",
-        };
-
         setServices((prevServices) =>
-          prevServices.map((s) =>
-            s.name.toLowerCase() === serviceData.name!.toLowerCase()
-              ? {
-                ...s,
-                ...serviceData,
-                status: (statusMap[serviceData.status] as ServiceInfo["status"]) || (serviceData.status as ServiceInfo["status"])
-              }
-              : s
-          )
+          applyServiceEventUpdate(
+            prevServices,
+            event.data as Partial<ServiceInfo> & { status: string; name?: string },
+          ),
         );
       }
     });

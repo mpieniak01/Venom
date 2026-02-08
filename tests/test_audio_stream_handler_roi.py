@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import numpy as np
@@ -20,9 +21,11 @@ async def test_handle_control_message_start_stop(monkeypatch):
     processed = []
 
     async def fake_send_json(_cid, payload):
+        await asyncio.sleep(0)
         sent.append(payload)
 
     async def fake_process(_cid, _buffer, _agent):
+        await asyncio.sleep(0)
         processed.append(True)
 
     monkeypatch.setattr(handler, "_send_json", fake_send_json)

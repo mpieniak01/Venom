@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ class FakeStateManager:
         self.logs.append((task_id, message))
 
     async def update_status(self, task_id, status, result=None) -> None:
+        await asyncio.sleep(0)
         self.status_updates.append((task_id, status, result))
 
 
@@ -32,16 +34,19 @@ class FakeAgent:
         self.handled = []
 
     async def process(self, prompt: str) -> str:
+        await asyncio.sleep(0)
         self.handled.append(prompt)
         return self.response
 
     async def handle_issue(self, issue_number: int) -> str:
+        await asyncio.sleep(0)
         self.handled.append(str(issue_number))
         return self.response
 
     async def finalize_issue(
         self, issue_number: int, branch_name: str, pr_title: str, pr_body: str
     ) -> str:
+        await asyncio.sleep(0)
         self.handled.append(f"finalize:{issue_number}:{branch_name}")
         return "PR created"
 

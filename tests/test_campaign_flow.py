@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -65,6 +66,7 @@ class FakeStateManager:
         return self.tasks[task_id]
 
     async def update_status(self, task_id, status: TaskStatus, result=None) -> None:
+        await asyncio.sleep(0)
         task = self.tasks[task_id]
         task.status = status
         task.result = result
@@ -92,6 +94,7 @@ async def test_campaign_flow_success_path():
     goal_store = FakeGoalStore(task_queue, milestone)
 
     async def orchestrator_submit_task(task_request: TaskRequest):
+        await asyncio.sleep(0)
         sub_task = VenomTask(content=task_request.content, status=TaskStatus.COMPLETED)
         state_manager.tasks[sub_task.id] = sub_task
         return TaskResponse(task_id=sub_task.id, status=sub_task.status)
@@ -113,6 +116,7 @@ async def test_campaign_flow_finishes_when_no_tasks():
     goal_store = FakeGoalStore(tasks=[], milestone=None)
 
     async def orchestrator_submit_task(_task_request: TaskRequest):
+        await asyncio.sleep(0)
         return TaskResponse(task_id=uuid4(), status=TaskStatus.COMPLETED)
 
     flow = CampaignFlow(

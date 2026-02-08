@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 import venom_core.utils.llm_runtime as llm_runtime
@@ -91,12 +93,15 @@ async def test_probe_runtime_status_success(monkeypatch):
 
     class DummyClient:
         async def __aenter__(self):
+            await asyncio.sleep(0)
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
             return None
 
         async def get(self, _url):
+            await asyncio.sleep(0)
             return DummyResponse()
 
     monkeypatch.setattr(
@@ -120,12 +125,15 @@ async def test_probe_runtime_status_success(monkeypatch):
 async def test_probe_runtime_status_failure(monkeypatch):
     class DummyClient:
         async def __aenter__(self):
+            await asyncio.sleep(0)
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            await asyncio.sleep(0)
             return None
 
         async def get(self, _url):
+            await asyncio.sleep(0)
             raise llm_runtime.httpx.HTTPError("boom")
 
     monkeypatch.setattr(

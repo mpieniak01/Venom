@@ -16,6 +16,7 @@ class DummyWebSocket:
         self.sent = []
 
     async def send_json(self, payload) -> None:
+        await asyncio.sleep(0)
         self.sent.append(payload)
 
 

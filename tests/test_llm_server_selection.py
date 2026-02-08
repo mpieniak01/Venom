@@ -1,5 +1,6 @@
 """Unit tests for active LLM server selection (PR 069)."""
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,7 @@ class DummyController:
         return self._servers
 
     async def run_action(self, name, action):
+        await asyncio.sleep(0)
         self.actions.append((name, action))
         return SimpleNamespace(ok=True, exit_code=0)
 
@@ -30,6 +32,7 @@ class DummyModelManager:
         self._models = models
 
     async def list_local_models(self):
+        await asyncio.sleep(0)
         return self._models
 
 

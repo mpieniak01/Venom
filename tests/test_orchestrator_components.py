@@ -22,30 +22,38 @@ class DummyQueueManager:
         self.aborted = None
 
     async def check_capacity(self):
+        await asyncio.sleep(0)
         return True, 1
 
     async def register_task(self, task_id, task_handle):
+        await asyncio.sleep(0)
         self.last_register = (task_id, task_handle)
 
     async def unregister_task(self, task_id):
+        await asyncio.sleep(0)
         self.last_unregister = task_id
 
     async def pause(self):
+        await asyncio.sleep(0)
         self.is_paused = True
         return {"ok": True}
 
     async def resume(self):
+        await asyncio.sleep(0)
         self.is_paused = False
         return {"ok": True}
 
     async def purge(self):
+        await asyncio.sleep(0)
         return {"purged": True}
 
     async def abort_task(self, task_id):
+        await asyncio.sleep(0)
         self.aborted = task_id
         return {"aborted": True}
 
     async def emergency_stop(self):
+        await asyncio.sleep(0)
         return {"stopped": True}
 
     def get_status(self):
@@ -95,6 +103,7 @@ async def test_event_broadcaster_client_calls_broadcaster():
             self.last = None
 
         async def broadcast_event(self, event_type, message, agent=None, data=None):
+            await asyncio.sleep(0)
             self.last = (event_type, message, agent, data)
 
     broadcaster = DummyBroadcaster()

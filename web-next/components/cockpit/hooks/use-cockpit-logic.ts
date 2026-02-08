@@ -56,6 +56,221 @@ const mapRole = (role: string | undefined): "user" | "assistant" => {
     return "user"; // Fallback for "user", "system", or unknown
 };
 
+type HistoryEntryLike = {
+    role?: string;
+    content?: string;
+    request_id?: string;
+    timestamp?: string;
+    pending?: boolean;
+    status?: string | null;
+    contextUsed?: { lessons?: string[]; memory_entries?: string[] } | null;
+    session_id?: string;
+};
+
+type StreamLike = {
+    result?: string;
+    status?: string;
+    contextUsed?: { lessons?: string[]; memory_entries?: string[] } | null;
+};
+
+function mergeStreamsIntoHistory(
+    deduped: HistoryEntryLike[],
+    taskStreams: Record<string, StreamLike>,
+) {
+    Object.entries(taskStreams).forEach(([taskId, stream]) => {
+        const content = stream.result || "";
+        const isPending = stream.status === "PROCESSING" || stream.status === "PENDING";
+        const index = deduped.findIndex(
+            (entry) => entry.request_id === taskId && entry.role === "assistant",
+        );
+
+        if (index !== -1) {
+            if (content && content.length > (deduped[index].content?.length || 0)) {
+                deduped[index] = {
+                    ...deduped[index],
+                    content,
+                    pending: isPending,
+                    status: stream.status,
+                    contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
+                };
+            } else if (isPending && !deduped[index].pending) {
+                deduped[index] = {
+                    ...deduped[index],
+                    pending: true,
+                    status: stream.status,
+                    contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
+                };
+            }
+            return;
+        }
+
+        if (content || isPending) {
+            deduped.push({
+                role: "assistant",
+                content,
+                request_id: taskId,
+                timestamp: new Date().toISOString(),
+                pending: isPending,
+                status: stream.status,
+                contextUsed: stream.contextUsed ?? undefined,
+            });
+        }
+    });
+}
+
+function toHistoryMessages(entries: HistoryEntryLike[]) {
+    return entries.map((entry, index) => {
+        const fallbackId = `msg-${index}-${entry.timestamp}`;
+        const uniqueId = entry.request_id ? `${entry.request_id}-${entry.role}` : fallbackId;
+        return {
+            bubbleId: uniqueId,
+            role: mapRole(entry.role),
+            text: entry.content || "",
+            requestId: entry.request_id ?? null,
+            timestamp: entry.timestamp ?? "",
+            pending: entry.pending || false,
+            status: entry.status || null,
+            contextUsed: entry.contextUsed ?? null,
+        };
+    });
+}
+
+function parseContextPreviewMeta(
+    selectedTask: { context_history?: Record<string, unknown> } | null,
+    detail: { steps?: Array<{ component?: string; action?: string; details?: string | null }> } | null,
+) {
+    if (selectedTask?.context_history) {
+        const ctx = selectedTask.context_history;
+        const preview =
+            typeof ctx.preview === "string"
+                ? ctx.preview
+                : typeof ctx.prompt_context_preview === "string"
+                    ? ctx.prompt_context_preview
+                    : null;
+        if (preview) {
+            return {
+                preview,
+                truncated: !!ctx.truncated || !!ctx.prompt_context_truncated,
+                hiddenPrompts: typeof ctx.hidden_prompts_count === "number" ? ctx.hidden_prompts_count : null,
+                mode: typeof ctx.mode === "string" ? ctx.mode : null,
+            };
+        }
+    }
+
+    if (!detail?.steps) return null;
+
+    const contextStep = detail.steps.find(
+        (s) =>
+            s.component === "ContextBuilder" ||
+            s.action === "context_preview" ||
+            !!s.details?.includes("preview=") ||
+            !!s.details?.includes("preview\"") ||
+            !!s.details?.includes("prompt_context_preview"),
+    );
+    const hiddenStep = detail.steps.find(
+        (s) =>
+            s.action === "hidden_prompts" ||
+            !!s.details?.includes("hidden_prompts") ||
+            !!s.details?.includes("hiddenPrompts"),
+    );
+
+    let meta: {
+        preview: string | null;
+        truncated: boolean;
+        hiddenPrompts: number | null;
+        mode: string | null;
+    } | null = null;
+
+    if (contextStep?.details) {
+        const details = contextStep.details.trim();
+        if (details.startsWith("{")) {
+            try {
+                const parsed = JSON.parse(details) as Record<string, unknown>;
+                meta = {
+                    preview:
+                        (parsed.preview as string) ||
+                        (parsed.context as string) ||
+                        (parsed.prompt as string) ||
+                        (parsed.prompt_context_preview as string) ||
+                        null,
+                    truncated: !!parsed.truncated || !!parsed.prompt_context_truncated,
+                    hiddenPrompts: typeof parsed.hidden_prompts_count === "number" ? parsed.hidden_prompts_count : null,
+                    mode: typeof parsed.mode === "string" ? parsed.mode : null,
+                };
+            } catch {
+                // ignore
+            }
+        }
+        if (!meta) {
+            const previewMatch = details.match(/(?:preview|prompt|context|prompt_context_preview)=([\s\S]*?)(?:$|\s\w+=)/);
+            const hiddenMatch = details.match(/hidden_prompts_count=(\d+)/);
+            const modeMatch = details.match(/mode=(\w+)/);
+            if (previewMatch || hiddenMatch) {
+                meta = {
+                    preview: previewMatch ? previewMatch[1].trim() : null,
+                    truncated: details.includes("truncated=true") || details.includes("truncated\":true"),
+                    hiddenPrompts: hiddenMatch ? Number.parseInt(hiddenMatch[1], 10) : null,
+                    mode: modeMatch ? modeMatch[1] : null,
+                };
+            }
+        }
+    }
+
+    if (!meta && !contextStep) {
+        const llmStep = detail.steps.find(
+            (s) =>
+                (s.component === "LLM" && s.action === "start") ||
+                (s.component === "ChatAgent" && s.action === "process_task") ||
+                !!s.details?.includes("prompt=") ||
+                !!s.details?.includes("payload=") ||
+                !!s.details?.includes("input="),
+        );
+        if (llmStep?.details) {
+            const details = llmStep.details.trim();
+            if (details.startsWith("{")) {
+                try {
+                    const parsed = JSON.parse(details) as Record<string, unknown>;
+                    meta = {
+                        preview:
+                            (parsed.prompt as string) ||
+                            (parsed.payload as string) ||
+                            (parsed.input as string) ||
+                            null,
+                        truncated: false,
+                        hiddenPrompts: null,
+                        mode: null,
+                    };
+                } catch {
+                    // ignore
+                }
+            }
+            if (!meta) {
+                const promptMatch = details.match(/(?:prompt|payload|input)=([\s\S]*?)(?:$|\s\w+=)/);
+                if (promptMatch) {
+                    meta = {
+                        preview: promptMatch[1].trim(),
+                        truncated: false,
+                        hiddenPrompts: null,
+                        mode: null,
+                    };
+                }
+            }
+        }
+    }
+
+    if (hiddenStep?.details) {
+        const hiddenMatch =
+            hiddenStep.details.match(/hidden_prompts:?\s*(\d+)/i) ||
+            hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
+        if (hiddenMatch) {
+            if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
+            meta.hiddenPrompts = Number.parseInt(hiddenMatch[1], 10);
+        }
+    }
+
+    return meta;
+}
+
 export function useCockpitLogic({
     data,
     interactive,
@@ -430,67 +645,12 @@ export function useCockpitLogic({
             sessionEntryKey,
         });
 
-        // Merge streams
-        Object.entries(taskStreams).forEach(([taskId, stream]) => {
-            // TaskStreamState has: result, status, logs...
-            const content = stream.result || "";
-            const isPending = stream.status === "PROCESSING" || stream.status === "PENDING";
-
-            // Check if this taskId is already in history (as assistant)
-            const index = deduped.findIndex(entry => entry.request_id === taskId && entry.role === 'assistant');
-
-            if (index !== -1) {
-                // Update existing entry if stream has more data or is active
-                if (content && content.length > (deduped[index].content?.length || 0)) {
-                    deduped[index] = {
-                        ...deduped[index],
-                        content: content,
-                        pending: isPending,
-                        status: stream.status,
-                        contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
-                    };
-                } else if (isPending && !deduped[index].pending) {
-                    // Revival of pending state if needed
-                    deduped[index] = {
-                        ...deduped[index],
-                        pending: true,
-                        status: stream.status,
-                        contextUsed: stream.contextUsed ?? deduped[index].contextUsed,
-                    };
-                }
-            } else if (content || isPending) {
-                deduped.push({
-                    role: 'assistant',
-                    content: content,
-                    request_id: taskId,
-                    timestamp: new Date().toISOString(), // pending
-                    pending: isPending,
-                    status: stream.status,
-                    contextUsed: stream.contextUsed ?? undefined,
-                });
-            }
-        });
+        mergeStreamsIntoHistory(deduped as HistoryEntryLike[], taskStreams as Record<string, StreamLike>);
 
         deduped = filterHistoryAfterReset(deduped, resetAtRef.current);
         const ordered = orderHistoryEntriesByRequestId(deduped);
 
-        return ordered.map((entry, index) => {
-            const fallbackId = `msg-${index}-${entry.timestamp}`;
-            const uniqueId = entry.request_id
-                ? `${entry.request_id}-${entry.role}`
-                : fallbackId;
-
-            return {
-                bubbleId: uniqueId,
-                role: mapRole(entry.role),
-                text: entry.content || "",
-                requestId: entry.request_id ?? null,
-                timestamp: entry.timestamp ?? "", // Timestamp is string, usually required, let's check
-                pending: entry.pending || false,
-                status: entry.status || null,
-                contextUsed: entry.contextUsed ?? null,
-            };
-        });
+        return toHistoryMessages(ordered as HistoryEntryLike[]);
 
     }, [localSessionHistory, sessionHistory, taskStreams, sessionEntryKey, data.history, data.tasks, sessionId]);
 
@@ -569,128 +729,12 @@ export function useCockpitLogic({
     });
 
     const contextPreviewMeta = useMemo(() => {
-        const task = interactive.state.selectedTask;
-        const detail = interactive.state.historyDetail;
-
-        // 1. Try task context_history (Primary)
-        if (task?.context_history) {
-            const ctx = task.context_history;
-            const preview = typeof ctx.preview === 'string' ? ctx.preview : (typeof ctx.prompt_context_preview === 'string' ? ctx.prompt_context_preview : null);
-
-            // Only use task context if we actually found a preview string
-            if (preview) {
-                return {
-                    preview,
-                    truncated: !!ctx.truncated || !!ctx.prompt_context_truncated,
-                    hiddenPrompts: typeof ctx.hidden_prompts_count === 'number' ? ctx.hidden_prompts_count : null,
-                    mode: typeof ctx.mode === 'string' ? ctx.mode : null
-                };
-            }
-        }
-
-        // 2. Fallback: Parse historyDetail steps
-        if (detail?.steps) {
-            // Priority 1: Context preview steps
-            const contextStep = detail.steps.find(s =>
-                s.component === "ContextBuilder" ||
-                s.action === "context_preview" ||
-                (s.details && (s.details.includes("preview=") || s.details.includes("preview\"") || s.details.includes("prompt_context_preview")))
-            );
-
-            // Priority 2: Hidden prompts count
-            const hiddenStep = detail.steps.find(s =>
-                s.action === "hidden_prompts" ||
-                (s.details && (s.details.includes("hidden_prompts") || s.details.includes("hiddenPrompts")))
-            );
-
-            interface ContextPreviewMeta {
-                preview: string | null;
-                truncated: boolean;
-                hiddenPrompts: number | null;
-                mode: string | null;
-            }
-            let meta: ContextPreviewMeta | null = null;
-
-            if (contextStep?.details) {
-                const details = contextStep.details.trim();
-                // Try to parse JSON first
-                if (details.startsWith("{")) {
-                    try {
-                        const parsed = JSON.parse(details);
-                        meta = {
-                            preview: parsed.preview || parsed.context || parsed.prompt || parsed.prompt_context_preview || null,
-                            truncated: !!parsed.truncated || !!parsed.prompt_context_truncated,
-                            hiddenPrompts: parsed.hidden_prompts_count ?? null,
-                            mode: parsed.mode ?? null
-                        };
-                    } catch { }
-                }
-
-                if (!meta) {
-                    // Try regex parsing for key=value format
-                    const previewMatch = details.match(/(?:preview|prompt|context|prompt_context_preview)=([\s\S]*?)(?:$|\s\w+=)/);
-                    const hiddenMatch = details.match(/hidden_prompts_count=(\d+)/);
-                    const modeMatch = details.match(/mode=(\w+)/);
-
-                    if (previewMatch || hiddenMatch) {
-                        meta = {
-                            preview: previewMatch ? previewMatch[1].trim() : null,
-                            truncated: details.includes("truncated=true") || details.includes("truncated\":true"),
-                            hiddenPrompts: hiddenMatch ? Number.parseInt(hiddenMatch[1], 10) : null,
-                            mode: modeMatch ? modeMatch[1] : null
-                        };
-                    }
-                }
-            }
-
-            // If we found a contextStep but didn't get meta, or if we still need more info (e.g. hiddenPrompts from hiddenStep)
-            if (!meta && !contextStep) {
-                // Try fallback to LLM start step
-                const llmStep = detail.steps.find(s =>
-                    (s.component === "LLM" && s.action === "start") ||
-                    (s.component === "ChatAgent" && s.action === "process_task") ||
-                    (s.details && (s.details.includes("prompt=") || s.details.includes("payload=") || s.details.includes("input=")))
-                );
-                if (llmStep?.details) {
-                    const details = llmStep.details.trim();
-                    if (details.startsWith("{")) {
-                        try {
-                            const parsed = JSON.parse(details);
-                            meta = {
-                                preview: parsed.prompt || parsed.payload || parsed.input || null,
-                                truncated: false,
-                                hiddenPrompts: null,
-                                mode: null
-                            };
-                        } catch { }
-                    }
-                    if (!meta) {
-                        const promptMatch = details.match(/(?:prompt|payload|input)=([\s\S]*?)(?:$|\s\w+=)/);
-                        if (promptMatch) {
-                            meta = {
-                                preview: promptMatch[1].trim(),
-                                truncated: false,
-                                hiddenPrompts: null,
-                                mode: null
-                            };
-                        }
-                    }
-                }
-            }
-
-            // If we have meta but missing hiddenPrompts, try to get it from hiddenStep
-            if (hiddenStep?.details) {
-                const hiddenMatch = hiddenStep.details.match(/hidden_prompts:?\s*(\d+)/i) ||
-                    hiddenStep.details.match(/hidden_prompts_count=(\d+)/);
-                if (hiddenMatch) {
-                    if (!meta) meta = { preview: null, truncated: false, mode: null, hiddenPrompts: null };
-                    meta.hiddenPrompts = Number.parseInt(hiddenMatch[1], 10);
-                }
-            }
-
-            return meta;
-        }
-        return null;
+        return parseContextPreviewMeta(
+            interactive.state.selectedTask as { context_history?: Record<string, unknown> } | null,
+            interactive.state.historyDetail as {
+                steps?: Array<{ component?: string; action?: string; details?: string | null }>;
+            } | null,
+        );
     }, [interactive.state.selectedTask, interactive.state.historyDetail]);
 
     const handleSetActiveHiddenPrompt = useCallback(async (payload: Parameters<typeof setActiveHiddenPrompt>[0]) => {

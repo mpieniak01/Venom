@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 from typing import Dict, List, Tuple
@@ -11,6 +10,13 @@ import httpx
 import pytest
 
 from .chat_pipeline import API_BASE, is_backend_available, stream_task, submit_task
+from .latency_api_helpers import (
+    get_active_runtime,
+    list_models,
+    resolve_active_model,
+    resolve_timeout_result,
+    skip_if_backend_unavailable,
+)
 from .latency_helpers import (
     extract_first_token_elapsed,
     finalize_on_task_finished,
@@ -27,55 +33,31 @@ STATUS_POLL_INTERVAL = float(os.getenv("VENOM_STATUS_POLL_INTERVAL", "1.0"))
 
 
 async def _skip_if_backend_unavailable():
-    if not await is_backend_available():
-        pytest.skip("Backend FastAPI jest niedostępny – pomiń testy E2E.")
+    await skip_if_backend_unavailable(
+        is_backend_available, "Backend FastAPI jest niedostępny – pomiń testy E2E."
+    )
 
 
 async def _list_models() -> Dict[str, object]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(f"{API_BASE}/api/v1/models")
-        response.raise_for_status()
-        return response.json()
+    return await list_models(API_BASE)
 
 
 async def _get_active_runtime() -> Dict[str, object]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(f"{API_BASE}/api/v1/system/llm-servers/active")
-        response.raise_for_status()
-        return response.json()
-
-
-async def _fetch_task_status(task_id: str) -> Dict[str, object]:
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(f"{API_BASE}/api/v1/tasks/{task_id}")
-        response.raise_for_status()
-        return response.json()
-
-
-async def _poll_task_completion(task_id: str) -> str | None:
-    deadline = time.perf_counter() + STATUS_TIMEOUT
-    while time.perf_counter() < deadline:
-        payload = await _fetch_task_status(task_id)
-        status = str(payload.get("status") or payload.get("state") or "").upper()
-        if status in {"COMPLETED", "FAILED", "LOST"}:
-            return status
-        await asyncio.sleep(STATUS_POLL_INTERVAL)
-    return None
+    return await get_active_runtime(API_BASE)
 
 
 async def _resolve_timeout_result(
     task_id: str, start: float, first_token_time: float | None, event: str
 ) -> Tuple[float, float]:
-    status = await _poll_task_completion(task_id)
-    if status == "COMPLETED":
-        total_time = time.perf_counter() - start
-        if first_token_time is None:
-            first_token_time = total_time
-        return first_token_time, total_time
-    if status in {"FAILED", "LOST"}:
-        pytest.skip(f"Task zakończony statusem {status} po timeout SSE.")
-    raise TimeoutError(
-        f"SSE przekroczyło timeout {STREAM_TIMEOUT}s (ostatnie zdarzenie: {event})",
+    return await resolve_timeout_result(
+        task_id,
+        start=start,
+        first_token_time=first_token_time,
+        event=event,
+        api_base=API_BASE,
+        status_timeout=STATUS_TIMEOUT,
+        status_poll_interval=STATUS_POLL_INTERVAL,
+        stream_timeout=STREAM_TIMEOUT,
     )
 
 
@@ -137,20 +119,7 @@ async def _measure_task_latency(
 
 
 def _resolve_active_model(payload: Dict[str, object]) -> str:
-    models = payload.get("models", [])
-    active_payload = payload.get("active") or {}
-    active_model = active_payload.get("model")
-    available = {str(model.get("name")) for model in models if model.get("name")}
-
-    if active_model and active_model in available:
-        return str(active_model)
-    if MODEL_NAME in available:
-        pytest.skip(
-            f"Aktywny model ({active_model}) nie pasuje do testu; oczekiwano aktywnego {MODEL_NAME}.",
-        )
-    pytest.skip(
-        f"Brak aktywnego modelu do testu (aktywny={active_model}, dostępne={len(available)}).",
-    )
+    return resolve_active_model(payload, MODEL_NAME)
 
 
 def _print_mode_summary(

@@ -33,7 +33,7 @@ PORTS_TO_CLEAN := $(PORT) $(WEB_PORT)
 	pytest e2e test-optimal test-ci-light \
 	api api-dev api-stop web web-dev web-stop \
 	vllm-start vllm-stop vllm-restart ollama-start ollama-stop ollama-restart \
-	monitor mcp-clean mcp-status
+	monitor mcp-clean mcp-status sonar-reports sonar-reports-backend sonar-reports-frontend
 
 lint:
 	pre-commit run --all-files
@@ -59,6 +59,15 @@ test-web-e2e:
 	$(NPM) --prefix $(WEB_DIR) run test:e2e
 
 test-all: test test-web-unit test-web-e2e
+
+sonar-reports-backend:
+	@mkdir -p test-results/sonar
+	pytest --cov=venom_core --cov-report=xml:test-results/sonar/python-coverage.xml --junitxml=test-results/sonar/python-junit.xml
+
+sonar-reports-frontend:
+	$(NPM) --prefix $(WEB_DIR) run test:unit:coverage
+
+sonar-reports: sonar-reports-backend sonar-reports-frontend
 
 pytest:
 	VENOM_API_BASE="$${VENOM_API_BASE:-http://$(HOST_DISPLAY):$(PORT)}" bash scripts/run-pytest-optimal.sh

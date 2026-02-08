@@ -12,6 +12,16 @@ _queue_cache = TTLCache[dict](ttl_seconds=1.0)
 
 router = APIRouter(prefix="/api/v1/queue", tags=["queue"])
 
+QUEUE_BASE_RESPONSES = {
+    503: {"description": "Orchestrator nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas operacji na kolejce"},
+}
+QUEUE_ABORT_RESPONSES = {
+    404: {"description": "Zadanie nie istnieje lub nie jest aktywne"},
+    503: {"description": "Orchestrator nie jest dostępny"},
+    500: {"description": "Błąd wewnętrzny podczas przerywania zadania"},
+}
+
 # Dependency - będzie ustawione w main.py
 _orchestrator = None
 
@@ -22,7 +32,7 @@ def set_dependencies(orchestrator):
     _orchestrator = orchestrator
 
 
-@router.get("/status")
+@router.get("/status", responses=QUEUE_BASE_RESPONSES)
 async def get_queue_status():
     """
     Pobiera status kolejki zadań.
@@ -50,7 +60,7 @@ async def get_queue_status():
         ) from e
 
 
-@router.post("/pause")
+@router.post("/pause", responses=QUEUE_BASE_RESPONSES)
 async def pause_queue():
     """
     Wstrzymuje kolejkę zadań - nowe zadania nie będą przetwarzane.
@@ -76,7 +86,7 @@ async def pause_queue():
         ) from e
 
 
-@router.post("/resume")
+@router.post("/resume", responses=QUEUE_BASE_RESPONSES)
 async def resume_queue():
     """
     Wznawia kolejkę zadań - przetwarzanie zostanie kontynuowane.
@@ -102,7 +112,7 @@ async def resume_queue():
         ) from e
 
 
-@router.post("/purge")
+@router.post("/purge", responses=QUEUE_BASE_RESPONSES)
 async def purge_queue():
     """
     Czyści kolejkę - usuwa wszystkie oczekujące zadania.
@@ -130,7 +140,7 @@ async def purge_queue():
         ) from e
 
 
-@router.post("/emergency-stop")
+@router.post("/emergency-stop", responses=QUEUE_BASE_RESPONSES)
 async def emergency_stop():
     """
     Awaryjne zatrzymanie systemu - anuluje wszystkie zadania i czyści kolejkę.
@@ -155,7 +165,7 @@ async def emergency_stop():
         ) from e
 
 
-@router.post("/task/{task_id}/abort")
+@router.post("/task/{task_id}/abort", responses=QUEUE_ABORT_RESPONSES)
 async def abort_task(task_id: UUID):
     """
     Przerywa wykonywanie konkretnego zadania.

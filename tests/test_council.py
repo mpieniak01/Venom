@@ -64,7 +64,7 @@ def test_create_local_llm_config():
     assert len(config["config_list"]) > 0
     assert config["config_list"][0]["model"] == "llama3"
     assert config["config_list"][0]["api_key"] == "EMPTY"
-    assert config["temperature"] == 0.7
+    assert config["temperature"] == pytest.approx(0.7)
 
 
 def test_venom_agent_wrapper_creation(coder_agent, llm_config):

@@ -28,7 +28,7 @@ class TestAnalystAgent:
         assert analyst_agent.total_tasks == 0
         assert analyst_agent.successful_tasks == 0
         assert analyst_agent.failed_tasks == 0
-        assert analyst_agent.total_cost_usd == 0.0
+        assert analyst_agent.total_cost_usd == pytest.approx(0.0)
         assert len(analyst_agent.metrics_history) == 0
 
     def test_record_task_success(self, analyst_agent):
@@ -67,7 +67,7 @@ class TestAnalystAgent:
         assert analyst_agent.total_tasks == 1
         assert analyst_agent.successful_tasks == 0
         assert analyst_agent.failed_tasks == 1
-        assert analyst_agent.total_cost_usd == 0.05
+        assert analyst_agent.total_cost_usd == pytest.approx(0.05)
         assert analyst_agent.total_tokens == 500
 
     def test_service_stats_tracking(self, analyst_agent):
@@ -103,11 +103,11 @@ class TestAnalystAgent:
         local_stats = analyst_agent.service_stats[ServiceId.LOCAL.value]
         assert local_stats["tasks_count"] == 1
         assert local_stats["success_count"] == 1
-        assert local_stats["total_cost"] == 0.0
+        assert local_stats["total_cost"] == pytest.approx(0.0)
 
         cloud_stats = analyst_agent.service_stats[ServiceId.CLOUD_HIGH.value]
         assert cloud_stats["tasks_count"] == 1
-        assert cloud_stats["total_cost"] == 0.10
+        assert cloud_stats["total_cost"] == pytest.approx(0.10)
 
     def test_analyze_routing_efficiency_no_data(self, analyst_agent):
         """Test analizy efektywności bez danych."""
@@ -137,7 +137,7 @@ class TestAnalystAgent:
 
         low_analysis = analysis["complexity_analysis"][ComplexityScore.LOW.value]
         assert low_analysis["tasks_count"] == 3
-        assert low_analysis["success_rate"] == 100.0
+        assert low_analysis["success_rate"] == pytest.approx(100.0)
 
     def test_detect_overprovisioning(self, analyst_agent):
         """Test wykrywania overprovisioning."""
@@ -208,12 +208,12 @@ class TestAnalystAgent:
         assert ServiceId.CLOUD_FAST.value in breakdown
 
         local_breakdown = breakdown[ServiceId.LOCAL.value]
-        assert local_breakdown["total_cost_usd"] == 0.0
+        assert local_breakdown["total_cost_usd"] == pytest.approx(0.0)
         assert local_breakdown["tasks_count"] == 1
 
         cloud_breakdown = breakdown[ServiceId.CLOUD_FAST.value]
         assert cloud_breakdown["tasks_count"] == 3
-        assert cloud_breakdown["total_cost_usd"] == 0.06
+        assert cloud_breakdown["total_cost_usd"] == pytest.approx(0.06)
 
     def test_generate_recommendations_no_data(self, analyst_agent):
         """Test generowania rekomendacji bez danych."""
@@ -297,8 +297,8 @@ class TestAnalystAgent:
         assert summary["total_tasks"] == 5
         assert summary["successful_tasks"] == 5
         assert summary["failed_tasks"] == 0
-        assert summary["success_rate"] == 100.0
-        assert summary["total_cost_usd"] == 0.0
+        assert summary["success_rate"] == pytest.approx(100.0)
+        assert summary["total_cost_usd"] == pytest.approx(0.0)
         assert summary["total_tokens"] == 500
 
     @pytest.mark.asyncio

@@ -718,6 +718,7 @@ Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.m
 
 ### Sonar report bundle (local pre-check)
 - `make sonar-reports` — runs backend + frontend report generation used by SonarCloud workflow.
+- On GitHub PRs, SonarCloud consumes reports generated in the main `CI` workflow artifacts (single-run model; no separate duplicated test workflow).
 
 ### Response Time and Chat Performance
 - `npm --prefix web-next run test:perf` — Playwright measuring Next Cockpit latency (HTML report goes to `test-results/perf-report`).

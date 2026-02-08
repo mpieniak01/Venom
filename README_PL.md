@@ -750,6 +750,7 @@ Pełna instrukcja (kroki + oczekiwane wartości) jest w [`docs/PL/TESTING_CHAT_L
 
 ### Pakiet raportów Sonar (lokalny pre-check)
 - `make sonar-reports` — uruchamia generowanie raportów backend + frontend używanych w workflow SonarCloud.
+- Na PR w GitHub SonarCloud korzysta z raportów wygenerowanych w głównym workflow `CI` (model single-run, bez osobnego dublującego workflow testowego).
 
 ### Czas reakcji i wydajność chatu
 - `npm --prefix web-next run test:perf` — Playwright mierzący latency Next Cockpit (raport HTML odkłada się do `test-results/perf-report`).

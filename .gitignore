@@ -81,6 +81,7 @@ locustfile.pyc
 
 # misc
 next-dev.log
+.pre-commit-cache/
 
 # Local runtime artifacts
 :memory:

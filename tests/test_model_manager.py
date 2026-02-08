@@ -282,10 +282,12 @@ def test_model_manager_check_storage_quota_exceeds_limit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_model_manager_list_local_models_empty(tmp_path):
+async def test_model_manager_list_local_models_empty(tmp_path, monkeypatch):
     """Test listowania modeli przy pustym katalogu."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
+    # Isolate CWD so fallback scan of ./models does not leak repository-local models.
+    monkeypatch.chdir(tmp_path)
     manager = ModelManager(models_dir=str(tmp_path))
 
     with patch("httpx.AsyncClient") as mock_client:
@@ -300,7 +302,7 @@ async def test_model_manager_list_local_models_empty(tmp_path):
 
         models = await manager.list_local_models()
         assert isinstance(models, list)
-        assert len(models) > 0
+        assert len(models) == 0
 
 
 @pytest.mark.asyncio

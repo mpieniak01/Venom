@@ -53,6 +53,28 @@ def set_dependencies(request_tracer):
     _request_tracer = request_tracer
 
 
+def _build_flow_steps(trace) -> list[FlowStep]:
+    flow_steps = []
+    for step in trace.steps:
+        flow_steps.append(
+            FlowStep(
+                component=step.component,
+                action=step.action,
+                timestamp=step.timestamp.isoformat(),
+                status=step.status,
+                details=step.details,
+                is_decision_gate=step.component == "DecisionGate",
+            )
+        )
+    return flow_steps
+
+
+def _build_duration_seconds(trace) -> Optional[float]:
+    if not trace.finished_at:
+        return None
+    return (trace.finished_at - trace.created_at).total_seconds()
+
+
 @router.get(
     "/flow/{task_id}",
     response_model=FlowTraceResponse,
@@ -87,24 +109,8 @@ async def get_flow_trace(task_id: UUID):
             status_code=404, detail=f"Zadanie {task_id} nie istnieje w historii"
         )
 
-    duration = None
-    if trace.finished_at:
-        duration = (trace.finished_at - trace.created_at).total_seconds()
-
-    # Konwertuj steps do FlowStep z oznaczeniem Decision Gates
-    flow_steps = []
-    for step in trace.steps:
-        is_decision_gate = step.component == "DecisionGate"
-        flow_steps.append(
-            FlowStep(
-                component=step.component,
-                action=step.action,
-                timestamp=step.timestamp.isoformat(),
-                status=step.status,
-                details=step.details,
-                is_decision_gate=is_decision_gate,
-            )
-        )
+    duration = _build_duration_seconds(trace)
+    flow_steps = _build_flow_steps(trace)
 
     # Generuj diagram Mermaid.js
     mermaid_diagram = _generate_mermaid_diagram(trace, flow_steps)
@@ -146,6 +152,30 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
                 safe.append(" ")
         return "".join(safe)
 
+    def trim_details(details: str) -> str:
+        if len(details) <= MAX_MESSAGE_LENGTH:
+            return details
+        return details[:MAX_MESSAGE_LENGTH] + "..."
+
+    def build_error_message(component: str, error_details: dict) -> str:
+        if trace.error_code != "execution_contract_violation":
+            if trace.error_code == "routing_mismatch":
+                expected_hash = error_details.get("expected_hash") or ""
+                actual_hash = error_details.get("actual_hash") or ""
+                return sanitize_mermaid_text(
+                    f"routing.mismatch expected={expected_hash} actual={actual_hash}"
+                )
+            return sanitize_mermaid_text(f"execution.failed: {trace.error_code}")
+
+        missing = error_details.get("missing") or []
+        missing_label = ""
+        if isinstance(missing, list) and missing:
+            missing_label = f" missing={missing[0]}"
+        lines.append(
+            f"    Note over {component}: {sanitize_mermaid_text('Decision: execution_ready=false')}"
+        )
+        return sanitize_mermaid_text(f"execution.precheck.failed{missing_label}")
+
     lines = ["sequenceDiagram"]
     lines.append("    autonumber")
 
@@ -178,10 +208,7 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
         # Formatuj wiadomość
         if step.is_decision_gate:
             # Decision Gate - specjalne podświetlenie
-            if len(details) > MAX_MESSAGE_LENGTH:
-                detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
-            else:
-                detail_text = details
+            detail_text = trim_details(details)
             message = sanitize_mermaid_text(f"Decision: {action}: {detail_text}")
             lines.append(f"    Note over {component}: {message}")
         else:
@@ -189,37 +216,13 @@ def _generate_mermaid_diagram(trace, flow_steps: list[FlowStep]) -> str:
             arrow = "->>" if step.status == "ok" else "--x"
             message = f"{sanitize_mermaid_text(action)}"
             if details:
-                if len(details) > MAX_MESSAGE_LENGTH:
-                    detail_text = details[:MAX_MESSAGE_LENGTH] + "..."
-                else:
-                    detail_text = details
-                message += f": {detail_text}"
+                message += f": {trim_details(details)}"
 
             # Rysuj strzałkę od ostatniego komponentu
             if component != last_component:
                 if action == "error" and trace.error_code:
                     error_details = trace.error_details or {}
-                    if trace.error_code == "execution_contract_violation":
-                        missing = error_details.get("missing") or []
-                        missing_label = ""
-                        if isinstance(missing, list) and missing:
-                            missing_label = f" missing={missing[0]}"
-                        lines.append(
-                            f"    Note over {component}: {sanitize_mermaid_text('Decision: execution_ready=false')}"
-                        )
-                        message = sanitize_mermaid_text(
-                            f"execution.precheck.failed{missing_label}"
-                        )
-                    elif trace.error_code == "routing_mismatch":
-                        expected_hash = error_details.get("expected_hash") or ""
-                        actual_hash = error_details.get("actual_hash") or ""
-                        message = sanitize_mermaid_text(
-                            f"routing.mismatch expected={expected_hash} actual={actual_hash}"
-                        )
-                    else:
-                        message = sanitize_mermaid_text(
-                            f"execution.failed: {trace.error_code}"
-                        )
+                    message = build_error_message(component, error_details)
                 lines.append(f"    {last_component}{arrow}{component}: {message}")
                 last_component = component
             else:

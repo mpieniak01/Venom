@@ -16,6 +16,7 @@ from venom_core.memory.workflow_store import WorkflowStore
 from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
+EXAMPLE_COMPLETED_MESSAGE = "\n✅ Przykład zakończony!"
 
 
 async def example_full_cycle():
@@ -110,7 +111,7 @@ async def example_full_cycle():
     # W środowisku z GUI można by wykonać:
     # result = await ghost.process("Wykonaj skill bank_login_skill")
 
-    logger.info("\n✅ Przykład zakończony!")
+    logger.info(EXAMPLE_COMPLETED_MESSAGE)
     logger.info("\nPodsumowanie:")
     logger.info("1. Użytkownik zademonstrował workflow (login do banku)")
     logger.info("2. System przeanalizował demonstrację")
@@ -190,7 +191,7 @@ def example_workflow_editing():
     python_path = workflow_store.export_to_python(wf_id)
     logger.info(f"✅ Wyeksportowano do: {python_path}")
 
-    logger.info("\n✅ Przykład zakończony!")
+    logger.info(EXAMPLE_COMPLETED_MESSAGE)
 
 
 def example_parametrization():
@@ -256,7 +257,7 @@ async def login_workflow(ghost_agent: GhostAgent, **kwargs):
         "  await login_workflow(ghost, email='alice@example.com', password='pass456')"
     )
 
-    logger.info("\n✅ Przykład zakończony!")
+    logger.info(EXAMPLE_COMPLETED_MESSAGE)
 
 
 async def main():

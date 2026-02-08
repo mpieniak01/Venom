@@ -18,6 +18,7 @@ from venom_core.utils.logger import get_logger
 from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
+REDIS_UNAVAILABLE_MESSAGE = "❌ Brak połączenia z Redis - pomijam demo"
 
 
 async def demo_message_broker():
@@ -95,7 +96,7 @@ async def demo_parallel_processing():
     connected = await broker.connect()
 
     if not connected:
-        print("❌ Brak połączenia z Redis - pomijam demo")
+        print(REDIS_UNAVAILABLE_MESSAGE)
         return
 
     from venom_core.execution.skills.parallel_skill import ParallelSkill
@@ -147,7 +148,7 @@ async def demo_broadcast():
     connected = await broker.connect()
 
     if not connected:
-        print("❌ Brak połączenia z Redis - pomijam demo")
+        print(REDIS_UNAVAILABLE_MESSAGE)
         return
 
     print("\n📢 Wysyłanie broadcast command...")
@@ -233,7 +234,7 @@ async def demo_task_status_monitoring():
     connected = await broker.connect()
 
     if not connected:
-        print("❌ Brak połączenia z Redis - pomijam demo")
+        print(REDIS_UNAVAILABLE_MESSAGE)
         return
 
     # Utwórz kilka zadań

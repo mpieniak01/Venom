@@ -18,6 +18,8 @@ from venom_core.agents.ghost_agent import GhostAgent
 from venom_core.config import SETTINGS
 from venom_core.execution.kernel_builder import KernelBuilder
 
+DEMO_COMPLETED_MESSAGE = "\n✅ Demo zakończone"
+
 
 async def demo_notepad():
     """Demo: Otwórz notatnik i napisz tekst."""
@@ -40,7 +42,7 @@ async def demo_notepad():
     result = await ghost.process("Otwórz notatnik i napisz 'Hello from Ghost Agent!'")
 
     print("\n" + result)
-    print("\n✅ Demo zakończone")
+    print(DEMO_COMPLETED_MESSAGE)
 
 
 async def demo_input_skill():
@@ -68,7 +70,7 @@ async def demo_input_skill():
     screenshot_result = await input_skill.take_screenshot()
     print(f"   {screenshot_result}")
 
-    print("\n✅ Demo zakończone")
+    print(DEMO_COMPLETED_MESSAGE)
 
 
 async def demo_vision_grounding():
@@ -103,7 +105,7 @@ async def demo_vision_grounding():
     else:
         print("   ℹ️  Element nie znaleziony (to normalne w demo)")
 
-    print("\n✅ Demo zakończone")
+    print(DEMO_COMPLETED_MESSAGE)
 
 
 async def main():

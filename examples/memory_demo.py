@@ -13,6 +13,8 @@ from venom_core.memory.graph_store import CodeGraphStore
 from venom_core.memory.lessons_store import LessonsStore
 from venom_core.utils.url_policy import build_http_url
 
+SAMPLE_FILE_NAME = "example.py"
+
 
 def demo_graph_store():
     """Demonstracja CodeGraphStore."""
@@ -25,7 +27,7 @@ def demo_graph_store():
     workspace.mkdir(exist_ok=True)
 
     # Utwórz przykładowy plik
-    sample_file = workspace / "example.py"
+    sample_file = workspace / SAMPLE_FILE_NAME
     sample_file.write_text("""
 import os
 from typing import List
@@ -63,8 +65,8 @@ def main():
     print(f"   Typy krawędzi: {summary['edge_types']}")
 
     # Informacje o pliku
-    print("\n4. Informacje o pliku 'example.py':")
-    info = graph_store.get_file_info("example.py")
+    print(f"\n4. Informacje o pliku '{SAMPLE_FILE_NAME}':")
+    info = graph_store.get_file_info(SAMPLE_FILE_NAME)
     print(f"   ✓ Klasy: {len(info['classes'])}")
     for cls in info["classes"]:
         print(f"     - {cls['name']}")
@@ -74,7 +76,7 @@ def main():
 
     # Impact analysis
     print("\n5. Analiza wpływu:")
-    impact = graph_store.get_impact_analysis("example.py")
+    impact = graph_store.get_impact_analysis(SAMPLE_FILE_NAME)
     print(f"   {impact['warning']}")
 
     print("\n✓ Demo CodeGraphStore zakończone\n")

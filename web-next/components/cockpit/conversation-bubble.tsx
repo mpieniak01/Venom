@@ -135,14 +135,14 @@ export function ConversationBubble({
   const terminalStatuses = ["COMPLETED", "FAILED", "LOST"];
   const isTerminal =
     typeof status === "string" && terminalStatuses.includes(status);
-  const showTyping = !isUser && (pending || (status && !isTerminal));
+  const showTyping = !isUser && (pending || (!!status && !isTerminal));
   const showComputationLabel =
     !isUser && !showTyping && isComputationContent(text);
   const disabled = pending || !onSelect;
   const typingText =
     text.trim().length > 0 ? text : t("cockpit.chatLabels.generating");
   const [visibleText, setVisibleText] = useState(text);
-  const typingTimerRef = useRef<number | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof globalThis.setInterval> | null>(null);
   useEffect(() => {
     if (isUser) {
       setVisibleText(text);

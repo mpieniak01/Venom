@@ -76,6 +76,38 @@ def _ensure_vector_store():
         return VectorStore()
 
 
+def _require_nonempty(value: str, detail: str) -> None:
+    if not value or not value.strip():
+        raise HTTPException(status_code=400, detail=detail)
+
+
+def _build_ingest_metadata(request: "MemoryIngestRequest") -> dict[str, object]:
+    metadata: dict[str, object] = {"category": request.category}
+    optional_fields: list[tuple[str, object | None]] = [
+        ("session_id", request.session_id),
+        ("user_id", request.user_id),
+        ("type", request.memory_type),
+        ("scope", request.scope),
+        ("topic", request.topic),
+        ("timestamp", request.timestamp),
+    ]
+    for key, value in optional_fields:
+        if value:
+            metadata[key] = value
+    if request.pinned is not None:
+        metadata["pinned"] = bool(request.pinned)
+    return metadata
+
+
+def _raise_memory_http_error(exc: Exception, *, context: str) -> None:
+    if isinstance(exc, HTTPException):
+        raise exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    logger.exception("Błąd podczas %s", context)
+    raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(exc)}") from exc
+
+
 def _normalize_lessons_for_graph(
     raw_lessons: object,
     allow_fallback: bool,
@@ -185,25 +217,8 @@ async def ingest_to_memory(
         HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
     """
     try:
-        if not request.text or not request.text.strip():
-            raise HTTPException(status_code=400, detail="Tekst nie może być pusty")
-
-        # Zapisz do pamięci
-        metadata: dict[str, object] = {"category": request.category}
-        if request.session_id:
-            metadata["session_id"] = request.session_id
-        if request.user_id:
-            metadata["user_id"] = request.user_id
-        if request.pinned is not None:
-            metadata["pinned"] = bool(request.pinned)
-        if request.memory_type:
-            metadata["type"] = request.memory_type
-        if request.scope:
-            metadata["scope"] = request.scope
-        if request.topic:
-            metadata["topic"] = request.topic
-        if request.timestamp:
-            metadata["timestamp"] = request.timestamp
+        _require_nonempty(request.text, "Tekst nie może być pusty")
+        metadata = _build_ingest_metadata(request)
         result = vector_store.upsert(
             text=request.text,
             metadata=metadata,
@@ -221,13 +236,8 @@ async def ingest_to_memory(
             chunks_count=result["chunks_count"],
         )
 
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception("Błąd podczas ingestion do pamięci")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+    except Exception as exc:
+        _raise_memory_http_error(exc, context="ingestion do pamięci")
 
 
 @router.post(
@@ -254,11 +264,10 @@ async def search_memory(
         HTTPException: 503 jeśli VectorStore nie jest dostępny, 400 przy błędnych danych
     """
     try:
-        if not request.query or not request.query.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Zapytanie nie może być puste (pusty prompt niedozwolony)",
-            )
+        _require_nonempty(
+            request.query,
+            "Zapytanie nie może być puste (pusty prompt niedozwolony)",
+        )
 
         results = vector_store.search(
             query=request.query,
@@ -277,13 +286,8 @@ async def search_memory(
             "count": len(results),
         }
 
-    except HTTPException:
-        raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception("Błąd podczas wyszukiwania w pamięci")
-        raise HTTPException(status_code=500, detail=f"Błąd wewnętrzny: {str(e)}") from e
+    except Exception as exc:
+        _raise_memory_http_error(exc, context="wyszukiwania w pamięci")
 
 
 @router.delete(

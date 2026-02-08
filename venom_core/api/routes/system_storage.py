@@ -107,6 +107,65 @@ def _item_payload(
     }
 
 
+def _compute_path_size(path: Path, fast_timeout: float = 2.0) -> int:
+    fast_size = _dir_size_bytes_fast(path, timeout_sec=fast_timeout)
+    if fast_size is not None:
+        return fast_size
+    if not path.exists():
+        return 0
+    try:
+        return _dir_size_bytes(path)
+    except Exception as exc:
+        logger.warning("Błąd liczenia %s: %s", path, exc)
+        return 0
+
+
+def _collect_storage_entries() -> tuple[list[dict[str, int | str]], int]:
+    items: list[dict[str, int | str]] = []
+    total_items_size = 0
+    for name, rel_path, kind in STORAGE_ENTRIES:
+        path = PROJECT_ROOT / rel_path
+        size_bytes = _compute_path_size(path)
+        items.append(
+            _item_payload(name=name, path=path, size_bytes=size_bytes, kind=kind)
+        )
+        total_items_size += size_bytes
+    return items, total_items_size
+
+
+def _extract_dreams_item(
+    items: list[dict[str, int | str]],
+) -> list[dict[str, int | str]]:
+    dreams_size = 0
+    timelines_path = PROJECT_ROOT / "data/timelines"
+    if timelines_path.exists():
+        try:
+            for child in timelines_path.iterdir():
+                if child.is_dir() and child.name.startswith("dream_"):
+                    dreams_size += _dir_size_bytes_fast(child, timeout_sec=1.0) or 0
+        except Exception as exc:
+            logger.warning("Błąd podczas liczenia rozmiaru snów: %s", exc)
+
+    final_items = []
+    for item in items:
+        if item["name"] == "timelines" and dreams_size > 0:
+            size_val = item.get("size_bytes", 0)
+            current_size = int(size_val) if isinstance(size_val, (int, float)) else 0
+            item["size_bytes"] = max(0, current_size - dreams_size)
+            item["name"] = "timelines_user"
+        final_items.append(item)
+    if dreams_size > 0:
+        final_items.append(
+            _item_payload(
+                name="dreaming",
+                path=timelines_path / "dream_*",
+                size_bytes=dreams_size,
+                kind="data",
+            )
+        )
+    return final_items
+
+
 def _get_storage_data_sync() -> dict:
     """Synchronizowana wersja zbierania danych o storage."""
     disk_physical_mount = Path("/usr/lib/wsl/drivers")
@@ -121,61 +180,8 @@ def _get_storage_data_sync() -> dict:
     disk_root_mount = Path("/")
     total_root, used_root, free_root = shutil.disk_usage(str(disk_root_mount))
 
-    items = []
-    total_items_size = 0
-
-    # 1. Liczymy base entries
-    for name, rel_path, kind in STORAGE_ENTRIES:
-        path = PROJECT_ROOT / rel_path
-        fast_size = _dir_size_bytes_fast(path, timeout_sec=2.0)
-        if fast_size is None and path.exists():
-            try:
-                # Fallback do wolniejszego ale dokładniejszego walk
-                size_bytes = _dir_size_bytes(path)
-            except Exception as exc:
-                logger.warning("Błąd liczenia %s: %s", rel_path, exc)
-                size_bytes = 0
-        else:
-            # 0 to legalny rozmiar katalogu - fallback tylko przy błędzie fast-path.
-            size_bytes = fast_size or 0
-
-        items.append(
-            _item_payload(name=name, path=path, size_bytes=size_bytes, kind=kind)
-        )
-        total_items_size += size_bytes
-
-    # 2. Specyficzne traktowanie "dreaming" wewnątrz timelines
-    dreams_size = 0
-    timelines_path = PROJECT_ROOT / "data/timelines"
-    if timelines_path.exists():
-        try:
-            for child in timelines_path.iterdir():
-                if child.is_dir() and child.name.startswith("dream_"):
-                    dream_size = _dir_size_bytes_fast(child, timeout_sec=1.0)
-                    dreams_size += dream_size or 0
-        except Exception as e:
-            logger.warning(f"Błąd podczas liczenia rozmiaru snów: {e}")
-
-    # Aktualizujemy wpisy o sny
-    final_items = []
-    for item in items:
-        if item["name"] == "timelines" and dreams_size > 0:
-            # Nie odejmujemy jeśli to by miało dać < 0
-            size_val = item.get("size_bytes", 0)
-            current_size = int(size_val) if isinstance(size_val, (int, float)) else 0
-            item["size_bytes"] = max(0, current_size - dreams_size)
-            item["name"] = "timelines_user"
-        final_items.append(item)
-
-    if dreams_size > 0:
-        final_items.append(
-            _item_payload(
-                name="dreaming",
-                path=timelines_path / "dream_*",
-                size_bytes=dreams_size,
-                kind="data",
-            )
-        )
+    items, total_items_size = _collect_storage_entries()
+    final_items = _extract_dreams_item(items)
 
     # 3. Project Root & Code Only
     final_items.insert(

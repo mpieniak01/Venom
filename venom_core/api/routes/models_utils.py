@@ -99,18 +99,15 @@ def validate_generation_params(
         options = spec.get("options") or []
 
         if param_type in ["float", "int"]:
-            try:
-                parsed = float(value)
-            except (TypeError, ValueError):
-                errors.append(f"Parametr {key} musi być liczbą")
-                continue
-            if param_type == "int":
-                parsed = int(parsed)
-            if min_value is not None and parsed < min_value:
-                errors.append(f"Parametr {key} poniżej min {min_value}")
-                continue
-            if max_value is not None and parsed > max_value:
-                errors.append(f"Parametr {key} powyżej max {max_value}")
+            parsed, error = _parse_numeric_param(
+                key=key,
+                value=value,
+                as_int=param_type == "int",
+                min_value=min_value,
+                max_value=max_value,
+            )
+            if error:
+                errors.append(error)
                 continue
             validated[key] = parsed
             continue
@@ -135,6 +132,27 @@ def validate_generation_params(
         raise HTTPException(status_code=400, detail="; ".join(errors))
 
     return validated
+
+
+def _parse_numeric_param(
+    *,
+    key: str,
+    value: Any,
+    as_int: bool,
+    min_value: Any,
+    max_value: Any,
+) -> tuple[int | float | None, str | None]:
+    try:
+        parsed: int | float = float(value)
+    except (TypeError, ValueError):
+        return None, f"Parametr {key} musi być liczbą"
+    if as_int:
+        parsed = int(parsed)
+    if min_value is not None and parsed < min_value:
+        return None, f"Parametr {key} poniżej min {min_value}"
+    if max_value is not None and parsed > max_value:
+        return None, f"Parametr {key} powyżej max {max_value}"
+    return parsed, None
 
 
 def read_ollama_manifest_params(model_name: str) -> Dict[str, Any]:

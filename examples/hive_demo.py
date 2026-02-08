@@ -15,6 +15,7 @@ from pathlib import Path
 from venom_core.core.ota_manager import OTAManager
 from venom_core.infrastructure.message_broker import MessageBroker
 from venom_core.utils.logger import get_logger
+from venom_core.utils.url_policy import build_http_url
 
 logger = get_logger(__name__)
 
@@ -162,7 +163,7 @@ async def demo_broadcast():
         {
             "version": "1.2.0",
             "description": "Demo update",
-            "package_url": "http://localhost:8765/ota/demo.zip",
+            "package_url": build_http_url("localhost", 8765, "/ota/demo.zip"),
         },
     )
     print("  ✓ UPDATE_SYSTEM_DEMO command wysłany")

@@ -4,7 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${LOCUST_WEB_PORT:-8089}"
 HOST="${LOCUST_WEB_HOST:-127.0.0.1}"
-TARGET="${LOCUST_TARGET:-http://localhost:8000}"
+TARGET_SCHEME="${LOCUST_TARGET_SCHEME:-http}"
+TARGET="${LOCUST_TARGET:-${TARGET_SCHEME}://localhost:8000}"
 
 if command -v lsof >/dev/null 2>&1; then
   PIDS="$(lsof -ti tcp:"${PORT}" 2>/dev/null || true)"

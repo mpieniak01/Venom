@@ -21,8 +21,10 @@ import time
 
 import httpx
 
+from venom_core.utils.url_policy import build_http_url
+
 # Konfiguracja
-NEXUS_API_URL = "http://localhost:8000/api/v1"
+NEXUS_API_URL = f"{build_http_url('localhost', 8000)}/api/v1"
 NEXUS_WS_URL = "ws://localhost:8765/ws/nodes"
 
 
@@ -31,7 +33,7 @@ async def check_nexus_status():
     print("🔍 Sprawdzam status Nexusa...")
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get("http://localhost:8000/healthz")
+            response = await client.get(build_http_url("localhost", 8000, "/healthz"))
             if response.status_code == 200:
                 print("✅ Nexus działa")
                 return True

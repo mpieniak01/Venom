@@ -46,10 +46,10 @@ class ChronoSkill(BaseSkill):
         description: Annotated[str, "Opcjonalny opis checkpointu"] = "",
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
-        await asyncio.sleep(0)
         """
         Tworzy checkpoint całego stanu systemu.
         """
+        await asyncio.sleep(0)
         checkpoint_id = self.chronos.create_checkpoint(
             name=name, description=description, timeline=timeline
         )
@@ -70,10 +70,10 @@ class ChronoSkill(BaseSkill):
         checkpoint_id: Annotated[str, "ID checkpointu do przywrócenia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
-        await asyncio.sleep(0)
         """
         Przywraca system do stanu z checkpointu.
         """
+        await asyncio.sleep(0)
         success = self.chronos.restore_checkpoint(
             checkpoint_id=checkpoint_id, timeline=timeline
         )
@@ -99,10 +99,10 @@ class ChronoSkill(BaseSkill):
         self,
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
-        await asyncio.sleep(0)
         """
         Wyświetla listę checkpointów.
         """
+        await asyncio.sleep(0)
         checkpoints = self.chronos.list_checkpoints(timeline=timeline)
 
         if not checkpoints:
@@ -129,10 +129,10 @@ class ChronoSkill(BaseSkill):
         checkpoint_id: Annotated[str, "ID checkpointu do usunięcia"],
         timeline: Annotated[str, "Nazwa linii czasowej (domyślnie 'main')"] = "main",
     ) -> str:
-        await asyncio.sleep(0)
         """
         Usuwa checkpoint.
         """
+        await asyncio.sleep(0)
         success = self.chronos.delete_checkpoint(
             checkpoint_id=checkpoint_id, timeline=timeline
         )
@@ -151,10 +151,10 @@ class ChronoSkill(BaseSkill):
         self,
         name: Annotated[str, "Nazwa nowej linii czasowej"],
     ) -> str:
-        await asyncio.sleep(0)
         """
         Tworzy nową linię czasową (branch).
         """
+        await asyncio.sleep(0)
         # Najpierw utwórz nową timeline
         success = self.chronos.create_timeline(name=name)
 
@@ -191,10 +191,10 @@ class ChronoSkill(BaseSkill):
     )
     @async_safe_action
     async def list_timelines(self) -> str:
-        await asyncio.sleep(0)
         """
         Wyświetla listę wszystkich linii czasowych.
         """
+        await asyncio.sleep(0)
         timelines = self.chronos.list_timelines()
 
         if not timelines:
@@ -217,10 +217,10 @@ class ChronoSkill(BaseSkill):
         source: Annotated[str, "Nazwa źródłowej linii czasowej"],
         target: Annotated[str, "Nazwa docelowej linii czasowej"] = "main",
     ) -> str:
-        await asyncio.sleep(0)
         """
         Scala wiedzę z dwóch linii czasowych (zaawansowane).
         """
+        await asyncio.sleep(0)
         # Placeholder
         return (
             f"⚠️ Merge timeline to zaawansowana funkcja.\n"

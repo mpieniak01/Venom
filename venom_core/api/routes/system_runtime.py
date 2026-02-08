@@ -36,7 +36,7 @@ def _track_background_task(task: asyncio.Task[Any]) -> None:
 
 
 @router.get("/runtime/status", responses=RUNTIME_STATUS_RESPONSES)
-def get_runtime_status():
+async def get_runtime_status():
     """
     Zwraca status wszystkich usług Venom (backend, UI, LLM, Hive, Nexus, background tasks).
     """

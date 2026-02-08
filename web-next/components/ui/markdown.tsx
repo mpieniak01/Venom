@@ -83,23 +83,23 @@ function renderMathTokens(html: string, tokens: MathToken[]) {
       rendered = `<code>${escapeHtml(token.expression)}</code>`;
     }
     // Użyj replace z escapowanymi znakami specjalnymi regex dla bezpiecznej zamiany
-    const escapedId = token.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    output = output.replace(new RegExp(escapedId, 'g'), rendered);
+    const escapedId = token.id.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    output = output.replaceAll(new RegExp(escapedId, 'g'), rendered);
   }
   return output;
 }
 
 function escapeHtml(value: string) {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replaceAll(/&/g, "&amp;")
+    .replaceAll(/</g, "&lt;")
+    .replaceAll(/>/g, "&gt;")
+    .replaceAll(/"/g, "&quot;")
+    .replaceAll(/'/g, "&#039;");
 }
 
 function decorateSourcesLabel(value: string) {
-  return value.replace(SOURCES_LABEL_REGEX, (match) => {
+  return value.replaceAll(SOURCES_LABEL_REGEX, (match) => {
     const label = match.trim();
     return `<small class="chat-sources-label"><em>${label}</em></small>`;
   });

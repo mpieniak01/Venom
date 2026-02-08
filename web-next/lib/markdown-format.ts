@@ -7,7 +7,7 @@ const MATH_ALLOWED_REGEX = /^[0-9a-zA-Z\s+*/=^_().,:√π∑∫≤≥<>-\\]+$/;
 
 export function formatComputationContent(content: string) {
   let replaced = false;
-  const withBlocks = content.replace(/```(?:json)?\n([\s\S]*?)```/g, (match, block) => {
+  const withBlocks = content.replaceAll(/```(?:json)?\n([\s\S]*?)```/g, (match, block) => {
     const candidate = block.trim();
     if (!candidate) return match;
     try {
@@ -128,17 +128,17 @@ function wrapMathInSegment(segment: string) {
 }
 
 function replaceMathTokens(segment: string, tokens: MathToken[]) {
-  let next = segment.replace(MATH_BLOCK_REGEX, (_, expr: string) => {
+  let next = segment.replaceAll(MATH_BLOCK_REGEX, (_, expr: string) => {
     const id = `__MATH_BLOCK_${tokens.length}__`;
     tokens.push({ id, expression: expr.trim(), display: true });
     return id;
   });
-  next = next.replace(MATH_DISPLAY_REGEX, (_, expr: string) => {
+  next = next.replaceAll(MATH_DISPLAY_REGEX, (_, expr: string) => {
     const id = `__MATH_DISPLAY_${tokens.length}__`;
     tokens.push({ id, expression: expr.trim(), display: true });
     return id;
   });
-  next = next.replace(MATH_INLINE_REGEX, (_, expr: string) => {
+  next = next.replaceAll(MATH_INLINE_REGEX, (_, expr: string) => {
     const id = `__MATH_INLINE_${tokens.length}__`;
     tokens.push({ id, expression: expr.trim(), display: false });
     return id;

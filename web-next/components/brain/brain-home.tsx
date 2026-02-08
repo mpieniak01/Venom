@@ -328,8 +328,8 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
     if (!topic) return undefined;
     const palette = ["#fbbf24", "#22c55e", "#0ea5e9", "#a855f7", "#f97316", "#38bdf8", "#f43f5e"];
     let hash = 0;
-    for (let i = 0; i < topic.length; i += 1) {
-      hash = (hash * 31 + topic.charCodeAt(i)) % 9973;
+    for (const char of topic) {
+      hash = (hash * 31 + (char.codePointAt(0) ?? 0)) % 9973;
     }
     return palette[hash % palette.length];
   }, []);
@@ -1079,7 +1079,7 @@ export function BrainHome({ initialData }: { initialData: BrainInitialData }) {
                 <>
                   <span className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-indigo-400" />
-                    file / function
+                    <span>file / function</span>
                   </span>
                 </>
               ) : (

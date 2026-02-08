@@ -336,13 +336,13 @@ export function ServicesPanel() {
   };
 
   const getDisplayName = (raw: string) => {
-    const key = raw.toLowerCase().replace(/\s+/g, "_");
+    const key = raw.toLowerCase().replaceAll(/\s+/g, "_");
     const translated = t(`config.services.names.${key}`);
     if (translated && translated !== `config.services.names.${key}`) {
       return translated;
     }
     // Fallback: replacement of underscores with spaces + capitalization of the first letter
-    const pretty = raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    const pretty = raw.replaceAll(/[_-]+/g, " ").replaceAll(/\b\w/g, (m) => m.toUpperCase());
     return pretty;
   };
 

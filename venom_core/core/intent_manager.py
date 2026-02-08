@@ -22,6 +22,9 @@ from venom_core.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+_URL_SCHEMES = ("http", "https")
+_URL_SCHEME_SEP = "://"
+
 
 class IntentManager:
     """Menedżer klasyfikacji intencji użytkownika za pomocą Semantic Kernel."""
@@ -184,7 +187,10 @@ class IntentManager:
     def _should_learn_phrase(self, phrase: str) -> bool:
         if not phrase:
             return False
-        if "http://" in phrase or "https://" in phrase or "www." in phrase:
+        if (
+            any(f"{scheme}{_URL_SCHEME_SEP}" in phrase for scheme in _URL_SCHEMES)
+            or "www." in phrase
+        ):
             return False
         words = self._normalize_text(phrase).split()
         if len(words) < 2 or len(words) > 8:

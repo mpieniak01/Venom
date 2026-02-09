@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date";
 import { History as HistoryIcon } from "lucide-react";
 
-type HistoryListProps = {
+type HistoryListProps = Readonly<{
   entries?: HistoryRequest[] | null;
   limit?: number;
   selectedId?: string | null;
@@ -19,7 +19,7 @@ type HistoryListProps = {
   emptyDescription?: string;
   variant?: "preview" | "full";
   viewAllHref?: string;
-};
+}>;
 
 export function selectHistoryWindow(
   entries: HistoryRequest[] | null | undefined,

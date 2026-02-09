@@ -1,10 +1,10 @@
 "use client";
 
-type BrainMetricCardProps = {
+type BrainMetricCardProps = Readonly<{
   label: string;
   value: string | number;
   hint: string;
-};
+}>;
 
 export function BrainMetricCard({ label, value, hint }: BrainMetricCardProps) {
   return (

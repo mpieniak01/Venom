@@ -2,9 +2,9 @@
 
 type LessonStatEntry = { label: string; value: string | number; hint?: string };
 
-type LessonStatsProps = {
+type LessonStatsProps = Readonly<{
   entries: LessonStatEntry[];
-};
+}>;
 
 import { useTranslation } from "@/lib/i18n";
 

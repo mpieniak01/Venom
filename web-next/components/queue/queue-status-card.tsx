@@ -5,12 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/i18n";
 
-type QueueStatusCardProps = {
+type QueueStatusCardProps = Readonly<{
   queue?: QueueStatus | null;
   offlineMessage?: string;
   testId?: string;
   loading?: boolean;
-};
+}>;
 
 export function QueueStatusCard({
   queue,
@@ -51,7 +51,7 @@ export function QueueStatusCard({
     { label: t("queueCard.metricLimit"), value: queue.limit ?? "∞" },
   ];
 
-    return (
+  return (
     <div
       className="relative card-shell bg-gradient-to-br from-emerald-500/5 via-emerald-500/0 to-cyan-500/5 p-4 text-sm"
       data-testid={testId ? `${testId}-online` : undefined}

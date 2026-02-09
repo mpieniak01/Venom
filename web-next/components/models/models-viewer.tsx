@@ -24,8 +24,6 @@ import { formatDateTime } from "@/lib/date";
 import type { ModelCatalogEntry, ModelInfo, ModelOperation, ModelCatalogResponse } from "@/lib/types";
 
 const formatNumber = (value?: number | null) => {
-  // Use en-US for consistent formatting vs pl-PL, or use language.
-  // But for now keeping pl-PL or switching to en-US based on preference.
   if (value === null || value === undefined) return "—";
   return value.toLocaleString("pl-PL");
 };
@@ -126,11 +124,11 @@ const SectionHeader = ({
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col">
           <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">{title}</p>
-          {subtitle ? <p className="mt-0.5 text-xs text-slate-300">{subtitle}</p> : null}
+          {subtitle && <p className="mt-0.5 text-xs text-slate-300">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-3">
-          {extra ? <div className="flex items-center gap-2">{extra}</div> : null}
-          {actionLabel && onAction ? (
+          {extra && <div className="flex items-center gap-2">{extra}</div>}
+          {actionLabel && onAction && (
             <Button
               size="sm"
               variant="outline"
@@ -140,9 +138,9 @@ const SectionHeader = ({
             >
               {actionLabel}
             </Button>
-          ) : null}
-          {badge ? <Badge className="text-[10px] py-0.5">{badge}</Badge> : null}
-          {onToggle ? (
+          )}
+          {badge && <Badge className="text-[10px] py-0.5">{badge}</Badge>}
+          {onToggle && (
             <button
               type="button"
               className="inline-flex h-7 items-center rounded-full border border-white/10 px-3 text-[10px] uppercase tracking-[0.15em] text-slate-400 transition hover:border-white/20 hover:text-white"
@@ -157,13 +155,12 @@ const SectionHeader = ({
               />
               {isCollapsed ? t("models.actions.expand") : t("models.actions.collapse")}
             </button>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
   );
 };
-
 
 const CatalogCard = ({
   model,
@@ -194,7 +191,7 @@ const CatalogCard = ({
         <span>👍 {formatNumber(model.likes)}</span>
         <span>⬇️ {formatNumber(model.downloads)}</span>
       </div>
-      {model.tags && model.tags.length > 0 ? (
+      {model.tags && model.tags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {model.tags.slice(0, 5).map((tag) => (
             <Badge key={tag} className="text-[10px]">
@@ -202,7 +199,7 @@ const CatalogCard = ({
             </Badge>
           ))}
         </div>
-      ) : null}
+      )}
       <Button
         className="mt-4 rounded-full px-4"
         size="sm"
@@ -255,7 +252,7 @@ const InstalledCard = ({
         >
           {pendingActivate ? t("models.actions.activating") : t("models.actions.activate")}
         </Button>
-        {onRemove ? (
+        {onRemove && (
           <Button
             className="rounded-full px-4"
             size="sm"
@@ -265,7 +262,7 @@ const InstalledCard = ({
           >
             {pendingRemove ? t("models.actions.removing") : t("models.actions.remove")}
           </Button>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -280,15 +277,14 @@ const OperationRow = ({ op }: { op: ModelOperation }) => (
       </p>
     </div>
     <div className="flex items-center gap-2">
-      {typeof op.progress === "number" ? (
+      {typeof op.progress === "number" && (
         <span className="text-xs text-slate-400">{Math.round(op.progress)}%</span>
-      ) : null}
+      )}
       <Badge tone={getStatusTone(op.status)}>{op.status}</Badge>
     </div>
   </div>
 );
 
-// Update component start
 export const ModelsViewer = () => {
   const { pushToast } = useToast();
   const { language, t } = useLanguage();
@@ -324,20 +320,21 @@ export const ModelsViewer = () => {
     error?: string | null;
     loading: boolean;
   }>({ data: [], loading: false });
-  // ... (rest of states) ...
+
   const [catalogHf, setCatalogHf] = useState<{
     data: ModelCatalogEntry[];
     stale?: boolean;
     error?: string | null;
     loading: boolean;
   }>({ data: [], loading: false });
-  // ... (rest of states) ...
+
   const [catalogOllama, setCatalogOllama] = useState<{
     data: ModelCatalogEntry[];
     stale?: boolean;
     error?: string | null;
     loading: boolean;
   }>({ data: [], loading: false });
+
   const [newsHf, setNewsHf] = useState<{
     items: Array<{
       title?: string | null;
@@ -350,6 +347,7 @@ export const ModelsViewer = () => {
     error?: string | null;
     loading: boolean;
   }>({ items: [], loading: false });
+
   const [papersHf, setPapersHf] = useState<{
     items: Array<{
       title?: string | null;
@@ -362,6 +360,7 @@ export const ModelsViewer = () => {
     error?: string | null;
     loading: boolean;
   }>({ items: [], loading: false });
+
   const [newsSort, setNewsSort] = useState<"newest" | "oldest">("newest");
 
   const installed = useModels(0);
@@ -464,9 +463,10 @@ export const ModelsViewer = () => {
       }));
     }
   }, [language, newsBlogCacheKey, newsPapersCacheKey]);
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem("models-news-sort", newsSort);
+    if (typeof globalThis.window === "undefined") return;
+    globalThis.window.localStorage.setItem("models-news-sort", newsSort);
   }, [newsSort]);
 
   const setPending = (key: string, value: boolean) => {
@@ -543,10 +543,12 @@ export const ModelsViewer = () => {
       ollama: fallback.filter((model) => (model.provider ?? "").toLowerCase() === "ollama"),
     };
   }, [installed.data]);
+
   const installedModels = useMemo(
     () => [...installedBuckets.vllm, ...installedBuckets.ollama],
     [installedBuckets],
   );
+
   const availableModelsForServer = useMemo(() => {
     if (!selectedServer || !installed.data) return installedModels;
     const server = (llmServers.data ?? []).find((s) => s.name === selectedServer);
@@ -560,7 +562,6 @@ export const ModelsViewer = () => {
           (model) => normalizeProvider(model.provider) === targetProvider,
         );
 
-    // fallback do ostatnio aktywnego dla providera
     const lastModels = activeServer.data?.last_models ?? {};
     const lastForServer =
       targetProvider === "ollama"
@@ -576,6 +577,7 @@ export const ModelsViewer = () => {
     }
     return base;
   }, [selectedServer, installed.data, installedModels, llmServers.data, activeServer.data?.last_models]);
+
   const serverOptions = useMemo(
     () =>
       (llmServers.data ?? []).map((server) => ({
@@ -584,6 +586,7 @@ export const ModelsViewer = () => {
       })),
     [llmServers.data],
   );
+
   const modelOptions = useMemo(
     () =>
       availableModelsForServer.map((model) => ({
@@ -592,6 +595,7 @@ export const ModelsViewer = () => {
       })),
     [availableModelsForServer],
   );
+
   const operationsList = operations.data?.operations ?? [];
 
   useEffect(() => {
@@ -613,6 +617,7 @@ export const ModelsViewer = () => {
   }, [activeRuntime?.model, selectedModel, availableModelsForServer]);
 
   const allowRemoveProviders = useMemo(() => new Set(["ollama", "huggingface"]), []);
+
   const refreshTrending = async () => {
     setTrendingHf((prev) => ({ ...prev, loading: true, error: null }));
     setTrendingOllama((prev) => ({ ...prev, loading: true, error: null }));
@@ -650,6 +655,7 @@ export const ModelsViewer = () => {
       setTrendingOllama((prev) => ({ ...prev, loading: false, error: message }));
     }
   };
+
   const refreshCatalog = async () => {
     setCatalogHf((prev) => ({ ...prev, loading: true, error: null }));
     setCatalogOllama((prev) => ({ ...prev, loading: true, error: null }));
@@ -687,6 +693,7 @@ export const ModelsViewer = () => {
       setCatalogOllama((prev) => ({ ...prev, loading: false, error: message }));
     }
   };
+
   const refreshNews = async () => {
     setNewsHf((prev) => ({ ...prev, loading: true, error: null }));
     try {
@@ -718,6 +725,7 @@ export const ModelsViewer = () => {
       setNewsHf((prev) => ({ ...prev, loading: false, error: message }));
     }
   };
+
   const refreshPapers = async () => {
     setPapersHf((prev) => ({ ...prev, loading: true, error: null }));
     try {
@@ -753,6 +761,7 @@ export const ModelsViewer = () => {
       setPapersHf((prev) => ({ ...prev, loading: false, error: message }));
     }
   };
+
   const newsItemsSorted = useMemo(() => {
     const items = [...newsHf.items];
     if (newsSort === "oldest") {
@@ -760,6 +769,7 @@ export const ModelsViewer = () => {
     }
     return items;
   }, [newsHf.items, newsSort]);
+
   const papersItemsSorted = useMemo(() => {
     const items = [...papersHf.items];
     if (newsSort === "oldest") {
@@ -788,9 +798,9 @@ export const ModelsViewer = () => {
                 {t("models.runtime.description")}
               </p>
             </div>
-            {installed.error ? (
+            {installed.error && (
               <Badge tone="warning">{installed.error}</Badge>
-            ) : null}
+            )}
           </div>
           <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
             <div className="flex w-full flex-nowrap items-center gap-3 overflow-x-auto">
@@ -889,7 +899,7 @@ export const ModelsViewer = () => {
               isCollapsed={searchCollapsed}
               onToggle={() => setSearchCollapsed((prev) => !prev)}
             />
-            {!searchCollapsed ? (
+            {!searchCollapsed && (
               <div className="mt-5">
                 <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -933,20 +943,20 @@ export const ModelsViewer = () => {
                   </div>
                 </div>
 
-                {searchResults.error ? (
+                {searchResults.error && (
                   <p className="mt-4 text-sm text-amber-200">{searchResults.error}</p>
-                ) : null}
+                )}
 
                 {searchResults.performed &&
                   !searchResults.loading &&
                   searchResults.data.length === 0 &&
-                  !searchResults.error ? (
-                  <p className="mt-4 text-sm text-slate-400">
-                    {t("models.ui.noResults", { query: searchQuery })}
-                  </p>
-                ) : null}
+                  !searchResults.error && (
+                    <p className="mt-4 text-sm text-slate-400">
+                      {t("models.ui.noResults", { query: searchQuery })}
+                    </p>
+                  )}
 
-                {searchResults.data.length > 0 ? (
+                {searchResults.data.length > 0 && (
                   <div className="mt-6 grid gap-4 lg:grid-cols-2">
                     {searchResults.data.map((model) => (
                       <CatalogCard
@@ -960,9 +970,9 @@ export const ModelsViewer = () => {
                       />
                     ))}
                   </div>
-                ) : null}
+                )}
               </div>
-            ) : null}
+            )}
           </div>
         </section>
 
@@ -995,7 +1005,7 @@ export const ModelsViewer = () => {
                 </div>
               }
             />
-            {!newsCollapsed ? (
+            {!newsCollapsed && (
               <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
                 {newsHf.loading ? (
                   <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1019,7 +1029,7 @@ export const ModelsViewer = () => {
                           <span className="text-[10px] tabular-nums text-slate-500 whitespace-nowrap">
                             {formatDateTime(item.published_at, language, "news")}
                           </span>
-                          {item.url ? (
+                          {item.url && (
                             <a
                               className="rounded-full border border-white/10 px-2.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-slate-400 transition hover:border-white/30 hover:text-white"
                               href={item.url}
@@ -1028,14 +1038,14 @@ export const ModelsViewer = () => {
                             >
                               {t("models.ui.view")}
                             </a>
-                          ) : null}
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            ) : null}
+            )}
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -1049,7 +1059,7 @@ export const ModelsViewer = () => {
               isCollapsed={papersCollapsed}
               onToggle={() => setPapersCollapsed((prev) => !prev)}
             />
-            {!papersCollapsed ? (
+            {!papersCollapsed && (
               <div className="mt-5 grid gap-4 lg:grid-cols-3">
                 {papersHf.loading ? (
                   <p className="col-span-full text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1080,7 +1090,7 @@ export const ModelsViewer = () => {
                             </span>
                           </div>
                           <div className="flex justify-end">
-                            {item.url ? (
+                            {item.url && (
                               <a
                                 className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-[0.1em] text-slate-400 transition hover:border-white/30 hover:text-white"
                                 href={item.url}
@@ -1089,7 +1099,7 @@ export const ModelsViewer = () => {
                               >
                                 {t("models.ui.view")}
                               </a>
-                            ) : null}
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1097,7 +1107,7 @@ export const ModelsViewer = () => {
                   ))
                 )}
               </div>
-            ) : null}
+            )}
           </div>
         </section>
 
@@ -1113,14 +1123,14 @@ export const ModelsViewer = () => {
                 isCollapsed={trendingCollapsed}
                 onToggle={() => setTrendingCollapsed((prev) => !prev)}
               />
-              {!trendingCollapsed ? (
+              {!trendingCollapsed && (
                 <div className="mt-5 grid gap-6 lg:grid-cols-2">
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">Ollama</h3>
-                      {trendingOllama.stale ? (
+                      {trendingOllama.stale && (
                         <Badge tone="warning" className="text-[9px]">{t("models.ui.offlineCache")}</Badge>
-                      ) : null}
+                      )}
                     </div>
                     {trendingOllama.loading ? (
                       <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1141,9 +1151,9 @@ export const ModelsViewer = () => {
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">HuggingFace</h3>
-                      {trendingHf.stale ? (
+                      {trendingHf.stale && (
                         <Badge tone="warning" className="text-[9px]">{t("models.ui.offlineCache")}</Badge>
-                      ) : null}
+                      )}
                     </div>
                     {trendingHf.loading ? (
                       <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1162,7 +1172,7 @@ export const ModelsViewer = () => {
                     )}
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
 
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -1175,7 +1185,7 @@ export const ModelsViewer = () => {
                 isCollapsed={catalogCollapsed}
                 onToggle={() => setCatalogCollapsed((prev) => !prev)}
               />
-              {!catalogCollapsed ? (
+              {!catalogCollapsed && (
                 <div className="mt-5 grid gap-6 lg:grid-cols-2">
                   <div className="flex flex-col gap-4">
                     <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold">Ollama</h3>
@@ -1214,7 +1224,7 @@ export const ModelsViewer = () => {
                     )}
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
 
@@ -1232,7 +1242,7 @@ export const ModelsViewer = () => {
                 isCollapsed={installedCollapsed}
                 onToggle={() => setInstalledCollapsed((prev) => !prev)}
               />
-              {!installedCollapsed ? (
+              {!installedCollapsed && (
                 <div className="mt-5 space-y-6">
                   {installed.loading ? (
                     <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1297,7 +1307,7 @@ export const ModelsViewer = () => {
                     </>
                   )}
                 </div>
-              ) : null}
+              )}
             </div>
 
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-6 shadow-card">
@@ -1310,7 +1320,7 @@ export const ModelsViewer = () => {
                 isCollapsed={operationsCollapsed}
                 onToggle={() => setOperationsCollapsed((prev) => !prev)}
               />
-              {!operationsCollapsed ? (
+              {!operationsCollapsed && (
                 <div className="mt-5 flex flex-col gap-3">
                   {operations.loading ? (
                     <p className="text-xs text-slate-500">{t("models.ui.loading")}</p>
@@ -1322,7 +1332,7 @@ export const ModelsViewer = () => {
                     <p className="text-xs text-slate-500">{t("models.sections.operations.noOperations")}</p>
                   )}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </section>

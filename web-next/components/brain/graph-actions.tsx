@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Layers, Scan } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
-type GraphActionButtonsProps = {
+type GraphActionButtonsProps = Readonly<{
   onFit: () => void;
   onScan: () => Promise<void> | void;
   scanning: boolean;
   scanMessage?: string | null;
-};
+}>;
 
 export function GraphActionButtons({ onFit, onScan, scanning, scanMessage }: GraphActionButtonsProps) {
   const t = useTranslation();

@@ -3,14 +3,14 @@
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "@/lib/i18n";
 
-type FileAnalysisFormProps = {
+type FileAnalysisFormProps = Readonly<{
   filePath: string;
   onPathChange: (value: string) => void;
   loading: boolean;
   onFileInfo: () => void;
   onImpact: () => void;
   message?: string | null;
-};
+}>;
 
 export function FileAnalysisForm({
   filePath,
@@ -43,10 +43,10 @@ export function FileAnalysisForm({
   );
 }
 
-type FileAnalysisPanelProps = {
+type FileAnalysisPanelProps = Readonly<{
   label: string;
   payload: Record<string, unknown> | null;
-};
+}>;
 
 export function FileAnalysisPanel({ label, payload }: FileAnalysisPanelProps) {
   const t = useTranslation();

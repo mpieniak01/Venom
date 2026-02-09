@@ -12,6 +12,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_scheduler_watcher_integration():
     """Test integracji scheduler + watcher."""
+    pytest.importorskip("apscheduler")
     from venom_core.core.scheduler import BackgroundScheduler
     from venom_core.perception.watcher import FileWatcher
 

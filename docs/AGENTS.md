@@ -19,6 +19,12 @@ If you are looking for the list of Venom system agents, use:
 - Run relevant `pytest` groups for touched modules.
 - Confirm no new critical/high security findings.
 
+## CI Stack Awareness Rule
+
+- Before adding/updating tests for CI-lite, verify which dependencies and tools are available in the CI-lite stack.
+- Use `requirements-ci-lite.txt`, `config/pytest-groups/ci-lite.txt`, and `scripts/audit_lite_deps.py` as the source of truth.
+- If a test needs an optional dependency that is not guaranteed in CI-lite, use `pytest.importorskip(...)` or move that test out of the lite lane.
+
 ## Quality and Security Toolchain (Project Standard)
 
 - **SonarCloud (PR gate):** mandatory pull request analysis for bugs, vulnerabilities, code smells, duplications, and maintainability.

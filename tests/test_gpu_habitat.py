@@ -1,6 +1,13 @@
 import pytest
 
+pytest.importorskip("docker")
+
 import venom_core.infrastructure.gpu_habitat as gpu_habitat_mod
+
+pytestmark = pytest.mark.skipif(
+    gpu_habitat_mod.docker is None,
+    reason="Docker SDK runtime bindings are not available in this environment",
+)
 
 
 class DummyImages:

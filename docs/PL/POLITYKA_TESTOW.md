@@ -88,7 +88,7 @@ Artefakty:
 
 - `test-results/sonar/python-coverage.xml`
 - `test-results/sonar/python-junit.xml`
-- `web-next/coverage/lcov.info`
+- `web-next/coverage/lcov.info` (artefakt opcjonalny/lokalny; tymczasowo nieużywany w bramce coverage Sonara)
 
 Scenariusze performance/latency:
 
@@ -103,6 +103,7 @@ Wymagane bramki na PR:
 
 - CI Lite (szybki lint + wybrane testy unit)
 - SonarCloud (bugi, podatności, utrzymywalność, duplikacje)
+- Wyjątek tymczasowy: frontend `web-next/**` jest wyłączony z bramki Sonar coverage do czasu stabilizacji UI.
 
 ## Kryteria jakości i typowe obszary wpadek
 

@@ -88,7 +88,7 @@ Artifacts:
 
 - `test-results/sonar/python-coverage.xml`
 - `test-results/sonar/python-junit.xml`
-- `web-next/coverage/lcov.info`
+- `web-next/coverage/lcov.info` (optional/local artifact; temporarily not used by Sonar coverage gate)
 
 Performance/latency scenarios:
 
@@ -103,6 +103,7 @@ Required PR gates:
 
 - CI Lite (fast lint + selected unit tests)
 - SonarCloud (bugs, vulnerabilities, maintainability, duplication)
+- Temporary exception: frontend `web-next/**` is excluded from Sonar coverage gate until UI stabilizes.
 
 ## Quality Criteria and Typical Failure Areas
 

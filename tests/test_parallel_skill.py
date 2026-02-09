@@ -284,3 +284,15 @@ async def test_wait_for_results_mixed_status():
     assert len(results) == 2
     assert results[0]["status"] == "completed"
     assert results[1]["status"] == "failed"
+
+
+def test_append_pending_results_adds_only_missing_ids():
+    skill = ParallelSkill(Mock(spec=MessageBroker))
+    results = [{"task_id": "task_1", "status": "completed", "item_index": 0}]
+    seen = {"task_1"}
+
+    skill._append_pending_results(["task_1", "task_2"], results, seen)
+
+    assert len(results) == 2
+    assert results[1]["task_id"] == "task_2"
+    assert results[1]["status"] == "pending"

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -202,3 +203,37 @@ def test_hidden_prompt_upsert_updates_newer_response():
     hidden_prompts._upsert_aggregated_prompt(aggregated, "h1", payload_newer)
     assert aggregated["h1"]["score"] == 2
     assert aggregated["h1"]["approved_response"] == "R2"
+
+
+def test_find_exact_cached_response_prefers_active(monkeypatch):
+    monkeypatch.setattr(
+        hidden_prompts,
+        "get_active_hidden_prompts",
+        lambda intent=None: [{"prompt": "Hello", "approved_response": "Active"}],
+    )
+    monkeypatch.setattr(
+        hidden_prompts,
+        "aggregate_hidden_prompts",
+        lambda **_kwargs: [{"prompt": "Hello", "approved_response": "Aggregated"}],
+    )
+
+    value = hidden_prompts._find_exact_cached_response(
+        hidden_prompts._normalize("hello"), intent=None, min_score=1
+    )
+    assert value == "Active"
+
+
+def test_find_semantic_cached_response_handles_store_error(monkeypatch):
+    class BrokenStore:
+        def __init__(self, **_kwargs):
+            pass
+
+        def search(self, **_kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "venom_core.memory.vector_store",
+        SimpleNamespace(VectorStore=BrokenStore),
+    )
+    assert hidden_prompts._find_semantic_cached_response("hello", intent=None) is None

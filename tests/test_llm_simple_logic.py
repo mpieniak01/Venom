@@ -165,6 +165,23 @@ def test_build_preview_messages_and_payload(monkeypatch):
     assert payload["temperature"] == pytest.approx(0.3, abs=1e-12)
 
 
+def test_build_llm_http_error_and_stream_headers():
+    request = httpx.Request("POST", "http://localhost")
+    response = httpx.Response(502, request=request, text="upstream error")
+    exc = httpx.HTTPStatusError("bad gateway", request=request, response=response)
+
+    error_message, error_details, error_payload = (
+        llm_simple_routes._build_llm_http_error(exc, DummyRuntime(), "model-x")
+    )
+    headers = llm_simple_routes._build_streaming_headers("rid", "sid")
+
+    assert "LLM HTTP 502" in error_message
+    assert error_details["status_code"] == 502
+    assert error_payload["code"] == "llm_http_error"
+    assert headers["X-Request-Id"] == "rid"
+    assert headers["X-Session-Id"] == "sid"
+
+
 def test_trim_user_content_for_runtime_adds_trace_step(monkeypatch):
     monkeypatch.setattr(llm_simple_routes.SETTINGS, "VLLM_MAX_MODEL_LEN", 64)
     captured = {"steps": []}

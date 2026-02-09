@@ -94,6 +94,17 @@ def test_match_intent_lexicon_prefers_regex_and_similarity():
     assert top2
 
 
+def test_lexicon_regex_and_phrase_scoring_helpers():
+    assert IntentManager._matches_lexicon_regex("czas", [r"^czas$"]) is True
+    assert IntentManager._matches_lexicon_regex("czas", [r"^time$"]) is False
+
+    scores = IntentManager._score_lexicon_phrases(
+        "co potrafisz", ["co potrafisz", "inna"]
+    )
+    assert scores
+    assert scores[0][1] >= scores[1][1]
+
+
 @pytest.mark.asyncio
 async def test_classify_from_keywords_for_help_and_time_and_infra():
     kernel = MagicMock()

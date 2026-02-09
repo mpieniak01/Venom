@@ -11,25 +11,19 @@
 
 > **| [Dokumentacja w języku polskim](README_PL.md)**
 
-**Venom desktop version – meta-intelligence system** — Autonomous AI agent system with strategic planning layer and knowledge expansion.
+**Venom** is an autonomous multi-agent engineering system with planning, tool execution, and persistent memory.
 
-Venom is transforming from a simple command executor into an **autonomous engineer** that can:
+### Key Features
+- **Strategic Planning** — Breaks complex goals into executable steps.
+- **Agent Orchestration** — Routes tasks to specialized agents.
+- **Tooling + MCP Import** — Uses local tools and imports MCP tools from Git.
+- **Runtime LLM Selection** — Switches Ollama / vLLM from the UI.
+- **Long-term Memory** — Stores and reuses lessons and context.
+- **Learning by Observation** — Records demonstrations and builds workflows.
+- **Chat Continuity** — Session history per `session_id` across restarts.
+- **Services Panel** — `/config` shows runtime status of local stack.
 
-### ✨ Key Features
-- 🎨 Creating new tools and self-repair
-- 🔌 **MCP Tool Import** - Model Context Protocol integration (import from Git)
-- 🌐 **Internet Access** - Searching for current information (prices, news, documentation)
-- 🧠 **Strategic Planning** - Automatic decomposition of complex projects into steps
-- 📚 **Knowledge Synthesis** - Gathering and analyzing documentation from multiple sources
-- 🤖 **Agent Management** - Coordination of multiple specialized agents
-- 💾 **Long-term Memory** - Saving and utilizing acquired knowledge
-- 🎓 **Learning by Observation** - Recording demonstrations and automatic workflow generation (NEW!)
-- 👍👎 **Quality Loop** - User feedback + logs and response quality metrics
-- 🧠 **Hidden Prompts** - Approved responses as context shortcuts
-- 🧭 **Runtime LLM Selection** - Ollama/vLLM + active model controlled from panel
-- 💬 **Chat Continuity** - Consistent session history per `session_id` (SessionStore), preserved across backend restarts and page navigation
-- 🗺️ **Memory Visualization** - Memory layer (LessonsStore + LanceDB) in `/brain` view, with session/pinned filtering and pin/delete actions
-- 🛠️ **Services Panel** - `/config` shows real statuses of local stack (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + Full/Light/LLM OFF profiles
+See `docs/` for architecture, frontend guide, and testing policy.
 
 ## 🖼️ UI Preview (snapshots)
 

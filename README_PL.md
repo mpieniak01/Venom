@@ -11,25 +11,19 @@
 
 > **| [English Documentation Available](README.md)**
 
-**Venom wersja desktop – system meta-inteligencji** — Autonomiczny system agentów AI z warstwą planowania strategicznego i ekspansją wiedzy.
+**Venom** to autonomiczny system multi-agentowy do zadań inżynierskich: planowanie, wykonanie narzędzi i pamięć długoterminowa.
 
-Venom jest przekształcany z prostego wykonawcy poleceń w **autonomicznego inżyniera**, który potrafi:
+### Kluczowe funkcje
+- **Planowanie strategiczne** — rozbija złożone cele na kroki wykonawcze.
+- **Orkiestracja agentów** — kieruje zadania do wyspecjalizowanych agentów.
+- **Narzędzia + import MCP** — używa lokalnych narzędzi i importuje MCP z Git.
+- **Wybór runtime LLM** — przełączanie Ollama / vLLM z panelu.
+- **Pamięć długoterminowa** — zapis i ponowne użycie kontekstu/lessons.
+- **Uczenie przez obserwację** — nagrywanie demonstracji i budowa workflow.
+- **Ciągłość czatu** — historia sesji per `session_id` po restartach.
+- **Panel usług** — `/config` pokazuje status lokalnego stosu.
 
-### ✨ Kluczowe funkcjonalności
-- 🎨 Tworzenie nowych narzędzi i autonaprawa
-- 🔌 **Import narzędzi MCP** - Integracja z Model Context Protocol (import z Git)
-- 🌐 **Dostęp do Internetu** - Wyszukiwanie aktualnych informacji (ceny, wiadomości, dokumentacja)
-- 🧠 **Planowanie strategiczne** - Automatyczna dekompozycja złożonych projektów na kroki
-- 📚 **Synteza wiedzy** - Zbieranie i analiza dokumentacji z wielu źródeł
-- 🤖 **Zarządzanie agentami** - Koordynacja wielu wyspecjalizowanych agentów
-- 💾 **Pamięć długoterminowa** - Zapisywanie i wykorzystywanie zdobytej wiedzy
-- 🎓 **Uczenie przez obserwację** - Nagrywanie demonstracji i automatyczne generowanie przepływów pracy (NOWOŚĆ!)
-- 👍👎 **Pętla jakości** - informacje zwrotne użytkownika + logi i metryki jakości odpowiedzi
-- 🧠 **Ukryte prompty** - zatwierdzone odpowiedzi jako skróty kontekstu
-- 🧭 **Selekcja runtime LLM** - Ollama/vLLM + aktywny model sterowany z panelu
-- 💬 **Ciągłość czatu** - spójna historia sesji per `session_id` (SessionStore), zachowywana po restartach backendu i podczas nawigacji
-- 🗺️ **Wizualizacja pamięci** - Warstwa pamięci (LessonsStore + LanceDB) w widoku `/brain`, z filtrowaniem sesji/pinned i akcjami pin/usuń
-- 🛠️ **Panel usług** - `/config` pokazuje realne statusy stosu lokalnego (Backend API, Next.js UI, Ollama, vLLM, LanceDB, Redis, Docker) + profile Full/Light/LLM OFF
+Szczegóły architektury, frontendu i testów: `docs/`.
 
 ## 🖼️ Podgląd interfejsu
 

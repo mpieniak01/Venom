@@ -140,6 +140,19 @@ async def test_oracle_plugin_local_search(mock_kernel, mock_graph_rag_service):
 
 
 @pytest.mark.asyncio
+async def test_oracle_plugin_local_search_error(mock_kernel, mock_graph_rag_service):
+    """Test błędu w local_search pluginu."""
+    OracleAgent(mock_kernel, mock_graph_rag_service)
+    plugin = mock_kernel.add_plugin.call_args[0][0]
+    mock_graph_rag_service.local_search = AsyncMock(side_effect=RuntimeError("boom"))
+
+    result = await plugin.local_search("test query", max_hops=3)
+
+    assert "Błąd" in result
+    assert "boom" in result
+
+
+@pytest.mark.asyncio
 async def test_oracle_plugin_ingest_file(mock_kernel, mock_graph_rag_service, tmp_path):
     """Test funkcji ingest_file w pluginie."""
     agent = OracleAgent(mock_kernel, mock_graph_rag_service)
@@ -173,6 +186,45 @@ async def test_oracle_plugin_ingest_file(mock_kernel, mock_graph_rag_service, tm
     assert "test.txt" in result
 
 
+@pytest.mark.asyncio
+async def test_oracle_plugin_ingest_url(mock_kernel, mock_graph_rag_service):
+    """Test funkcji ingest_url w pluginie."""
+    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    plugin = mock_kernel.add_plugin.call_args[0][0]
+
+    agent.ingestion_engine.ingest_url = AsyncMock(
+        return_value={
+            "text": "URL content",
+            "chunks": ["URL content"],
+            "metadata": {"url": "https://example.com"},
+            "file_type": "web",
+        }
+    )
+    mock_graph_rag_service.vector_store.upsert = Mock()
+    mock_graph_rag_service.extract_knowledge_from_text = AsyncMock(
+        return_value={"entities": 1, "relationships": 1}
+    )
+
+    result = await plugin.ingest_url("https://example.com")
+
+    assert "URL przetworzony" in result
+    assert "Encje: 1" in result
+    mock_graph_rag_service.extract_knowledge_from_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_oracle_plugin_ingest_url_error(mock_kernel, mock_graph_rag_service):
+    """Test błędu w ingest_url pluginu."""
+    agent = OracleAgent(mock_kernel, mock_graph_rag_service)
+    plugin = mock_kernel.add_plugin.call_args[0][0]
+    agent.ingestion_engine.ingest_url = AsyncMock(side_effect=RuntimeError("network"))
+
+    result = await plugin.ingest_url("https://example.com")
+
+    assert "Błąd podczas przetwarzania URL" in result
+    assert "network" in result
+
+
 def test_oracle_plugin_get_graph_stats(mock_kernel, mock_graph_rag_service):
     """Test funkcji get_graph_stats w pluginie."""
     OracleAgent(mock_kernel, mock_graph_rag_service)
@@ -197,6 +249,18 @@ def test_oracle_plugin_get_graph_stats(mock_kernel, mock_graph_rag_service):
     assert "Statystyki grafu wiedzy" in result
     assert "Encje: 10" in result
     assert "Relacje: 15" in result
+
+
+def test_oracle_plugin_get_graph_stats_error(mock_kernel, mock_graph_rag_service):
+    """Test błędu w get_graph_stats pluginu."""
+    OracleAgent(mock_kernel, mock_graph_rag_service)
+    plugin = mock_kernel.add_plugin.call_args[0][0]
+    mock_graph_rag_service.get_stats = Mock(side_effect=RuntimeError("stats-fail"))
+
+    result = plugin.get_graph_stats()
+
+    assert "Błąd:" in result
+    assert "stats-fail" in result
 
 
 def test_oracle_system_prompt():

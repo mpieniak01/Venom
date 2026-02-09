@@ -450,7 +450,7 @@ class DesktopSensor:
         self._initialize_recording_state()
 
         try:
-            from pynput import keyboard, mouse  # type: ignore[import-untyped]
+            from pynput import keyboard, mouse
 
             on_click, on_scroll, on_move = self._build_mouse_callbacks()
             on_press = self._build_keyboard_callback()

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -184,3 +185,88 @@ async def test_classify_from_llm_system_role_fallback_path():
 
     result = await manager._classify_from_llm("co potrafisz", "co potrafisz", "pl")
     assert result == "HELP_REQUEST"
+
+
+def test_load_lexicon_and_cache(tmp_path, monkeypatch):
+    manager = IntentManager(kernel=MagicMock())
+    manager._lexicon_cache.clear()
+
+    monkeypatch.setattr(IntentManager, "LEXICON_DIR", tmp_path)
+    monkeypatch.setattr(
+        IntentManager, "LEXICON_FILES", {"pl": "intent_lexicon_pl.json"}
+    )
+    payload = {"intents": {"HELP_REQUEST": {"phrases": ["pomoc"], "regex": []}}}
+    (tmp_path / "intent_lexicon_pl.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+    loaded = manager._load_lexicon("pl")
+    assert loaded == payload
+
+    # cache hit path
+    (tmp_path / "intent_lexicon_pl.json").unlink()
+    loaded_cached = manager._load_lexicon("pl")
+    assert loaded_cached == payload
+    assert manager._load_lexicon("xx") == {}
+
+
+def test_load_user_lexicon_and_parse_error(tmp_path, monkeypatch):
+    manager = IntentManager(kernel=MagicMock())
+    monkeypatch.setattr(IntentManager, "USER_LEXICON_DIR", tmp_path)
+
+    valid = tmp_path / "intent_lexicon_user_pl.json"
+    valid.write_text(
+        '{"intents":{"HELP_REQUEST":{"phrases":["pomoc"]}}}', encoding="utf-8"
+    )
+    assert manager._load_user_lexicon("pl")["intents"]["HELP_REQUEST"]["phrases"] == [
+        "pomoc"
+    ]
+
+    broken = tmp_path / "intent_lexicon_user_en.json"
+    broken.write_text("{", encoding="utf-8")
+    assert manager._load_user_lexicon("en") == {}
+
+
+def test_append_user_phrase_persists_to_user_lexicon(tmp_path, monkeypatch):
+    manager = IntentManager(kernel=MagicMock())
+    monkeypatch.setattr(IntentManager, "USER_LEXICON_DIR", tmp_path)
+    monkeypatch.setattr(manager, "_load_lexicon", lambda _lang: {"intents": {}})
+    monkeypatch.setattr(manager, "_load_user_lexicon", lambda _lang: {"intents": {}})
+
+    manager._append_user_phrase("HELP_REQUEST", "jak uruchomic testy", "pl")
+    path = tmp_path / "intent_lexicon_user_pl.json"
+    assert path.exists()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert "jak uruchomic testy" in data["intents"]["HELP_REQUEST"]["phrases"]
+
+
+def test_init_with_builder_failure_in_test_mode(monkeypatch):
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "1")
+
+    class DummyBuilder:
+        def build_kernel(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("venom_core.core.intent_manager.KernelBuilder", DummyBuilder)
+    manager = IntentManager(kernel=None)
+    assert manager.kernel is None
+    assert manager._llm_disabled is True
+
+
+@pytest.mark.asyncio
+async def test_classify_intent_with_llm_error_falls_back_to_help():
+    manager = IntentManager(kernel=MagicMock())
+    manager._classify_from_lexicon = MagicMock(return_value="")
+    manager._classify_from_keywords = AsyncMock(return_value="")
+    manager._classify_from_llm = AsyncMock(side_effect=RuntimeError("llm fail"))
+
+    result = await manager.classify_intent("co potrafisz")
+    assert result == "HELP_REQUEST"
+
+
+@pytest.mark.asyncio
+async def test_classify_from_llm_non_system_error_returns_general_chat():
+    manager = IntentManager(kernel=MagicMock())
+    manager._request_intent_response = AsyncMock(side_effect=Exception("network error"))
+    result = await manager._classify_from_llm("hello", "hello", "en")
+    assert result == "GENERAL_CHAT"

@@ -28,3 +28,4 @@ tests/test_config_manager.py
 tests/test_complexity_skill.py
 tests/test_intent_manager_new_code_coverage.py
 tests/test_code_review_optimization.py
+tests/test_skills_init.py

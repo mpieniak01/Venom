@@ -78,16 +78,14 @@ async def test_handle_node_message_disconnect_and_unknown(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wait_for_runtime_online(monkeypatch):
-    calls = {"count": 0}
-
-    async def fake_probe(_runtime):
-        await asyncio.sleep(0)
-        calls["count"] += 1
-        if calls["count"] >= 3:
-            return ("online", {})
-        return ("offline", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", fake_probe)
+    mock_probe = AsyncMock(
+        side_effect=[
+            ("offline", {}),
+            ("offline", {}),
+            ("online", {}),
+        ]
+    )
+    monkeypatch.setattr(main_module, "probe_runtime_status", mock_probe)
     monkeypatch.setattr(main_module.asyncio, "sleep", AsyncMock())
 
     runtime = SimpleNamespace(provider="ollama")
@@ -95,25 +93,25 @@ async def test_wait_for_runtime_online(monkeypatch):
         runtime, attempts=5, delay_seconds=0
     )
     assert status == "online"
-    assert calls["count"] == 3
+    assert mock_probe.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_start_local_runtime_if_needed_paths(monkeypatch):
     runtime = SimpleNamespace(provider="ollama")
 
-    async def online_probe(_runtime):
-        await asyncio.sleep(0)
-        return ("online", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", online_probe)
+    monkeypatch.setattr(
+        main_module,
+        "probe_runtime_status",
+        AsyncMock(return_value=("online", {})),
+    )
     assert await main_module._start_local_runtime_if_needed(runtime) == "online"
 
-    async def offline_probe(_runtime):
-        await asyncio.sleep(0)
-        return ("offline", {})
-
-    monkeypatch.setattr(main_module, "probe_runtime_status", offline_probe)
+    monkeypatch.setattr(
+        main_module,
+        "probe_runtime_status",
+        AsyncMock(return_value=("offline", {})),
+    )
     monkeypatch.setattr(main_module, "_start_configured_local_server", AsyncMock())
     monkeypatch.setattr(
         main_module, "_wait_for_runtime_online", AsyncMock(return_value="online")
@@ -199,50 +197,41 @@ async def test_start_configured_local_server_noop_when_server_missing(monkeypatc
 
 @pytest.mark.asyncio
 async def test_receive_node_handshake_parsing(monkeypatch):
-    class DummyWebSocket:
-        def __init__(self, payload: str):
-            self.payload = payload
-            self.closed = None
-
-        async def receive_text(self):
-            await asyncio.sleep(0)
-            return self.payload
-
-        async def close(self, code, reason):
-            await asyncio.sleep(0)
-            self.closed = (code, reason)
-
     handshake_payload = '{"message_type":"HANDSHAKE","payload":{"node_name":"n1","token":"t","capabilities":{}}}'
-    ws_ok = DummyWebSocket(handshake_payload)
+    ws_ok = MagicMock()
+    ws_ok.receive_text = AsyncMock(return_value=handshake_payload)
+    ws_ok.close = AsyncMock()
     handshake = await main_module._receive_node_handshake(ws_ok)
     assert handshake is not None
-    assert ws_ok.closed is None
+    ws_ok.close.assert_not_awaited()
 
-    ws_bad = DummyWebSocket('{"message_type":"RESPONSE","payload":{}}')
+    ws_bad = MagicMock()
+    ws_bad.receive_text = AsyncMock(
+        return_value='{"message_type":"RESPONSE","payload":{}}'
+    )
+    ws_bad.close = AsyncMock()
     assert await main_module._receive_node_handshake(ws_bad) is None
-    assert ws_bad.closed == (1003, "Expected HANDSHAKE message")
+    ws_bad.close.assert_awaited_once_with(
+        code=1003, reason="Expected HANDSHAKE message"
+    )
 
 
 @pytest.mark.asyncio
 async def test_run_node_message_loop_handles_json_error_and_disconnect(monkeypatch):
-    messages = iter(
-        [
+    ws = MagicMock()
+    ws.receive_text = AsyncMock(
+        side_effect=[
             "{bad-json",
             '{"message_type":"DISCONNECT","payload":{}}',
         ]
     )
-
-    class DummyWebSocket:
-        async def receive_text(self):
-            await asyncio.sleep(0)
-            return next(messages)
 
     async def fake_handle(message, _node_id):
         await asyncio.sleep(0)
         return message.message_type != MessageType.DISCONNECT
 
     monkeypatch.setattr(main_module, "_handle_node_message", fake_handle)
-    await main_module._run_node_message_loop(DummyWebSocket(), "node-1")
+    await main_module._run_node_message_loop(ws, "node-1")
 
 
 def test_initialize_model_services_success_path(monkeypatch, tmp_path):

@@ -647,16 +647,29 @@ make run
 
 ### Collaboration
 - [Contribution Guide](docs/CONTRIBUTING.md)
+- [Testing Policy](docs/TESTING_POLICY.md)
 - [Testing and Performance](docs/TESTING_CHAT_LATENCY.md)
 
 ## 🧪 Tests
 
-```bash
-cd /home/ubuntu/venom
-source .venv/bin/activate || true
+Testing policy and commands are centralized in:
 
-# Run all tests
-pytest
+- [`docs/TESTING_POLICY.md`](docs/TESTING_POLICY.md)
+- [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md) (performance/latency details)
+
+Quick local pre-PR path:
+
+```bash
+make pr-fast
+```
+
+Manual equivalent (if needed):
+
+```bash
+source .venv/bin/activate || true
+pre-commit run --all-files
+mypy venom_core
+make check-new-code-coverage
 ```
 
 ## 📦 Docker Package (End User)
@@ -695,49 +708,6 @@ Optional GPU mode:
 export VENOM_ENABLE_GPU=auto   # default; falls back to CPU if runtime is missing
 scripts/docker/run-release.sh restart
 ```
-
-## 🔬 Tests and Benchmarks
-
-Full instructions (steps + expected values) are in [`docs/TESTING_CHAT_LATENCY.md`](docs/TESTING_CHAT_LATENCY.md). Most important commands:
-
-### Backend (FastAPI / agents)
-- `pytest -q` — quick test of entire system.
-- `pytest tests/test_researcher_agent.py` / `tests/test_architect_agent.py` — agent scenarios.
-- `pytest tests/perf/test_chat_pipeline.py -m performance` — SSE measurement (task_update → task_finished) + parallel batch.
-- `pytest --cov=venom_core --cov-report=html` — coverage report.
-- `make sonar-reports-backend` — generates Sonar backend reports:
-  - `test-results/sonar/python-coverage.xml`
-  - `test-results/sonar/python-junit.xml`
-
-### Frontend Next.js
-- `npm --prefix web-next run lint`
-- `npm --prefix web-next run build`
-- `npm --prefix web-next run test:e2e` — Playwright on prod build.
-- `npm --prefix web-next run test:unit:coverage` — generates Sonar frontend coverage:
-  - `web-next/coverage/lcov.info`
-
-### Sonar report bundle (local pre-check)
-- `make sonar-reports` — runs backend + frontend report generation used by SonarCloud workflow.
-- On GitHub PRs, SonarCloud consumes reports generated in the main `CI` workflow artifacts (single-run model; no separate duplicated test workflow).
-- `make test-light-coverage` — lightweight backend coverage focused on new-code suite (`config/pytest-groups/sonar-new-code.txt`).
-  - Default mode runs `ci-lite` baseline + `sonar-new-code` to maximize useful Sonar signal.
-  - Artifacts:
-    - `test-results/sonar/python-coverage.xml`
-    - `test-results/sonar/python-junit.xml`
-    - `test-results/sonar/htmlcov-new-code/index.html`
-  - Optional threshold: `NEW_CODE_COVERAGE_MIN=70 make test-light-coverage`
-  - Optional coverage scope override: `NEW_CODE_COV_TARGET=venom_core/execution/skills make test-light-coverage`
-  - Run only new-code list (without baseline): `NEW_CODE_INCLUDE_BASELINE=0 make test-light-coverage`
-
-### Response Time and Chat Performance
-- `npm --prefix web-next run test:perf` — Playwright measuring Next Cockpit latency (HTML report goes to `test-results/perf-report`).
-- Available env vars: `PERF_NEXT_LATENCY_BUDGET` (default 15000ms) and `PERF_*_RESPONSE_TIMEOUT` if limits need to be relaxed on slower machines.
-- `pytest tests/perf/test_chat_pipeline.py -m performance` — backend pipeline (time to `task_finished` + batch).
-- `./scripts/run-locust.sh` — start Locust panel (`http://127.0.0.1:8089`) and manual API load.
-- `./scripts/archive-perf-results.sh` — dump `test-results/`, Playwright/Locust reports to `perf-artifacts/<timestamp>/`.
-
-> Test results do NOT go to repo (we ignore `**/test-results/`, `perf-artifacts/`, `playwright-report/`, etc.) – this way you store them locally without risk of data exposure.
-> This also includes Sonar report artifacts: `test-results/sonar/python-junit.xml`, `test-results/sonar/python-coverage.xml`, and `web-next/coverage/lcov.info`.
 
 ## 🛠️ Development Tools
 

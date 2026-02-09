@@ -504,37 +504,50 @@ class SessionHandler:
             return "", []
         try:
             results = self.memory_skill.vector_store.search(query, limit=5)
-            filtered = []
-            for item in results:
-                meta = item.get("metadata") or {}
-                if (
-                    session_id
-                    and meta.get("session_id")
-                    and meta["session_id"] != session_id
-                ):
-                    continue
-                filtered.append(item)
-            top = filtered[:3] if filtered else results[:3]
+            top = self._select_relevant_memory_items(results, session_id)
             if not top:
                 return "", []
-            lines = []
-            ids = []
-            for idx, item in enumerate(top, 1):
-                txt = item.get("text", "")
-                meta = item.get("metadata") or {}
-                # ID wpisu (jeśli dostępne w metadanych lub id rekordu)
-                entry_id = item.get("id") or meta.get("id")
-                if entry_id:
-                    ids.append(str(entry_id))
-
-                if len(txt) > 400:
-                    txt = txt[:400] + "..."
-                tag = meta.get("type", "fact")
-                lines.append(f"[{idx}] ({tag}) {txt}")
-            return "\n".join(lines), ids
+            return self._format_memory_context(top)
         except Exception as exc:  # pragma: no cover
             logger.warning(f"Nie udało się pobrać pamięci: {exc}")
             return "", []
+
+    @staticmethod
+    def _select_relevant_memory_items(
+        results: list[dict], session_id: Optional[str]
+    ) -> list[dict]:
+        if not results:
+            return []
+        if not session_id:
+            return results[:3]
+
+        filtered = []
+        for item in results:
+            meta = item.get("metadata") or {}
+            item_session_id = meta.get("session_id")
+            if item_session_id and item_session_id != session_id:
+                continue
+            filtered.append(item)
+        return filtered[:3] if filtered else results[:3]
+
+    @staticmethod
+    def _format_memory_context(items: list[dict]) -> tuple[str, list[str]]:
+        lines: list[str] = []
+        ids: list[str] = []
+        for idx, item in enumerate(items, 1):
+            text = SessionHandler._truncate_memory_text(item.get("text", ""))
+            meta = item.get("metadata") or {}
+            entry_id = item.get("id") or meta.get("id")
+            if entry_id:
+                ids.append(str(entry_id))
+            lines.append(f"[{idx}] ({meta.get('type', 'fact')}) {text}")
+        return "\n".join(lines), ids
+
+    @staticmethod
+    def _truncate_memory_text(text: str, limit: int = 400) -> str:
+        if len(text) <= limit:
+            return text
+        return text[:limit] + "..."
 
     async def apply_preferred_language(
         self, task_id: UUID, request: TaskRequest, result: str, intent_manager

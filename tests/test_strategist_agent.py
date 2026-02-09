@@ -142,6 +142,28 @@ class TestStrategistAgent:
         assert "10" in result  # Calls
         assert "5000" in result  # Tokens
 
+    def test_check_api_usage_warning_thresholds(self, agent):
+        # 95%+ powinno zwrócić status alarmowy
+        limits = {"calls": 100, "tokens": 1000}
+        block = agent._format_provider_limit_block("openai", limits, 96, 960)
+        assert "🚨 OPENAI" in block
+        assert "OSTRZEŻENIE" in block
+
+        # 75-90% powinno zwrócić warning monitoringu
+        warn_block = agent._format_provider_limit_block("openai", limits, 81, 760)
+        assert "⚠️ OPENAI" in warn_block
+        assert "Wysokie zużycie - monitoruj" in warn_block
+
+    def test_calculate_provider_usage_helper(self, agent):
+        agent.work_ledger.log_task(
+            "test_api", "API Task", "Desc", 30, TaskComplexity.LOW
+        )
+        agent.work_ledger.record_api_usage("test_api", "openai", tokens=1234, ops=7)
+
+        calls, tokens = agent._calculate_provider_usage("openai")
+        assert calls == 7
+        assert tokens == 1234
+
     def test_suggest_local_fallback_images(self, agent):
         """Test sugestii lokalnych fallbacków dla obrazów."""
         result = agent.suggest_local_fallback("Generowanie obrazów przez DALL-E")

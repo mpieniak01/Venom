@@ -5,9 +5,9 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom)
 
 **Sygnały jakości**
-- [![Quick Validate](https://img.shields.io/github/actions/workflow/status/mpieniak01/Venom/quick-validate.yml?branch=main&logo=github-actions&logoColor=white&label=Quick%20Validate)](https://github.com/mpieniak01/Venom/actions/workflows/quick-validate.yml) Szybkie bramki GitHub: compile smoke Pythona, audyt zależności CI-lite, kontrola skryptów frontendu.
-- [![GitGuardian](https://img.shields.io/badge/security-GitGuardian-blue)](https://www.gitguardian.com/) Wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
-- [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mpieniak01_Venom&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mpieniak01_Venom) Bramka SonarCloud z raportów backendu (`python-coverage.xml`, `python-junit.xml`) i frontendu (`lcov.info`).
+- *Quick Validate:* szybkie bramki GitHub (compile smoke Pythona, audyt zależności CI-lite, kontrola skryptów frontendu).
+- *GitGuardian:* wykrywanie sekretów i zapobieganie wyciekom w historii repo i pull requestach.
+- *Quality Gate Status:* bramka SonarCloud z raportów backendu (`python-coverage.xml`, `python-junit.xml`) i frontendu (`lcov.info`).
 
 > **| [English Documentation Available](README.md)**
 

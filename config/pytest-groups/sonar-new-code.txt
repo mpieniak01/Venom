@@ -44,3 +44,4 @@ tests/test_markdown_blocks.py
 
 # AUTO-ADDED by pre-commit (staged backend/test changes)
 tests/test_update_sonar_new_code_group.py
+tests/test_logger_utils.py

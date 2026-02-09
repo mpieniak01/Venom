@@ -1,8 +1,10 @@
+import importlib.util
+import sys
+import types
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-pytest.importorskip("mcp")
 
 from tests.helpers.url_fixtures import http_url
 from venom_core.skills.mcp_manager_skill import McpManagerSkill, McpToolMetadata
@@ -71,6 +73,35 @@ async def test_import_flow(manager):
 
 
 @pytest.mark.asyncio
+async def test_import_flow_resolves_server_path_and_custom_install(manager):
+    async def fake_run_shell(cmd, cwd=None):
+        if cmd.startswith("git clone"):
+            repo_dir = manager.repos_root / "custom_tool"
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            (repo_dir / "server.py").write_text("print('ok')", encoding="utf-8")
+
+    manager._run_shell = AsyncMock(side_effect=fake_run_shell)
+    manager._introspect_tools = AsyncMock(
+        return_value=[McpToolMetadata(name="ping", description="d", input_schema={})]
+    )
+    manager.generator.generate_skill_code = MagicMock(return_value="print('ok')")
+
+    await manager.import_mcp_tool(
+        repo_url=http_url("git.fake", path="/repo"),
+        tool_name="custom_tool",
+        install_command="pip install -r requirements.txt",
+        server_entrypoint="python server.py",
+    )
+
+    install_calls = [args[0] for args, _kwargs in manager._run_shell.call_args_list]
+    assert any("/bin/pip install -r requirements.txt" in cmd for cmd in install_calls)
+
+    introspect_args = manager._introspect_tools.await_args
+    assert introspect_args.args[0].endswith("/bin/python")
+    assert introspect_args.args[1][0].endswith("/custom_tool/server.py")
+
+
+@pytest.mark.asyncio
 async def test_introspect_failure(manager):
     manager._run_shell = AsyncMock()
     manager._introspect_tools = AsyncMock(return_value=[])  # Empty list
@@ -90,6 +121,13 @@ async def test_introspect_tools_propagates_exception(manager, monkeypatch):
             return False
 
     monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill._MCP_AVAILABLE", True, raising=False
+    )
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill.StdioServerParameters",
+        lambda **_kwargs: object(),
+    )
+    monkeypatch.setattr(
         "venom_core.skills.mcp_manager_skill.stdio_client",
         lambda *_args, **_kwargs: FailingContext(),
     )
@@ -101,3 +139,43 @@ async def test_introspect_tools_propagates_exception(manager, monkeypatch):
             cwd=manager.repos_root,
             env={},
         )
+
+
+@pytest.mark.asyncio
+async def test_introspect_tools_fails_cleanly_without_mcp(manager, monkeypatch):
+    monkeypatch.setattr(
+        "venom_core.skills.mcp_manager_skill._MCP_AVAILABLE", False, raising=False
+    )
+
+    with pytest.raises(RuntimeError, match="mcp"):
+        await manager._introspect_tools(
+            command="python3",
+            args=["server.py"],
+            cwd=manager.repos_root,
+            env={},
+        )
+
+
+def test_optional_import_path_marks_mcp_available_when_module_exists(monkeypatch):
+    fake_mcp = types.ModuleType("mcp")
+    fake_mcp.ClientSession = object
+    fake_mcp.StdioServerParameters = object
+
+    fake_mcp_client = types.ModuleType("mcp.client")
+    fake_stdio = types.ModuleType("mcp.client.stdio")
+    fake_stdio.stdio_client = lambda *_args, **_kwargs: object()
+
+    monkeypatch.setitem(sys.modules, "mcp", fake_mcp)
+    monkeypatch.setitem(sys.modules, "mcp.client", fake_mcp_client)
+    monkeypatch.setitem(sys.modules, "mcp.client.stdio", fake_stdio)
+
+    module_path = (
+        Path(__file__).resolve().parents[1] / "venom_core/skills/mcp_manager_skill.py"
+    )
+    spec = importlib.util.spec_from_file_location("mcp_manager_skill_cov", module_path)
+    assert spec and spec.loader
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._MCP_AVAILABLE is True

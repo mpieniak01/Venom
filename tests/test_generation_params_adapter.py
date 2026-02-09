@@ -1,5 +1,7 @@
 """Testy dla adaptera parametrów generacji."""
 
+import json
+
 import pytest
 
 from venom_core.core.generation_params_adapter import GenerationParamsAdapter
@@ -108,6 +110,37 @@ class TestGenerationParamsAdapter:
     def test_normalize_provider_wrapper(self):
         """Test publicznego wrappera normalize_provider."""
         assert GenerationParamsAdapter.normalize_provider("VLLM") == "vllm"
+
+    def test_get_overrides_returns_empty_without_model_name(self):
+        """Brak model_name powinien zwracać pusty override."""
+        assert GenerationParamsAdapter.get_overrides("vllm", None) == {}
+
+    def test_get_overrides_returns_runtime_model_mapping(self, monkeypatch):
+        """Pobiera mapowanie runtime/model z JSON config."""
+        payload = {
+            "vllm": {"model-a": {"temperature": 0.2}},
+            "ollama": {"model-a": {"temperature": 0.7}},
+        }
+        monkeypatch.setattr(
+            "venom_core.core.generation_params_adapter.config_manager.get_config",
+            lambda mask_secrets=False: {
+                "MODEL_GENERATION_OVERRIDES": json.dumps(payload)
+            },
+        )
+
+        assert GenerationParamsAdapter.get_overrides("vllm", "model-a") == {
+            "temperature": 0.2
+        }
+
+    def test_get_overrides_returns_empty_for_non_dict_payload(self, monkeypatch):
+        """Nieprawidłowy typ payloadu powinien zwrócić pusty dict."""
+        monkeypatch.setattr(
+            "venom_core.core.generation_params_adapter.config_manager.get_config",
+            lambda mask_secrets=False: {
+                "MODEL_GENERATION_OVERRIDES": json.dumps(["bad"])
+            },
+        )
+        assert GenerationParamsAdapter.get_overrides("vllm", "model-a") == {}
 
     def test_merge_with_defaults_no_user_params(self):
         """Test łączenia z domyślnymi gdy brak parametrów użytkownika."""

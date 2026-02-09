@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 
 from venom_core.main import app
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def client():

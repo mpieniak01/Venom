@@ -63,6 +63,8 @@ from venom_core.api.routes import system_scheduler  # noqa: E402
 from venom_core.api.routes import system_services  # noqa: E402
 from venom_core.utils.ttl_cache import TTLCache  # noqa: E402
 
+pytestmark = pytest.mark.integration
+
 for _name, _original in _module_backup.items():
     if _original is None:
         sys.modules.pop(_name, None)

@@ -56,3 +56,13 @@ tests/test_api_new_code_coverage_wave3.py
 tests/test_api_routes_solid_wave4.py
 tests/test_documenter.py
 tests/test_overmind_integration.py
+tests/test_apprentice_agent.py
+tests/test_dataset_curator.py
+tests/test_github_skill.py
+tests/test_gpu_habitat.py
+tests/test_learning_logs.py
+tests/test_lesson_management_api.py
+tests/test_lessons_governance.py
+tests/test_llm_runtime_activation_api.py
+tests/test_llm_server_selection.py
+tests/test_professor.py

@@ -188,3 +188,12 @@ class TestGenerationParamsAdapter:
         # Powinno zwrócić parametry bez mapowania
         assert "temperature" in result
         assert "max_tokens" in result
+
+    def test_detect_provider_local_ignores_openai_runtime(self, monkeypatch):
+        """Dla local i runtime=openai fallback powinien zostać na vllm."""
+        runtime = type("Runtime", (), {"provider": "openai"})()
+        monkeypatch.setattr(
+            "venom_core.utils.llm_runtime.get_active_llm_runtime",
+            lambda: runtime,
+        )
+        assert GenerationParamsAdapter._detect_provider("local") == "vllm"
